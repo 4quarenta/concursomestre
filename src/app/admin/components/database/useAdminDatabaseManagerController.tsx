@@ -302,6 +302,7 @@ export const useAdminDatabaseManagerController = ({
     handleDeleteExam,
     actionLoading: examActionLoading,
   } = useAdminExamBankWorkflow({
+    enabled: activeSubTab === 'exams',
     questions,
     systemSettings,
     updateSystemSettings,
@@ -319,6 +320,7 @@ export const useAdminDatabaseManagerController = ({
     manualQuestionModalProps,
     importWorkflowProps,
   } = useAdminQuestionWorkbench({
+    importEnabled: activeSubTab === 'import',
     questions,
     systemSettings,
     addToast,

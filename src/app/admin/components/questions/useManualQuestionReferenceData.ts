@@ -20,12 +20,22 @@ type TaxonomyItemWithSigla = TaxonomyItem & {
 
 const getTaxonomyShortLabel = (taxonomy: TaxonomyItemWithSigla) => taxonomy.sigla || taxonomy.name;
 
-export const useManualQuestionReferenceData = (systemSettings: SystemSettings, questions: Question[] = []) => {
+export const useManualQuestionReferenceData = (
+  systemSettings: SystemSettings,
+  questions: Question[] = [],
+  enabled = true,
+) => {
   const taxonomies = systemSettings.taxonomies;
   const [canonicalProvas, setCanonicalProvas] = useState<Prova[]>([]);
   const [hasCanonicalProvasLoaded, setHasCanonicalProvasLoaded] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setCanonicalProvas([]);
+      setHasCanonicalProvasLoaded(false);
+      return;
+    }
+
     let isActive = true;
 
     setHasCanonicalProvasLoaded(false);
@@ -46,7 +56,7 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings, q
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [enabled]);
 
   const existingAgencies = useMemo(() => {
     return (taxonomies?.agencies || []).map(getTaxonomyShortLabel);

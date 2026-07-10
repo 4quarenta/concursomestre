@@ -43,7 +43,11 @@ export const useAdminManualQuestionEditor = ({
     replaceExtractedQuestion,
   });
 
-  const manualQuestionReferenceData = useManualQuestionReferenceData(systemSettings, questions);
+  const manualQuestionReferenceData = useManualQuestionReferenceData(
+    systemSettings,
+    questions,
+    manualQuestionWorkflow.showAddManual,
+  );
 
   return {
     openManualModal: manualQuestionWorkflow.openManualModal,

@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { GrupoQuestao, Prova } from '@types';
+import type { GrupoQuestao, Prova, QuestionAsset, QuestionAssetUsage } from '@types';
 import { normalizeProvaRecord } from '../exams/examBankUtils';
 
 export interface QuestionTaxonomyRecord {
@@ -53,6 +53,7 @@ export interface ManualQuestionState {
   enunciado_clean: string;
   introText: string;
   imageUrl: string;
+  assets: QuestionAsset[];
   publishStatus: string;
   visibilityStatus: string;
   scheduledAt: string;
@@ -95,6 +96,71 @@ export interface ManualQuestionState {
 
 export type ManualQuestionPatch = Partial<ManualQuestionState>;
 export type ManualQuestionSetter = Dispatch<SetStateAction<ManualQuestionState>>;
+
+export const QUESTION_IMAGE_MARKER_PATTERN = /\[image:([^\]\s]+)\]/g;
+
+export const buildQuestionImageMarker = (assetId: string) => `[image:${assetId}]`;
+
+export const insertQuestionImageMarker = (content: string, assetId: string) => {
+  const marker = buildQuestionImageMarker(assetId);
+  if (content.includes(marker)) {
+    return content;
+  }
+
+  return [content.trimEnd(), marker].filter(Boolean).join(content.trim() ? '\n\n' : '');
+};
+
+export const removeQuestionImageMarker = (content: string, assetId: string) => (
+  content
+    .replace(new RegExp(`\\n*\\[image:${assetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\n*`, 'g'), '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+);
+
+export const getQuestionAssetMarkerIds = (content: string) => (
+  Array.from(content.matchAll(QUESTION_IMAGE_MARKER_PATTERN))
+    .map((match) => match[1])
+    .filter(Boolean)
+);
+
+export const getQuestionAssetsByUsage = (
+  assets: QuestionAsset[] | undefined,
+  usage: QuestionAssetUsage,
+) => (Array.isArray(assets) ? assets.filter((asset) => asset.usage === usage) : []);
+
+export const createQuestionImageAsset = ({
+  assets,
+  usage,
+  url,
+  alt,
+  label,
+}: {
+  assets: QuestionAsset[] | undefined;
+  usage: QuestionAssetUsage;
+  url: string;
+  alt: string;
+  label?: string;
+}): QuestionAsset => {
+  const existingAssets = Array.isArray(assets) ? assets : [];
+  const normalizedLabel = label ? `_${String(label).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')}` : '';
+  const usageAssets = existingAssets.filter((asset) => asset.usage === usage);
+  let nextIndex = usageAssets.length + 1;
+  let id = `img_${usage}${normalizedLabel}_${nextIndex}`.replace(/_+/g, '_');
+
+  while (existingAssets.some((asset) => asset.id === id)) {
+    nextIndex += 1;
+    id = `img_${usage}${normalizedLabel}_${nextIndex}`.replace(/_+/g, '_');
+  }
+
+  return {
+    id,
+    type: 'image',
+    usage,
+    url,
+    alt,
+    order: existingAssets.length + 1,
+  };
+};
 
 export const isQuestionTaxonomyRecord = (value: QuestionTaxonomyOption): value is QuestionTaxonomyRecord =>
   Boolean(value) && typeof value === 'object';

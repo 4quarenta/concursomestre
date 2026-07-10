@@ -259,6 +259,7 @@ const createEmptyManualQuestion = (): ManualQuestionState => ({
   enunciado_clean: '',
   introText: '',
   imageUrl: '',
+  assets: [],
   publishStatus: 'published',
   visibilityStatus: 'public',
   scheduledAt: '',
@@ -491,6 +492,12 @@ export const useManualQuestionWorkflow = ({
       enunciado_clean: manualQ.enunciado_clean || (manualQ.text ? manualQ.text.replace(/<[^>]*>?/gm, '') : ''),
       introText: manualQ.introText,
       imageUrl: manualQ.imageUrl,
+      content: {
+        statement: manualQ.enunciado || manualQ.text,
+        supportText: manualQ.introText,
+        reference: '',
+      },
+      assets: manualQ.assets || [],
       bancas: manualQ.bancas.map((banca) =>
         typeof banca === 'string'
           ? agencyTaxonomies.find((taxonomy) => taxonomy.sigla === banca || taxonomy.name === banca)
@@ -719,6 +726,8 @@ export const useManualQuestionWorkflow = ({
         desatualizada: question.desatualizada || Boolean(rawQuestion.isOutdated) || false,
         detailedComment: question.detailedComment || '',
         teacherComment: question.teacherComment || '',
+        assets: Array.isArray(question.assets) ? question.assets : [],
+        imageUrl: String(getRecordValue(rawQuestion, 'imageUrl', 'image_url') || question.imageUrl || ''),
         grupoQuestao: (getRecordValue(rawQuestion, 'grupoQuestao') as ManualQuestionState['grupoQuestao']) || null,
         grupoQuestaoId: (getRecordValue(rawQuestion, 'grupoQuestaoId', 'grupo_questao_id') as ManualQuestionState['grupoQuestaoId']) || null,
         grupo_questao_id: (getRecordValue(rawQuestion, 'grupo_questao_id', 'grupoQuestaoId') as ManualQuestionState['grupo_questao_id']) || null,

@@ -102,6 +102,7 @@ export interface ExamDraftState {
 }
 
 interface UseAdminExamBankWorkflowOptions {
+  enabled?: boolean;
   questions: Question[];
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => Promise<unknown> | unknown;
@@ -241,6 +242,7 @@ export const createEmptyExamDraft = (): ExamDraftState => ({
  * @since 1.0.0
  */
 export const useAdminExamBankWorkflow = ({
+  enabled = true,
   questions,
   systemSettings,
   updateSystemSettings,
@@ -258,6 +260,10 @@ export const useAdminExamBankWorkflow = ({
   const [canonicalExamBankLoadFailed, setCanonicalExamBankLoadFailed] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+
     let active = true;
 
     const loadExamBank = async () => {
@@ -284,7 +290,7 @@ export const useAdminExamBankWorkflow = ({
     return () => {
       active = false;
     };
-  }, [addToast]);
+  }, [addToast, enabled]);
 
   const legacyExamBank = useMemo(
     () => mergeExamBankSources(systemSettings, questions),
@@ -481,7 +487,7 @@ export const useAdminExamBankWorkflow = ({
     });
 
     if (!nextExam) {
-      addToast('Preencha pelo menos ID e nome da prova.', 'error');
+      addToast('Preencha pelo menos o nome da prova.', 'error');
       return;
     }
 

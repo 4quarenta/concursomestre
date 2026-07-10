@@ -19,7 +19,9 @@ import {
   BookOpen,
   Briefcase,
   Calendar,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Crop,
   Database,
   Edit3,
@@ -33,6 +35,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Sparkles,
   Target,
   Trash2,
@@ -47,10 +50,53 @@ import {
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
 } from '../shared/adminPanelStyles';
+import { EXTERNAL_AI_FULL_BATCH_PROMPT } from './externalAiExamPrompt';
 
 type GenerateSpecificType = 'teacher' | 'detailed';
+type ExternalEditorialMode = GenerateSpecificType;
 type ImportPublishAction = 'exam' | 'questions' | `question:${number}`;
-type ImportMetadataField = 'agency' | 'source' | 'year' | 'role' | 'level' | 'title' | 'examTitle' | 'examName' | 'contestName' | 'examType' | 'caderno' | 'tipoCaderno' | 'corCaderno' | 'bookletType' | 'bookletColor' | 'subjects';
+type ImportMetadataField =
+  | 'agency'
+  | 'source'
+  | 'sources'
+  | 'organization'
+  | 'organizations'
+  | 'orgao'
+  | 'orgaos'
+  | 'year'
+  | 'ano'
+  | 'role'
+  | 'roles'
+  | 'cargo'
+  | 'cargos'
+  | 'level'
+  | 'nivel'
+  | 'title'
+  | 'examTitle'
+  | 'examName'
+  | 'contestName'
+  | 'examType'
+  | 'caderno'
+  | 'tipoCaderno'
+  | 'corCaderno'
+  | 'bookletType'
+  | 'bookletColor'
+  | 'subjects'
+  | 'registrationStart'
+  | 'registrationEnd'
+  | 'examDate'
+  | 'registrationFee'
+  | 'totalQuestions'
+  | 'requirements'
+  | 'requirementsDetailed'
+  | 'remunerations'
+  | 'remunerationsDetailed'
+  | 'vacancies'
+  | 'vacanciesDetailed'
+  | 'programmaticContent'
+  | 'programmaticContentDetailed'
+  | 'stages'
+  | 'platformQuestionIds';
 type ExtractedQuestionEditableField =
   | 'subject'
   | 'topic'
@@ -262,6 +308,19 @@ const asTextList = (value: unknown) => (
     : asText(value).split(/\s*\/\s*|[,;\n]/).map((item) => item.trim()).filter(Boolean)
 );
 
+const stringifyMetadataField = (value: unknown) => {
+  if (Array.isArray(value)) {
+    if (value.every((item) => item === null || ['string', 'number', 'boolean'].includes(typeof item))) {
+      return value.map((item) => asText(item)).filter(Boolean).join('\n');
+    }
+    return JSON.stringify(value, null, 2);
+  }
+  if (value && typeof value === 'object') {
+    return JSON.stringify(value, null, 2);
+  }
+  return asText(value);
+};
+
 const dedupeTextList = (items: string[]) => {
   const seen = new Set<string>();
   return items.filter((item) => {
@@ -294,7 +353,14 @@ const joinExamTitleList = (items: string[], fallback: unknown = '') => (
 
 const buildStandardExamTitlePreview = (metadata: Record<string, unknown>) => {
   const roleList = dedupeTextList([...asTextList(metadata.roles), ...asTextList(metadata.cargos)]);
-  const sourceList = dedupeTextList([...asTextList(metadata.sources), ...asTextList(metadata.source)]);
+  const sourceList = dedupeTextList([
+    ...asTextList(metadata.sources),
+    ...asTextList(metadata.organizations),
+    ...asTextList(metadata.orgaos),
+    ...asTextList(metadata.source),
+    ...asTextList(metadata.organization),
+    ...asTextList(metadata.orgao),
+  ]);
   const role = joinExamTitleList(roleList, metadata.role || metadata.cargo || metadata.examName || metadata.contestName);
   const agency = cleanExamTitlePart(metadata.agency);
   const year = readExamYear(metadata.year, metadata.ano);
@@ -333,16 +399,25 @@ const getQuestionSpecificSubject = (question: Question) => (
 
 const getQuestionIntroText = (question: Question) => {
   const record = question as unknown as { introText?: unknown; intro_text?: unknown };
-  return asText(record.introText || record.intro_text);
+  return asText(question.content?.supportText || record.introText || record.intro_text);
 };
 
 const getQuestionReferenceText = (question: Question) => {
   const record = question as unknown as { referenceText?: unknown; reference_text?: unknown };
-  return asText(record.referenceText || record.reference_text);
+  return asText(question.content?.reference || record.referenceText || record.reference_text);
 };
 
 const getQuestionSupportImages = (question: Question) => {
   const record = question as unknown as { supportImages?: unknown };
+  if (Array.isArray(question.assets)) {
+    return question.assets
+      .filter((asset) => asset.type === 'image' && asset.usage === 'support')
+      .map((asset) => ({
+        imageData: asset.base64 || asset.url || '',
+        description: asset.alt || asset.caption || '',
+        page: asset.sourcePage,
+      })) as ExtractedQuestionImagePreview[];
+  }
   return Array.isArray(record.supportImages) ? record.supportImages as ExtractedQuestionImagePreview[] : [];
 };
 
@@ -356,8 +431,136 @@ const getQuestionSubjects = (questions: Question[]) => questions
   .filter((subject, index, list) => subject.length > 0 && list.indexOf(subject) === index);
 
 const getQuestionOptions = (question: Question) => (
-  Array.isArray(question.itens) ? question.itens : []
+  Array.isArray(question.alternatives) && question.alternatives.length
+    ? question.alternatives.map((alternative, index) => ({
+      id: index + 1,
+      ordem: alternative.order || index + 1,
+      rotulo: alternative.label || String.fromCharCode(65 + index),
+      corpo: alternative.text || '',
+      corpo_clean: stripPreviewText(alternative.text || ''),
+    }))
+    : Array.isArray(question.itens) ? question.itens : []
 );
+
+const stripPreviewText = (value: unknown) => asText(value)
+  .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+  .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+  .replace(/<[^>]+>/g, ' ')
+  .replace(/&nbsp;/gi, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const getOptionPreviewText = (option: unknown) => {
+  const record = option && typeof option === 'object' ? option as Record<string, unknown> : {};
+  return stripPreviewText(record.corpo || record.texto || record.text || record.value || option);
+};
+
+const buildExternalEditorialPrompt = (mode: ExternalEditorialMode, questions: Question[]) => {
+  const isTeacher = mode === 'teacher';
+  const targetField = isTeacher ? 'teacherComment' : 'detailedComment';
+  const fieldLabel = isTeacher ? 'comentario do professor' : 'analise detalhada';
+  const payload = {
+    task: isTeacher ? 'generate_teacher_comments' : 'generate_detailed_analyses',
+    output_format: {
+      questions: [
+        {
+          number: 1,
+          [targetField]: isTeacher
+            ? 'Texto direto, didatico e especifico da questao. Explique o caminho ate o gabarito e finalize com "Gabarito: X."'
+            : 'Markdown completo com Gabarito comentado, conceito central, caminho de resolucao, analise de cada alternativa, pulo do gato e resumo de prova.',
+        },
+      ],
+    },
+    questions: questions.map((question, index) => {
+      const questionRecord = question as unknown as Record<string, unknown>;
+      const options = getQuestionOptions(question).map((option, optionIndex) => {
+        const record = option as unknown as Record<string, unknown>;
+        const label = asText(record.letra || record.rotulo || record.label || String.fromCharCode(65 + optionIndex));
+        return {
+          label,
+          text: getOptionPreviewText(option),
+          correct: Boolean(record.correta) || optionIndex === getCorrectOptionIndex(question as ExtractedQuestionPreview),
+        };
+      });
+      const answerIndex = getCorrectOptionIndex(question as ExtractedQuestionPreview);
+      return {
+        number: getQuestionNumber(question as ExtractedQuestionPreview, index + 1),
+        statement: stripPreviewText(question.content?.statement || question.enunciado || questionRecord.text || questionRecord.raw),
+        supportText: stripPreviewText(getQuestionIntroText(question)),
+        referenceText: stripPreviewText(getQuestionReferenceText(question)),
+        contextKey: asText(questionRecord.contextKey || questionRecord.contextTempId),
+        options,
+        answer: options[answerIndex]?.label || '',
+        subject: getQuestionSubject(question),
+        topic: getQuestionTopic(question),
+        specificSubject: getQuestionSpecificSubject(question),
+      };
+    }),
+  };
+
+  return [
+    'Voce e o editor pedagogico senior do ConcursoMestre, especialista em concursos publicos.',
+    `Gere somente o campo "${targetField}" (${fieldLabel}) para cada questao enviada.`,
+    'Voce deve gerar um JSON valido como resposta final. Nao responda com explicacoes, plano, markdown fora do JSON, pedido para dividir em partes ou orientacao para outra ferramenta.',
+    'Se a interface permitir arquivo/anexo, gere um arquivo JSON com o conteudo completo; se responder no chat, retorne somente o objeto JSON parseavel.',
+    '',
+    'REGRAS DE QUALIDADE',
+    '- O texto deve parecer escrito por um professor experiente de curso preparatorio, nao por resumo automatico.',
+    '- Use todas as informacoes disponiveis: enunciado, texto de apoio, referencia, contexto, figura/tabela quando descrita, alternativas e gabarito.',
+    '- Explique como chegar ao gabarito; nao apenas diga qual e a resposta.',
+    '- Nao invente leis, artigos, jurisprudencia, dados de imagem, doutrina, formulas ou fatos ausentes.',
+    '- Adapte a explicacao ao tipo da questao: Portugues, Matematica, Fisica, Quimica, Direito, Historia, Geografia, Atualidades ou outra disciplina.',
+    '- Varie a escrita entre as questoes. Evite aparencia de texto serializado.',
+    '- Retorne JSON valido, sem markdown fora do JSON, sem comentarios extras.',
+    '- Preserve exatamente os numeros das questoes.',
+    '- Nao altere enunciado, alternativas, filtros, gabarito ou metadados.',
+    '',
+    isTeacher
+      ? [
+        'PADRAO DO COMENTARIO DO PROFESSOR',
+        '- Comentario rapido, mas realmente didatico; nao vire mini aula.',
+        '- Idealmente entre 1 e 4 paragrafos curtos, podendo chegar a 6 quando a questao exigir calculo ou raciocinio mais elaborado.',
+        '- Tamanho sugerido: entre 500 e 1.200 caracteres, salvo questoes mais complexas.',
+        '- Mostre o passo mental essencial que leva ao gabarito.',
+        '- Use elementos concretos do enunciado, texto, figura, tabela ou alternativas.',
+        '- Em calculo, mostre a formula/conta essencial; em questao teorica, cite a regra/conceito/criterio com base segura.',
+        '- Em interpretacao textual, indique a ideia, termo, relacao textual, voz narrativa, genero ou inferencia que sustenta a resposta.',
+        '- Aponte a pegadinha somente quando ela existir.',
+        '- Nao analise todas as alternativas; isso pertence a analise detalhada.',
+        '- So mencione alternativa incorreta quando ela for a principal pegadinha da questao.',
+        '- Se o gabarito parecer incompatível com o enunciado ou alternativas, ainda gere o comentario com base no gabarito informado, mas evite afirmar algo contraditorio ou inventar justificativa.',
+        '- Finalize com "Gabarito: X." quando houver gabarito.',
+        '- Nao use frases genericas como "basta interpretar", "conforme o enunciado", "atende ao comando" ou "corresponde ao gabarito oficial".',
+      ].join('\n')
+      : [
+        'PADRAO DA ANALISE DETALHADA',
+        '- Use Markdown dentro da string do campo "detailedComment".',
+        '- Preserve os titulos obrigatorios em Markdown, mas varie naturalmente a redacao interna de cada secao.',
+        '- A analise deve ter profundidade de aula, mas sem enrolacao.',
+        '- Tamanho sugerido: entre 2.000 e 4.500 caracteres por questao; ultrapasse apenas quando houver calculo longo, tabela, grafico ou analise juridica mais complexa.',
+        '- Em questoes simples, seja completo sem alongar artificialmente.',
+        '- Comece com "## Gabarito comentado", citando a letra correta e o motivo central especifico.',
+        '- Inclua "## Conceito central" ensinando o conteudo em linguagem acessivel para aluno iniciante, mas com rigor tecnico.',
+        '- Inclua "## Caminho de resolucao": se houver calculo, desenvolva formula, substituicao e conclusao; se nao houver, mostre o processo mental usado para chegar ao gabarito.',
+        '- Inclua "## Analise das alternativas" e justifique CADA alternativa.',
+        '- Em cada alternativa errada, explique o erro real: extrapolacao, inversao, generalizacao, conceito trocado, dado inexistente, excecao ignorada, calculo incorreto, leitura errada de tabela, interpretacao incompatível ou alternativa incompleta.',
+        '- Em Portugues, diferencie claramente regra gramatical, semantica, interpretacao, literatura, tipologia textual, ortografia ou figura de linguagem.',
+        '- Em Direito, cite dispositivo legal somente se ele estiver presente ou puder ser identificado com seguranca. Nunca invente artigo.',
+        '- Em questoes com imagem, grafico ou tabela nao disponivel de forma legivel, nao invente dados visuais; trabalhe apenas com os elementos textuais fornecidos.',
+        '- Se o gabarito parecer incompatível com o enunciado ou alternativas, gere uma analise cautelosa, sem fabricar justificativa falsa.',
+        '- Inclua "## Pulo do gato" com macete, palavra-chave, diferenca recorrente, erro classico ou detalhe decisivo para futuras provas.',
+        '- Inclua "## Resumo de prova" em bullets curtos, objetivos e revisaveis.',
+        '- Nao repita a mesma justificativa trocando apenas a letra.',
+        '- Nao use frases genericas como "nao atende ao comando", "nao corresponde ao gabarito oficial" ou "esta incorreta porque nao e a correta".',
+      ].join('\n'),
+    '',
+    'FORMATO OBRIGATORIO DE SAIDA',
+    JSON.stringify({ questions: [{ number: 1, [targetField]: '...' }] }, null, 2),
+    '',
+    'QUESTOES PARA GERAR',
+    JSON.stringify(payload, null, 2),
+  ].join('\n');
+};
 
 const getFilledQuestionOptionsCount = (question: Question) => (
   getQuestionOptions(question).filter((item) => asText(item.corpo)).length
@@ -388,8 +591,31 @@ const getCorrectOptionIndex = (question: ExtractedQuestionPreview) => {
     return Number(question.correctOptionIndex);
   }
   const options = getQuestionOptions(question);
+  const canonicalAnswerId = question.answer?.alternativeId;
+  if (canonicalAnswerId) {
+    const canonicalIndex = options.findIndex((item) => {
+      const record = item as unknown as Record<string, unknown>;
+      return asText(record.id) === asText(canonicalAnswerId)
+        || asText(record.rotulo) === asText(question.answer?.value);
+    });
+    if (canonicalIndex >= 0) {
+      return canonicalIndex;
+    }
+  }
   const answerIndex = options.findIndex((item) => Number(item.id) === Number(question.resposta));
   return answerIndex >= 0 ? answerIndex : Math.max(0, Number(question.resposta || 1) - 1);
+};
+
+const getQuestionStatementPreview = (question: Question) => (
+  asText(question.content?.statement || question.enunciado || (question as unknown as Record<string, unknown>).text)
+);
+
+const getTeacherCommentPreview = (question: Question) => {
+  return asText(question.editorialComments?.teacherComment || question.teacherComment);
+};
+
+const getDetailedCommentPreview = (question: Question) => {
+  return asText(question.editorialComments?.detailedComment || question.detailedComment);
 };
 
 const getQuestionQuality = (question: ExtractedQuestionPreview) => (
@@ -411,7 +637,7 @@ const getQuestionProbablePages = (question: ExtractedQuestionPreview) => (
 );
 
 const isQuestionReadyForPublicationPreview = (question: ExtractedQuestionPreview) => {
-  const statement = asText(question.enunciado).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const statement = getQuestionStatementPreview(question).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   const optionsCount = getFilledQuestionOptionsCount(question);
   const expectedOptionsCount = getQuestionExpectedOptionsCount(question);
   const type = asText(question.tipo).toLowerCase();
@@ -602,6 +828,327 @@ const getFocusSelectValue = (focus: NonNullable<SystemSettings['taxonomies']>['c
   const slug = String(focus.slug ?? '').trim();
   if (slug) return `slug:${slug}`;
   return `name:${slugifyFocusValue(getRootFocusLabel(getFocusLabel(focus)))}`;
+};
+
+const getExamTaxonomyLabel = (value: unknown) => {
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    return asText(record.sigla ?? record.nome ?? record.name ?? record.descricao ?? record.description);
+  }
+
+  return asText(value);
+};
+
+const getExamBankSearchText = (exam: Prova) => [
+  exam.nome,
+  exam.slug,
+  exam.ano,
+  exam.nivel,
+  getExamTaxonomyLabel(exam.banca),
+  ...(exam.orgaos?.length ? exam.orgaos : [exam.orgao]).map(getExamTaxonomyLabel),
+  ...(exam.cargos?.length ? exam.cargos : [exam.cargo]).map(getExamTaxonomyLabel),
+  ...(exam.focos?.length ? exam.focos : exam.carreiras?.length ? exam.carreiras : [exam.foco, exam.carreira]).map(getExamTaxonomyLabel),
+].filter(Boolean).join(' ');
+
+const normalizeExamBankSearch = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase();
+
+interface SearchableExamBankSelectProps {
+  exams: Prova[];
+  selectedExamId: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  isLoading?: boolean;
+}
+
+const getExamOptionLabel = (exam: Prova) => (
+  `${exam.nome}${exam.ano ? ` (${exam.ano})` : ''}`
+);
+
+const getExamOptionMeta = (exam: Prova) => {
+  const agency = getExamTaxonomyLabel(exam.banca);
+  const organizations = (exam.orgaos?.length ? exam.orgaos : [exam.orgao])
+    .map(getExamTaxonomyLabel)
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' / ');
+  const roles = (exam.cargos?.length ? exam.cargos : [exam.cargo])
+    .map(getExamTaxonomyLabel)
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' / ');
+
+  return [agency, organizations, roles].filter(Boolean).join(' · ');
+};
+
+const SearchableExamBankSelect = ({
+  exams,
+  selectedExamId,
+  onChange,
+  disabled = false,
+  isLoading = false,
+}: SearchableExamBankSelectProps) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const selectedExam = React.useMemo(
+    () => exams.find((exam) => String(exam.id) === selectedExamId) || null,
+    [exams, selectedExamId],
+  );
+  const visibleExams = React.useMemo(() => {
+    const query = normalizeExamBankSearch(searchTerm);
+    const list = query
+      ? exams.filter((exam) => normalizeExamBankSearch(getExamBankSearchText(exam)).includes(query))
+      : exams;
+
+    if (selectedExam && !list.some((exam) => exam.id === selectedExam.id)) {
+      return [selectedExam, ...list];
+    }
+
+    return list;
+  }, [exams, searchTerm, selectedExam]);
+
+  const handleChange = (value: string) => {
+    onChange(value);
+    setIsOpen(false);
+    setSearchTerm('');
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen((current) => !current)}
+        className={`flex h-11 w-full min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 text-left text-xs font-bold text-slate-800 shadow-sm transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 ${isOpen ? 'ring-2 ring-violet-100 dark:ring-violet-950' : ''}`}
+      >
+        <span className="min-w-0 truncate">
+          {isLoading
+            ? 'Carregando provas cadastradas...'
+            : selectedExam
+              ? getExamOptionLabel(selectedExam)
+              : 'Criar uma nova prova após a extração'}
+        </span>
+        <ChevronDown size={16} className={`shrink-0 text-slate-400 transition ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && !disabled && (
+        <div className="absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+            <Search size={16} className="shrink-0 text-slate-400" />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              autoFocus
+              placeholder="Busca rápida"
+              className="h-9 min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0 dark:text-slate-100"
+            />
+          </div>
+
+          <div className="max-h-72 overflow-y-auto py-2">
+            <button
+              type="button"
+              onClick={() => handleChange('')}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
+            >
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${!selectedExamId ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-200 text-transparent dark:border-slate-700'}`}>
+                <Check size={13} />
+              </span>
+              Criar uma nova prova após a extração
+            </button>
+
+            <p className="px-4 pb-1 pt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Provas
+            </p>
+
+            {visibleExams.length > 0 ? visibleExams.map((exam) => {
+              const value = String(exam.id);
+              const isSelected = value === selectedExamId;
+              const meta = getExamOptionMeta(exam);
+              return (
+                <button
+                  type="button"
+                  key={exam.id}
+                  onClick={() => handleChange(value)}
+                  className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900"
+                >
+                  <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${isSelected ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-200 text-transparent dark:border-slate-700'}`}>
+                    <Check size={13} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold text-slate-800 dark:text-slate-100">
+                      {getExamOptionLabel(exam)}
+                    </span>
+                    {meta && (
+                      <span className="mt-0.5 block line-clamp-2 text-[11px] font-semibold leading-snug text-slate-500 dark:text-slate-400">
+                        {meta}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            }) : (
+              <div className="px-4 py-5 text-sm font-semibold text-slate-500">
+                Nenhuma prova encontrada para a busca.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface SearchableFocusSelectProps {
+  focusOptions: NonNullable<SystemSettings['taxonomies']>['careers'];
+  selectedFocusId: string;
+  inheritedFocusLabel?: string;
+  manualFocusName: string;
+  onSelectedFocusIdChange: (value: string) => void;
+  onManualFocusNameChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+const SearchableFocusSelect = ({
+  focusOptions,
+  selectedFocusId,
+  inheritedFocusLabel = '',
+  manualFocusName,
+  onSelectedFocusIdChange,
+  onManualFocusNameChange,
+  disabled = false,
+}: SearchableFocusSelectProps) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const selectedFocus = React.useMemo(
+    () => focusOptions.find((focus) => getFocusSelectValue(focus) === selectedFocusId) || null,
+    [focusOptions, selectedFocusId],
+  );
+  const selectedLabel = inheritedFocusLabel
+    || (selectedFocus ? getRootFocusLabel(getFocusLabel(selectedFocus)) : '')
+    || manualFocusName.trim();
+  const visibleFocusOptions = React.useMemo(() => {
+    const query = normalizeExamBankSearch(searchTerm);
+    const list = query
+      ? focusOptions.filter((focus) => normalizeExamBankSearch([
+        getFocusLabel(focus),
+        focus.slug,
+        focus.description,
+      ].filter(Boolean).join(' ')).includes(query))
+      : focusOptions;
+
+    if (selectedFocus && !list.some((focus) => getFocusSelectValue(focus) === getFocusSelectValue(selectedFocus))) {
+      return [selectedFocus, ...list];
+    }
+
+    return list;
+  }, [focusOptions, searchTerm, selectedFocus]);
+
+  const handleSelect = (value: string) => {
+    onSelectedFocusIdChange(value);
+    if (value) onManualFocusNameChange('');
+    setIsOpen(false);
+    setSearchTerm('');
+  };
+
+  const handleManualChange = (value: string) => {
+    onManualFocusNameChange(value);
+    if (value.trim()) onSelectedFocusIdChange('');
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setIsOpen((current) => !current)}
+          className={`flex h-11 w-full min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 text-left text-xs font-bold text-slate-800 shadow-sm transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 ${isOpen ? 'ring-2 ring-violet-100 dark:ring-violet-950' : ''}`}
+        >
+          <span className="min-w-0 truncate">
+            {selectedLabel || 'Selecionar foco existente'}
+          </span>
+          <ChevronDown size={16} className={`shrink-0 text-slate-400 transition ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isOpen && !disabled && (
+          <div className="absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+              <Search size={16} className="shrink-0 text-slate-400" />
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                autoFocus
+                placeholder="Busca rápida"
+                className="h-9 min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0 dark:text-slate-100"
+              />
+            </div>
+
+            <div className="max-h-72 overflow-y-auto py-2">
+              <button
+                type="button"
+                onClick={() => handleSelect('')}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
+              >
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${!selectedFocusId ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-200 text-transparent dark:border-slate-700'}`}>
+                  <Check size={13} />
+                </span>
+                Selecionar manualmente abaixo
+              </button>
+
+              <p className="px-4 pb-1 pt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Focos
+              </p>
+
+              {visibleFocusOptions.length > 0 ? visibleFocusOptions.map((focus) => {
+                const value = getFocusSelectValue(focus);
+                const label = getRootFocusLabel(getFocusLabel(focus)) || 'Foco sem nome';
+                const isSelected = value === selectedFocusId;
+                return (
+                  <button
+                    type="button"
+                    key={value}
+                    onClick={() => handleSelect(value)}
+                    className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900"
+                  >
+                    <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${isSelected ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-200 text-transparent dark:border-slate-700'}`}>
+                      <Check size={13} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold text-slate-800 dark:text-slate-100">
+                        {label}
+                      </span>
+                      {focus.description && focus.description !== label && (
+                        <span className="mt-0.5 block line-clamp-2 text-[11px] font-semibold leading-snug text-slate-500 dark:text-slate-400">
+                          {focus.description}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              }) : (
+                <div className="px-4 py-5 text-sm font-semibold text-slate-500">
+                  Nenhum foco encontrado para a busca.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <input
+        type="text"
+        value={manualFocusName}
+        onChange={(event) => handleManualChange(event.target.value)}
+        disabled={disabled}
+        placeholder={inheritedFocusLabel || 'Ou adicionar novo foco. Ex.: ENEM, Policial, Tribunais'}
+        className={`h-10 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-70 ${ADMIN_FIELD_CLASS}`}
+      />
+    </div>
+  );
 };
 
 interface FigureCropSelectorProps {
@@ -832,6 +1379,7 @@ interface AdminImportSectionProps {
   logs: string[];
   extractedQuestions: Question[];
   isBulkGenerating: boolean;
+  bulkGenerationType: GenerateSpecificType | null;
   isRetryingMissingQuestions: boolean;
   bulkProgress: number;
   publishedExam: Record<string, unknown> | null;
@@ -841,10 +1389,13 @@ interface AdminImportSectionProps {
   onGenerateDetailedAll: () => void;
   onRetryMissingQuestions: () => void | Promise<void>;
   onParseQuestionsFromText: (text: string) => void | Promise<void>;
+  onImportFromAiJson: (json: string) => void | Promise<void>;
+  onImportExternalEditorialJson: (json: string) => void | Promise<void>;
   onPublishExam: () => void | Promise<void>;
   onPublishAllQuestions: () => void | Promise<void>;
   onPublishQuestion: (index: number) => void | Promise<void>;
   onEditExtractedQuestion: (question: Question, index: number) => void;
+  onMarkExtractedQuestionReviewed: (index: number) => void;
   onDeleteExtractedQuestion: (index: number) => void;
   onContextFigureCropChange: (tempId: string, figureBox: NonNullable<ExtractedContextPreview['figureBox']>) => void | Promise<void>;
   onExtractedQuestionFieldChange: (index: number, field: ExtractedQuestionEditableField, value: string) => void;
@@ -918,6 +1469,7 @@ const AdminImportSection = ({
   logs,
   extractedQuestions,
   isBulkGenerating,
+  bulkGenerationType,
   isRetryingMissingQuestions,
   bulkProgress,
   publishedExam,
@@ -927,10 +1479,13 @@ const AdminImportSection = ({
   onGenerateDetailedAll,
   onRetryMissingQuestions,
   onParseQuestionsFromText,
+  onImportFromAiJson,
+  onImportExternalEditorialJson,
   onPublishExam,
   onPublishAllQuestions,
   onPublishQuestion,
   onEditExtractedQuestion,
+  onMarkExtractedQuestionReviewed,
   onDeleteExtractedQuestion,
   onContextFigureCropChange,
   onExtractedQuestionFieldChange,
@@ -974,12 +1529,27 @@ const AdminImportSection = ({
   const [activeOptionCropKey, setActiveOptionCropKey] = React.useState<string | null>(null);
   const [contextPendingRemoval, setContextPendingRemoval] = React.useState<ExtractedContextPreview | null>(null);
   const [manualQuestionText, setManualQuestionText] = React.useState('');
+  const [externalAiJsonText, setExternalAiJsonText] = React.useState('');
+  const [externalEditorialMode, setExternalEditorialMode] = React.useState<ExternalEditorialMode | null>(null);
+  const [externalEditorialJsonText, setExternalEditorialJsonText] = React.useState('');
+  const [openExtractionMethod, setOpenExtractionMethod] = React.useState<'platform' | 'ai' | null>(null);
+  const [aiPromptCopied, setAiPromptCopied] = React.useState(false);
+  const [editorialPromptCopied, setEditorialPromptCopied] = React.useState(false);
   const [isParsingManualQuestionText, setIsParsingManualQuestionText] = React.useState(false);
+  const [isImportingExternalAiJson, setIsImportingExternalAiJson] = React.useState(false);
+  const [isImportingExternalEditorialJson, setIsImportingExternalEditorialJson] = React.useState(false);
   const metadata = importMetadata || {};
   const metadataRoleList = dedupeTextList([...asTextList(metadata.roles), ...asTextList(metadata.cargos)]);
   const metadataRole = metadataRoleList.length > 0 ? metadataRoleList.join('/') : asText(metadata.role || metadata.cargo || metadata.examName || metadata.contestName);
   const metadataAgency = asText(metadata.agency);
-  const metadataSourceList = dedupeTextList([...asTextList((metadata as Record<string, unknown>).sources), ...asTextList(metadata.source)]);
+  const metadataSourceList = dedupeTextList([
+    ...asTextList((metadata as Record<string, unknown>).sources),
+    ...asTextList((metadata as Record<string, unknown>).organizations),
+    ...asTextList((metadata as Record<string, unknown>).orgaos),
+    ...asTextList(metadata.source),
+    ...asTextList((metadata as Record<string, unknown>).organization),
+    ...asTextList((metadata as Record<string, unknown>).orgao),
+  ]);
   const metadataSource = metadataSourceList.length > 0 ? metadataSourceList.join('/') : asText(metadata.source);
   const metadataYear = asText(metadata.year || metadata.ano);
   const hasManualMetadataTitle = Object.prototype.hasOwnProperty.call(metadata, 'title')
@@ -988,15 +1558,38 @@ const AdminImportSection = ({
     ? asText(metadata.title)
     : asText(metadata.examTitle);
   const examTitlePreview = buildExamTitlePreview(metadata);
+  const selectedReviewExam = React.useMemo(
+    () => examBank.find((exam) => String(exam.id) === selectedExamId) || null,
+    [examBank, selectedExamId],
+  );
+  const selectedReviewExamLabel = selectedReviewExam
+    ? getExamOptionLabel(selectedReviewExam)
+    : asText(metadataTitle || examTitlePreview);
+  const externalAiPrompt = EXTERNAL_AI_FULL_BATCH_PROMPT;
+  const externalEditorialPrompt = React.useMemo(
+    () => (externalEditorialMode ? buildExternalEditorialPrompt(externalEditorialMode, extractedQuestions) : ''),
+    [externalEditorialMode, extractedQuestions],
+  );
   const placeholderQuestionNumbers = importDiagnostics.placeholderQuestionNumbers || [];
   const placeholderQuestionSet = React.useMemo(
     () => new Set(placeholderQuestionNumbers),
     [placeholderQuestionNumbers],
   );
-  const incompleteQuestionNumbers = importDiagnostics.incompleteQuestionNumbers || [];
-  const incompleteQuestionSet = React.useMemo(
-    () => new Set(incompleteQuestionNumbers),
-    [incompleteQuestionNumbers],
+  const localizedQuestionNumbers = importDiagnostics.localizedQuestionNumbers || importDiagnostics.extractedQuestionNumbers || [];
+  const localizedQuestionSet = React.useMemo(
+    () => new Set(localizedQuestionNumbers),
+    [localizedQuestionNumbers],
+  );
+  const localizedIncompleteQuestionNumbers = React.useMemo(
+    () => (extractedQuestions as ExtractedQuestionPreview[])
+      .map((question, index) => ({ question, number: getQuestionNumber(question, index + 1) }))
+      .filter(({ question, number }) => (
+        localizedQuestionSet.has(number)
+        && !placeholderQuestionSet.has(number)
+        && !isQuestionReadyForPublicationPreview(question)
+      ))
+      .map(({ number }) => number),
+    [extractedQuestions, localizedQuestionSet, placeholderQuestionSet],
   );
   const pendingAlternativeQuestions = React.useMemo(() => (
     (extractedQuestions as ExtractedQuestionPreview[])
@@ -1004,28 +1597,39 @@ const AdminImportSection = ({
       .filter(({ question, index }) => {
         const number = getQuestionNumber(question, index + 1);
         return placeholderQuestionSet.has(number)
-          || incompleteQuestionSet.has(number)
           || !isQuestionReadyForPublicationPreview(question);
       })
-  ), [extractedQuestions, incompleteQuestionSet, placeholderQuestionSet]);
+  ), [extractedQuestions, placeholderQuestionSet]);
   const effectiveReviewTab = activeReviewTab === 'pending' && pendingAlternativeQuestions.length === 0 ? 'questions' : activeReviewTab;
   const questionsForReview = effectiveReviewTab === 'pending'
     ? pendingAlternativeQuestions
     : (extractedQuestions as ExtractedQuestionPreview[]).map((question, index) => ({ question, index }));
   const missingQuestionNumbers = importDiagnostics.missingQuestionNumbers || [];
-  const localizedQuestionNumbers = importDiagnostics.localizedQuestionNumbers || importDiagnostics.extractedQuestionNumbers || [];
+  const trulyMissingQuestionNumbers = React.useMemo(
+    () => Array.from(new Set([
+      ...placeholderQuestionNumbers,
+      ...missingQuestionNumbers.filter((number) => !localizedQuestionSet.has(number)),
+    ])).sort((left, right) => left - right),
+    [localizedQuestionSet, missingQuestionNumbers, placeholderQuestionNumbers],
+  );
+  const unresolvedQuestionNumbers = React.useMemo(
+    () => Array.from(new Set([
+      ...localizedIncompleteQuestionNumbers,
+      ...trulyMissingQuestionNumbers,
+    ])).sort((left, right) => left - right),
+    [localizedIncompleteQuestionNumbers, trulyMissingQuestionNumbers],
+  );
   const completeQuestionNumbers = importDiagnostics.completeQuestionNumbers || [];
   const visualPendingQuestionNumbers = importDiagnostics.visualPendingQuestionNumbers || [];
   const duplicateQuestionNumbers = importDiagnostics.duplicateQuestionNumbers || [];
   const expectedTotal = importDiagnostics.expectedQuestionNumbers?.length || 0;
-  const cardsCreatedCount = importDiagnostics.cardsCreatedCount ?? extractedQuestions.length;
-  const completeCardsCount = importDiagnostics.completeCardsCount ?? completeQuestionNumbers.length;
-  const incompleteCardsCount = importDiagnostics.incompleteCardsCount
-    ?? incompleteQuestionNumbers.filter((number) => !placeholderQuestionSet.has(number)).length;
-  const placeholderCardsCount = importDiagnostics.placeholderCardsCount ?? placeholderQuestionNumbers.length;
+  const cardsCreatedCount = extractedQuestions.length || importDiagnostics.cardsCreatedCount || 0;
+  const incompleteCardsCount = pendingAlternativeQuestions.length;
+  const completeCardsCount = Math.max(0, cardsCreatedCount - incompleteCardsCount);
+  const placeholderCardsCount = placeholderQuestionNumbers.length || importDiagnostics.placeholderCardsCount || 0;
   const orphanContentBlocks = importDiagnostics.orphanContentBlocks || [];
   const extractedUniqueTotal = localizedQuestionNumbers.length;
-  const missingByQuantity = missingQuestionNumbers.length;
+  const missingByQuantity = unresolvedQuestionNumbers.length;
   const aiLimitedPages = importDiagnostics.aiLimitedPages || [];
   const aiTokenLimitPages = importDiagnostics.aiTokenLimitPages || [];
   const aiQuotaLimitPages = importDiagnostics.aiQuotaLimitPages || [];
@@ -1231,6 +1835,69 @@ const AdminImportSection = ({
       setIsParsingManualQuestionText(false);
     }
   };
+  const handleCopyExternalAiPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(externalAiPrompt);
+      setAiPromptCopied(true);
+      window.setTimeout(() => setAiPromptCopied(false), 1600);
+    } catch {
+      setAiPromptCopied(false);
+    }
+  };
+  const handleImportExternalAiJson = async () => {
+    if (!externalAiJsonText.trim() || isImportingExternalAiJson) {
+      return;
+    }
+
+    setIsImportingExternalAiJson(true);
+    try {
+      await onImportFromAiJson(externalAiJsonText);
+    } finally {
+      setIsImportingExternalAiJson(false);
+    }
+  };
+  const handleExternalAiJsonFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      setExternalAiJsonText(text);
+    } catch {
+      setExternalAiJsonText('');
+    }
+  };
+  const handleCopyExternalEditorialPrompt = async () => {
+    if (!externalEditorialPrompt) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(externalEditorialPrompt);
+      setEditorialPromptCopied(true);
+      window.setTimeout(() => setEditorialPromptCopied(false), 1600);
+    } catch {
+      setEditorialPromptCopied(false);
+    }
+  };
+  const handleImportExternalEditorialJson = async () => {
+    if (!externalEditorialJsonText.trim() || isImportingExternalEditorialJson) {
+      return;
+    }
+
+    setIsImportingExternalEditorialJson(true);
+    try {
+      await onImportExternalEditorialJson(externalEditorialJsonText);
+      setExternalEditorialJsonText('');
+    } finally {
+      setIsImportingExternalEditorialJson(false);
+    }
+  };
 
   return (
     <>
@@ -1243,6 +1910,149 @@ const AdminImportSection = ({
               <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Extracao Inteligente</h3>
             </div>
 
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setOpenExtractionMethod((current) => (current === 'ai' ? null : 'ai'))}
+                className="flex w-full items-center justify-between rounded-md border border-violet-200 bg-violet-50 px-4 py-3 text-left transition hover:border-violet-300 hover:bg-violet-100 dark:border-violet-900/40 dark:bg-violet-950/30 dark:hover:bg-violet-950/50"
+              >
+                <span>
+                  <span className="block text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-300">Novo metodo</span>
+                  <span className="mt-1 block text-sm font-black text-slate-900 dark:text-slate-100">Gerar na IA e colar JSON</span>
+                </span>
+                <span className="rounded-full bg-white px-3 py-1 text-[9px] font-black uppercase tracking-widest text-violet-700 shadow-sm dark:bg-slate-900 dark:text-violet-300">
+                  {openExtractionMethod === 'ai' ? 'Ocultar' : 'Mostrar'}
+                </span>
+              </button>
+
+              {openExtractionMethod === 'ai' && (
+                <div className={`space-y-4 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
+                  <div className={`space-y-3 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
+                    <label className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                      <Database size={12} className="text-violet-700 dark:text-violet-300" />
+                      Prova do Banco de Provas
+                    </label>
+                    <SearchableExamBankSelect
+                      exams={examBank}
+                      selectedExamId={selectedExamId}
+                      onChange={onSelectedExamIdChange}
+                      disabled={isLoadingExamBank || isProcessing || isImportingExternalAiJson}
+                      isLoading={isLoadingExamBank}
+                    />
+                    <p className="text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                      {isLoadingExamBank
+                        ? 'Carregando provas cadastradas...'
+                        : selectedExamId
+                          ? 'O JSON importado será vinculado a esta prova, herdando metadados e foco quando disponíveis.'
+                          : 'Opcional. Deixe em branco para cadastrar uma nova prova com os metadados extraídos pela IA.'}
+                    </p>
+                  </div>
+
+                  <div className={`space-y-3 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
+                    <label className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                      <Target size={12} className="text-violet-700 dark:text-violet-300" />
+                      Foco da prova <span className="font-black text-red-500">*</span>
+                    </label>
+                    <SearchableFocusSelect
+                      focusOptions={focusOptions}
+                      selectedFocusId={selectedFocusId}
+                      inheritedFocusLabel={selectedExamFocusLabel}
+                      manualFocusName={manualFocusName}
+                      onSelectedFocusIdChange={onSelectedFocusIdChange}
+                      onManualFocusNameChange={onManualFocusNameChange}
+                      disabled={Boolean(selectedExamFocusLabel)}
+                    />
+                    <p className="text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                      {selectedExamFocusLabel
+                        ? `Foco herdado da prova: ${selectedExamFocusLabel}.`
+                        : 'O foco escolhido será aplicado ao JSON importado e a todas as questões da revisão.'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-md border border-violet-200 bg-white p-4 dark:border-violet-900/40 dark:bg-slate-950">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-300">Prompt para ChatGPT</p>
+                        <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                          Envie os PDFs à IA, cole este prompt e peça para ela gerar o JSON completo; depois cole o retorno abaixo ou carregue o arquivo .json gerado.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopyExternalAiPrompt}
+                        className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-10 px-4 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300`}
+                      >
+                        {aiPromptCopied ? 'Copiado' : 'Copiar prompt'}
+                      </button>
+                    </div>
+                    <textarea
+                      readOnly
+                      value={externalAiPrompt}
+                      className={`mt-3 h-72 w-full resize-y py-3 font-mono text-[10px] leading-relaxed ${ADMIN_FIELD_CLASS}`}
+                    />
+                  </div>
+
+                  <div className="rounded-md border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label htmlFor="external-ai-json" className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                        JSON completo da IA
+                      </label>
+                      <label className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-10 cursor-pointer justify-center px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200`}>
+                        Carregar .json
+                        <input
+                          type="file"
+                          accept="application/json,.json"
+                          className="hidden"
+                          onChange={handleExternalAiJsonFile}
+                        />
+                      </label>
+                    </div>
+                    <textarea
+                      id="external-ai-json"
+                      value={externalAiJsonText}
+                      onChange={(event) => setExternalAiJsonText(event.target.value)}
+                      placeholder='Cole aqui o JSON completo retornado pela IA ou o conteúdo do arquivo .json. Ex.: {"metadata": {...}, "temporary_context": {...}, "questions": [...]}'
+                      className={`mt-2 h-64 w-full resize-y py-3 font-mono text-[11px] leading-relaxed ${ADMIN_FIELD_CLASS}`}
+                    />
+                    <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                      <button
+                        type="button"
+                        onClick={handleImportExternalAiJson}
+                        disabled={!externalAiJsonText.trim() || isImportingExternalAiJson || isProcessing}
+                        className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-sm border border-violet-700 bg-violet-700 px-3 py-2.5 text-[10px] font-black uppercase tracking-wide text-white transition-colors hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-violet-700/60 disabled:opacity-60"
+                      >
+                        {isImportingExternalAiJson ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                        <span className="truncate">Gerar revisão pelo JSON</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExternalAiJsonText('')}
+                        disabled={isImportingExternalAiJson || !externalAiJsonText.trim()}
+                        className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-11 justify-center px-4 text-[10px] font-black uppercase tracking-wide disabled:opacity-50`}
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setOpenExtractionMethod((current) => (current === 'platform' ? null : 'platform'))}
+                className="flex w-full items-center justify-between rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-left transition hover:border-sky-300 hover:bg-sky-100 dark:border-sky-900/40 dark:bg-sky-950/30 dark:hover:bg-sky-950/50"
+              >
+                <span>
+                  <span className="block text-[10px] font-black uppercase tracking-widest text-sky-700 dark:text-sky-300">Metodo atual</span>
+                  <span className="mt-1 block text-sm font-black text-slate-900 dark:text-slate-100">Extrair pela plataforma</span>
+                </span>
+                <span className="rounded-full bg-white px-3 py-1 text-[9px] font-black uppercase tracking-widest text-sky-700 shadow-sm dark:bg-slate-900 dark:text-sky-300">
+                  {openExtractionMethod === 'platform' ? 'Ocultar' : 'Mostrar'}
+                </span>
+              </button>
+
+              {openExtractionMethod === 'platform' && (
+                <div className="space-y-4">
             <div className={`space-y-3 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
@@ -1290,19 +2100,13 @@ const AdminImportSection = ({
                 <Database size={12} className="text-sky-700 dark:text-sky-300" />
                 Prova do Banco de Provas
               </label>
-              <select
-                value={selectedExamId}
-                onChange={(event) => onSelectedExamIdChange(event.target.value)}
+              <SearchableExamBankSelect
+                exams={examBank}
+                selectedExamId={selectedExamId}
+                onChange={onSelectedExamIdChange}
                 disabled={isLoadingExamBank || isProcessing}
-                className={`h-10 w-full min-w-0 max-w-full truncate text-xs font-bold ${ADMIN_FIELD_CLASS}`}
-              >
-                <option value="">Criar uma nova prova após a extração</option>
-                {examBank.map((exam) => (
-                  <option key={exam.id} value={String(exam.id)}>
-                    {exam.nome} {exam.ano ? `(${exam.ano})` : ''}
-                  </option>
-                ))}
-              </select>
+                isLoading={isLoadingExamBank}
+              />
               <p className="text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
                 {isLoadingExamBank
                   ? 'Carregando provas cadastradas...'
@@ -1317,36 +2121,14 @@ const AdminImportSection = ({
                 <Target size={12} className="text-sky-700 dark:text-sky-300" />
                 Foco da prova <span className="font-black text-red-500">*</span>
               </label>
-              <select
-                value={selectedFocusId}
-                onChange={(event) => {
-                  onSelectedFocusIdChange(event.target.value);
-                  if (event.target.value) onManualFocusNameChange('');
-                }}
+              <SearchableFocusSelect
+                focusOptions={focusOptions}
+                selectedFocusId={selectedFocusId}
+                inheritedFocusLabel={selectedExamFocusLabel}
+                manualFocusName={manualFocusName}
+                onSelectedFocusIdChange={onSelectedFocusIdChange}
+                onManualFocusNameChange={onManualFocusNameChange}
                 disabled={Boolean(selectedExamFocusLabel)}
-                className={`h-10 w-full min-w-0 max-w-full truncate text-xs font-bold disabled:cursor-not-allowed disabled:opacity-70 ${ADMIN_FIELD_CLASS}`}
-              >
-                <option value="">Selecionar foco existente</option>
-                {focusOptions.map((focus) => {
-                  const value = getFocusSelectValue(focus);
-                  const label = getRootFocusLabel(getFocusLabel(focus));
-                  return (
-                    <option key={value} value={value}>
-                      {label || 'Foco sem nome'}
-                    </option>
-                  );
-                })}
-              </select>
-              <input
-                type="text"
-                value={manualFocusName}
-                onChange={(event) => {
-                  onManualFocusNameChange(event.target.value);
-                  if (event.target.value.trim()) onSelectedFocusIdChange('');
-                }}
-                disabled={Boolean(selectedExamFocusLabel)}
-                placeholder={selectedExamFocusLabel || 'Ou adicionar novo foco. Ex.: ENEM, Policial, Tribunais'}
-                className={`h-10 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-70 ${ADMIN_FIELD_CLASS}`}
               />
               <p className="text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
                 {selectedExamFocusLabel
@@ -1497,6 +2279,9 @@ const AdminImportSection = ({
                 <PlayCircle size={20} /> Iniciar Importacao
               </button>
             )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex h-48 flex-col overflow-hidden rounded-md border border-slate-800 bg-slate-900 font-mono text-[10px] text-emerald-400 shadow-inner transition-colors dark:border-slate-800 dark:bg-slate-950">
@@ -1523,9 +2308,9 @@ const AdminImportSection = ({
                     {([
                       ['Esperadas', expectedTotal || cardsCreatedCount, 'slate'],
                       ['Cards criados', cardsCreatedCount, 'sky'],
-                      ['Completas', completeCardsCount, 'emerald'],
-                      ['Incompletas', incompleteCardsCount, 'amber'],
-                      ['Pendentes', placeholderCardsCount, 'rose'],
+                      ['Prontas', completeCardsCount, 'emerald'],
+                      ['Revisar', incompleteCardsCount, 'amber'],
+                      ['Sem conteúdo', placeholderCardsCount, 'rose'],
                     ] as const).map(([label, value, tone]) => (
                       <div
                         key={label}
@@ -1553,7 +2338,7 @@ const AdminImportSection = ({
                       disabled={importActionBusy || isProcessing}
                       className="flex min-h-14 min-w-0 items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-center text-[10px] font-black uppercase leading-tight tracking-wide text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
                     >
-                      {isBulkGenerating ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <GraduationCap className="shrink-0" size={15} />}
+                      {isBulkGenerating && bulkGenerationType === 'teacher' ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <GraduationCap className="shrink-0" size={15} />}
                       <span className="min-w-0">Gerar Professor</span>
                     </button>
                     <button
@@ -1562,9 +2347,37 @@ const AdminImportSection = ({
                       disabled={importActionBusy || isProcessing}
                       className="flex min-h-14 min-w-0 items-center justify-center gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-3 text-center text-[10px] font-black uppercase leading-tight tracking-wide text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/30"
                     >
-                      {isBulkGenerating ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <Sparkles className="shrink-0" size={15} />}
-                      <span className="min-w-0">Analise Detalhada</span>
+                      {isBulkGenerating && bulkGenerationType === 'detailed' ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <Sparkles className="shrink-0" size={15} />}
+                      <span className="min-w-0">Análise Detalhada</span>
                     </button>
+                    <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2 xl:col-span-2">
+                      <button
+                        type="button"
+                        onClick={() => setExternalEditorialMode((current) => (current === 'teacher' ? null : 'teacher'))}
+                        disabled={extractedQuestions.length === 0 || isProcessing}
+                        className={`flex min-h-10 min-w-0 items-center justify-center gap-2 rounded-md border px-3 py-2 text-center text-[9px] font-black uppercase leading-tight tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                          externalEditorialMode === 'teacher'
+                            ? 'border-amber-500 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
+                            : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-50 dark:border-amber-900/30 dark:bg-slate-950 dark:text-amber-300 dark:hover:bg-amber-900/20'
+                        }`}
+                      >
+                        <UploadCloud className="shrink-0" size={13} />
+                        Professor via IA externa
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExternalEditorialMode((current) => (current === 'detailed' ? null : 'detailed'))}
+                        disabled={extractedQuestions.length === 0 || isProcessing}
+                        className={`flex min-h-10 min-w-0 items-center justify-center gap-2 rounded-md border px-3 py-2 text-center text-[9px] font-black uppercase leading-tight tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                          externalEditorialMode === 'detailed'
+                            ? 'border-sky-500 bg-sky-100 text-sky-800 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200'
+                            : 'border-sky-200 bg-white text-sky-700 hover:bg-sky-50 dark:border-sky-900/30 dark:bg-slate-950 dark:text-sky-300 dark:hover:bg-sky-900/20'
+                        }`}
+                      >
+                        <UploadCloud className="shrink-0" size={13} />
+                        Detalhada via IA externa
+                      </button>
+                    </div>
                     {missingByQuantity > 0 && (
                       <button
                         type="button"
@@ -1596,6 +2409,61 @@ const AdminImportSection = ({
                     </button>
                   </div>
                 </div>
+                {externalEditorialMode && (
+                  <div className="w-full rounded-md border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900/40 dark:bg-violet-950/20">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-violet-700 dark:text-violet-300">
+                          {externalEditorialMode === 'teacher' ? 'Comentário do professor com IA externa' : 'Análise detalhada com IA externa'}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600 dark:text-slate-300">
+                          Copie o prompt, peça para a IA externa gerar o JSON editorial e cole o retorno aqui. Apenas os campos editoriais serão aplicados às questões já carregadas.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopyExternalEditorialPrompt}
+                        className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-10 px-4 text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300`}
+                      >
+                        {editorialPromptCopied ? 'Copiado' : 'Copiar prompt'}
+                      </button>
+                    </div>
+                    <textarea
+                      readOnly
+                      value={externalEditorialPrompt}
+                      className={`mt-3 h-48 w-full resize-y py-3 font-mono text-[10px] leading-relaxed ${ADMIN_FIELD_CLASS}`}
+                    />
+                    <label htmlFor="external-editorial-json" className="mt-4 block text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                      JSON editorial retornado pela IA externa
+                    </label>
+                    <textarea
+                      id="external-editorial-json"
+                      value={externalEditorialJsonText}
+                      onChange={(event) => setExternalEditorialJsonText(event.target.value)}
+                      placeholder='Cole aqui: {"questions":[{"number":1,"teacherComment":"..."},{"number":2,"teacherComment":"..."}]}'
+                      className={`mt-2 h-40 w-full resize-y py-3 font-mono text-[11px] leading-relaxed ${ADMIN_FIELD_CLASS}`}
+                    />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleImportExternalEditorialJson}
+                        disabled={!externalEditorialJsonText.trim() || isImportingExternalEditorialJson || isProcessing}
+                        className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-sm border border-violet-700 bg-violet-700 px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-white transition-colors hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-violet-700/60 disabled:opacity-60"
+                      >
+                        {isImportingExternalEditorialJson ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                        Aplicar JSON editorial
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExternalEditorialJsonText('')}
+                        disabled={isImportingExternalEditorialJson || !externalEditorialJsonText.trim()}
+                        className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-11 justify-center px-4 text-[10px] font-black uppercase tracking-wide disabled:opacity-50`}
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {(!metadataAgency || !metadataYear || !metadataSource || !metadataRole || !publishedExam || pendingAlternativeQuestions.length > 0) && (
                   <div className="flex w-full items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] font-semibold leading-relaxed text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -1605,7 +2473,7 @@ const AdminImportSection = ({
                         : !publishedExam
                           ? 'Publique a prova primeiro. Depois publique todas as questões ou apenas uma questão específica.'
                           : pendingAlternativeQuestions.length > 0
-                            ? `${pendingAlternativeQuestions.length} card(s) permanecem incompletos. Publicar todas enviará somente as questões completas e manterá as pendentes na revisão.`
+                            ? `${pendingAlternativeQuestions.length} questão(ões) precisa(m) de revisão estrutural. Publicar todas enviará somente as questões prontas.`
                             : ''}
                     </span>
                   </div>
@@ -1617,7 +2485,7 @@ const AdminImportSection = ({
                   ['proof', 'Prova', `${subjectsForDisplay.length} matérias`, Database],
                   ['contexts', 'Contextos', `${extractedContexts.length} ctx · ${figureContexts.length} fig`, BookOpen],
                   ...(pendingAlternativeQuestions.length > 0
-                    ? [['pending', 'Pendentes', `${pendingAlternativeQuestions.length} revisar`, AlertTriangle] as const]
+                    ? [['pending', 'Revisão', `${pendingAlternativeQuestions.length} item(ns)`, AlertTriangle] as const]
                     : []),
                   ['questions', 'Questões', `${extractedQuestions.length} itens`, FileQuestion],
                 ] as const).map(([tab, label, count, Icon]) => {
@@ -1647,6 +2515,23 @@ const AdminImportSection = ({
 
               {effectiveReviewTab === 'proof' && (
               <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-4 p-4 text-xs`}>
+                {selectedExamId ? (
+                  <div className="rounded-sm border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/50 dark:bg-sky-950/20">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-700 dark:text-sky-300">Prova vinculada</p>
+                    <p className="mt-2 text-sm font-black text-slate-900 dark:text-white">
+                      {selectedReviewExamLabel || 'Prova selecionada'}
+                    </p>
+                    <p className="mt-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      As questões importadas serão vinculadas a esta prova. Metadados como banca, ano, órgão, cargo/prova, nível e foco serão herdados do Banco de Provas sempre que disponíveis.
+                    </p>
+                    {selectedExamFocusLabel && (
+                      <span className="mt-3 inline-flex rounded-sm border border-violet-200 bg-white px-2 py-1 text-[9px] font-black uppercase tracking-widest text-violet-700 dark:border-violet-900/40 dark:bg-slate-900 dark:text-violet-300">
+                        Foco herdado: {selectedExamFocusLabel}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                <>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Metadados da prova</p>
@@ -1671,17 +2556,20 @@ const AdminImportSection = ({
                     Se ficar em branco, o sistema usa automaticamente Banca - Ano - Orgao - Cargo/Prova.
                   </span>
                 </label>
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-4">
                   {([
                     ['agency', 'Banca', 'Ex.: EXATUS, IBADE, FGV'],
                     ['year', 'Ano', 'Ex.: 2025'],
-                    ['source', 'Orgao', 'Ex.: PM-RJ ou PM-PB/CBM-PB'],
-                    ['role', 'Cargo/Prova', 'Ex.: Soldado ou Soldado/Oficial'],
-                    ['level', 'Nivel', 'Ex.: Medio, Superior'],
+                    ['level', 'Nível', 'Ex.: Médio, Superior'],
                     ['examType', 'Categoria', 'Concurso ou ENEM'],
                     ['bookletType', 'Tipo/Caderno', 'Ex.: Tipo B, Caderno 1'],
                     ['bookletColor', 'Cor do caderno', 'Ex.: Amarelo, Azul'],
                     ['caderno', 'Resumo do caderno', 'Ex.: Tipo B - Azul'],
+                    ['totalQuestions', 'Total de questões', 'Ex.: 80'],
+                    ['registrationStart', 'Inscrição - início', 'Ex.: 2026-03-01'],
+                    ['registrationEnd', 'Inscrição - fim', 'Ex.: 2026-03-20'],
+                    ['examDate', 'Data da prova', 'Ex.: 2026-05-10'],
+                    ['registrationFee', 'Valor da inscrição', 'Ex.: R$ 120,00'],
                   ] as Array<[ImportMetadataField, string, string]>).map(([field, label, placeholder]) => (
                     <label key={field} className="space-y-1">
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</span>
@@ -1691,6 +2579,29 @@ const AdminImportSection = ({
                         onChange={(event) => onImportMetadataChange(field, event.target.value)}
                         placeholder={placeholder}
                         className={`h-10 text-xs font-bold ${ADMIN_FIELD_CLASS}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {([
+                    ['sources', 'Órgãos vinculados', 'Um órgão por linha. Ex.: PM-PB\\nCBM-PB'],
+                    ['roles', 'Cargos/provas vinculados', 'Um cargo por linha. Ex.: Soldado PM\\nSoldado BM'],
+                    ['requirementsDetailed', 'Requisitos', 'JSON ou linhas estruturadas extraídas do edital'],
+                    ['remunerationsDetailed', 'Remuneração', 'JSON ou linhas estruturadas extraídas do edital'],
+                    ['vacanciesDetailed', 'Vagas', 'JSON ou linhas estruturadas extraídas do edital'],
+                    ['stages', 'Etapas', 'JSON com nome, critério, data e observação'],
+                    ['programmaticContentDetailed', 'Conteúdo programático', 'JSON com matéria, tópico, assunto e questões esperadas'],
+                    ['platformQuestionIds', 'Questões da plataforma vinculadas', 'IDs de questões já vinculadas à prova'],
+                  ] as Array<[ImportMetadataField, string, string]>).map(([field, label, placeholder]) => (
+                    <label key={field} className={field === 'programmaticContentDetailed' ? 'space-y-1 md:col-span-2' : 'space-y-1'}>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</span>
+                      <textarea
+                        value={stringifyMetadataField(metadata[field])}
+                        onChange={(event) => onImportMetadataChange(field, event.target.value)}
+                        placeholder={placeholder}
+                        className={`min-h-24 text-xs font-semibold ${ADMIN_FIELD_CLASS}`}
                       />
                     </label>
                   ))}
@@ -1721,6 +2632,8 @@ const AdminImportSection = ({
                     </div>
                   )}
                 </div>
+                </>
+                )}
               </div>
               )}
 
@@ -2057,17 +2970,17 @@ const AdminImportSection = ({
                 </div>
               )}
 
-              {incompleteQuestionNumbers.length > 0 && (
+              {localizedIncompleteQuestionNumbers.length > 0 && (
                 <div className="rounded-sm border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-100">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="mt-0.5 shrink-0" size={16} />
                     <div className="min-w-0 space-y-1">
                       <p className="font-black uppercase tracking-widest">Questões localizadas, mas incompletas</p>
                       <p className="break-words font-semibold">
-                        {incompleteQuestionNumbers.slice(0, 80).join(', ')}{incompleteQuestionNumbers.length > 80 ? '...' : ''}
+                        {localizedIncompleteQuestionNumbers.slice(0, 80).join(', ')}{localizedIncompleteQuestionNumbers.length > 80 ? '...' : ''}
                       </p>
                       <p className="text-[11px] font-medium">
-                        O número e parte real dessas questões foram encontrados. Elas permanecem na revisão e não são contabilizadas como faltantes.
+                        O número e parte real dessas questões foram encontrados. Elas permanecem na revisão para completar alternativas, gabarito ou outros campos obrigatórios.
                       </p>
                     </div>
                   </div>
@@ -2108,14 +3021,14 @@ const AdminImportSection = ({
                 </div>
               )}
 
-              {missingQuestionNumbers.length > 0 && (
+              {trulyMissingQuestionNumbers.length > 0 && (
                 <div className="rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p className="font-black uppercase tracking-widest">Questões realmente não localizadas</p>
-                      <p className="mt-1 break-words font-semibold">{missingQuestionNumbers.slice(0, 80).join(', ')}{missingQuestionNumbers.length > 80 ? '...' : ''}</p>
+                      <p className="mt-1 break-words font-semibold">{trulyMissingQuestionNumbers.slice(0, 80).join(', ')}{trulyMissingQuestionNumbers.length > 80 ? '...' : ''}</p>
                       <p className="mt-2 text-[11px] font-medium">
-                        Esses números ainda não possuem conteúdo suficiente para publicação, mas todos têm card editável na revisão. Cobertura localizada: {extractedUniqueTotal}/{expectedTotal || extractedUniqueTotal}.
+                        Nenhum conteúdo real foi localizado para esses números. Os placeholders continuam editáveis na revisão. Cobertura localizada: {extractedUniqueTotal}/{expectedTotal || extractedUniqueTotal}.
                       </p>
                     </div>
                     <button
@@ -2136,7 +3049,11 @@ const AdminImportSection = ({
                   <div className="mb-1 flex justify-between items-end">
                     <span className="flex items-center gap-2 text-[10px] font-black uppercase text-sky-700 dark:text-sky-300">
                       {isRetryingMissingQuestions ? <RefreshCw size={12} /> : <Sparkles size={12} />}
-                      {isRetryingMissingQuestions ? 'Tentando Gerar Faltantes' : 'Gerando Comentarios em Massa'}
+                      {isRetryingMissingQuestions
+                        ? 'Tentando gerar faltantes'
+                        : bulkGenerationType === 'detailed'
+                          ? 'Gerando análises detalhadas em massa'
+                          : 'Gerando comentários do professor em massa'}
                     </span>
                     <span className="text-[10px] font-bold text-slate-400">{bulkProgress}%</span>
                   </div>
@@ -2241,6 +3158,16 @@ const AdminImportSection = ({
                           <span className="rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300">
                             Revisar alternativas
                           </span>
+                        )}
+                        {!placeholder && questionReadyForPublication && !isQuestionPublished && (
+                          <button
+                            type="button"
+                            onClick={() => onMarkExtractedQuestionReviewed(index)}
+                            className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-700 transition-colors hover:border-emerald-400 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+                            title="Marcar esta questão como revisada para publicação"
+                          >
+                            Revisado
+                          </button>
                         )}
                         <button
                           type="button"
@@ -2646,14 +3573,14 @@ const AdminImportSection = ({
                       </div>
                       {editingStatementIndex === index ? (
                         <textarea
-                          value={question.enunciado || ''}
+                          value={getQuestionStatementPreview(question)}
                           onChange={(event) => onExtractedQuestionStatementChange(index, event.target.value)}
-                          rows={Math.min(12, Math.max(4, Math.ceil(String(question.enunciado || '').length / 110)))}
+                          rows={Math.min(12, Math.max(4, Math.ceil(getQuestionStatementPreview(question).length / 110)))}
                           className={`${ADMIN_FIELD_CLASS} min-h-32 w-full resize-y text-sm font-bold leading-relaxed text-slate-800 dark:text-slate-200`}
                         />
                       ) : (
                         <h4 className="rounded-sm border border-slate-200 bg-white p-3 text-sm font-bold leading-relaxed text-slate-800 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-200">
-                          {question.enunciado || 'Enunciado ainda não preenchido. Clique em “Editar enunciado” para completar.'}
+                          {getQuestionStatementPreview(question) || 'Enunciado ainda não preenchido. Clique em “Editar enunciado” para completar.'}
                         </h4>
                       )}
                     </div>
@@ -2831,7 +3758,7 @@ const AdminImportSection = ({
                         className="flex items-center gap-1.5 rounded-sm border border-amber-300 bg-amber-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/30"
                       >
                         {generatingSpecific?.index === index && generatingSpecific.type === 'teacher' ? <Loader2 className="animate-spin" size={12} /> : <GraduationCap size={12} />}
-                        {question.teacherComment ? 'Regerar Professor' : 'Gerar Professor'}
+                        {getTeacherCommentPreview(question) ? 'Regerar Professor' : 'Gerar Professor'}
                       </button>
                       <button
                         type="button"
@@ -2840,7 +3767,7 @@ const AdminImportSection = ({
                         className="flex items-center gap-1.5 rounded-sm border border-sky-300 bg-sky-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/30"
                       >
                         {generatingSpecific?.index === index && generatingSpecific.type === 'detailed' ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />}
-                        {question.detailedComment ? 'Regerar Detalhado' : 'Gerar Detalhado'}
+                        {getDetailedCommentPreview(question) ? 'Regerar Detalhado' : 'Gerar Detalhado'}
                       </button>
                       <button
                         type="button"
@@ -2854,21 +3781,21 @@ const AdminImportSection = ({
                       </button>
                     </div>
 
-                    {question.teacherComment && (
+                    {getTeacherCommentPreview(question) && (
                       <div className="mt-4 animate-fade-in space-y-2 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs text-amber-800 opacity-80 group-hover:opacity-100 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
                         <p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
                           <BookOpen size={14} /> Comentario do Professor
                         </p>
-                        <p className="font-medium italic leading-relaxed">{question.teacherComment}</p>
+                        <p className="font-medium italic leading-relaxed">{getTeacherCommentPreview(question)}</p>
                       </div>
                     )}
 
-                    {question.detailedComment && (
+                    {getDetailedCommentPreview(question) && (
                       <div className="mt-2 animate-fade-in space-y-2 rounded-sm border border-sky-300 bg-sky-50 p-4 text-xs text-sky-800 opacity-80 group-hover:opacity-100 dark:border-sky-900/30 dark:bg-sky-900/10 dark:text-sky-200">
                         <p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
                           <Sparkles size={14} /> Analise Detalhada (IA)
                         </p>
-                        <MathRichText content={question.detailedComment} disableCallouts className="max-h-72 overflow-y-auto rounded-sm bg-white/70 p-3 text-[11px] font-medium leading-relaxed text-slate-700 dark:bg-slate-950/20 dark:text-slate-200" />
+                        <MathRichText content={getDetailedCommentPreview(question)} disableCallouts className="max-h-72 overflow-y-auto rounded-sm bg-white/70 p-3 text-[11px] font-medium leading-relaxed text-slate-700 dark:bg-slate-950/20 dark:text-slate-200" />
                       </div>
                     )}
                   </div>

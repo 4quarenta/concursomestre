@@ -178,6 +178,7 @@ class ExtractionResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     questions: list[ImportedQuestionDraft] = Field(default_factory=list)
     contexts: list[ImportedContextDraft] = Field(default_factory=list)
+    reviewObject: dict[str, Any] = Field(default_factory=dict)
     diagnostics: ImportDiagnostics = Field(default_factory=ImportDiagnostics)
     logs: list[str] = Field(default_factory=list)
     pages: list[PdfPageData] = Field(default_factory=list)

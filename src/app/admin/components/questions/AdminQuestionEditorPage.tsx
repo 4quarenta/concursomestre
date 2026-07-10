@@ -22,7 +22,11 @@ import { slugify } from '../database/slugify';
 import { buildProvaSearchText, formatProvaLabel } from '../exams/examBankUtils';
 import {
   getRoleDisplayLabel,
+  createQuestionImageAsset,
+  getQuestionAssetMarkerIds,
   isQuestionTaxonomyRecord,
+  insertQuestionImageMarker,
+  removeQuestionImageMarker,
   type ManualQuestionItem,
   type ManualQuestionPatch,
   type ManualQuestionSetter,
@@ -287,13 +291,6 @@ const getQuestionGroupTitle = (group: Partial<AdminQuestionGroupItem> | null | u
 
   return raw || (getQuestionGroupId(group) ? `Contexto #${getQuestionGroupId(group)}` : '');
 };
-
-const readImageFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result || ''));
-  reader.onerror = () => reject(reader.error || new Error('Não foi possível ler a imagem.'));
-  reader.readAsDataURL(file);
-});
 
 const stripOptionImages = (html: string): string => (
   String(html || '').replace(/<img\b[^>]*>/gi, '').trim()
@@ -636,9 +633,29 @@ const AdminQuestionEditorPage = ({
     });
   };
 
-  const handleImageSelected = (file: File | null) => {
+  const handleImageSelected = (file: File | null, usage: 'statement' | 'support' = 'statement') => {
     if (!file) return;
-    updateManualQ({ imageUrl: URL.createObjectURL(file) });
+
+    const url = URL.createObjectURL(file);
+    setManualQ((prev) => {
+      const asset = createQuestionImageAsset({
+        assets: prev.assets,
+        usage,
+        url,
+        alt: usage === 'support' ? 'Imagem do texto de apoio.' : 'Imagem do enunciado.',
+      });
+
+      return {
+        ...prev,
+        assets: [...(prev.assets || []), asset],
+        imageUrl: usage === 'statement' && !prev.imageUrl ? url : prev.imageUrl,
+        enunciado: usage === 'statement' ? insertQuestionImageMarker(prev.enunciado || '', asset.id) : prev.enunciado,
+        enunciado_clean: usage === 'statement'
+          ? insertQuestionImageMarker(prev.enunciado_clean || '', asset.id)
+          : prev.enunciado_clean,
+        introText: usage === 'support' ? insertQuestionImageMarker(prev.introText || '', asset.id) : prev.introText,
+      };
+    });
   };
 
   const handleAddOption = () => {
@@ -669,11 +686,10 @@ const AdminQuestionEditorPage = ({
     });
   };
 
-  const handleOptionImageSelected = async (index: number, file: File | null) => {
+  const handleOptionImageSelected = (index: number, file: File | null) => {
     if (!file) return;
 
-    const dataUrl = await readImageFileAsDataUrl(file);
-    const imageHtml = `<img src="${dataUrl}" alt="Imagem da alternativa ${manualItems[index]?.rotulo || index + 1}" />`;
+    const url = URL.createObjectURL(file);
 
     setManualQ((prev) => {
       const nextItems = [...(prev.itens || [])];
@@ -682,15 +698,22 @@ const AdminQuestionEditorPage = ({
         return prev;
       }
 
+      const asset = createQuestionImageAsset({
+        assets: prev.assets,
+        usage: 'alternative',
+        url,
+        label: current.rotulo,
+        alt: `Imagem da alternativa ${current.rotulo}.`,
+      });
       const textWithoutImages = stripOptionImages(current.corpo);
-      const nextBody = [textWithoutImages, imageHtml].filter(Boolean).join('<br />');
+      const nextBody = insertQuestionImageMarker(textWithoutImages, asset.id);
       nextItems[index] = {
         ...current,
         corpo: nextBody,
         corpo_clean: textWithoutImages.replace(/<[^>]*>?/gm, ''),
       };
 
-      return { ...prev, itens: nextItems };
+      return { ...prev, assets: [...(prev.assets || []), asset], itens: nextItems };
     });
   };
 
@@ -702,14 +725,22 @@ const AdminQuestionEditorPage = ({
         return prev;
       }
 
-      const nextBody = stripOptionImages(current.corpo);
+      const markerIds = getQuestionAssetMarkerIds(current.corpo || '');
+      const nextBody = markerIds.reduce(
+        (body, assetId) => removeQuestionImageMarker(body, assetId),
+        stripOptionImages(current.corpo),
+      );
       nextItems[index] = {
         ...current,
         corpo: nextBody,
         corpo_clean: nextBody.replace(/<[^>]*>?/gm, ''),
       };
 
-      return { ...prev, itens: nextItems };
+      return {
+        ...prev,
+        assets: (prev.assets || []).filter((asset) => !markerIds.includes(asset.id)),
+        itens: nextItems,
+      };
     });
   };
 
@@ -837,6 +868,11 @@ const AdminQuestionEditorPage = ({
     : editingQuestion
       ? 'Atualizar questão'
       : 'Publicar questão';
+  const questionAssets = manualQ.assets || [];
+  const getAssetImageUrl = (assetId: string) => {
+    const asset = questionAssets.find((item) => item.id === assetId);
+    return String(asset?.url || asset?.base64 || '').trim();
+  };
 
   return (
     <div className="flex w-full flex-col gap-6 xl:flex-row xl:items-start">
@@ -1049,7 +1085,22 @@ const AdminQuestionEditorPage = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Texto de apoio</label>
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Texto de apoio</label>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                    <ImageIcon size={13} />
+                    Imagem no apoio
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        handleImageSelected(event.target.files?.[0] || null, 'support');
+                        event.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
                 <textarea
                   value={manualQ.introText || ''}
                   onChange={(event) => updateManualQ({ introText: event.target.value })}
@@ -1075,13 +1126,48 @@ const AdminQuestionEditorPage = ({
               <div className="flex flex-wrap items-center gap-4">
                 <label className={ADMIN_SECONDARY_BUTTON_CLASS}>
                   <ImageIcon size={16} />
-                  Upload de imagem
-                  <input type="file" className="hidden" onChange={(event) => handleImageSelected(event.target.files?.[0] || null)} />
+                  Imagem no enunciado
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      handleImageSelected(event.target.files?.[0] || null, 'statement');
+                      event.currentTarget.value = '';
+                    }}
+                  />
                 </label>
-                {manualQ.imageUrl ? (
-                  <div className="inline-flex items-center gap-2 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300">
-                    <Check size={14} />
-                    Imagem anexada
+                {questionAssets.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {questionAssets.map((asset) => (
+                      <span
+                        key={asset.id}
+                        className="inline-flex items-center gap-2 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300"
+                      >
+                        <Check size={14} />
+                        {asset.id}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setManualQ((prev) => ({
+                              ...prev,
+                              assets: (prev.assets || []).filter((item) => item.id !== asset.id),
+                              imageUrl: asset.url === prev.imageUrl ? '' : prev.imageUrl,
+                              enunciado: removeQuestionImageMarker(prev.enunciado || '', asset.id),
+                              enunciado_clean: removeQuestionImageMarker(prev.enunciado_clean || '', asset.id),
+                              introText: removeQuestionImageMarker(prev.introText || '', asset.id),
+                              itens: (prev.itens || []).map((item) => {
+                                const corpo = removeQuestionImageMarker(item.corpo || '', asset.id);
+                                return { ...item, corpo, corpo_clean: corpo.replace(/<[^>]*>?/gm, '') };
+                              }),
+                            }));
+                          }}
+                          className="text-emerald-500 hover:text-rose-600"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </span>
+                    ))}
                   </div>
                 ) : null}
               </div>
@@ -1097,7 +1183,10 @@ const AdminQuestionEditorPage = ({
 
                 <div className="grid gap-3">
                   {manualItems.map((item: ManualQuestionItem, index: number) => {
-                    const optionImages = extractOptionImageSources(item.corpo);
+                    const markerImageUrls = getQuestionAssetMarkerIds(item.corpo)
+                      .map(getAssetImageUrl)
+                      .filter(Boolean);
+                    const optionImages = [...extractOptionImageSources(item.corpo), ...markerImageUrls];
                     const optionTextValue = stripOptionImages(item.corpo);
 
                     return (
@@ -1157,7 +1246,7 @@ const AdminQuestionEditorPage = ({
                                 accept="image/*"
                                 className="hidden"
                                 onChange={(event) => {
-                                  void handleOptionImageSelected(index, event.target.files?.[0] || null);
+                                  handleOptionImageSelected(index, event.target.files?.[0] || null);
                                   event.currentTarget.value = '';
                                 }}
                               />

@@ -422,6 +422,18 @@ export const filtersService = {
         const requestedType = normalizeFilterText(payload.type);
         const requestedName = normalizeFilterText(payload.name);
         const requestedSlug = normalizeFilterSlug(payload.slug || payload.name);
+
+        if (['ano', 'anos', 'year', 'years'].includes(requestedType)) {
+          const existingYear = (taxonomies.years || []).find((year) => (
+            normalizeFilterText(year) === requestedName
+            || normalizeFilterSlug(year) === requestedSlug
+          ));
+
+          if (existingYear) {
+            return Number(existingYear) || 0;
+          }
+        }
+
         const matches = [
           ...taxonomies.agencies,
           ...taxonomies.organizations,

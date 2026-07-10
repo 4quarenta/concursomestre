@@ -32,6 +32,13 @@ vi.mock('@services/api', () => ({
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
   },
+  readApiErrorMessage: (error: unknown, fallback = '') => {
+    if (error && typeof error === 'object' && 'response' in error) {
+      const response = (error as { response?: { data?: { message?: string } } }).response;
+      return response?.data?.message || fallback;
+    }
+    return error instanceof Error ? error.message : fallback;
+  },
   assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
@@ -160,6 +167,36 @@ describe('filtersService', () => {
       slug: 'nova-banca',
     });
     expect(id).toBe(9);
+  });
+
+  it('reuses an existing year when the API reports a slug conflict', async () => {
+    const conflictError = {
+      response: {
+        status: 409,
+        data: { message: "O slug '2018' ja esta em uso por outra taxonomia." },
+      },
+    };
+    mockPost.mockRejectedValueOnce(conflictError);
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        anos: [2018, 2023],
+      },
+    });
+
+    const id = await filtersService.save({
+      type: 'ano',
+      name: '2018',
+      slug: '2018',
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('filtersSave', {
+      type: 'ano',
+      name: '2018',
+      slug: '2018',
+    });
+    expect(mockGet).toHaveBeenCalledWith('filtersList');
+    expect(id).toBe(2018);
   });
 
   it('removes filters through the official endpoint', async () => {

@@ -16,6 +16,7 @@ import { useAdminManualQuestionEditor } from './useAdminManualQuestionEditor';
 type ToastHandler = (message: string, type?: string) => void;
 
 interface UseAdminQuestionWorkbenchOptions {
+  importEnabled?: boolean;
   questions: Question[];
   systemSettings: SystemSettings;
   addToast: ToastHandler;
@@ -28,6 +29,7 @@ interface UseAdminQuestionWorkbenchOptions {
 }
 
 export const useAdminQuestionWorkbench = ({
+  importEnabled = true,
   questions,
   systemSettings,
   addToast,
@@ -39,6 +41,7 @@ export const useAdminQuestionWorkbench = ({
   saveSystemSettingsNow,
 }: UseAdminQuestionWorkbenchOptions) => {
   const importWorkflow = useAdminImportWorkflow({
+    enabled: importEnabled,
     systemSettings,
     addToast,
     onImportedQuestionsSaved,
@@ -91,6 +94,7 @@ export const useAdminQuestionWorkbench = ({
       logs: importWorkflow.logs,
       extractedQuestions: importWorkflow.extractedQuestions,
       isBulkGenerating: importWorkflow.isBulkGenerating,
+      bulkGenerationType: importWorkflow.bulkGenerationType,
       isRetryingMissingQuestions: importWorkflow.isRetryingMissingQuestions,
       bulkProgress: importWorkflow.bulkProgress,
       publishedExam: importWorkflow.publishedExam,
@@ -100,10 +104,13 @@ export const useAdminQuestionWorkbench = ({
       onGenerateDetailedAll: importWorkflow.handleBulkGenerateDetailed,
       onRetryMissingQuestions: importWorkflow.handleRetryMissingQuestions,
       onParseQuestionsFromText: importWorkflow.handleParseQuestionsFromText,
+      onImportFromAiJson: importWorkflow.handleImportFromAiJson,
+      onImportExternalEditorialJson: importWorkflow.handleImportExternalEditorialJson,
       onPublishExam: importWorkflow.handlePublishExamOnly,
       onPublishAllQuestions: importWorkflow.handlePublishAllQuestions,
       onPublishQuestion: importWorkflow.handlePublishSingleQuestion,
       onEditExtractedQuestion: manualQuestionEditor.openManualModal,
+      onMarkExtractedQuestionReviewed: importWorkflow.markExtractedQuestionReviewed,
       onDeleteExtractedQuestion: importWorkflow.removeExtractedQuestion,
       onContextFigureCropChange: importWorkflow.updateContextFigureCrop,
       onExtractedQuestionFieldChange: importWorkflow.updateExtractedQuestionField,

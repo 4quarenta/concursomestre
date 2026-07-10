@@ -14,7 +14,7 @@ import type { ApiResponse } from '@services/api';
 import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
 import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
 import { getSupportReasonLabel } from '@services/support/supportReasonLabels';
-import type { ErrorReport, Question, Ranking, SystemSettings, UserProfile } from '@types';
+import type { ErrorReport, Question, QuestionAsset, Ranking, SystemSettings, UserProfile } from '@types';
 
 type FeedbackStatus = 'new' | 'read' | 'resolved';
 type ReportResolution = 'resolved' | 'ignored';
@@ -689,28 +689,55 @@ export interface AdminQuestionListPayload {
   page: number;
 }
 
+const normalizeAdminQuestionListPayload = (payload: unknown, fallbackPage: number): AdminQuestionListPayload => {
+  const record = toLooseRecord(payload);
+  const nestedRecord = toLooseRecord(record?.data);
+  const source = nestedRecord || record || {};
+  const nestedRows = Array.isArray(record?.data) ? record?.data : undefined;
+  const rowsCandidate = source.rows
+    || source.questions
+    || source.items
+    || source.results
+    || source.records
+    || (Array.isArray(source.data) ? source.data : undefined)
+    || nestedRows
+    || (Array.isArray(payload) ? payload : undefined);
+  const rows = Array.isArray(rowsCandidate) ? rowsCandidate as Question[] : [];
+  const total = Number(source.total ?? source.count ?? source.totalRows ?? source.total_items ?? rows.length);
+  const perPage = Number(source.perPage ?? source.per_page ?? source.limit ?? 20) || 20;
+  const page = Number(source.page ?? source.currentPage ?? source.current_page ?? fallbackPage) || fallbackPage;
+  const pages = Number(source.pages ?? source.totalPages ?? source.total_pages ?? Math.max(1, Math.ceil(total / Math.max(1, perPage)))) || 1;
+
+  return {
+    rows: rows.map((row) => withQuestionPublicationAliases(row)),
+    total,
+    perPage,
+    pages,
+    page,
+  };
+};
+
 export interface AdminQuestionGroupItem {
   id: number;
-  enunciado: string;
-  enunciado_clean?: string;
-  enunciadoClean?: string;
-  texto?: string | null;
-  image_url?: string | null;
-  imageUrl?: string | null;
+  texto: string;
+  assets?: QuestionAsset[];
+  questionIds?: Array<number | string> | string | null;
   question_count?: number;
   questionCount?: number;
+  // Leitura temporária de registros legados.
+  enunciado?: string;
+  enunciado_clean?: string;
+  enunciadoClean?: string;
+  image_url?: string | null;
+  imageUrl?: string | null;
   question_ids?: Array<number | string> | string | null;
-  questionIds?: Array<number | string> | string | null;
 }
 
 export interface AdminQuestionGroupPayload {
   id?: number | string | null;
-  enunciado?: string;
-  texto?: string;
-  image_url?: string;
-  imageUrl?: string;
-  question_ids?: Array<number | string>;
-  questionIds?: Array<number | string>;
+  texto: string;
+  assets: QuestionAsset[];
+  questionIds: Array<number | string>;
 }
 
 const EMPTY_COMMENT_MODERATION_COUNTS: AdminCommentModerationCounts = {
@@ -1603,13 +1630,7 @@ export const adminService = {
       page: params.page || 1,
     });
 
-    return {
-      rows: Array.isArray(payload.rows) ? payload.rows.map((row: Question) => withQuestionPublicationAliases(row)) : [],
-      total: Number(payload.total || 0),
-      perPage: Number(payload.perPage || 20),
-      pages: Number(payload.pages || 1),
-      page: Number(payload.page || params.page || 1),
-    };
+    return normalizeAdminQuestionListPayload(payload, params.page || 1);
   },
 
   /**
@@ -1647,11 +1668,10 @@ export const adminService = {
     const envelope = assertApiSuccess<AdminQuestionGroupItem>(response, 'Não foi possível salvar o contexto de questões.');
     return readApiData<AdminQuestionGroupItem>(envelope.raw, {
       id: Number(payload.id || 0),
-      enunciado: payload.enunciado || '',
-      texto: payload.texto || '',
-      image_url: payload.image_url || payload.imageUrl || '',
+      texto: payload.texto,
+      assets: payload.assets,
       question_count: 0,
-      question_ids: payload.question_ids || payload.questionIds || [],
+      questionIds: payload.questionIds,
     });
   },
 

@@ -11,7 +11,19 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
-import type { ExamFileAttachment, ExamFileKind, Question, QuestionStats, UserAnswer } from 'types';
+import type {
+  ExamFileAttachment,
+  ExamFileKind,
+  Question,
+  QuestionAlternativePayload,
+  QuestionAsset,
+  QuestionContextPayload,
+  QuestionFilterValuePayload,
+  QuestionFiltersPayload,
+  QuestionPayload,
+  QuestionStats,
+  UserAnswer,
+} from 'types';
 import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from './questionPublication';
 
 type QuestionListResult = {
@@ -34,8 +46,8 @@ type QuestionCreateResponse = {
 type ImportedQuestionBatchPayload = {
   exam: Record<string, unknown>;
   focus: Record<string, unknown>;
-  contexts: Array<Record<string, unknown>>;
-  questions: Question[];
+  contexts: QuestionContextPayload[];
+  questions: Array<Question | QuestionPayload>;
   requireExistingExam?: boolean;
   require_existing_exam?: boolean;
 };
@@ -113,6 +125,312 @@ const getUserAnswerUserId = (answer: UserAnswer): string | null => {
 const toRecord = (value: unknown): Record<string, unknown> | null => (
   value && typeof value === 'object' ? value as Record<string, unknown> : null
 );
+
+const readText = (value: unknown): string => (
+  value === undefined || value === null ? '' : String(value)
+);
+
+const readSourceScalar = (value: unknown): string | number | null => (
+  typeof value === 'string' || typeof value === 'number' ? value : null
+);
+
+const stripHtml = (value: string): string => value.replace(/<[^>]*>?/gm, '').trim();
+
+const readTaxonomyLabel = (value: unknown): string => {
+  const record = toRecord(value);
+  if (!record) {
+    return readText(value).trim();
+  }
+
+  return readText(
+    record.label
+    ?? record.name
+    ?? record.nome
+    ?? record.descricao
+    ?? record['descrição']
+    ?? record.sigla
+    ?? record.slug
+    ?? '',
+  ).trim();
+};
+
+const readTaxonomySlug = (value: unknown): string | undefined => {
+  const record = toRecord(value);
+  const slug = readText(record?.slug).trim();
+  return slug || undefined;
+};
+
+const readTaxonomyId = (value: unknown): string | number | null => {
+  const record = toRecord(value);
+  const id = record?.id ?? record?.value ?? null;
+  const normalizedId = readText(id).trim().toLowerCase();
+  if (!normalizedId || normalizedId === 'null' || normalizedId === 'undefined') {
+    return null;
+  }
+
+  return id as string | number | null;
+};
+
+const toQuestionFilterValue = (value: unknown): QuestionFilterValuePayload | null => {
+  const label = readTaxonomyLabel(value);
+  if (!label) {
+    return null;
+  }
+
+  const id = readTaxonomyId(value);
+  return {
+    ...(id !== null ? { id } : {}),
+    label,
+    slug: readTaxonomySlug(value),
+  };
+};
+
+const toQuestionFilterValues = (values: unknown): QuestionFilterValuePayload[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  return values.reduce<QuestionFilterValuePayload[]>((items, value) => {
+    const item = toQuestionFilterValue(value);
+    if (!item) {
+      return items;
+    }
+
+    const key = `${item.id ?? ''}:${item.slug ?? ''}:${item.label}`.toLowerCase();
+    if (seen.has(key)) {
+      return items;
+    }
+
+    seen.add(key);
+    items.push(item);
+    return items;
+  }, []);
+};
+
+const readQuestionTaxonomyLevel = (value: unknown): string => {
+  const record = toRecord(value);
+  return readText(record?.taxonomyLevel ?? record?.taxonomy_level ?? record?.level ?? '').toLowerCase();
+};
+
+const splitQuestionSubjectFilters = (question: Question): Pick<QuestionFiltersPayload, 'subjects' | 'topics' | 'subtopics'> => {
+  const legacySubjects = Array.isArray(question.assuntos) ? question.assuntos : [];
+  const materias = legacySubjects.filter((item) => {
+    const record = toRecord(item);
+    return Boolean(record?.materia || record?.meta_materia || readQuestionTaxonomyLevel(item) === 'materia');
+  });
+  const topicos = legacySubjects.filter((item) => readQuestionTaxonomyLevel(item) === 'topico');
+  const assuntos = legacySubjects.filter((item) => {
+    const record = toRecord(item);
+    return !record?.materia && !record?.meta_materia && readQuestionTaxonomyLevel(item) !== 'materia' && readQuestionTaxonomyLevel(item) !== 'topico';
+  });
+
+  return {
+    subjects: toQuestionFilterValues(question.filters?.subjects?.length ? question.filters.subjects : question.filters?.materias?.length ? question.filters.materias : materias),
+    topics: toQuestionFilterValues(question.filters?.topics?.length ? question.filters.topics : question.filters?.topicos?.length ? question.filters.topicos : topicos),
+    subtopics: toQuestionFilterValues(question.filters?.subtopics?.length ? question.filters.subtopics : question.filters?.assuntos?.length ? question.filters.assuntos : assuntos),
+  };
+};
+
+const buildQuestionFiltersPayload = (question: Question): QuestionFiltersPayload => {
+  const subjectFilters = splitQuestionSubjectFilters(question);
+  const levelValues = question.filters?.niveis?.length
+    ? question.filters.niveis
+    : [question.nivel ?? question.level].filter((value) => value !== undefined && value !== null && String(value).trim() !== '');
+
+  return {
+    ...subjectFilters,
+    examBoards: toQuestionFilterValues(question.filters?.examBoards?.length ? question.filters.examBoards : question.filters?.bancas?.length ? question.filters.bancas : question.bancas),
+    organizations: toQuestionFilterValues(question.filters?.organizations?.length ? question.filters.organizations : question.filters?.orgaos?.length ? question.filters.orgaos : question.orgaos),
+    roles: toQuestionFilterValues(question.filters?.roles?.length ? question.filters.roles : question.filters?.cargos?.length ? question.filters.cargos : question.cargos),
+    careers: toQuestionFilterValues(question.filters?.careers?.length ? question.filters.careers : question.filters?.carreiras?.length ? question.filters.carreiras : question.carreiras),
+    years: toQuestionFilterValues(question.filters?.years?.length ? question.filters.years : question.filters?.anos?.length ? question.filters.anos : question.anos),
+    levels: toQuestionFilterValues(question.filters?.levels?.length ? question.filters.levels : question.filters?.niveis?.length ? question.filters.niveis : levelValues),
+    examTypes: toQuestionFilterValues(question.filters?.examTypes?.length ? question.filters.examTypes : question.filters?.tiposProva?.length ? question.filters.tiposProva : question.tiposProva),
+  };
+};
+
+const normalizeQuestionDifficultyPayload = (question: Question): string => {
+  const rawDifficulty = readText(question.difficulty || question.dificuldade || '').trim().toLowerCase();
+  if (['1', 'facil', 'fácil', 'easy'].includes(rawDifficulty)) {
+    return 'easy';
+  }
+  if (['3', 'dificil', 'difícil', 'hard'].includes(rawDifficulty)) {
+    return 'hard';
+  }
+  return 'medium';
+};
+
+const normalizeQuestionTypePayload = (question: Question): string => {
+  const questionRecord = question as Question & { type?: string };
+  const rawType = readText(questionRecord.type || question.questionType || question.tipo || '').trim().toLowerCase();
+  if (rawType.includes('certo') || rawType.includes('errado') || rawType === 'true_false') {
+    return 'true_false';
+  }
+  if (rawType.includes('multipla') || rawType.includes('múltipla') || rawType === 'single_choice') {
+    return 'single_choice';
+  }
+  return rawType || 'single_choice';
+};
+
+const buildQuestionAlternativesPayload = (question: Question): QuestionAlternativePayload[] => {
+  if (Array.isArray(question.alternatives) && question.alternatives.length > 0) {
+    return question.alternatives.map((alternative, index) => ({
+      tempId: alternative.tempId || alternative.id || `alt_${readText(alternative.label || String.fromCharCode(65 + index)).toLowerCase()}`,
+      ...(alternative.id ? { id: alternative.id } : {}),
+      order: Number(alternative.order || index + 1),
+      label: readText(alternative.label || String.fromCharCode(65 + index)),
+      text: readText(alternative.text),
+      textClean: stripHtml(readText(alternative.textClean ?? alternative.text)),
+      assets: Array.isArray(alternative.assets) ? alternative.assets : [],
+    }));
+  }
+
+  return (Array.isArray(question.itens) ? question.itens : []).map((item, index) => ({
+    tempId: `alt_${readText(item.rotulo || String.fromCharCode(65 + index)).toLowerCase()}`,
+    order: Number(item.ordem || item.id || index + 1),
+    label: readText(item.rotulo || String.fromCharCode(65 + index)),
+    text: readText(item.corpo),
+    textClean: stripHtml(readText(item.corpo_clean ?? item.corpo)),
+    assets: [],
+  }));
+};
+
+const normalizeQuestionAssetPayload = (asset: QuestionAsset, index: number): QuestionAsset | null => {
+  const url = readText(asset.url).trim();
+  const base64 = readText(asset.base64).trim();
+  if (!url && !base64) {
+    return null;
+  }
+
+  const usage = ['statement', 'support', 'alternative', 'context', 'reference'].includes(readText(asset.usage))
+    ? asset.usage
+    : 'statement';
+
+  return {
+    tempId: readText(asset.tempId ?? asset.id).trim() || `img_${usage}_${index + 1}`,
+    type: 'image',
+    usage,
+    ...(url ? { url } : {}),
+    ...(base64 ? { base64 } : {}),
+    alt: readText(asset.alt).trim() || 'Imagem vinculada a questao.',
+    ...(readText(asset.caption).trim() ? { caption: readText(asset.caption).trim() } : {}),
+    sourcePage: asset.sourcePage ?? null,
+    order: Number(asset.order || index + 1),
+  };
+};
+
+const buildQuestionAssetsPayload = (question: Question): QuestionAsset[] => {
+  const assets = (Array.isArray(question.assets) ? question.assets : [])
+    .map(normalizeQuestionAssetPayload)
+    .filter((asset): asset is QuestionAsset => Boolean(asset));
+  const imageUrl = readText(question.imageUrl).trim();
+  if (imageUrl && !assets.some((asset) => asset.url === imageUrl || asset.base64 === imageUrl)) {
+    assets.push({
+      tempId: 'img_statement_1',
+      type: 'image',
+      usage: 'statement',
+      url: imageUrl,
+      alt: 'Imagem do enunciado.',
+      order: assets.length + 1,
+    });
+  }
+
+  const seen = new Set<string>();
+  return assets.filter((asset) => {
+    const key = `${asset.tempId || asset.id}:${asset.url || asset.base64 || ''}`.toLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
+const buildCanonicalQuestionPayload = (question: Question): QuestionPayload => {
+  const normalizedQuestion = withQuestionPublicationAliases(question);
+  const questionRecord = normalizedQuestion as Question & Record<string, unknown>;
+  const sourceRecord = toRecord(normalizedQuestion.source) || {};
+  const contentRecord = toRecord(normalizedQuestion.content) || {};
+  const publicationRecord = toRecord(normalizedQuestion.publication) || {};
+  const reviewRecord = toRecord(normalizedQuestion.review) || {};
+  const alternatives = buildQuestionAlternativesPayload(normalizedQuestion);
+  const answerRecord = toRecord(normalizedQuestion.answer) || {};
+  const answerValue = answerRecord.raw ?? answerRecord.value ?? normalizedQuestion.resposta ?? null;
+  const answerAlternative = alternatives.find((alternative) => (
+    String(alternative.order) === String(answerValue)
+    || String(alternative.label).toLowerCase() === String(answerValue).toLowerCase()
+    || String(alternative.tempId) === String(answerRecord.alternativeId || '')
+    || String(alternative.id || '') === String(answerRecord.alternativeId || '')
+  ));
+
+  return {
+    tempId: readText(questionRecord.tempId).trim() || undefined,
+    id: normalizedQuestion.id ?? null,
+    source: {
+      origin: readText(sourceRecord.origin || normalizedQuestion.questionOrigin || normalizedQuestion.question_origin || (normalizedQuestion.provaId ? 'exam' : 'platform')).trim() || 'platform',
+      examId: readSourceScalar(sourceRecord.examId ?? normalizedQuestion.provaId ?? null),
+      questionNumber: readSourceScalar(sourceRecord.questionNumber ?? questionRecord.questionNumber),
+      contextTempId: readSourceScalar(sourceRecord.contextTempId ?? questionRecord.contextTempId ?? questionRecord.context_temp_id ?? normalizedQuestion.grupoQuestaoId ?? normalizedQuestion.grupo_questao_id ?? normalizedQuestion.grupoQuestao?.id),
+      sourcePage: readSourceScalar(sourceRecord.sourcePage ?? questionRecord.sourcePage),
+    },
+    content: {
+      statement: readText(contentRecord.statement ?? normalizedQuestion.enunciado),
+      statementClean: readText(contentRecord.statementClean ?? stripHtml(readText(normalizedQuestion.enunciado_clean ?? normalizedQuestion.enunciado))),
+      supportText: readText(contentRecord.supportText ?? normalizedQuestion.introText ?? normalizedQuestion.intro_text),
+      reference: readText(contentRecord.reference ?? normalizedQuestion.referenceText ?? normalizedQuestion.reference_text),
+    },
+    assets: buildQuestionAssetsPayload(normalizedQuestion),
+    filters: normalizedQuestion.filters ? {
+      subjects: toQuestionFilterValues(normalizedQuestion.filters.subjects?.length ? normalizedQuestion.filters.subjects : normalizedQuestion.filters.materias),
+      topics: toQuestionFilterValues(normalizedQuestion.filters.topics?.length ? normalizedQuestion.filters.topics : normalizedQuestion.filters.topicos),
+      subtopics: toQuestionFilterValues(normalizedQuestion.filters.subtopics?.length ? normalizedQuestion.filters.subtopics : normalizedQuestion.filters.assuntos),
+      examBoards: toQuestionFilterValues(normalizedQuestion.filters.examBoards?.length ? normalizedQuestion.filters.examBoards : normalizedQuestion.filters.bancas),
+      organizations: toQuestionFilterValues(normalizedQuestion.filters.organizations?.length ? normalizedQuestion.filters.organizations : normalizedQuestion.filters.orgaos),
+      roles: toQuestionFilterValues(normalizedQuestion.filters.roles?.length ? normalizedQuestion.filters.roles : normalizedQuestion.filters.cargos),
+      careers: toQuestionFilterValues(normalizedQuestion.filters.careers?.length ? normalizedQuestion.filters.careers : normalizedQuestion.filters.carreiras),
+      years: toQuestionFilterValues(normalizedQuestion.filters.years?.length ? normalizedQuestion.filters.years : normalizedQuestion.filters.anos),
+      levels: toQuestionFilterValues(normalizedQuestion.filters.levels?.length ? normalizedQuestion.filters.levels : normalizedQuestion.filters.niveis),
+      examTypes: toQuestionFilterValues(normalizedQuestion.filters.examTypes?.length ? normalizedQuestion.filters.examTypes : normalizedQuestion.filters.tiposProva),
+    } : buildQuestionFiltersPayload(normalizedQuestion),
+    type: normalizeQuestionTypePayload(normalizedQuestion),
+    difficulty: normalizeQuestionDifficultyPayload(normalizedQuestion),
+    alternatives,
+    answer: {
+      mode: normalizeQuestionTypePayload(normalizedQuestion) === 'true_false' ? 'boolean' : 'single',
+      raw: answerAlternative?.label ?? answerValue,
+      correctAlternativeTempIds: answerAlternative?.tempId ? [answerAlternative.tempId] : [],
+    },
+    editorial: [
+      {
+        type: 'teacher_comment',
+        title: '',
+        body: readText(normalizedQuestion.editorial?.find?.((item) => item.type === 'teacher_comment')?.body ?? normalizedQuestion.editorialComments?.teacherComment ?? normalizedQuestion.teacherComment),
+        status: 'draft',
+      },
+      {
+        type: 'detailed_analysis',
+        title: '',
+        body: readText(normalizedQuestion.editorial?.find?.((item) => item.type === 'detailed_analysis')?.body ?? normalizedQuestion.editorialComments?.detailedComment ?? normalizedQuestion.detailedComment),
+        status: 'draft',
+      },
+    ],
+    publication: {
+      status: readText(publicationRecord.status ?? normalizedQuestion.publishStatus ?? 'published') || 'published',
+      visibility: readText(publicationRecord.visibility ?? normalizedQuestion.visibilityStatus ?? 'public') || 'public',
+      scheduledAt: readText(publicationRecord.scheduledAt ?? normalizedQuestion.scheduledAt).trim() || null,
+    },
+    review: {
+      required: Boolean(reviewRecord.required ?? reviewRecord.needsReview ?? false),
+      status: readText(reviewRecord.status ?? 'pending') || 'pending',
+      reasons: Array.isArray(reviewRecord.reasons)
+        ? reviewRecord.reasons.map((reason) => readText(reason)).filter(Boolean)
+        : Array.isArray(reviewRecord.statusReasons)
+          ? reviewRecord.statusReasons.map((reason) => readText(reason)).filter(Boolean)
+          : [],
+    },
+  };
+};
 
 const EMPTY_EDITORIAL_FEEDBACK_SNAPSHOT: QuestionEditorialFeedbackSnapshot = {
   feedback: {
@@ -534,9 +852,10 @@ export const questionService = {
   async createQuestion(questionData: Question): Promise<{ success: boolean; question?: Question }> {
     try {
       const normalizedQuestion = withQuestionPublicationAliases(questionData);
+      const canonicalPayload = buildCanonicalQuestionPayload(normalizedQuestion);
       const response = await apiClient.post<QuestionCreateResponse>(
         ENDPOINTS.questions.create,
-        normalizedQuestion,
+        canonicalPayload,
       );
 
       const envelope = assertApiSuccess<QuestionCreateResponse>(response, 'Não foi possível criar a questão.');
@@ -547,7 +866,7 @@ export const questionService = {
         success: true,
         question: payload.question
           ? withQuestionPublicationAliases(payload.question)
-          : { ...normalizedQuestion, id: resolvedId },
+          : { ...normalizedQuestion, ...canonicalPayload, id: resolvedId },
       };
     } catch {
       return { success: false };
@@ -655,7 +974,11 @@ export const questionService = {
   }> {
     try {
       const formData = new FormData();
-      formData.append('payload', JSON.stringify(payload));
+      const canonicalPayload: ImportedQuestionBatchPayload = {
+        ...payload,
+        questions: payload.questions.map((question) => buildCanonicalQuestionPayload(question as unknown as Question)),
+      };
+      formData.append('payload', JSON.stringify(canonicalPayload));
       if (proofPdf) {
         formData.append('proof_pdf', proofPdf, proofPdf.name);
       }
@@ -707,15 +1030,23 @@ export const questionService = {
   async updateQuestion(id: string, questionData: Question): Promise<{ success: boolean; question?: Question }> {
     try {
       const normalizedQuestion = withQuestionPublicationAliases(questionData);
+      const canonicalPayload = {
+        ...buildCanonicalQuestionPayload(normalizedQuestion),
+        id,
+      };
       const response = await apiClient.post<Question>(
         ENDPOINTS.questions.update,
-        { ...normalizedQuestion, id },
+        canonicalPayload,
       );
 
       assertApiSuccess(response, 'Não foi possível atualizar a questão.');
       return {
         success: true,
-        question: { ...normalizedQuestion, id: Number(id) || Number(normalizedQuestion.id) } as Question,
+        question: {
+          ...normalizedQuestion,
+          ...canonicalPayload,
+          id: Number(id) || Number(normalizedQuestion.id),
+        } as Question,
       };
     } catch {
       return { success: false };

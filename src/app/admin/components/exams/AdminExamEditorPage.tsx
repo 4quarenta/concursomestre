@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -16,7 +16,7 @@ import { resolveApiResourceUrl } from '@services/api';
 import { adminService } from '@services/admin/adminService';
 import { examService } from '@services/exams/examService';
 import { clientLog } from '@services/monitoring/clientLog';
-import { aiService } from '@services/questions/aiService';
+import { aiService, type ExtractedExamNoticeAiResult } from '@services/questions/aiService';
 import { questionService } from '@services/questions/questionService';
 import type { ExamDraftState } from './useAdminExamBankWorkflow';
 import { extractExamNoticeMetadata } from './examNoticeExtractor';
@@ -61,6 +61,17 @@ interface ExamTaxonomyOption {
   parentId?: string | number;
   parent_id?: string | number;
 }
+
+type ExamQuestionEditorialSuggestion = NonNullable<ExtractedExamNoticeAiResult['questionEditorialSuggestions']>[number];
+type ExternalExamNoticeMetadata = ExtractedExamNoticeAiResult & {
+  examTitle?: string;
+  level?: string;
+  examType?: string;
+  bookletType?: string;
+  bookletColor?: string;
+  focuses?: string[];
+  platformQuestionIds?: string[];
+};
 
 const EditorPanel = ({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) => (
   <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
@@ -148,9 +159,9 @@ const SelectInput = ({
 );
 
 const EXAM_FILE_CONFIG: Array<{ kind: ExamFileKind; label: string; description: string }> = [
-  { kind: 'prova', label: 'Prova', description: 'Arquivo principal do caderno de questões.' },
+  { kind: 'prova', label: 'Prova', description: 'Arquivo principal do caderno de questÃµes.' },
   { kind: 'gabarito', label: 'Gabarito', description: 'Gabarito oficial, definitivo ou preliminar.' },
-  { kind: 'edital', label: 'Edital', description: 'Edital, retificação ou documento do certame.' },
+  { kind: 'edital', label: 'Edital', description: 'Edital, retificaÃ§Ã£o ou documento do certame.' },
 ];
 
 const formatFileSize = (size?: number) => {
@@ -302,6 +313,210 @@ const safeParseArray = <T,>(value: string): T[] => {
 
 const serializeDraftArray = (items: unknown[]) => JSON.stringify(items, null, 2);
 
+const asRecord = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+);
+
+const pickRecordValue = (record: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) {
+      return record[key];
+    }
+  }
+  return undefined;
+};
+
+const readTextValue = (record: Record<string, unknown>, keys: string[]) => String(pickRecordValue(record, keys) || '').trim();
+
+const readTextListValue = (record: Record<string, unknown>, keys: string[]) => {
+  const value = pickRecordValue(record, keys);
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value
+      .map((item) => {
+        if (typeof item === 'string' || typeof item === 'number') {
+          return String(item).trim();
+        }
+        const itemRecord = asRecord(item);
+        return readTextValue(itemRecord, ['nome', 'name', 'sigla', 'label', 'titulo', 'title', 'texto', 'text', 'value']);
+      })
+      .filter(Boolean)));
+  }
+  if (typeof value === 'string') {
+    return Array.from(new Set(value.split(/\n|;/).map((item) => item.trim()).filter(Boolean)));
+  }
+  return [];
+};
+
+const extractJsonObjectText = (value: string) => {
+  let text = String(value || '').trim();
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  }
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  return firstBrace >= 0 && lastBrace > firstBrace ? text.slice(firstBrace, lastBrace + 1) : text;
+};
+
+const normalizeExternalScopedItems = (value: unknown): NonNullable<ExtractedExamNoticeAiResult['requirementsDetailed']> => {
+  const entries = Array.isArray(value)
+    ? value
+    : Object.entries(asRecord(value)).map(([chave, texto]) => ({ chave, texto }));
+
+  return entries
+    .map((entry) => {
+      const item = asRecord(entry);
+      const scopeType = String(readTextValue(item, ['scopeType', 'tipoEscopo', 'escopoTipo', 'tipo']) || 'geral');
+      const normalizedScopeType: 'geral' | 'orgao' | 'cargo' | 'foco' = ['orgao', 'cargo', 'foco'].includes(scopeType)
+        ? scopeType as 'orgao' | 'cargo' | 'foco'
+        : 'geral';
+      return {
+        scopeType: normalizedScopeType,
+        scope: readTextValue(item, ['scope', 'escopo', 'aplicarA', 'aplicar_a', 'orgao', 'Ã³rgÃ£o', 'cargo', 'foco']) || 'Todos',
+        chave: readTextValue(item, ['chave', 'key', 'label', 'titulo', 'title', 'nome']),
+        texto: readTextValue(item, ['texto', 'text', 'valor', 'value', 'descricao', 'description']),
+      };
+    })
+    .filter((item) => item.chave || item.texto);
+};
+
+const normalizeExternalProgrammaticItems = (value: unknown): NonNullable<ExtractedExamNoticeAiResult['programmaticContentDetailed']> => {
+  const items = Array.isArray(value) ? value : [];
+  return items
+    .map((entry) => {
+      const item = asRecord(entry);
+      return {
+        materia: readTextValue(item, ['materia', 'matÃ©ria', 'subject', 'disciplina']),
+        topico: readTextValue(item, ['topico', 'tÃ³pico', 'topic']),
+        assunto: readTextValue(item, ['assunto', 'specificSubject', 'specific_subject']),
+        questoes: readTextValue(item, ['questoes', 'questÃµes', 'questions', 'totalQuestoes', 'total_questoes']),
+        orgao: readTextValue(item, ['orgao', 'Ã³rgÃ£o', 'organization']),
+        cargo: readTextValue(item, ['cargo', 'role']),
+        foco: readTextValue(item, ['foco', 'focus', 'area', 'Ã¡rea']),
+      };
+    })
+    .filter((item) => item.materia || item.topico || item.assunto);
+};
+
+const normalizeExternalStageItems = (value: unknown): NonNullable<ExtractedExamNoticeAiResult['stages']> => {
+  const items = Array.isArray(value) ? value : [];
+  return items
+    .map((entry) => {
+      const item = asRecord(entry);
+      const rawCriterion = normalizeSearchText(readTextValue(item, ['criterio', 'critÃ©rio', 'criterion', 'tipo']));
+      const criterio: 'eliminatorio' | 'classificatorio' | 'eliminatorio_classificatorio' = rawCriterion.includes('eliminatorio') && rawCriterion.includes('classificatorio')
+        ? 'eliminatorio_classificatorio'
+        : rawCriterion.includes('eliminatorio')
+          ? 'eliminatorio'
+          : 'classificatorio';
+      return {
+        nome: readTextValue(item, ['nome', 'name', 'etapa', 'stage']),
+        criterio,
+        data: readTextValue(item, ['data', 'date']),
+        descricao: readTextValue(item, ['descricao', 'descriÃ§Ã£o', 'description', 'observacao', 'observaÃ§Ã£o']),
+      };
+    })
+    .filter((item) => item.nome || item.descricao);
+};
+
+const normalizeExamTitlePart = (value: string) => String(value || '')
+  .replace(/\s+/g, ' ')
+  .replace(/\s+-\s+/g, ' - ')
+  .trim();
+
+const compactExamOrganization = (value: string) => {
+  const text = normalizeExamTitlePart(value);
+  const normalized = normalizeSearchText(text);
+  const parenthetical = text.match(/\(([A-Z]{2,}(?:[-/][A-Z]{2,})?)\)/);
+
+  if (/pm[-\s]?pb|pmpb|policia militar.*paraiba/.test(normalized)) {
+    return 'PM-PB';
+  }
+  if (/cbm[-\s]?pb|cbmpb|bombeiros?.*paraiba/.test(normalized)) {
+    return 'CBM-PB';
+  }
+  if (parenthetical?.[1]) {
+    return parenthetical[1].replace(/([A-Z]{2,})([A-Z]{2})$/, '$1-$2');
+  }
+  if (/tribunal de justica.*sao paulo|tj[-\s]?sp/.test(normalized)) {
+    return 'TJ-SP';
+  }
+  if (/policia civil.*sao paulo|pc[-\s]?sp/.test(normalized)) {
+    return 'PC-SP';
+  }
+
+  return text.length > 36 ? text.slice(0, 36).trim() : text;
+};
+
+const compactExamRole = (value: string) => {
+  const text = normalizeExamTitlePart(value)
+    .replace(/^curso de formacao de\s+/i, '')
+    .replace(/^curso de formaÃ§Ã£o de\s+/i, '')
+    .replace(/^cargo de\s+/i, '');
+  const normalized = normalizeSearchText(text);
+
+  if (/soldado.*policia militar|soldado.*pm/.test(normalized)) {
+    return /combatente/.test(normalized) ? 'Soldado PM - Combatente' : 'Soldado PM';
+  }
+  if (/soldado.*bombeiro|soldado.*bm/.test(normalized)) {
+    return /combatente/.test(normalized) ? 'Soldado BM - Combatente' : 'Soldado BM';
+  }
+  if (/soldados? da policia militar e do corpo de bombeiros|soldados? da policia militar.*bombeiros/.test(normalized)) {
+    return 'Soldado';
+  }
+
+  return text.length > 42 ? text.slice(0, 42).trim() : text;
+};
+
+const joinExamTitleParts = (values: string[]) => Array.from(new Set(values.map(normalizeExamTitlePart).filter(Boolean))).join(' / ');
+
+const buildExternalExamDisplayTitle = (metadata: ExternalExamNoticeMetadata, fallback = '') => {
+  const agency = normalizeExamTitlePart(metadata.agency || metadata.agencyName || '');
+  const year = normalizeExamTitlePart(metadata.year || '');
+  const organizations = sanitizeExtractedOrganizations(metadata.organizations || [])
+    .map(compactExamOrganization)
+    .filter(Boolean);
+  const roles = (metadata.roles || [])
+    .map((item) => compactExamRole(String(item || '')))
+    .filter(Boolean);
+  const organizationPart = joinExamTitleParts(organizations);
+  const rolePart = joinExamTitleParts(roles);
+  const parts = [agency, year, organizationPart, rolePart].filter(Boolean);
+
+  return parts.length >= 3 ? parts.join(' - ') : normalizeExamTitlePart(fallback);
+};
+
+const normalizeExternalExamNoticeJson = (payload: unknown): ExternalExamNoticeMetadata => {
+  const root = asRecord(payload);
+  const metadata = asRecord(root.metadata || root.metadados || root.exam || root.prova);
+  const source = Object.keys(metadata).length > 0 ? { ...root, ...metadata } : root;
+
+  return {
+    examTitle: readTextValue(source, ['examTitle', 'titulo', 'tÃ­tulo', 'nome', 'nomeProva']),
+    agency: readTextValue(source, ['agency', 'banca', 'bancaSigla', 'banca_sigla']),
+    agencyName: readTextValue(source, ['agencyName', 'bancaNome', 'banca_nome', 'nomeBanca']),
+    year: readTextValue(source, ['year', 'ano']),
+    level: readTextValue(source, ['level', 'nivel', 'nÃ­vel']),
+    examType: readTextValue(source, ['examType', 'tipoProva', 'tipo_prova', 'caderno']),
+    bookletType: readTextValue(source, ['bookletType', 'tipoCaderno', 'tipo_caderno']),
+    bookletColor: readTextValue(source, ['bookletColor', 'corCaderno', 'cor_caderno']),
+    organizations: readTextListValue(source, ['organizations', 'orgaos', 'Ã³rgÃ£os', 'orgaosVinculados', 'orgaos_vinculados']),
+    roles: readTextListValue(source, ['roles', 'cargos', 'cargosVinculados', 'cargos_vinculados']),
+    focuses: readTextListValue(source, ['focuses', 'focos', 'areas', 'Ã¡reas']),
+    requirementsDetailed: normalizeExternalScopedItems(pickRecordValue(source, ['requirementsDetailed', 'requisitosDetalhados', 'requisitos_detalhados', 'requirements'])),
+    remunerationsDetailed: normalizeExternalScopedItems(pickRecordValue(source, ['remunerationsDetailed', 'remuneracoesDetalhadas', 'remuneraÃ§ÃµesDetalhadas', 'remuneracoes_detalhadas', 'remunerations', 'remuneracao'])),
+    vacanciesDetailed: normalizeExternalScopedItems(pickRecordValue(source, ['vacanciesDetailed', 'vagasDetalhadas', 'vagas_detalhadas', 'vacancies', 'vagas'])),
+    programmaticContentDetailed: normalizeExternalProgrammaticItems(pickRecordValue(source, ['programmaticContentDetailed', 'conteudoProgramaticoDetalhado', 'conteudo_programatico_detalhado', 'programmaticContent', 'conteudoProgramatico'])),
+    stages: normalizeExternalStageItems(pickRecordValue(source, ['stages', 'etapas'])),
+    registrationStart: readTextValue(source, ['registrationStart', 'inscricaoInicio', 'inscriÃ§Ã£oInÃ­cio', 'dataInscricaoInicio', 'data_inscricao_inicio']),
+    registrationEnd: readTextValue(source, ['registrationEnd', 'inscricaoFim', 'inscriÃ§Ã£oFim', 'dataInscricaoFim', 'data_inscricao_fim']),
+    examDate: readTextValue(source, ['examDate', 'dataProva', 'data_prova']),
+    registrationFee: readTextValue(source, ['registrationFee', 'valorInscricao', 'valor_inscricao', 'taxaInscricao', 'taxa_inscricao']),
+    totalQuestions: readTextValue(source, ['totalQuestions', 'totalQuestoes', 'total_questoes']),
+    platformQuestionIds: readTextListValue(source, ['platformQuestionIds', 'questoesVinculadas', 'questÃµesVinculadas', 'questionIds']),
+    evidence: readTextListValue(source, ['evidence', 'evidencias', 'evidÃªncias']),
+  };
+};
+
 const createEmptyScopedItem = (): ExamScopedDraftItem => ({
   id: newDraftRowId(),
   scopeType: 'geral',
@@ -315,7 +530,7 @@ const isScopedItemFilled = (item: ExamScopedDraftItem) => Boolean(
 );
 
 const getScopeTypeLabel = (scopeType: ExamScopedDraftItem['scopeType']) => {
-  if (scopeType === 'orgao') return 'Órgão';
+  if (scopeType === 'orgao') return 'Ã“rgÃ£o';
   if (scopeType === 'cargo') return 'Cargo';
   if (scopeType === 'foco') return 'Foco';
   return 'Todos';
@@ -365,10 +580,10 @@ const splitProgrammaticSubjectText = (value: string): string[] => {
     return semicolonParts;
   }
 
-  const numberedMarkers = Array.from(cleanValue.matchAll(/(?:^|\s)(\d{1,3})\.\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/g));
+  const numberedMarkers = Array.from(cleanValue.matchAll(/(?:^|\s)(\d{1,3})\.\s+(?=[A-ZÃÃ‰ÃÃ“ÃšÃ‚ÃŠÃ”ÃƒÃ•Ã‡])/g));
   if (numberedMarkers.length > 1) {
     return cleanValue
-      .split(/(?=(?:^|\s)\d{1,3}\.\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ]))/g)
+      .split(/(?=(?:^|\s)\d{1,3}\.\s+(?=[A-ZÃÃ‰ÃÃ“ÃšÃ‚ÃŠÃ”ÃƒÃ•Ã‡]))/g)
       .map((item) => cleanupProgrammaticSubjectText(item.trim().replace(/^\d{1,3}\.\s*/, '')))
       .filter((item) => item.length >= 3);
   }
@@ -593,9 +808,9 @@ const RoleFocusArrayEditor = ({
     <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <FieldLabel>Áreas, focos e cargos</FieldLabel>
+          <FieldLabel>Ãreas, focos e cargos</FieldLabel>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Cada grupo representa uma área/foco. Os cargos selecionados serão vinculados como subitens dessa área.
+            Cada grupo representa uma Ã¡rea/foco. Os cargos selecionados serÃ£o vinculados como subitens dessa Ã¡rea.
           </p>
         </div>
         <button
@@ -604,7 +819,7 @@ const RoleFocusArrayEditor = ({
           className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-9 px-3 py-2 text-xs`}
         >
           <PlusCircle size={14} />
-          Adicionar área/cargos
+          Adicionar Ã¡rea/cargos
         </button>
       </div>
 
@@ -615,7 +830,7 @@ const RoleFocusArrayEditor = ({
             className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-[minmax(220px,0.75fr)_minmax(320px,1.25fr)_auto]"
           >
             <SmartTagSelector
-              label="Área / foco"
+              label="Ãrea / foco"
               options={focusOptions}
               selected={item.foco ? [item.foco] : []}
               onChange={(values) => {
@@ -635,7 +850,7 @@ const RoleFocusArrayEditor = ({
                 next[index] = { ...item, cargos: values };
                 onChange(next);
               }}
-              placeholder={item.foco ? 'Selecione ou cadastre cargos' : 'Selecione primeiro a área / foco'}
+              placeholder={item.foco ? 'Selecione ou cadastre cargos' : 'Selecione primeiro a Ã¡rea / foco'}
               disabled={!item.foco}
             />
             <div className="flex items-end">
@@ -643,7 +858,7 @@ const RoleFocusArrayEditor = ({
                 type="button"
                 onClick={() => onChange(rows.filter((entry) => entry.id !== item.id))}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
-                aria-label="Remover grupo de área e cargos"
+                aria-label="Remover grupo de Ã¡rea e cargos"
               >
                 <Trash2 size={14} />
               </button>
@@ -664,7 +879,7 @@ const ScopedArrayEditor = ({
   placeholder,
   keyValue = false,
   keyPlaceholder = 'Ex.: Escolaridade',
-  valueLabel = 'Informação',
+  valueLabel = 'InformaÃ§Ã£o',
   onChange,
 }: {
   title: string;
@@ -733,7 +948,7 @@ const ScopedArrayEditor = ({
           className={`grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 ${formGridClass}`}
         >
           <div className={keyValue ? 'min-w-0 lg:col-span-2' : 'min-w-0 lg:col-span-3'}>
-            <FieldLabel>Órgão</FieldLabel>
+            <FieldLabel>Ã“rgÃ£o</FieldLabel>
             <SelectInput
               value={draftItem.orgao || 'Todos'}
               onChange={(value) => setDraftItem((current) => ({
@@ -803,14 +1018,14 @@ const ScopedArrayEditor = ({
             <div className="min-w-0">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  Órgão: {item.orgao || 'Todos'}
+                  Ã“rgÃ£o: {item.orgao || 'Todos'}
                 </span>
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   Cargo: {item.scope || 'Todos'}
                 </span>
                 {item.chave ? <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{item.chave}</span> : null}
               </div>
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.texto || 'Sem descrição'}</p>
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.texto || 'Sem descriÃ§Ã£o'}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button
@@ -855,7 +1070,7 @@ const ScopedArrayEditor = ({
                 }}
               >
                 <option value="geral">Todos</option>
-                <option value="orgao">Órgão</option>
+                <option value="orgao">Ã“rgÃ£o</option>
                 <option value="cargo">Cargo</option>
                 <option value="foco">Foco</option>
               </SelectInput>
@@ -1008,7 +1223,7 @@ const ProgrammaticArrayEditor = ({
     if (!matter) {
       matter = {
         key: matterKey,
-        label: item.materia || 'Sem matéria',
+        label: item.materia || 'Sem matÃ©ria',
         questoes: item.questoes || '',
         topics: [],
       };
@@ -1021,7 +1236,7 @@ const ProgrammaticArrayEditor = ({
     if (!topic) {
       topic = {
         key: topicKey,
-        label: item.topico || 'Sem tópico',
+        label: item.topico || 'Sem tÃ³pico',
         items: [],
       };
       matter.topics.push(topic);
@@ -1116,17 +1331,17 @@ const ProgrammaticArrayEditor = ({
     <div className="w-full min-w-0 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <FieldLabel>Conteúdo programático</FieldLabel>
+          <FieldLabel>ConteÃºdo programÃ¡tico</FieldLabel>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Use matéria, tópico e assunto reais das taxonomias. Informe também a quantidade de questões quando o edital trouxer a distribuição.
+            Use matÃ©ria, tÃ³pico e assunto reais das taxonomias. Informe tambÃ©m a quantidade de questÃµes quando o edital trouxer a distribuiÃ§Ã£o.
           </p>
         </div>
       </div>
       <div className="space-y-3">
         <div className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-[1fr_1fr_1fr_110px]">
           {[
-            ['Matéria', 'materia', hierarchyMatterOptions],
-            ['Tópico', 'topico', hierarchyTopicOptions],
+            ['MatÃ©ria', 'materia', hierarchyMatterOptions],
+            ['TÃ³pico', 'topico', hierarchyTopicOptions],
             ['Assunto', 'assunto', hierarchySubjectOptions],
           ].map(([label, key, options]) => (
             <div key={String(key)}>
@@ -1143,7 +1358,7 @@ const ProgrammaticArrayEditor = ({
             </div>
           ))}
           <div>
-            <FieldLabel>Questões</FieldLabel>
+            <FieldLabel>QuestÃµes</FieldLabel>
             <TextInput
               type="number"
               value={draftItem.questoes}
@@ -1153,7 +1368,7 @@ const ProgrammaticArrayEditor = ({
           </div>
           <div className="xl:col-span-4 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
             {[
-              ['Órgão', 'orgao', organizationOptions],
+              ['Ã“rgÃ£o', 'orgao', organizationOptions],
               ['Cargo', 'cargo', roleOptions],
               ['Foco', 'foco', focusOptions],
             ].map(([label, key, options]) => (
@@ -1207,8 +1422,8 @@ const ProgrammaticArrayEditor = ({
                   type="button"
                   onClick={() => toggleSetKey(setCollapsedMatters, matter.key)}
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-200"
-                  aria-label={matterCollapsed ? 'Expandir matéria' : 'Ocultar matéria'}
-                  title={matterCollapsed ? 'Expandir matéria' : 'Ocultar matéria'}
+                  aria-label={matterCollapsed ? 'Expandir matÃ©ria' : 'Ocultar matÃ©ria'}
+                  title={matterCollapsed ? 'Expandir matÃ©ria' : 'Ocultar matÃ©ria'}
                 >
                   {matterCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
                 </button>
@@ -1223,27 +1438,27 @@ const ProgrammaticArrayEditor = ({
                         if (event.key === 'Escape') setEditingMatterKey(null);
                       }}
                       className={`h-9 min-w-0 flex-1 ${ADMIN_FIELD_CLASS}`}
-                      aria-label="Nome da matéria"
+                      aria-label="Nome da matÃ©ria"
                     />
                     <button type="button" onClick={() => renameMatter(matter.key)} className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-9 px-3 py-2 text-xs`}>Salvar</button>
-                    <button type="button" onClick={() => setEditingMatterKey(null)} className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Cancelar edição"><X size={14} /></button>
+                    <button type="button" onClick={() => setEditingMatterKey(null)} className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Cancelar ediÃ§Ã£o"><X size={14} /></button>
                   </div>
                 ) : (
                   <div className="truncate text-xs font-black uppercase tracking-[0.2em] text-indigo-700 dark:text-indigo-200">
-                    Matéria: {matter.label}
+                    MatÃ©ria: {matter.label}
                   </div>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {matter.questoes ? (
                   <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-200">
-                    {matter.questoes} questões esperadas
+                    {matter.questoes} questÃµes esperadas
                   </span>
                 ) : null}
                 {editingMatterKey !== matter.key ? (
-                  <button type="button" onClick={() => { setEditingMatterKey(matter.key); setEditingMatterLabel(matter.label); }} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Editar matéria" title="Editar matéria"><Pencil size={14} /></button>
+                  <button type="button" onClick={() => { setEditingMatterKey(matter.key); setEditingMatterLabel(matter.label); }} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Editar matÃ©ria" title="Editar matÃ©ria"><Pencil size={14} /></button>
                 ) : null}
-                <button type="button" onClick={() => commit(listItems.filter((item) => normalizeSearchText(item.materia) !== matter.key))} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300" aria-label="Remover matéria" title="Remover matéria e seus tópicos"><Trash2 size={14} /></button>
+                <button type="button" onClick={() => commit(listItems.filter((item) => normalizeSearchText(item.materia) !== matter.key))} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300" aria-label="Remover matÃ©ria" title="Remover matÃ©ria e seus tÃ³picos"><Trash2 size={14} /></button>
               </div>
             </div>
 
@@ -1255,22 +1470,22 @@ const ProgrammaticArrayEditor = ({
                 <div key={`${matter.key}-${topic.key}`} className="rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                   <div className={`${topicCollapsed ? '' : 'mb-2'} flex flex-wrap items-center justify-between gap-2`}>
                     <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <button type="button" onClick={() => toggleSetKey(setCollapsedTopics, compoundTopicKey)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label={topicCollapsed ? 'Expandir tópico' : 'Ocultar tópico'} title={topicCollapsed ? 'Expandir tópico' : 'Ocultar tópico'}>{topicCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button>
+                      <button type="button" onClick={() => toggleSetKey(setCollapsedTopics, compoundTopicKey)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label={topicCollapsed ? 'Expandir tÃ³pico' : 'Ocultar tÃ³pico'} title={topicCollapsed ? 'Expandir tÃ³pico' : 'Ocultar tÃ³pico'}>{topicCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button>
                       {editingTopicKey === compoundTopicKey ? (
                         <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <input autoFocus value={editingTopicLabel} onChange={(event) => setEditingTopicLabel(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') renameTopic(matter.key, topic.key); if (event.key === 'Escape') setEditingTopicKey(null); }} className={`h-8 min-w-0 flex-1 ${ADMIN_FIELD_CLASS}`} aria-label="Nome do tópico" />
+                          <input autoFocus value={editingTopicLabel} onChange={(event) => setEditingTopicLabel(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') renameTopic(matter.key, topic.key); if (event.key === 'Escape') setEditingTopicKey(null); }} className={`h-8 min-w-0 flex-1 ${ADMIN_FIELD_CLASS}`} aria-label="Nome do tÃ³pico" />
                           <button type="button" onClick={() => renameTopic(matter.key, topic.key)} className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-8 px-3 py-1.5 text-xs`}>Salvar</button>
-                          <button type="button" onClick={() => setEditingTopicKey(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Cancelar edição"><X size={14} /></button>
+                          <button type="button" onClick={() => setEditingTopicKey(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Cancelar ediÃ§Ã£o"><X size={14} /></button>
                         </div>
                       ) : (
                         <span className="truncate rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                          Tópico: {topic.label}
+                          TÃ³pico: {topic.label}
                         </span>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {editingTopicKey !== compoundTopicKey ? <button type="button" onClick={() => { setEditingTopicKey(compoundTopicKey); setEditingTopicLabel(topic.label); }} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Editar tópico" title="Editar tópico"><Pencil size={13} /></button> : null}
-                      <button type="button" onClick={() => commit(listItems.filter((item) => !(normalizeSearchText(item.materia) === matter.key && normalizeSearchText(item.topico) === topic.key)))} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-950 dark:text-red-300" aria-label="Remover tópico" title="Remover tópico e seus assuntos"><Trash2 size={13} /></button>
+                      {editingTopicKey !== compoundTopicKey ? <button type="button" onClick={() => { setEditingTopicKey(compoundTopicKey); setEditingTopicLabel(topic.label); }} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Editar tÃ³pico" title="Editar tÃ³pico"><Pencil size={13} /></button> : null}
+                      <button type="button" onClick={() => commit(listItems.filter((item) => !(normalizeSearchText(item.materia) === matter.key && normalizeSearchText(item.topico) === topic.key)))} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-950 dark:text-red-300" aria-label="Remover tÃ³pico" title="Remover tÃ³pico e seus assuntos"><Trash2 size={13} /></button>
                     </div>
                   </div>
 
@@ -1279,14 +1494,14 @@ const ProgrammaticArrayEditor = ({
                       <div key={item.id} className="flex flex-col gap-3 rounded-sm border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60 lg:flex-row lg:items-center lg:justify-between">
                         <div className="min-w-0">
                           <div className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                            {item.assunto ? `Assunto: ${item.assunto}` : 'Sem assunto específico'}
+                            {item.assunto ? `Assunto: ${item.assunto}` : 'Sem assunto especÃ­fico'}
                           </div>
                           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
                             {[
-                              item.orgao ? `Órgão: ${item.orgao}` : '',
+                              item.orgao ? `Ã“rgÃ£o: ${item.orgao}` : '',
                               item.cargo ? `Cargo: ${item.cargo}` : '',
                               item.foco ? `Foco: ${item.foco}` : '',
-                            ].filter(Boolean).join(' · ') || 'Todos os escopos'}
+                            ].filter(Boolean).join(' Â· ') || 'Todos os escopos'}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
@@ -1321,8 +1536,8 @@ const ProgrammaticArrayEditor = ({
         {shouldRenderLegacyRows && rows.map((item, index) => (
           <div key={item.id} className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-[1fr_1fr_1fr_110px]">
             {[
-              ['Matéria', 'materia', subjectOptions],
-              ['Tópico', 'topico', topicOptions],
+              ['MatÃ©ria', 'materia', subjectOptions],
+              ['TÃ³pico', 'topico', topicOptions],
               ['Assunto', 'assunto', specificSubjectOptions],
             ].map(([label, key, options]) => (
               <div key={String(key)}>
@@ -1343,7 +1558,7 @@ const ProgrammaticArrayEditor = ({
               </div>
             ))}
             <div>
-              <FieldLabel>Questões</FieldLabel>
+              <FieldLabel>QuestÃµes</FieldLabel>
               <TextInput
                 type="number"
                 value={item.questoes}
@@ -1357,7 +1572,7 @@ const ProgrammaticArrayEditor = ({
             </div>
             <div className="xl:col-span-4 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
               {[
-                ['Órgão', 'orgao', organizationOptions],
+                ['Ã“rgÃ£o', 'orgao', organizationOptions],
                 ['Cargo', 'cargo', roleOptions],
                 ['Foco', 'foco', focusOptions],
               ].map(([label, key, options]) => (
@@ -1438,7 +1653,7 @@ const StagesArrayEditor = ({
         <div>
           <FieldLabel>Etapas</FieldLabel>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Cadastre cada etapa do edital e indique se ela é eliminatória, classificatória ou ambas.
+            Cadastre cada etapa do edital e indique se ela Ã© eliminatÃ³ria, classificatÃ³ria ou ambas.
           </p>
         </div>
       </div>
@@ -1453,14 +1668,14 @@ const StagesArrayEditor = ({
             />
           </div>
           <div>
-            <FieldLabel>Critério</FieldLabel>
+            <FieldLabel>CritÃ©rio</FieldLabel>
             <SelectInput
               value={draftItem.criterio}
               onChange={(value) => setDraftItem((current) => ({ ...current, criterio: value as ExamStageDraftItem['criterio'] }))}
             >
-              <option value="eliminatorio">Eliminatório</option>
-              <option value="classificatorio">Classificatório</option>
-              <option value="eliminatorio_classificatorio">Eliminatório e classificatório</option>
+              <option value="eliminatorio">EliminatÃ³rio</option>
+              <option value="classificatorio">ClassificatÃ³rio</option>
+              <option value="eliminatorio_classificatorio">EliminatÃ³rio e classificatÃ³rio</option>
             </SelectInput>
           </div>
           <div>
@@ -1491,11 +1706,11 @@ const StagesArrayEditor = ({
             </button>
           </div>
           <div className="lg:col-span-4">
-            <FieldLabel>Observação</FieldLabel>
+            <FieldLabel>ObservaÃ§Ã£o</FieldLabel>
             <TextAreaInput
               value={draftItem.descricao}
               onChange={(value) => setDraftItem((current) => ({ ...current, descricao: value }))}
-              placeholder="Critérios, peso, nota mínima ou observações do edital."
+              placeholder="CritÃ©rios, peso, nota mÃ­nima ou observaÃ§Ãµes do edital."
               rows={2}
             />
           </div>
@@ -1561,7 +1776,7 @@ const StagesArrayEditor = ({
               />
             </div>
             <div>
-              <FieldLabel>Critério</FieldLabel>
+              <FieldLabel>CritÃ©rio</FieldLabel>
               <SelectInput
                 value={item.criterio}
                 onChange={(value) => {
@@ -1570,9 +1785,9 @@ const StagesArrayEditor = ({
                   commit(next);
                 }}
               >
-                <option value="eliminatorio">Eliminatório</option>
-                <option value="classificatorio">Classificatório</option>
-                <option value="eliminatorio_classificatorio">Eliminatório e classificatório</option>
+                <option value="eliminatorio">EliminatÃ³rio</option>
+                <option value="classificatorio">ClassificatÃ³rio</option>
+                <option value="eliminatorio_classificatorio">EliminatÃ³rio e classificatÃ³rio</option>
               </SelectInput>
             </div>
             <div>
@@ -1598,7 +1813,7 @@ const StagesArrayEditor = ({
               </button>
             </div>
             <div className="lg:col-span-4">
-              <FieldLabel>Observação</FieldLabel>
+              <FieldLabel>ObservaÃ§Ã£o</FieldLabel>
               <TextAreaInput
                 value={item.descricao}
                 onChange={(value) => {
@@ -1606,7 +1821,7 @@ const StagesArrayEditor = ({
                   next[index] = { ...item, descricao: value };
                   commit(next);
                 }}
-                placeholder="Critérios, peso, nota mínima ou observações do edital."
+                placeholder="CritÃ©rios, peso, nota mÃ­nima ou observaÃ§Ãµes do edital."
                 rows={2}
               />
             </div>
@@ -1770,14 +1985,14 @@ const LinkedQuestionsEditor = ({
   return (
     <div className="w-full min-w-0 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
       <div className="mb-3">
-        <FieldLabel>Questões da plataforma incluídas</FieldLabel>
+        <FieldLabel>QuestÃµes da plataforma incluÃ­das</FieldLabel>
         <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-          Busque a questão pelo enunciado ou adicione direto pelo ID. Os itens entram na lista abaixo.
+          Busque a questÃ£o pelo enunciado ou adicione direto pelo ID. Os itens entram na lista abaixo.
         </p>
       </div>
       <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
         <div>
-          <FieldLabel>Buscar questão</FieldLabel>
+          <FieldLabel>Buscar questÃ£o</FieldLabel>
           <TextInput
             value={searchTerm}
             onChange={setSearchTerm}
@@ -1811,9 +2026,9 @@ const LinkedQuestionsEditor = ({
           <FieldLabel>Resultados da busca</FieldLabel>
           <div className="mt-2 space-y-2">
             {loading ? (
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Buscando questões...</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Buscando questÃµes...</p>
             ) : results.length === 0 ? (
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Nenhuma questão encontrada.</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Nenhuma questÃ£o encontrada.</p>
             ) : results.map((question) => {
               const questionId = String(question.id || '');
               const label = getQuestionPreviewLabel(question);
@@ -1822,7 +2037,7 @@ const LinkedQuestionsEditor = ({
                 <div key={questionId} className="flex flex-col gap-2 rounded-sm border border-slate-200 px-3 py-2 dark:border-slate-800 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Questao #{questionId}</p>
-                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label || 'Sem enunciado disponível'}</p>
+                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label || 'Sem enunciado disponÃ­vel'}</p>
                   </div>
                   <button
                     type="button"
@@ -1839,25 +2054,25 @@ const LinkedQuestionsEditor = ({
         </div>
       ) : null}
       <div className="mt-3">
-        <FieldLabel>Questões adicionadas</FieldLabel>
+        <FieldLabel>QuestÃµes adicionadas</FieldLabel>
         <div className="mt-2 space-y-2">
           {selectedIds.length === 0 ? (
             <div className="rounded-sm border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-              Nenhuma questão vinculada ainda.
+              Nenhuma questÃ£o vinculada ainda.
             </div>
           ) : selectedIds.map((id) => (
             <div key={id} className="flex flex-col gap-2 rounded-sm border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Questao #{id}</p>
                 <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                  {knownLabels[id] || (unavailablePreviewIds[id] ? 'Prévia do enunciado indisponível' : 'Carregando prévia do enunciado...')}
+                  {knownLabels[id] || (unavailablePreviewIds[id] ? 'PrÃ©via do enunciado indisponÃ­vel' : 'Carregando prÃ©via do enunciado...')}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => removeQuestionId(id)}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
-                aria-label={`Remover questão ${id}`}
+                aria-label={`Remover questÃ£o ${id}`}
               >
                 <Trash2 size={14} />
               </button>
@@ -1894,6 +2109,10 @@ const AdminExamEditorPage = ({
   const [extractingNotice, setExtractingNotice] = React.useState(false);
   const [noticeExtractionMessage, setNoticeExtractionMessage] = React.useState('');
   const [localExamFiles, setLocalExamFiles] = React.useState<Partial<Record<ExamFileKind, File>>>({});
+  const [externalNoticePromptOpen, setExternalNoticePromptOpen] = React.useState(false);
+  const [externalNoticeJsonText, setExternalNoticeJsonText] = React.useState('');
+  const [applyingExternalNoticeJson, setApplyingExternalNoticeJson] = React.useState(false);
+  const [externalNoticePromptCopied, setExternalNoticePromptCopied] = React.useState(false);
 
   const updateDraft = (patch: Partial<ExamDraftState>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -2101,7 +2320,7 @@ const AdminExamEditorPage = ({
     () => Array.from(new Set([
       ...(levelOptions || []),
       'Superior',
-      'Médio',
+      'MÃ©dio',
       'Fundamental',
     ].map(String).map((value) => value.trim()).filter(Boolean))),
     [levelOptions],
@@ -2120,6 +2339,76 @@ const AdminExamEditorPage = ({
   const organizationLabels = React.useMemo(() => organizationOptions.map(getTaxonomyLabel).filter(Boolean), [organizationOptions]);
   const roleLabels = React.useMemo(() => roleOptions.map(getTaxonomyName).filter(Boolean), [roleOptions]);
   const focusLabels = React.useMemo(() => focusOptions.map(getTaxonomyName).filter(Boolean), [focusOptions]);
+  const externalNoticePrompt = React.useMemo(() => `VocÃª Ã© o extrator editorial de editais de concursos pÃºblicos do ConcursoMestre.
+
+Leia o edital/prova anexado e retorne UM ÃšNICO JSON vÃ¡lido, sem markdown, sem comentÃ¡rios fora do JSON e sem inventar dados.
+
+Voce deve GERAR o JSON final de metadados do Banco de Provas. Nao responda com explicacoes, plano de divisao, sugestao de partes, justificativa de limite ou orientacao para outra ferramenta. Se a interface permitir anexar/criar arquivo, gere um arquivo .json contendo o objeto completo. Se responder no chat, retorne somente o objeto JSON parseavel.
+
+Objetivo: preencher o Banco de Provas do ConcursoMestre.
+
+Regras:
+- Extraia apenas informaÃ§Ãµes comprovadas no documento.
+- Datas devem vir em YYYY-MM-DD quando possÃ­vel.
+- Banca, Ã³rgÃ£os e cargos devem ser os reais do edital. NÃ£o inclua frases soltas, leis, URLs, tÃ­tulos de seÃ§Ã£o ou trechos que nÃ£o sejam Ã³rgÃ£os/cargos.
+- Etapas devem vir da tabela/trecho oficial de etapas, com critÃ©rio: eliminatorio, classificatorio ou eliminatorio_classificatorio.
+- Vagas devem trazer literalmente a quantidade de vagas por Ã³rgÃ£o/cargo quando existir.
+- Requisitos, remuneraÃ§Ã£o e conteÃºdo programÃ¡tico devem vir estruturados para ediÃ§Ã£o posterior.
+- ConteÃºdo programÃ¡tico deve separar materia, topico e assunto. Se o anexo listar vÃ¡rios assuntos numerados, cada assunto deve virar um item separado.
+- metadata.examTitle deve ser curto, comercial e parecido com os tÃ­tulos da plataforma. Use o padrÃ£o "Banca - Ano - Ã“rgÃ£o - Cargo/Prova". Exemplo: "IBFC - 2018 - PM-PB - Soldado PM". NÃ£o use o tÃ­tulo completo do edital.
+- NÃ£o gere questÃµes. Aqui Ã© somente metadados do Banco de Provas.
+
+Taxonomias jÃ¡ existentes na plataforma para referÃªncia:
+- Bancas: ${agencyOptions.map(getTaxonomyLabel).filter(Boolean).slice(0, 80).join('; ') || 'nÃ£o informado'}
+- Ã“rgÃ£os: ${organizationLabels.slice(0, 120).join('; ') || 'nÃ£o informado'}
+- Cargos: ${roleLabels.slice(0, 120).join('; ') || 'nÃ£o informado'}
+- Focos/Ã¡reas: ${focusLabels.slice(0, 80).join('; ') || 'nÃ£o informado'}
+- MatÃ©rias: ${subjectOptions.map(getTaxonomyName).filter(Boolean).slice(0, 120).join('; ') || 'nÃ£o informado'}
+
+Schema obrigatÃ³rio:
+{
+  "metadata": {
+    "examTitle": "",
+    "banca": "",
+    "bancaNome": "",
+    "ano": "",
+    "nivel": "",
+    "tipoCaderno": "",
+    "corCaderno": "",
+    "orgaos": [],
+    "cargos": [],
+    "focos": [],
+    "dataInscricaoInicio": "",
+    "dataInscricaoFim": "",
+    "dataProva": "",
+    "valorInscricao": "",
+    "totalQuestoes": ""
+  },
+  "etapas": [
+    { "nome": "", "criterio": "eliminatorio", "data": "", "descricao": "" }
+  ],
+  "requisitosDetalhados": [
+    { "scopeType": "cargo", "scope": "", "chave": "Escolaridade", "texto": "" }
+  ],
+  "remuneracoesDetalhadas": [
+    { "scopeType": "cargo", "scope": "", "chave": "RemuneraÃ§Ã£o", "texto": "" }
+  ],
+  "vagasDetalhadas": [
+    { "scopeType": "cargo", "scope": "", "chave": "Vagas", "texto": "" }
+  ],
+  "conteudoProgramaticoDetalhado": [
+    { "materia": "", "topico": "", "assunto": "", "questoes": "", "orgao": "", "cargo": "", "foco": "" }
+  ],
+  "evidence": []
+}
+
+Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
+    agencyOptions,
+    focusLabels,
+    organizationLabels,
+    roleLabels,
+    subjectOptions,
+  ]);
   const requisitoItems = React.useMemo(
     () => normalizeScopedItems(draft.requisitosDetalhadosText, draft.requisitosText),
     [draft.requisitosDetalhadosText, draft.requisitosText],
@@ -2213,12 +2502,302 @@ const AdminExamEditorPage = ({
 
     const response = await fetch(resolveApiResourceUrl(attachedFile.url), { credentials: 'include' });
     if (!response.ok) {
-      throw new Error('Não foi possível abrir o edital anexado.');
+      throw new Error('NÃ£o foi possÃ­vel abrir o edital anexado.');
     }
     const blob = await response.blob();
     return new File([blob], attachedFile.name || 'edital.pdf', {
       type: attachedFile.mimeType || blob.type || 'application/pdf',
     });
+  };
+
+  const parseLinkedQuestionIds = (value: string) => String(value || '')
+    .split(/[\s,;]+/)
+    .map((item) => item.trim())
+    .filter((item) => /^\d+$/.test(item));
+
+  const readSuggestionText = (
+    suggestion: ExamQuestionEditorialSuggestion | undefined,
+    keys: Array<keyof ExamQuestionEditorialSuggestion>,
+  ) => {
+    if (!suggestion) {
+      return '';
+    }
+
+    for (const key of keys) {
+      const value = String(suggestion[key] || '').trim();
+      if (value) {
+        return value;
+      }
+    }
+
+    return '';
+  };
+
+  const findEditorialSuggestionForQuestion = (
+    question: Question,
+    suggestions: ExamQuestionEditorialSuggestion[] = [],
+  ) => {
+    const questionId = String(question.id || '').trim();
+    const questionNumber = String(
+      (question as Question & { number?: unknown; questionNumber?: unknown }).number
+      || (question as Question & { questionNumber?: unknown }).questionNumber
+      || question.rotulo
+      || '',
+    ).trim();
+
+    return suggestions.find((suggestion) => {
+      const suggestionId = String(suggestion.id || suggestion.questionId || '').trim();
+      const suggestionNumber = String(suggestion.number || suggestion.questionNumber || '').trim();
+      return Boolean(
+        (questionId && suggestionId && questionId === suggestionId)
+        || (questionNumber && suggestionNumber && questionNumber === suggestionNumber),
+      );
+    });
+  };
+
+  const enrichLinkedQuestionsEditorialContent = async (
+    questionIds: string[],
+    suggestions: ExamQuestionEditorialSuggestion[] = [],
+  ) => {
+    const ids = Array.from(new Set(questionIds)).slice(0, 12);
+    if (ids.length === 0) {
+      return { updated: 0, skipped: 0 };
+    }
+
+    const loadedQuestions = await Promise.allSettled(
+      ids.map((id) => questionService.getQuestionForAdminEdit(id)),
+    );
+    const questions = loadedQuestions
+      .filter((entry): entry is PromiseFulfilledResult<Question> => entry.status === 'fulfilled' && Boolean(entry.value?.id))
+      .map((entry) => entry.value);
+
+    if (questions.length === 0) {
+      return { updated: 0, skipped: ids.length };
+    }
+
+    const updatesById = new Map<string, Partial<Question>>();
+    const missingTeacher = questions.filter((question) => {
+      const suggestion = findEditorialSuggestionForQuestion(question, suggestions);
+      const teacherComment = readSuggestionText(suggestion, [
+        'teacherComment',
+        'professorComment',
+        'comentarioProfessor',
+      ]);
+      if (teacherComment) {
+        updatesById.set(String(question.id), {
+          ...(updatesById.get(String(question.id)) || {}),
+          teacherComment,
+          hasTeacherComment: true,
+        });
+      }
+      return !String(question.teacherComment || teacherComment || '').trim();
+    });
+    const missingDetailed = questions.filter((question) => {
+      const suggestion = findEditorialSuggestionForQuestion(question, suggestions);
+      const detailedComment = readSuggestionText(suggestion, [
+        'detailedComment',
+        'detailedAnalysis',
+        'analiseDetalhada',
+      ]);
+      if (detailedComment) {
+        updatesById.set(String(question.id), {
+          ...(updatesById.get(String(question.id)) || {}),
+          detailedComment,
+          hasDetailedComment: true,
+        });
+      }
+      return !String(question.detailedComment || detailedComment || '').trim();
+    });
+
+    try {
+      const teacherComments = await aiService.generateTeacherCommentsBatch(
+        missingTeacher.map((question) => ({ localId: String(question.id), question })),
+      );
+      Object.entries(teacherComments).forEach(([questionId, teacherComment]) => {
+        if (!teacherComment.trim()) return;
+        updatesById.set(questionId, {
+          ...(updatesById.get(questionId) || {}),
+          teacherComment,
+          hasTeacherComment: true,
+        });
+      });
+    } catch (error) {
+      clientLog.warn('Error generating teacher comments for linked exam questions:', error);
+    }
+
+    try {
+      const detailedComments = await aiService.generateDetailedAnalysesBatch(
+        missingDetailed.map((question) => ({ localId: String(question.id), question })),
+      );
+      Object.entries(detailedComments).forEach(([questionId, detailedComment]) => {
+        if (!detailedComment.trim()) return;
+        updatesById.set(questionId, {
+          ...(updatesById.get(questionId) || {}),
+          detailedComment,
+          hasDetailedComment: true,
+        });
+      });
+    } catch (error) {
+      clientLog.warn('Error generating detailed analyses for linked exam questions:', error);
+    }
+
+    let updated = 0;
+    for (const question of questions) {
+      const patch = updatesById.get(String(question.id));
+      if (!patch || Object.keys(patch).length === 0) {
+        continue;
+      }
+
+      const response = await questionService.updateQuestion(String(question.id), {
+        ...question,
+        ...patch,
+      });
+      if (response.success) {
+        updated += 1;
+      }
+    }
+
+    return { updated, skipped: Math.max(0, ids.length - questions.length) };
+  };
+
+  const applyNoticeMetadataToDraft = async (
+    metadata: ExternalExamNoticeMetadata,
+    message: string,
+    editorialSuggestions: ExamQuestionEditorialSuggestion[] = [],
+  ) => {
+    const organizations = sanitizeExtractedOrganizations(metadata.organizations || []);
+    const roles = (metadata.roles || []).map((item) => String(item || '').trim()).filter(Boolean);
+    const focuses = (metadata.focuses || []).map((item) => String(item || '').trim()).filter(Boolean);
+    const requirementsDetailed = normalizeExternalScopedItems(metadata.requirementsDetailed);
+    const remunerationsDetailed = normalizeExternalScopedItems(metadata.remunerationsDetailed);
+    const vacanciesDetailed = normalizeExternalScopedItems(metadata.vacanciesDetailed);
+    const programmaticContentDetailed = expandProgrammaticSubjectItems((metadata.programmaticContentDetailed || [])
+      .map((item) => ({
+        id: newDraftRowId(),
+        materia: String(item.materia || '').trim(),
+        materiaId: '',
+        topico: String(item.topico || '').trim(),
+        topicoId: '',
+        assunto: String(item.assunto || '').trim(),
+        assuntoId: '',
+        questoes: String(item.questoes || '').trim(),
+        orgao: String(item.orgao || '').trim(),
+        cargo: String(item.cargo || '').trim(),
+        foco: String(item.foco || '').trim(),
+      }))
+      .filter((item) => item.materia || item.topico || item.assunto));
+    const stages = normalizeExternalStageItems(metadata.stages)
+      .map((item) => ({
+        nome: String(item.nome || '').trim(),
+        criterio: item.criterio || 'classificatorio',
+        data: String(item.data || '').trim(),
+        descricao: String(item.descricao || '').trim(),
+      }));
+    const summarizeScoped = (items: Array<{ chave?: string; texto?: string }>) => items
+      .map((item) => [item.chave, item.texto].filter(Boolean).join(': '))
+      .filter(Boolean);
+    const programmaticContent = Array.from(new Set(programmaticContentDetailed
+      .map((item) => [item.materia, item.topico, item.assunto].filter(Boolean).join(' > '))
+      .filter(Boolean)));
+
+    setDraft((current) => {
+      const organizationsText = mergeTextList(current.orgaosText || current.orgaoSigla || current.orgaoNome, organizations);
+      const rolesText = mergeTextList(current.cargosText || current.cargoDescricao, roles);
+      const focusesText = mergeTextList(current.focosText || current.focoNome, focuses);
+      const primaryOrganization = organizationsText.split(/\n/).find(Boolean) || '';
+      const primaryRole = rolesText.split(/\n/).find(Boolean) || '';
+      const primaryFocus = focusesText.split(/\n/).find(Boolean) || '';
+      const displayTitle = buildExternalExamDisplayTitle(metadata, metadata.examTitle || current.nome);
+      const linkedQuestionIds = Array.from(new Set([
+        ...parseQuestionIdsText(current.questoesVinculadasText),
+        ...(metadata.platformQuestionIds || []).map(String).filter((item) => /^\d+$/.test(item)),
+      ])).join('\n');
+
+      return {
+        ...current,
+        nome: displayTitle || current.nome,
+        bancaId: metadata.agency ? '' : current.bancaId,
+        bancaSigla: metadata.agency || current.bancaSigla,
+        bancaNome: metadata.agencyName || current.bancaNome,
+        ano: metadata.year || current.ano,
+        nivel: metadata.level || current.nivel,
+        caderno: metadata.examType || current.caderno,
+        tipoCaderno: metadata.bookletType || metadata.examType || current.tipoCaderno,
+        corCaderno: metadata.bookletColor || current.corCaderno,
+        orgaoId: primaryOrganization !== (current.orgaoSigla || current.orgaoNome) ? '' : current.orgaoId,
+        orgaoSigla: primaryOrganization || current.orgaoSigla,
+        orgaoNome: primaryOrganization || current.orgaoNome,
+        orgaosText: organizationsText,
+        focoId: primaryFocus !== current.focoNome ? '' : current.focoId,
+        focoNome: primaryFocus || current.focoNome,
+        focosText: focusesText,
+        cargoDescricao: primaryRole || current.cargoDescricao,
+        cargosText: rolesText,
+        requisitosText: mergeTextList(current.requisitosText, summarizeScoped(requirementsDetailed)),
+        requisitosDetalhadosText: mergeDraftArrayText(current.requisitosDetalhadosText, requirementsDetailed),
+        remuneracaoText: mergeTextList(current.remuneracaoText, summarizeScoped(remunerationsDetailed)),
+        remuneracoesDetalhadasText: mergeDraftArrayText(current.remuneracoesDetalhadasText, remunerationsDetailed),
+        vagasText: mergeTextList(current.vagasText, summarizeScoped(vacanciesDetailed)),
+        vagasDetalhadasText: mergeDraftArrayText(current.vagasDetalhadasText, vacanciesDetailed),
+        conteudoProgramaticoText: mergeTextList(current.conteudoProgramaticoText, programmaticContent),
+        conteudoProgramaticoDetalhadoText: mergeDraftArrayText(current.conteudoProgramaticoDetalhadoText, programmaticContentDetailed),
+        etapasText: mergeDraftArrayText(current.etapasText, stages),
+        dataInscricaoInicio: current.dataInscricaoInicio || metadata.registrationStart || '',
+        dataInscricaoFim: current.dataInscricaoFim || metadata.registrationEnd || '',
+        dataProva: current.dataProva || metadata.examDate || '',
+        valorInscricao: current.valorInscricao || metadata.registrationFee || '',
+        totalQuestoes: current.totalQuestoes || metadata.totalQuestions || '',
+        questoesVinculadasText: linkedQuestionIds || current.questoesVinculadasText,
+      };
+    });
+
+    const linkedQuestionIds = parseLinkedQuestionIds(draft.questoesVinculadasText);
+    let editorialMessage = '';
+    if (linkedQuestionIds.length > 0) {
+      const editorialResult = await enrichLinkedQuestionsEditorialContent(linkedQuestionIds, editorialSuggestions);
+      if (editorialResult.updated > 0) {
+        editorialMessage = ` ${editorialResult.updated} questao(oes) vinculada(s) receberam comentario do professor e/ou analise detalhada.`;
+      }
+    }
+    setNoticeExtractionMessage(`${message}${editorialMessage}`);
+  };
+
+  const handleCopyExternalNoticePrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(externalNoticePrompt);
+      setExternalNoticePromptCopied(true);
+      window.setTimeout(() => setExternalNoticePromptCopied(false), 1800);
+    } catch {
+      setNoticeExtractionMessage('NÃ£o foi possÃ­vel copiar o prompt automaticamente. Selecione o texto e copie manualmente.');
+    }
+  };
+
+  const handleApplyExternalNoticeJson = async () => {
+    if (!externalNoticeJsonText.trim()) {
+      setNoticeExtractionMessage('Cole o JSON retornado pela IA antes de aplicar os metadados.');
+      return;
+    }
+
+    setApplyingExternalNoticeJson(true);
+    setNoticeExtractionMessage('');
+    try {
+      const parsed = JSON.parse(extractJsonObjectText(externalNoticeJsonText));
+      const metadata = normalizeExternalExamNoticeJson(parsed);
+      await applyNoticeMetadataToDraft(metadata, 'JSON da IA aplicado ao Banco de Provas. Revise os campos antes de publicar.');
+      void examService.startExtraction({
+        exam_id: draft.id && /^\d+$/.test(String(draft.id)) ? Number(draft.id) : undefined,
+        origem: 'edital',
+        parserProfile: 'external-ai-json-edital',
+        draft: metadata,
+      }).catch((error) => {
+        clientLog.warn('Error recording external exam notice JSON extraction:', error);
+      });
+    } catch (error) {
+      clientLog.warn('Error applying external exam notice JSON:', error);
+      setNoticeExtractionMessage('NÃ£o foi possÃ­vel ler o JSON colado. Verifique se a resposta contÃ©m um objeto JSON vÃ¡lido.');
+    } finally {
+      setApplyingExternalNoticeJson(false);
+    }
   };
 
   const handleExtractNoticeMetadata = async (attachedFile?: ExamFileAttachment) => {
@@ -2232,6 +2811,7 @@ const AdminExamEditorPage = ({
     try {
       const file = await readNoticeFileForExtraction(attachedFile);
       let metadata = await extractExamNoticeMetadata(file);
+      let editorialSuggestions: ExamQuestionEditorialSuggestion[] = [];
       const localOrganizations = sanitizeExtractedOrganizations(metadata.organizations);
       try {
         const pdfBase64 = await fileToBase64(file);
@@ -2247,6 +2827,9 @@ const AdminExamEditorPage = ({
             roles: roleOptions.map(getTaxonomyName).filter(Boolean),
           },
         );
+        editorialSuggestions = Array.isArray(aiMetadata.questionEditorialSuggestions)
+          ? aiMetadata.questionEditorialSuggestions
+          : [];
         const aiOrganizations = sanitizeExtractedOrganizations(aiMetadata.organizations || []);
         const normalizeScopedAiItems = (items: typeof aiMetadata.requirementsDetailed) => (items || [])
           .filter((item) => String(item.texto || '').trim())
@@ -2334,9 +2917,11 @@ const AdminExamEditorPage = ({
         const rolesText = mergeTextList(current.cargosText || current.cargoDescricao, metadata.roles);
         const primaryOrganization = organizationsText.split(/\n/).find(Boolean) || '';
         const primaryRole = rolesText.split(/\n/).find(Boolean) || '';
+        const displayTitle = buildExternalExamDisplayTitle(metadata as ExternalExamNoticeMetadata, current.nome);
 
         return {
           ...current,
+          nome: displayTitle || current.nome,
           bancaId: metadata.agency ? '' : current.bancaId,
           bancaSigla: metadata.agency || current.bancaSigla,
           bancaNome: metadata.agencyName || current.bancaNome,
@@ -2363,9 +2948,17 @@ const AdminExamEditorPage = ({
           totalQuestoes: current.totalQuestoes || metadata.totalQuestions || '',
         };
       });
-      setNoticeExtractionMessage('Edital lido por IA e parser local. Revise os campos antes de publicar.');
+      const linkedQuestionIds = parseLinkedQuestionIds(draft.questoesVinculadasText);
+      let editorialMessage = '';
+      if (linkedQuestionIds.length > 0) {
+        const editorialResult = await enrichLinkedQuestionsEditorialContent(linkedQuestionIds, editorialSuggestions);
+        if (editorialResult.updated > 0) {
+          editorialMessage = ` ${editorialResult.updated} questao(oes) vinculada(s) receberam comentario do professor e/ou analise detalhada.`;
+        }
+      }
+      setNoticeExtractionMessage(`Edital lido por IA e parser local. Revise os campos antes de publicar.${editorialMessage}`);
     } catch {
-      setNoticeExtractionMessage('Não foi possível extrair os dados do edital.');
+      setNoticeExtractionMessage('NÃ£o foi possÃ­vel extrair os dados do edital.');
     } finally {
       setExtractingNotice(false);
     }
@@ -2376,7 +2969,7 @@ const AdminExamEditorPage = ({
         <main className="min-w-0 flex-1 space-y-6">
           <EditorPanel
             title="Dados da prova"
-            description="Identificação principal, banca, órgão e cargo usados pela plataforma."
+            description="IdentificaÃ§Ã£o principal, banca, Ã³rgÃ£o e cargo usados pela plataforma."
           >
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="md:col-span-2 xl:col-span-3">
@@ -2395,7 +2988,7 @@ const AdminExamEditorPage = ({
               </div>
               <div>
                 <SmartTagSelector
-                  label="Nível"
+                  label="NÃ­vel"
                   options={normalizedLevelOptions}
                   selected={draft.nivel ? [draft.nivel] : []}
                   onChange={(values) => updateDraft({ nivel: values[0] || '' })}
@@ -2412,11 +3005,11 @@ const AdminExamEditorPage = ({
                 <TextInput value={draft.corCaderno} onChange={(value) => updateDraft({ corCaderno: value })} placeholder="Amarelo, Azul" />
               </div>
               <div>
-                <FieldLabel>Inscrição - início</FieldLabel>
+                <FieldLabel>InscriÃ§Ã£o - inÃ­cio</FieldLabel>
                 <TextInput type="date" value={draft.dataInscricaoInicio} onChange={(value) => updateDraft({ dataInscricaoInicio: value })} />
               </div>
               <div>
-                <FieldLabel>Inscrição - fim</FieldLabel>
+                <FieldLabel>InscriÃ§Ã£o - fim</FieldLabel>
                 <TextInput type="date" value={draft.dataInscricaoFim} onChange={(value) => updateDraft({ dataInscricaoFim: value })} />
               </div>
               <div>
@@ -2424,11 +3017,11 @@ const AdminExamEditorPage = ({
                 <TextInput type="date" value={draft.dataProva} onChange={(value) => updateDraft({ dataProva: value })} />
               </div>
               <div>
-                <FieldLabel>Valor da inscrição</FieldLabel>
+                <FieldLabel>Valor da inscriÃ§Ã£o</FieldLabel>
                 <TextInput value={draft.valorInscricao} onChange={(value) => updateDraft({ valorInscricao: value })} placeholder="R$ 120,00" />
               </div>
               <div>
-                <FieldLabel>Total de questões</FieldLabel>
+                <FieldLabel>Total de questÃµes</FieldLabel>
                 <TextInput type="number" value={draft.totalQuestoes} onChange={(value) => updateDraft({ totalQuestoes: value })} placeholder="80" />
               </div>
               <div id="exam-taxonomies" className="scroll-mt-24 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
@@ -2448,7 +3041,7 @@ const AdminExamEditorPage = ({
                     <TextInput
                       value={draft.bancaNome}
                       onChange={(value) => updateDraft({ bancaId: '', bancaNome: value })}
-                      placeholder="Fundação Getulio Vargas"
+                      placeholder="FundaÃ§Ã£o Getulio Vargas"
                     />
                   </div>
                 </div>
@@ -2460,14 +3053,14 @@ const AdminExamEditorPage = ({
               </div>
               <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
                 <SmartTagSelector
-                  label="Órgãos vinculados"
+                  label="Ã“rgÃ£os vinculados"
                   options={organizationOptions}
                   selected={selectedOrganizationLabels}
                   onChange={selectOrganizations}
-                  placeholder="Selecione ou cadastre um órgão"
+                  placeholder="Selecione ou cadastre um Ã³rgÃ£o"
                 />
                 <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Os órgãos existentes serão vinculados. Novos órgãos serão criados automaticamente na taxonomia global ao salvar.
+                  Os Ã³rgÃ£os existentes serÃ£o vinculados. Novos Ã³rgÃ£os serÃ£o criados automaticamente na taxonomia global ao salvar.
                 </p>
               </div>
               <div id="exam-roles" className="scroll-mt-24 md:col-span-2 xl:col-span-3">
@@ -2490,7 +3083,7 @@ const AdminExamEditorPage = ({
                 />
               </div>
               <div className="hidden md:col-span-2">
-                <FieldLabel>Requisitos extraídos do edital</FieldLabel>
+                <FieldLabel>Requisitos extraÃ­dos do edital</FieldLabel>
                 <TextAreaInput
                   value={draft.requisitosText}
                   onChange={(value) => updateDraft({ requisitosText: value })}
@@ -2498,7 +3091,7 @@ const AdminExamEditorPage = ({
                 />
               </div>
               <div className="hidden">
-                <FieldLabel>Remuneração</FieldLabel>
+                <FieldLabel>RemuneraÃ§Ã£o</FieldLabel>
                 <TextAreaInput
                   value={draft.remuneracaoText}
                   onChange={(value) => updateDraft({ remuneracaoText: value })}
@@ -2513,25 +3106,25 @@ const AdminExamEditorPage = ({
                   placeholder={'Soldado PM: 900 vagas + CR\nSoldado BM: 100 vagas'}
                 />
                 <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Use uma linha por cargo quando o edital separar vagas por cargo ou órgão.
+                  Use uma linha por cargo quando o edital separar vagas por cargo ou Ã³rgÃ£o.
                 </p>
               </div>
               <div className="hidden md:col-span-2 xl:col-span-3">
-                <FieldLabel>Conteúdo programático</FieldLabel>
+                <FieldLabel>ConteÃºdo programÃ¡tico</FieldLabel>
                 <TextAreaInput
                   value={draft.conteudoProgramaticoText}
                   onChange={(value) => updateDraft({ conteudoProgramaticoText: value })}
-                  placeholder="Disciplinas, tópicos e assuntos previstos no edital."
+                  placeholder="Disciplinas, tÃ³picos e assuntos previstos no edital."
                   rows={6}
                 />
               </div>
               <div className="hidden">
                 <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <FieldLabel>Inscrição - início</FieldLabel>
+                  <FieldLabel>InscriÃ§Ã£o - inÃ­cio</FieldLabel>
                   <TextInput type="date" value={draft.dataInscricaoInicio} onChange={(value) => updateDraft({ dataInscricaoInicio: value })} />
                 </div>
                 <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <FieldLabel>Inscrição - fim</FieldLabel>
+                  <FieldLabel>InscriÃ§Ã£o - fim</FieldLabel>
                   <TextInput type="date" value={draft.dataInscricaoFim} onChange={(value) => updateDraft({ dataInscricaoFim: value })} />
                 </div>
                 <div className="flex min-w-0 flex-col justify-end gap-1">
@@ -2539,11 +3132,11 @@ const AdminExamEditorPage = ({
                   <TextInput type="date" value={draft.dataProva} onChange={(value) => updateDraft({ dataProva: value })} />
                 </div>
                 <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <FieldLabel>Valor da inscrição</FieldLabel>
+                  <FieldLabel>Valor da inscriÃ§Ã£o</FieldLabel>
                   <TextInput value={draft.valorInscricao} onChange={(value) => updateDraft({ valorInscricao: value })} placeholder="R$ 120,00" />
                 </div>
                 <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <FieldLabel>Total de questões</FieldLabel>
+                  <FieldLabel>Total de questÃµes</FieldLabel>
                   <TextInput type="number" value={draft.totalQuestoes} onChange={(value) => updateDraft({ totalQuestoes: value })} placeholder="80" />
                 </div>
               </div>
@@ -2559,14 +3152,14 @@ const AdminExamEditorPage = ({
               <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
                 <ScopedArrayEditor
                   title="Requisitos"
-                  description="Adicione requisitos por órgão, cargo, foco ou para todos os cargos do edital."
+                  description="Adicione requisitos por Ã³rgÃ£o, cargo, foco ou para todos os cargos do edital."
                   items={requisitoItems}
                   organizationOptions={scopedOrganizationOptions}
                   roleOptions={scopedRoleOptions}
-                  placeholder="Escolaridade, CNH, idade mínima, registro profissional..."
+                  placeholder="Escolaridade, CNH, idade mÃ­nima, registro profissional..."
                   keyValue
                   keyPlaceholder="Ex.: Escolaridade"
-                  valueLabel="Valor / descrição"
+                  valueLabel="Valor / descriÃ§Ã£o"
                   onChange={(items) => updateDraft({
                     requisitosDetalhadosText: serializeDraftArray(items),
                     requisitosText: items
@@ -2582,19 +3175,19 @@ const AdminExamEditorPage = ({
               </div>
               <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
                 <ScopedArrayEditor
-                  title="Remuneração"
-                  description="Informe salários, adicionais e benefícios separados por órgão, cargo ou foco quando o edital trouxer diferenças."
+                  title="RemuneraÃ§Ã£o"
+                  description="Informe salÃ¡rios, adicionais e benefÃ­cios separados por Ã³rgÃ£o, cargo ou foco quando o edital trouxer diferenÃ§as."
                   items={remuneracaoItems}
                   organizationOptions={scopedOrganizationOptions}
                   roleOptions={scopedRoleOptions}
-                  placeholder="R$ 3.500,00 + benefícios"
+                  placeholder="R$ 3.500,00 + benefÃ­cios"
                   onChange={(items) => updateDraft({ remuneracoesDetalhadasText: serializeDraftArray(items), remuneracaoText: items.map((item) => item.texto).filter(Boolean).join('\n') })}
                 />
               </div>
               <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
                 <ScopedArrayEditor
                   title="Vagas"
-                  description="Cadastre vagas por órgão, cargo ou foco. Use linhas diferentes para ampla concorrência, cotas ou cadastro reserva."
+                  description="Cadastre vagas por Ã³rgÃ£o, cargo ou foco. Use linhas diferentes para ampla concorrÃªncia, cotas ou cadastro reserva."
                   items={vagaItems}
                   organizationOptions={scopedOrganizationOptions}
                   roleOptions={scopedRoleOptions}
@@ -2632,6 +3225,93 @@ const AdminExamEditorPage = ({
                 </span>
               </div>
             ) : null}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/50">
+              <div className="min-w-0">
+                <p className="text-sm font-black uppercase tracking-[0.14em] text-slate-900 dark:text-slate-100">
+                  Importador de questÃµes
+                </p>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+                  Abra o importador para extrair, revisar ou vincular questÃµes a uma prova do Banco de Provas.
+                </p>
+              </div>
+              <a
+                href="/admin/operation/import"
+                target="_blank"
+                rel="noreferrer"
+                className={`${ADMIN_PRIMARY_BUTTON_CLASS} min-h-10 px-4 py-2 text-sm`}
+              >
+                <Link2 size={16} />
+                Abrir importador
+              </a>
+            </div>
+            <div className="mb-4 rounded-sm border border-violet-200 bg-violet-50/60 dark:border-violet-900/60 dark:bg-violet-950/20">
+              <button
+                type="button"
+                onClick={() => setExternalNoticePromptOpen((current) => !current)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <span>
+                  <span className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.16em] text-violet-700 dark:text-violet-200">
+                    <Sparkles size={15} />
+                    Gerar metadados com IA externa
+                  </span>
+                  <span className="mt-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Copie o prompt, envie o edital/prova para a IA e peça para ela gerar o JSON; depois cole o retorno para preencher o Banco de Provas.
+                  </span>
+                </span>
+                <ChevronDown size={18} className={`text-violet-600 transition-transform ${externalNoticePromptOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {externalNoticePromptOpen ? (
+                <div className="space-y-4 border-t border-violet-200 p-4 dark:border-violet-900/60">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <FieldLabel>Prompt para a IA</FieldLabel>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyExternalNoticePrompt()}
+                        className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-9 px-3 py-2 text-xs`}
+                      >
+                        <FileText size={14} />
+                        {externalNoticePromptCopied ? 'Copiado' : 'Copiar prompt'}
+                      </button>
+                    </div>
+                    <textarea
+                      readOnly
+                      value={externalNoticePrompt}
+                      rows={10}
+                      className={`min-h-64 w-full resize-y ${ADMIN_FIELD_CLASS} font-mono text-xs leading-5`}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <FieldLabel>JSON retornado pela IA</FieldLabel>
+                    <textarea
+                      value={externalNoticeJsonText}
+                      onChange={(event) => setExternalNoticeJsonText(event.target.value)}
+                      rows={8}
+                      placeholder='Cole aqui o JSON com "metadata", "etapas", "requisitosDetalhados", "vagasDetalhadas" e "conteudoProgramaticoDetalhado"...'
+                      className={`min-h-52 w-full resize-y ${ADMIN_FIELD_CLASS} font-mono text-xs leading-5`}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      A aplicaÃ§Ã£o nÃ£o publica a prova. Ela apenas preenche os campos para revisÃ£o.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleApplyExternalNoticeJson()}
+                      disabled={applyingExternalNoticeJson || !externalNoticeJsonText.trim()}
+                      className={`${ADMIN_PRIMARY_BUTTON_CLASS} min-h-10 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {applyingExternalNoticeJson ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                      Aplicar JSON
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <div className="grid gap-3 lg:grid-cols-3">
               {EXAM_FILE_CONFIG.map((config) => {
                 const attachedFile = (draft.files || []).find((file) => file.kind === config.kind);
@@ -2760,7 +3440,7 @@ const AdminExamEditorPage = ({
 
               <div className="space-y-2 border-t border-slate-200 pt-4 text-sm dark:border-slate-700">
                 <div className="flex items-start justify-between gap-3">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Questões vinculadas</span>
+                  <span className="font-medium text-slate-500 dark:text-slate-400">QuestÃµes vinculadas</span>
                   <span className="inline-flex items-center gap-1 font-semibold text-slate-900 dark:text-slate-100">
                     <Link2 size={13} />
                     {linkedQuestionsCount}
@@ -2809,7 +3489,7 @@ const AdminExamEditorPage = ({
               </div>
               <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                 Banca: {draft.bancaSigla || draft.bancaNome || '-'}<br />
-                Órgão: {draft.orgaoSigla || draft.orgaoNome || '-'}<br />
+                Ã“rgÃ£o: {draft.orgaoSigla || draft.orgaoNome || '-'}<br />
                 Cargo: {draft.cargoDescricao || '-'}<br />
                 Caderno: {draft.caderno || [draft.tipoCaderno, draft.corCaderno].filter(Boolean).join(' - ') || '-'}<br />
                 Arquivos: {(draft.files || []).length}/3
@@ -2836,3 +3516,4 @@ const AdminExamEditorPage = ({
 };
 
 export default AdminExamEditorPage;
+

@@ -10,7 +10,17 @@
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Prova, Question, QuestionTaxonomyLabel, SystemSettings } from '@types';
+import type {
+  Prova,
+  Question,
+  QuestionAlternativePayload,
+  QuestionAsset,
+  QuestionFiltersPayload,
+  QuestionFilterValuePayload,
+  QuestionPayload,
+  QuestionTaxonomyLabel,
+  SystemSettings,
+} from '@types';
 import { aiService, questionService, type PageExtractionResult } from '@services/questions';
 import { adminService } from '@services/admin/adminService';
 import { examService } from '@services/exams/examService';
@@ -30,9 +40,12 @@ export type GenerateSpecificType = 'teacher' | 'detailed';
 export type ImportPublishAction = 'exam' | 'questions' | `question:${number}`;
 
 interface ImportedQuestionDraft extends Partial<Question> {
+  importTempId?: string;
+  questionCreatePayload?: QuestionPayload;
   text?: string;
   number?: number | string;
   questionNumber?: number | string;
+  question_number?: number | string;
   isQuestion?: boolean;
   rejectionReason?: string;
   supportText?: string;
@@ -43,6 +56,7 @@ interface ImportedQuestionDraft extends Partial<Question> {
   contextTitle?: string;
   contextScope?: string;
   sourcePage?: number | string;
+  needsImportReview?: boolean;
   hasFigure?: boolean;
   figureDescription?: string;
   figureBox?: FigureBox;
@@ -82,6 +96,37 @@ interface ImportedQuestionDraft extends Partial<Question> {
   extractionQuality?: QuestionExtractionQuality;
 }
 
+interface QuestionCreateImportCardParams {
+  questionNumber: number;
+  statement: string;
+  introText: string;
+  referenceText: string;
+  teacherComment: string;
+  detailedComment: string;
+  contextKey: string;
+  bancas: QuestionTaxonomyLabel[];
+  orgaos: QuestionTaxonomyLabel[];
+  cargos: QuestionTaxonomyLabel[];
+  assuntos: Question['assuntos'];
+  anos: Question['anos'];
+  carreiras: NonNullable<Question['carreiras']>;
+  niveis: QuestionTaxonomyLabel[];
+  nivel?: Question['nivel'];
+  tiposProva: Array<number | QuestionTaxonomyLabel>;
+  tipo: string;
+  dificuldade: number;
+  itens: Question['itens'];
+  resposta: number;
+  correctOptionIndex?: number;
+  hasFigure: boolean;
+  figureDescription?: string;
+  supportImages: ImportedQuestionImageDraft[];
+  status: ImportedQuestionStatus;
+  needsImportReview: boolean;
+  reasons: ImportedQuestionStatusReason[];
+  quality: QuestionExtractionQuality;
+}
+
 type ExtractionFieldMetadata = {
   origin: 'mechanical' | 'ai' | 'manual';
   confidence: number;
@@ -111,10 +156,16 @@ interface ImportMetadata extends NonNullable<PageExtractionResult['metadata']> {
   name?: string;
   nome?: string;
   ano?: string | number;
+  organization?: string;
+  organizations?: unknown[];
+  orgao?: string;
   role?: string;
   cargo?: string;
   roles?: string[];
   cargos?: string[];
+  level?: string;
+  nivel?: string;
+  focos?: unknown[];
   source?: string;
   sources?: string[];
   orgaos?: unknown[];
@@ -130,6 +181,46 @@ interface ImportMetadata extends NonNullable<PageExtractionResult['metadata']> {
   total_questions?: string | number;
   totalQuestoes?: string | number;
   questionCount?: string | number;
+  questionStart?: string | number;
+  questionEnd?: string | number;
+  startQuestion?: string | number;
+  endQuestion?: string | number;
+  firstQuestionNumber?: string | number;
+  lastQuestionNumber?: string | number;
+  numeroInicial?: string | number;
+  numeroFinal?: string | number;
+  questaoInicial?: string | number;
+  questaoFinal?: string | number;
+  intervaloQuestoes?: unknown;
+  questionRange?: unknown;
+  registrationStart?: string;
+  registrationEnd?: string;
+  examDate?: string;
+  registrationFee?: string;
+  dataInscricaoInicio?: string;
+  dataInscricaoFim?: string;
+  dataProva?: string;
+  valorInscricao?: string;
+  requirements?: unknown[];
+  requirementsDetailed?: unknown[];
+  requisitos?: unknown[];
+  requisitosDetalhados?: unknown[];
+  remunerations?: unknown[];
+  remunerationsDetailed?: unknown[];
+  remuneracoes?: unknown[];
+  remuneracoesDetalhadas?: unknown[];
+  vacancies?: unknown[];
+  vacanciesDetailed?: unknown[];
+  vagas?: unknown[];
+  vagasDetalhadas?: unknown[];
+  programmaticContent?: unknown[];
+  programmaticContentDetailed?: unknown[];
+  conteudoProgramatico?: unknown[];
+  conteudoProgramaticoDetalhado?: unknown[];
+  stages?: unknown[];
+  etapas?: unknown[];
+  platformQuestionIds?: unknown[];
+  questoesVinculadas?: unknown[];
 }
 
 interface FigureBox {
@@ -140,6 +231,7 @@ interface FigureBox {
 }
 
 interface UseAdminImportWorkflowOptions {
+  enabled?: boolean;
   systemSettings: SystemSettings;
   addToast: (message: string, type?: string) => void;
   onImportedQuestionsSaved?: (questions: Question[]) => void;
@@ -149,6 +241,7 @@ interface UseAdminImportWorkflowOptions {
 
 interface ImportedContextDraft {
   tempId: string;
+  externalKey?: string;
   title: string;
   text: string;
   referenceText?: string;
@@ -489,6 +582,130 @@ const buildSequentialQuestionNumbers = (total: number) => Array.from(
   (_, index) => index + 1,
 );
 
+const buildInclusiveQuestionNumbers = (start: number, end: number) => {
+  const normalizedStart = Math.round(start);
+  const normalizedEnd = Math.round(end);
+  if (
+    !Number.isFinite(normalizedStart)
+    || !Number.isFinite(normalizedEnd)
+    || normalizedStart <= 0
+    || normalizedEnd < normalizedStart
+    || normalizedEnd - normalizedStart > 1000
+  ) {
+    return [];
+  }
+
+  return Array.from(
+    { length: normalizedEnd - normalizedStart + 1 },
+    (_, index) => normalizedStart + index,
+  );
+};
+
+const readPositiveQuestionNumber = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+
+  const text = typeof value === 'string'
+    ? value
+    : value && typeof value === 'object'
+      ? JSON.stringify(value)
+      : '';
+  const match = text.replace(/\./g, '').match(/\b(\d{1,4})\b/);
+  const parsed = match ? Number(match[1]) : 0;
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 1000 ? Math.round(parsed) : 0;
+};
+
+const resolveQuestionRangeFromMetadata = (metadata: Record<string, unknown> | null | undefined) => {
+  const rangeRecord = toLooseRecord(readLooseField(metadata, [
+    'questionRange',
+    'intervaloQuestoes',
+    'intervalo_questoes',
+    'rangeQuestoes',
+    'faixaQuestoes',
+    'faixa_questoes',
+  ]));
+
+  const start = readPositiveQuestionNumber(readLooseField(metadata, [
+    'questionStart',
+    'startQuestion',
+    'firstQuestionNumber',
+    'numeroInicial',
+    'questaoInicial',
+    'questãoInicial',
+    'primeiraQuestao',
+    'primeiraQuestão',
+  ]) || readLooseField(rangeRecord, ['start', 'inicio', 'início', 'from', 'de', 'first']));
+
+  const end = readPositiveQuestionNumber(readLooseField(metadata, [
+    'questionEnd',
+    'endQuestion',
+    'lastQuestionNumber',
+    'numeroFinal',
+    'questaoFinal',
+    'questãoFinal',
+    'ultimaQuestao',
+    'últimaQuestão',
+  ]) || readLooseField(rangeRecord, ['end', 'fim', 'to', 'ate', 'até', 'last']));
+
+  return { start, end };
+};
+
+const resolveExpectedQuestionNumbersForImport = ({
+  declaredTotal,
+  metadata,
+  questionNumbers,
+}: {
+  declaredTotal: number;
+  metadata?: Record<string, unknown> | null;
+  questionNumbers: number[];
+}) => {
+  const uniqueQuestionNumbers = Array.from(new Set(
+    questionNumbers
+      .map((number) => Math.round(Number(number)))
+      .filter((number) => Number.isFinite(number) && number > 0),
+  )).sort((left, right) => left - right);
+
+  const normalizedTotal = Number.isFinite(declaredTotal) && declaredTotal > 0
+    ? Math.round(declaredTotal)
+    : 0;
+  const { start, end } = resolveQuestionRangeFromMetadata(metadata);
+
+  if (start > 0 && end >= start) {
+    return buildInclusiveQuestionNumbers(start, end);
+  }
+
+  if (start > 0 && normalizedTotal > 0) {
+    return buildInclusiveQuestionNumbers(start, start + normalizedTotal - 1);
+  }
+
+  if (end > 0 && normalizedTotal > 0) {
+    return buildInclusiveQuestionNumbers(Math.max(1, end - normalizedTotal + 1), end);
+  }
+
+  if (uniqueQuestionNumbers.length > 0) {
+    const minQuestionNumber = uniqueQuestionNumbers[0];
+    const maxQuestionNumber = uniqueQuestionNumbers[uniqueQuestionNumbers.length - 1];
+
+    if (normalizedTotal > 0 && minQuestionNumber > 1) {
+      const observedSpan = maxQuestionNumber - minQuestionNumber + 1;
+      if (observedSpan === normalizedTotal) {
+        return buildInclusiveQuestionNumbers(minQuestionNumber, maxQuestionNumber);
+      }
+
+      if (uniqueQuestionNumbers.length <= normalizedTotal) {
+        return buildInclusiveQuestionNumbers(minQuestionNumber, minQuestionNumber + normalizedTotal - 1);
+      }
+    }
+
+    if (normalizedTotal <= 0) {
+      return uniqueQuestionNumbers;
+    }
+  }
+
+  return normalizedTotal > 0 ? buildSequentialQuestionNumbers(normalizedTotal) : uniqueQuestionNumbers;
+};
+
 const stripHtml = (value: string) => value.replace(/<[^>]*>?/gm, '');
 
 const escapeHtml = (value: string) => String(value || '')
@@ -768,7 +985,9 @@ type ImportedQuestionStatusReason =
   | 'tabela_referenciada_nao_encontrada'
   | 'referencia_possivelmente_misturada'
   | 'contexto_vinculo_ambiguo'
-  | 'tabela_visual_sem_recorte';
+  | 'tabela_visual_sem_recorte'
+  | 'classificacao_incompleta'
+  | 'comentario_editorial_sem_base_suficiente';
 type ImportedQuestionType =
   | 'multipla escolha'
   | 'certo ou errado'
@@ -2992,11 +3211,36 @@ const collectReferenceSpans = (clean: string) => {
     }, []);
 };
 
+const isOperationalImportReference = (value: string) => {
+  const clean = normalizeComparisonText(value);
+  if (!clean) {
+    return true;
+  }
+
+  const withoutAccents = clean.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  const isOnlyFilePagePointer = /^(?:arquivo\s+)?[\w\s().-]+\.(?:pdf|png|jpe?g|webp)\s*,?\s*(?:pag(?:ina)?|page)\s*\d+$/i
+    .test(withoutAccents);
+  const isGenericPagePointer = /^(?:prova|gabarito|edital|caderno)(?:\s+[\w\s().-]+)?\s*,?\s*(?:pag(?:ina)?|page)\s*\d+$/i
+    .test(withoutAccents);
+
+  return isOnlyFilePagePointer || isGenericPagePointer;
+};
+
+const sanitizeReferenceTextForImport = (value: string) => (
+  String(value || '')
+    .split(/\n{2,}|\n/)
+    .map(normalizeReferenceSegment)
+    .filter((segment) => segment && !isOperationalImportReference(segment))
+    .join('\n\n')
+    .trim()
+);
+
 const mergeReferenceText = (...values: string[]) => {
   const seen = new Set<string>();
   const segments = values
     .flatMap((value) => String(value || '').split(/\n{2,}/))
     .map(normalizeReferenceSegment)
+    .map(sanitizeReferenceTextForImport)
     .filter(Boolean)
     .filter((value) => {
       const key = normalizeComparisonText(value);
@@ -4202,6 +4446,12 @@ const getQuestionExpectedOptionsCount = (question: Question) => {
   if (modality.includes('certo') || modality.includes('verdadeiro')) {
     return 2;
   }
+  const actualOptionsCount = Array.isArray(question.itens)
+    ? question.itens.map((item) => String(item.corpo || '').trim()).filter(Boolean).length
+    : 0;
+  if (actualOptionsCount >= 2) {
+    return actualOptionsCount;
+  }
   if (isPlaceholderQuestion(question) || inferQuestionExtractionOrigin(question) === 'manual') {
     return Array.isArray(question.itens) ? question.itens.length : 0;
   }
@@ -4214,20 +4464,22 @@ const getQuestionExpectedOptionsCount = (question: Question) => {
 
 const getQuestionIntroText = (question: Question) => {
   const draft = question as unknown as ImportedQuestionDraft & { intro_text?: string };
-  return String(draft.introText || draft.intro_text || '').trim();
+  return String(question.content?.supportText || draft.introText || draft.intro_text || '').trim();
 };
 
 const getQuestionReferenceText = (question: Question) => {
   const draft = question as unknown as ImportedQuestionDraft & { reference_text?: string };
-  return String(draft.referenceText || draft.reference_text || '').trim();
+  return String(question.content?.reference || draft.referenceText || draft.reference_text || '').trim();
 };
 
 const getQuestionStatementText = (question: Question) => (
-  String(question.enunciado || (question as unknown as { text?: string }).text || '').trim()
+  String(question.content?.statement || question.enunciado || (question as unknown as { text?: string }).text || '').trim()
 );
 
 const getQuestionOptionTexts = (question: Question) => (
-  Array.isArray(question.itens)
+  Array.isArray(question.alternatives) && question.alternatives.length
+    ? question.alternatives.map((item) => String(item.text || '').trim()).filter(Boolean)
+    : Array.isArray(question.itens)
     ? question.itens.map((item) => String(item.corpo || '').trim()).filter(Boolean)
     : Array.isArray((question as unknown as ImportedQuestionDraft).options)
       ? ((question as unknown as ImportedQuestionDraft).options || [])
@@ -4424,13 +4676,13 @@ const auditQuestionCoverage = (
   const incompleteQuestionNumbers = auditedQuestions
     .filter((question) => {
       const quality = (question as unknown as ImportedQuestionDraft).qualityReport;
-      return Boolean(quality && !quality.complete);
+      return Boolean(quality?.localized && !quality.complete);
     })
     .map(getReliableExtractedQuestionNumber)
     .filter((number, index, list) => number > 0 && list.indexOf(number) === index)
     .sort((left, right) => left - right);
   const missingQuestionNumbers = expectedQuestionNumbers
-    .filter((number) => !completeQuestionNumbers.includes(number));
+    .filter((number) => !localizedQuestionNumbers.includes(number));
   const visualPendingQuestionNumbers = auditedQuestions
     .filter((question) => {
       const quality = (question as unknown as ImportedQuestionDraft).qualityReport;
@@ -6092,6 +6344,280 @@ const createTaxonomyLabel = (name: string, extras: Record<string, unknown> = {})
   ...extras,
 });
 
+const readLooseField = (record: Record<string, unknown> | null | undefined, keys: string[]) => {
+  if (!record) return undefined;
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) {
+      return record[key];
+    }
+  }
+
+  const normalizedKeyMap = new Map<string, string>();
+  Object.keys(record).forEach((key) => {
+    normalizedKeyMap.set(normalizeComparisonText(key).replace(/\s+/g, ''), key);
+  });
+
+  for (const key of keys) {
+    const normalizedKey = normalizeComparisonText(key).replace(/\s+/g, '');
+    const matchedKey = normalizedKeyMap.get(normalizedKey);
+    if (matchedKey && Object.prototype.hasOwnProperty.call(record, matchedKey)) {
+      return record[matchedKey];
+    }
+  }
+
+  return undefined;
+};
+
+const readLooseText = (record: Record<string, unknown> | null | undefined, keys: string[]) => {
+  const value = readLooseField(record, keys);
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim();
+  }
+  return '';
+};
+
+const readLooseArray = (record: Record<string, unknown> | null | undefined, keys: string[]) => {
+  const value = readLooseField(record, keys);
+  return Array.isArray(value) ? value : [];
+};
+
+const readLooseArrayOrScalar = (record: Record<string, unknown> | null | undefined, keys: string[]) => {
+  const value = readLooseField(record, keys);
+  if (Array.isArray(value)) return value;
+  return value === null || value === undefined || value === '' ? [] : [value];
+};
+
+const metadataItemToDisplayText = (item: unknown) => {
+  const record = toLooseRecord(item);
+  if (record) {
+    return readLooseText(record, [
+      'name',
+      'nome',
+      'title',
+      'titulo',
+      'sigla',
+      'label',
+      'descricao',
+      'description',
+      'texto',
+      'text',
+      'value',
+    ]);
+  }
+  return String(item ?? '').trim();
+};
+
+const readLooseMetadataTextList = (record: Record<string, unknown> | null | undefined, keys: string[]) => (
+  readLooseArrayOrScalar(record, keys)
+    .map(metadataItemToDisplayText)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.findIndex((candidate) => normalizeComparisonText(candidate) === normalizeComparisonText(item)) === index)
+);
+
+const readLooseStructuredList = (record: Record<string, unknown> | null | undefined, keys: string[]) => {
+  const values = readLooseArrayOrScalar(record, keys);
+  return values.length > 0 ? values : [];
+};
+
+const firstMetadataText = (items: string[], fallback = '') => items.find(Boolean) || fallback;
+
+const extractJsonObjectText = (value: string) => {
+  const clean = String(value || '').trim();
+  const fenced = clean.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  const candidate = fenced || clean;
+  if (candidate.startsWith('{') && candidate.endsWith('}')) return candidate;
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  return start >= 0 && end > start ? candidate.slice(start, end + 1) : candidate;
+};
+
+const parseQuestionNumberList = (value: unknown): number[] => {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => parseQuestionNumberList(item))
+      .filter((number, index, list) => list.indexOf(number) === index)
+      .sort((left, right) => left - right);
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return [Math.round(value)];
+  }
+
+  const text = String(value || '').trim();
+  if (!text) return [];
+  const numbers = new Set<number>();
+  const rangeMatches = Array.from(text.matchAll(/(\d{1,3})\s*(?:a|ate|até|-|–|—)\s*(\d{1,3})/gi));
+  rangeMatches.forEach((match) => {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (Number.isFinite(start) && Number.isFinite(end) && start > 0 && end >= start && end - start <= 200) {
+      for (let number = start; number <= end; number += 1) numbers.add(number);
+    }
+  });
+  Array.from(text.matchAll(/\d{1,3}/g)).forEach((match) => {
+    const number = Number(match[0]);
+    if (Number.isFinite(number) && number > 0) numbers.add(number);
+  });
+  return Array.from(numbers).sort((left, right) => left - right);
+};
+
+const normalizeAnswerIndex = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value >= 1 && value <= 5 ? value - 1 : value >= 0 && value <= 4 ? value : undefined;
+  }
+  const clean = String(value || '').trim().toUpperCase();
+  if (/^[A-E]$/.test(clean)) {
+    return clean.charCodeAt(0) - 65;
+  }
+  const numeric = Number(clean.match(/\d+/)?.[0] || Number.NaN);
+  if (Number.isFinite(numeric)) {
+    return numeric >= 1 && numeric <= 5 ? numeric - 1 : numeric >= 0 && numeric <= 4 ? numeric : undefined;
+  }
+  return undefined;
+};
+
+const inferImportedQuestionTypeFromPayload = (value: unknown, optionsCount: number): ImportedQuestionType => {
+  const normalized = normalizeComparisonText(String(value || ''));
+  if (normalized.includes('certo') && normalized.includes('errado')) return 'certo ou errado';
+  if (normalized.includes('verdadeiro') || normalized.includes('falso')) return 'verdadeiro/falso';
+  if (normalized.includes('discurs')) return 'discursiva';
+  if (optionsCount >= 2) return 'multipla escolha';
+  return 'desconhecido';
+};
+
+const readExternalImageData = (record?: Record<string, unknown> | null) => {
+  const value = readLooseText(record, [
+    'imageData',
+    'image_data',
+    'base64',
+    'data',
+    'dataUrl',
+    'dataURL',
+    'src',
+    'url',
+  ]);
+  return value.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '').trim();
+};
+
+const normalizeAiQuestionOptions = (value: unknown) => {
+  const labels = ['A', 'B', 'C', 'D', 'E'];
+  if (Array.isArray(value)) {
+    return value.map((item, index) => {
+      const record = toLooseRecord(item);
+      const label = readLooseText(record, ['label', 'letra', 'option', 'alternativa']).toUpperCase() || labels[index] || String(index + 1);
+      const text = record
+        ? readLooseText(record, ['text', 'texto', 'value', 'conteudo', 'content', 'description'])
+        : String(item || '').trim();
+      return {
+        label,
+        text,
+        imageData: readExternalImageData(record),
+        pageImageData: readLooseText(record, ['pageImageData', 'page_image_data', 'pageBase64']),
+        figureBox: normalizeExtractionFigureBox(readLooseField(record, ['figureBox', 'box', 'bbox']) as FigureBox),
+      };
+    }).filter((option) => option.text || option.imageData);
+  }
+  const record = toLooseRecord(value);
+  if (record) {
+    return labels.map((label) => ({
+      label,
+      text: readLooseText(record, [label, label.toLowerCase()]),
+      imageData: '',
+      pageImageData: '',
+      figureBox: undefined,
+    })).filter((option) => option.text);
+  }
+  return [];
+};
+
+const externalDetailedCommentIsGeneric = (value: string) => {
+  const normalized = String(value || '').toLowerCase();
+  if (!normalized.trim()) return false;
+
+  const genericPatterns = [
+    'não acompanha o critério decisivo do item',
+    'não corresponde ao gabarito oficial',
+    'corresponde ao gabarito oficial',
+    'não atende ao comando da questão',
+  ];
+  const genericOccurrences = genericPatterns.reduce((total, pattern) => (
+    total + normalized.split(pattern).length - 1
+  ), 0);
+
+  return genericOccurrences >= 2;
+};
+
+const normalizeExternalAiContextPayload = (payload: unknown): ImportedContextDraft[] => {
+  const contexts: ImportedContextDraft[] = [];
+  const addContext = (key: string, value: unknown, index: number) => {
+    const record = toLooseRecord(value);
+    const title = readLooseText(record, ['title', 'titulo', 'name', 'nome']) || key || `Contexto ${index + 1}`;
+    const text = record
+      ? readLooseText(record, ['body', 'text', 'texto', 'value', 'conteudo', 'content'])
+      : String(value || '').trim();
+    const referenceText = sanitizeReferenceTextForImport(readLooseText(record, ['reference', 'referenceText', 'referencia', 'fonte']));
+    const questionNumbers = parseQuestionNumberList(
+      readLooseField(record, ['questionNumbers', 'questionIds', 'question_ids', 'questions', 'questoes', 'appliesTo', 'vinculadoAs']),
+    );
+    const contextImageData = readExternalImageData(record);
+    const contextPageImageData = readLooseText(record, ['pageImageData', 'page_image_data', 'pageBase64']);
+    const contextFigureBox = normalizeExtractionFigureBox(readLooseField(record, ['figureBox', 'box', 'bbox']) as FigureBox);
+    const figures = [
+      ...readLooseArray(record, ['assets']),
+      ...readLooseArray(record, ['figures', 'imagens', 'images']),
+    ].map((figure, figureIndex) => {
+      const figureRecord = toLooseRecord(figure);
+      return {
+        figureKey: readLooseText(figureRecord, ['tempId', 'id', 'figureKey'])
+          || `ai-context-${index + 1}-fig-${figureIndex + 1}`,
+        type: 'figure',
+        title: readLooseText(figureRecord, ['title', 'titulo', 'name', 'nome']) || `Figura ${figureIndex + 1}`,
+        description: figureRecord
+          ? readLooseText(figureRecord, ['description', 'descricao', 'text', 'texto'])
+          : String(figure || '').trim(),
+        imageData: readExternalImageData(figureRecord),
+        pageImageData: readLooseText(figureRecord, ['pageImageData', 'page_image_data', 'pageBase64']),
+        figureBox: normalizeExtractionFigureBox(readLooseField(figureRecord, ['figureBox', 'box', 'bbox']) as FigureBox),
+        page: Number(readLooseField(figureRecord, ['page', 'pagina']) || 0) || undefined,
+        order: figureIndex + 1,
+      };
+    });
+
+    if (!text && !contextImageData && figures.length === 0) return;
+    contexts.push({
+      tempId: readLooseText(record, ['tempId', 'id', 'contextKey'])
+        || `ai-context-${index + 1}-${slugify(title || key || 'contexto')}`,
+      externalKey: key,
+      title,
+      text,
+      referenceText,
+      richText: text,
+      questionNumbers,
+      hasFigure: figures.length > 0 || Boolean(contextImageData || contextFigureBox || readLooseField(record, ['hasFigure', 'temFigura'])),
+      figureDescription: readLooseText(record, ['figureDescription', 'descricaoFigura']) || figures.map((figure) => figure.description).filter(Boolean).join('\n'),
+      page: Number(readLooseField(record, ['page', 'pagina']) || 0),
+      sourcePage: Number(readLooseField(record, ['sourcePage', 'paginaFonte']) || readLooseField(record, ['page', 'pagina']) || 0) || undefined,
+      imageData: contextImageData,
+      pageImageData: contextPageImageData,
+      figureBox: contextFigureBox,
+      figures,
+    });
+  };
+
+  if (Array.isArray(payload)) {
+    payload.forEach((item, index) => addContext(`Contexto ${index + 1}`, item, index));
+  } else {
+    const record = toLooseRecord(payload);
+    if (record) {
+      Object.entries(record).forEach(([key, value], index) => addContext(key, value, index));
+    }
+  }
+
+  return contexts;
+};
+
 interface PageQuestionRange {
   pageNumber: number;
   minQuestion: number;
@@ -6377,6 +6903,91 @@ const getTaxonomyText = (item: QuestionTaxonomyLabel | string | number | undefin
   return String(item.name || item.nome || item.descricao || item.sigla || '').trim();
 };
 
+const toQuestionFilterValue = (
+  item: QuestionTaxonomyLabel | string | number | undefined | null,
+): QuestionFilterValuePayload | null => {
+  const label = getTaxonomyText(item);
+  if (!label) {
+    return null;
+  }
+
+  if (item && typeof item === 'object') {
+    return {
+      id: item.id ?? null,
+      label,
+      slug: item.slug ? String(item.slug) : undefined,
+    };
+  }
+
+  return {
+    id: null,
+    label,
+  };
+};
+
+const toQuestionFilterValues = (
+  values: Array<QuestionTaxonomyLabel | string | number | undefined | null> = [],
+) => {
+  const seen = new Set<string>();
+  return values
+    .map(toQuestionFilterValue)
+    .filter((item): item is QuestionFilterValuePayload => Boolean(item))
+    .filter((item) => {
+      const key = `${item.id ?? ''}:${normalizeComparisonText(item.label)}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+      });
+};
+
+const buildQuestionFiltersPayload = ({
+  assuntos = [],
+  bancas = [],
+  orgaos = [],
+  cargos = [],
+  carreiras = [],
+  anos = [],
+  nivel,
+  niveis = [],
+  tiposProva = [],
+  provas = [],
+}: {
+  assuntos?: QuestionTaxonomyLabel[];
+  bancas?: QuestionTaxonomyLabel[];
+  orgaos?: QuestionTaxonomyLabel[];
+  cargos?: QuestionTaxonomyLabel[];
+  carreiras?: QuestionTaxonomyLabel[];
+  anos?: Array<string | number>;
+  nivel?: string | null;
+  niveis?: QuestionTaxonomyLabel[];
+  tiposProva?: Array<QuestionTaxonomyLabel | string | number>;
+  provas?: Array<QuestionTaxonomyLabel | string | number>;
+}): QuestionFiltersPayload => {
+  const subjectTaxonomy = assuntos.find((subject) => Boolean((subject as QuestionTaxonomyLabel).materia));
+  const nonSubjectTaxonomies = assuntos.filter((subject) => !Boolean((subject as QuestionTaxonomyLabel).materia));
+  const topicTaxonomy = nonSubjectTaxonomies[0];
+  const specificSubjectTaxonomies = nonSubjectTaxonomies.slice(1);
+
+  return {
+    materias: toQuestionFilterValues([subjectTaxonomy]),
+    topicos: toQuestionFilterValues([topicTaxonomy]),
+    assuntos: toQuestionFilterValues(specificSubjectTaxonomies),
+    bancas: toQuestionFilterValues(bancas),
+    orgaos: toQuestionFilterValues(orgaos),
+    cargos: toQuestionFilterValues(cargos),
+    carreiras: toQuestionFilterValues(carreiras),
+    anos: toQuestionFilterValues(anos),
+    niveis: toQuestionFilterValues([
+      ...(niveis || []),
+      nivel || undefined,
+    ]),
+    tiposProva: toQuestionFilterValues(tiposProva),
+    provas: toQuestionFilterValues(provas),
+  };
+};
+
 const getQuestionTaxonomyParts = (question: Question) => {
   const subjects = Array.isArray(question.assuntos) ? question.assuntos : [];
   const subject = subjects.find((item) => Boolean(item.materia));
@@ -6425,6 +7036,207 @@ const getFocusSelectValue = (item: QuestionTaxonomyLabel | string | number | und
   }
   const label = getTaxonomyText(item);
   return label ? `name:${slugify(getRootFocusText(label))}` : '';
+};
+
+const normalizeFocusCandidate = (
+  item: QuestionTaxonomyLabel | string | number | undefined | null,
+  focusOptions: QuestionTaxonomyLabel[] = [],
+) => {
+  const rawName = getRootFocusText(getTaxonomyText(item));
+  if (!rawName) {
+    return null;
+  }
+
+  const candidateValue = getFocusSelectValue(item);
+  const normalizedName = normalizeComparisonText(rawName);
+  const normalizedSlug = normalizeComparisonText(slugify(rawName).replace(/-/g, ' '));
+  const existing = focusOptions.find((focus) => (
+    getFocusSelectValue(focus) === candidateValue
+    || normalizeComparisonText(getTaxonomyText(focus)) === normalizedName
+    || normalizeComparisonText(String(focus.slug || '').replace(/-/g, ' ')) === normalizedSlug
+  ));
+
+  if (existing) {
+    const focusName = getRootFocusText(getTaxonomyText(existing));
+    return focusName ? { ...existing, name: focusName, nome: focusName } : existing;
+  }
+
+  if (typeof item === 'object' && item !== null) {
+    return { ...item, name: rawName, nome: rawName, slug: item.slug || slugify(rawName) };
+  }
+
+  return createTaxonomyLabel(rawName) as QuestionTaxonomyLabel;
+};
+
+const findFocusByIdOrName = (
+  focusOptions: QuestionTaxonomyLabel[] = [],
+  idOrName: unknown,
+) => {
+  const rawValue = String(idOrName ?? '').trim();
+  if (!rawValue) {
+    return null;
+  }
+
+  const normalizedValue = normalizeComparisonText(rawValue);
+  const normalizedSlugValue = normalizeComparisonText(rawValue.replace(/-/g, ' '));
+
+  return focusOptions.find((focus) => (
+    String(focus.id ?? '').trim() === rawValue
+    || normalizeComparisonText(getTaxonomyText(focus)) === normalizedValue
+    || normalizeComparisonText(String(focus.slug || '').replace(/-/g, ' ')) === normalizedSlugValue
+  )) || null;
+};
+
+const toLooseCandidateList = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return [];
+  }
+  return [value];
+};
+
+const parseLooseRecordValue = (value: unknown): Record<string, unknown> | null => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const findTaxonomyByText = (
+  items: QuestionTaxonomyLabel[] = [],
+  value: unknown,
+) => {
+  const rawLabel = getTaxonomyText(value as QuestionTaxonomyLabel);
+  const normalizedLabel = normalizeComparisonText(rawLabel);
+  const normalizedSlug = normalizeComparisonText(String((value as QuestionTaxonomyLabel | undefined)?.slug || rawLabel).replace(/-/g, ' '));
+  if (!normalizedLabel && !normalizedSlug) {
+    return null;
+  }
+
+  return items.find((item) => (
+    normalizeComparisonText(getTaxonomyText(item)) === normalizedLabel
+    || normalizeComparisonText(String(item.slug || '').replace(/-/g, ' ')) === normalizedSlug
+  )) || null;
+};
+
+const getTaxonomyParentValue = (item: QuestionTaxonomyLabel | null | undefined) => {
+  if (!item) {
+    return undefined;
+  }
+  return item.parentId
+    ?? item.parent_id
+    ?? item.pai
+    ?? item.focoId
+    ?? item.foco_id
+    ?? item.carreiraId
+    ?? item.carreira_id;
+};
+
+const getTaxonomyParentName = (item: QuestionTaxonomyLabel | null | undefined) => {
+  if (!item) {
+    return '';
+  }
+  return String(
+    item.parentName
+    ?? item.parent_name
+    ?? item.paiNome
+    ?? item.pai_nome
+    ?? item.focoNome
+    ?? item.foco_nome
+    ?? item.carreiraNome
+    ?? item.carreira_nome
+    ?? '',
+  ).trim();
+};
+
+const resolveExamInheritedFocus = (
+  exam: Prova | null,
+  taxonomies: SystemSettings['taxonomies'],
+) => {
+  if (!exam) {
+    return null;
+  }
+
+  const focusOptions = [
+    ...((taxonomies?.careers || []) as unknown as QuestionTaxonomyLabel[]),
+    ...((taxonomies?.areas || []) as unknown as QuestionTaxonomyLabel[]),
+  ];
+  const roleOptions = (taxonomies?.roles || []) as unknown as QuestionTaxonomyLabel[];
+  const examRecord = exam as unknown as Record<string, unknown>;
+  const metadataRecord = parseLooseRecordValue(
+    readLooseField(examRecord, ['metadata', 'metadataJson', 'metadata_json', 'rawMetadata', 'raw_metadata']),
+  ) || {};
+
+  const directCandidates = [
+    exam.focos,
+    exam.carreiras,
+    exam.foco,
+    exam.carreira,
+    readLooseField(examRecord, ['focos', 'carreiras', 'focuses', 'careers', 'areas']),
+    readLooseField(examRecord, ['foco', 'carreira', 'focus', 'career', 'area']),
+    readLooseField(metadataRecord, ['focos', 'carreiras', 'focuses', 'careers', 'areas']),
+    readLooseField(metadataRecord, ['foco', 'carreira', 'focus', 'career', 'area']),
+    readLooseField(metadataRecord, ['focusName', 'focus_name', 'focoNome', 'foco_nome', 'careerName', 'career_name']),
+  ].flatMap(toLooseCandidateList);
+
+  for (const candidate of directCandidates) {
+    const normalized = normalizeFocusCandidate(candidate as QuestionTaxonomyLabel | string | number, focusOptions);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  const roleCandidates = [
+    exam.cargos,
+    exam.cargo,
+    exam.roles,
+    readLooseField(examRecord, ['cargos', 'roles', 'cargo', 'role']),
+    readLooseField(metadataRecord, ['cargos', 'roles', 'cargo', 'role']),
+  ].flatMap(toLooseCandidateList) as Array<QuestionTaxonomyLabel | string | number>;
+
+  for (const roleCandidate of roleCandidates) {
+    const roleRecord = typeof roleCandidate === 'object' && roleCandidate !== null
+      ? roleCandidate as QuestionTaxonomyLabel
+      : findTaxonomyByText(roleOptions, roleCandidate);
+    const resolvedRole = roleRecord || findTaxonomyByText(roleOptions, roleCandidate);
+    const parentValue = getTaxonomyParentValue(resolvedRole);
+    const parentFocus = findFocusByIdOrName(focusOptions, parentValue)
+      || findFocusByIdOrName(focusOptions, getTaxonomyParentName(resolvedRole));
+    const normalizedParent = normalizeFocusCandidate(parentFocus, focusOptions);
+    if (normalizedParent) {
+      return normalizedParent;
+    }
+  }
+
+  const signalText = normalizeComparisonText([
+    exam.nome,
+    exam.slug,
+    getTaxonomyText(exam.banca as unknown as QuestionTaxonomyLabel),
+    ...(exam.orgaos?.length ? exam.orgaos : [exam.orgao]).map((item) => getTaxonomyText(item as unknown as QuestionTaxonomyLabel)),
+    ...(exam.cargos?.length ? exam.cargos : [exam.cargo]).map((item) => getTaxonomyText(item as unknown as QuestionTaxonomyLabel)),
+    ...(Array.isArray(exam.roles) ? exam.roles : []),
+  ].filter(Boolean).join(' '));
+
+  const safeFocusLabel = signalText.match(/\b(policia|policial|bombeiro|militar|seguranca publica)\b/)
+    ? focusOptions.find((focus) => {
+      const label = normalizeComparisonText(getTaxonomyText(focus));
+      return label.includes('policial') || label.includes('seguranca publica');
+    })
+    : null;
+
+  return normalizeFocusCandidate(safeFocusLabel, focusOptions);
 };
 
 const getExtractedQuestionNumber = (question: Question, fallback: number) => {
@@ -6619,6 +7431,416 @@ const resolveTaxonomyHierarchy = (subject: string, topic: string, specificSubjec
   };
 };
 
+const EXTERNAL_AI_SUBJECT_KEYS = [
+  'materia',
+  'matéria',
+  'subject',
+  'disciplina',
+  'discipline',
+  'area',
+  'área',
+];
+
+const EXTERNAL_AI_TOPIC_KEYS = [
+  'topico',
+  'tópico',
+  'topic',
+  'tema',
+  'theme',
+];
+
+const EXTERNAL_AI_SPECIFIC_SUBJECT_KEYS = [
+  'assunto',
+  'specificSubject',
+  'specific_subject',
+  'assuntoEspecifico',
+  'assunto_especifico',
+  'assuntoEspecífico',
+  'ponto',
+  'conteudo',
+  'conteúdo',
+];
+
+const readExternalAiQuestionTaxonomy = (
+  record: Record<string, unknown>,
+  filters: Record<string, unknown>,
+) => {
+  const classification = toLooseRecord(readLooseField(record, [
+    'classification',
+    'classificacao',
+    'classificação',
+    'taxonomy',
+    'taxonomia',
+  ])) || {};
+
+  const readFilterLabel = (keys: string[]) => {
+    const direct = readLooseText(filters, keys);
+    if (direct) return direct;
+    const raw = readLooseField(filters, keys);
+    const list = Array.isArray(raw) ? raw : [];
+    const first = toLooseRecord(list[0]);
+    return readLooseText(first, ['label', 'name', 'nome', 'title', 'titulo', 'slug']) || String(list[0] || '').trim();
+  };
+
+  let subject = (
+    readFilterLabel(['subjects', 'materias', ...EXTERNAL_AI_SUBJECT_KEYS])
+    || readLooseText(classification, EXTERNAL_AI_SUBJECT_KEYS)
+    || readLooseText(record, EXTERNAL_AI_SUBJECT_KEYS)
+  ).trim();
+  let topic = (
+    readFilterLabel(['topics', 'topicos', ...EXTERNAL_AI_TOPIC_KEYS])
+    || readLooseText(classification, EXTERNAL_AI_TOPIC_KEYS)
+    || readLooseText(record, EXTERNAL_AI_TOPIC_KEYS)
+  ).trim();
+  let specificSubject = (
+    readFilterLabel(['subtopics', 'assuntos', ...EXTERNAL_AI_SPECIFIC_SUBJECT_KEYS])
+    || readLooseText(classification, EXTERNAL_AI_SPECIFIC_SUBJECT_KEYS)
+    || readLooseText(record, EXTERNAL_AI_SPECIFIC_SUBJECT_KEYS)
+  ).trim();
+
+  const normalizedSubject = normalizeComparisonText(subject);
+  const normalizedTopic = normalizeComparisonText(topic);
+  const normalizedSpecific = normalizeComparisonText(specificSubject);
+
+  if (!normalizedSubject && normalizedTopic) {
+    subject = topic;
+    topic = specificSubject;
+    specificSubject = '';
+  } else if (normalizedSubject && normalizedSubject === normalizedTopic && normalizedSpecific && normalizedSpecific !== normalizedTopic) {
+    topic = specificSubject;
+    specificSubject = '';
+  }
+
+  return resolveTaxonomyHierarchy(subject, topic, specificSubject);
+};
+
+const buildExternalAiQuestionTaxonomies = (taxonomy: {
+  subject: string;
+  topic: string;
+  specificSubject: string;
+}) => {
+  const subject = taxonomy.subject.trim()
+    ? createTaxonomyLabel(taxonomy.subject, { materia: true })
+    : null;
+  const topic = taxonomy.topic.trim()
+    ? createTaxonomyLabel(taxonomy.topic, { materia: false, parentName: taxonomy.subject || undefined })
+    : null;
+  const specificSubject = taxonomy.specificSubject.trim()
+    ? createTaxonomyLabel(taxonomy.specificSubject, { materia: false, parentName: taxonomy.topic || taxonomy.subject || undefined })
+    : null;
+
+  return [subject, topic, specificSubject].filter(Boolean) as unknown as Question['assuntos'];
+};
+
+const buildQuestionPayloadImportCard = ({
+  questionNumber,
+  statement,
+  introText,
+  referenceText,
+  teacherComment,
+  detailedComment,
+  contextKey,
+  bancas,
+  orgaos,
+  cargos,
+  assuntos,
+  anos,
+  carreiras,
+  niveis,
+  nivel,
+  tiposProva,
+  tipo,
+  dificuldade,
+  itens,
+  resposta,
+  correctOptionIndex,
+  hasFigure,
+  figureDescription,
+  supportImages,
+  status,
+  needsImportReview,
+  reasons,
+  quality,
+}: QuestionCreateImportCardParams): Question => {
+  const importTempId = `ai-json-${questionNumber}`;
+  const alternativePayloads: QuestionAlternativePayload[] = itens.map((item, index) => ({
+    tempId: `q_${questionNumber}_alt_${String.fromCharCode(97 + index)}`,
+    order: index + 1,
+    label: String(item.rotulo || String.fromCharCode(65 + index)),
+    text: String(item.corpo || ''),
+    textClean: stripHtml(String(item.corpo_clean || item.corpo || '')),
+    assets: [],
+  }));
+  const correctAlternative = alternativePayloads[correctOptionIndex] || null;
+  const assetPayload = (supportImages || [])
+    .map((image, index) => {
+      const record = image as unknown as Record<string, unknown>;
+      const tempId = String(record.tempId || record.id || `q_${questionNumber}_img_${index + 1}`);
+      const imageData = String(record.imageData || record.base64 || '');
+      const url = String(record.url || '');
+      return {
+        tempId,
+        type: 'image' as const,
+        usage: 'support' as const,
+        url,
+        base64: imageData,
+        alt: String(record.description || record.alt || record.caption || ''),
+        caption: String(record.caption || ''),
+        sourcePage: record.page ? String(record.page) : null,
+        order: index + 1,
+      };
+    });
+  const questionCreatePayload: QuestionPayload = {
+    tempId: importTempId,
+    id: null,
+    source: {
+      origin: 'exam',
+      examId: null,
+      questionNumber,
+      contextTempId: contextKey || null,
+      sourcePage: null,
+    },
+    content: {
+      statement,
+      statementClean: stripHtml(statement),
+      supportText: introText,
+      reference: referenceText,
+    },
+    assets: assetPayload,
+    filters: buildQuestionFiltersPayload({
+      assuntos: assuntos as unknown as QuestionTaxonomyLabel[],
+      bancas: (bancas || []) as unknown as QuestionTaxonomyLabel[],
+      orgaos: (orgaos || []) as unknown as QuestionTaxonomyLabel[],
+      cargos: (cargos || []) as unknown as QuestionTaxonomyLabel[],
+      carreiras: (carreiras || []) as unknown as QuestionTaxonomyLabel[],
+      anos: (anos || []) as Array<string | number>,
+      nivel: nivel ? String(nivel) : null,
+      niveis: (niveis || []) as unknown as QuestionTaxonomyLabel[],
+      tiposProva: (tiposProva || []) as Array<QuestionTaxonomyLabel | string | number>,
+    }),
+    type: tipo,
+    difficulty: String(dificuldade),
+    alternatives: alternativePayloads,
+    answer: {
+      mode: tipo === 'true_false' || tipo === 'certo ou errado' ? 'boolean' : 'single',
+      raw: correctAlternative?.label || '',
+      correctAlternativeTempIds: correctAlternative?.tempId ? [correctAlternative.tempId] : [],
+    },
+    editorial: [
+      { type: 'teacher_comment', title: '', body: teacherComment, status: 'draft' },
+      { type: 'detailed_analysis', title: '', body: detailedComment, status: 'draft' },
+    ],
+    publication: {
+      status: 'draft',
+      visibility: 'public',
+      scheduledAt: null,
+    },
+    review: {
+      required: needsImportReview,
+      status: needsImportReview ? 'pending' : 'reviewed',
+      reasons,
+    },
+  };
+
+  const legacyCompatibilityMirror = {
+    enunciado: statement,
+    enunciado_clean: stripHtml(statement),
+    introText,
+    referenceText,
+    bancas: bancas as unknown as Question['bancas'],
+    orgaos: orgaos as unknown as Question['orgaos'],
+    cargos: cargos as unknown as Question['cargos'],
+    assuntos,
+    anos,
+    carreiras,
+    niveis,
+    nivel,
+    level: nivel,
+    tiposProva,
+    tipo,
+    dificuldade,
+    itens,
+    resposta,
+    questionOrigin: 'exam',
+    question_origin: 'exam',
+    grupoQuestao: undefined,
+    grupoQuestaoId: null,
+    grupo_questao_id: null,
+    teacherComment,
+    detailedComment,
+    hasTeacherComment: Boolean(teacherComment.trim()),
+    hasDetailedComment: Boolean(detailedComment.trim()),
+    stats: { totalAttempts: 0, correctCount: 0, wrongCount: 0 },
+  } as unknown as Question;
+
+  const {
+    id: _payloadId,
+    ...questionPayloadForCard
+  } = questionCreatePayload;
+
+  const importCard: ImportedQuestionDraft = {
+    ...legacyCompatibilityMirror,
+    ...questionPayloadForCard,
+    importTempId,
+    hashId: importTempId,
+    hash: importTempId,
+    questionCreatePayload,
+    editorial: questionCreatePayload.editorial,
+    editorialComments: {
+      teacherComment,
+      detailedComment,
+    },
+    questionNumber,
+    question_number: questionNumber,
+    number: questionNumber,
+    contextKey,
+    grupoQuestaoTempId: contextKey || undefined,
+    contextTempId: contextKey || undefined,
+    hasFigure,
+    figureDescription,
+    supportImages,
+    correctOptionIndex,
+    status,
+    extractionStatus: status,
+    needsImportReview,
+    statusReasons: reasons,
+    validationReasons: reasons,
+    qualityReport: quality,
+    extractionQuality: quality,
+
+    // Compatibilidade temporaria da revisao: estes nomes nao fazem parte do payload final.
+    text: statement,
+    raw: statement,
+    supportText: introText,
+    intro_text: introText,
+    reference_text: referenceText,
+    modality: tipo as ImportedQuestionType,
+    questionType: tipo as ImportedQuestionType,
+    difficulty: String(dificuldade),
+    options: itens.map((item) => stripHtml(item.corpo || '').trim()).filter(Boolean),
+  };
+
+  return importCard as Question;
+};
+
+const buildCanonicalAlternativesFromQuestion = (question: Question): QuestionAlternativePayload[] => {
+  if (Array.isArray(question.itens) && question.itens.length) {
+    return question.itens.map((item, index) => ({
+      tempId: `alt_${String.fromCharCode(97 + index)}`,
+      order: item.ordem || index + 1,
+      label: item.rotulo || String.fromCharCode(65 + index),
+      text: item.corpo || '',
+      textClean: stripHtml(item.corpo_clean || item.corpo || ''),
+      assets: [],
+    }));
+  }
+
+  if (Array.isArray(question.alternatives) && question.alternatives.length) {
+    return question.alternatives.map((alternative, index) => ({
+      tempId: alternative.tempId || alternative.id || `alt_${String.fromCharCode(97 + index)}`,
+      ...(alternative.id ? { id: alternative.id } : {}),
+      order: alternative.order || index + 1,
+      label: alternative.label || String.fromCharCode(65 + index),
+      text: alternative.text || '',
+      textClean: alternative.textClean || stripHtml(alternative.text || ''),
+      assets: alternative.assets || [],
+    }));
+  }
+
+  return [];
+};
+
+const syncCanonicalQuestionPayload = (question: Question): Question => {
+  const alternatives = buildCanonicalAlternativesFromQuestion(question);
+  const correctIndex = Number.isInteger((question as ImportedQuestionDraft).correctOptionIndex)
+    ? Number((question as ImportedQuestionDraft).correctOptionIndex)
+    : Math.max(0, Number(question.resposta || 1) - 1);
+  const correctAlternative = alternatives[correctIndex] || null;
+  const existingComments = question.editorialComments || {};
+  const teacherComment = question.editorial?.find((item) => item.type === 'teacher_comment')?.body
+    || existingComments.teacherComment
+    || question.teacherComment
+    || '';
+  const detailedComment = question.editorial?.find((item) => item.type === 'detailed_analysis')?.body
+    || existingComments.detailedComment
+    || question.detailedComment
+    || '';
+  const syncedFilters = buildQuestionFiltersPayload({
+    assuntos: (question.assuntos || []) as unknown as QuestionTaxonomyLabel[],
+    bancas: (question.bancas || []) as unknown as QuestionTaxonomyLabel[],
+    orgaos: (question.orgaos || []) as unknown as QuestionTaxonomyLabel[],
+    cargos: (question.cargos || []) as unknown as QuestionTaxonomyLabel[],
+    carreiras: (question.carreiras || []) as unknown as QuestionTaxonomyLabel[],
+    anos: (question.anos || []) as Array<string | number>,
+    nivel: (question.nivel || question.level || null) as string | null,
+    niveis: ((question as Question & { niveis?: QuestionTaxonomyLabel[] }).niveis || []) as QuestionTaxonomyLabel[],
+    tiposProva: (question.tiposProva || []) as Array<QuestionTaxonomyLabel | string | number>,
+    provas: ((question.provas || []) as unknown) as Array<QuestionTaxonomyLabel | string | number>,
+  });
+  const existingPayload = (question as ImportedQuestionDraft).questionCreatePayload;
+  const syncedQuestionCreatePayload = existingPayload
+    ? {
+      ...existingPayload,
+      content: {
+        statement: question.content?.statement || question.enunciado || '',
+        statementClean: question.content?.statementClean || stripHtml(question.enunciado || ''),
+        supportText: question.content?.supportText || question.introText || question.intro_text || '',
+        reference: question.content?.reference || question.referenceText || question.reference_text || '',
+      },
+      filters: syncedFilters,
+      alternatives,
+      answer: {
+        mode: question.answer?.mode || question.answer?.type || 'single',
+        raw: correctAlternative?.label || question.answer?.raw || question.answer?.value || '',
+        correctAlternativeTempIds: correctAlternative?.tempId ? [correctAlternative.tempId] : question.answer?.correctAlternativeTempIds || [],
+      },
+      editorial: [
+        { type: 'teacher_comment', title: '', body: teacherComment, status: 'draft' },
+        { type: 'detailed_analysis', title: '', body: detailedComment, status: 'draft' },
+      ],
+      review: {
+        required: Boolean((question as ImportedQuestionDraft).needsImportReview || question.review?.required || question.review?.needsReview),
+        status: ((question as ImportedQuestionDraft).needsImportReview || question.review?.required || question.review?.needsReview) ? 'pending' : 'reviewed',
+        reasons: Array.from(new Set([
+          ...(question.review?.reasons || question.review?.statusReasons || []),
+          ...(((question as ImportedQuestionDraft).statusReasons || []) as string[]),
+        ])),
+      },
+    }
+    : undefined;
+
+  return {
+    ...question,
+    questionCreatePayload: syncedQuestionCreatePayload,
+    content: {
+      statement: question.content?.statement || question.enunciado || '',
+      statementClean: question.content?.statementClean || stripHtml(question.enunciado || ''),
+      supportText: question.content?.supportText || question.introText || question.intro_text || '',
+      reference: question.content?.reference || question.referenceText || question.reference_text || '',
+    },
+    filters: syncedFilters,
+    alternatives,
+    answer: {
+      mode: question.answer?.mode || question.answer?.type || 'single',
+      raw: correctAlternative?.label || question.answer?.raw || question.answer?.value || '',
+      correctAlternativeTempIds: correctAlternative?.tempId ? [correctAlternative.tempId] : question.answer?.correctAlternativeTempIds || [],
+    },
+    editorial: [
+      { type: 'teacher_comment', title: '', body: teacherComment, status: 'draft' },
+      { type: 'detailed_analysis', title: '', body: detailedComment, status: 'draft' },
+    ],
+    editorialComments: { teacherComment, detailedComment },
+    review: {
+      required: Boolean((question as ImportedQuestionDraft).needsImportReview || question.review?.required || question.review?.needsReview),
+      status: ((question as ImportedQuestionDraft).needsImportReview || question.review?.required || question.review?.needsReview) ? 'pending' : 'reviewed',
+      reasons: Array.from(new Set([
+        ...(question.review?.reasons || question.review?.statusReasons || []),
+        ...(((question as ImportedQuestionDraft).statusReasons || []) as string[]),
+      ])),
+    },
+  } as Question;
+};
+
 const parseSubjectsInput = (value: string) => String(value || '')
   .split(/[,;\n]/)
   .map((item) => item.trim())
@@ -6709,6 +7931,7 @@ const yieldToImportReviewPaint = () => new Promise<void>((resolve) => {
 });
 
 export const useAdminImportWorkflow = ({
+  enabled = true,
   systemSettings,
   addToast,
   onImportedQuestionsSaved,
@@ -6748,6 +7971,7 @@ export const useAdminImportWorkflow = ({
   const [logs, setLogs] = useState<string[]>([]);
   const [extractedQuestions, setExtractedQuestions] = useState<Question[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const [bulkGenerationType, setBulkGenerationType] = useState<GenerateSpecificType | null>(null);
   const [isRetryingMissingQuestions, setIsRetryingMissingQuestions] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(0);
   const [generatingSpecific, setGeneratingSpecific] = useState<{ index: number; type: GenerateSpecificType } | null>(null);
@@ -6766,16 +7990,17 @@ export const useAdminImportWorkflow = ({
   );
   const activePublishedExam = selectedExamRecord || publishedExam;
   const activePublishedExamId = getPublishedExamId(activePublishedExam);
-  const selectedExamFocus = useMemo(() => {
-    if (!selectedExam) return null;
-    return selectedExam.focos?.[0]
-      || selectedExam.carreiras?.[0]
-      || selectedExam.foco
-      || selectedExam.carreira
-      || null;
-  }, [selectedExam]);
+  const selectedExamFocus = useMemo(
+    () => resolveExamInheritedFocus(selectedExam, systemSettings.taxonomies),
+    [selectedExam, systemSettings.taxonomies],
+  );
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoadingExamBank(false);
+      return;
+    }
+
     let active = true;
     setIsLoadingExamBank(true);
     examService.list({ limit: 500, status: 'published,draft' })
@@ -6794,7 +8019,7 @@ export const useAdminImportWorkflow = ({
     };
   // The exam list is loaded once for this workbench session.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [enabled]);
 
   const getSelectedExamMetadata = (): ImportMetadata => {
     if (!selectedExam) return {};
@@ -6860,6 +8085,20 @@ export const useAdminImportWorkflow = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedExam?.id, selectedExamRecord]);
 
+  useEffect(() => {
+    if (!selectedExamId || !selectedExamFocus) {
+      return;
+    }
+
+    const inheritedFocusValue = getFocusSelectValue(selectedExamFocus);
+    if (inheritedFocusValue && inheritedFocusValue !== selectedFocusId) {
+      setSelectedFocusId(inheritedFocusValue);
+    }
+    if (manualFocusName.trim()) {
+      setManualFocusName('');
+    }
+  }, [manualFocusName, selectedExamFocus, selectedExamId, selectedFocusId]);
+
   const loadAttachedExamFile = async (exam: Prova, kind: 'prova' | 'gabarito') => {
     const files = exam.files?.length ? exam.files : (exam.examFiles || []);
     const attachment = files.find((file) => (file.kind || file.type) === kind);
@@ -6886,9 +8125,13 @@ export const useAdminImportWorkflow = ({
     setInheritedAnswerKeyFileName('');
     const exam = examBank.find((item) => String(item.id) === value) || null;
     setPublishedExam(exam ? { ...exam } as unknown as Record<string, unknown> : null);
-    if (!exam) return;
+    if (!exam) {
+      setSelectedFocusId('');
+      setManualFocusName('');
+      return;
+    }
 
-    const examFocus = exam.focos?.[0] || exam.carreiras?.[0] || exam.foco || exam.carreira || null;
+    const examFocus = resolveExamInheritedFocus(exam, systemSettings.taxonomies);
     if (examFocus) {
       setSelectedFocusId(getFocusSelectValue(examFocus));
       setManualFocusName('');
@@ -7411,6 +8654,18 @@ export const useAdminImportWorkflow = ({
             });
           }
         });
+
+        const missingAfterBatch = chunk.filter(({ index }) => !String(updatedQuestions[index]?.detailedComment || '').trim());
+        for (const { question, index } of missingAfterBatch) {
+          try {
+            const detail = await aiService.generateDetailedAnalysis(question);
+            updatedQuestions[index] = mergeQuestionEditorialPatch(updatedQuestions[index] || question, {
+              detailedComment: detail,
+            });
+          } catch {
+            addLog(`Erro ao gerar detalhado para questao ${index + 1}.`);
+          }
+        }
       } catch (error) {
         addLog(`Lote de analise detalhada falhou (${readErrorMessage(error)}). Tentando questoes do lote individualmente.`);
         for (const { question, index } of chunk) {
@@ -7475,6 +8730,18 @@ export const useAdminImportWorkflow = ({
             });
           }
         });
+
+        const missingAfterBatch = chunk.filter(({ index }) => !String(updatedQuestions[index]?.teacherComment || '').trim());
+        for (const { question, index } of missingAfterBatch) {
+          try {
+            const comment = await aiService.generateTeacherComment(question);
+            updatedQuestions[index] = mergeQuestionEditorialPatch(updatedQuestions[index] || question, {
+              teacherComment: comment,
+            });
+          } catch {
+            addLog(`Erro ao gerar comentario do professor para questao ${index + 1}.`);
+          }
+        }
       } catch (error) {
         addLog(`Lote de comentarios do professor falhou (${readErrorMessage(error)}). Tentando questoes do lote individualmente.`);
         for (const { question, index } of chunk) {
@@ -7546,6 +8813,91 @@ export const useAdminImportWorkflow = ({
     }
 
     return `pag-${context.page}:figura:${values.join(':')}`;
+  };
+
+  const normalizeVisualTextSignature = (value?: string) => (
+    normalizeComparisonText(stripHtml(String(value || '')))
+      .replace(/\b(?:figura|imagem|suporte visual|contexto|questao|questao\s+\d+)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+
+  const getFigureBoxSignature = (box?: FigureBox) => {
+    if (!box) {
+      return '';
+    }
+
+    const snap = (value: unknown) => Math.round((Number(value) || 0) / 8) * 8;
+    const values = [box.x, box.y, box.width, box.height].map(snap);
+    if (values.some((value) => !Number.isFinite(value))) {
+      return '';
+    }
+
+    return values.join(':');
+  };
+
+  const getSupportImageSignature = (image: Partial<ImportedQuestionImageDraft>) => {
+    const imageData = String(image.imageData || '').trim();
+    if (imageData) {
+      return `image:${imageData}`;
+    }
+
+    const pageImageData = String(image.pageImageData || '').trim();
+    const boxSignature = getFigureBoxSignature(image.figureBox);
+    if (pageImageData && boxSignature) {
+      return `crop:${pageImageData}:${boxSignature}`;
+    }
+
+    if (boxSignature) {
+      return `box:${Number(image.page || 0) || 0}:${boxSignature}`;
+    }
+
+    const descriptionSignature = normalizeVisualTextSignature(image.description || image.title);
+    if (descriptionSignature.length >= 24) {
+      return `description:${descriptionSignature}`;
+    }
+
+    return '';
+  };
+
+  const supportImageHasUsefulPayload = (image: Partial<ImportedQuestionImageDraft>) => (
+    Boolean(String(image.imageData || '').trim())
+    || Boolean(String(image.pageImageData || '').trim() && image.figureBox)
+    || Boolean(image.figureBox)
+    || normalizeVisualTextSignature(image.description).length >= 24
+  );
+
+  const externalTextOnlyImagePattern = /\b(?:recorte\s+contextual\s+visual|dispon[ií]vel\s+como\s+imagem|suporte\s+visual\s+da\s+quest[aã]o|imagem\s+da\s+p[aá]gina\s+\d+\s+do\s+caderno)\b/i;
+  const concreteVisualResourcePattern = /\b(?:gr[aá]fico|mapa|charge|tirinha|foto|fotografia|diagrama|fluxograma|esquema|f[oó]rmula|cartaz|ilustra[cç][aã]o|infogr[aá]fico|tabela\s+visual|quadro\s+visual)\b/i;
+
+  const shouldDropExternalTextDuplicateImage = (
+    image: Partial<ImportedQuestionImageDraft>,
+    supportText: string,
+    statement: string,
+    linkedContext?: ImportedContextDraft,
+  ) => {
+    const imageText = [
+      image.title,
+      image.description,
+    ].filter(Boolean).join(' ');
+    const hasTextOnlyBoilerplate = externalTextOnlyImagePattern.test(imageText);
+    const hasConcreteVisualCue = concreteVisualResourcePattern.test(imageText);
+    const normalizedImageText = normalizeComparisonText(imageText);
+    const normalizedSupport = normalizeComparisonText([
+      supportText,
+      statement,
+      linkedContext?.title,
+      linkedContext?.text,
+    ].filter(Boolean).join('\n\n'));
+
+    if (hasTextOnlyBoilerplate && !hasConcreteVisualCue && normalizedSupport.length >= 40) {
+      return true;
+    }
+
+    return !String(image.imageData || '').trim()
+      && normalizedImageText.length >= 40
+      && normalizedSupport.includes(normalizedImageText)
+      && !hasConcreteVisualCue;
   };
 
   const mergeContextText = (...values: Array<string | undefined>) => {
@@ -7741,20 +9093,8 @@ export const useAdminImportWorkflow = ({
   ): ImportedQuestionImageDraft[] => {
     const images: ImportedQuestionImageDraft[] = [];
     const pushImage = (image: ImportedQuestionImageDraft) => {
-      const signature = [
-        image.tempId,
-        image.imageData,
-        image.pageImageData,
-        image.figureBox ? `${image.figureBox.x}:${image.figureBox.y}:${image.figureBox.width}:${image.figureBox.height}` : '',
-      ].filter(Boolean).join('|');
-      if (
-        images.some((existing) => [
-          existing.tempId,
-          existing.imageData,
-          existing.pageImageData,
-          existing.figureBox ? `${existing.figureBox.x}:${existing.figureBox.y}:${existing.figureBox.width}:${existing.figureBox.height}` : '',
-        ].filter(Boolean).join('|') === signature)
-      ) {
+      const signature = getSupportImageSignature(image);
+      if (!supportImageHasUsefulPayload(image) || (signature && images.some((existing) => getSupportImageSignature(existing) === signature))) {
         return;
       }
       images.push(image);
@@ -7778,8 +9118,11 @@ export const useAdminImportWorkflow = ({
         tempId: figure.figureKey || `${context.tempId}-q-${questionNumber}-support-fig-${index + 1}`,
         title: figure.description || context.title || `Figura de apoio da questao ${questionNumber}`,
         description: figure.description,
+        imageData: figure.imageData,
+        pageImageData: figure.pageImageData,
         figureBox: figure.figureBox,
         page: figure.page || context.sourcePage || context.page,
+        manualCropApplied: Boolean(figure.imageData),
       });
     });
 
@@ -7794,13 +9137,8 @@ export const useAdminImportWorkflow = ({
     const existingImages = Array.isArray(draft.supportImages) ? draft.supportImages : [];
     const seen = new Set<string>();
     return [...existingImages, ...incomingImages].filter((image) => {
-      const signature = [
-        image.tempId,
-        image.imageData,
-        image.pageImageData,
-        image.figureBox ? `${image.figureBox.x}:${image.figureBox.y}:${image.figureBox.width}:${image.figureBox.height}` : '',
-      ].filter(Boolean).join('|');
-      if (!signature || seen.has(signature)) {
+      const signature = getSupportImageSignature(image);
+      if (!supportImageHasUsefulPayload(image) || !signature || seen.has(signature)) {
         return false;
       }
       seen.add(signature);
@@ -8459,6 +9797,7 @@ export const useAdminImportWorkflow = ({
     return {
       text: textWithoutInlineImages,
       richText,
+      referenceText: String(context.referenceText || '').trim(),
       imageData,
       figures: publishedFigures,
     };
@@ -9159,6 +10498,10 @@ export const useAdminImportWorkflow = ({
     }
 
     (pythonResult.logs || []).forEach((message) => addLog(message));
+    if (pythonResult.reviewObject && Object.keys(pythonResult.reviewObject).length > 0) {
+      console.log('[ConcursoMestre][Importador] JSON_CANONICO_DA_EXTRACAO', pythonResult.reviewObject);
+      addLog(`JSON_CANONICO_DA_EXTRACAO = ${JSON.stringify(pythonResult.reviewObject, null, 2)}`);
+    }
 
     const nextQuestions = Array.isArray(pythonResult.questions)
       ? pythonResult.questions as unknown as Question[]
@@ -10692,7 +12035,10 @@ export const useAdminImportWorkflow = ({
   };
 
   const handleRetryMissingQuestions = async () => {
-    const missingNumbers = (importDiagnostics.missingQuestionNumbers || [])
+    const missingNumbers = [
+      ...(importDiagnostics.missingQuestionNumbers || []),
+      ...(importDiagnostics.incompleteQuestionNumbers || []),
+    ]
       .filter((number, index, list) => Number.isFinite(number) && number > 0 && list.indexOf(number) === index)
       .sort((a, b) => a - b);
 
@@ -11214,12 +12560,654 @@ export const useAdminImportWorkflow = ({
     }
   };
 
+  const handleImportFromAiJson = async (sourceJson: string) => {
+    const rawJson = String(sourceJson || '').trim();
+    if (!rawJson) {
+      addToast('Cole a resposta JSON da IA antes de gerar a revisão.', 'error');
+      return;
+    }
+
+    const selectedFocus = resolveSelectedFocus();
+    if (!selectedFocus) {
+      addToast('Selecione ou crie um foco antes de importar o JSON da IA.', 'error');
+      return;
+    }
+
+    if (isProcessing || isBulkGenerating || isRetryingMissingQuestions) {
+      addToast('Aguarde o processamento atual terminar antes de importar o JSON da IA.', 'info');
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(extractJsonObjectText(rawJson)) as Record<string, unknown>;
+      const metadataRecord = toLooseRecord(readLooseField(payload, ['metadata', 'metadados', 'exam', 'prova'])) || {};
+      const rawQuestions = readLooseArray(payload, ['questions', 'questoes', 'questões']);
+      if (!rawQuestions.length) {
+        addToast('O JSON não possui a lista "questions". Peça para a IA retornar o formato exato do prompt.', 'error');
+        return;
+      }
+
+      const organizationItems = readLooseMetadataTextList(metadataRecord, [
+        'organizations',
+        'organization',
+        'orgaos',
+        'órgãos',
+        'orgao',
+        'órgão',
+        'sources',
+        'source',
+      ]);
+      const roleItems = readLooseMetadataTextList(metadataRecord, [
+        'roles',
+        'role',
+        'cargos',
+        'cargo',
+        'cargoProva',
+        'cargo/prova',
+      ]);
+      const focusItems = readLooseMetadataTextList(metadataRecord, ['focos', 'focus', 'focuses', 'area', 'areas']);
+      const registrationStart = readLooseText(metadataRecord, [
+        'registrationStart',
+        'dataInscricaoInicio',
+        'inscricaoInicio',
+        'inicioInscricao',
+        'subscriptionStart',
+      ]) || importMetadata?.registrationStart || importMetadata?.dataInscricaoInicio || '';
+      const registrationEnd = readLooseText(metadataRecord, [
+        'registrationEnd',
+        'dataInscricaoFim',
+        'inscricaoFim',
+        'fimInscricao',
+        'prazoInscricao',
+        'subscriptionEnd',
+      ]) || importMetadata?.registrationEnd || importMetadata?.dataInscricaoFim || '';
+      const examDate = readLooseText(metadataRecord, [
+        'examDate',
+        'dataProva',
+        'provaData',
+        'date',
+      ]) || importMetadata?.examDate || importMetadata?.dataProva || '';
+      const registrationFee = readLooseText(metadataRecord, [
+        'registrationFee',
+        'valorInscricao',
+        'taxaInscricao',
+        'inscricaoValor',
+        'fee',
+      ]) || importMetadata?.registrationFee || importMetadata?.valorInscricao || '';
+      const requirements = readLooseStructuredList(metadataRecord, ['requirements', 'requisitos']);
+      const requirementsDetailed = readLooseStructuredList(metadataRecord, [
+        'requirementsDetailed',
+        'requisitosDetalhados',
+        'requisitosEstruturados',
+      ]);
+      const remunerations = readLooseStructuredList(metadataRecord, ['remunerations', 'remuneracoes', 'remunerações']);
+      const remunerationsDetailed = readLooseStructuredList(metadataRecord, [
+        'remunerationsDetailed',
+        'remuneracoesDetalhadas',
+        'remuneraçõesDetalhadas',
+        'remuneracaoEstruturada',
+        'remuneraçãoEstruturada',
+      ]);
+      const vacancies = readLooseStructuredList(metadataRecord, ['vacancies', 'vagas']);
+      const vacanciesDetailed = readLooseStructuredList(metadataRecord, [
+        'vacanciesDetailed',
+        'vagasDetalhadas',
+        'vagasEstruturadas',
+      ]);
+      const programmaticContent = readLooseStructuredList(metadataRecord, [
+        'programmaticContent',
+        'conteudoProgramatico',
+        'conteúdoProgramático',
+      ]);
+      const programmaticContentDetailed = readLooseStructuredList(metadataRecord, [
+        'programmaticContentDetailed',
+        'conteudoProgramaticoDetalhado',
+        'conteúdoProgramáticoDetalhado',
+        'programaDetalhado',
+      ]);
+      const stages = readLooseStructuredList(metadataRecord, ['stages', 'etapas', 'fases']);
+      const platformQuestionIds = readLooseStructuredList(metadataRecord, [
+        'platformQuestionIds',
+        'questoesVinculadas',
+        'questõesVinculadas',
+        'questionIds',
+      ]);
+      const selectedExamMetadata = selectedExam ? getSelectedExamMetadata() : {};
+      const baseImportMetadata = {
+        ...(importMetadata || {}),
+        ...selectedExamMetadata,
+      } as ImportMetadata;
+      const baseImportMetadataRecord = baseImportMetadata as Record<string, unknown>;
+
+      const nextMetadata = {
+        ...(baseImportMetadata || {}),
+        ...metadataRecord,
+        selectedExamId: selectedExam?.id || selectedExamId || baseImportMetadataRecord.selectedExamId,
+        selectedExamTitle: selectedExam?.nome || baseImportMetadataRecord.selectedExamTitle || baseImportMetadata.examTitle || baseImportMetadata.title,
+        agency: readLooseText(metadataRecord, ['agency', 'banca', 'board']) || baseImportMetadata?.agency || '',
+        source: firstMetadataText(organizationItems, baseImportMetadata?.source || ''),
+        sources: organizationItems.length > 0 ? organizationItems : baseImportMetadata?.sources,
+        organization: firstMetadataText(organizationItems, baseImportMetadata?.organization || ''),
+        organizations: organizationItems.length > 0 ? organizationItems : baseImportMetadata?.organizations,
+        orgao: firstMetadataText(organizationItems, baseImportMetadata?.orgao || ''),
+        orgaos: organizationItems.length > 0 ? organizationItems : baseImportMetadata?.orgaos,
+        role: firstMetadataText(roleItems, baseImportMetadata?.role || ''),
+        roles: roleItems.length > 0 ? roleItems : baseImportMetadata?.roles,
+        cargo: firstMetadataText(roleItems, baseImportMetadata?.cargo || ''),
+        cargos: roleItems.length > 0 ? roleItems : baseImportMetadata?.cargos,
+        year: readLooseText(metadataRecord, ['year', 'ano']) || baseImportMetadata?.year || '',
+        ano: readLooseText(metadataRecord, ['year', 'ano']) || baseImportMetadata?.ano || baseImportMetadata?.year || '',
+        level: readLooseText(metadataRecord, ['level', 'nivel', 'nível']) || baseImportMetadata?.level || baseImportMetadata?.nivel || '',
+        nivel: readLooseText(metadataRecord, ['level', 'nivel', 'nível']) || baseImportMetadata?.nivel || baseImportMetadata?.level || '',
+        title: readLooseText(metadataRecord, ['title', 'titulo', 'examTitle', 'nome']) || baseImportMetadata?.title || baseImportMetadata?.examTitle || '',
+        totalQuestions: readLooseField(metadataRecord, ['totalQuestions', 'totalQuestoes', 'total_questoes', 'questionCount'])
+          || baseImportMetadata?.totalQuestions,
+        questionStart: readLooseField(metadataRecord, [
+          'questionStart',
+          'startQuestion',
+          'firstQuestionNumber',
+          'numeroInicial',
+          'questaoInicial',
+          'questãoInicial',
+          'primeiraQuestao',
+          'primeiraQuestão',
+        ]) || baseImportMetadata?.questionStart || baseImportMetadata?.startQuestion || baseImportMetadata?.firstQuestionNumber,
+        questionEnd: readLooseField(metadataRecord, [
+          'questionEnd',
+          'endQuestion',
+          'lastQuestionNumber',
+          'numeroFinal',
+          'questaoFinal',
+          'questãoFinal',
+          'ultimaQuestao',
+          'últimaQuestão',
+        ]) || baseImportMetadata?.questionEnd || baseImportMetadata?.endQuestion || baseImportMetadata?.lastQuestionNumber,
+        questionRange: readLooseField(metadataRecord, [
+          'questionRange',
+          'intervaloQuestoes',
+          'intervalo_questoes',
+          'rangeQuestoes',
+          'faixaQuestoes',
+          'faixa_questoes',
+        ]) || baseImportMetadata?.questionRange || baseImportMetadata?.intervaloQuestoes,
+        focos: focusItems.length > 0 ? focusItems : baseImportMetadata?.focos,
+        registrationStart,
+        registrationEnd,
+        examDate,
+        registrationFee,
+        dataInscricaoInicio: registrationStart,
+        dataInscricaoFim: registrationEnd,
+        dataProva: examDate,
+        valorInscricao: registrationFee,
+        requirements: requirements.length > 0 ? requirements : baseImportMetadata?.requirements,
+        requisitos: requirements.length > 0 ? requirements : baseImportMetadata?.requisitos,
+        requirementsDetailed: requirementsDetailed.length > 0 ? requirementsDetailed : baseImportMetadata?.requirementsDetailed,
+        requisitosDetalhados: requirementsDetailed.length > 0 ? requirementsDetailed : baseImportMetadata?.requisitosDetalhados,
+        remunerations: remunerations.length > 0 ? remunerations : baseImportMetadata?.remunerations,
+        remuneracoes: remunerations.length > 0 ? remunerations : baseImportMetadata?.remuneracoes,
+        remunerationsDetailed: remunerationsDetailed.length > 0 ? remunerationsDetailed : baseImportMetadata?.remunerationsDetailed,
+        remuneracoesDetalhadas: remunerationsDetailed.length > 0 ? remunerationsDetailed : baseImportMetadata?.remuneracoesDetalhadas,
+        vacancies: vacancies.length > 0 ? vacancies : baseImportMetadata?.vacancies,
+        vagas: vacancies.length > 0 ? vacancies : baseImportMetadata?.vagas,
+        vacanciesDetailed: vacanciesDetailed.length > 0 ? vacanciesDetailed : baseImportMetadata?.vacanciesDetailed,
+        vagasDetalhadas: vacanciesDetailed.length > 0 ? vacanciesDetailed : baseImportMetadata?.vagasDetalhadas,
+        programmaticContent: programmaticContent.length > 0 ? programmaticContent : baseImportMetadata?.programmaticContent,
+        conteudoProgramatico: programmaticContent.length > 0 ? programmaticContent : baseImportMetadata?.conteudoProgramatico,
+        programmaticContentDetailed: programmaticContentDetailed.length > 0 ? programmaticContentDetailed : baseImportMetadata?.programmaticContentDetailed,
+        conteudoProgramaticoDetalhado: programmaticContentDetailed.length > 0 ? programmaticContentDetailed : baseImportMetadata?.conteudoProgramaticoDetalhado,
+        stages: stages.length > 0 ? stages : baseImportMetadata?.stages,
+        etapas: stages.length > 0 ? stages : baseImportMetadata?.etapas,
+        platformQuestionIds: platformQuestionIds.length > 0 ? platformQuestionIds : baseImportMetadata?.platformQuestionIds,
+        questoesVinculadas: platformQuestionIds.length > 0 ? platformQuestionIds : baseImportMetadata?.questoesVinculadas,
+      } as ImportMetadata;
+
+      const contexts = normalizeExternalAiContextPayload(
+        readLooseField(payload, ['temporary_context', 'temporaryContext', 'contexts', 'contextos', 'pageContexts']),
+      );
+      const contextByTitle = new Map<string, string>();
+      contexts.forEach((context) => {
+        [
+          context.title,
+          context.externalKey,
+          context.tempId,
+        ].forEach((label) => {
+          const normalizedLabel = normalizeComparisonText(label);
+          if (normalizedLabel && !contextByTitle.has(normalizedLabel)) {
+            contextByTitle.set(normalizedLabel, context.tempId);
+          }
+        });
+      });
+      const contextByQuestionNumber = new Map<number, string>();
+      contexts
+        .filter((context) => context.questionNumbers.length > 1)
+        .sort((left, right) => left.questionNumbers.length - right.questionNumbers.length)
+        .forEach((context) => {
+          context.questionNumbers.forEach((questionNumber) => {
+            if (Number.isFinite(questionNumber) && questionNumber > 0 && !contextByQuestionNumber.has(questionNumber)) {
+              contextByQuestionNumber.set(questionNumber, context.tempId);
+            }
+          });
+        });
+      const answerKeyMap: Record<number, number> = {};
+
+      const normalizedQuestions = rawQuestions.map((item, index) => {
+        const record = toLooseRecord(item) || {};
+        const sourceRecord = toLooseRecord(readLooseField(record, ['source', 'origem'])) || {};
+        const contentRecord = toLooseRecord(readLooseField(record, ['content', 'conteudo', 'conteúdo'])) || {};
+        const answerRecord = toLooseRecord(readLooseField(record, ['answer', 'gabarito', 'resposta'])) || {};
+        const editorialItems = readLooseArray(record, ['editorial']);
+        const readEditorialBody = (type: string) => {
+          const item = editorialItems
+            .map((editorialItem) => toLooseRecord(editorialItem))
+            .find((editorialItem) => String(editorialItem?.type || '').trim() === type);
+          return readLooseText(item, ['body', 'text', 'texto', 'markdown', 'comment']);
+        };
+        const number = normalizeQuestionNumber(
+          readLooseField(sourceRecord, ['questionNumber', 'number', 'numero', 'número'])
+          || readLooseField(record, ['number', 'numero', 'número', 'questionNumber', 'questao', 'questão']),
+          index + 1,
+        );
+        const filters = toLooseRecord(readLooseField(record, ['filters', 'filtros'])) || {};
+        const externalTaxonomy = readExternalAiQuestionTaxonomy(record, filters);
+        const rawOptions = normalizeAiQuestionOptions(
+          readLooseField(record, ['alternatives', 'alternativas', 'options', 'itens']),
+        );
+        const answerIndex = normalizeAnswerIndex(readLooseField(answerRecord, [
+          'raw',
+          'value',
+          'correctAlternativeTempIds',
+          'correctAlternativeIds',
+          'alternativeId',
+        ]) || readLooseField(record, [
+          'answer',
+          'gabarito',
+          'correct',
+          'correctOption',
+          'correctOptionIndex',
+          'resposta',
+        ]));
+        if (Number.isInteger(answerIndex)) {
+          answerKeyMap[number] = Number(answerIndex);
+        }
+        const modality = inferImportedQuestionTypeFromPayload(
+          readLooseField(record, ['type', 'modality', 'modalidade', 'questionType', 'tipo']),
+          rawOptions.length,
+        );
+        const contextLabel = readLooseText(sourceRecord, ['contextTempId', 'contextKey', 'questionGroupId'])
+          || readLooseText(record, ['contextKey', 'contexto', 'contextTitle', 'tituloContexto']);
+        const contextKey = contextByTitle.get(normalizeComparisonText(contextLabel))
+          || contextByQuestionNumber.get(number)
+          || contextLabel
+          || '';
+        const linkedContext = contextKey
+          ? contexts.find((context) => context.tempId === contextKey || context.externalKey === contextKey)
+          : undefined;
+        const statusReasons = readLooseArray(record, ['statusReasons', 'motivos', 'reasons'])
+          .map((reason) => String(reason || '').trim())
+          .filter(Boolean) as ImportedQuestionStatusReason[];
+        const taxonomyNeedsReview = !externalTaxonomy.subject || !externalTaxonomy.topic || !externalTaxonomy.specificSubject;
+        const rawStatement = readLooseText(contentRecord, ['statement', 'enunciado', 'command', 'comando', 'text', 'texto'])
+          || readLooseText(record, ['statement', 'enunciado', 'command', 'comando', 'text', 'texto']);
+        const statementSplit = (() => {
+          const explicitTextSplit = splitSupportContextFromStatement(rawStatement);
+          if (explicitTextSplit.supportText) return explicitTextSplit;
+
+          const inlineTextSplit = splitInlineSupportContextFromStatement(rawStatement);
+          if (inlineTextSplit.supportText) return inlineTextSplit;
+
+          return { supportText: '', referenceText: '', statement: rawStatement };
+        })();
+        const statement = statementSplit.statement || rawStatement;
+        const rawSupportText = [
+          readLooseText(contentRecord, ['supportText', 'textoApoio', 'texto_de_apoio']),
+          readLooseText(record, ['supportText', 'textoApoio', 'texto_de_apoio']),
+          statementSplit.supportText,
+        ].filter(Boolean).join('\n\n');
+        const supportText = (() => {
+          const cleanSupportText = rawSupportText.trim();
+          if (!cleanSupportText || !linkedContext || linkedContext.questionNumbers.length <= 1) {
+            return cleanSupportText;
+          }
+
+          const normalizedSupport = normalizeComparisonText(cleanSupportText);
+          const normalizedContext = normalizeComparisonText([
+            linkedContext.title,
+            linkedContext.text,
+            linkedContext.figureDescription,
+          ].filter(Boolean).join('\n\n'));
+          const isSameSharedContext = normalizedSupport.length >= 40 && (
+            normalizedContext.includes(normalizedSupport)
+            || normalizedSupport.includes(normalizedContext)
+          );
+          const isOnlySharedFigureDescription = /^figura\s*\/?\s*imagem\s*:/i.test(cleanSupportText)
+            && Boolean(linkedContext.hasFigure || linkedContext.figureDescription || linkedContext.figures?.length);
+
+          return isSameSharedContext || isOnlySharedFigureDescription ? '' : cleanSupportText;
+        })();
+        const referenceText = sanitizeReferenceTextForImport([
+          readLooseText(contentRecord, ['reference', 'referenceText', 'referencia', 'fonte']),
+          readLooseText(record, ['referenceText', 'referencia', 'fonte']),
+          (statementSplit as { referenceText?: string }).referenceText,
+        ].filter(Boolean).join('\n\n'));
+        const teacherComment = readEditorialBody('teacher_comment') || readLooseText(record, [
+          'teacherComment',
+          'professorComment',
+          'comentarioProfessor',
+          'comentárioProfessor',
+          'comentario_do_professor',
+          'comentário_do_professor',
+          'comentarioDoProfessor',
+          'comentárioDoProfessor',
+          'gabaritoComentado',
+          'gabarito_comentado',
+        ]);
+        const rawDetailedComment = readEditorialBody('detailed_analysis') || readLooseText(record, [
+          'detailedComment',
+          'detailedAnalysis',
+          'analiseDetalhada',
+          'análiseDetalhada',
+          'analise_detalhada',
+          'análise_detalhada',
+          'analiseCompleta',
+          'análiseCompleta',
+          'comentarioDetalhado',
+          'comentárioDetalhado',
+        ]);
+        const genericDetailedComment = externalDetailedCommentIsGeneric(rawDetailedComment);
+        const detailedComment = genericDetailedComment ? '' : rawDetailedComment;
+        const rawSupportImages = readLooseArray(record, [
+          'assets',
+          'supportImages',
+          'support_images',
+          'imagensApoio',
+          'imagens_apoio',
+          'figures',
+          'figuras',
+          'images',
+          'imagens',
+        ]).map((image, imageIndex) => {
+          const imageRecord = toLooseRecord(image);
+          const imageData = readExternalImageData(imageRecord);
+          return {
+            tempId: `ai-json-q${number}-img-${imageIndex + 1}`,
+            title: readLooseText(imageRecord, ['title', 'titulo', 'name', 'nome']) || `Figura ${imageIndex + 1}`,
+            description: readLooseText(imageRecord, ['description', 'descricao', 'text', 'texto']),
+            imageData,
+            pageImageData: readLooseText(imageRecord, ['pageImageData', 'page_image_data', 'pageBase64']),
+            figureBox: normalizeExtractionFigureBox(readLooseField(imageRecord, ['figureBox', 'box', 'bbox']) as FigureBox),
+            page: Number(readLooseField(imageRecord, ['page', 'pagina']) || 0) || undefined,
+            manualCropApplied: Boolean(imageData),
+          };
+        }).filter((image) => (
+          supportImageHasUsefulPayload(image)
+          && !shouldDropExternalTextDuplicateImage(image, supportText, statement, linkedContext as ImportedContextDraft | undefined)
+        ));
+        const sharedContextImageSignatures = new Set(
+          linkedContext && linkedContext.questionNumbers.length > 1
+            ? buildSupportImagesFromContext(linkedContext, number)
+              .map((image) => getSupportImageSignature(image))
+              .filter(Boolean)
+            : [],
+        );
+        const supportImages = mergeQuestionSupportImages(
+          { supportImages: [] } as unknown as Question,
+          rawSupportImages.filter((image) => !sharedContextImageSignatures.has(getSupportImageSignature(image))),
+        );
+        const singleQuestionImageData = readExternalImageData(record);
+        if (singleQuestionImageData) {
+          const withMainImage = mergeQuestionSupportImages(
+            { supportImages } as unknown as Question,
+            [{
+            tempId: `ai-json-q${number}-img-main`,
+            title: readLooseText(record, ['figureTitle', 'tituloFigura']) || 'Figura da questão',
+            description: readLooseText(record, ['figureDescription', 'descricaoFigura']),
+            imageData: singleQuestionImageData,
+            pageImageData: readLooseText(record, ['pageImageData', 'page_image_data', 'pageBase64']),
+            figureBox: normalizeExtractionFigureBox(readLooseField(record, ['figureBox', 'box', 'bbox']) as FigureBox),
+            page: Number(readLooseField(record, ['page', 'pagina']) || 0) || undefined,
+            manualCropApplied: true,
+            }],
+          );
+          supportImages.splice(0, supportImages.length, ...withMainImage);
+        }
+        const itens = rawOptions.map((option, optionIndex) => ({
+          id: optionIndex + 1,
+          ordem: optionIndex + 1,
+          letra: option.label,
+          rotulo: option.label,
+          texto: option.text,
+          corpo: [
+            option.text,
+            option.imageData ? createVisualOptionHtml(option.label, option.imageData) : '',
+          ].filter(Boolean).join('\n\n'),
+          correta: Number.isInteger(answerIndex) ? optionIndex === Number(answerIndex) : false,
+          imageData: option.imageData,
+          pageImageData: option.pageImageData,
+          figureBox: option.figureBox,
+        }));
+        const hasMinimumContent = Boolean(statement.trim()) && (
+          modality === 'discursiva'
+          || modality === 'redacao'
+          || rawOptions.length >= 2
+        );
+        const reasons = Array.from(new Set([
+          ...statusReasons,
+          ...(!statement.trim() ? ['enunciado_ausente' as const] : []),
+          ...(rawOptions.length < 2 && modality !== 'discursiva' && modality !== 'redacao' ? ['alternativas_ausentes' as const] : []),
+          ...(!hasMinimumContent ? ['aguardando_complemento_manual' as const] : []),
+          ...(taxonomyNeedsReview ? ['classificacao_incompleta' as const] : []),
+          ...(genericDetailedComment ? ['comentario_editorial_sem_base_suficiente' as const] : []),
+        ]));
+        const quality: QuestionExtractionQuality = {
+          origin: 'manual',
+          confidence: hasMinimumContent ? 0.92 : 0.45,
+          localized: Boolean(statement.trim() || rawOptions.length),
+          complete: hasMinimumContent,
+          needsReview: !hasMinimumContent || reasons.length > 0,
+          reasons,
+        };
+
+        return buildQuestionPayloadImportCard({
+          questionNumber: number,
+          statement,
+          introText: supportText,
+          referenceText,
+          teacherComment,
+          detailedComment,
+          contextKey,
+          bancas: nextMetadata.agency ? [createTaxonomyLabel(String(nextMetadata.agency), { sigla: String(nextMetadata.agency) })] : [],
+          orgaos: nextMetadata.source ? [createTaxonomyLabel(String(nextMetadata.source))] : [],
+          cargos: nextMetadata.role ? [createTaxonomyLabel(String(nextMetadata.role), { descricao: String(nextMetadata.role) })] : [],
+          assuntos: buildExternalAiQuestionTaxonomies(externalTaxonomy),
+          anos: Number(nextMetadata.year) ? [Number(nextMetadata.year)] : [],
+          carreiras: selectedFocus ? [selectedFocus] : [],
+          niveis: nextMetadata.level ? [createTaxonomyLabel(String(nextMetadata.level))] : [],
+          nivel: nextMetadata.level || undefined,
+          tiposProva: nextMetadata.examType ? [createTaxonomyLabel(String(nextMetadata.examType))] : [],
+          tipo: modality,
+          hasFigure: supportImages.length > 0 || rawOptions.some((option) => option.imageData || option.figureBox),
+          figureDescription: readLooseText(record, ['figureDescription', 'descricaoFigura'])
+            || supportImages.map((image) => image.description).filter(Boolean).join('\n'),
+          dificuldade: normalizeDifficulty(String(readLooseField(filters, ['dificuldade', 'difficulty']) || readLooseField(record, ['difficulty', 'dificuldade']) || '')),
+          itens: itens as unknown as Question['itens'],
+          resposta: Number.isInteger(answerIndex) ? Number(answerIndex) + 1 : 0,
+          correctOptionIndex: Number.isInteger(answerIndex) ? Number(answerIndex) : undefined,
+          supportImages,
+          status: hasMinimumContent ? 'ok' : 'incompleta',
+          needsImportReview: !hasMinimumContent || reasons.length > 0,
+          reasons,
+          quality,
+        });
+      });
+
+      const normalizedQuestionNumbers = normalizedQuestions.map((question, index) => getImportedQuestionNumber(question, index + 1));
+      const declaredTotal = Number(
+        nextMetadata.totalQuestions
+        || nextMetadata.total_questions
+        || nextMetadata.totalQuestoes
+        || nextMetadata.questionCount
+        || 0,
+      );
+      const expectedQuestionNumbers = resolveExpectedQuestionNumbersForImport({
+        declaredTotal,
+        metadata: nextMetadata as unknown as Record<string, unknown>,
+        questionNumbers: normalizedQuestionNumbers,
+      });
+      const baseDiagnostics: ImportDiagnostics = {
+        expectedQuestionNumbers,
+        extractedQuestionNumbers: normalizedQuestionNumbers,
+        localizedQuestionNumbers: normalizedQuestions
+          .filter((question) => Boolean(String(question.enunciado || '').trim()))
+          .map((question, index) => getImportedQuestionNumber(question, index + 1)),
+        completeQuestionNumbers: [],
+        incompleteQuestionNumbers: [],
+        missingQuestionNumbers: [],
+        placeholderQuestionNumbers: [],
+        visualPendingQuestionNumbers: [],
+        duplicateQuestionNumbers: [],
+        suspiciousQuestionNumbers: [],
+        cardsCreatedCount: 0,
+        completeCardsCount: 0,
+        incompleteCardsCount: 0,
+        placeholderCardsCount: 0,
+      };
+      const ensured = ensureExpectedQuestionDrafts({
+        questions: normalizedQuestions as unknown as ImportedQuestionDraft[],
+        expectedQuestionNumbers,
+        diagnostics: baseDiagnostics,
+        defaultMetadata: nextMetadata,
+        answerKeyMap,
+        defaultFocus: selectedFocus,
+      });
+      const normalizedImportState = normalizeQuestionContextUsage(
+        ensured.questions as unknown as Question[],
+        new Map(contexts.map((context) => [context.tempId, context])),
+      );
+
+      setExtractedQuestions(normalizedImportState.questions);
+      setExtractedContexts(normalizedImportState.contexts);
+      setImportMetadata({
+        ...nextMetadata,
+        subjects: deriveQuestionSubjects(normalizedImportState.questions),
+      });
+      setImportDiagnostics(ensured.diagnostics);
+      setPublishedExam(null);
+      setPublishedQuestionNumbers([]);
+      addLog(`JSON da IA importado: ${ensured.diagnostics.cardsCreatedCount} card(s), ${ensured.diagnostics.completeCardsCount} completo(s), ${ensured.diagnostics.placeholderCardsCount} pendente(s).`);
+      addToast('Resposta da IA carregada na revisão.', 'success');
+    } catch (error) {
+      addToast(`Não foi possível ler o JSON da IA: ${readErrorMessage(error)}`, 'error');
+      addLog(`JSON da IA: falha ao importar (${readErrorMessage(error)}).`);
+    }
+  };
+
+  const handleImportExternalEditorialJson = async (sourceJson: string) => {
+    const rawJson = String(sourceJson || '').trim();
+    if (!rawJson) {
+      addToast('Cole o JSON editorial da IA externa antes de aplicar.', 'error');
+      return;
+    }
+
+    if (isProcessing || isBulkGenerating || isRetryingMissingQuestions) {
+      addToast('Aguarde o processamento atual terminar antes de aplicar o JSON editorial.', 'info');
+      return;
+    }
+
+    try {
+      const candidate = rawJson.startsWith('[')
+        ? rawJson
+        : extractJsonObjectText(rawJson);
+      const payload = JSON.parse(candidate) as unknown;
+      const payloadRecord = toLooseRecord(payload);
+      const rawQuestions = Array.isArray(payload)
+        ? payload
+        : readLooseArray(payloadRecord, ['questions', 'questoes', 'questões']);
+
+      if (!rawQuestions.length) {
+        addToast('O JSON editorial precisa conter "questions" com number e teacherComment ou detailedComment.', 'error');
+        return;
+      }
+
+      const patchesByNumber = new Map<number, Partial<Question>>();
+      rawQuestions.forEach((item, index) => {
+        const record = toLooseRecord(item);
+        if (!record) return;
+
+        const number = normalizeQuestionNumber(
+          readLooseField(record, ['number', 'numero', 'número', 'questionNumber', 'questao', 'questão']),
+          index + 1,
+        );
+        const teacherComment = readLooseText(record, [
+          'teacherComment',
+          'professorComment',
+          'comentarioProfessor',
+          'comentárioProfessor',
+          'comentario_do_professor',
+          'comentário_do_professor',
+          'comentarioDoProfessor',
+          'comentárioDoProfessor',
+          'gabaritoComentado',
+          'gabarito_comentado',
+        ]);
+        const rawDetailedComment = readLooseText(record, [
+          'detailedComment',
+          'detailedAnalysis',
+          'analiseDetalhada',
+          'análiseDetalhada',
+          'analise_detalhada',
+          'análise_detalhada',
+          'analiseCompleta',
+          'análiseCompleta',
+          'comentarioDetalhado',
+          'comentárioDetalhado',
+        ]);
+        const detailedComment = externalDetailedCommentIsGeneric(rawDetailedComment) ? '' : rawDetailedComment;
+        const patch: Partial<Question> = {};
+
+        if (teacherComment.trim()) {
+          patch.teacherComment = teacherComment;
+        }
+        if (detailedComment.trim()) {
+          patch.detailedComment = detailedComment;
+        }
+        if (Number.isFinite(number) && number > 0 && (patch.teacherComment || patch.detailedComment)) {
+          patchesByNumber.set(number, {
+            ...patchesByNumber.get(number),
+            ...patch,
+          });
+        }
+      });
+
+      if (patchesByNumber.size === 0) {
+        addToast('Nenhum comentário ou análise detalhada válido foi encontrado no JSON editorial.', 'error');
+        return;
+      }
+
+      const appliedCount = extractedQuestions.filter((question, index) => (
+        patchesByNumber.has(getImportedQuestionNumber(question, index + 1))
+      )).length;
+      setExtractedQuestions((current) => current.map((question, index) => {
+        const number = getImportedQuestionNumber(question, index + 1);
+        const patch = patchesByNumber.get(number);
+        if (!patch) return question;
+        return mergeQuestionEditorialPatch(question, patch);
+      }));
+
+      addLog(`JSON editorial externo aplicado: ${appliedCount} questao(oes) atualizada(s).`);
+      addToast(`JSON editorial aplicado em ${appliedCount} questao(oes).`, 'success');
+    } catch (error) {
+      addToast(`Não foi possível ler o JSON editorial: ${readErrorMessage(error)}`, 'error');
+      addLog(`JSON editorial externo: falha ao importar (${readErrorMessage(error)}).`);
+    }
+  };
+
   const handleBulkGenerateDetailed = async () => {
     if (extractedQuestions.length === 0) {
       return;
     }
 
     setIsBulkGenerating(true);
+    setBulkGenerationType('detailed');
     setBulkProgress(0);
     try {
       const updatedQuestions = await generateDetailedAnalysesForQuestions(extractedQuestions, {
@@ -11234,6 +13222,7 @@ export const useAdminImportWorkflow = ({
       addLog('Geracao em massa concluida!');
     } finally {
       setIsBulkGenerating(false);
+      setBulkGenerationType(null);
     }
   };
 
@@ -11243,6 +13232,7 @@ export const useAdminImportWorkflow = ({
     }
 
     setIsBulkGenerating(true);
+    setBulkGenerationType('teacher');
     setBulkProgress(0);
     try {
       const updatedQuestions = await generateTeacherCommentsForQuestions(extractedQuestions, {
@@ -11257,6 +13247,7 @@ export const useAdminImportWorkflow = ({
       addLog('Geracao em massa de comentarios do professor concluida!');
     } finally {
       setIsBulkGenerating(false);
+      setBulkGenerationType(null);
     }
   };
 
@@ -11441,19 +13432,63 @@ export const useAdminImportWorkflow = ({
     });
 
     const usedQuestionNumbersByContextTempId = new Map<string, Set<number>>();
+    const prepareImportedQuestionForCreate = (question: Question) => {
+      const syncedQuestion = syncCanonicalQuestionPayload(question);
+      const syncedDraft = syncedQuestion as unknown as ImportedQuestionDraft;
+      const payload = syncedDraft.questionCreatePayload || (syncedQuestion as unknown as QuestionPayload);
+      const teacherComment = payload.editorial?.find((item) => item.type === 'teacher_comment')?.body
+        || syncedQuestion.editorialComments?.teacherComment
+        || syncedQuestion.teacherComment
+        || '';
+      const detailedComment = payload.editorial?.find((item) => item.type === 'detailed_analysis')?.body
+        || syncedQuestion.editorialComments?.detailedComment
+        || syncedQuestion.detailedComment
+        || '';
+
+      return {
+        ...payload,
+        id: null,
+        editorial: [
+          { type: 'teacher_comment', title: '', body: teacherComment, status: 'draft' },
+          { type: 'detailed_analysis', title: '', body: detailedComment, status: 'draft' },
+        ],
+        review: {
+          required: Boolean((syncedQuestion as ImportedQuestionDraft).needsImportReview || payload.review?.required || payload.review?.needsReview),
+          status: ((syncedQuestion as ImportedQuestionDraft).needsImportReview || payload.review?.required || payload.review?.needsReview) ? 'pending' : 'reviewed',
+          reasons: Array.from(new Set([
+            ...(payload.review?.reasons || payload.review?.statusReasons || []),
+            ...(((syncedQuestion as ImportedQuestionDraft).statusReasons || []) as string[]),
+          ])),
+        },
+      } as unknown as Question;
+    };
+
     const questionsForPublish = normalizedEntries.map(({ question, index }) => {
       const questionNumber = getImportedQuestionNumber(question, index + 1);
-      const questionWithSupportImages = normalizeCanceledImportedQuestion(buildIntroTextWithSupportImages(
+      const questionWithSupportImages = prepareImportedQuestionForCreate(normalizeCanceledImportedQuestion(buildIntroTextWithSupportImages(
         applyExamYearToQuestion(question, importMetadata),
-      ));
+      )));
       const draft = questionWithSupportImages as unknown as ImportedQuestionDraft;
-      const referencedContextTempId = String(draft.contextKey || draft.grupoQuestaoTempId || draft.contextTempId || '').trim();
+      const payloadDraft = questionWithSupportImages as unknown as QuestionPayload & Record<string, unknown>;
+      const referencedContextTempId = String(
+        payloadDraft.source?.contextTempId
+        || draft.contextKey
+        || draft.grupoQuestaoTempId
+        || draft.contextTempId
+        || '',
+      ).trim();
       const contextTempId = contextTempIdByQuestionNumber.get(questionNumber)
         || (referencedContextTempId && contextByTempId.has(referencedContextTempId) ? referencedContextTempId : '');
 
       if (!contextTempId) {
+        const payloadRecord = questionWithSupportImages as unknown as QuestionPayload;
         return {
           ...questionWithSupportImages,
+          source: {
+            ...(payloadRecord.source || { origin: 'exam' }),
+            questionNumber,
+            contextTempId: undefined,
+          },
           questionNumber,
           question_number: questionNumber,
           contextKey: draft.contextKey || '',
@@ -11468,6 +13503,11 @@ export const useAdminImportWorkflow = ({
 
       return {
         ...questionWithSupportImages,
+        source: {
+          ...((questionWithSupportImages as unknown as QuestionPayload).source || { origin: 'exam' }),
+          questionNumber,
+          contextTempId,
+        },
         questionNumber,
         question_number: questionNumber,
         contextKey: contextTempId,
@@ -11606,35 +13646,76 @@ export const useAdminImportWorkflow = ({
         normalizedContexts,
       } = buildQuestionPublishPayload(entries);
       const { examName, exam } = buildImportExamPayload(questionsForPublish);
-      const response = await questionService.createImportedQuestionBatch({
-        exam: {
+      const examPayloadForQuestionBatch = selectedExamRecord
+        ? {
+          id: publishedExamId,
+          provaId: publishedExamId,
+          prova_id: publishedExamId,
+          publishedExamId,
+          published_exam_id: publishedExamId,
+          selectedExamId: publishedExamId,
+          selected_exam_id: publishedExamId,
+          linkOnly: true,
+          link_only: true,
+          preserveExistingExam: true,
+          preserve_existing_exam: true,
+        }
+        : {
           ...exam,
           publishedExamId,
           provaId: publishedExamId,
           prova_id: publishedExamId,
-        },
+        };
+      const response = await questionService.createImportedQuestionBatch({
+        exam: examPayloadForQuestionBatch,
         focus: selectedFocus as Record<string, unknown>,
         contexts: contextsForPublish.map((context) => {
           const publishContent = buildContextPublishContent(context);
-          const textFallback = !publishContent.imageData && context.figureDescription
-            ? [publishContent.text, `Figura/Imagem: ${context.figureDescription}`].filter(Boolean).join('\n\n')
-            : publishContent.text;
+          const contextAssets: QuestionAsset[] = [
+            ...(context.imageData
+              ? [{
+                tempId: `${context.tempId}-img-1`,
+                type: 'image' as const,
+                usage: 'context' as const,
+                base64: context.imageData,
+                alt: context.figureDescription || context.title || 'Imagem do contexto.',
+                sourcePage: context.sourcePage || context.page || null,
+                order: 1,
+              }]
+              : []),
+            ...(context.figures || [])
+              .filter((figure) => Boolean(figure.imageData))
+              .map((figure, index) => ({
+                tempId: String(figure.figureKey || `${context.tempId}-img-${index + 2}`),
+                type: 'image' as const,
+                usage: 'context' as const,
+                base64: String(figure.imageData || ''),
+                alt: figure.description || context.figureDescription || `Imagem ${index + 2} do contexto.`,
+                sourcePage: figure.page || context.sourcePage || context.page || null,
+                order: index + 2,
+              })),
+          ].filter((asset, index, assets) => (
+            assets.findIndex((candidate) => candidate.tempId === asset.tempId) === index
+          ));
+          let contextText = String(publishContent.text || context.text || '')
+            .replace(/\[FIGURA:\s*([-\w]+)\]/gi, '[image:$1]')
+            .trim();
+          contextAssets.forEach((asset) => {
+            const marker = `[image:${asset.tempId}]`;
+            if (!contextText.includes(marker)) {
+              contextText = [contextText, marker].filter(Boolean).join('\n\n');
+            }
+          });
 
           return {
             tempId: context.tempId,
-            contextKey: context.tempId,
-            statement: context.title,
-            enunciado: context.title,
-            text: textFallback,
-            texto: textFallback,
-            referenceText: context.referenceText || '',
-            reference_text: context.referenceText || '',
-            richText: publishContent.richText || context.richText || '',
+            type: context.questionNumbers.length > 1 ? 'shared' : 'individual',
+            body: contextText,
+            bodyClean: stripHtml(contextText),
+            reference: String(publishContent.referenceText || context.referenceText || '').trim(),
+            sourcePage: context.sourcePage || context.page || null,
+            assets: contextAssets,
             questionNumbers: context.questionNumbers,
-            imageData: publishContent.imageData,
-            sourcePage: context.sourcePage || context.page,
-            figureBox: context.figureBox,
-            figures: publishContent.figures,
           };
         }),
         questions: questionsForPublish,
@@ -11645,7 +13726,12 @@ export const useAdminImportWorkflow = ({
         throw new Error(response.message || 'Falha ao salvar as questoes importadas.');
       }
 
-      await syncPublishedExam((response.exam || activePublishedExam) as Record<string, unknown>, examName);
+      if (selectedExamRecord) {
+        setPublishedExam(selectedExamRecord);
+        addLog(`Prova #${publishedExamId} preservada: o lote foi apenas vinculado ao cadastro existente, sem atualizar metadados do Banco de Provas.`);
+      } else {
+        await syncPublishedExam((response.exam || activePublishedExam) as Record<string, unknown>, examName);
+      }
       setExtractedQuestions(normalizedQuestions);
       setExtractedContexts(normalizedContexts);
       if (response.created && response.created.length > 0) {
@@ -11749,6 +13835,77 @@ export const useAdminImportWorkflow = ({
       next[index] = refreshManuallyEditedImportQuestion(question);
       return next;
     });
+  };
+
+  const markExtractedQuestionReviewed = (index: number) => {
+    const question = extractedQuestions[index];
+    if (!question) {
+      addToast('Questão não encontrada na revisão.', 'error');
+      return;
+    }
+
+    const blockReasons = getQuestionPublicationBlockReasons(question);
+    const questionNumber = getImportedQuestionNumber(question, index + 1);
+    if (blockReasons.length > 0) {
+      addToast(`A questão ${questionNumber} ainda tem pendências obrigatórias: ${blockReasons.map((reason) => reason.replace(/_/g, ' ')).join(', ')}.`, 'warning');
+      return;
+    }
+
+    setExtractedQuestions((previous) => previous.map((currentQuestion, currentIndex) => {
+      if (currentIndex !== index) {
+        return currentQuestion;
+      }
+
+      const draft = currentQuestion as unknown as ImportedQuestionDraft;
+      const quality: QuestionExtractionQuality = {
+        ...(draft.qualityReport || draft.extractionQuality || {
+          origin: inferQuestionExtractionOrigin(currentQuestion),
+          confidence: 0.92,
+          localized: true,
+          complete: true,
+          needsReview: false,
+          reasons: [],
+        }),
+        complete: true,
+        needsReview: false,
+        reasons: [],
+      };
+
+      return {
+        ...currentQuestion,
+        status: 'ok',
+        extractionStatus: 'ok',
+        needsImportReview: false,
+        statusReasons: [],
+        validationReasons: [],
+        rejectionReason: '',
+        qualityReport: quality,
+        extractionQuality: quality,
+      } as unknown as Question;
+    }));
+
+    setImportDiagnostics((previous) => {
+      const withoutQuestion = (numbers?: number[]) => (numbers || []).filter((number) => number !== questionNumber);
+      const completeQuestionNumbers = Array.from(new Set([...(previous.completeQuestionNumbers || []), questionNumber]))
+        .sort((left, right) => left - right);
+      const incompleteQuestionNumbers = withoutQuestion(previous.incompleteQuestionNumbers);
+      const placeholderQuestionNumbers = withoutQuestion(previous.placeholderQuestionNumbers);
+
+      return {
+        ...previous,
+        completeQuestionNumbers,
+        incompleteQuestionNumbers,
+        missingQuestionNumbers: withoutQuestion(previous.missingQuestionNumbers),
+        placeholderQuestionNumbers,
+        visualPendingQuestionNumbers: withoutQuestion(previous.visualPendingQuestionNumbers),
+        suspiciousQuestionNumbers: withoutQuestion(previous.suspiciousQuestionNumbers),
+        completeCardsCount: completeQuestionNumbers.length,
+        incompleteCardsCount: incompleteQuestionNumbers.filter((number) => !placeholderQuestionNumbers.includes(number)).length,
+        placeholderCardsCount: placeholderQuestionNumbers.length,
+      };
+    });
+
+    addToast(`Questão ${questionNumber} marcada como revisada.`, 'success');
   };
 
   const updateImportMetadataField = (field: ImportMetadataField, value: string) => {
@@ -11894,11 +14051,15 @@ export const useAdminImportWorkflow = ({
         return previous;
       }
 
-      next[index] = refreshManuallyEditedImportQuestion({
+      next[index] = refreshManuallyEditedImportQuestion(syncCanonicalQuestionPayload({
         ...question,
+        content: {
+          ...(question.content || { statement: '' }),
+          statement: value,
+        },
         enunciado: value,
         enunciado_clean: stripHtml(value),
-      } as Question);
+      } as Question));
       return next;
     });
   };
@@ -11911,11 +14072,15 @@ export const useAdminImportWorkflow = ({
         return previous;
       }
 
-      next[index] = {
+      next[index] = syncCanonicalQuestionPayload({
         ...question,
+        content: {
+          ...(question.content || { statement: getQuestionStatementText(question) }),
+          supportText: value,
+        },
         introText: value,
         intro_text: value,
-      } as Question;
+      } as Question);
       return next;
     });
   };
@@ -11928,11 +14093,15 @@ export const useAdminImportWorkflow = ({
         return previous;
       }
 
-      next[index] = {
+      next[index] = syncCanonicalQuestionPayload({
         ...question,
+        content: {
+          ...(question.content || { statement: getQuestionStatementText(question) }),
+          reference: value,
+        },
         referenceText: value,
         reference_text: value,
-      } as unknown as Question;
+      } as unknown as Question);
       return next;
     });
   };
@@ -11945,7 +14114,7 @@ export const useAdminImportWorkflow = ({
         return previous;
       }
 
-      next[questionIndex] = refreshManuallyEditedImportQuestion({
+      next[questionIndex] = refreshManuallyEditedImportQuestion(syncCanonicalQuestionPayload({
         ...question,
         itens: question.itens.map((item, index) => (
           index === optionIndex
@@ -11956,7 +14125,7 @@ export const useAdminImportWorkflow = ({
             }
             : item
         )),
-      } as Question);
+      } as Question));
       return next;
     });
   };
@@ -11968,11 +14137,11 @@ export const useAdminImportWorkflow = ({
       if (!question || optionIndex < 0 || optionIndex >= (Array.isArray(question.itens) ? question.itens.length : 0)) {
         return previous;
       }
-      next[questionIndex] = refreshManuallyEditedImportQuestion({
+      next[questionIndex] = refreshManuallyEditedImportQuestion(syncCanonicalQuestionPayload({
         ...question,
         correctOptionIndex: optionIndex,
         resposta: optionIndex + 1,
-      } as Question);
+      } as Question));
       return next;
     });
   };
@@ -11992,7 +14161,7 @@ export const useAdminImportWorkflow = ({
         return previous;
       }
 
-      next[questionIndex] = refreshManuallyEditedImportQuestion({
+      next[questionIndex] = refreshManuallyEditedImportQuestion(syncCanonicalQuestionPayload({
         ...question,
         itens: [
           ...currentItems,
@@ -12005,7 +14174,7 @@ export const useAdminImportWorkflow = ({
           },
         ],
         needsImportReview: true,
-      } as Question);
+      } as Question));
       return next;
     });
   };
@@ -12021,20 +14190,35 @@ export const useAdminImportWorkflow = ({
 
       const questionNumber = getExtractedQuestionNumber(question as Question, questionIndex + 1);
       const supportImages = Array.isArray(question.supportImages) ? question.supportImages : [];
-      next[questionIndex] = {
+      const nextSupportImages = [
+        ...supportImages,
+        {
+          tempId: `manual-q-${questionNumber}-fig-${Date.now()}`,
+          title: fileName || `Figura de apoio da questao ${questionNumber}`,
+          imageData: cleanImageData,
+          pageImageData: cleanImageData,
+          manualCropApplied: true,
+        },
+      ];
+      next[questionIndex] = syncCanonicalQuestionPayload({
         ...(next[questionIndex] as Question),
-        supportImages: [
-          ...supportImages,
-          {
-            tempId: `manual-q-${questionNumber}-fig-${Date.now()}`,
-            title: fileName || `Figura de apoio da questao ${questionNumber}`,
-            imageData: cleanImageData,
-            pageImageData: cleanImageData,
-            manualCropApplied: true,
-          },
+        assets: [
+          ...(((next[questionIndex] as Question).assets || []).filter((asset) => asset.usage !== 'support')),
+          ...nextSupportImages.map((image, imageIndex) => ({
+            id: String(image.tempId || `img_${imageIndex + 1}`),
+            type: 'image' as const,
+            usage: 'support' as const,
+            url: '',
+            base64: image.imageData,
+            alt: image.title,
+            caption: image.title,
+            sourcePage: null,
+            order: imageIndex + 1,
+          })),
         ],
+        supportImages: nextSupportImages,
         needsImportReview: true,
-      } as unknown as Question;
+      } as unknown as Question);
       return next;
     });
   };
@@ -12050,7 +14234,7 @@ export const useAdminImportWorkflow = ({
         return currentQuestion;
       }
 
-      return refreshManuallyEditedImportQuestion({
+      return refreshManuallyEditedImportQuestion(syncCanonicalQuestionPayload({
         ...currentQuestion,
         hasImageItens: true,
         needsImportReview: true,
@@ -12069,7 +14253,7 @@ export const useAdminImportWorkflow = ({
             figureBox: { x: 0, y: 0, width: 1000, height: 1000 },
           };
         }),
-      } as unknown as Question);
+      } as unknown as Question));
     }));
   };
 
@@ -12103,13 +14287,13 @@ export const useAdminImportWorkflow = ({
         ))
         : 0;
 
-      next[questionIndex] = refreshManuallyEditedImportQuestion({
+      next[questionIndex] = refreshManuallyEditedImportQuestion(syncCanonicalQuestionPayload({
         ...question,
         itens: nextItems,
         correctOptionIndex: nextCorrectIndex,
         resposta: nextCorrectIndex + 1,
         needsImportReview: true,
-      } as Question);
+      } as Question));
       return next;
     });
   };
@@ -12547,6 +14731,7 @@ export const useAdminImportWorkflow = ({
     logs,
     extractedQuestions,
     isBulkGenerating,
+    bulkGenerationType,
     isRetryingMissingQuestions,
     bulkProgress,
     publishedExam: activePublishedExam,
@@ -12558,6 +14743,8 @@ export const useAdminImportWorkflow = ({
     handleBulkGenerateTeacher,
     handleRetryMissingQuestions,
     handleParseQuestionsFromText,
+    handleImportFromAiJson,
+    handleImportExternalEditorialJson,
     handleGenerateSpecific,
     handlePublishExamOnly,
     handlePublishAllQuestions,
@@ -12583,6 +14770,7 @@ export const useAdminImportWorkflow = ({
     updateExtractedQuestionSupportImageCrop,
     removeExtractedQuestionSupportImage,
     updateExtractedQuestionOptionImageCrop,
+    markExtractedQuestionReviewed,
     replaceExtractedQuestion,
     removeExtractedQuestion,
     updateContextFigureCrop,
@@ -12614,6 +14802,8 @@ export const __examImportParserTestApi = {
   ensureExpectedQuestionDrafts,
   isQuestionReadyForImportPublication,
   mergeExtractionContextList,
+  normalizeAiQuestionOptions,
+  externalDetailedCommentIsGeneric,
   parseAnswerKeyFromText,
   resolveExamParserProfile,
   textNeedsExternalSupportContext,

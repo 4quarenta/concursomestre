@@ -25,7 +25,13 @@ QUESTION_MARKER_RE = re.compile(
     r"^\s*(?:quest\w*\s*)?0*(?P<number>\d{1,3})(?:\s*[).:-]|\s+|$)",
     re.IGNORECASE,
 )
+STRONG_QUESTION_MARKER_RE = re.compile(
+    r"^\s*(?:quest(?:a|ã|Ã)?o|quest(?:Ã|A)£o|questao)\s*0*(?P<number>\d{1,3})\b",
+    re.IGNORECASE,
+)
 OPTION_MARKER_RE = re.compile(r"(?:(?<=^)|(?<=\s))[\(\[]?(?P<label>[A-E])[\)\].:-]\s+", re.IGNORECASE)
+LINE_OPTION_MARKER_RE = re.compile(r"(?m)^\s*(?P<label>[A-E])\s+(?=\S)")
+OPTION_LABELS = "ABCDE"
 ANSWER_KEY_RE = re.compile(
     r"(?<!\d)(?P<number>\d{1,3})\s*(?:[).:-]|\s+)\s*(?P<option>[A-E]|ANULAD[AO]|NULA|X)(?![A-Z])",
     re.IGNORECASE,
@@ -39,6 +45,35 @@ CONTEXT_LIST_RE = re.compile(
     re.IGNORECASE,
 )
 REFERENCE_RE = re.compile(r"\b(dispon\w*\s+em|acesso\s+em|adaptado\s+de|fonte:|internet:|in:)\b", re.IGNORECASE)
+CONTEXT_SIGNALS = [
+    "texto para responder",
+    "leia o texto",
+    "leia os textos",
+    "com base no texto",
+    "com base nos textos",
+    "para responder",
+    "responder as quest",
+    "responder às quest",
+    "texto i",
+    "texto ii",
+    "considere o texto",
+    "considere a situacao",
+    "considere a situação",
+]
+VISUAL_CONTEXT_SIGNALS = [
+    "figura",
+    "imagem",
+    "grafico",
+    "gráfico",
+    "tabela",
+    "mapa",
+    "charge",
+    "tirinha",
+    "quadro",
+    "diagrama",
+    "observe",
+    "analise",
+]
 
 
 @dataclass
@@ -66,6 +101,16 @@ def normalize_box(rect: fitz.Rect, page_rect: fitz.Rect) -> FigureBox:
 
 def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
+
+
+def extract_question_marker(text: str) -> int | None:
+    strong_match = STRONG_QUESTION_MARKER_RE.match(text)
+    if strong_match:
+        return int(strong_match.group("number"))
+    match = QUESTION_MARKER_RE.match(text)
+    if not match:
+        return None
+    return int(match.group("number"))
 
 
 def read_pdf_pages(data: bytes) -> list[PdfPageData]:
@@ -185,7 +230,7 @@ def build_blocks(lines: list[PdfTextLine]) -> list[PdfTextBlock]:
         starts_new = False
         if previous is not None:
             vertical_gap = line.box.y - (previous.box.y + previous.box.height)
-            starts_new = line.columnIndex != previous.columnIndex or vertical_gap > 22 or bool(QUESTION_MARKER_RE.match(line.text))
+            starts_new = line.columnIndex != previous.columnIndex or vertical_gap > 22 or extract_question_marker(line.text) is not None
         if starts_new and current:
             blocks.append(make_block(current))
             current = []
@@ -240,6 +285,9 @@ def parse_answer_key(data: bytes | None) -> dict[int, int]:
 
 
 def parse_expected_numbers(metadata: dict[str, Any], answer_key: dict[int, int]) -> list[int]:
+    if answer_key:
+        return list(range(1, max(answer_key) + 1))
+
     candidates = [
         metadata.get("totalQuestions"),
         metadata.get("total_questions"),
@@ -258,18 +306,25 @@ def parse_expected_numbers(metadata: dict[str, Any], answer_key: dict[int, int])
     return list(range(1, total + 1)) if total > 0 else []
 
 
-def parse_questions(pages: list[PdfPageData]) -> list[RawQuestion]:
+def parse_questions(pages: list[PdfPageData], expected_numbers: list[int] | None = None) -> list[RawQuestion]:
+    expected_set = set(expected_numbers or [])
     lines: list[tuple[int, str, FigureBox]] = []
     for page in pages:
         for line in page.lines:
             lines.append((page.pageNumber, line.text, line.box))
     markers: list[tuple[int, int]] = []
+    previous_number = 0
     for index, (_, text, _) in enumerate(lines):
-        match = QUESTION_MARKER_RE.match(text)
-        if match:
-            number = int(match.group("number"))
-            if 1 <= number <= 250:
-                markers.append((index, number))
+        number = extract_question_marker(text)
+        if number is None:
+            continue
+        if expected_set and number not in expected_set:
+            continue
+        if not expected_set and (number <= previous_number or number > previous_number + 3):
+            continue
+        if 1 <= number <= 250:
+            markers.append((index, number))
+            previous_number = number
     questions: list[RawQuestion] = []
     for marker_index, (start, number) in enumerate(markers):
         end = markers[marker_index + 1][0] if marker_index + 1 < len(markers) else len(lines)
@@ -297,44 +352,115 @@ def split_question_and_options(raw: str) -> tuple[str, list[str], str]:
     if ref_match and ref_match.start() > 40:
         reference = text[ref_match.start() :].strip()
         text = text[: ref_match.start()].strip()
-    matches = list(OPTION_MARKER_RE.finditer(text))
+    matches = find_option_markers(text)
     if len(matches) < 2:
         return normalize_text(text), [], normalize_text(reference)
     question_text = text[: matches[0].start()].strip()
     options: list[str] = []
     for index, match in enumerate(matches):
+        label = match.group("label").upper()
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        options.append(normalize_text(text[start:end]))
+        options.append(clean_option_text(label, text[start:end]))
     return normalize_text(question_text), [option for option in options if option], normalize_text(reference)
+
+
+def find_option_markers(text: str) -> list[re.Match[str]]:
+    marked = list(OPTION_MARKER_RE.finditer(text))
+    if is_sequential_option_markers(marked):
+        return marked
+    line_marked = list(LINE_OPTION_MARKER_RE.finditer(text))
+    if is_sequential_option_markers(line_marked):
+        return line_marked
+    return marked
+
+
+def is_sequential_option_markers(matches: list[re.Match[str]]) -> bool:
+    if len(matches) < 2:
+        return False
+    labels = [match.group("label").upper() for match in matches]
+    if labels[0] != "A":
+        return False
+    expected = list(OPTION_LABELS[: len(labels)])
+    return labels == expected
+
+
+def clean_option_text(label: str, value: str) -> str:
+    cleaned = normalize_text(value)
+    return normalize_text(re.sub(rf"^\s*[\(\[]?{re.escape(label)}[\)\].:-]\s*", "", cleaned, flags=re.IGNORECASE))
 
 
 def parse_contexts(pages: list[PdfPageData]) -> list[ImportedContextDraft]:
     contexts: list[ImportedContextDraft] = []
+    seen: set[str] = set()
     for page in pages:
         for block_index, block in enumerate(page.blocks):
             text = normalize_text(block.text)
             if not text:
                 continue
             numbers = parse_context_numbers(text)
-            has_context_signal = bool(numbers) or any(
-                signal in text.lower()
-                for signal in ["texto para responder", "leia o texto", "leia os textos", "com base no texto", "com base nos textos"]
-            )
-            if not has_context_signal:
+            if not is_context_or_support_candidate(text, numbers):
                 continue
+            normalized_key = re.sub(r"\W+", "", text.lower())[:220]
+            if normalized_key in seen:
+                continue
+            seen.add(normalized_key)
+            reference = extract_reference_text(text)
+            context_text = text
+            if reference and len(reference) < len(text):
+                context_text = normalize_text(text.replace(reference, ""))
+            has_figure = any(signal in text.lower() for signal in VISUAL_CONTEXT_SIGNALS)
             contexts.append(
                 ImportedContextDraft(
                     tempId=f"ctx-{page.pageNumber}-{block_index}",
                     title=guess_context_title(text),
-                    text=text,
-                    richText=text,
+                    text=context_text,
+                    richText=context_text,
+                    referenceText=reference,
                     questionNumbers=numbers,
+                    hasFigure=has_figure,
+                    figureDescription=guess_figure_description(text) if has_figure else "",
                     page=page.pageNumber,
                     sourcePage=page.pageNumber,
                 )
             )
     return contexts
+
+
+def is_context_or_support_candidate(text: str, numbers: list[int]) -> bool:
+    lower = text.lower()
+    if looks_like_question_or_option(text):
+        return False
+    if numbers:
+        return True
+    if any(signal in lower for signal in CONTEXT_SIGNALS):
+        return True
+    if any(signal in lower for signal in VISUAL_CONTEXT_SIGNALS):
+        return True
+    if REFERENCE_RE.search(text):
+        return True
+    return len(text) >= 220 and not OPTION_MARKER_RE.search(text)
+
+
+def looks_like_question_or_option(text: str) -> bool:
+    return bool(QUESTION_MARKER_RE.match(text) or OPTION_MARKER_RE.match(text))
+
+
+def extract_reference_text(text: str) -> str:
+    match = REFERENCE_RE.search(text)
+    if not match:
+        return ""
+    start = max(0, match.start())
+    reference = text[start:]
+    return reference[:600].strip()
+
+
+def guess_figure_description(text: str) -> str:
+    lower = text.lower()
+    for signal in VISUAL_CONTEXT_SIGNALS:
+        if signal in lower:
+            return f"Recurso visual mencionado no bloco: {signal}."
+    return "Recurso visual mencionado no bloco."
 
 
 def parse_context_numbers(text: str) -> list[int]:
@@ -512,9 +638,9 @@ def build_diagnostics(
 ) -> ImportDiagnostics:
     complete = [q.number for q in questions if q.extractionStatus == "ok"]
     localized = [q.number for q in questions if q.qualityReport.localized]
-    incomplete = [q.number for q in questions if q.extractionStatus != "ok"]
+    incomplete = [q.number for q in questions if q.qualityReport.localized and q.extractionStatus != "ok"]
     extracted = [q.number for q in questions if q.qualityReport.origin != "placeholder"]
-    missing = [q.number for q in questions if q.number in placeholders or q.extractionStatus != "ok"]
+    missing = [q.number for q in questions if not q.qualityReport.localized]
     return ImportDiagnostics(
         expectedQuestionNumbers=expected_numbers,
         extractedQuestionNumbers=sorted(set(extracted)),
@@ -533,6 +659,105 @@ def build_diagnostics(
     )
 
 
+def answer_label(index: int | None) -> str:
+    if index is None or index < 0 or index >= len("ABCDE"):
+        return ""
+    return "ABCDE"[index]
+
+
+def as_list(value: Any) -> list[Any]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def model_to_dict(value: Any) -> dict[str, Any]:
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "dict"):
+        return value.dict()
+    return dict(value or {})
+
+
+def build_filter_object(metadata: dict[str, Any], question: ImportedQuestionDraft) -> dict[str, Any]:
+    return {
+        "materia": as_list(question.assuntos),
+        "topico": [],
+        "assunto": as_list(question.assuntos),
+        "banca": as_list(metadata.get("agency") or metadata.get("bank") or metadata.get("banca")),
+        "orgao": as_list(metadata.get("source") or metadata.get("sources") or metadata.get("orgao") or metadata.get("orgaos")),
+        "cargo_prova": as_list(metadata.get("roles") or metadata.get("cargos") or metadata.get("role") or metadata.get("cargo")),
+        "ano": metadata.get("year") or metadata.get("ano") or "",
+        "nivel": metadata.get("level") or metadata.get("nivel") or "",
+        "modalidade": question.modality or question.questionType or "desconhecido",
+        "dificuldade": question.dificuldade or 2,
+    }
+
+
+def build_review_object(
+    questions: list[ImportedQuestionDraft],
+    contexts: list[ImportedContextDraft],
+    answer_key: dict[int, int],
+    metadata: dict[str, Any],
+    diagnostics: ImportDiagnostics,
+) -> dict[str, Any]:
+    temporary_context: dict[str, dict[str, Any]] = {}
+    for context in contexts:
+        title = context.title or context.tempId or "Contexto"
+        key = title
+        suffix = 2
+        while key in temporary_context:
+            key = f"{title} ({suffix})"
+            suffix += 1
+        temporary_context[key] = {
+            "title": title,
+            "value": context.text,
+            "reference": context.referenceText,
+            "questions": context.questionNumbers,
+            "type": "figure" if context.hasFigure else "text",
+            "page": context.sourcePage or context.page,
+            "figureDescription": context.figureDescription,
+        }
+
+    return {
+        "summary": {
+            "expected": len(diagnostics.expectedQuestionNumbers),
+            "cardsCreated": diagnostics.cardsCreatedCount,
+            "complete": diagnostics.completeCardsCount,
+            "incomplete": diagnostics.incompleteCardsCount,
+            "placeholders": diagnostics.placeholderCardsCount,
+            "missingContent": diagnostics.missingQuestionNumbers,
+        },
+        "questions": [
+            {
+                "number": question.number,
+                "answer": answer_label(answer_key.get(question.number)),
+                "answerIndex": answer_key.get(question.number),
+                "enunciado": question.enunciado or question.text,
+                "alternativas": [
+                    {
+                        "label": "ABCDE"[index] if index < len("ABCDE") else str(index + 1),
+                        "text": option,
+                    }
+                    for index, option in enumerate(question.options)
+                ],
+                "temporaryContextKey": question.contextKey,
+                "supportText": question.supportText,
+                "referenceText": question.referenceText,
+                "modalidade": question.modality,
+                "status": question.extractionStatus,
+                "quality": model_to_dict(question.qualityReport),
+                "statusReasons": question.statusReasons,
+                "filters": build_filter_object(metadata, question),
+            }
+            for question in questions
+        ],
+        "temporary_context": temporary_context,
+    }
+
+
 def extract_exam(exam_pdf: bytes, answer_key_pdf: bytes | None, metadata_json: str | None = None) -> ExtractionResponse:
     metadata: dict[str, Any] = {}
     if metadata_json:
@@ -544,14 +769,15 @@ def extract_exam(exam_pdf: bytes, answer_key_pdf: bytes | None, metadata_json: s
     pages = read_pdf_pages(exam_pdf)
     answer_key = parse_answer_key(answer_key_pdf)
     expected_numbers = parse_expected_numbers(metadata, answer_key)
-    raw_questions = parse_questions(pages)
+    raw_questions = parse_questions(pages, expected_numbers)
     contexts = parse_contexts(pages)
     questions = [create_question(raw, answer_key, metadata) for raw in raw_questions]
     questions, placeholders, duplicates = ensure_expected_questions(questions, expected_numbers, answer_key, len(pages))
     diagnostics = build_diagnostics(questions, expected_numbers, placeholders, duplicates, pages)
+    review_object = build_review_object(questions, contexts, answer_key, metadata, diagnostics)
     logs.append(f"Python extractor: {len(pages)} pagina(s) mapeada(s) com texto e geometria.")
     if answer_key:
-        logs.append(f"Gabarito: {len(answer_key)} resposta(s) mapeada(s) mecanicamente.")
+        logs.append(f"Gabarito: {len(answer_key)} resposta(s) mapeada(s) mecanicamente; quantidade esperada travada em {len(expected_numbers)}.")
     if expected_numbers:
         logs.append(f"Revisao canonica: {len(questions)}/{len(expected_numbers)} card(s) criado(s).")
     if placeholders:
@@ -567,6 +793,7 @@ def extract_exam(exam_pdf: bytes, answer_key_pdf: bytes | None, metadata_json: s
         metadata=metadata,
         questions=questions,
         contexts=contexts,
+        reviewObject=review_object,
         diagnostics=diagnostics,
         logs=logs,
         pages=pages,

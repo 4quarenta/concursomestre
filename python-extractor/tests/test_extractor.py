@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.extractor import create_question, ensure_expected_questions, extract_exam
+from app.extractor import create_question, ensure_expected_questions, extract_exam, parse_contexts, parse_expected_numbers, parse_questions, read_pdf_pages
 from app.extractor import RawQuestion
 
 
@@ -74,9 +74,63 @@ class ExtractorContractTest(unittest.TestCase):
         self.assertEqual(result.diagnostics.expectedQuestionNumbers, [1, 2, 3])
         self.assertEqual(result.diagnostics.cardsCreatedCount, 3)
         self.assertEqual(result.diagnostics.placeholderQuestionNumbers, [2, 3])
+        self.assertEqual(result.diagnostics.missingQuestionNumbers, [2, 3])
+        self.assertEqual(result.diagnostics.incompleteQuestionNumbers, [])
         self.assertEqual([question.number for question in result.questions], [1, 2, 3])
         self.assertEqual(result.questions[0].qualityReport.origin, "mechanical")
         self.assertEqual(result.questions[1].qualityReport.origin, "placeholder")
+
+    def test_answer_key_is_authoritative_over_noisy_metadata_total(self) -> None:
+        expected = parse_expected_numbers({"totalQuestions": 89}, {number: 0 for number in range(1, 81)})
+
+        self.assertEqual(len(expected), 80)
+        self.assertEqual(expected[0], 1)
+        self.assertEqual(expected[-1], 80)
+
+    @unittest.skipUnless(FITZ_AVAILABLE, "PyMuPDF nao esta instalado neste runtime de teste")
+    def test_question_parser_ignores_markers_outside_expected_answer_key(self) -> None:
+        exam_pdf = make_pdf(
+            [
+                "Questao 1",
+                "Enunciado valido da questao 1",
+                "A) A",
+                "B) B",
+                "C) C",
+                "D) D",
+                "89. Este item e uma numeracao de instrucao, nao uma questao esperada",
+                "Questao 2",
+                "Enunciado valido da questao 2",
+                "A) A",
+                "B) B",
+                "C) C",
+                "D) D",
+            ]
+        )
+        pages = read_pdf_pages(exam_pdf)
+
+        questions = parse_questions(pages, [1, 2])
+
+        self.assertEqual([question.number for question in questions], [1, 2])
+
+    @unittest.skipUnless(FITZ_AVAILABLE, "PyMuPDF nao esta instalado neste runtime de teste")
+    def test_context_parser_collects_support_and_reference_blocks(self) -> None:
+        exam_pdf = make_pdf(
+            [
+                "Leia os Textos I e II abaixo para responder as questoes 79 e 80.",
+                "Texto I apresenta uma noticia longa com dados relevantes para a interpretacao.",
+                "Disponivel em: exemplo.com. Acesso em: 10 jan. 2025.",
+                "Questao 79",
+                "Enunciado",
+            ]
+        )
+        pages = read_pdf_pages(exam_pdf)
+
+        contexts = parse_contexts(pages)
+
+        self.assertTrue(contexts)
+        self.assertEqual(contexts[0].title, "Textos I e II")
+        self.assertEqual(contexts[0].questionNumbers, [79, 80])
+        self.assertIn("Disponivel", contexts[0].referenceText)
 
 
 if __name__ == "__main__":

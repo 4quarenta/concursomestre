@@ -244,7 +244,7 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     'exam_title',
   ]));
 
-  if (!id || !nome) {
+  if (!nome) {
     return null;
   }
 

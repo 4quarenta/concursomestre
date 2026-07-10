@@ -148,6 +148,18 @@ export interface ExtractedExamNoticeAiResult {
   examDate?: string;
   registrationFee?: string;
   totalQuestions?: string;
+  questionEditorialSuggestions?: Array<{
+    id?: string | number;
+    questionId?: string | number;
+    number?: string | number;
+    questionNumber?: string | number;
+    teacherComment?: string;
+    professorComment?: string;
+    comentarioProfessor?: string;
+    detailedComment?: string;
+    detailedAnalysis?: string;
+    analiseDetalhada?: string;
+  }>;
   evidence?: string[];
 }
 
@@ -440,6 +452,59 @@ FORMATO VISUAL OBRIGATORIO:
 - Nao deixe comandos como \\sqrt fora dos delimitadores LaTeX.
 `.trim();
 
+const TEACHER_COMMENT_PEDAGOGICAL_RULES = `
+REGRAS PEDAGOGICAS DO COMENTARIO DO PROFESSOR:
+- Escreva como um professor experiente de cursinho preparatorio, em tom natural e direto.
+- Nao use saudacoes, introducoes prontas ou conclusoes genericas.
+- O comentario deve ensinar rapidamente o motivo do gabarito, nao apenas apontar a resposta.
+- Use TODAS as informacoes disponiveis: enunciado, texto de apoio, referencia, contexto, figura/tabela quando descrita, alternativas e gabarito.
+- Nao invente leis, artigos, jurisprudencia, dados de imagem, doutrina, formulas ou fatos que nao estejam sustentados pelo material.
+- Varie a abertura. Nao comece sempre com "A alternativa correta..." ou "A questao trata de...".
+- O comentario deve ser rapido, mas realmente didatico; nao deve virar mini aula.
+- O texto ideal tem entre 1 e 4 paragrafos curtos, podendo chegar a 6 quando a questao exigir calculo ou raciocinio mais elaborado.
+- Tamanho sugerido: entre 500 e 1.200 caracteres, salvo questoes mais complexas.
+- Cite o gabarito uma unica vez, no formato "Gabarito: X.", preferencialmente ao final.
+- Explique o passo mental essencial que leva ao gabarito.
+- Em Portugues, explique a regra gramatical, relacao textual, inferencia, voz narrativa, semantica, sintaxe, genero, figura de linguagem ou criterio de interpretacao realmente cobrado.
+- Em Matematica, Fisica ou Quimica, mostre a formula, substituicao, conta ou principio essencial sem transformar o comentario em aula longa.
+- Em Direito, cite dispositivo legal somente se houver base segura; se nao houver artigo no material, explique o fundamento sem inventar numeracao.
+- Em Historia, Geografia, Atualidades e demais disciplinas, contextualize o fato/conceito em vez de repetir o enunciado.
+- Se houver imagem indisponivel para leitura, trabalhe apenas com o conteudo textual e nao invente elementos graficos.
+- Nao analise todas as alternativas; isso fica para a analise detalhada.
+- Quando houver pegadinha real, aponte-a de forma curta. Nao force "pulo do gato" em toda questao.
+- So mencione alternativa incorreta quando ela for a principal pegadinha da questao.
+- Se o gabarito parecer incompatível com o enunciado ou alternativas, ainda gere o comentario com base no gabarito informado, mas evite afirmar algo contraditorio ou inventar justificativa.
+- Proibido responder apenas com formulas vazias como "basta interpretar", "conforme o enunciado", "atende ao comando", "corresponde ao gabarito oficial" ou "nao acompanha o criterio decisivo".
+`.trim();
+
+const DETAILED_ANALYSIS_PEDAGOGICAL_RULES = `
+REGRAS PEDAGOGICAS DA ANALISE DETALHADA:
+- Escreva como um professor experiente de curso preparatorio, com profundidade suficiente para o aluno aprender mesmo sem ter estudado o assunto.
+- Nao use saudacoes, introducoes prontas, conclusoes motivacionais ou frases roboticas.
+- Use TODAS as informacoes disponiveis: enunciado, texto de apoio, referencia, contexto, figura/tabela quando descrita, alternativas e gabarito.
+- Nao invente leis, artigos, jurisprudencia, dados de imagem, doutrina, formulas ou fatos que nao estejam sustentados pelo material.
+- Preserve os titulos obrigatorios em Markdown, mas varie naturalmente a redacao interna de cada secao.
+- A analise deve ter profundidade de aula, mas sem enrolacao.
+- Tamanho sugerido: entre 2.000 e 4.500 caracteres por questao; ultrapasse apenas quando houver calculo longo, tabela, grafico ou analise juridica mais complexa.
+- Em questoes simples, seja completo sem alongar artificialmente.
+- Comece obrigatoriamente com "## Gabarito comentado", citando a letra correta e o motivo central especifico da questao.
+- Inclua "## Conceito central" explicando o conteudo como para aluno iniciante, com rigor tecnico e conexao direta com o comando da questao.
+- Inclua "## Caminho de resolucao": se houver calculo, desenvolva formula, substituicao e conclusao; se nao houver calculo, mostre o processo mental que leva ao gabarito.
+- Inclua "## Analise das alternativas" e analise TODAS as alternativas ou assertivas.
+- Em cada alternativa errada, explique o erro real: extrapolacao, inversao, generalizacao, conceito trocado, dado inexistente, excecao ignorada, calculo incorreto, leitura errada de tabela, interpretacao incompatível, alternativa incompleta ou distrator da banca.
+- Nao repita a mesma justificativa trocando apenas a letra.
+- A secao "## Analise das alternativas" deve comentar cada alternativa individualmente, sem repetir a mesma frase com letras diferentes.
+- Em Portugues, diferencie claramente regra gramatical, semantica, interpretacao, literatura, tipologia textual, ortografia, figura de linguagem ou outro ponto efetivamente cobrado.
+- Em Matematica, Fisica e Quimica, mostre raciocinio, formulas, unidades, grandezas, propriedades e apenas as etapas necessarias; evite contas irrelevantes.
+- Em Direito, cite dispositivo legal somente quando houver fundamento seguro no material; explique a interpretacao e a pegadinha da banca sem inventar artigo.
+- Em Historia, Geografia, Atualidades e demais disciplinas, explique o contexto e o nexo cobrado, nao apenas repita o enunciado.
+- Se houver imagem indisponivel para leitura, trabalhe apenas com o texto disponivel e nao invente elementos graficos.
+- Se o gabarito parecer incompatível com o enunciado ou alternativas, gere uma analise cautelosa, sem fabricar justificativa falsa; quando necessario, indique que a resolucao depende do gabarito informado.
+- Inclua "## Pulo do gato" com uma dica realmente util para provas futuras: macete, palavra-chave, diferenca recorrente, erro classico ou detalhe decisivo. Nao repita o resumo.
+- Finalize com "## Resumo de prova" em bullets curtos, objetivos e revisaveis.
+- Nao use justificativas genericas como "nao atende ao comando", "nao corresponde ao gabarito oficial", "esta incorreta porque nao e a correta" ou "nao acompanha o criterio decisivo".
+`.trim();
+
 const normalizeDetailedAnalysisText = (value: string) => normalizeGeneratedCommentText(value)
   .replace(/^>\s*\[!(?:GABARITO|ATENCAO|ATENÇÃO|ERRO|DICA|MACETE|PROVA|CUIDADO)\]\s*/gim, '')
   .replace(/^\[!(?:GABARITO|ATENCAO|ATENÇÃO|ERRO|DICA|MACETE|PROVA|CUIDADO)\]\s*/gim, '')
@@ -481,6 +546,94 @@ const ensureTeacherCommentMentionsAnswer = (comment: string, letter: string): st
   }
 
   return `Gabarito: ${letter}. ${compacted}`;
+};
+
+const buildQuestionEditorialContext = (question: Question): string => {
+  const supportText = String(
+    question.introText
+    || question.intro_text
+    || (question as unknown as { supportText?: string }).supportText
+    || '',
+  ).trim();
+  const referenceText = String(question.referenceText || question.reference_text || '').trim();
+  const imageHint = [
+    question.hasImage || (question as unknown as { hasFigure?: boolean }).hasFigure ? 'A questao possui imagem/figura.' : '',
+    question.imageUrl ? `Imagem vinculada: ${question.imageUrl}` : '',
+    (question as unknown as { figureDescription?: string }).figureDescription
+      ? `Descricao da figura: ${(question as unknown as { figureDescription?: string }).figureDescription}`
+      : '',
+  ].filter(Boolean).join('\n');
+
+  return [
+    supportText ? `Texto de apoio/contexto:\n${supportText}` : '',
+    referenceText ? `Referencia/fonte:\n${referenceText}` : '',
+    imageHint,
+  ].filter(Boolean).join('\n\n');
+};
+
+const buildQuestionEditorialInput = (question: Question, localId?: string): string => `
+${localId ? `ID: ${localId}` : ''}
+Enunciado: ${question.enunciado}
+${buildQuestionEditorialContext(question)}
+Alternativas:
+${buildQuestionAlternatives(question)}
+Resposta correta: ${resolveCorrectLetter(question)}
+`.trim();
+
+const GENERIC_TEACHER_COMMENT_PATTERNS = [
+  /\ba quest[aã]o cobra interpreta[cç][aã]o\b/i,
+  /\ba alternativa correta (?:e|é) a que atende\b/i,
+  /\bconforme o enunciado\b/i,
+  /\best[aá] de acordo com (?:a teoria|o conte[uú]do)\b/i,
+  /\bn[aã]o corresponde ao crit[eé]rio indicado pelo gabarito\b/i,
+  /\bbasta interpretar\b/i,
+];
+
+const hasGenericEditorialText = (value: string): boolean => {
+  const normalized = normalizeGeneratedCommentText(value);
+  if (!normalized) {
+    return true;
+  }
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const genericHits = GENERIC_TEACHER_COMMENT_PATTERNS.filter((pattern) => pattern.test(normalized)).length;
+
+  return (
+    genericHits >= 1 && words.length < 45
+  ) || (
+    genericHits >= 2
+  );
+};
+
+const hasUsefulDetailedAnalysis = (value: string, question: Question): boolean => {
+  const normalized = normalizeDetailedAnalysisText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  const optionCount = Array.isArray(question.itens) ? question.itens.length : 0;
+  const hasGabarito = /##\s*Gabarito comentado/i.test(normalized);
+  const hasAlternativeReview = optionCount <= 2
+    ? /(?:assertiva|certo|errado|trecho decisivo|por que)/i.test(normalized)
+    : ['A', 'B', 'C', 'D', 'E'].slice(0, optionCount).filter((letter) => (
+        new RegExp(`\\b${letter}\\)`, 'i').test(normalized)
+        || new RegExp(`\\bAlternativa\\s+${letter}\\b`, 'i').test(normalized)
+      )).length >= Math.min(3, optionCount);
+  const hasPulo = /##\s*Pulo do gato/i.test(normalized);
+  const hasResumo = /##\s*Resumo de prova/i.test(normalized);
+  const tooGeneric = hasGenericEditorialText(normalized);
+
+  return hasGabarito && hasAlternativeReview && hasPulo && hasResumo && !tooGeneric;
+};
+
+const hasUsefulTeacherComment = (value: string): boolean => {
+  const normalized = normalizeGeneratedCommentText(value);
+  if (!normalized || hasGenericEditorialText(normalized)) {
+    return false;
+  }
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  return words.length >= 22 && /Gabarito\s*:/i.test(normalized);
 };
 
 /**
@@ -548,7 +701,7 @@ Nao explique seu raciocinio. Nao retorne Markdown. Nao crie campos fora do schem
 CONTEXTO DINAMICO DA EXTRACAO:
 - Data atual: ${new Date().toISOString().slice(0, 10)}.
 - Dados existentes do concurso, se houver: ${stringifyContext(taxonomyContext.existingContestData)}.
-- Schema obrigatorio: agency, agencyName, year, organizations, roles, requirementsDetailed, remunerationsDetailed, vacanciesDetailed, programmaticContentDetailed, stages, registrationStart, registrationEnd, examDate, registrationFee, totalQuestions, evidence.
+- Schema obrigatorio: agency, agencyName, year, organizations, roles, requirementsDetailed, remunerationsDetailed, vacanciesDetailed, programmaticContentDetailed, stages, registrationStart, registrationEnd, examDate, registrationFee, totalQuestions, questionEditorialSuggestions, evidence.
 - Materias existentes: ${summarizeContextList(taxonomyContext.subjects)}
 - Topicos existentes: ${summarizeContextList(taxonomyContext.topics)}
 - Assuntos existentes: ${summarizeContextList(taxonomyContext.specificSubjects)}
@@ -583,6 +736,8 @@ REGRAS CRITICAS DE EXTRACAO:
 - Datas completas devem usar YYYY-MM-DD. Valores brasileiros como R$ 3.202,60 devem ser preservados como texto compatível com a plataforma quando o campo for string.
 - Nao extraia CPF, RG, inscricao individual, telefone, endereco residencial ou dados sensiveis de candidatos.
 - Se o dado estiver incerto, ausente ou conflituoso, deixe string vazia/array vazio e registre a razao curta em evidence quando couber. Nao invente.
+- questionEditorialSuggestions: quando o PDF analisado tambem trouxer questoes com enunciado, alternativas e gabarito, ou quando os dados existentes trouxerem questoes vinculadas com conteudo suficiente, retorne sugestoes editoriais por questao. Cada item deve identificar a questao por id/questionId ou number/questionNumber e preencher teacherComment e detailedComment. Se o documento for apenas edital, gabarito isolado ou nao houver conteudo suficiente da questao, retorne array vazio.
+- teacherComment deve seguir o comentario do professor da plataforma: curto, humano, com gabarito uma unica vez e explicacao objetiva do caminho essencial. detailedComment deve seguir a analise detalhada: gabarito comentado, conceito, caminho de resolucao, alternativa por alternativa quando houver alternativas, pulo do gato e resumo de prova.
 
 FORMA EXATA DOS CAMPOS ESTRUTURADOS:
 - requirementsDetailed/remunerationsDetailed/vacanciesDetailed: use objetos com scopeType ("geral", "orgao", "cargo" ou "foco"), scope, chave e texto.
@@ -621,6 +776,20 @@ Retorne APENAS o JSON estrito conforme o schema solicitado.
           examDate: { type: 'STRING' },
           registrationFee: { type: 'STRING' },
           totalQuestions: { type: 'STRING' },
+          questionEditorialSuggestions: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                id: { type: 'STRING' },
+                questionId: { type: 'STRING' },
+                number: { type: 'STRING' },
+                questionNumber: { type: 'STRING' },
+                teacherComment: { type: 'STRING' },
+                detailedComment: { type: 'STRING' },
+              },
+            },
+          },
           evidence: { type: 'ARRAY', items: { type: 'STRING' } },
         },
       },
@@ -686,7 +855,7 @@ Retorne JSON estrito:
     pageContext: QuestionPagePromptContext = {},
   ): Promise<PageExtractionResult> {
     const commentInstruction = includeTeacherComment
-      ? '- Comentario do Professor (teacherComment): gere uma mini-resolucao objetiva: cite o gabarito/alternativa correta e mostre o passo essencial que leva a resposta. Em questoes com calculo, inclua a formula com substituicao dos dados; em questoes teoricas, mencione a regra/conceito concreto aplicado. Nao faca comentario generico nem analise todas as alternativas. Escreva em tom humano, sem abertura padronizada; nao comece com frases como "A pegadinha aqui..." ou "O pulo do gato...". Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos.'
+      ? `- Comentario do Professor (teacherComment): siga o mesmo padrao do botao "Gerar/Regerar Professor" da plataforma. ${TEACHER_COMMENT_PEDAGOGICAL_RULES} Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos.`
       : '';
     const profileLabel = parserProfile?.label || parserProfile?.id || 'Generico';
     const observedOptionsCount = Number(parserProfile?.adaptiveEvidence?.observedOptionCounts?.[0] || 0);
@@ -806,6 +975,9 @@ REGRAS CRITICAS:
 - Se houver figura, grafico, mapa, tabela, tirinha, imagem ou esquema visual, descreva em figureDescription. Se a figura fizer parte do texto de apoio, marque hasFigure no contexto.
 - Para cada figura real, retorne figureBox com x, y, width e height em coordenadas normalizadas de 0 a 1000 relativas a pagina inteira. A caixa deve recortar APENAS a figura/tabela/grafico necessario para aquela questao ou contexto; nunca use a pagina inteira.
 - A figureBox deve ser justa, mas com margem de seguranca: exclua texto corrido do enunciado, numero da questao, cabecalho/rodape, margens largas e linhas externas que nao pertencam ao grafico/figura. Inclua legendas, eixos, rotulos, textos internos e toda borda util da propria figura para nao cortar conteudo.
+- O recorte da imagem deve vir PREDEFINIDO por voce. A plataforma deve apenas permitir conferencia/ajuste manual. Portanto, sempre que a imagem estiver visivel, informe page/sourcePage e figureBox/supportFigureBox/optionFigureBox/supportFigureBoxes/figures[].figureBox conforme o alvo.
+- Nunca use figureBox { x: 0, y: 0, width: 1000, height: 1000 } como atalho, exceto quando a figura realmente ocupar toda a pagina. Um recorte de pagina inteira sem necessidade deve ser marcado como figura_sem_recorte.
+- Se houver imagem visivel mas voce nao conseguir exportar base64, ainda assim retorne a caixa de recorte mais provavel e a pagina de origem. Use statusReasons apenas para avisar pendencia, nao para omitir a caixa.
 - Se a imagem estiver ligada a uma questao especifica, coloque a caixa em supportFigureBox/supportFigureBoxes da propria questao, nao em pageContexts. Se for texto de apoio para varias questoes, coloque a figureBox em pageContexts.
 - Detecte modalidades quando houver sinal claro: multipla escolha, certo ou errado, verdadeiro/falso, multipla assertiva, somatorio, discursiva, redacao e estudo de caso.
 - Se o gabarito ou a pagina indicar questao anulada/cancelada, use anulada/isCanceled/isCancelled=true. Se indicar "atribuida a todos", "todos" ou "T", use isAttributedToAll/attributedToAll=true.
@@ -1413,6 +1585,7 @@ Atue como um professor senior de cursinho preparatorio para concursos.
 Analise a seguinte questao:
 
 Enunciado: ${question.enunciado}
+${buildQuestionEditorialContext(question)}
 Alternativas:
 ${buildQuestionAlternatives(question)}
 
@@ -1420,18 +1593,7 @@ A resposta correta e a letra: ${resolveCorrectLetter(question)}
 
 Gere uma ANALISE DETALHADA, didatica e visualmente escaneavel.
 
-REGRAS ESTRITAS DE ESTILO:
-1. Nao use saudacoes, introducoes ou conclusoes genericas.
-2. Va direto ao ponto.
-3. Comece com "## Gabarito comentado" em texto normal, citando a letra correta e o motivo central.
-4. Explique o conceito central em linguagem de aluno iniciante, sem resumir genericamente.
-5. Mostre o caminho de resolucao, com conta, regra ou criterio aplicado quando houver.
-6. Analise a questao completamente, alternativa por alternativa, explicando por que cada uma esta certa ou errada.
-7. Inclua uma secao "## Pulo do gato" com a pegadinha, detalhe decisivo ou atalho mental que ajuda a resolver.
-8. Se for util, use uma tabela simples para comparar alternativas, conceitos ou etapas.
-9. Finalize com "## Resumo de prova" em bullets objetivos.
-10. Nao use caixas, callouts, blockquotes nem marcadores do tipo [!GABARITO].
-11. Se for questao de Certo/Errado, explique por que a assertiva fica certa ou errada e destaque exatamente o trecho decisivo.
+${DETAILED_ANALYSIS_PEDAGOGICAL_RULES}
 
 ${DETAILED_ANALYSIS_MARKDOWN_RULES}
 
@@ -1459,30 +1621,18 @@ Nao retorne JSON, retorne apenas o texto em Markdown.
 Atue como um professor senior de cursinho preparatorio para concursos.
 Gere uma analise detalhada para CADA questao abaixo.
 
-REGRAS ESTRITAS:
-1. Nao use saudacoes, introducoes ou conclusoes genericas.
-2. Va direto ao ponto em cada analise.
-3. Comece cada analise com "## Gabarito comentado" em texto normal, citando a letra correta e o motivo central.
-4. Explique o conceito central em linguagem de aluno iniciante, sem resumir genericamente.
-5. Mostre o caminho de resolucao, com conta, regra ou criterio aplicado quando houver.
-6. Analise a questao completamente, alternativa por alternativa, explicando por que cada uma esta certa ou errada.
-7. Inclua uma secao "## Pulo do gato" com a pegadinha, detalhe decisivo ou atalho mental que ajuda a resolver.
-8. Se for util, use uma tabela simples para comparar alternativas, conceitos ou etapas.
-9. Finalize cada item com "## Resumo de prova" em bullets objetivos.
-10. Nao use caixas, callouts, blockquotes nem marcadores do tipo [!GABARITO].
-11. Se for questao de Certo/Errado, explique por que a assertiva fica certa ou errada e destaque exatamente o trecho decisivo.
-12. Cada resposta deve ficar no campo markdown da questao correspondente.
-13. Nao misture analises entre questoes.
+${DETAILED_ANALYSIS_PEDAGOGICAL_RULES}
+
+REGRAS DE LOTE:
+- Cada resposta deve ficar no campo markdown da questao correspondente.
+- Nao misture analises entre questoes.
+- Varie naturalmente a escrita entre as questoes para evitar aparencia de texto serializado.
 
 ${DETAILED_ANALYSIS_MARKDOWN_RULES}
 
 Questoes:
 ${safeItems.map(({ localId, question }) => `
-ID: ${localId}
-Enunciado: ${question.enunciado}
-Alternativas:
-${buildQuestionAlternatives(question)}
-Resposta correta: ${resolveCorrectLetter(question)}
+${buildQuestionEditorialInput(question, localId)}
 `).join('\n---\n')}
 
 Retorne APENAS JSON valido no schema informado.
@@ -1518,8 +1668,9 @@ Retorne APENAS JSON valido no schema informado.
 
     (payload.analyses || []).forEach((analysis) => {
       const localId = String(analysis.localId || '').trim();
+      const question = safeItems.find((item) => item.localId === localId)?.question;
       const markdown = normalizeDetailedAnalysisText(String(analysis.markdown || ''));
-      if (localId && markdown) {
+      if (localId && markdown && question && hasUsefulDetailedAnalysis(markdown, question)) {
         result[localId] = markdown;
       }
     });
@@ -1544,27 +1695,16 @@ Retorne APENAS JSON valido no schema informado.
 Atue como um professor humano de cursinho preparatorio para concursos.
 Gere um COMENTARIO DO PROFESSOR curto para CADA questao abaixo.
 
-REGRAS ESTRITAS:
-1. Nao use saudacoes.
-2. Cada comentario deve ter de 2 a 4 frases.
-3. Cite uma unica vez o gabarito, no formato "Gabarito: X.".
-4. Explique por que a alternativa correta resolve a questao, de forma resumida e didatica para leigo.
-5. Se houver calculo, mostre a formula ou conta essencial com os valores substituidos.
-6. Se for teorica, cite a regra, conceito, artigo ou criterio concreto aplicado.
-7. Nao analise todas as alternativas; isso pertence a analise detalhada.
-8. Nao use frases genericas que poderiam servir para qualquer questao.
-9. Varie a primeira frase entre os comentarios. Nao comece todos com "Gabarito:"; a linha do gabarito pode vir depois da frase inicial.
-10. Nao force pegadinha. Use "cuidado", "pulo do gato" ou "macete" apenas quando realmente ajudar.
-11. Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos.
-12. Cada resposta deve ficar no campo comment da questao correspondente.
+${TEACHER_COMMENT_PEDAGOGICAL_RULES}
+
+REGRAS DE LOTE:
+- Cada resposta deve ficar no campo comment da questao correspondente.
+- Varie a primeira frase entre os comentarios.
+- Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos.
 
 Questoes:
 ${safeItems.map(({ localId, question }) => `
-ID: ${localId}
-Enunciado: ${question.enunciado}
-Alternativas:
-${buildQuestionAlternatives(question)}
-Resposta correta: ${resolveCorrectLetter(question)}
+${buildQuestionEditorialInput(question, localId)}
 `).join('\n---\n')}
 
 Retorne APENAS JSON valido no schema informado.
@@ -1605,7 +1745,7 @@ Retorne APENAS JSON valido no schema informado.
         String(commentResult.comment || ''),
         question ? resolveCorrectLetter(question) : '',
       );
-      if (localId && comment) {
+      if (localId && comment && hasUsefulTeacherComment(comment)) {
         result[localId] = comment;
       }
     });
@@ -1623,20 +1763,14 @@ Retorne APENAS JSON valido no schema informado.
 Atue como um professor humano de cursinho preparatorio para concursos.
 Gere um COMENTARIO DO PROFESSOR curto para a questao abaixo.
 
-REGRAS ESTRITAS:
-1. Nao use saudacoes.
-2. O comentario deve ter de 2 a 4 frases.
-3. Cite uma unica vez o gabarito, no formato "Gabarito: ${resolveCorrectLetter(question)}.".
-4. Explique por que a alternativa correta resolve a questao, de forma resumida e didatica para leigo.
-5. Se houver calculo, mostre a formula ou conta essencial com os valores substituidos.
-6. Se for teorica, cite a regra, conceito, artigo ou criterio concreto aplicado.
-7. Nao analise todas as alternativas; isso pertence a analise detalhada.
-8. Nao use frases genericas que poderiam servir para qualquer questao.
-9. Escreva como um professor humano, com abertura natural e variada.
-10. Nao force pegadinha. Use "cuidado", "pulo do gato" ou "macete" apenas quando realmente ajudar.
-11. Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos.
+${TEACHER_COMMENT_PEDAGOGICAL_RULES}
+
+REGRAS FINAIS:
+- O gabarito desta questao deve aparecer como "Gabarito: ${resolveCorrectLetter(question)}.".
+- Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos.
 
 Enunciado: ${question.enunciado}
+${buildQuestionEditorialContext(question)}
 Alternativas:
 ${itens.map((item, index) => `${String.fromCharCode(65 + index)}) ${item.corpo}`).join('\n')}
 Resposta correta: ${resolveCorrectLetter(question)}

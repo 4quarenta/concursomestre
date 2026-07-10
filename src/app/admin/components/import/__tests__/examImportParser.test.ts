@@ -36,10 +36,49 @@ const {
   inferProbablePagesForMissingQuestion,
   isQuestionReadyForImportPublication,
   mergeExtractionContextList,
+  normalizeAiQuestionOptions,
+  externalDetailedCommentIsGeneric,
   parseAnswerKeyFromText,
   resolveExamParserProfile,
   textNeedsExternalSupportContext,
 } = __examImportParserTestApi;
+
+describe('normalização do JSON da IA externa', () => {
+  it('remove alternativa vazia criada para completar A-E', () => {
+    const alternatives = normalizeAiQuestionOptions([
+      { label: 'A', text: 'Leitor' },
+      { label: 'B', text: 'Alunos' },
+      { label: 'C', text: 'Narrador' },
+      { label: 'D', text: 'Professora' },
+      { label: 'E', text: '', imageData: '' },
+    ]);
+
+    expect(alternatives).toHaveLength(4);
+    expect(alternatives.map((option: { label: string }) => option.label)).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('preserva alternativa visual mesmo sem texto', () => {
+    const alternatives = normalizeAiQuestionOptions([
+      { label: 'A', text: '', imageData: 'base64-real' },
+      { label: 'B', text: 'Alternativa textual' },
+    ]);
+
+    expect(alternatives).toHaveLength(2);
+    expect(alternatives[0].imageData).toBe('base64-real');
+  });
+
+  it('rejeita análise que repete justificativa genérica nas alternativas', () => {
+    const detailed = `## Gabarito comentado
+Resposta C.
+## Análise das alternativas
+A) não acompanha o critério decisivo do item.
+B) não acompanha o critério decisivo do item.
+C) correta.`;
+
+    expect(externalDetailedCommentIsGeneric(detailed)).toBe(true);
+    expect(externalDetailedCommentIsGeneric('A alternativa A erra ao confundir narrador com leitor; B atribui a perspectiva aos personagens.')).toBe(false);
+  });
+});
 
 const buildImportDiagnostics = (expectedQuestionNumbers: number[]) => ({
   expectedQuestionNumbers,
@@ -442,7 +481,7 @@ describe('exam import parser profiles', () => {
     expect(cebraspeProfile.adaptiveEvidence?.probableModalities || []).not.toContain('certo ou errado');
   });
 
-  it('separates localized incomplete questions while missing tracks every number without sufficient content', () => {
+  it('separates localized incomplete questions from numbers that were not localized', () => {
     const completeQuestion = {
       questionNumber: 1,
       text: 'Enunciado completo da primeira questao para publicacao.',
@@ -469,7 +508,7 @@ describe('exam import parser profiles', () => {
     expect(coverage.localizedQuestionNumbers).toEqual([1, 2]);
     expect(coverage.completeQuestionNumbers).toEqual([1]);
     expect(coverage.incompleteQuestionNumbers).toEqual([2]);
-    expect(coverage.missingQuestionNumbers).toEqual([2, 3]);
+    expect(coverage.missingQuestionNumbers).toEqual([3]);
     expect(coverage.questions[1].qualityReport).toMatchObject({
       origin: 'mechanical',
       localized: true,

@@ -55,6 +55,7 @@ export type PythonExtractorResponse = {
   metadata?: Record<string, unknown>;
   questions?: Question[];
   contexts?: PythonExtractorContext[];
+  reviewObject?: Record<string, unknown>;
   diagnostics?: PythonExtractorDiagnostics;
   logs?: string[];
 };

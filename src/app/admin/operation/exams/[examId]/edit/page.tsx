@@ -432,12 +432,26 @@ const AdminExamEditPage = () => {
       return trimmedYear;
     }
 
-    await filtersService.save({
-      type: 'ano',
-      name: trimmedYear,
-      slug: slugifyTaxonomy(trimmedYear),
-    });
-    await ensureTaxonomiesLoaded(true);
+    try {
+      await filtersService.save({
+        type: 'ano',
+        name: trimmedYear,
+        slug: slugifyTaxonomy(trimmedYear),
+      });
+      await ensureTaxonomiesLoaded(true);
+    } catch (error) {
+      if (!isExamTaxonomySlugConflict(error)) {
+        throw error;
+      }
+
+      const freshTaxonomies = await filtersService.listTaxonomies(true);
+      const freshYears = (freshTaxonomies.years || []).map((item) => String(item).trim());
+      if (!freshYears.includes(trimmedYear)) {
+        throw error;
+      }
+
+      void ensureTaxonomiesLoaded(true);
+    }
 
     return trimmedYear;
   }, [ensureTaxonomiesLoaded, systemSettings.taxonomies?.years]);

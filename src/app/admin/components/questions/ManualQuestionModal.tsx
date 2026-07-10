@@ -18,7 +18,10 @@ import { buildProvaSearchText, formatProvaLabel } from '../exams/examBankUtils';
 import {
   getQuestionOptionLabel,
   getRoleDisplayLabel,
+  createQuestionImageAsset,
   isQuestionTaxonomyRecord,
+  insertQuestionImageMarker,
+  removeQuestionImageMarker,
   type ManualQuestionItem,
   type ManualQuestionPatch,
   type ManualQuestionSetter,
@@ -117,9 +120,82 @@ const ManualQuestionModal = ({
     });
   };
 
-  const handleImageSelected = (file: File | null) => {
+  const handleImageSelected = (file: File | null, usage: 'statement' | 'support' = 'statement') => {
     if (!file) return;
-    updateManualQ({ imageUrl: URL.createObjectURL(file) });
+
+    const url = URL.createObjectURL(file);
+    setManualQ((prev) => {
+      const asset = createQuestionImageAsset({
+        assets: prev.assets,
+        usage,
+        url,
+        alt: usage === 'support' ? 'Imagem do texto de apoio.' : 'Imagem do enunciado.',
+      });
+      const assets = [...(prev.assets || []), asset];
+
+      return {
+        ...prev,
+        assets,
+        imageUrl: usage === 'statement' && !prev.imageUrl ? url : prev.imageUrl,
+        enunciado: usage === 'statement' ? insertQuestionImageMarker(prev.enunciado || '', asset.id) : prev.enunciado,
+        enunciado_clean: usage === 'statement'
+          ? insertQuestionImageMarker(prev.enunciado_clean || '', asset.id)
+          : prev.enunciado_clean,
+        introText: usage === 'support' ? insertQuestionImageMarker(prev.introText || '', asset.id) : prev.introText,
+      };
+    });
+  };
+
+  const handleAlternativeImageSelected = (index: number, file: File | null) => {
+    if (!file) return;
+
+    const url = URL.createObjectURL(file);
+    setManualQ((prev) => {
+      const current = prev.itens?.[index];
+      if (!current) {
+        return prev;
+      }
+
+      const asset = createQuestionImageAsset({
+        assets: prev.assets,
+        usage: 'alternative',
+        url,
+        label: current.rotulo,
+        alt: `Imagem da alternativa ${current.rotulo}.`,
+      });
+      const nextItems = [...(prev.itens || [])];
+      const nextBody = insertQuestionImageMarker(current.corpo || '', asset.id);
+      nextItems[index] = {
+        ...current,
+        corpo: nextBody,
+        corpo_clean: nextBody.replace(/<[^>]*>?/gm, ''),
+      };
+
+      return {
+        ...prev,
+        assets: [...(prev.assets || []), asset],
+        itens: nextItems,
+      };
+    });
+  };
+
+  const handleRemoveAsset = (assetId: string) => {
+    setManualQ((prev) => ({
+      ...prev,
+      assets: (prev.assets || []).filter((asset) => asset.id !== assetId),
+      imageUrl: (prev.assets || []).find((asset) => asset.id === assetId)?.url === prev.imageUrl ? '' : prev.imageUrl,
+      enunciado: removeQuestionImageMarker(prev.enunciado || '', assetId),
+      enunciado_clean: removeQuestionImageMarker(prev.enunciado_clean || '', assetId),
+      introText: removeQuestionImageMarker(prev.introText || '', assetId),
+      itens: (prev.itens || []).map((item) => {
+        const nextBody = removeQuestionImageMarker(item.corpo || '', assetId);
+        return {
+          ...item,
+          corpo: nextBody,
+          corpo_clean: nextBody.replace(/<[^>]*>?/gm, ''),
+        };
+      }),
+    }));
   };
 
   const handleAddOption = () => {
@@ -158,6 +234,7 @@ const ManualQuestionModal = ({
   };
 
   const manualItems = manualQ.itens || [];
+  const questionAssets = manualQ.assets || [];
   const manualTitle =
     editingExtractedIndex !== null
       ? `Revisar Questão Extraida #${editingExtractedIndex + 1}`
@@ -510,7 +587,22 @@ const ManualQuestionModal = ({
 
           <div className="space-y-6">
             <div className="space-y-2">
-              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Texto de Apoio (Opcional)</label>
+              <div className="flex items-center justify-between gap-3">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Texto de Apoio (Opcional)</label>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                  <ImageIcon size={13} />
+                  Imagem no apoio
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      handleImageSelected(event.target.files?.[0] || null, 'support');
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+              </div>
               <textarea
                 value={manualQ.introText || ''}
                 onChange={(event) => updateManualQ({ introText: event.target.value })}
@@ -537,16 +629,34 @@ const ManualQuestionModal = ({
 
             <div className="flex items-center gap-4">
               <label className={ADMIN_SECONDARY_BUTTON_CLASS}>
-                <ImageIcon size={18} className="text-indigo-500" /> Upload de Imagem
-                <input type="file" className="hidden" onChange={(event) => handleImageSelected(event.target.files?.[0] || null)} />
+                <ImageIcon size={18} className="text-indigo-500" /> Imagem no enunciado
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    handleImageSelected(event.target.files?.[0] || null, 'statement');
+                    event.currentTarget.value = '';
+                  }}
+                />
               </label>
-              {manualQ.imageUrl && (
-                <div className="animate-fade-in flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-400">
-                  <Check size={14} /> Imagem Anexada
-                  <button type="button" onClick={() => updateManualQ({ imageUrl: '' })} className="ml-2 hover:text-red-500">
-                    <X size={14} />
-                  </button>
+              {questionAssets.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {questionAssets.map((asset) => (
+                    <span
+                      key={asset.id}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-400"
+                    >
+                      <Check size={14} />
+                      {asset.id}
+                      <button type="button" onClick={() => handleRemoveAsset(asset.id)} className="hover:text-red-500">
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
                 </div>
+              ) : (
+                <div className="text-xs font-semibold text-slate-400">Nenhuma imagem vinculada.</div>
               )}
             </div>
 
@@ -583,6 +693,18 @@ const ManualQuestionModal = ({
                       className={`${ADMIN_FIELD_CLASS} h-10 flex-1 text-xs font-medium`}
                       placeholder={`Corpo da alternativa ${item.rotulo}...`}
                     />
+                    <label className="flex h-10 cursor-pointer items-center justify-center rounded-sm border border-slate-300 bg-white px-3 text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                      <ImageIcon size={15} />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          handleAlternativeImageSelected(index, event.target.files?.[0] || null);
+                          event.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
                     <button
                       type="button"
                       onClick={() => handleOptionDelete(index)}

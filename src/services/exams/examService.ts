@@ -69,7 +69,11 @@ export const examService = {
 
     async save(exam: Partial<Prova>): Promise<Prova> {
         try {
-            const response = await apiClient.post<ApiEnvelope<{ exam?: Prova }>>(ENDPOINTS.exams.save, exam);
+            const payload = { ...exam };
+            if (!payload.id || String(payload.id) === '0' || String(payload.id) === 'new') {
+                delete payload.id;
+            }
+            const response = await apiClient.post<ApiEnvelope<{ exam?: Prova }>>(ENDPOINTS.exams.save, payload);
             const data = readApiData(response.data);
             if (!data?.exam) {
                 throw new Error('A API não retornou a prova salva.');

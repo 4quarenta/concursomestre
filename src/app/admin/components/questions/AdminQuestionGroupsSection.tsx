@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { Image as ImageIcon, Link2, Loader2, Pencil, Save, Trash2, Upload, X } from 'lucide-react';
 import { readApiErrorMessage, resolveApiResourceUrl } from '@services/api';
 import { adminService, type AdminQuestionGroupItem } from '@services/admin/adminService';
+import type { QuestionAsset } from '@types';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_FOOTER_CLASS,
@@ -29,12 +30,16 @@ import {
 } from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
+import {
+  buildQuestionImageMarker,
+  createQuestionImageAsset,
+  removeQuestionImageMarker,
+} from './questionEditorShared';
 
 interface QuestionContextDraft {
   id?: number | null;
-  enunciado: string;
   texto: string;
-  image_url: string;
+  assets: QuestionAsset[];
   questionIds: string[];
   questionIdInput: string;
 }
@@ -45,9 +50,8 @@ type PendingDelete =
 
 const EMPTY_DRAFT: QuestionContextDraft = {
   id: null,
-  enunciado: '',
   texto: '',
-  image_url: '',
+  assets: [],
   questionIds: [],
   questionIdInput: '',
 };
@@ -75,10 +79,10 @@ const getContextQuestionIds = (context: AdminQuestionGroupItem) =>
 
 const getContextTitle = (context: AdminQuestionGroupItem) => {
   const title = stripHtml(
-    context.enunciado_clean
+    context.texto
+    || context.enunciado_clean
     || context.enunciadoClean
     || context.enunciado
-    || context.texto
     || '',
   );
   return title || `Contexto #${context.id}`;
@@ -96,9 +100,19 @@ const getContextUsage = (context: AdminQuestionGroupItem) => {
 
 const buildDraftFromContext = (context: AdminQuestionGroupItem): QuestionContextDraft => ({
   id: context.id,
-  enunciado: context.enunciado || '',
-  texto: context.texto || '',
-  image_url: context.image_url || context.imageUrl || '',
+  texto: context.texto || context.enunciado || '',
+  assets: Array.isArray(context.assets)
+    ? context.assets
+    : String(context.image_url || context.imageUrl || '').trim()
+      ? [{
+        id: 'img_context_1',
+        type: 'image',
+        usage: 'context',
+        url: String(context.image_url || context.imageUrl),
+        alt: 'Imagem do contexto.',
+        order: 1,
+      }]
+      : [],
   questionIds: getContextQuestionIds(context),
   questionIdInput: '',
 });
@@ -214,21 +228,38 @@ const AdminQuestionGroupsSection = () => {
     }));
   };
 
-  const handleImageUpload = async (file: File | null) => {
-    if (!file) {
+  const handleImageUpload = async (files: FileList | null) => {
+    const selectedFiles = Array.from(files || []);
+    if (selectedFiles.length === 0) {
       return;
     }
 
-    if (!file.type.startsWith('image/')) {
+    if (selectedFiles.some((file) => !file.type.startsWith('image/'))) {
       setNotice({ type: 'error', message: 'Envie um arquivo de imagem valido.' });
       return;
     }
 
     setIsUploading(true);
     try {
-      const imageUrl = await adminService.uploadQuestionContextImage(file);
-      setDraft((previous) => ({ ...previous, image_url: imageUrl }));
-      setNotice({ type: 'success', message: 'Imagem enviada para o contexto.' });
+      const uploadedUrls = await Promise.all(
+        selectedFiles.map((file) => adminService.uploadQuestionContextImage(file)),
+      );
+      setDraft((previous) => {
+        let nextAssets = [...previous.assets];
+        let nextText = previous.texto;
+        uploadedUrls.forEach((url, index) => {
+          const asset = createQuestionImageAsset({
+            assets: nextAssets,
+            usage: 'context',
+            url,
+            alt: selectedFiles[index]?.name || 'Imagem do contexto.',
+          });
+          nextAssets = [...nextAssets, asset];
+          nextText = [nextText.trimEnd(), buildQuestionImageMarker(asset.id)].filter(Boolean).join('\n\n');
+        });
+        return { ...previous, assets: nextAssets, texto: nextText };
+      });
+      setNotice({ type: 'success', message: `${uploadedUrls.length} imagem(ns) enviada(s) para o contexto.` });
     } catch (error) {
       setNotice({ type: 'error', message: readApiErrorMessage(error, 'Não foi possível enviar a imagem.') });
     } finally {
@@ -240,8 +271,8 @@ const AdminQuestionGroupsSection = () => {
   };
 
   const handleSave = async () => {
-    if (!draft.enunciado.trim() && !draft.texto.trim() && !draft.image_url.trim()) {
-      setNotice({ type: 'error', message: 'Informe um texto, enunciado ou imagem para o contexto.' });
+    if (!draft.texto.trim() && draft.assets.length === 0) {
+      setNotice({ type: 'error', message: 'Informe um texto ou imagem para o contexto.' });
       return;
     }
 
@@ -249,9 +280,8 @@ const AdminQuestionGroupsSection = () => {
     try {
       await adminService.saveQuestionGroup({
         id: draft.id,
-        enunciado: draft.enunciado,
         texto: draft.texto,
-        image_url: draft.image_url,
+        assets: draft.assets,
         questionIds: draft.questionIds.map(Number),
       });
       setNotice({ type: 'success', message: draft.id ? 'Contexto atualizado.' : 'Contexto criado.' });
@@ -343,22 +373,12 @@ const AdminQuestionGroupsSection = () => {
           <div className="grid gap-5 lg:grid-cols-[1.35fr_0.9fr]">
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Enunciado / HTML</label>
-                <textarea
-                  value={draft.enunciado}
-                  onChange={(event) => setDraft((previous) => ({ ...previous, enunciado: event.target.value }))}
-                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[190px]`}
-                  placeholder="Contexto principal. Aceita HTML quando necessario."
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Texto simples</label>
+                <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Texto do contexto</label>
                 <textarea
                   value={draft.texto}
                   onChange={(event) => setDraft((previous) => ({ ...previous, texto: event.target.value }))}
-                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px]`}
-                  placeholder="Resumo ou versao sem HTML para busca e listagem."
+                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[330px]`}
+                  placeholder="Digite o contexto. Posicione imagens no texto com [image:ID]."
                 />
               </div>
             </div>
@@ -366,7 +386,7 @@ const AdminQuestionGroupsSection = () => {
             <div className="space-y-5">
               <div className="rounded-sm border border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/40">
                 <div className="flex items-center justify-between gap-3">
-                  <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Imagem</label>
+                  <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Imagens</label>
                   <button
                     type="button"
                     onClick={() => uploadInputRef.current?.click()}
@@ -380,38 +400,43 @@ const AdminQuestionGroupsSection = () => {
                     ref={uploadInputRef}
                     type="file"
                     accept="image/*"
+                    multiple
                     className="hidden"
-                    onChange={(event) => handleImageUpload(event.target.files?.[0] || null)}
+                    onChange={(event) => handleImageUpload(event.target.files)}
                   />
                 </div>
 
-                {draft.image_url ? (
+                {draft.assets.length > 0 ? (
                   <div className="mt-3 space-y-3">
-                    <Image
-                      src={resolveApiResourceUrl(draft.image_url)}
-                      alt=""
-                      width={960}
-                      height={288}
-                      unoptimized
-                      className="h-36 w-full rounded-sm border border-slate-300 object-cover dark:border-slate-700"
-                    />
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={draft.image_url}
-                        onChange={(event) => setDraft((previous) => ({ ...previous, image_url: event.target.value }))}
-                        className={`${ADMIN_FIELD_CLASS} min-w-0 flex-1`}
-                        placeholder="/uploads/question-contexts/imagem.jpg"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setDraft((previous) => ({ ...previous, image_url: '' }))}
-                        className={ADMIN_SECONDARY_BUTTON_CLASS}
-                        aria-label="Remover imagem"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
+                    {draft.assets.map((asset) => (
+                      <div key={asset.id} className="rounded-sm border border-slate-300 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                        <Image
+                          src={resolveApiResourceUrl(String(asset.url || ''))}
+                          alt={asset.alt || ''}
+                          width={960}
+                          height={288}
+                          unoptimized
+                          className="h-28 w-full rounded-sm object-contain"
+                        />
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <code className="truncate text-[11px] font-semibold text-violet-700 dark:text-violet-300">
+                            {buildQuestionImageMarker(asset.id)}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => setDraft((previous) => ({
+                              ...previous,
+                              texto: removeQuestionImageMarker(previous.texto, asset.id),
+                              assets: previous.assets.filter((item) => item.id !== asset.id),
+                            }))}
+                            className={ADMIN_SECONDARY_BUTTON_CLASS}
+                            aria-label={`Remover ${asset.alt || asset.id}`}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="mt-3 flex min-h-[8rem] items-center justify-center rounded-sm border border-dashed border-slate-300 bg-white text-sm font-medium text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500">
@@ -567,7 +592,13 @@ const AdminQuestionGroupsSection = () => {
                 </td>
               </tr>
             ) : contexts.length > 0 ? contexts.map((context) => {
-              const imageUrl = String(context.image_url || context.imageUrl || '').trim();
+              const contextAssets = Array.isArray(context.assets) ? context.assets : [];
+              const imageUrl = String(
+                contextAssets[0]?.url
+                || context.image_url
+                || context.imageUrl
+                || '',
+              ).trim();
               const usage = getContextUsage(context);
               const isSelected = selectedIds.has(Number(context.id));
 
@@ -611,7 +642,9 @@ const AdminQuestionGroupsSection = () => {
                           unoptimized
                           className="h-14 w-20 shrink-0 rounded-sm border border-slate-300 object-cover dark:border-slate-700"
                         />
-                        <span className="block min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">{imageUrl}</span>
+                        <span className="block min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
+                          {contextAssets.length > 1 ? `${contextAssets.length} imagens` : imageUrl}
+                        </span>
                       </div>
                     ) : (
                       <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-400">

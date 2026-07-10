@@ -95,6 +95,144 @@ export interface QuestionItem {
   corpo_clean?: string;
 }
 
+export type QuestionAssetUsage = 'statement' | 'support' | 'alternative' | 'context' | 'reference';
+
+export interface QuestionAsset {
+  tempId?: string;
+  id?: string;
+  type: 'image';
+  usage: QuestionAssetUsage;
+  url?: string;
+  base64?: string;
+  alt?: string;
+  caption?: string;
+  sourcePage?: number | string | null;
+  order?: number;
+}
+
+export interface QuestionContextPayload {
+  id?: number | string | null;
+  tempId?: string;
+  type?: 'shared' | 'individual' | string;
+  body?: string;
+  bodyClean?: string;
+  reference?: string;
+  sourcePage?: number | string | null;
+  assets: QuestionAsset[];
+  questionNumbers?: Array<number | string>;
+  texto?: string;
+  questionIds?: Array<number | string>;
+}
+
+export interface QuestionSourcePayload {
+  origin: 'platform' | 'exam' | 'manual' | 'ai' | string;
+  examId?: number | string | null;
+  questionNumber?: number | string | null;
+  contextTempId?: number | string | null;
+  questionGroupId?: number | string | null;
+  sourcePage?: number | string | null;
+}
+
+export interface QuestionContentPayload {
+  statement: string;
+  statementClean?: string;
+  supportText?: string;
+  reference?: string;
+}
+
+export interface QuestionFilterValuePayload {
+  id?: number | string | null;
+  label: string;
+  slug?: string;
+}
+
+export interface QuestionFiltersPayload {
+  subjects?: QuestionFilterValuePayload[];
+  topics?: QuestionFilterValuePayload[];
+  subtopics?: QuestionFilterValuePayload[];
+  examBoards?: QuestionFilterValuePayload[];
+  organizations?: QuestionFilterValuePayload[];
+  roles?: QuestionFilterValuePayload[];
+  careers?: QuestionFilterValuePayload[];
+  years?: QuestionFilterValuePayload[];
+  levels?: QuestionFilterValuePayload[];
+  examTypes?: QuestionFilterValuePayload[];
+  materias?: QuestionFilterValuePayload[];
+  topicos?: QuestionFilterValuePayload[];
+  assuntos?: QuestionFilterValuePayload[];
+  bancas?: QuestionFilterValuePayload[];
+  orgaos?: QuestionFilterValuePayload[];
+  cargos?: QuestionFilterValuePayload[];
+  carreiras?: QuestionFilterValuePayload[];
+  anos?: QuestionFilterValuePayload[];
+  niveis?: QuestionFilterValuePayload[];
+  tiposProva?: QuestionFilterValuePayload[];
+  provas?: QuestionFilterValuePayload[];
+}
+
+export interface QuestionAlternativePayload {
+  tempId?: string;
+  id?: string;
+  order: number;
+  label: string;
+  text: string;
+  textClean?: string;
+  assets?: QuestionAsset[];
+}
+
+export interface QuestionAnswerPayload {
+  mode?: 'single' | 'multiple' | 'boolean' | 'text' | string;
+  raw?: string | number | Array<string | number> | null | unknown;
+  correctAlternativeTempIds?: string[];
+  type?: 'single' | 'multiple' | 'boolean' | 'text' | string;
+  value?: string | number | Array<string | number> | null;
+  alternativeId?: string | null;
+}
+
+export interface QuestionEditorialCommentsPayload {
+  teacherComment?: string;
+  detailedComment?: string;
+}
+
+export interface QuestionEditorialPayload {
+  type: 'teacher_comment' | 'detailed_analysis' | string;
+  title?: string;
+  body: string;
+  status: 'draft' | 'published' | string;
+}
+
+export interface QuestionPublicationPayload {
+  status: 'draft' | 'published' | 'scheduled' | string;
+  visibility: 'public' | 'elite' | 'internal' | string;
+  scheduledAt?: string | null;
+}
+
+export interface QuestionReviewPayload {
+  required?: boolean;
+  status?: 'pending' | 'reviewed' | 'approved' | string;
+  reasons?: string[];
+  needsReview?: boolean;
+  statusReasons?: string[];
+}
+
+export interface QuestionPayload {
+  tempId?: string;
+  id?: number | string | null;
+  source: QuestionSourcePayload;
+  content: QuestionContentPayload;
+  assets: QuestionAsset[];
+  filters: QuestionFiltersPayload;
+  type?: string;
+  questionType?: string;
+  difficulty: string;
+  alternatives: QuestionAlternativePayload[];
+  answer: QuestionAnswerPayload;
+  editorial?: QuestionEditorialPayload[];
+  editorialComments?: QuestionEditorialCommentsPayload;
+  publication: QuestionPublicationPayload;
+  review: QuestionReviewPayload;
+}
+
 export interface QuestaoComentario {
   id: string;
   userId: string;
@@ -313,25 +451,37 @@ export interface ExamFileAttachment {
 
 export interface GrupoQuestao {
   id: number;
-  enunciado: string;
-  enunciado_clean: string;
+  texto: string;
+  assets?: QuestionAsset[];
+  questionIds?: Array<number | string> | string;
+  enunciado?: string;
+  enunciado_clean?: string;
   enunciadoClean?: string;
-  rotulo: string | null;
-  texto: string | null;
+  rotulo?: string | null;
   descrição: string;
-  ordem: number;
+  ordem?: number;
   image_url?: string;
   imageUrl?: string;
   question_count?: number;
   questionCount?: number;
   question_ids?: Array<number | string> | string;
-  questionIds?: Array<number | string> | string;
 }
 
 export interface Question {
   id?: number;
   hashId?: string;
   hash?: string;
+  source?: QuestionSourcePayload;
+  content?: QuestionContentPayload;
+  assets?: QuestionAsset[];
+  filters?: QuestionFiltersPayload;
+  questionType?: string;
+  alternatives?: QuestionAlternativePayload[];
+  answer?: QuestionAnswerPayload;
+  publication?: QuestionPublicationPayload;
+  review?: QuestionReviewPayload;
+  editorial?: QuestionEditorialPayload[];
+  editorialComments?: QuestionEditorialCommentsPayload;
   enunciado: string;
   enunciado_clean?: string;
   introText?: string;
