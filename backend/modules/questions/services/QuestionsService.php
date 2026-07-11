@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/QuestionAnswerEvaluator.php';
+require_once __DIR__ . '/../repositories/QuestionCanonicalRepository.php';
 
 class QuestionsService
 {
@@ -21,12 +22,15 @@ class QuestionsService
         private readonly QuestionsValidator $validator,
         private readonly QuestionsRewardService $rewardService,
         private readonly PDO $db,
-        ?QuestionAnswerEvaluator $answerEvaluator = null
+        ?QuestionAnswerEvaluator $answerEvaluator = null,
+        ?QuestionCanonicalRepository $canonicalRepository = null
     ) {
         $this->answerEvaluator = $answerEvaluator ?? new QuestionAnswerEvaluator();
+        $this->canonicalRepository = $canonicalRepository ?? new QuestionCanonicalRepository($db);
     }
 
     private readonly QuestionAnswerEvaluator $answerEvaluator;
+    private readonly QuestionCanonicalRepository $canonicalRepository;
 
     public function submitAnswer(string $authenticatedUserId, bool $isAdmin, array $payload): array
     {
@@ -180,8 +184,7 @@ class QuestionsService
         $identity = $this->validator->validateStatsQuery($query);
         $counts = $this->repository->getQuestionOutcomeCounts($identity['questionId']);
         $optionDistribution = $this->repository->getQuestionOptionDistribution($identity['questionId']);
-        $distributionTotal = array_sum(array_map('intval', $optionDistribution));
-        $totalAttempts = max((int) ($counts['totalAttempts'] ?? 0), (int) $distributionTotal);
+        $totalAttempts = (int) ($counts['totalAttempts'] ?? 0);
 
         return [
             'totalAttempts' => $totalAttempts,
@@ -285,6 +288,11 @@ class QuestionsService
     {
         $this->assertAdmin($authenticatedUserId, $isAdmin);
 
+        if (($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
+            throw new InvalidArgumentException('Contrato de importacao invalido. Informe schemaVersion question-import.v2.');
+        }
+        $this->canonicalRepository->assertSchemaReady();
+
         $questions = is_array($payload['questions'] ?? null) ? $payload['questions'] : [];
 
         $focus = $this->normalizeBulkImportFocus($payload['focus'] ?? []);
@@ -298,9 +306,11 @@ class QuestionsService
         $createdQuestionIds = [];
         $newTaxonomies = [];
         $groupIdByTempId = [];
+        $canonicalContextIdByTempId = [];
         $contextQuestionNumbersByTempId = [];
         $createdQuestionIdBySourceNumber = [];
         $duplicateSkipped = [];
+        $itemFailures = [];
         $seenImportKeys = [];
 
         $this->db->beginTransaction();
@@ -351,16 +361,25 @@ class QuestionsService
                 $contextData['created_by_user_id'] = $authenticatedUserId;
                 $contextData['updated_by_user_id'] = $authenticatedUserId;
                 $groupIdByTempId[$tempId] = $this->repository->saveQuestionGroup($contextData);
+                $canonicalContext = $context;
+                $canonicalContext['body'] = $contextData['texto'];
+                $canonicalContext['assets'] = $contextData['assets'];
+                $canonicalContextIdByTempId[$tempId] = $this->canonicalRepository->saveContext($canonicalContext, $authenticatedUserId);
             }
 
-            foreach ($questions as $question) {
+            foreach (array_values($questions) as $questionPosition => $question) {
                 if (!is_array($question)) {
                     continue;
                 }
 
+                $savepoint = 'question_import_' . $questionPosition;
+                $this->db->exec('SAVEPOINT ' . $savepoint);
+                try {
+
                 $questionSource = is_array($question['source'] ?? null) ? $question['source'] : [];
                 $contextTempId = trim((string) (
                     $questionSource['questionGroupId']
+                    ?? $questionSource['contextTempId']
                     ?? $question['grupoQuestaoTempId']
                     ?? $question['contextTempId']
                     ?? $question['contextKey']
@@ -369,6 +388,9 @@ class QuestionsService
                 if ($contextTempId !== '' && isset($groupIdByTempId[$contextTempId])) {
                     $question['grupoQuestaoId'] = $groupIdByTempId[$contextTempId];
                     $question['grupo_questao_id'] = $groupIdByTempId[$contextTempId];
+                }
+                if ($contextTempId !== '' && isset($canonicalContextIdByTempId[$contextTempId])) {
+                    $question['canonicalContextId'] = $canonicalContextIdByTempId[$contextTempId];
                 }
 
                 $question['provaId'] = $examId;
@@ -409,6 +431,7 @@ class QuestionsService
                         'reason' => 'duplicate_in_batch',
                         'questionNumber' => $importIdentity['source_question_number'],
                     ];
+                    $this->db->exec('RELEASE SAVEPOINT ' . $savepoint);
                     continue;
                 }
                 $seenImportKeys[$batchDuplicateKey] = true;
@@ -424,6 +447,7 @@ class QuestionsService
                         'questionId' => $existingQuestion['id'] ?? null,
                         'questionNumber' => $importIdentity['source_question_number'],
                     ];
+                    $this->db->exec('RELEASE SAVEPOINT ' . $savepoint);
                     continue;
                 }
 
@@ -435,6 +459,19 @@ class QuestionsService
                 }
                 foreach ($createdTaxonomies as $taxonomy) {
                     $newTaxonomies[] = $taxonomy;
+                }
+                $this->canonicalRepository->recordExtractionItem($examId, (int) $questionId, $question, 'imported');
+                $this->db->exec('RELEASE SAVEPOINT ' . $savepoint);
+                } catch (Throwable $questionError) {
+                    $this->db->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                    $this->db->exec('RELEASE SAVEPOINT ' . $savepoint);
+                    $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+                    $itemFailures[] = [
+                        'questionNumber' => $source['questionNumber'] ?? null,
+                        'tempId' => $question['tempId'] ?? null,
+                        'message' => $questionError->getMessage(),
+                    ];
+                    continue;
                 }
             }
 
@@ -452,6 +489,11 @@ class QuestionsService
 
                 if ($linkedQuestionIds !== []) {
                     $this->repository->syncQuestionGroupLinks($groupIdByTempId[$tempId], $linkedQuestionIds);
+                    if (isset($canonicalContextIdByTempId[$tempId])) {
+                        foreach ($linkedQuestionIds as $linkedQuestionId) {
+                            $this->canonicalRepository->linkQuestionContext((int) $canonicalContextIdByTempId[$tempId], (int) $linkedQuestionId, 'shared');
+                        }
+                    }
                 }
             }
 
@@ -492,6 +534,8 @@ class QuestionsService
             'skipped_duplicate_count' => count($duplicateSkipped),
             'newTaxonomies' => $newTaxonomies,
             'new_taxonomies' => $newTaxonomies,
+            'itemFailures' => $itemFailures,
+            'item_failures' => $itemFailures,
         ];
     }
 
@@ -664,6 +708,13 @@ class QuestionsService
             if (is_array($data['question_ids'])) {
                 $this->repository->syncQuestionGroupLinks($groupId, $data['question_ids']);
             }
+            $canonicalContext = is_array($data['canonical_context'] ?? null) ? $data['canonical_context'] : [];
+            $canonicalContext['tempId'] = trim((string) ($canonicalContext['tempId'] ?? '')) ?: 'legacy_group_' . $groupId;
+            $canonicalContext['assets'] = $data['assets'];
+            $canonicalContextId = $this->canonicalRepository->saveContext($canonicalContext, $authenticatedUserId);
+            foreach (is_array($data['question_ids']) ? $data['question_ids'] : [] as $questionId) {
+                $this->canonicalRepository->linkQuestionContext($canonicalContextId, (int) $questionId, (string) ($canonicalContext['type'] ?? 'shared'));
+            }
             $this->commitIfNeeded();
         } catch (Throwable $e) {
             $this->rollback();
@@ -675,7 +726,11 @@ class QuestionsService
             throw new OutOfBoundsException('Contexto de questoes nao encontrado.');
         }
 
-        return $this->normalizeQuestionGroup($row);
+        return $this->normalizeQuestionGroup($row) + [
+            'body' => $data['texto'],
+            'reference' => (string) ($data['canonical_context']['reference'] ?? ''),
+            'sourcePage' => $data['canonical_context']['sourcePage'] ?? null,
+        ];
     }
 
     public function uploadQuestionGroupImage(string $authenticatedUserId, bool $isAdmin, ?array $file): array
@@ -869,13 +924,24 @@ class QuestionsService
     private function normalizeQuestionRow(array $row, ?array $stats, int $commentsCount, array $filters, array $provas, ?array $userAnswer, bool $canViewTeacherComments, bool $canViewDetailedAnalysis, bool $includeAnswerKey = false): array
     {
         $data = $this->decodeQuestionJson($row['data_json'] ?? null);
-        $items = $this->normalizeItems($data['itens'] ?? $data['items'] ?? []);
+        $canonicalAggregate = null;
+        if ($this->canonicalRepository->isAvailable() && is_numeric($row['id'] ?? null)) {
+            $canonicalAggregate = $this->canonicalRepository->loadQuestionAggregate((int) $row['id']);
+        }
+        $items = $this->normalizeItems(
+            $canonicalAggregate['alternatives']
+                ?? $data['itens']
+                ?? $data['items']
+                ?? []
+        );
         $answerIndex = (int) ($row['resposta_correta_item_index'] ?? $data['correctOptionIndex'] ?? 0);
-        $teacher = $this->normalizeEditorialText($data['teacherComment'] ?? $data['teacher_comment'] ?? $data['comentarioProfessor'] ?? '');
-        $detailed = $this->normalizeEditorialText($data['detailedComment'] ?? $data['detailed_comment'] ?? $data['analiseDetalhada'] ?? '');
+        $editorials = is_array($canonicalAggregate['editorial'] ?? null) ? $canonicalAggregate['editorial'] : [];
+        $teacher = $this->normalizeEditorialText($this->editorialBodyByType($editorials, 'teacher_comment') ?? $data['teacherComment'] ?? $data['teacher_comment'] ?? $data['comentarioProfessor'] ?? '');
+        $detailed = $this->normalizeEditorialText($this->editorialBodyByType($editorials, 'detailed_analysis') ?? $data['detailedComment'] ?? $data['detailed_comment'] ?? $data['analiseDetalhada'] ?? '');
         $buckets = $this->partitionFilters($filters);
         $group = $this->resolveQuestionGroup($row);
-        $imageUrl = (string) ($data['imageUrl'] ?? $data['image_url'] ?? '');
+        $assets = is_array($canonicalAggregate['assets'] ?? null) ? $canonicalAggregate['assets'] : [];
+        $imageUrl = (string) ($assets[0]['url'] ?? $data['imageUrl'] ?? $data['image_url'] ?? '');
         $origin = (string) ($data['questionOrigin'] ?? $data['question_origin'] ?? '');
         if ($origin === '') {
             $origin = !empty($row['prova_id']) || $provas !== [] ? 'exam' : 'platform';
@@ -945,6 +1011,58 @@ class QuestionsService
             'hasDetailedComment' => $detailed !== '',
         ];
 
+        $canonicalAlternatives = is_array($canonicalAggregate['alternatives'] ?? null)
+            ? $canonicalAggregate['alternatives']
+            : $this->canonicalAlternativesFromItems($items);
+        $correctAlternative = $canonicalAlternatives[$answerIndex]['tempId'] ?? null;
+        $question['source'] = [
+            'origin' => $origin,
+            'examId' => $row['prova_id'] ?? null,
+            'questionNumber' => $row['source_question_number'] ?? ($data['questionNumber'] ?? null),
+            'contextTempId' => (string) ($canonicalAggregate['contexts'][0]['tempId'] ?? $data['supportContextKey'] ?? ''),
+            'sourcePage' => $row['source_page'] ?? ($data['sourcePage'] ?? null),
+        ];
+        $question['content'] = [
+            'statement' => $question['enunciado'],
+            'statementClean' => $question['enunciado_clean'],
+            'supportText' => $question['introText'],
+            'reference' => $question['referenceText'],
+        ];
+        $question['assets'] = $assets;
+        $question['filters'] = [
+            'subjects' => $this->filterItemsByTaxonomyLevel($buckets['assuntos'], 'materia'),
+            'topics' => $this->filterItemsByTaxonomyLevel($buckets['assuntos'], 'topico'),
+            'subtopics' => $this->filterItemsByTaxonomyLevel($buckets['assuntos'], 'assunto'),
+            'examBoards' => $buckets['bancas'],
+            'organizations' => $buckets['orgaos'],
+            'roles' => $buckets['cargos'],
+            'careers' => $buckets['carreiras'],
+            'years' => $buckets['anos'],
+            'levels' => $buckets['niveis'] ?? [],
+            'examTypes' => $buckets['tiposProva'] ?? [],
+        ];
+        $question['type'] = $question['tipo'] === 'certo ou errado' ? 'true_false' : 'single_choice';
+        $question['alternatives'] = $canonicalAlternatives;
+        $question['answer'] = [
+            'mode' => $question['type'] === 'true_false' ? 'boolean' : 'single',
+            'raw' => (string) ($items[$answerIndex]['rotulo'] ?? ''),
+            'correctAlternativeTempIds' => $correctAlternative !== null ? [$correctAlternative] : [],
+        ];
+        $question['editorial'] = $this->canonicalEditorialsForOutput($editorials, $teacher, $detailed);
+        $question['publication'] = [
+            'status' => $question['publishStatus'],
+            'visibility' => $question['visibilityStatus'],
+            'scheduledAt' => $question['scheduledAt'],
+        ];
+        $question['review'] = [
+            'required' => false,
+            'status' => 'reviewed',
+            'reasons' => [],
+        ];
+        if ($canonicalAggregate !== null) {
+            $question['contexts'] = $canonicalAggregate['contexts'] ?? [];
+        }
+
         if ($includeAnswerKey) {
             $question['resposta'] = $answerIndex + 1;
             $question['correctOptionIndex'] = $answerIndex;
@@ -962,6 +1080,52 @@ class QuestionsService
         }
 
         return $question;
+    }
+
+    private function editorialBodyByType(array $editorials, string $type): ?string
+    {
+        foreach ($editorials as $editorial) {
+            if (is_array($editorial) && (string) ($editorial['type'] ?? '') === $type) {
+                return (string) ($editorial['body'] ?? '');
+            }
+        }
+        return null;
+    }
+
+    private function canonicalAlternativesFromItems(array $items): array
+    {
+        return array_map(static fn (array $item, int $index): array => [
+            'tempId' => 'alt_' . strtolower((string) ($item['rotulo'] ?? chr(65 + $index))),
+            'order' => (int) ($item['ordem'] ?? $index + 1),
+            'label' => (string) ($item['rotulo'] ?? chr(65 + $index)),
+            'text' => (string) ($item['corpo'] ?? ''),
+            'textClean' => (string) ($item['corpo_clean'] ?? ''),
+            'assets' => [],
+        ], $items, array_keys($items));
+    }
+
+    private function canonicalEditorialsForOutput(array $editorials, string $teacher, string $detailed): array
+    {
+        $byType = [];
+        foreach ($editorials as $editorial) {
+            if (is_array($editorial) && isset($editorial['type'])) {
+                $byType[(string) $editorial['type']] = $editorial;
+            }
+        }
+        return [
+            $byType['teacher_comment'] ?? ['type' => 'teacher_comment', 'title' => '', 'body' => $teacher, 'status' => 'draft'],
+            $byType['detailed_analysis'] ?? ['type' => 'detailed_analysis', 'title' => '', 'body' => $detailed, 'status' => 'draft'],
+        ];
+    }
+
+    private function filterItemsByTaxonomyLevel(array $items, string $level): array
+    {
+        return array_values(array_filter($items, static function (mixed $item) use ($level): bool {
+            if (!is_array($item)) {
+                return false;
+            }
+            return strtolower((string) ($item['taxonomyLevel'] ?? $item['taxonomy_level'] ?? 'assunto')) === $level;
+        }));
     }
 
     private function buildQuestionDataJson(array $data, int $answerIndex): string
@@ -1054,7 +1218,98 @@ class QuestionsService
         $this->repository->clearQuestionFilters($questionId);
         $newTaxonomies = $this->syncQuestionFilters($questionId, $data['taxonomies']);
 
+        $canonical = is_array($data['canonical'] ?? null)
+            ? $data['canonical']
+            : $this->buildCanonicalQuestionSnapshot($data, $answerIndex);
+        $canonical['id'] = is_numeric($questionId) ? (int) $questionId : $questionId;
+        $canonical['source'] = array_merge(
+            is_array($canonical['source'] ?? null) ? $canonical['source'] : [],
+            [
+                'origin' => (string) ($data['question_origin'] ?? 'platform'),
+                'examId' => $record['prova_id'] ?? null,
+                'questionNumber' => $data['question_number'] ?? null,
+                'sourcePage' => $data['source_page'] ?? null,
+            ]
+        );
+        $this->canonicalRepository->replaceQuestionAggregate(
+            (int) $questionId,
+            $canonical,
+            is_numeric($data['canonical_context_id'] ?? null) ? (int) $data['canonical_context_id'] : null
+        );
+
         return [$questionId, $newTaxonomies];
+    }
+
+    /**
+     * Produces the same aggregate used by question-import.v2 for older callers
+     * while the frontend completes its migration to the public contract.
+     */
+    private function buildCanonicalQuestionSnapshot(array $data, int $answerIndex): array
+    {
+        $alternatives = [];
+        foreach ($this->normalizeItems($data['itens'] ?? []) as $index => $item) {
+            $tempId = 'alt_' . strtolower((string) ($item['rotulo'] ?? chr(65 + $index)));
+            $alternatives[] = [
+                'tempId' => $tempId,
+                'order' => (int) ($item['ordem'] ?? $index + 1),
+                'label' => (string) ($item['rotulo'] ?? chr(65 + $index)),
+                'text' => (string) ($item['corpo'] ?? ''),
+                'textClean' => (string) ($item['corpo_clean'] ?? ''),
+                'assets' => [],
+            ];
+        }
+        $correct = $alternatives[$answerIndex]['tempId'] ?? null;
+        return [
+            'tempId' => null,
+            'source' => [
+                'origin' => (string) ($data['question_origin'] ?? 'platform'),
+                'examId' => $data['prova_id'] ?? null,
+                'questionNumber' => $data['question_number'] ?? null,
+                'contextTempId' => (string) ($data['support_context_key'] ?? ''),
+                'sourcePage' => $data['source_page'] ?? null,
+            ],
+            'content' => [
+                'statement' => (string) ($data['enunciado'] ?? ''),
+                'statementClean' => (string) ($data['enunciado_clean'] ?? ''),
+                'supportText' => (string) ($data['intro_text'] ?? ''),
+                'reference' => (string) ($data['reference_text'] ?? ''),
+            ],
+            'assets' => [],
+            'filters' => [
+                'subjects' => [],
+                'topics' => [],
+                'subtopics' => [],
+                'examBoards' => $data['taxonomies']['banca'] ?? [],
+                'organizations' => $data['taxonomies']['orgao'] ?? [],
+                'roles' => $data['taxonomies']['cargo'] ?? [],
+                'careers' => $data['taxonomies']['carreira'] ?? [],
+                'years' => $data['taxonomies']['ano'] ?? [],
+                'levels' => $data['taxonomies']['nivel'] ?? [],
+                'examTypes' => $data['taxonomies']['tipo_prova'] ?? [],
+            ],
+            'type' => (string) ($data['tipo'] ?? 'multipla escolha'),
+            'difficulty' => $this->difficultyLabel((int) ($data['dificuldade'] ?? 2)),
+            'alternatives' => $alternatives,
+            'answer' => [
+                'mode' => 'single',
+                'raw' => $alternatives[$answerIndex]['label'] ?? '',
+                'correctAlternativeTempIds' => $correct !== null ? [$correct] : [],
+            ],
+            'editorial' => [
+                ['type' => 'teacher_comment', 'title' => '', 'body' => (string) ($data['teacherComment'] ?? ''), 'status' => 'draft'],
+                ['type' => 'detailed_analysis', 'title' => '', 'body' => (string) ($data['detailedComment'] ?? ''), 'status' => 'draft'],
+            ],
+            'publication' => [
+                'status' => (string) ($data['publish_status'] ?? 'draft'),
+                'visibility' => (string) ($data['visibility_status'] ?? 'public'),
+                'scheduledAt' => $data['scheduled_at'] ?? null,
+            ],
+            'review' => [
+                'required' => !empty($data['needsReview']),
+                'status' => !empty($data['needsReview']) ? 'pending' : 'reviewed',
+                'reasons' => is_array($data['statusReasons'] ?? null) ? $data['statusReasons'] : [],
+            ],
+        ];
     }
 
     private function normalizeBulkImportFocus(mixed $value): array
@@ -1809,7 +2064,60 @@ class QuestionsService
             }, $payload['itens']);
         }
 
+        if (isset($payload['content']) && is_array($payload['content'])) {
+            foreach (['statement', 'supportText', 'reference'] as $field) {
+                if (isset($payload['content'][$field]) && is_string($payload['content'][$field]) && str_contains($payload['content'][$field], 'data:image/')) {
+                    $payload['content'][$field] = $this->persistInlineQuestionAssetImages($payload['content'][$field]);
+                }
+            }
+        }
+
+        $payload['assets'] = $this->persistCanonicalAssetCollection($payload['assets'] ?? []);
+        if (isset($payload['alternatives']) && is_array($payload['alternatives'])) {
+            foreach ($payload['alternatives'] as $index => $alternative) {
+                if (!is_array($alternative)) {
+                    continue;
+                }
+                if (isset($alternative['text']) && is_string($alternative['text']) && str_contains($alternative['text'], 'data:image/')) {
+                    $alternative['text'] = $this->persistInlineQuestionAssetImages($alternative['text']);
+                }
+                $alternative['assets'] = $this->persistCanonicalAssetCollection($alternative['assets'] ?? []);
+                $payload['alternatives'][$index] = $alternative;
+            }
+        }
+
+        if (isset($payload['editorial']) && is_array($payload['editorial'])) {
+            foreach ($payload['editorial'] as $index => $editorial) {
+                if (is_array($editorial) && isset($editorial['body']) && is_string($editorial['body']) && str_contains($editorial['body'], 'data:image/')) {
+                    $editorial['body'] = $this->persistInlineQuestionAssetImages($editorial['body']);
+                    $payload['editorial'][$index] = $editorial;
+                }
+            }
+        }
+
         return $payload;
+    }
+
+    private function persistCanonicalAssetCollection(mixed $assets): array
+    {
+        if (!is_array($assets)) {
+            return [];
+        }
+        $persisted = [];
+        foreach ($assets as $asset) {
+            if (!is_array($asset)) {
+                continue;
+            }
+            $base64 = trim((string) ($asset['base64'] ?? ''));
+            if ($base64 !== '' && trim((string) ($asset['url'] ?? '')) === '') {
+                if (preg_match('/^data:image\/([a-z0-9.+-]+);base64,(.+)$/is', $base64, $matches) === 1) {
+                    $asset['url'] = $this->storeBase64QuestionAssetImage((string) $matches[1], (string) $matches[2]);
+                }
+            }
+            unset($asset['base64']);
+            $persisted[] = $asset;
+        }
+        return $persisted;
     }
 
     private function persistInlineQuestionAssetImages(string $html): string
@@ -1934,7 +2242,7 @@ class QuestionsService
 
     private function partitionFilters(array $filters): array
     {
-        $buckets = ['bancas' => [], 'orgaos' => [], 'cargos' => [], 'assuntos' => [], 'anos' => [], 'carreiras' => []];
+        $buckets = ['bancas' => [], 'orgaos' => [], 'cargos' => [], 'assuntos' => [], 'anos' => [], 'carreiras' => [], 'niveis' => [], 'tiposProva' => []];
         foreach ($filters as $filter) {
             if (!is_array($filter)) {
                 continue;
@@ -1969,6 +2277,10 @@ class QuestionsService
                 $buckets['assuntos'][] = $base + ['materia' => $isMateria, 'assunto_raiz' => $parentId, 'pai' => $parentId];
             } elseif ($type === 'ano') {
                 $buckets['anos'][] = ctype_digit($name) ? (int) $name : $name;
+            } elseif ($type === 'nivel') {
+                $buckets['niveis'][] = $base;
+            } elseif ($type === 'tipo_prova') {
+                $buckets['tiposProva'][] = $base;
             }
         }
 

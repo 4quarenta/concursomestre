@@ -49,6 +49,7 @@ type QuestionCreateResponse = {
 };
 
 type ImportedQuestionBatchPayload = {
+  schemaVersion?: 'question-import.v2';
   exam: Record<string, unknown>;
   focus: Record<string, unknown>;
   contexts: QuestionContextPayload[];
@@ -980,6 +981,7 @@ export const questionService = {
       const formData = new FormData();
       const canonicalPayload: ImportedQuestionBatchPayload = {
         ...payload,
+        schemaVersion: 'question-import.v2',
         questions: payload.questions.map((question) => buildCanonicalQuestionPayload(question as unknown as Question)),
       };
       formData.append('payload', JSON.stringify(canonicalPayload));

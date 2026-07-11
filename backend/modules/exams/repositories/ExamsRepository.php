@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 class ExamsRepository
 {
     private PDO $db;
@@ -42,217 +44,22 @@ class ExamsRepository
             return;
         }
         $this->schemaChecked = true;
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS provas (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            nome VARCHAR(255) NOT NULL,
-            titulo_oficial VARCHAR(255) NULL,
-            nome_curto VARCHAR(180) NULL,
-            slug VARCHAR(255) NOT NULL,
-            edital_numero VARCHAR(80) NULL,
-            ano INT NULL,
-            banca_id INT NULL,
-            orgao_id INT NULL,
-            cargo_id INT NULL,
-            nivel_id INT NULL,
-            tipo_prova_id INT NULL,
-            carreira_id INT NULL,
-            area_id INT NULL,
-            inscricoes_inicio DATETIME NULL,
-            inscricoes_fim DATETIME NULL,
-            data_prova DATETIME NULL,
-            resultado_data DATETIME NULL,
-            vagas_total INT NULL,
-            cadastro_reserva_total INT NULL,
-            url_oficial VARCHAR(500) NULL,
-            status_editorial VARCHAR(30) NOT NULL DEFAULT 'draft',
-            visibility_status VARCHAR(30) NOT NULL DEFAULT 'public',
-            scheduled_at DATETIME NULL,
-            metadata_json JSON NULL,
-            archived_at DATETIME NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY unique_slug_year (slug, ano),
-            INDEX idx_provas_ano (ano),
-            INDEX idx_provas_status (status_editorial)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->ensureColumn('provas', 'titulo_oficial', "titulo_oficial VARCHAR(255) NULL AFTER nome");
-        $this->ensureColumn('provas', 'nome_curto', "nome_curto VARCHAR(180) NULL AFTER titulo_oficial");
-        $this->ensureColumn('provas', 'edital_numero', "edital_numero VARCHAR(80) NULL AFTER slug");
-        $this->ensureColumn('provas', 'carreira_id', "carreira_id INT NULL AFTER tipo_prova_id");
-        $this->ensureColumn('provas', 'area_id', "area_id INT NULL AFTER carreira_id");
-        $this->ensureColumn('provas', 'inscricoes_inicio', "inscricoes_inicio DATETIME NULL AFTER edital_numero");
-        $this->ensureColumn('provas', 'inscricoes_fim', "inscricoes_fim DATETIME NULL AFTER inscricoes_inicio");
-        $this->ensureColumn('provas', 'data_prova', "data_prova DATETIME NULL AFTER inscricoes_fim");
-        $this->ensureColumn('provas', 'resultado_data', "resultado_data DATETIME NULL AFTER data_prova");
-        $this->ensureColumn('provas', 'vagas_total', "vagas_total INT NULL AFTER resultado_data");
-        $this->ensureColumn('provas', 'cadastro_reserva_total', "cadastro_reserva_total INT NULL AFTER vagas_total");
-        $this->ensureColumn('provas', 'url_oficial', "url_oficial VARCHAR(500) NULL AFTER cadastro_reserva_total");
-        $this->ensureColumn('provas', 'status_editorial', "status_editorial VARCHAR(30) NOT NULL DEFAULT 'draft' AFTER url_oficial");
-        $this->ensureColumn('provas', 'visibility_status', "visibility_status VARCHAR(30) NOT NULL DEFAULT 'public' AFTER status_editorial");
-        $this->ensureColumn('provas', 'scheduled_at', "scheduled_at DATETIME NULL AFTER visibility_status");
-        $this->ensureColumn('provas', 'metadata_json', "metadata_json JSON NULL AFTER scheduled_at");
-        $this->ensureColumn('provas', 'archived_at', "archived_at DATETIME NULL AFTER metadata_json");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_filters (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            filter_id INT NOT NULL,
-            role VARCHAR(40) NULL,
-            context_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_prova_filter_role (prova_id, filter_id, role),
-            INDEX idx_prova_filters_prova (prova_id),
-            INDEX idx_prova_filters_filter (filter_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_cargo_detalhes (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            cargo_filter_id INT NULL,
-            nome VARCHAR(255) NOT NULL,
-            remuneracao VARCHAR(255) NULL,
-            carga_horaria VARCHAR(120) NULL,
-            escolaridade VARCHAR(180) NULL,
-            metadata_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_prova_cargo_detalhes_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_cargo_requisitos (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            cargo_detalhe_id BIGINT UNSIGNED NULL,
-            requisito TEXT NOT NULL,
-            ordem INT NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_prova_cargo_requisitos_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_cargo_vagas (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            cargo_detalhe_id BIGINT UNSIGNED NULL,
-            ampla INT NOT NULL DEFAULT 0,
-            pcd INT NOT NULL DEFAULT 0,
-            cotas INT NOT NULL DEFAULT 0,
-            cadastro_reserva INT NOT NULL DEFAULT 0,
-            descricao VARCHAR(255) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_prova_cargo_vagas_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_cadernos (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            nome VARCHAR(180) NOT NULL,
-            tipo VARCHAR(80) NULL,
-            cor VARCHAR(80) NULL,
-            ordem INT NOT NULL DEFAULT 0,
-            metadata_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_prova_caderno_nome (prova_id, nome),
-            INDEX idx_prova_cadernos_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_caderno_cargos (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            caderno_id BIGINT UNSIGNED NOT NULL,
-            cargo_filter_id INT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_caderno_cargo (caderno_id, cargo_filter_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_caderno_filters (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            caderno_id BIGINT UNSIGNED NOT NULL,
-            filter_id INT NOT NULL,
-            role VARCHAR(40) NULL,
-            ordem INT NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_caderno_filter_role (caderno_id, filter_id, role)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_arquivos (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            tipo ENUM('edital', 'prova', 'gabarito', 'outro') NOT NULL,
-            nome_original VARCHAR(255) NOT NULL,
-            caminho VARCHAR(500) NOT NULL,
-            mime_type VARCHAR(120) NULL,
-            tamanho BIGINT UNSIGNED NULL,
-            versao INT NOT NULL DEFAULT 1,
-            visibility_status VARCHAR(30) NOT NULL DEFAULT 'public',
-            uploaded_by_user_id VARCHAR(64) NULL,
-            metadata_json JSON NULL,
-            archived_at DATETIME NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_prova_arquivos_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-        $this->ensureColumn('prova_arquivos', 'versao', "versao INT NOT NULL DEFAULT 1 AFTER tamanho");
-        $this->ensureColumn('prova_arquivos', 'visibility_status', "visibility_status VARCHAR(30) NOT NULL DEFAULT 'public' AFTER versao");
-        $this->ensureColumn('prova_arquivos', 'uploaded_by_user_id', "uploaded_by_user_id VARCHAR(64) NULL AFTER visibility_status");
-        $this->ensureColumn('prova_arquivos', 'archived_at', "archived_at DATETIME NULL AFTER metadata_json");
-        $this->ensureColumn('prova_arquivos', 'updated_at', "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS question_provas (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            question_id INT NOT NULL,
-            prova_id INT NOT NULL,
-            caderno_id BIGINT UNSIGNED NULL,
-            numero_na_prova INT NULL,
-            metadata_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_question_prova_caderno (question_id, prova_id, caderno_id),
-            INDEX idx_question_provas_question (question_id),
-            INDEX idx_question_provas_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_extracoes (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NULL,
-            arquivo_id BIGINT UNSIGNED NULL,
-            origem ENUM('edital', 'prova', 'gabarito', 'manual') NOT NULL,
-            status ENUM('pending', 'processing', 'review', 'done', 'failed') NOT NULL DEFAULT 'pending',
-            parser_profile VARCHAR(80) NULL,
-            extracted_json JSON NULL,
-            review_json JSON NULL,
-            error_message TEXT NULL,
-            created_by VARCHAR(64) NULL,
-            reviewed_by VARCHAR(64) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_prova_extracoes_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        try {
-            $this->db->exec("INSERT IGNORE INTO question_provas (question_id, prova_id, numero_na_prova)
-                SELECT
-                    id,
-                    prova_id,
-                    CASE
-                        WHEN source_question_number REGEXP '^[0-9]+$'
-                        THEN CAST(source_question_number AS UNSIGNED)
-                        ELSE NULL
-                    END
-                FROM questions
-                WHERE prova_id IS NOT NULL AND prova_id > 0");
-        } catch (Throwable $exception) {
-            error_log('[exam_bank_question_provas_backfill] ' . $exception->getMessage());
-        }
-    }
-
-    private function ensureColumn(string $table, string $column, string $definition): void
-    {
-        $stmt = $this->db->prepare("SHOW COLUMNS FROM {$table} LIKE :column_name");
-        $stmt->execute([':column_name' => $column]);
-        if (!$stmt->fetch(PDO::FETCH_ASSOC)) {
-            $this->db->exec("ALTER TABLE {$table} ADD COLUMN {$definition}");
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'banco de provas', [
+            'provas' => [
+                'id', 'nome', 'slug', 'ano', 'banca_id', 'orgao_id', 'cargo_id', 'nivel_id', 'tipo_prova_id',
+                'carreira_id', 'metadata_json', 'status_editorial', 'visibility_status', 'scheduled_at',
+            ],
+            'prova_filters' => ['prova_id', 'filter_id', 'role'],
+            'prova_cargo_detalhes' => ['prova_id', 'cargo_filter_id', 'nome', 'metadata_json'],
+            'prova_cargo_requisitos' => ['prova_id', 'cargo_detalhe_id', 'requisito', 'ordem'],
+            'prova_cargo_vagas' => ['prova_id', 'cargo_detalhe_id', 'ampla', 'pcd', 'cotas', 'cadastro_reserva'],
+            'prova_cadernos' => ['id', 'prova_id', 'nome', 'tipo', 'cor', 'metadata_json'],
+            'prova_caderno_cargos' => ['caderno_id', 'cargo_filter_id'],
+            'prova_caderno_filters' => ['caderno_id', 'filter_id', 'role'],
+            'prova_arquivos' => ['prova_id', 'tipo', 'nome_original', 'caminho', 'metadata_json'],
+            'question_provas' => ['question_id', 'prova_id', 'numero_na_prova'],
+            'prova_extracoes' => ['prova_id', 'origem', 'status', 'extracted_json'],
+        ]);
     }
 
     public function list(array $filters = []): array

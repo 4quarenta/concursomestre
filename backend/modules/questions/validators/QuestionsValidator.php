@@ -285,6 +285,9 @@ class QuestionsValidator
             'source_page' => $payload['sourcePage'] ?? $payload['source_page'] ?? null,
             'question_number' => $payload['questionNumber'] ?? $payload['question_number'] ?? null,
             'support_context_key' => (string) ($payload['contextKey'] ?? $payload['supportContextKey'] ?? $payload['support_context_key'] ?? ''),
+            'canonical_context_id' => is_numeric($payload['canonicalContextId'] ?? $payload['canonical_context_id'] ?? null)
+                ? (int) ($payload['canonicalContextId'] ?? $payload['canonical_context_id'])
+                : null,
             'figure_description' => (string) ($payload['figureDescription'] ?? $payload['figure_description'] ?? ''),
             'question_origin' => $this->normalizeQuestionOrigin(
                 $payload['questionOrigin']
@@ -300,6 +303,8 @@ class QuestionsValidator
             'visibility_status' => $visibilityStatus,
             'scheduled_at' => $scheduledAt,
             'published_at' => $publishedAt,
+            'needsReview' => !empty($payload['needsReview'] ?? $payload['needs_review'] ?? false),
+            'statusReasons' => is_array($payload['statusReasons'] ?? null) ? $payload['statusReasons'] : [],
             'taxonomies' => [
                 'banca' => is_array($payload['bancas'] ?? null) ? $payload['bancas'] : [],
                 'orgao' => is_array($payload['orgaos'] ?? null) ? $payload['orgaos'] : [],
@@ -317,6 +322,11 @@ class QuestionsValidator
                     : (is_array($payload['tipos_prova'] ?? null) ? $payload['tipos_prova'] : []),
                 'modalidade' => is_array($payload['modalidades'] ?? null) ? $payload['modalidades'] : [],
             ],
+            // The public request contract is kept intact for normalized
+            // persistence. Legacy fields above only support older readers.
+            'canonical' => is_array($payload['_canonical_contract'] ?? null)
+                ? $payload['_canonical_contract']
+                : null,
         ];
     }
 
@@ -333,6 +343,7 @@ class QuestionsValidator
             || is_array($payload['alternatives'] ?? null)
             || is_array($payload['answer'] ?? null)
             || is_array($payload['editorialComments'] ?? null)
+            || is_array($payload['editorial'] ?? null)
             || is_array($payload['publication'] ?? null)
             || is_array($payload['review'] ?? null);
 
@@ -340,11 +351,14 @@ class QuestionsValidator
             return $payload;
         }
 
+        $canonicalContract = $payload;
+
         $content = is_array($payload['content'] ?? null) ? $payload['content'] : [];
         $source = is_array($payload['source'] ?? null) ? $payload['source'] : [];
         $filters = is_array($payload['filters'] ?? null) ? $payload['filters'] : [];
         $answer = is_array($payload['answer'] ?? null) ? $payload['answer'] : [];
         $editorialComments = is_array($payload['editorialComments'] ?? null) ? $payload['editorialComments'] : [];
+        $editorials = is_array($payload['editorial'] ?? null) ? $payload['editorial'] : [];
         $publication = is_array($payload['publication'] ?? null) ? $payload['publication'] : [];
         $review = is_array($payload['review'] ?? null) ? $payload['review'] : [];
         $alternatives = is_array($payload['alternatives'] ?? null) ? $payload['alternatives'] : [];
@@ -356,34 +370,50 @@ class QuestionsValidator
         $payload['referenceText'] = (string) ($content['reference'] ?? $content['referenceText'] ?? $content['reference_text'] ?? $payload['referenceText'] ?? $payload['reference_text'] ?? '');
         $payload['provaId'] = $source['examId'] ?? $source['exam_id'] ?? $payload['provaId'] ?? $payload['prova_id'] ?? null;
         $payload['grupoQuestaoId'] = $source['questionGroupId'] ?? $source['question_group_id'] ?? $payload['grupoQuestaoId'] ?? $payload['grupo_questao_id'] ?? null;
+        $payload['contextTempId'] = $source['contextTempId']
+            ?? $source['context_temp_id']
+            ?? $payload['contextTempId']
+            ?? $payload['context_temp_id']
+            ?? null;
         $payload['questionOrigin'] = $source['origin'] ?? $payload['questionOrigin'] ?? $payload['question_origin'] ?? null;
         $payload['questionNumber'] = $source['questionNumber'] ?? $source['question_number'] ?? $payload['questionNumber'] ?? $payload['question_number'] ?? null;
         $payload['sourcePage'] = $source['sourcePage'] ?? $source['source_page'] ?? $payload['sourcePage'] ?? $payload['source_page'] ?? null;
-        $payload['teacherComment'] = (string) ($editorialComments['teacherComment'] ?? $editorialComments['teacher_comment'] ?? $payload['teacherComment'] ?? '');
-        $payload['detailedComment'] = (string) ($editorialComments['detailedComment'] ?? $editorialComments['detailed_comment'] ?? $payload['detailedComment'] ?? '');
-        $payload['tipo'] = $this->normalizeCanonicalQuestionType($payload['questionType'] ?? $payload['question_type'] ?? $payload['tipo'] ?? null);
+        $payload['teacherComment'] = (string) ($this->resolveCanonicalEditorialBody($editorials, 'teacher_comment')
+            ?? $editorialComments['teacherComment']
+            ?? $editorialComments['teacher_comment']
+            ?? $payload['teacherComment']
+            ?? '');
+        $payload['detailedComment'] = (string) ($this->resolveCanonicalEditorialBody($editorials, 'detailed_analysis')
+            ?? $editorialComments['detailedComment']
+            ?? $editorialComments['detailed_comment']
+            ?? $payload['detailedComment']
+            ?? '');
+        $payload['tipo'] = $this->normalizeCanonicalQuestionType($payload['type'] ?? $payload['questionType'] ?? $payload['question_type'] ?? $payload['tipo'] ?? null);
         $payload['dificuldade'] = $this->normalizeCanonicalQuestionDifficulty($payload['difficulty'] ?? $payload['dificuldade'] ?? null);
         $payload['itens'] = $this->normalizeCanonicalAlternatives($alternatives);
         $payload['resposta'] = $this->normalizeCanonicalAnswer($answer, $payload['itens']);
         $payload['publishStatus'] = $publication['status'] ?? $payload['publishStatus'] ?? $payload['publish_status'] ?? 'published';
         $payload['visibilityStatus'] = $publication['visibility'] ?? $payload['visibilityStatus'] ?? $payload['visibility_status'] ?? 'public';
         $payload['scheduledAt'] = $publication['scheduledAt'] ?? $publication['scheduled_at'] ?? $payload['scheduledAt'] ?? $payload['scheduled_at'] ?? null;
-        $payload['needsReview'] = !empty($review['needsReview'] ?? $review['needs_review'] ?? false);
-        $payload['statusReasons'] = is_array($review['statusReasons'] ?? null) ? $review['statusReasons'] : ($payload['statusReasons'] ?? []);
+        $payload['needsReview'] = !empty($review['required'] ?? $review['needsReview'] ?? $review['needs_review'] ?? false);
+        $payload['statusReasons'] = is_array($review['reasons'] ?? null)
+            ? $review['reasons']
+            : (is_array($review['statusReasons'] ?? null) ? $review['statusReasons'] : ($payload['statusReasons'] ?? []));
         $payload['imageUrl'] = $payload['imageUrl'] ?? $this->resolveCanonicalImageUrl($assets);
 
-        $payload['bancas'] = $this->normalizeCanonicalFilterItems($filters['bancas'] ?? []);
-        $payload['orgaos'] = $this->normalizeCanonicalFilterItems($filters['orgaos'] ?? []);
-        $payload['cargos'] = $this->normalizeCanonicalFilterItems($filters['cargos'] ?? []);
-        $payload['carreiras'] = $this->normalizeCanonicalFilterItems($filters['carreiras'] ?? []);
-        $payload['anos'] = $this->normalizeCanonicalFilterItems($filters['anos'] ?? []);
-        $payload['niveis'] = $this->normalizeCanonicalFilterItems($filters['niveis'] ?? []);
-        $payload['tiposProva'] = $this->normalizeCanonicalFilterItems($filters['tiposProva'] ?? $filters['tipos_prova'] ?? []);
+        $payload['bancas'] = $this->normalizeCanonicalFilterItems($filters['examBoards'] ?? $filters['bancas'] ?? []);
+        $payload['orgaos'] = $this->normalizeCanonicalFilterItems($filters['organizations'] ?? $filters['orgaos'] ?? []);
+        $payload['cargos'] = $this->normalizeCanonicalFilterItems($filters['roles'] ?? $filters['cargos'] ?? []);
+        $payload['carreiras'] = $this->normalizeCanonicalFilterItems($filters['careers'] ?? $filters['carreiras'] ?? []);
+        $payload['anos'] = $this->normalizeCanonicalFilterItems($filters['years'] ?? $filters['anos'] ?? []);
+        $payload['niveis'] = $this->normalizeCanonicalFilterItems($filters['levels'] ?? $filters['niveis'] ?? []);
+        $payload['tiposProva'] = $this->normalizeCanonicalFilterItems($filters['examTypes'] ?? $filters['tiposProva'] ?? $filters['tipos_prova'] ?? []);
         $payload['assuntos'] = array_values(array_merge(
-            $this->normalizeCanonicalFilterItems($filters['materias'] ?? [], ['materia' => true, 'taxonomyLevel' => 'materia', 'taxonomy_level' => 'materia']),
-            $this->normalizeCanonicalFilterItems($filters['topicos'] ?? [], ['materia' => false, 'taxonomyLevel' => 'topico', 'taxonomy_level' => 'topico']),
-            $this->normalizeCanonicalFilterItems($filters['assuntos'] ?? [], ['materia' => false, 'taxonomyLevel' => 'assunto', 'taxonomy_level' => 'assunto'])
+            $this->normalizeCanonicalFilterItems($filters['subjects'] ?? $filters['materias'] ?? [], ['materia' => true, 'taxonomyLevel' => 'materia', 'taxonomy_level' => 'materia']),
+            $this->normalizeCanonicalFilterItems($filters['topics'] ?? $filters['topicos'] ?? [], ['materia' => false, 'taxonomyLevel' => 'topico', 'taxonomy_level' => 'topico']),
+            $this->normalizeCanonicalFilterItems($filters['subtopics'] ?? $filters['assuntos'] ?? [], ['materia' => false, 'taxonomyLevel' => 'assunto', 'taxonomy_level' => 'assunto'])
         ));
+        $payload['_canonical_contract'] = $canonicalContract;
 
         return $payload;
     }
@@ -412,7 +442,7 @@ class QuestionsValidator
                 'rotulo' => $label !== '' ? $label : chr(65 + $index),
                 'corpo' => $text,
                 'corpo_clean' => trim(strip_tags($text)),
-                'canonical_id' => (string) ($alternative['id'] ?? ''),
+                'canonical_id' => (string) ($alternative['tempId'] ?? $alternative['id'] ?? ''),
             ];
         }
 
@@ -426,8 +456,11 @@ class QuestionsValidator
      */
     private function normalizeCanonicalAnswer(array $answer, array $items): mixed
     {
-        $alternativeId = trim((string) ($answer['alternativeId'] ?? $answer['alternative_id'] ?? ''));
-        $value = $answer['value'] ?? null;
+        $alternativeIds = is_array($answer['correctAlternativeTempIds'] ?? null)
+            ? $answer['correctAlternativeTempIds']
+            : [];
+        $alternativeId = trim((string) ($answer['alternativeId'] ?? $answer['alternative_id'] ?? $alternativeIds[0] ?? ''));
+        $value = $answer['raw'] ?? $answer['value'] ?? null;
 
         foreach ($items as $item) {
             if ($alternativeId !== '' && $alternativeId === (string) ($item['canonical_id'] ?? '')) {
@@ -480,6 +513,22 @@ class QuestionsValidator
         }
 
         return 2;
+    }
+
+    /**
+     * Finds one editorial body in the canonical editorial collection.
+     */
+    private function resolveCanonicalEditorialBody(array $editorials, string $type): ?string
+    {
+        foreach ($editorials as $editorial) {
+            if (!is_array($editorial) || (string) ($editorial['type'] ?? '') !== $type) {
+                continue;
+            }
+
+            return (string) ($editorial['body'] ?? '');
+        }
+
+        return null;
     }
 
     /**
@@ -604,7 +653,7 @@ class QuestionsValidator
     public function validateQuestionGroupPayload(array $payload): array
     {
         $id = $payload['id'] ?? $payload['group_id'] ?? null;
-        $text = trim((string) ($payload['texto'] ?? ''));
+        $text = trim((string) ($payload['body'] ?? $payload['texto'] ?? ''));
         if ($text === '') {
             $text = trim((string) (
                 $payload['text']
@@ -644,6 +693,16 @@ class QuestionsValidator
             'texto' => $text,
             'assets' => $assets,
             'question_ids' => $questionIdsKey === null ? null : $this->normalizeQuestionGroupIds($payload[$questionIdsKey]),
+            'canonical_context' => [
+                'tempId' => trim((string) ($payload['tempId'] ?? $payload['contextKey'] ?? '')),
+                'type' => trim((string) ($payload['type'] ?? 'shared')) ?: 'shared',
+                'body' => $text,
+                'bodyClean' => trim((string) ($payload['bodyClean'] ?? strip_tags($text))),
+                'reference' => trim((string) ($payload['reference'] ?? '')),
+                'sourcePage' => $payload['sourcePage'] ?? null,
+                'assets' => $assets,
+                'questionNumbers' => $payload['questionNumbers'] ?? [],
+            ],
         ];
     }
 

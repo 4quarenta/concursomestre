@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 /**
  * Repository oficial do dominio de questes.
  * Centraliza SQL de leitura, progressao, salvos, histrico e estatisticas.
@@ -275,9 +277,8 @@ class QuestionsRepository
     }
 
     /**
-     * Recalcula os agregados considerando apenas a resposta mais recente de cada aluno.
-     *
-     * @since 1.0.0
+     * Recalculates the public aggregate from every persisted attempt. The
+     * method name is retained for route compatibility with older callers.
      */
     public function refreshQuestionStatsFromLatestAnswers(string|int $questionId): void
     {
@@ -285,20 +286,13 @@ class QuestionsRepository
 
         $stmt = $this->db->prepare(
             "SELECT
-                SUM(CASE WHEN latest.is_correct = 1 THEN 1 ELSE 0 END) AS correct_count,
-                SUM(CASE WHEN latest.is_correct = 1 THEN 0 ELSE 1 END) AS wrong_count,
+                SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct_count,
+                SUM(CASE WHEN is_correct = 1 THEN 0 ELSE 1 END) AS wrong_count,
                 COUNT(*) AS total_attempts
-             FROM user_answers latest
-             INNER JOIN (
-                SELECT user_id, MAX(id) AS latest_id
-                FROM user_answers
-                WHERE question_id = :question_id
-                GROUP BY user_id
-             ) chosen ON chosen.latest_id = latest.id
-             WHERE latest.question_id = :question_id_filter"
+             FROM user_answers
+             WHERE question_id = :question_id"
         );
         $stmt->bindValue(':question_id', $questionId);
-        $stmt->bindValue(':question_id_filter', $questionId);
         $stmt->execute();
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -478,30 +472,10 @@ class QuestionsRepository
             return;
         }
 
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS user_streaks (
-                user_id VARCHAR(64) PRIMARY KEY,
-                current_streak INT NOT NULL DEFAULT 0,
-                longest_streak INT NOT NULL DEFAULT 0,
-                last_activity_date DATE NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_user_streaks_last_activity (last_activity_date)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-        $this->db->exec('ALTER TABLE user_streaks MODIFY user_id VARCHAR(64) NOT NULL');
-
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS user_badges (
-                user_id VARCHAR(64) NOT NULL,
-                badge_key VARCHAR(80) NOT NULL,
-                title VARCHAR(160) NOT NULL,
-                description VARCHAR(255) NULL,
-                awarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, badge_key),
-                INDEX idx_user_badges_awarded_at (awarded_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-        $this->db->exec('ALTER TABLE user_badges MODIFY user_id VARCHAR(64) NOT NULL');
+        SchemaReadiness::assertTablesAndColumns($this->db, 'gamificacao de questoes', [
+            'user_streaks' => ['user_id', 'current_streak', 'longest_streak', 'last_activity_date'],
+            'user_badges' => ['user_id', 'badge_key', 'title', 'awarded_at'],
+        ]);
 
         $this->gamificationSchemaEnsured = true;
     }
@@ -1259,19 +1233,12 @@ class QuestionsRepository
     public function getQuestionOptionDistribution(string|int $questionId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT latest.selected_option_index, COUNT(*) AS count
-             FROM user_answers latest
-             INNER JOIN (
-                SELECT user_id, MAX(id) AS latest_id
-                FROM user_answers
-                WHERE question_id = :question_id
-                GROUP BY user_id
-             ) chosen ON chosen.latest_id = latest.id
-             WHERE latest.question_id = :question_id_filter
-             GROUP BY latest.selected_option_index"
+            "SELECT selected_option_index, COUNT(*) AS count
+             FROM user_answers
+             WHERE question_id = :question_id
+             GROUP BY selected_option_index"
         );
         $stmt->bindValue(':question_id', $questionId);
-        $stmt->bindValue(':question_id_filter', $questionId);
         $stmt->execute();
 
         $distribution = [];
@@ -1289,19 +1256,12 @@ class QuestionsRepository
     public function getQuestionOutcomeCounts(string|int $questionId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT latest.is_correct, COUNT(*) AS count
-             FROM user_answers latest
-             INNER JOIN (
-                SELECT user_id, MAX(id) AS latest_id
-                FROM user_answers
-                WHERE question_id = :question_id
-                GROUP BY user_id
-             ) chosen ON chosen.latest_id = latest.id
-             WHERE latest.question_id = :question_id_filter
-             GROUP BY latest.is_correct"
+            "SELECT is_correct, COUNT(*) AS count
+             FROM user_answers
+             WHERE question_id = :question_id
+             GROUP BY is_correct"
         );
         $stmt->bindValue(':question_id', $questionId);
-        $stmt->bindValue(':question_id_filter', $questionId);
         $stmt->execute();
 
         $correct = 0;
@@ -1885,57 +1845,12 @@ class QuestionsRepository
 
     private function syncImportedExamCanonicalData(int $examId, array $record): void
     {
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_filters (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            filter_id INT NOT NULL,
-            role VARCHAR(40) NULL,
-            context_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_prova_filter_role (prova_id, filter_id, role),
-            INDEX idx_prova_filters_prova (prova_id),
-            INDEX idx_prova_filters_filter (filter_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_arquivos (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            tipo ENUM('edital', 'prova', 'gabarito', 'outro') NOT NULL,
-            nome_original VARCHAR(255) NOT NULL,
-            caminho VARCHAR(500) NOT NULL,
-            mime_type VARCHAR(120) NULL,
-            tamanho BIGINT UNSIGNED NULL,
-            metadata_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_prova_arquivos_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_cadernos (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            nome VARCHAR(180) NOT NULL,
-            tipo VARCHAR(80) NULL,
-            cor VARCHAR(80) NULL,
-            ordem INT NOT NULL DEFAULT 0,
-            metadata_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_prova_caderno_nome (prova_id, nome),
-            INDEX idx_prova_cadernos_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS question_provas (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            question_id INT NOT NULL,
-            prova_id INT NOT NULL,
-            caderno_id BIGINT UNSIGNED NULL,
-            numero_na_prova INT NULL,
-            metadata_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_question_prova_caderno (question_id, prova_id, caderno_id),
-            INDEX idx_question_provas_question (question_id),
-            INDEX idx_question_provas_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        SchemaReadiness::assertTablesAndColumns($this->db, 'sincronizacao canonica de provas importadas', [
+            'prova_filters' => ['prova_id', 'filter_id', 'role'],
+            'prova_arquivos' => ['prova_id', 'tipo', 'nome_original', 'caminho'],
+            'prova_cadernos' => ['id', 'prova_id', 'nome'],
+            'question_provas' => ['question_id', 'prova_id', 'numero_na_prova'],
+        ]);
 
         $roleMap = [
             'banca' => $record['banca_id'] ?? null,
@@ -2174,62 +2089,14 @@ class QuestionsRepository
             return;
         }
 
-        if (!$this->questionColumnExists('reference_text')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN reference_text TEXT NULL AFTER intro_text"
-            );
-        }
 
-        if (!$this->questionColumnExists('publish_status')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN publish_status ENUM('published', 'draft', 'scheduled') NOT NULL DEFAULT 'published' AFTER desatualizada"
-            );
-        }
-
-        if (!$this->questionColumnExists('visibility_status')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN visibility_status ENUM('public', 'elite', 'internal') NOT NULL DEFAULT 'public' AFTER publish_status"
-            );
-        }
-
-        if (!$this->questionColumnExists('scheduled_at')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN scheduled_at DATETIME NULL AFTER visibility_status"
-            );
-        }
-
-        if (!$this->questionColumnExists('published_at')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN published_at DATETIME NULL AFTER scheduled_at"
-            );
-            $this->db->exec("UPDATE questions SET published_at = created_at WHERE published_at IS NULL");
-        }
-
-        if (!$this->questionColumnExists('created_by_user_id')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN created_by_user_id VARCHAR(64) NULL AFTER published_at"
-            );
-        }
-
-        if (!$this->questionColumnExists('updated_by_user_id')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN updated_by_user_id VARCHAR(64) NULL AFTER created_by_user_id"
-            );
-        }
-
-        if (!$this->questionColumnExists('published_by_user_id')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN published_by_user_id VARCHAR(64) NULL AFTER updated_by_user_id"
-            );
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'publicacao de questoes', [
+            'questions' => [
+                'reference_text', 'publish_status', 'visibility_status', 'scheduled_at', 'published_at',
+                'created_by_user_id', 'updated_by_user_id', 'published_by_user_id', 'grupo_questao_id',
+                'import_fingerprint', 'source_exam_key', 'source_question_number', 'prova_id',
+            ],
+        ]);
 
         $this->ensureQuestionImportIdentityInfrastructure();
         $this->ensureQuestionGroupInfrastructure();
@@ -2244,35 +2111,9 @@ class QuestionsRepository
      */
     private function ensureQuestionImportIdentityInfrastructure(): void
     {
-        if (!$this->questionColumnExists('import_fingerprint')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN import_fingerprint CHAR(64) NULL AFTER data_json"
-            );
-        }
-
-        if (!$this->questionColumnExists('source_exam_key')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN source_exam_key VARCHAR(160) NULL AFTER import_fingerprint"
-            );
-        }
-
-        if (!$this->questionColumnExists('source_question_number')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN source_question_number VARCHAR(32) NULL AFTER source_exam_key"
-            );
-        }
-
-        $this->ensureQuestionIndex(
-            'uq_questions_import_fingerprint',
-            'ALTER TABLE questions ADD UNIQUE KEY uq_questions_import_fingerprint (import_fingerprint)'
-        );
-        $this->ensureQuestionIndex(
-            'uq_questions_source_exam_number',
-            'ALTER TABLE questions ADD UNIQUE KEY uq_questions_source_exam_number (source_exam_key, source_question_number)'
-        );
+        SchemaReadiness::assertTablesAndColumns($this->db, 'identidade de importacao de questoes', [
+            'questions' => ['import_fingerprint', 'source_exam_key', 'source_question_number'],
+        ]);
     }
 
     /**
@@ -2282,41 +2123,10 @@ class QuestionsRepository
      */
     private function ensureQuestionGroupInfrastructure(): void
     {
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS questions_groups (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                enunciado LONGTEXT NULL,
-                enunciado_clean LONGTEXT NULL,
-                texto LONGTEXT NULL,
-                image_url VARCHAR(500) NULL,
-                assets_json LONGTEXT NULL,
-                created_by_user_id VARCHAR(64) NULL,
-                updated_by_user_id VARCHAR(64) NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-        );
-
-        $groupColumns = [
-            'assets_json' => 'ALTER TABLE questions_groups ADD COLUMN assets_json LONGTEXT NULL AFTER image_url',
-            'created_by_user_id' => 'ALTER TABLE questions_groups ADD COLUMN created_by_user_id VARCHAR(64) NULL AFTER assets_json',
-            'updated_by_user_id' => 'ALTER TABLE questions_groups ADD COLUMN updated_by_user_id VARCHAR(64) NULL AFTER created_by_user_id',
-            'created_at' => 'ALTER TABLE questions_groups ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER updated_by_user_id',
-            'updated_at' => 'ALTER TABLE questions_groups ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at',
-        ];
-
-        foreach ($groupColumns as $column => $sql) {
-            if (!$this->questionGroupColumnExists($column)) {
-                $this->db->exec($sql);
-            }
-        }
-
-        if (!$this->questionColumnExists('grupo_questao_id')) {
-            $this->db->exec(
-                "ALTER TABLE questions
-                 ADD COLUMN grupo_questao_id INT NULL AFTER prova_id"
-            );
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'grupos legados de questoes', [
+            'questions_groups' => ['id', 'texto', 'assets_json', 'created_by_user_id', 'updated_by_user_id'],
+            'questions' => ['grupo_questao_id'],
+        ]);
     }
 
     /**
@@ -2327,33 +2137,12 @@ class QuestionsRepository
     private function ensureImportedExamInfrastructure(): void
     {
         $this->ensureExamInfrastructure();
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS prova_cadernos (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            prova_id INT NOT NULL,
-            nome VARCHAR(180) NOT NULL,
-            tipo VARCHAR(80) NULL,
-            cor VARCHAR(80) NULL,
-            ordem INT NOT NULL DEFAULT 0,
-            metadata_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_prova_caderno_nome (prova_id, nome),
-            INDEX idx_prova_cadernos_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        $this->db->exec("CREATE TABLE IF NOT EXISTS question_provas (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            question_id INT NOT NULL,
-            prova_id INT NOT NULL,
-            caderno_id BIGINT UNSIGNED NULL,
-            numero_na_prova INT NULL,
-            metadata_json JSON NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_question_prova_caderno (question_id, prova_id, caderno_id),
-            INDEX idx_question_provas_question (question_id),
-            INDEX idx_question_provas_prova (prova_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        SchemaReadiness::assertTablesAndColumns($this->db, 'vinculo de questoes ao banco de provas', [
+            'prova_cadernos' => ['id', 'prova_id', 'nome'],
+            'question_provas' => ['question_id', 'prova_id', 'numero_na_prova'],
+            'prova_filters' => ['prova_id', 'filter_id', 'role'],
+            'prova_arquivos' => ['prova_id', 'tipo', 'caminho'],
+        ]);
     }
 
     /**
@@ -2363,57 +2152,12 @@ class QuestionsRepository
      */
     private function ensureExamInfrastructure(): void
     {
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS provas (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                nome VARCHAR(255) NOT NULL,
-                slug VARCHAR(255) NOT NULL,
-                ano INT NOT NULL,
-                banca_id INT NULL,
-                orgao_id INT NULL,
-                cargo_id INT NULL,
-                nivel_id INT NULL,
-                tipo_prova_id INT NULL,
-                carreira_id INT NULL,
-                pdf_url VARCHAR(500) NULL,
-                metadata_json LONGTEXT NULL,
-                created_by_user_id VARCHAR(64) NULL,
-                updated_by_user_id VARCHAR(64) NULL,
-                published_by_user_id VARCHAR(64) NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_provas_slug_ano (slug, ano),
-                INDEX idx_provas_banca_ano (banca_id, ano)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-        );
-
-        $columns = [
-            'nome' => 'ALTER TABLE provas ADD COLUMN nome VARCHAR(255) NULL AFTER id',
-            'slug' => 'ALTER TABLE provas ADD COLUMN slug VARCHAR(255) NULL AFTER nome',
-            'ano' => 'ALTER TABLE provas ADD COLUMN ano INT NULL AFTER slug',
-            'banca_id' => 'ALTER TABLE provas ADD COLUMN banca_id INT NULL AFTER ano',
-            'orgao_id' => 'ALTER TABLE provas ADD COLUMN orgao_id INT NULL AFTER banca_id',
-            'cargo_id' => 'ALTER TABLE provas ADD COLUMN cargo_id INT NULL AFTER orgao_id',
-            'nivel_id' => 'ALTER TABLE provas ADD COLUMN nivel_id INT NULL AFTER cargo_id',
-            'tipo_prova_id' => 'ALTER TABLE provas ADD COLUMN tipo_prova_id INT NULL AFTER nivel_id',
-            'carreira_id' => 'ALTER TABLE provas ADD COLUMN carreira_id INT NULL AFTER tipo_prova_id',
-            'pdf_url' => 'ALTER TABLE provas ADD COLUMN pdf_url VARCHAR(500) NULL AFTER carreira_id',
-            'metadata_json' => 'ALTER TABLE provas ADD COLUMN metadata_json LONGTEXT NULL AFTER pdf_url',
-            'created_by_user_id' => 'ALTER TABLE provas ADD COLUMN created_by_user_id VARCHAR(64) NULL AFTER metadata_json',
-            'updated_by_user_id' => 'ALTER TABLE provas ADD COLUMN updated_by_user_id VARCHAR(64) NULL AFTER created_by_user_id',
-            'published_by_user_id' => 'ALTER TABLE provas ADD COLUMN published_by_user_id VARCHAR(64) NULL AFTER updated_by_user_id',
-            'created_at' => 'ALTER TABLE provas ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER published_by_user_id',
-            'updated_at' => 'ALTER TABLE provas ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at',
-        ];
-
-        foreach ($columns as $column => $sql) {
-            if (!$this->examColumnExists($column)) {
-                $this->db->exec($sql);
-            }
-        }
-
-        $this->ensureExamIndex('idx_provas_slug_ano', 'CREATE INDEX idx_provas_slug_ano ON provas (slug, ano)');
-        $this->ensureExamIndex('idx_provas_banca_ano', 'CREATE INDEX idx_provas_banca_ano ON provas (banca_id, ano)');
+        SchemaReadiness::assertTablesAndColumns($this->db, 'provas importadas', [
+            'provas' => [
+                'id', 'nome', 'slug', 'ano', 'banca_id', 'orgao_id', 'cargo_id', 'nivel_id', 'tipo_prova_id',
+                'carreira_id', 'pdf_url', 'metadata_json', 'created_by_user_id', 'updated_by_user_id', 'published_by_user_id',
+            ],
+        ]);
     }
 
     /**

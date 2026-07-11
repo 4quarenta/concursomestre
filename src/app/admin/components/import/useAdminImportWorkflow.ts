@@ -13667,6 +13667,7 @@ export const useAdminImportWorkflow = ({
           prova_id: publishedExamId,
         };
       const response = await questionService.createImportedQuestionBatch({
+        schemaVersion: 'question-import.v2',
         exam: examPayloadForQuestionBatch,
         focus: selectedFocus as Record<string, unknown>,
         contexts: contextsForPublish.map((context) => {
