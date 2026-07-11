@@ -682,17 +682,6 @@ export const QuestionsScreen: React.FC = () => {
     }
   };
 
-  const getCorrectIndex = (question: Question): number => {
-    const options = question.itens || [];
-    const answerId = Number(question.resposta || -1);
-
-    const byIdIndex = options.findIndex((item) => Number(item?.id) === answerId);
-    if (byIdIndex >= 0) return byIdIndex;
-
-    if (answerId >= 0 && answerId < options.length) return answerId;
-    return -1;
-  };
-
   const handleSelectOption = async (question: Question, optionIndex: number) => {
     if (!user?.id || !question.id) {
       Alert.alert('Sessao invalida', 'Faca login novamente para responder questoes.');
@@ -703,23 +692,20 @@ export const QuestionsScreen: React.FC = () => {
       return;
     }
 
-    const correctIndex = getCorrectIndex(question);
-    const isCorrect = optionIndex === correctIndex;
     const answerKey = `${question.id}:${optionIndex}`;
     const answeredTimestamp = Date.now();
     const nextUserAnswer = {
       questionId: question.id,
       selectedOptionIndex: optionIndex,
-      isCorrect,
+      isCorrect: false,
       timestamp: answeredTimestamp,
     };
 
     setAnsweringKey(answerKey);
     try {
-      const result = await questionService.submitUserAnswer(user.id, {
+      const result = await questionService.submitUserAnswer({
         questionId: question.id,
         selectedOptionIndex: optionIndex,
-        isCorrect,
       });
 
       if (!result.success) {
@@ -727,10 +713,21 @@ export const QuestionsScreen: React.FC = () => {
         return;
       }
 
-      setAnsweredMap((previous) => ({ ...previous, [question.id as number]: optionIndex }));
+      const canonicalAnswer = result.answer;
+      if (!canonicalAnswer) {
+        Alert.alert('Erro ao responder', 'O servidor não devolveu a correção da resposta.');
+        return;
+      }
+      const resolvedUserAnswer = {
+        ...nextUserAnswer,
+        selectedOptionIndex: canonicalAnswer.selectedOptionIndex,
+        correctOptionIndex: canonicalAnswer.correctOptionIndex,
+        isCorrect: canonicalAnswer.isCorrect,
+      };
+      setAnsweredMap((previous) => ({ ...previous, [question.id as number]: canonicalAnswer.selectedOptionIndex }));
       setQuestionPool((previous) => previous.map((item) => (
         item.id === question.id
-          ? { ...item, userAnswer: nextUserAnswer }
+          ? { ...item, userAnswer: resolvedUserAnswer }
           : item
       )));
 
@@ -742,7 +739,7 @@ export const QuestionsScreen: React.FC = () => {
 
           return {
             ...previous,
-            [questionKey]: [nextUserAnswer, ...currentHistory],
+            [questionKey]: [resolvedUserAnswer, ...currentHistory],
           };
         });
 
@@ -752,7 +749,7 @@ export const QuestionsScreen: React.FC = () => {
 
           const optionDistribution = {
             ...(currentStats.optionDistribution || {}),
-            [String(optionIndex)]: Number(currentStats.optionDistribution?.[String(optionIndex)] || 0) + 1,
+            [String(canonicalAnswer.selectedOptionIndex)]: Number(currentStats.optionDistribution?.[String(canonicalAnswer.selectedOptionIndex)] || 0) + 1,
           };
 
           return {
@@ -760,8 +757,8 @@ export const QuestionsScreen: React.FC = () => {
             [questionKey]: {
               ...currentStats,
               totalAttempts: Number(currentStats.totalAttempts || 0) + 1,
-              correctCount: Number(currentStats.correctCount || 0) + (isCorrect ? 1 : 0),
-              wrongCount: Number(currentStats.wrongCount || 0) + (isCorrect ? 0 : 1),
+              correctCount: Number(currentStats.correctCount || 0) + (canonicalAnswer.isCorrect ? 1 : 0),
+              wrongCount: Number(currentStats.wrongCount || 0) + (canonicalAnswer.isCorrect ? 0 : 1),
               optionDistribution,
             },
           };
@@ -801,7 +798,7 @@ export const QuestionsScreen: React.FC = () => {
     const questionId = item.id || index;
     const questionStateKey = getQuestionStateKey(item.id);
     const selected = item.id ? answeredMap[item.id] : undefined;
-    const correctIndex = getCorrectIndex(item);
+    const correctIndex = Number(item.userAnswer?.correctOptionIndex ?? -1);
     const isSaved = item.id !== undefined && savedQuestionIdSet.has(String(item.id));
     const currentNote = notesByQuestion[questionStateKey];
     const noteVisible = Boolean(visibleNotesMap[questionStateKey]);

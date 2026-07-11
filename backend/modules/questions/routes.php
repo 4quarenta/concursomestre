@@ -661,7 +661,7 @@ function handleQuestionsResetAnswersRoute(PDO $db): void
     try {
         $authenticatedUserPayload = verifyAuthenticatedUserPayload();
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
-        $isAdmin = in_array((string) ($authenticatedUserPayload['role'] ?? ''), ['admin', 'staff'], true);
+        $isAdmin = (string) ($authenticatedUserPayload['role'] ?? '') === 'admin';
 
         $result = buildQuestionsController($db)->resetAnswers(
             $authenticatedUserId,
@@ -690,7 +690,7 @@ function handleQuestionsToggleSaveRoute(PDO $db): void
     try {
         $authenticatedUserPayload = verifyAuthenticatedUserPayload();
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
-        $isAdmin = in_array((string) ($authenticatedUserPayload['role'] ?? ''), ['admin', 'staff'], true);
+        $isAdmin = (string) ($authenticatedUserPayload['role'] ?? '') === 'admin';
 
         $result = buildQuestionsController($db)->toggleSavedQuestion(
             $authenticatedUserId,

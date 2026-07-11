@@ -783,30 +783,35 @@ const Practice: React.FC = () => {
     addToast(`Você atingiu o limite diário de comentários. Mais comentários ficam disponíveis no Plano ${nextPlan} ou superior.`, 'warning');
   }, [addToast, currentAccessPlanName, systemSettings.planUsageLimits]);
 
-  const dispatchAnswer = useCallback((answer: UserAnswer) => {
-    applyQuestionAnswer(answer.questionId, answer.isCorrect);
-    upsertUserAnswer(answer);
-
+  const dispatchAnswer = useCallback(async (answer: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>) => {
     if (!currentUserId) {
-      return;
+      throw new Error('Sessão necessária para registrar a resposta.');
     }
 
-    questionService.submitUserAnswer(currentUserId, answer)
-      .then((result) => {
-        const progressPatch = {
-          ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
-          ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
-        };
+    const result = await questionService.submitUserAnswer(answer);
+    if (!result.answer) {
+      throw new Error(result.message || 'O servidor não devolveu a correção da resposta.');
+    }
 
-        if (result.success && Object.keys(progressPatch).length > 0) {
-          void updateUser(progressPatch);
-        }
-      })
-      .catch((error) => {
-        clientLog.warn('Failed to save answer:', error);
-        addToast('Erro ao salvar resposta.', 'error');
-      });
-  }, [addToast, applyQuestionAnswer, currentUserId, updateUser, upsertUserAnswer]);
+    const canonicalAnswer: UserAnswer = {
+      ...answer,
+      selectedOptionIndex: result.answer.selectedOptionIndex,
+      correctOptionIndex: result.answer.correctOptionIndex,
+      isCorrect: result.answer.isCorrect,
+    };
+    applyQuestionAnswer(canonicalAnswer.questionId, canonicalAnswer.isCorrect);
+    upsertUserAnswer(canonicalAnswer);
+
+    const progressPatch = {
+      ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
+      ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
+    };
+    if (Object.keys(progressPatch).length > 0) {
+      void updateUser(progressPatch);
+    }
+
+    return canonicalAnswer;
+  }, [applyQuestionAnswer, currentUserId, updateUser, upsertUserAnswer]);
 
   const reportError = useCallback((report: Omit<ErrorReport, 'id' | 'status' | 'timestamp'>) => {
     const duplicate = reports.find((currentReport) => (

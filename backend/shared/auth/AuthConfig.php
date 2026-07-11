@@ -200,6 +200,115 @@ if (!function_exists('getAuthSameSite')) {
     }
 }
 
+if (!function_exists('getAuthTrustedProxyCidrs')) {
+    /**
+     * Lista os IPs/CIDRs dos proxies que podem fornecer headers encaminhados.
+     *
+     * A flag AUTH_TRUST_PROXY_HEADERS isolada nao e suficiente: um cliente
+     * direto consegue forjar X-Forwarded-For e X-Forwarded-Proto.
+     *
+     * @since 1.0.0
+     */
+    function getAuthTrustedProxyCidrs(): array
+    {
+        $raw = trim((string) authConfig('AUTH_TRUSTED_PROXY_CIDRS', ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        $parts = preg_split('/[\s,]+/', $raw) ?: [];
+        return array_values(array_unique(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            $parts
+        ))));
+    }
+}
+
+if (!function_exists('authIpMatchesCidr')) {
+    /**
+     * Verifica se um IP pertence a um CIDR IPv4 ou IPv6 sem depender de extensao.
+     *
+     * @since 1.0.0
+     */
+    function authIpMatchesCidr(string $ip, string $cidr): bool
+    {
+        $ip = trim($ip);
+        $cidr = trim($cidr);
+        if ($ip === '' || $cidr === '' || !filter_var($ip, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        [$network, $prefix] = array_pad(explode('/', $cidr, 2), 2, null);
+        $network = trim($network);
+        if (!filter_var($network, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        $ipBinary = inet_pton($ip);
+        $networkBinary = inet_pton($network);
+        if ($ipBinary === false || $networkBinary === false || strlen($ipBinary) !== strlen($networkBinary)) {
+            return false;
+        }
+
+        $maxBits = strlen($ipBinary) * 8;
+        if ($prefix === null || trim($prefix) === '') {
+            return hash_equals($networkBinary, $ipBinary);
+        }
+
+        if (!ctype_digit(trim($prefix))) {
+            return false;
+        }
+
+        $prefixLength = (int) $prefix;
+        if ($prefixLength < 0 || $prefixLength > $maxBits) {
+            return false;
+        }
+
+        $wholeBytes = intdiv($prefixLength, 8);
+        if ($wholeBytes > 0 && !hash_equals(
+            substr($networkBinary, 0, $wholeBytes),
+            substr($ipBinary, 0, $wholeBytes)
+        )) {
+            return false;
+        }
+
+        $remainingBits = $prefixLength % 8;
+        if ($remainingBits === 0) {
+            return true;
+        }
+
+        $mask = (0xff << (8 - $remainingBits)) & 0xff;
+        return (ord($networkBinary[$wholeBytes]) & $mask) === (ord($ipBinary[$wholeBytes]) & $mask);
+    }
+}
+
+if (!function_exists('isTrustedAuthProxyRequest')) {
+    /**
+     * Informa se a request chegou por um proxy explicitamente autorizado.
+     *
+     * @since 1.0.0
+     */
+    function isTrustedAuthProxyRequest(): bool
+    {
+        if (!authBoolConfig('AUTH_TRUST_PROXY_HEADERS', false)) {
+            return false;
+        }
+
+        $remoteAddress = normalizeAuthIpCandidate($_SERVER['REMOTE_ADDR'] ?? null);
+        if ($remoteAddress === null) {
+            return false;
+        }
+
+        foreach (getAuthTrustedProxyCidrs() as $cidr) {
+            if (authIpMatchesCidr($remoteAddress, $cidr)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('isHttpsRequest')) {
     /**
      * Detecta se a requisicao atual esta em HTTPS ou recebeu proxy HTTPS.
@@ -210,6 +319,14 @@ if (!function_exists('isHttpsRequest')) {
     {
         if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
             return true;
+        }
+
+        // Headers de proxy so podem influenciar seguranca quando a infraestrutura
+        // declara explicitamente que os injeta e o endereco remoto pertence ao
+        // proxy autorizado. Caso contrario, um cliente direto poderia falsificar
+        // X-Forwarded-Proto.
+        if (!isTrustedAuthProxyRequest()) {
+            return false;
         }
 
         $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
@@ -315,13 +432,16 @@ if (!function_exists('getAuthClientIp')) {
     {
         $candidates = [];
 
-        $singleValueHeaders = [
-            'HTTP_CF_CONNECTING_IP',
-            'HTTP_TRUE_CLIENT_IP',
-            'HTTP_X_REAL_IP',
-            'HTTP_CLIENT_IP',
-            'REMOTE_ADDR',
-        ];
+        $trustProxyHeaders = isTrustedAuthProxyRequest();
+
+        $singleValueHeaders = $trustProxyHeaders
+            ? [
+                'HTTP_CF_CONNECTING_IP',
+                'HTTP_TRUE_CLIENT_IP',
+                'HTTP_X_REAL_IP',
+                'HTTP_CLIENT_IP',
+            ]
+            : [];
         foreach ($singleValueHeaders as $header) {
             $candidate = normalizeAuthIpCandidate($_SERVER[$header] ?? null);
             if ($candidate !== null) {
@@ -329,11 +449,9 @@ if (!function_exists('getAuthClientIp')) {
             }
         }
 
-        $listHeaders = [
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_FORWARDED',
-            'HTTP_FORWARDED_FOR',
-        ];
+        $listHeaders = $trustProxyHeaders
+            ? ['HTTP_X_FORWARDED_FOR', 'HTTP_X_FORWARDED', 'HTTP_FORWARDED_FOR']
+            : [];
         foreach ($listHeaders as $header) {
             $raw = trim((string) ($_SERVER[$header] ?? ''));
             if ($raw === '') {
@@ -348,8 +466,15 @@ if (!function_exists('getAuthClientIp')) {
             }
         }
 
-        foreach (extractForwardedHeaderIps((string) ($_SERVER['HTTP_FORWARDED'] ?? '')) as $candidate) {
-            $candidates[] = $candidate;
+        if ($trustProxyHeaders) {
+            foreach (extractForwardedHeaderIps((string) ($_SERVER['HTTP_FORWARDED'] ?? '')) as $candidate) {
+                $candidates[] = $candidate;
+            }
+        }
+
+        $remoteAddress = normalizeAuthIpCandidate($_SERVER['REMOTE_ADDR'] ?? null);
+        if ($remoteAddress !== null) {
+            $candidates[] = $remoteAddress;
         }
 
         $uniqueCandidates = array_values(array_unique($candidates));

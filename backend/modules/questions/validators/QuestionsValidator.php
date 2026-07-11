@@ -31,19 +31,19 @@ class QuestionsValidator
         if (!array_key_exists('selected_option', $payload) && !array_key_exists('selectedOption', $payload)) {
             $missing[] = 'selected_option';
         }
-        if (!array_key_exists('is_correct', $payload) && !array_key_exists('isCorrect', $payload)) {
-            $missing[] = 'is_correct';
-        }
-
         if ($missing !== []) {
             throw new InvalidArgumentException('Incomplete data. Missing: ' . implode(', ', $missing));
+        }
+
+        $selectedOption = $payload['selected_option'] ?? $payload['selectedOption'];
+        if (!is_numeric($selectedOption) || (int) $selectedOption < 0) {
+            throw new InvalidArgumentException('Alternativa selecionada invalida.');
         }
 
         return [
             'requestedUserId' => $this->extractRequestedUserId($payload),
             'questionId' => $payload['question_id'] ?? $payload['questionId'],
-            'selectedOption' => (int) ($payload['selected_option'] ?? $payload['selectedOption']),
-            'isCorrect' => (bool) ($payload['is_correct'] ?? $payload['isCorrect']),
+            'selectedOption' => (int) $selectedOption,
             'timeTaken' => (int) ($payload['time_taken'] ?? $payload['timeTaken'] ?? 0),
             'simulationId' => ($payload['simulation_id'] ?? $payload['simulationId'] ?? null) ?: null,
         ];

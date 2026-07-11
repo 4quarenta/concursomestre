@@ -88,6 +88,11 @@ function getRecaptchaSiteKey(PDO $db): string
  */
 function getRecaptchaSecretKey(PDO $db): string
 {
+    $environmentSecret = trim((string) ($_ENV['RECAPTCHA_SECRET_KEY'] ?? getenv('RECAPTCHA_SECRET_KEY') ?? ''));
+    if ($environmentSecret !== '') {
+        return $environmentSecret;
+    }
+
     $stmt = $db->prepare("SELECT value_json FROM system_settings WHERE key_name = 'recaptchaSecretKey' LIMIT 1");
     $stmt->execute();
     $row = $stmt->fetch(PDO::FETCH_ASSOC);

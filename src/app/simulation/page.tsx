@@ -120,11 +120,6 @@ type SupportedUserPlan = 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
 
 const readSimulationTimeMs = () => Date.now();
 
-const getQuestionCorrectIndex = (question: Question) => {
-   const correctItem = (question.itens || []).find((item, index) => Number(item.id) === Number(question.resposta) || index === Number(question.resposta));
-   return (question.itens || []).indexOf(correctItem ?? null);
-};
-
 const getSimulationAnswerObject = (answer: SimulationAnswerValue): SimulationAnswerObject | null => {
    if (answer !== null && answer !== undefined && typeof answer === 'object') {
       return answer;
@@ -138,7 +133,7 @@ const getSimulationSelectedIndex = (answer: SimulationAnswerValue) => {
    return answerObject ? Number(answerObject.index ?? -1) : typeof answer === 'number' ? Number(answer) : undefined;
 };
 
-const getSimulationAnswerState = (question: Question, answer: SimulationAnswerValue) => {
+const getSimulationAnswerState = (_question: Question, answer: SimulationAnswerValue) => {
    const selectedOptionIndex = getSimulationSelectedIndex(answer);
 
    if (selectedOptionIndex === undefined || selectedOptionIndex < 0) {
@@ -151,7 +146,7 @@ const getSimulationAnswerState = (question: Question, answer: SimulationAnswerVa
    const answerObject = getSimulationAnswerObject(answer);
    return {
       selectedOptionIndex,
-      isCorrect: answerObject ? Boolean(answerObject.is_correct) : selectedOptionIndex === getQuestionCorrectIndex(question),
+      isCorrect: answerObject ? Boolean(answerObject.is_correct) : false,
    };
 };
 
@@ -197,6 +192,7 @@ const buildExistingSimulationAnswer = (question: Question, answer: SimulationAns
       questionId: Number(question.id),
       selectedOptionIndex: answerState.selectedOptionIndex,
       isCorrect: answerState.isCorrect,
+      correctOptionIndex: Number(getSimulationAnswerObject(answer)?.correct_option_index),
       timestamp,
    };
 };
@@ -722,35 +718,22 @@ const Simulation: React.FC = () => {
       updateImmersiveMode(true);
    };
 
-   const handleFinish = React.useCallback(() => {
+   const handleFinish = React.useCallback(async () => {
       if (!activeSession) return;
       if (activeSession.status === 'completed') return;
 
       const finishedAt = readSimulationTimeMs();
       const elapsedSimulationSeconds = getActiveSimulationElapsedSeconds(activeSession, timeLeft);
 
-      const results = activeSession.questions.map((question) => {
-         const answerValue = activeSession.answers[String(question.id)];
-         const selectedIndex = getSimulationSelectedIndex(answerValue);
-
-         if (selectedIndex === undefined) return { isCorrect: false, index: undefined };
-
-         const correctIndex = getQuestionCorrectIndex(question);
-         return { isCorrect: selectedIndex === correctIndex, index: selectedIndex };
-      });
-
-      const score = results.filter(r => r.isCorrect && r.index !== undefined).length;
-
       const enrichedAnswers: SimulationSession['answers'] = {};
-      activeSession.questions.forEach((question, i) => {
-         const res = results[i];
-         // Ensure we capture index even if it is 0
-         if (res.index !== undefined) {
+      activeSession.questions.forEach((question) => {
+         const selectedIndex = getSimulationSelectedIndex(activeSession.answers[String(question.id)]);
+         if (selectedIndex !== undefined) {
             const answerObject = getSimulationAnswerObject(activeSession.answers[String(question.id)]);
 
             enrichedAnswers[String(question.id)] = {
-               index: res.index,
-               is_correct: res.isCorrect ? 1 : 0,
+               index: selectedIndex,
+               is_correct: 0,
                time_taken: answerObject?.time_taken || 0
             };
          }
@@ -761,16 +744,31 @@ const Simulation: React.FC = () => {
          status: 'completed' as const,
          endTime: finishedAt,
          durationSeconds: elapsedSimulationSeconds,
-         score,
+         score: 0,
          answers: enrichedAnswers
       };
 
+      let canonicalSession = completed;
+      try {
+         const persisted = await simulationsService.saveSimulation(completed);
+         const canonicalAnswers: SimulationSession['answers'] = persisted.answers || enrichedAnswers;
+         canonicalSession = {
+            ...completed,
+            score: persisted.score ?? 0,
+            answers: canonicalAnswers,
+         };
+      } catch (error) {
+         clientLog.error('Nao foi possivel corrigir o simulado no servidor:', error);
+         addToast('Não foi possível corrigir o simulado. Revise sua conexão e tente novamente.', 'error');
+         return;
+      }
+
       registerSimulationElapsed(activeSession.id, elapsedSimulationSeconds);
-      setActiveSession(completed);
-      addSimulation(completed);
+      setActiveSession(canonicalSession);
+      addSimulation(canonicalSession, false);
       setStep('result');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-   }, [activeSession, addSimulation, registerSimulationElapsed, timeLeft]);
+   }, [activeSession, addSimulation, addToast, registerSimulationElapsed, timeLeft]);
 
    useEffect(() => {
       if (step !== 'active' || timeLeft <= 0) {
@@ -782,7 +780,7 @@ const Simulation: React.FC = () => {
             if (previous <= 1) {
                window.clearInterval(timer);
                window.requestAnimationFrame(() => {
-                  handleFinish();
+                  void handleFinish();
                });
                return 0;
             }
@@ -812,7 +810,7 @@ const Simulation: React.FC = () => {
          return;
       }
 
-      handleFinish();
+      void handleFinish();
    }, [confirmDialog, handleFinish]);
 
    const renderModals = () => (
@@ -1248,7 +1246,7 @@ const Simulation: React.FC = () => {
                               ...activeSession,
                               answers: {
                                  ...activeSession.answers,
-                                 [q.id]: { index: ans.selectedOptionIndex, is_correct: ans.isCorrect, time_taken: ans.timeTaken }
+                                 [q.id]: { index: ans.selectedOptionIndex, is_correct: 0, time_taken: ans.timeTaken }
                               }
                            });
                         }}
@@ -1279,7 +1277,7 @@ const Simulation: React.FC = () => {
                                     ...activeSession,
                                    answers: {
                                       ...activeSession.answers,
-                                      [question.id]: { index: ans.selectedOptionIndex, is_correct: ans.isCorrect, time_taken: ans.timeTaken }
+                                      [question.id]: { index: ans.selectedOptionIndex, is_correct: 0, time_taken: ans.timeTaken }
                                    }
                                 });
                               }}

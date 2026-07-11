@@ -107,6 +107,36 @@ class SimulationsRepository
     }
 
     /**
+     * Remove apenas respostas que não pertencem mais ao snapshot atual. Isso evita
+     * uma janela sem dados quando o simulado é persistido novamente.
+     *
+     * @param array<int, string> $questionIds
+     */
+    public function deleteStaleSimulationAnswers(string $userId, string $simulationId, array $questionIds): void
+    {
+        if ($questionIds === []) {
+            $this->deleteSimulationAnswers($userId, $simulationId);
+            return;
+        }
+
+        $placeholders = [];
+        $params = [':user_id' => $userId, ':simulation_id' => $simulationId];
+        foreach (array_values($questionIds) as $index => $questionId) {
+            $placeholder = ':question_id_' . $index;
+            $placeholders[] = $placeholder;
+            $params[$placeholder] = $questionId;
+        }
+
+        $stmt = $this->db->prepare(
+            'DELETE FROM user_answers
+             WHERE user_id = :user_id
+               AND simulation_id = :simulation_id
+               AND question_id NOT IN (' . implode(', ', $placeholders) . ')'
+        );
+        $stmt->execute($params);
+    }
+
+    /**
      * Lista sessoes de simulado do usuario autenticado.
      *
      * @since 1.0.0

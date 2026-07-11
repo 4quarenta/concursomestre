@@ -437,7 +437,7 @@ function handleAdminReportWorkbenchRoute(PDO $db): void
 function handleAdminStatsRoute(PDO $db): void
 {
     try {
-        requireAdminSessionContext($db);
+        requirePlatformAdminSessionContext($db);
 
         $controller = new AdminStatsController(
             new AdminStatsService(
@@ -923,7 +923,7 @@ function handleAdminAnalyticsFinanceRoute(PDO $db): void
 function handleAdminAnalyticsDashboardRoute(PDO $db): void
 {
     try {
-        requireAdminSessionContext($db);
+        requirePlatformAdminSessionContext($db);
         $controller = buildAdminAnalyticsController($db);
         Response::success($controller->dashboard(
             $_GET['period'] ?? 'month',

@@ -15,6 +15,8 @@ require_once __DIR__ . '/controllers/SimulationsController.php';
 require_once __DIR__ . '/services/SimulationsService.php';
 require_once __DIR__ . '/repositories/SimulationsRepository.php';
 require_once __DIR__ . '/validators/SimulationsValidator.php';
+require_once __DIR__ . '/../questions/repositories/QuestionsRepository.php';
+require_once __DIR__ . '/../questions/services/QuestionAnswerEvaluator.php';
 require_once __DIR__ . '/../../shared/auth/request_auth.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
 
@@ -48,7 +50,9 @@ function buildSimulationsController(PDO $db): SimulationsController
     return new SimulationsController(
         new SimulationsService(
             new SimulationsRepository($db),
-            new SimulationsValidator()
+            new SimulationsValidator(),
+            new QuestionsRepository($db),
+            new QuestionAnswerEvaluator()
         )
     );
 }

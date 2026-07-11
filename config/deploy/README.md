@@ -17,3 +17,9 @@ Fluxo recomendado quando a VPS existir:
 4. Copiar e ajustar estes templates para `/etc/nginx/sites-available`, `/etc/systemd/system`, `/etc/cron.d` e `/etc/logrotate.d`.
 5. Rodar `npm run check:release-local` antes de subir.
 6. Rodar `production_readiness_suite.php --profile=staging` no servidor com dominio real.
+
+Seguranca de borda:
+
+- Preserve os bloqueios de `questao-pro-backend`, `setup`, `scripts` e diretorios internos presentes no template Nginx.
+- Mantenha `/import-extractor/` como `internal`; o navegador deve usar somente a API publica autenticada.
+- Configure `AUTH_TRUST_PROXY_HEADERS=true` somente junto de `AUTH_TRUSTED_PROXY_CIDRS`, com os IPs/CIDRs reais do Nginx/Cloudflare. Sem allowlist, headers como `X-Forwarded-For` e `X-Forwarded-Proto` sao ignorados. Mantenha `NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME` igual a `AUTH_REFRESH_COOKIE_NAME` (padrao `cm_refresh`).

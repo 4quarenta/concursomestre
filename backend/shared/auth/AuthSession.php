@@ -299,8 +299,9 @@ function verifyAuthenticatedSession(PDO $db, string $token): ?array
     if (!$result['valid']) {
         logAuthEvent('access_token_rejected', [
             'reason' => $result['reason'],
-            'token_prefix' => substr((string) $token, 0, 18),
-            'token_payload' => $result['payload'] ?? null,
+            // Nunca registrar JWT bruto, prefixo ou payload: logs possuem vida
+            // longa e nao podem se tornar um repositorio de credenciais.
+            'has_token' => $token !== '',
         ]);
         return null;
     }

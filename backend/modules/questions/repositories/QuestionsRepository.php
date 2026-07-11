@@ -1345,6 +1345,43 @@ class QuestionsRepository
     }
 
     /**
+     * Busca somente os dados canônicos necessários para corrigir respostas de
+     * simulado, sem serializar nem expor gabaritos ao navegador.
+     *
+     * @param array<int, int> $questionIds
+     * @return array<string, array<string, mixed>>
+     */
+    public function findQuestionAnswerKeysByIds(array $questionIds): array
+    {
+        $ids = array_values(array_unique(array_filter($questionIds, static fn (mixed $id): bool => is_numeric($id) && (int) $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($ids as $index => $id) {
+            $placeholder = ':question_id_' . $index;
+            $placeholders[] = $placeholder;
+            $params[$placeholder] = (int) $id;
+        }
+
+        $stmt = $this->db->prepare(
+            'SELECT id, resposta_correta_item_index, data_json
+             FROM questions
+             WHERE id IN (' . implode(', ', $placeholders) . ')'
+        );
+        $stmt->execute($params);
+
+        $mapped = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $mapped[(string) ($row['id'] ?? '')] = $row;
+        }
+
+        return $mapped;
+    }
+
+    /**
      * Localiza uma questao ja importada pela identidade oficial da prova.
      *
      * @since 1.0.0
@@ -1713,6 +1750,28 @@ class QuestionsRepository
 
         $existingId = $stmt->fetchColumn();
         return $existingId === false ? null : (int) $existingId;
+    }
+
+    /**
+     * Retorna a autoria de uma prova para aplicar a regra de escopo do staff.
+     *
+     * @since 1.0.0
+     */
+    public function findImportedExamOwnershipById(int $examId): ?array
+    {
+        $this->ensureExamInfrastructure();
+
+        $stmt = $this->db->prepare(
+            'SELECT id, created_by_user_id, updated_by_user_id, published_by_user_id
+             FROM provas
+             WHERE id = :exam_id
+             LIMIT 1'
+        );
+        $stmt->bindValue(':exam_id', $examId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
     }
 
     public function findUserRoleById(string $userId): string

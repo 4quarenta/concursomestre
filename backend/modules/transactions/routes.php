@@ -73,15 +73,17 @@ function handleTransactionsCreateRoute(PDO $db): void
 function handleTransactionsListRoute(PDO $db): void
 {
     try {
-        $payload = verifyAuthenticatedUserPayload(false);
+        $payload = verifyAuthenticatedUserPayload(true);
         $authenticatedUserId = trim((string) ($payload['user_id'] ?? ''));
         $authenticatedUserRole = strtolower(trim((string) ($payload['role'] ?? '')));
-        $isPrivilegedViewer = in_array($authenticatedUserRole, ['admin', 'staff'], true);
+        $isPlatformAdmin = $authenticatedUserRole === 'admin';
         $query = $_GET;
-        if ($isPrivilegedViewer) {
+        if ($isPlatformAdmin) {
             $query['user_id'] = trim((string) ($_GET['user_id'] ?? ''));
         } else {
-            $query['user_id'] = $authenticatedUserId !== '' ? $authenticatedUserId : trim((string) ($_GET['user_id'] ?? ''));
+            // Usuário comum e staff nunca podem escolher outro comprador/vendedor
+            // pela query string. A listagem sempre pertence à própria conta.
+            $query['user_id'] = $authenticatedUserId;
         }
 
         $controller = buildTransactionsController($db);

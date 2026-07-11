@@ -18,6 +18,8 @@ type SaveSimulationResult = {
   message?: string;
   newXp?: number;
   newLevel?: number;
+  score?: number;
+  answers?: Record<string, StoredSimulationAnswer>;
   gamification?: {
     applied?: boolean;
     badge_awarded?: boolean;
@@ -32,6 +34,8 @@ type SaveSimulationResponse = {
   newXp?: string | number | null;
   newLevel?: string | number | null;
   gamification?: SaveSimulationResult['gamification'];
+  score?: string | number | null;
+  answers?: Record<string, StoredSimulationAnswer>;
   data?: {
     id?: string | number;
     new_xp?: string | number | null;
@@ -39,6 +43,8 @@ type SaveSimulationResponse = {
     newXp?: string | number | null;
     newLevel?: string | number | null;
     gamification?: SaveSimulationResult['gamification'];
+    score?: string | number | null;
+    answers?: Record<string, StoredSimulationAnswer>;
   };
 };
 
@@ -61,6 +67,7 @@ type SimulationListItem = {
 
 export type StoredSimulationAnswer = {
   index?: number;
+  correct_option_index?: number;
   is_correct?: boolean | number;
   time_taken?: number;
 };
@@ -127,6 +134,8 @@ export const simulationsService = {
       message: envelope.message,
       newXp: Number(result.data?.newXp ?? result.data?.new_xp ?? result.newXp ?? result.new_xp ?? envelope.raw.newXp ?? envelope.raw.new_xp ?? undefined) || undefined,
       newLevel: Number(result.data?.newLevel ?? result.data?.new_level ?? result.newLevel ?? result.new_level ?? envelope.raw.newLevel ?? envelope.raw.new_level ?? undefined) || undefined,
+      score: Number(result.data?.score ?? result.score ?? envelope.raw.score ?? undefined) || 0,
+      answers: result.data?.answers ?? result.answers,
       gamification: result.data?.gamification ?? result.gamification,
     };
   },

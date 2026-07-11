@@ -123,28 +123,35 @@ describe('questionService', () => {
       data: {
         new_xp: 250,
         new_level: 3,
+        answer: {
+          selectedOptionIndex: 2,
+          correctOptionIndex: 1,
+          isCorrect: false,
+        },
       },
     });
 
-    const result = await questionService.submitUserAnswer('user-1', {
+    const result = await questionService.submitUserAnswer({
       questionId: 9,
       selectedOptionIndex: 2,
-      isCorrect: true,
       timestamp: Date.now(),
       timeTaken: 18,
     });
 
     expect(mockPost).toHaveBeenCalledWith('questionsAnswer', {
-      user_id: 'user-1',
       question_id: 9,
       selected_option: 2,
-      is_correct: true,
       time_taken: 18,
       simulation_id: null,
     });
     expect(result.success).toBe(true);
     expect(result.newXp).toBe(250);
     expect(result.newLevel).toBe(3);
+    expect(result.answer).toEqual({
+      selectedOptionIndex: 2,
+      correctOptionIndex: 1,
+      isCorrect: false,
+    });
   });
 
   it('loads question history through the official endpoint', async () => {
@@ -256,10 +263,14 @@ describe('questionService', () => {
     expect(mockPost).toHaveBeenCalledWith(
       'questionsUpdate',
       expect.objectContaining({
-        ...payload,
         id: '33',
-        publishStatus: 'published',
-        visibilityStatus: 'public',
+        content: expect.objectContaining({
+          statement: 'Questão atualizada',
+        }),
+        publication: expect.objectContaining({
+          status: 'published',
+          visibility: 'public',
+        }),
       }),
     );
     expect(result.success).toBe(true);

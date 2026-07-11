@@ -20,9 +20,8 @@ RewriteRule ^api/.*(?:keys|debug_output|table_structure|settings_log).*\.(txt|js
 # Bloqueia diretorios internos. Endpoints publicos devem passar por /api ou pelas pontes legadas explicitas abaixo.
 RewriteRule ^(?:config|database|modules|runtime|shared|storage|tests|vendor)(?:/|$) - [F,L,NC]
 
-# A pasta scripts contem ferramentas operacionais. Somente o crawler da Gran permanece acessivel
-# porque ainda possui uma entrada oficial no painel admin; todo o restante fica bloqueado por URL.
-RewriteRule ^scripts/importers/questions/gran/(?:index|import_worker)\.php$ - [L,NC]
+# A pasta scripts contem somente ferramentas operacionais e nunca deve ser
+# acessivel por HTTP. O crawler legado da Gran foi desativado por seguranca.
 RewriteRule ^scripts/ - [F,L,NC]
 
 # Arquivos operacionais e backups nunca devem ser servidos diretamente pelo Apache.
@@ -173,5 +172,4 @@ Options -Indexes
     Order allow,deny
     Deny from all
 </FilesMatch>
-
 

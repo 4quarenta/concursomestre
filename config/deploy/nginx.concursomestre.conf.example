@@ -34,9 +34,35 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
+    # Nunca exponha diretorios de implementacao, a rota legada do backend ou
+    # instaladores/diagnosticos. A API publica entra somente por /api/.
+    location ~ ^/(?:questao-pro-backend|backend)/(?:config|database|modules|scripts|storage|runtime|vendor|tests)(?:/|$) {
+        return 404;
+    }
+
     location ~ ^/(config|database|modules|scripts|storage|runtime|vendor|tests)/ {
         deny all;
         return 404;
+    }
+
+    location ~ ^/api/(?:setup|internal|debug|tests?|scripts|storage|runtime|vendor)(?:/|$) {
+        return 404;
+    }
+
+    location = /api/setup/install.php {
+        return 404;
+    }
+
+    # O FastAPI/PyMuPDF e um worker interno. O browser nao pode chamar a porta
+    # ou esta rota diretamente; a API PHP deve orquestrar a extracao.
+    location ^~ /import-extractor/ {
+        internal;
+        proxy_pass http://127.0.0.1:8010/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location ~ ^/api/.+\.php$ {

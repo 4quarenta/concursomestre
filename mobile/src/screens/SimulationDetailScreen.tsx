@@ -31,17 +31,6 @@ const formatAnswerLabel = (value?: number): string => {
   return String.fromCharCode(65 + value);
 };
 
-const getCorrectIndex = (question: Question): number => {
-  const options = question.itens || [];
-  const answerId = Number(question.resposta || -1);
-
-  const byIdIndex = options.findIndex((item) => Number(item?.id) === answerId);
-  if (byIdIndex >= 0) return byIdIndex;
-
-  if (answerId >= 0 && answerId < options.length) return answerId;
-  return -1;
-};
-
 const getQuestionKey = (question: Question, index: number): string => {
   if (question.id !== undefined && question.id !== null) {
     return String(question.id);
@@ -133,9 +122,19 @@ export const SimulationDetailScreen: React.FC = () => {
     const normalizedSelectedIndex = selectedIndex !== undefined && Number.isFinite(selectedIndex)
       ? selectedIndex
       : undefined;
-    const correctIndex = getCorrectIndex(question);
+    const rawCorrectIndex = typeof rawAnswer === 'object'
+      ? Number(rawAnswer?.correct_option_index ?? rawAnswer?.correctOptionIndex)
+      : Number.NaN;
+    const correctIndex = Number.isFinite(rawCorrectIndex) ? rawCorrectIndex : -1;
     const answered = normalizedSelectedIndex !== undefined;
-    const isCorrect = answered && normalizedSelectedIndex === correctIndex;
+    const canonicalIsCorrect = typeof rawAnswer === 'object'
+      ? rawAnswer?.is_correct ?? rawAnswer?.isCorrect
+      : undefined;
+    const isCorrect = answered && (
+      canonicalIsCorrect === true
+      || canonicalIsCorrect === 1
+      || canonicalIsCorrect === '1'
+    );
 
     return {
       question,

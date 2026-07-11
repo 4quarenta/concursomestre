@@ -41,17 +41,6 @@ const formatRemainingTime = (seconds: number): string => {
   return `${String(minutes).padStart(2, '0')}:${String(restSeconds).padStart(2, '0')}`;
 };
 
-const getCorrectIndex = (question: Question): number => {
-  const options = question.itens || [];
-  const answerId = Number(question.resposta || -1);
-
-  const byIdIndex = options.findIndex((item) => Number(item?.id) === answerId);
-  if (byIdIndex >= 0) return byIdIndex;
-
-  if (answerId >= 0 && answerId < options.length) return answerId;
-  return -1;
-};
-
 const getQuestionKey = (question: Question, index: number): string => {
   if (question.id !== undefined && question.id !== null) {
     return String(question.id);
@@ -127,11 +116,13 @@ export const SimulationRunScreen: React.FC = () => {
   const currentQuestion = seed.questions[currentIndex];
   const currentQuestionKey = currentQuestion ? getQuestionKey(currentQuestion, currentIndex) : '';
   const feedbackMode = seed.config.feedbackMode || 'after_all';
-  const isInstantFeedback = feedbackMode === 'instant';
+  // The public DTO never carries an answer key. Feedback is rendered after the
+  // canonical server-side correction when the simulation is finalized.
+  const isInstantFeedback = false;
   const hasSelectedAnswer = currentQuestion ? answers[currentQuestionKey] !== undefined : false;
   const isLastQuestion = currentIndex === seed.questions.length - 1;
   const progressText = `${Math.min(currentIndex + 1, seed.questions.length)} / ${seed.questions.length}`;
-  const currentCorrectIndex = currentQuestion ? getCorrectIndex(currentQuestion) : -1;
+  const currentCorrectIndex = -1;
   const currentSelectedIndex = currentQuestion ? answers[currentQuestionKey] : undefined;
   const currentAnswerIsCorrect = currentSelectedIndex !== undefined && currentSelectedIndex === currentCorrectIndex;
   const answeredCount = React.useMemo(
@@ -152,31 +143,56 @@ export const SimulationRunScreen: React.FC = () => {
       const questionResults = seed.questions.map((question, index) => {
         const questionKey = getQuestionKey(question, index);
         const selectedIndex = answers[questionKey];
-        const correctIndex = getCorrectIndex(question);
         const answered = selectedIndex !== undefined;
         return {
           question,
           selectedIndex,
           answered,
-          isCorrect: answered && selectedIndex === correctIndex,
-          correctIndex,
+          isCorrect: false,
+          correctIndex: -1,
         };
       });
 
-      const score = questionResults.filter((entry) => entry.isCorrect).length;
-
       if (user?.id) {
-        await Promise.allSettled(
+        const submissions = await Promise.allSettled(
           questionResults
             .filter((entry) => entry.answered && entry.question.id !== undefined && entry.question.id !== null)
-            .map((entry) => questionService.submitUserAnswer(user.id, {
+            .map(async (entry) => ({
               questionId: Number(entry.question.id),
-              selectedOptionIndex: Number(entry.selectedIndex),
-              isCorrect: entry.isCorrect,
-              timeTaken: 0,
+              result: await questionService.submitUserAnswer({
+                questionId: Number(entry.question.id),
+                selectedOptionIndex: Number(entry.selectedIndex),
+                timeTaken: 0,
+              }),
             })),
         );
+
+        const canonicalByQuestionId = new Map<number, NonNullable<Awaited<ReturnType<typeof questionService.submitUserAnswer>>['answer']>>();
+        submissions.forEach((submission) => {
+          if (submission.status === 'fulfilled' && submission.value.result.answer) {
+            canonicalByQuestionId.set(submission.value.questionId, submission.value.result.answer);
+          }
+        });
+        questionResults.forEach((entry) => {
+          const canonical = canonicalByQuestionId.get(Number(entry.question.id));
+          if (!canonical) return;
+          entry.selectedIndex = canonical.selectedOptionIndex;
+          entry.correctIndex = canonical.correctOptionIndex;
+          entry.isCorrect = canonical.isCorrect;
+        });
       }
+
+      const score = questionResults.filter((entry) => entry.isCorrect).length;
+      const persistedAnswers = { ...answers } as Record<string, unknown>;
+      questionResults.forEach((entry, index) => {
+        if (!entry.answered || entry.selectedIndex === undefined) return;
+
+        persistedAnswers[getQuestionKey(entry.question, index)] = {
+          index: entry.selectedIndex,
+          correct_option_index: entry.correctIndex,
+          is_correct: entry.isCorrect,
+        };
+      });
 
       await simulationsService.saveSimulation({
         id: `sim-mobile-${endedAt}`,
@@ -201,7 +217,7 @@ export const SimulationRunScreen: React.FC = () => {
           },
         },
         questions: seed.questions,
-        answers,
+        answers: persistedAnswers,
         startTime: seed.startedAt,
         endTime: endedAt,
         status: 'completed',

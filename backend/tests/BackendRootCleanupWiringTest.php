@@ -11,7 +11,7 @@
 *
 */
 
-$root = 'C:/xampp/htdocs/questao-pro-backend';
+$root = dirname(__DIR__);
 
 function assertBackendRootHasNoOperationalArtifacts(string $root): void
 {
@@ -43,10 +43,6 @@ function assertBackendRootHtaccessBlocksInternalSurface(string $root): void
 
     if (!str_contains($htaccess, '<FilesMatch "^\.env(?:\..*)?$">')) {
         throw new RuntimeException('A raiz precisa bloquear .env e variantes como .env.example.');
-    }
-
-    if (!str_contains($htaccess, 'RewriteRule ^scripts/importers/questions/gran/(?:index|import_worker)\.php$ - [L,NC]')) {
-        throw new RuntimeException('A raiz precisa manter allowlist explicito apenas para o crawler Gran.');
     }
 
     if (!str_contains($htaccess, 'RewriteRule ^scripts/ - [F,L,NC]')) {

@@ -51,13 +51,11 @@ export const questionService = {
     return allRows;
   },
 
-  async submitUserAnswer(userId: string, answer: UserAnswerInput): Promise<{ success: boolean; message?: string; newXp?: number; newLevel?: number }> {
+  async submitUserAnswer(answer: UserAnswerInput): Promise<{ success: boolean; message?: string; newXp?: number; newLevel?: number; answer?: { selectedOptionIndex: number; correctOptionIndex: number; isCorrect: boolean } }> {
     try {
       const response: any = await apiClient.post<any>(ENDPOINTS.questions.submit, {
-        user_id: userId,
         question_id: answer.questionId,
         selected_option: answer.selectedOptionIndex,
-        is_correct: answer.isCorrect,
         time_taken: answer.timeTaken || 0,
       });
 
@@ -74,6 +72,9 @@ export const questionService = {
         message: envelope.message,
         newXp: payload?.new_xp ?? envelope.raw?.new_xp,
         newLevel: payload?.new_level ?? envelope.raw?.new_level,
+        answer: payload?.answer && Number.isInteger(payload.answer.selectedOptionIndex) && Number.isInteger(payload.answer.correctOptionIndex)
+          ? payload.answer
+          : undefined,
       };
     } catch (error) {
       return {

@@ -173,6 +173,35 @@ if (!function_exists('shouldThrottleAuthEventLog')) {
 
 if (!function_exists('logAuthEvent')) {
     /**
+     * Remove credenciais e valores excessivamente longos antes de gravar o
+     * contexto de autenticação. Logs não podem se tornar uma fonte secundária
+     * de tokens, senhas ou chaves de integração.
+     *
+     * @since 1.0.0
+     */
+    function sanitizeAuthLogContext(mixed $value, ?string $key = null): mixed
+    {
+        $normalizedKey = strtolower((string) $key);
+        if ($normalizedKey !== '' && preg_match('/(?:token|secret|password|authorization|api[_-]?key|cookie)/', $normalizedKey)) {
+            return '[redacted]';
+        }
+
+        if (is_array($value)) {
+            $sanitized = [];
+            foreach ($value as $childKey => $childValue) {
+                $sanitized[$childKey] = sanitizeAuthLogContext($childValue, is_string($childKey) ? $childKey : null);
+            }
+            return $sanitized;
+        }
+
+        if (is_string($value) && strlen($value) > 512) {
+            return substr($value, 0, 512) . '...[truncated]';
+        }
+
+        return $value;
+    }
+
+    /**
      * Registra eventos de auth no log do servidor para auditoria e debug.
      *
      * @since 1.0.0
@@ -201,7 +230,7 @@ if (!function_exists('logAuthEvent')) {
                 continue;
             }
 
-            $payload[$key] = $value;
+            $payload[$key] = sanitizeAuthLogContext($value, (string) $key);
         }
 
         error_log('[AUTH] ' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));

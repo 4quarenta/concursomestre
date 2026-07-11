@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../auth/AuthConfig.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -85,6 +87,14 @@ class RateLimiter
             $identifier = $this->getClientIP();
         }
 
+        if ($this->shouldUseRedisStore()) {
+            return $this->checkRedis((string) $identifier, $retryAfter);
+        }
+
+        if ($this->isProductionEnvironment()) {
+            throw new RuntimeException('Rate limit store redis indisponivel em producao.');
+        }
+
         $file = $this->cacheDir . '/' . hash('sha256', (string) $identifier) . '.json';
         $now = time();
 
@@ -142,30 +152,16 @@ class RateLimiter
     }
 
     /**
-     * Resolve o IP mais provavel do cliente atual a partir dos headers conhecidos.
+     * Resolve o IP do cliente pela mesma politica de proxy da autenticacao.
+     *
+     * Headers encaminhados so sao considerados quando o IP remoto pertence ao
+     * allowlist AUTH_TRUSTED_PROXY_CIDRS. Isso impede que um cliente direto
+     * altere a chave de rate limit com X-Forwarded-For forjado.
      * @since 1.0.0
      */
     public function getClientIP()
     {
-        $trustProxyHeaders = filter_var(getenv('RATE_LIMIT_TRUST_PROXY_HEADERS') ?: 'false', FILTER_VALIDATE_BOOLEAN);
-        $ipKeys = $trustProxyHeaders
-            ? ['HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_FORWARDED', 'HTTP_FORWARDED_FOR', 'HTTP_FORWARDED', 'REMOTE_ADDR']
-            : ['REMOTE_ADDR'];
-
-        foreach ($ipKeys as $key) {
-            if (!isset($_SERVER[$key])) {
-                continue;
-            }
-
-            $candidates = array_map('trim', explode(',', (string) $_SERVER[$key]));
-            foreach ($candidates as $candidate) {
-                if (filter_var($candidate, FILTER_VALIDATE_IP)) {
-                    return $candidate;
-                }
-            }
-        }
-
-        return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        return getAuthClientIp() ?? 'unknown';
     }
 
     /**
@@ -188,6 +184,91 @@ class RateLimiter
         rewind($handle);
         fwrite($handle, json_encode($data));
         fflush($handle);
+    }
+
+    /**
+     * Production must share counters between instances. The file store is for
+     * local development and tests only.
+     *
+     * @since 1.0.0
+     */
+    private function shouldUseRedisStore(): bool
+    {
+        $configured = strtolower(trim((string) (getenv('RATE_LIMIT_STORE') ?: '')));
+        if ($configured === '') {
+            $configured = $this->isProductionEnvironment() ? 'redis' : 'file';
+        }
+
+        return $configured === 'redis';
+    }
+
+    private function isProductionEnvironment(): bool
+    {
+        return strtolower(trim((string) (getenv('APP_ENV') ?: 'development'))) === 'production';
+    }
+
+    private function checkRedis(string $identifier, ?int &$retryAfter): bool
+    {
+        if (!class_exists('Redis')) {
+            throw new RuntimeException('Extensao Redis indisponivel para rate limit.');
+        }
+
+        $dsn = trim((string) (getenv('RATE_LIMIT_REDIS_DSN') ?: ''));
+        if ($dsn === '') {
+            throw new RuntimeException('RATE_LIMIT_REDIS_DSN nao configurado.');
+        }
+
+        $parts = parse_url($dsn);
+        if (!is_array($parts) || empty($parts['host'])) {
+            throw new RuntimeException('RATE_LIMIT_REDIS_DSN invalido.');
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'redis'));
+        $host = (string) $parts['host'];
+        if ($scheme === 'rediss') {
+            $host = 'tls://' . $host;
+        }
+        $port = isset($parts['port']) ? (int) $parts['port'] : 6379;
+        $database = isset($parts['path']) ? max(0, (int) ltrim((string) $parts['path'], '/')) : 0;
+        $prefix = trim((string) (getenv('RATE_LIMIT_REDIS_PREFIX') ?: 'cm:rate-limit:'));
+        $key = $prefix . hash('sha256', $identifier);
+
+        $redis = new Redis();
+        try {
+            if (!$redis->connect($host, $port, 1.5)) {
+                throw new RuntimeException('Nao foi possivel conectar ao Redis de rate limit.');
+            }
+            if (isset($parts['pass']) && (string) $parts['pass'] !== '' && !$redis->auth((string) $parts['pass'])) {
+                throw new RuntimeException('Autenticacao Redis de rate limit recusada.');
+            }
+            if ($database > 0 && !$redis->select($database)) {
+                throw new RuntimeException('Banco Redis de rate limit invalido.');
+            }
+
+            $result = $redis->eval(
+                "local current = redis.call('INCR', KEYS[1])\n"
+                . "if current == 1 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end\n"
+                . "local ttl = redis.call('TTL', KEYS[1])\n"
+                . "if current > tonumber(ARGV[1]) then return {0, ttl} end\n"
+                . "return {1, ttl}",
+                [$key, (string) $this->maxRequests, (string) $this->timeWindow],
+                1
+            );
+        } catch (Throwable $exception) {
+            throw new RuntimeException('Rate limit Redis indisponivel.', 0, $exception);
+        } finally {
+            try {
+                $redis->close();
+            } catch (Throwable) {
+                // Connection cleanup must not mask the security result.
+            }
+        }
+
+        $allowed = is_array($result) && (int) ($result[0] ?? 0) === 1;
+        $ttl = is_array($result) ? (int) ($result[1] ?? $this->timeWindow) : $this->timeWindow;
+        $retryAfter = max(1, $ttl > 0 ? $ttl : $this->timeWindow);
+
+        return $allowed;
     }
 
     /**

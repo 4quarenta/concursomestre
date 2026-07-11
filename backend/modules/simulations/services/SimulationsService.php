@@ -26,7 +26,9 @@ class SimulationsService
      */
     public function __construct(
         private readonly SimulationsRepository $repository,
-        private readonly SimulationsValidator $validator
+        private readonly SimulationsValidator $validator,
+        private readonly QuestionsRepository $questionsRepository,
+        private readonly QuestionAnswerEvaluator $answerEvaluator
     ) {
     }
 
@@ -57,37 +59,61 @@ class SimulationsService
             throw new InvalidArgumentException('Nao foi possivel serializar a configuracao do simulado.');
         }
 
-        $this->repository->upsertSimulation([
-            'id' => $normalized['id'],
-            'user_id' => $authenticatedUserId,
-            'name' => $simulationName,
-            'status' => $normalized['status'],
-            'score' => $normalized['score'],
-            'startTime' => $normalized['startTime'],
-            'endTime' => $normalized['endTime'],
-            'configJson' => $configJson,
-        ]);
+        $answerQuestionIds = array_values(array_unique(array_filter(
+            array_map(static fn (mixed $questionId): int => is_numeric($questionId) ? (int) $questionId : 0, array_keys($normalized['answers'])),
+            static fn (int $questionId): bool => $questionId > 0
+        )));
+        $questionsById = $this->questionsRepository->findQuestionAnswerKeysByIds($answerQuestionIds);
 
-        $this->repository->deleteSimulationAnswers($authenticatedUserId, $normalized['id']);
+        if (count($questionsById) !== count($answerQuestionIds)) {
+            throw new OutOfBoundsException('Uma ou mais questões do simulado não foram encontradas.');
+        }
 
         $answeredCount = 0;
         $correctCount = 0;
+        $canonicalAnswers = [];
         foreach ($normalized['answers'] as $questionId => $answerPayload) {
             $normalizedAnswer = $this->normalizeAnswerPayload($answerPayload);
+            $questionId = (int) $questionId;
+            $question = $questionsById[(string) $questionId] ?? null;
+            if (!is_array($question)) {
+                throw new OutOfBoundsException('Questão do simulado não encontrada.');
+            }
+            $evaluation = $this->answerEvaluator->evaluate($question, (int) $normalizedAnswer['selected_option_index']);
             $answeredCount++;
-            if (!empty($normalizedAnswer['is_correct'])) {
+            if ($evaluation['isCorrect']) {
                 $correctCount++;
             }
+
+            $canonicalAnswers[(string) $questionId] = [
+                'index' => $evaluation['selectedOptionIndex'],
+                'correct_option_index' => $evaluation['correctOptionIndex'],
+                'is_correct' => $evaluation['isCorrect'],
+                'time_taken' => $normalizedAnswer['time_taken_seconds'],
+            ];
 
             $this->repository->upsertSimulationAnswer([
                 'user_id' => $authenticatedUserId,
                 'question_id' => (string) $questionId,
                 'simulation_id' => $normalized['id'],
-                'selected_option_index' => $normalizedAnswer['selected_option_index'],
-                'is_correct' => $normalizedAnswer['is_correct'],
+                'selected_option_index' => $evaluation['selectedOptionIndex'],
+                'is_correct' => $evaluation['isCorrect'] ? 1 : 0,
                 'time_taken_seconds' => $normalizedAnswer['time_taken_seconds'],
             ]);
         }
+
+        $this->repository->upsertSimulation([
+            'id' => $normalized['id'],
+            'user_id' => $authenticatedUserId,
+            'name' => $simulationName,
+            'status' => $normalized['status'],
+            'score' => $correctCount,
+            'startTime' => $normalized['startTime'],
+            'endTime' => $normalized['endTime'],
+            'configJson' => $configJson,
+        ]);
+
+        $this->repository->deleteStaleSimulationAnswers($authenticatedUserId, $normalized['id'], array_keys($canonicalAnswers));
 
         $gamification = ['applied' => false, 'badge_awarded' => false, 'xp' => 0];
         if ($normalized['status'] === 'completed' && $answeredCount > 0) {
@@ -104,6 +130,8 @@ class SimulationsService
         return [
             'id' => $normalized['id'],
             'status' => $normalized['status'],
+            'score' => $correctCount,
+            'answers' => $canonicalAnswers,
             'gamification' => $gamification,
             'new_xp' => isset($progressSnapshot['xp']) ? (int) $progressSnapshot['xp'] : null,
             'new_level' => isset($progressSnapshot['level']) ? (int) $progressSnapshot['level'] : null,
@@ -187,24 +215,33 @@ class SimulationsService
     private function normalizeAnswerPayload(mixed $answerPayload): array
     {
         if (is_array($answerPayload)) {
+            $selectedOptionIndex = $answerPayload['index'] ?? null;
+            if (!is_numeric($selectedOptionIndex) || (int) $selectedOptionIndex < 0) {
+                throw new InvalidArgumentException('Alternativa selecionada do simulado invalida.');
+            }
             return [
-                'selected_option_index' => isset($answerPayload['index']) ? (int) $answerPayload['index'] : null,
-                'is_correct' => isset($answerPayload['is_correct']) ? (int) ((bool) $answerPayload['is_correct']) : 0,
+                'selected_option_index' => (int) $selectedOptionIndex,
                 'time_taken_seconds' => isset($answerPayload['time_taken']) ? (int) $answerPayload['time_taken'] : 0,
             ];
         }
 
         if (is_object($answerPayload)) {
+            $selectedOptionIndex = $answerPayload->index ?? null;
+            if (!is_numeric($selectedOptionIndex) || (int) $selectedOptionIndex < 0) {
+                throw new InvalidArgumentException('Alternativa selecionada do simulado invalida.');
+            }
             return [
-                'selected_option_index' => isset($answerPayload->index) ? (int) $answerPayload->index : null,
-                'is_correct' => isset($answerPayload->is_correct) ? (int) ((bool) $answerPayload->is_correct) : 0,
+                'selected_option_index' => (int) $selectedOptionIndex,
                 'time_taken_seconds' => isset($answerPayload->time_taken) ? (int) $answerPayload->time_taken : 0,
             ];
         }
 
+        if (!is_numeric($answerPayload) || (int) $answerPayload < 0) {
+            throw new InvalidArgumentException('Alternativa selecionada do simulado invalida.');
+        }
+
         return [
-            'selected_option_index' => $answerPayload !== null ? (int) $answerPayload : null,
-            'is_correct' => 0,
+            'selected_option_index' => (int) $answerPayload,
             'time_taken_seconds' => 0,
         ];
     }

@@ -575,6 +575,8 @@ export interface UserAnswer {
   questionId: number;
   selectedOptionIndex: number;
   isCorrect: boolean;
+  /** Gabarito devolvido somente apos a correcao canonica no servidor. */
+  correctOptionIndex?: number;
   timestamp: number;
   simulationId?: string;
   timeTaken?: number;
@@ -644,7 +646,7 @@ export interface SimulationSession {
   id: string;
   config: SimulationConfig;
   questions: Question[];
-  answers: Record<string, number | { index?: number; is_correct?: boolean | number; time_taken?: number }>;
+  answers: Record<string, number | { index?: number; correct_option_index?: number; is_correct?: boolean | number; time_taken?: number }>;
   startTime: number;
   endTime?: number;
   durationSeconds?: number;

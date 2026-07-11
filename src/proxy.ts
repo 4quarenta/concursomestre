@@ -3,6 +3,21 @@ import { NextResponse } from 'next/server';
 import { resolveCanonicalAuthRedirectPath } from '@services/auth/canonicalAuthRedirect';
 
 export function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/admin')) {
+    // The refresh cookie is HttpOnly and is the only server-visible session
+    // signal on the Next edge. Detailed admin/staff authorization remains in
+    // the PHP API, but anonymous route enumeration must receive a real 404.
+    const refreshCookieName = process.env.NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME || 'cm_refresh';
+    if (!request.cookies.has(refreshCookieName)) {
+      return new NextResponse(null, {
+        status: 404,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+  }
+
   const redirectPath = resolveCanonicalAuthRedirectPath(request.nextUrl.pathname, request.nextUrl.searchParams);
   if (!redirectPath) {
     return NextResponse.next();
@@ -24,5 +39,17 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/auth', '/activate', '/activation', '/verify-email', '/confirm', '/confirm-email', '/recover', '/forgot-password', '/reset'],
+  matcher: [
+    '/',
+    '/auth',
+    '/activate',
+    '/activation',
+    '/verify-email',
+    '/confirm',
+    '/confirm-email',
+    '/recover',
+    '/forgot-password',
+    '/reset',
+    '/admin/:path*',
+  ],
 };

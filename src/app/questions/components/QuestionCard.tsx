@@ -338,7 +338,7 @@ import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
 interface QuestionCardProps {
   question: Question;
   existingAnswer?: UserAnswer;
-  onAnswerSubmit: (answer: UserAnswer) => void;
+  onAnswerSubmit: (answer: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>) => Promise<UserAnswer | void> | UserAnswer | void;
   onReportError?: (report: Omit<ErrorReport, 'id' | 'status' | 'timestamp'>) => void;
   onAddComment?: (qId: string, text: string, parentId?: string) => void;
   onLikeComment?: (qId: string, cId: string) => void | Promise<void>;
@@ -357,37 +357,6 @@ interface QuestionCardProps {
   onGuestAction?: (action: string) => void;
   isHighlighted?: boolean;
 }
-
-const resolveCorrectOption = (question: Question) => {
-  const items = question.itens || [];
-  const rawAnswer = String(question.resposta ?? '').trim();
-  const numericAnswer = Number(rawAnswer);
-
-  const idIndex = items.findIndex((item) => String(item.id) === rawAnswer);
-  if (idIndex >= 0) {
-    return { item: items[idIndex], index: idIndex };
-  }
-
-  const labelIndex = items.findIndex((item) => String(item.rotulo || '').trim().toUpperCase() === rawAnswer.toUpperCase());
-  if (labelIndex >= 0) {
-    return { item: items[labelIndex], index: labelIndex };
-  }
-
-  if (Number.isInteger(numericAnswer) && numericAnswer >= 0 && numericAnswer < items.length) {
-    return { item: items[numericAnswer], index: numericAnswer };
-  }
-
-  const oneBasedIndex = numericAnswer - 1;
-  if (Number.isInteger(oneBasedIndex) && oneBasedIndex >= 0 && oneBasedIndex < items.length) {
-    return { item: items[oneBasedIndex], index: oneBasedIndex };
-  }
-
-  return null;
-};
-
-const isCorrectQuestionOption = (question: Question, index: number) => (
-  resolveCorrectOption(question)?.index === index
-);
 
 type QuestionCardTaxonomyLike = {
   sigla?: string;
@@ -781,7 +750,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const isSubmitted = !!sessionAnswer;
   // Revised: Only show result if current session is submitted OR if we are in a mode that forces feedback (like review)
   // But for 'practice' with retry, we want clean state until session answer.
-  const showResult = canSeeAnswerKey && (showAnswerFeedback || isSubmitted || (mode === 'simulation' && !!existingAnswer && !hideFeedback));
+  const resolvedAnswer = sessionAnswer || existingAnswer;
+  const revealedCorrectOptionIndex = resolvedAnswer?.correctOptionIndex;
+  const showResult = canSeeAnswerKey
+    && Number.isInteger(revealedCorrectOptionIndex)
+    && (showAnswerFeedback || isSubmitted || (mode === 'simulation' && !!existingAnswer && !hideFeedback));
 
   // Logic Refinement:
   // - If I have history (`existingAnswer`), I show the TAG in header.
@@ -959,7 +932,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     }
   }, [isHistoryModalOpen, question.id, existingAnswer, currentUser?.id]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (isCanceledQuestion) {
       return;
     }
@@ -983,22 +956,27 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     }
 
     const selectedItemIndex = question.itens?.findIndex(item => item.id === selectedOptionId) ?? -1;
-    const correctOption = resolveCorrectOption(question);
-    const isAnswerCorrect = Boolean(correctOption && selectedItemIndex === correctOption.index);
-
     const submittedAt = readCurrentTimeMs();
     const startedAt = startTime.current || submittedAt;
-    const newAnswer = {
+    const pendingAnswer = {
       questionId: Number(question.id),
       selectedOptionIndex: selectedItemIndex >= 0 ? selectedItemIndex : Number(selectedOptionId),
-      isCorrect: isAnswerCorrect,
       timestamp: submittedAt,
       timeTaken: Math.round((submittedAt - startedAt) / 1000)
     };
-    setSessionAnswer(newAnswer); // Lock interaction locally
-    setShowAnswerFeedback(true); // Show correct/incorrect highlighting
-    incrementDailyUsageCount(authenticatedUserId, 'questions_per_day');
-    onAnswerSubmit(newAnswer);
+    try {
+      const canonicalAnswer = await onAnswerSubmit(pendingAnswer);
+      if (!canonicalAnswer) {
+        throw new Error('A resposta não foi confirmada pelo servidor.');
+      }
+      setSessionAnswer(canonicalAnswer);
+      setShowAnswerFeedback(true);
+      incrementDailyUsageCount(authenticatedUserId, 'questions_per_day');
+    } catch (error) {
+      clientLog.warn('[QuestionCard] Failed to submit answer:', error);
+      addToast('Não foi possível salvar sua resposta. Tente novamente.', 'error');
+      return;
+    }
     if (!canSeeAnswerKey) {
       openPlanUpgrade('Ver gabarito', 'question.answer_key');
     }
@@ -1027,14 +1005,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
     const selectedItemIndex = question.itens?.findIndex(item => item.id === id) ?? -1;
     const selectedOptionIndex = selectedItemIndex >= 0 ? selectedItemIndex : Number(id);
-    const correctOption = resolveCorrectOption(question);
-    const isAnswerCorrect = Boolean(correctOption && selectedItemIndex === correctOption.index);
     const submittedAt = readCurrentTimeMs();
     const startedAt = startTime.current || submittedAt;
     const answerPayload = {
       questionId: Number(question.id),
       selectedOptionIndex,
-      isCorrect: isAnswerCorrect,
       timestamp: submittedAt,
       timeTaken: Math.round((submittedAt - startedAt) / 1000)
     };
@@ -1042,15 +1017,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     setSelectedOptionId(id);
 
     if (mode === 'simulation') {
-      if (!hideFeedback) {
-      setSessionAnswer(answerPayload);
-      setShowAnswerFeedback(true);
-        if (!canSeeAnswerKey) {
-          openPlanUpgrade('Ver gabarito', 'question.answer_key');
-        }
-      }
-
-      onAnswerSubmit(answerPayload);
+      void Promise.resolve(onAnswerSubmit(answerPayload)).catch((error) => {
+        clientLog.warn('[QuestionCard] Failed to register simulation answer:', error);
+        addToast('Não foi possível registrar a resposta do simulado.', 'error');
+      });
       void maybeShowQuestionAnswerInterstitial(currentUser, systemSettings);
     }
   };
@@ -1489,7 +1459,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           {(question.itens || []).map((item, index) => {
             const isEliminated = eliminatedOptionIds.includes(item.id);
             const isSelected = selectedOptionId === item.id;
-            const isCorrect = isCorrectQuestionOption(question, index);
+            const isCorrect = revealedCorrectOptionIndex === index;
             const isImg = isImageOption(item.corpo);
 
             let btnClass = "border-slate-200 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-800 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10";
@@ -1683,39 +1653,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total de Respostas</span>
                       <span className="text-3xl font-black text-slate-800 dark:text-slate-200">{displayedStatsTotal}</span>
 
-                      {(() => {
-                        const correctOption = resolveCorrectOption(question);
-                        const correctItem = correctOption?.item;
-                        const correctIndex = correctOption?.index ?? -1;
-
-                        let calculatedCorrect = 0;
-
-                        const correctRow = statsOptionRows.find((row) => (
-                          row.index === correctIndex
-                          || String(row.item.id) === String(correctItem?.id || '')
-                          || String(row.item.rotulo || '').trim().toUpperCase() === String(correctItem?.rotulo || '').trim().toUpperCase()
-                        ));
-                        calculatedCorrect = correctRow?.count || 0;
-
-                        // Safety: Cannot be more than total
-                        const total = displayedStatsTotal;
-                        if (calculatedCorrect > total) calculatedCorrect = total;
-
-                        const calculatedWrong = total - calculatedCorrect;
-
-                        return (
-                          <div className="flex gap-4 mt-2 w-full justify-center">
-                            <div className="text-center">
-                              <div className="text-xs font-bold text-emerald-600">{calculatedCorrect}</div>
-                              <div className="text-[8px] font-bold text-slate-400 uppercase">Certos</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-xs font-bold text-red-600">{calculatedWrong}</div>
-                              <div className="text-[8px] font-bold text-slate-400 uppercase">Errados</div>
-                            </div>
-                          </div>
-                        );
-                      })()}
+                      <div className="flex gap-4 mt-2 w-full justify-center">
+                        <div className="text-center">
+                          <div className="text-xs font-bold text-emerald-600">{Math.min(displayedStatsTotal, Math.max(0, Number(localStats?.correctCount || 0)))}</div>
+                          <div className="text-[8px] font-bold text-slate-400 uppercase">Certos</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xs font-bold text-red-600">{Math.max(0, displayedStatsTotal - Number(localStats?.correctCount || 0))}</div>
+                          <div className="text-[8px] font-bold text-slate-400 uppercase">Errados</div>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="space-y-3">

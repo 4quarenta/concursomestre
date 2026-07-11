@@ -13,7 +13,7 @@
 
 declare(strict_types=1);
 
-require_once 'C:/xampp/htdocs/questao-pro-backend/shared/auth/AuthConfig.php';
+require_once __DIR__ . '/../shared/auth/AuthConfig.php';
 
 function assertSameIp(?string $expected, ?string $actual, string $message): void
 {
@@ -23,8 +23,12 @@ function assertSameIp(?string $expected, ?string $actual, string $message): void
 }
 
 $originalServer = $_SERVER;
+$originalTrustProxyHeaders = getenv('AUTH_TRUST_PROXY_HEADERS');
+$originalTrustedProxyCidrs = getenv('AUTH_TRUSTED_PROXY_CIDRS');
 
 try {
+    putenv('AUTH_TRUST_PROXY_HEADERS=true');
+    putenv('AUTH_TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128,10.0.0.0/8');
     $_SERVER = [];
     $_SERVER['REMOTE_ADDR'] = '::1';
     $_SERVER['HTTP_CF_CONNECTING_IP'] = '203.0.113.10';
@@ -43,8 +47,23 @@ try {
     $_SERVER = [];
     $_SERVER['REMOTE_ADDR'] = '::ffff:127.0.0.1';
     assertSameIp('127.0.0.1', getAuthClientIp(), 'IPv6-mapped IPv4 loopback must be normalized.');
+
+    $_SERVER = [];
+    $_SERVER['REMOTE_ADDR'] = '198.51.100.2';
+    $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.8';
+    assertSameIp('198.51.100.2', getAuthClientIp(), 'Unlisted proxy must not influence the client IP.');
 } finally {
     $_SERVER = $originalServer;
+    if ($originalTrustProxyHeaders === false) {
+        putenv('AUTH_TRUST_PROXY_HEADERS');
+    } else {
+        putenv('AUTH_TRUST_PROXY_HEADERS=' . $originalTrustProxyHeaders);
+    }
+    if ($originalTrustedProxyCidrs === false) {
+        putenv('AUTH_TRUSTED_PROXY_CIDRS');
+    } else {
+        putenv('AUTH_TRUSTED_PROXY_CIDRS=' . $originalTrustedProxyCidrs);
+    }
 }
 
 fwrite(STDOUT, "Auth client IP behavior assertions passed.\n");

@@ -30,7 +30,7 @@ function assertContainsRateLimiterHardening(string $path, string $needle, string
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__);
 
 assertContainsRateLimiterHardening($base . '/modules/auth/routes.php', "RateLimiter::enforceProfile('auth_login')", 'Auth login must enforce rate limit.');
 assertContainsRateLimiterHardening($base . '/modules/auth/routes.php', "RateLimiter::enforceProfile('auth_register')", 'Auth register must enforce rate limit.');
@@ -48,7 +48,8 @@ assertContainsRateLimiterHardening($base . '/modules/analytics/routes.php', "Rat
 $runtimeDir = sys_get_temp_dir() . '/cm-rate-limit-' . bin2hex(random_bytes(4));
 mkdir($runtimeDir, 0777, true);
 putenv('RATE_LIMIT_DIR=' . $runtimeDir);
-putenv('RATE_LIMIT_TRUST_PROXY_HEADERS=false');
+putenv('AUTH_TRUST_PROXY_HEADERS=false');
+putenv('AUTH_TRUSTED_PROXY_CIDRS');
 
 try {
     $limiter = new RateLimiter(2, 60);
@@ -62,7 +63,8 @@ try {
     $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.99';
     assertRateLimiterHardening((new RateLimiter())->getClientIP() === '203.0.113.10', 'Proxy headers must not be trusted by default.');
 
-    putenv('RATE_LIMIT_TRUST_PROXY_HEADERS=true');
+    putenv('AUTH_TRUST_PROXY_HEADERS=true');
+    putenv('AUTH_TRUSTED_PROXY_CIDRS=203.0.113.0/24');
     assertRateLimiterHardening((new RateLimiter())->getClientIP() === '198.51.100.99', 'Proxy headers must be trusted only when explicitly enabled.');
 } finally {
     foreach (glob($runtimeDir . '/*.json') ?: [] as $file) {
@@ -70,7 +72,8 @@ try {
     }
     @rmdir($runtimeDir);
     putenv('RATE_LIMIT_DIR');
-    putenv('RATE_LIMIT_TRUST_PROXY_HEADERS');
+    putenv('AUTH_TRUST_PROXY_HEADERS');
+    putenv('AUTH_TRUSTED_PROXY_CIDRS');
     unset($_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_X_FORWARDED_FOR']);
 }
 

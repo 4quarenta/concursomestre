@@ -37,6 +37,7 @@ export interface QuestionUserAnswer {
   questionId?: number;
   selectedOptionIndex?: number;
   isCorrect?: boolean;
+  correctOptionIndex?: number;
   timestamp?: number;
 }
 
@@ -79,6 +80,5 @@ export interface Question {
 export interface UserAnswerInput {
   questionId: number;
   selectedOptionIndex: number;
-  isCorrect: boolean;
   timeTaken?: number;
 }

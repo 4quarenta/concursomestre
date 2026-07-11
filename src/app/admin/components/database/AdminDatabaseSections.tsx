@@ -16,7 +16,6 @@ import AdminMaterialsSection from '../materials/AdminMaterialsSection';
 import BlockedMaterialsSection from '../materials/BlockedMaterialsSection';
 import AdminExamBankSection from '../exams/AdminExamBankSection';
 import AdminImportSection from '../import/AdminImportSection';
-import AdminGranCrawlerSection from '../import/AdminGranCrawlerSection';
 import AdminLegalCommentarySection from '../legal-commentary/AdminLegalCommentarySection';
 import AdminQuestionGroupsSection from '../questions/AdminQuestionGroupsSection';
 import AdminQuestionsSection from '../questions/AdminQuestionsSection';
@@ -275,10 +274,6 @@ const AdminDatabaseSections = ({
         {...importWorkflowProps}
       />
     );
-  }
-
-  if (activeSubTab === 'gran-crawler') {
-    return <AdminGranCrawlerSection />;
   }
 
   return null;

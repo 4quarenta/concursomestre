@@ -96,7 +96,8 @@ Backend:
 - `LOG_MAINTENANCE_HEALTH_PATH=/var/www/questao-pro-backend/storage/logs/operations/log_maintenance_health.json`
 - `LOG_MAINTENANCE_HEALTH_MAX_AGE_MINUTES=1560`
 - `RATE_LIMIT_DIR=/var/lib/concursomestre/rate-limits`
-- `RATE_LIMIT_TRUST_PROXY_HEADERS=false`
+- `AUTH_TRUST_PROXY_HEADERS=false`
+- `AUTH_TRUSTED_PROXY_CIDRS=`
 - `RATE_LIMIT_AUTH_LOGIN_MAX=10`
 - `RATE_LIMIT_AUTH_LOGIN_WINDOW=300`
 - `RATE_LIMIT_AUTH_LOGIN_SUBJECT_MAX=5`
@@ -323,7 +324,7 @@ Backend API:
 - O backend usa `shared/middleware/RateLimiter.php` para limitar abusos por IP e, em login/cadastro/recuperacao, tambem por assunto sensivel como email.
 - Perfis aplicados: login, cadastro, Google login, refresh token, recuperacao/reset/confirmacao de senha, 2FA, comentarios/likes, feedback/suporte, denuncias, uploads e analytics.
 - `RATE_LIMIT_DIR` deve ficar fora da pasta publica e ser gravavel pelo usuario do PHP.
-- `RATE_LIMIT_TRUST_PROXY_HEADERS` deve permanecer `false` por padrao. Ative `true` somente atras de proxy confiavel que sobrescreve/remove `X-Forwarded-For` enviado pelo cliente.
+- `AUTH_TRUST_PROXY_HEADERS` deve permanecer `false` por padrao. Ao ativar, `AUTH_TRUSTED_PROXY_CIDRS` precisa conter somente IPs/CIDRs dos proxies que sobrescrevem/removem `X-Forwarded-For` enviado pelo cliente.
 - Em staging, simular tentativas repetidas de login, cadastro, upload, comentarios, denuncias e `api/analytics/track.php`; confirmar HTTP 429 com `Retry-After` e sem bloquear fluxo normal.
 - Revisar os limites apos a primeira semana de uso real, olhando logs de 429, suporte e conversao de cadastro.
 

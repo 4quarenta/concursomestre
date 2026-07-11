@@ -178,7 +178,7 @@ interface AuthContextType extends AuthState {
   updateUser: (updates: Partial<UserProfile>) => Promise<void>;
   addXp: (amount: number) => void;
   toggleSavedQuestion: (id: string) => void;
-  addSimulation: (sim: SimulationSession) => void;
+  addSimulation: (sim: SimulationSession, persist?: boolean) => void;
   purchaseMaterial: (id: string) => void;
   removeMaterialAccess: (id: string) => void;
   becomePartner: () => Promise<boolean>;
@@ -419,10 +419,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * Registra um simulado no estado local e o envia para persistencia oficial.
    * @since 1.0.0
    */
-  const addSimulation = React.useCallback((payload: SimulationSession) => {
+  const addSimulation = React.useCallback((payload: SimulationSession, persist = true) => {
     dispatch({ type: 'ADD_SIMULATION', payload });
 
-    if (!state.currentUser?.id) {
+    if (!persist || !state.currentUser?.id) {
       return;
     }
 

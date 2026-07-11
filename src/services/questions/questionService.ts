@@ -36,6 +36,11 @@ type SubmitAnswerResult = {
   message?: string;
   newXp?: number;
   newLevel?: number;
+  answer?: {
+    selectedOptionIndex: number;
+    correctOptionIndex: number;
+    isCorrect: boolean;
+  };
 };
 
 type QuestionCreateResponse = {
@@ -111,15 +116,11 @@ type QuestionPageResponse = {
 type SubmitAnswerApiResponse = {
   new_xp?: number;
   new_level?: number;
-};
-
-const getUserAnswerUserId = (answer: UserAnswer): string | null => {
-  if (!('userId' in answer)) {
-    return null;
-  }
-
-  const userId = answer.userId;
-  return typeof userId === 'string' && userId.trim() ? userId : null;
+  answer?: {
+    selectedOptionIndex?: number;
+    correctOptionIndex?: number;
+    isCorrect?: boolean;
+  };
 };
 
 const toRecord = (value: unknown): Record<string, unknown> | null => (
@@ -681,14 +682,12 @@ export const questionService = {
    * Persiste a resposta do usuario e devolve o snapshot de progressao.
    * @since v1.0.0
    */
-  async submitUserAnswer(userId: string, answer: UserAnswer): Promise<SubmitAnswerResult> {
+  async submitUserAnswer(answer: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>): Promise<SubmitAnswerResult> {
     const response = await apiClient.post<SubmitAnswerApiResponse>(
       ENDPOINTS.questions.submit,
       {
-        user_id: userId,
         question_id: answer.questionId,
         selected_option: answer.selectedOptionIndex,
-        is_correct: answer.isCorrect,
         time_taken: answer.timeTaken || 0,
         simulation_id: (() => {
           const rawSimulationId = answer.simulationId;
@@ -718,6 +717,16 @@ export const questionService = {
       message: envelope.message,
       newXp: payload.new_xp ?? (typeof envelope.raw.new_xp === 'number' ? envelope.raw.new_xp : undefined),
       newLevel: payload.new_level ?? (typeof envelope.raw.new_level === 'number' ? envelope.raw.new_level : undefined),
+      answer: payload.answer
+        && Number.isInteger(payload.answer.selectedOptionIndex)
+        && Number.isInteger(payload.answer.correctOptionIndex)
+        && typeof payload.answer.isCorrect === 'boolean'
+        ? {
+          selectedOptionIndex: payload.answer.selectedOptionIndex,
+          correctOptionIndex: payload.answer.correctOptionIndex,
+          isCorrect: payload.answer.isCorrect,
+        }
+        : undefined,
     };
   },
 
@@ -833,12 +842,7 @@ export const questionService = {
    */
   async submitAnswer(answer: UserAnswer): Promise<{ success: boolean; message?: string }> {
     try {
-      const userId = getUserAnswerUserId(answer);
-      if (!userId) {
-      return { success: false, message: 'ID do usuário obrigatório para salvar resposta.' };
-      }
-
-      const result = await this.submitUserAnswer(userId, answer);
+      const result = await this.submitUserAnswer(answer);
       return { success: result.success, message: result.message };
     } catch (error: unknown) {
       return { success: false, message: readApiErrorMessage(error, 'Não foi possível salvar a resposta.') };

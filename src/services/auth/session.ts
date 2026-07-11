@@ -23,14 +23,11 @@ const REFRESH_LOCK_TTL_MS = 15000;
 const EXTERNAL_REFRESH_WAIT_MS = 8000;
 const PROACTIVE_REFRESH_LEEWAY_MS = 60_000;
 
-type AuthEventType = 'login' | 'refresh-success' | 'logout';
+type AuthEventType = 'login' | 'logout';
 
 interface AuthBroadcastEvent {
     type: AuthEventType;
     sourceTabId: string;
-    accessToken?: string | null;
-    user?: UserProfile | null;
-    accessTokenExpMs?: number | null;
     reason?: string | null;
     at: number;
 }
@@ -336,8 +333,8 @@ const scheduleProactiveRefresh = (): void => {
 };
 
 /**
- * Replica eventos de auth via localStorage para navegadores sem BroadcastChannel estavel.
- * Isso mantém as abas sincronizadas mesmo em ambientes mais restritos.
+ * Replica somente o sinal de sessão via localStorage para navegadores sem
+ * BroadcastChannel estável. Tokens e perfis nunca atravessam abas.
  * @since 1.0.0
  */
 const writeAuthEventToStorage = (event: AuthBroadcastEvent): void => {
@@ -354,8 +351,8 @@ const writeAuthEventToStorage = (event: AuthBroadcastEvent): void => {
 };
 
 /**
- * Pública um evento de autenticação para as outras abas abertas.
- * Login, logout e refresh usam esse fluxo para manter o shell do site coerente.
+ * Publica um sinal de autenticação para as outras abas abertas. O conteúdo do
+ * evento não carrega token, usuário ou qualquer segredo de sessão.
  * @since 1.0.0
  */
 const broadcastAuthEvent = (event: Omit<AuthBroadcastEvent, 'sourceTabId' | 'at'>): void => {
@@ -435,10 +432,7 @@ const updateSessionState = (
 
     if (options?.broadcast) {
         broadcastAuthEvent({
-            type: options.eventType || (nextToken ? 'refresh-success' : 'logout'),
-            accessToken,
-            user: currentUser,
-            accessTokenExpMs,
+            type: options.eventType || (nextToken ? 'login' : 'logout'),
             reason: options.reason ?? null,
         });
     }
@@ -596,7 +590,7 @@ const waitForExternalRefresh = (): Promise<AuthBroadcastEvent | null> => {
                 return;
             }
 
-            if (event.type === 'refresh-success' || event.type === 'logout' || event.type === 'login') {
+            if (event.type === 'logout' || event.type === 'login') {
                 finish(event);
             }
         };
@@ -628,11 +622,11 @@ const waitForExternalRefresh = (): Promise<AuthBroadcastEvent | null> => {
 };
 
 /**
- * Aplica localmente um evento de autenticação vindo de outra aba.
- * O resultado devolvido alimenta fluxos que estavam esperando um refresh externo.
+ * Reage a um evento recebido de outra aba sem aceitar estado autenticado vindo
+ * dela. Login é reidratado pelo refresh cookie HttpOnly da própria aba.
  * @since 1.0.0
  */
-const finalizeExternalAuthEvent = (event: AuthBroadcastEvent): AuthSessionSnapshot | null => {
+const finalizeExternalAuthEvent = async (event: AuthBroadcastEvent): Promise<AuthSessionSnapshot | null> => {
     if (event.type === 'logout') {
         updateSessionState(null, null, {
             isBootstrapped: true,
@@ -642,13 +636,16 @@ const finalizeExternalAuthEvent = (event: AuthBroadcastEvent): AuthSessionSnapsh
         return null;
     }
 
-    updateSessionState(event.accessToken ?? null, event.user ?? currentUser, {
-        isBootstrapped: true,
-        broadcast: false,
-        eventType: event.type,
-    });
-
-    return getSnapshot();
+    try {
+        return await refreshAuthSession({
+            reason: 'manual',
+            allowAnonymousFailure: true,
+            force: true,
+        });
+    } catch {
+        clearAuthenticatedSession('external_login_refresh_failed', false);
+        return null;
+    }
 };
 
 /**
@@ -723,9 +720,6 @@ export const establishAuthenticatedSession = async (token: string | null | undef
 
     broadcastAuthEvent({
         type: 'login',
-        accessToken,
-        user: currentUser,
-        accessTokenExpMs,
     });
 
     return getSnapshot();
@@ -782,7 +776,7 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         if (!acquiredLock) {
             const externalResult = await waitForExternalRefresh();
             if (externalResult) {
-                return finalizeExternalAuthEvent(externalResult);
+                return await finalizeExternalAuthEvent(externalResult);
             }
 
             if (!tryAcquireRefreshLock()) {
@@ -816,8 +810,7 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
 
             updateSessionState(nextToken, nextUser, {
                 isBootstrapped: shouldPublishReadySession,
-                broadcast: shouldPublishReadySession,
-                eventType: 'refresh-success',
+                broadcast: false,
             });
 
             return getSnapshot();
@@ -925,7 +918,7 @@ const handleIncomingAuthEvent = (event: AuthBroadcastEvent): void => {
         return;
     }
 
-    finalizeExternalAuthEvent(event);
+    void finalizeExternalAuthEvent(event);
 };
 
 if (typeof window !== 'undefined') {

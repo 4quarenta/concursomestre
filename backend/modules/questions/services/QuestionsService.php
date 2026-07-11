@@ -12,6 +12,7 @@
 */
 
 require_once __DIR__ . '/../../../config/payment_provider.php';
+require_once __DIR__ . '/QuestionAnswerEvaluator.php';
 
 class QuestionsService
 {
@@ -19,18 +20,28 @@ class QuestionsService
         private readonly QuestionsRepository $repository,
         private readonly QuestionsValidator $validator,
         private readonly QuestionsRewardService $rewardService,
-        private readonly PDO $db
+        private readonly PDO $db,
+        ?QuestionAnswerEvaluator $answerEvaluator = null
     ) {
+        $this->answerEvaluator = $answerEvaluator ?? new QuestionAnswerEvaluator();
     }
+
+    private readonly QuestionAnswerEvaluator $answerEvaluator;
 
     public function submitAnswer(string $authenticatedUserId, bool $isAdmin, array $payload): array
     {
         $data = $this->validator->validateAnswerPayload($payload);
-        $userId = $this->validator->resolveScopedUserId($authenticatedUserId, $data['requestedUserId'], $isAdmin);
+        if ($data['requestedUserId'] !== null && $data['requestedUserId'] !== $authenticatedUserId) {
+            throw new DomainException('Você não pode registrar resposta para outro usuário.');
+        }
+        $userId = $authenticatedUserId;
 
-        if ($this->repository->findQuestionById($data['questionId']) === null) {
+        $question = $this->repository->findQuestionById($data['questionId']);
+        if ($question === null) {
             throw new OutOfBoundsException('Questao nao encontrada.');
         }
+        $answerEvaluation = $this->answerEvaluator->evaluate($question, $data['selectedOption']);
+        $isCorrect = $answerEvaluation['isCorrect'];
 
         $before = $this->repository->findUserProgressSnapshot($userId);
         if ($before === null) {
@@ -41,7 +52,7 @@ class QuestionsService
             $this->enforceUsageLimit($userId, 'questions_per_day');
         }
 
-        $xpGain = $data['isCorrect'] ? 10 : 2;
+        $xpGain = $isCorrect ? 10 : 2;
         $levelBefore = (int) ($before['level'] ?? 1);
 
         $this->db->beginTransaction();
@@ -51,13 +62,13 @@ class QuestionsService
                 'question_id' => $data['questionId'],
                 'simulation_id' => $data['simulationId'],
                 'selected_option_index' => $data['selectedOption'],
-                'is_correct' => $data['isCorrect'] ? 1 : 0,
+                'is_correct' => $isCorrect ? 1 : 0,
                 'time_taken_seconds' => $data['timeTaken'],
             ]);
             $this->repository->refreshQuestionStatsFromLatestAnswers($data['questionId']);
             $this->repository->incrementUserXp($userId, $xpGain);
 
-            $gamification = $this->rewardService->applyAnswerProgressRewards($userId, $data['isCorrect']);
+            $gamification = $this->rewardService->applyAnswerProgressRewards($userId, $isCorrect);
             $after = $this->repository->findUserProgressSnapshot($userId) ?? $before;
             if ((int) ($after['level'] ?? 1) > $levelBefore) {
                 $this->rewardService->applyLevelUpReward($after);
@@ -78,6 +89,7 @@ class QuestionsService
             'xpGain' => $xpGain,
             'levelUp' => (int) ($after['level'] ?? 1) > $levelBefore,
             'gamification' => $gamification,
+            'answer' => $answerEvaluation,
         ];
     }
 
@@ -155,7 +167,7 @@ class QuestionsService
         $total = $this->repository->countFilteredQuestions($data['keyword']);
 
         return [
-            'rows' => $this->normalizeQuestionRows($rows, null, true, true),
+            'rows' => $this->normalizeQuestionRows($rows, null, true, true, true, true),
             'total' => $total,
             'perPage' => $data['perPage'],
             'pages' => $data['perPage'] > 0 ? (int) ceil($total / $data['perPage']) : 0,
@@ -185,6 +197,15 @@ class QuestionsService
         $payload = $this->persistQuestionRichTextImages($payload);
         $payload = $this->preserveMissingEditorialFields($payload);
         $data = $this->validator->validateSavePayload($payload);
+        if ($data['id'] !== null) {
+            $this->assertCanManageOwnedRecord(
+                $authenticatedUserId,
+                $data['id'],
+                $this->repository->findQuestionOwnershipById($data['id']),
+                'Questao nao encontrada.',
+                'Staff so pode editar questoes publicadas por ele.'
+            );
+        }
 
         $this->db->beginTransaction();
         try {
@@ -200,7 +221,7 @@ class QuestionsService
 
         return [
             'id' => is_numeric($questionId) ? (int) $questionId : $questionId,
-            'question' => $saved ? $this->normalizeQuestionRow($saved, null, 0, $filters[(string) $questionId] ?? [], [], null, true, true) : null,
+            'question' => $saved ? $this->normalizeQuestionRow($saved, null, 0, $filters[(string) $questionId] ?? [], [], null, true, true, true) : null,
             'newTaxonomies' => $newTaxonomies,
             'new_taxonomies' => $newTaxonomies,
         ];
@@ -296,6 +317,7 @@ class QuestionsService
                 $this->buildImportedExamRecord($examPayload, $questions, $focusId, $pdfUrl),
                 $authenticatedUserId
             );
+            $this->assertCanManageImportedExam($authenticatedUserId, $examRecord);
             $requireExistingExam = filter_var(
                 $payload['requireExistingExam'] ?? $payload['require_existing_exam'] ?? false,
                 FILTER_VALIDATE_BOOLEAN
@@ -452,6 +474,7 @@ class QuestionsService
                     [],
                     null,
                     true,
+                    true,
                     true
                 );
             }
@@ -498,6 +521,7 @@ class QuestionsService
                 $this->buildImportedExamRecord($examPayload, [], $focusId, ''),
                 $authenticatedUserId
             );
+            $this->assertCanManageImportedExam($authenticatedUserId, $examRecord);
             $examId = (int) $this->repository->saveImportedExam($examRecord);
             if ($examId <= 0) {
                 throw new RuntimeException('A prova precisa ser salva antes de vincular questoes.');
@@ -579,7 +603,7 @@ class QuestionsService
         $stats = $this->repository->listQuestionStatsMap([$id]);
         $counts = $this->repository->listQuestionCommentCounts([$id]);
 
-        return $this->normalizeQuestionRow($row, $stats[$id] ?? null, $counts[$id] ?? 0, $filters[$id] ?? [], $provas[$id] ?? [], null, true, true);
+        return $this->normalizeQuestionRow($row, $stats[$id] ?? null, $counts[$id] ?? 0, $filters[$id] ?? [], $provas[$id] ?? [], null, true, true, true);
     }
 
     public function deleteQuestion(string $authenticatedUserId, bool $isAdmin, array $query): void
@@ -616,6 +640,15 @@ class QuestionsService
     {
         $this->assertAdmin($authenticatedUserId, $isAdmin);
         $data = $this->validator->validateQuestionGroupPayload($payload);
+        if (!empty($data['id'])) {
+            $this->assertCanManageOwnedRecord(
+                $authenticatedUserId,
+                (int) $data['id'],
+                $this->repository->findQuestionGroupOwnershipById((int) $data['id']),
+                'Contexto de questoes nao encontrado.',
+                'Staff so pode editar contextos publicados por ele.'
+            );
+        }
         if (str_contains($data['texto'], 'data:image/')) {
             $data['texto'] = $this->persistInlineQuestionAssetImages($data['texto']);
         }
@@ -797,7 +830,8 @@ class QuestionsService
         ?string $userId,
         bool $canViewTeacherComments,
         bool $canViewDetailedAnalysis,
-        bool $includeExamCatalog = true
+        bool $includeExamCatalog = true,
+        bool $includeAnswerKey = false
     ): array
     {
         $ids = $this->extractQuestionIds($rows);
@@ -824,14 +858,15 @@ class QuestionsService
                 $provas[$id] ?? [],
                 $answers[$id] ?? null,
                 $canViewTeacherComments,
-                $canViewDetailedAnalysis
+                $canViewDetailedAnalysis,
+                $includeAnswerKey
             );
         }
 
         return $normalized;
     }
 
-    private function normalizeQuestionRow(array $row, ?array $stats, int $commentsCount, array $filters, array $provas, ?array $userAnswer, bool $canViewTeacherComments, bool $canViewDetailedAnalysis): array
+    private function normalizeQuestionRow(array $row, ?array $stats, int $commentsCount, array $filters, array $provas, ?array $userAnswer, bool $canViewTeacherComments, bool $canViewDetailedAnalysis, bool $includeAnswerKey = false): array
     {
         $data = $this->decodeQuestionJson($row['data_json'] ?? null);
         $items = $this->normalizeItems($data['itens'] ?? $data['items'] ?? []);
@@ -864,8 +899,6 @@ class QuestionsService
             'dificuldade' => (int) ($row['dificuldade'] ?? 1),
             'difficulty' => $this->difficultyLabel((int) ($row['dificuldade'] ?? 1)),
             'itens' => $items,
-            'resposta' => $answerIndex + 1,
-            'correctOptionIndex' => $answerIndex,
             'bancas' => $buckets['bancas'],
             'orgaos' => $buckets['orgaos'],
             'cargos' => $buckets['cargos'],
@@ -911,6 +944,11 @@ class QuestionsService
             'hasTeacherComment' => $teacher !== '',
             'hasDetailedComment' => $detailed !== '',
         ];
+
+        if ($includeAnswerKey) {
+            $question['resposta'] = $answerIndex + 1;
+            $question['correctOptionIndex'] = $answerIndex;
+        }
 
         if ($canViewTeacherComments) {
             $question['teacherComment'] = $teacher;
@@ -961,6 +999,14 @@ class QuestionsService
             throw new InvalidArgumentException('Questoes importadas de prova precisam estar vinculadas a uma prova salva.');
         }
 
+        $ownership = null;
+        if ($data['id'] !== null) {
+            $ownership = $this->repository->findQuestionOwnershipById($data['id']);
+            if ($ownership === null) {
+                throw new OutOfBoundsException('Questao nao encontrada.');
+            }
+        }
+
         $answerIndex = $this->resolveCorrectAnswerIndex($data['itens'], $data['resposta']);
         $record = [
             'enunciado' => $data['enunciado'],
@@ -982,15 +1028,16 @@ class QuestionsService
             'visibility_status' => $data['visibility_status'],
             'scheduled_at' => $data['scheduled_at'],
             'published_at' => $data['published_at'],
-            'created_by_user_id' => $authenticatedUserId,
+            // The author is immutable. Updates only change the explicit audit
+            // fields for the editor and, when applicable, the publisher.
+            'created_by_user_id' => trim((string) ($ownership['created_by_user_id'] ?? '')) ?: $authenticatedUserId,
             'updated_by_user_id' => $authenticatedUserId,
-            'published_by_user_id' => ($data['publish_status'] ?? '') === 'published' ? $authenticatedUserId : null,
+            'published_by_user_id' => ($data['publish_status'] ?? '') === 'published'
+                ? (trim((string) ($ownership['published_by_user_id'] ?? '')) ?: $authenticatedUserId)
+                : (trim((string) ($ownership['published_by_user_id'] ?? '')) ?: null),
         ];
 
         if ($data['id'] !== null) {
-            if ($this->repository->findQuestionById($data['id']) === null) {
-                throw new OutOfBoundsException('Questao nao encontrada.');
-            }
             $questionId = $data['id'];
             $this->repository->updateQuestion($questionId, $record);
         } else {
@@ -2149,6 +2196,22 @@ class QuestionsService
         }
 
         throw new DomainException($staffForbiddenMessage . ' ID: ' . (string) $recordId);
+    }
+
+    private function assertCanManageImportedExam(string $authenticatedUserId, array $record): void
+    {
+        $existingExamId = $this->repository->findImportedExamId($record);
+        if ($existingExamId === null) {
+            return;
+        }
+
+        $this->assertCanManageOwnedRecord(
+            $authenticatedUserId,
+            $existingExamId,
+            $this->repository->findImportedExamOwnershipById($existingExamId),
+            'Prova nao encontrada.',
+            'Staff so pode editar provas publicadas por ele.'
+        );
     }
 
     private function rollback(): void

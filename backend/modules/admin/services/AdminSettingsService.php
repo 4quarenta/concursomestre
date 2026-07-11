@@ -840,6 +840,11 @@ class AdminSettingsService
             return $incomingPassword;
         }
 
+        $environmentPassword = trim((string) ($_ENV['SMTP_PASS'] ?? getenv('SMTP_PASS') ?? ''));
+        if ($environmentPassword !== '') {
+            return $environmentPassword;
+        }
+
         $settings = $this->repository->fetchAllSystemSettings();
         $storedPassword = trim((string) ($settings['smtpPass'] ?? ''));
 
@@ -847,7 +852,7 @@ class AdminSettingsService
             return $storedPassword;
         }
 
-        return (string) ($_ENV['SMTP_PASS'] ?? getenv('SMTP_PASS') ?? '');
+        return '';
     }
 
     /**
@@ -888,15 +893,15 @@ class AdminSettingsService
         }
 
         if (!empty($data['geminiApiKey'] ?? null)) {
-            $this->repository->upsertSystemSetting('geminiApiKey', (string) $data['geminiApiKey']);
+            $envUpdates['GEMINI_API_KEY'] = (string) $data['geminiApiKey'];
         }
 
         if (!empty($data['openaiApiKey'] ?? null)) {
-            $this->repository->upsertSystemSetting('openaiApiKey', (string) $data['openaiApiKey']);
+            $envUpdates['OPENAI_API_KEY'] = (string) $data['openaiApiKey'];
         }
 
         if (!empty($data['recaptchaSecretKey'] ?? null)) {
-            $this->repository->upsertSystemSetting('recaptchaSecretKey', (string) $data['recaptchaSecretKey']);
+            $envUpdates['RECAPTCHA_SECRET_KEY'] = (string) $data['recaptchaSecretKey'];
         }
 
         if (!empty($data['googleAuthClientId'] ?? null)) {
@@ -912,7 +917,6 @@ class AdminSettingsService
         }
 
         if (!empty($data['facebookAuthAppSecret'] ?? null)) {
-            $this->repository->upsertSystemSetting('facebookAuthAppSecret', (string) $data['facebookAuthAppSecret']);
             $envUpdates['FACEBOOK_APP_SECRET'] = (string) $data['facebookAuthAppSecret'];
         }
 
@@ -927,7 +931,7 @@ class AdminSettingsService
         }
 
         if (!empty($data['smtpPass'] ?? null)) {
-            $this->repository->upsertSystemSetting('smtpPass', (string) $data['smtpPass']);
+            $envUpdates['SMTP_PASS'] = (string) $data['smtpPass'];
         }
     }
 
