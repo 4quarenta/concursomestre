@@ -157,6 +157,63 @@ class LegalCommentaryService
         return $result;
     }
 
+    public function listUserNotes(string $userId): array
+    {
+        return [
+            'notes' => $this->repository->fetchUserNotes($userId),
+        ];
+    }
+
+    public function saveUserNote(string $userId, array $payload): array
+    {
+        return $this->repository->saveUserNote($userId, $payload);
+    }
+
+    public function deleteUserNote(string $userId, array $payload): array
+    {
+        $articleId = (int) ($payload['articleId'] ?? $payload['article_id'] ?? 0);
+        if ($articleId <= 0) {
+            throw new InvalidArgumentException('Informe o artigo da anotacao.');
+        }
+
+        return [
+            'deleted' => $this->repository->deleteUserNoteByArticle($userId, $articleId),
+            'articleId' => (string) $articleId,
+        ];
+    }
+
+    public function getReaderAnnotation(string $userId, array $payload): array
+    {
+        $lawId = (int) ($payload['lawId'] ?? $payload['law_id'] ?? 0);
+        $sectionId = (int) ($payload['sectionId'] ?? $payload['section_id'] ?? 0);
+        if ($lawId <= 0 || $sectionId <= 0) {
+            throw new InvalidArgumentException('Informe a lei e a secao das marcacoes.');
+        }
+
+        return [
+            'annotation' => $this->repository->fetchReaderAnnotation($userId, $lawId, $sectionId),
+        ];
+    }
+
+    public function saveReaderAnnotation(string $userId, array $payload): array
+    {
+        return $this->repository->saveReaderAnnotation($userId, $payload);
+    }
+
+    public function deleteReaderAnnotation(string $userId, array $payload): array
+    {
+        $lawId = (int) ($payload['lawId'] ?? $payload['law_id'] ?? 0);
+        $sectionId = (int) ($payload['sectionId'] ?? $payload['section_id'] ?? 0);
+        if ($lawId <= 0 || $sectionId <= 0) {
+            throw new InvalidArgumentException('Informe a lei e a secao das marcacoes.');
+        }
+
+        return [
+            'deleted' => $this->repository->deleteReaderAnnotation($userId, $lawId, $sectionId),
+            'sectionId' => (string) $sectionId,
+        ];
+    }
+
     public function createComment(string $userId, string $userName, array $payload, string $userRole = ''): array
     {
         $this->enforceUsageLimit($userId, $userRole, 'comments_per_day');

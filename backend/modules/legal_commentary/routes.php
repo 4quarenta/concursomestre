@@ -232,6 +232,48 @@ function handleLegalCommentaryProgressRoute(PDO $db): void
     }
 }
 
+function handleLegalCommentaryNotesRoute(PDO $db): void
+{
+    try {
+        $user = requireLegalCommentaryUser();
+        $controller = createLegalCommentaryController($db);
+        $payload = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET'
+            ? []
+            : readLegalCommentaryJsonBody();
+
+        Response::success($controller->handleNote(
+            $user['id'],
+            (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),
+            $payload
+        ));
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel atualizar a anotacao.', $e);
+    }
+}
+
+function handleLegalCommentaryReaderAnnotationsRoute(PDO $db): void
+{
+    try {
+        $user = requireLegalCommentaryUser();
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $payload = $method === 'GET'
+            ? [
+                'lawId' => $_GET['lawId'] ?? $_GET['law_id'] ?? null,
+                'sectionId' => $_GET['sectionId'] ?? $_GET['section_id'] ?? null,
+            ]
+            : readLegalCommentaryJsonBody();
+        $controller = createLegalCommentaryController($db);
+
+        Response::success($controller->handleReaderAnnotation($user['id'], $method, $payload));
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel atualizar as marcacoes.', $e);
+    }
+}
+
 function handleLegalCommentaryCommentRoute(PDO $db): void
 {
     try {
@@ -285,6 +327,7 @@ function handleLegalCommentaryAdminSaveRoute(PDO $db): void
         $controller = createLegalCommentaryController($db);
         $payload = readLegalCommentaryJsonBody();
         $payload['_admin_user_id'] = (string) $context['admin_user_id'];
+        $payload['_admin_user_role'] = (string) (($context['payload']['role'] ?? '') ?: '');
         $law = $controller->adminSave($payload);
         $articleCount = is_array($payload['articles'] ?? null) ? count($payload['articles']) : 0;
 

@@ -56,11 +56,6 @@ import {
     getAssetUrl,
     getVersionedAssetUrl,
 } from '@services/api';
-import {
-    listLegalCommentaryNotesForUser,
-    removeLegalCommentaryArticleNote,
-    type LegalCommentaryStoredNote,
-} from '@services/legal-commentary/legalCommentaryNotes';
 import { readerService } from '@services/materials';
 import { cardsService, formatMaskedCardLabelAscii, type SavedCard } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
@@ -79,7 +74,7 @@ import { planService } from '@services/plans';
 import { subscriptionsService } from '@services/subscriptions';
 import { clientLog } from '@services/monitoring/clientLog';
 import { buildQuestionPath } from '@services/seo';
-import { legalCommentaryApiService } from '@services/legal-commentary';
+import { legalCommentaryApiService, type LegalUserNote } from '@services/legal-commentary';
 import { normalizeCareerSelectorLabel } from '@services/filters';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import {
@@ -588,7 +583,7 @@ const Profile: React.FC = () => {
     const googleProfileButtonRef = React.useRef<HTMLDivElement>(null);
     const [hasSyncedBillingSnapshot, setHasSyncedBillingSnapshot] = useState(false);
     const [isSyncingBillingSnapshot, setIsSyncingBillingSnapshot] = useState(false);
-    const [lawNotes, setLawNotes] = useState<LegalCommentaryStoredNote[]>([]);
+    const [lawNotes, setLawNotes] = useState<LegalUserNote[]>([]);
     const [materialNotes, setMaterialNotes] = useState<MaterialNotebookNote[]>([]);
     const [favoriteLaws, setFavoriteLaws] = useState<LawSummary[]>([]);
     const [isLoadingFavoriteLaws, setIsLoadingFavoriteLaws] = useState(false);
@@ -783,11 +778,33 @@ const Profile: React.FC = () => {
     }, [activeTab, missingSavedQuestionIds]);
 
     React.useEffect(() => {
-        const frameId = window.requestAnimationFrame(() => {
-            setLawNotes(currentUserKey ? listLegalCommentaryNotesForUser(currentUserKey) : []);
-        });
+        let isMounted = true;
 
-        return () => window.cancelAnimationFrame(frameId);
+        if (!currentUserKey) {
+            setLawNotes([]);
+            return () => {
+                isMounted = false;
+            };
+        }
+
+        void legalCommentaryApiService.listUserNotes()
+            .then((notes) => {
+                if (isMounted) {
+                    setLawNotes(notes);
+                }
+            })
+            .catch((error) => {
+                clientLog.warn('profile.legal_notes.load_failed', {
+                    message: error instanceof Error ? error.message : String(error),
+                });
+                if (isMounted) {
+                    setLawNotes([]);
+                }
+            });
+
+        return () => {
+            isMounted = false;
+        };
     }, [currentUserKey]);
 
     const notebookEntries = React.useMemo<NotebookEntry[]>(() => {
@@ -841,12 +858,16 @@ const Profile: React.FC = () => {
         return [...questionEntries, ...legalEntries, ...materialEntries].sort((left, right) => right.timestamp - left.timestamp);
     }, [lawNotes, materialNotes, questions, userNotes]);
 
-    const handleRemoveLawNote = React.useCallback((articleId: string) => {
+    const handleRemoveLawNote = React.useCallback(async (articleId: string) => {
         if (!currentUserKey) return;
 
-        removeLegalCommentaryArticleNote(currentUserKey, articleId);
-        setLawNotes((currentNotes) => currentNotes.filter((note) => note.articleId !== articleId));
+        try {
+            await legalCommentaryApiService.deleteUserNote(articleId);
+            setLawNotes((currentNotes) => currentNotes.filter((note) => note.articleId !== articleId));
         addToast('Anotação removida.', 'success');
+        } catch {
+            addToast('Nao foi possivel remover a anotacao.', 'error');
+        }
     }, [addToast, currentUserKey]);
 
     const fetchFavoriteLaws = React.useCallback(async () => {

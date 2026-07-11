@@ -62,6 +62,32 @@ class LegalCommentaryController
         return $this->service->recordProgress($userId, $payload);
     }
 
+    public function handleNote(string $userId, string $method, array $payload): array
+    {
+        if (strtoupper($method) === 'GET') {
+            return $this->service->listUserNotes($userId);
+        }
+
+        if (!empty($payload['delete']) || (string) ($payload['action'] ?? '') === 'delete') {
+            return $this->service->deleteUserNote($userId, $payload);
+        }
+
+        return $this->service->saveUserNote($userId, $payload);
+    }
+
+    public function handleReaderAnnotation(string $userId, string $method, array $payload): array
+    {
+        if (strtoupper($method) === 'GET') {
+            return $this->service->getReaderAnnotation($userId, $payload);
+        }
+
+        if (!empty($payload['delete']) || (string) ($payload['action'] ?? '') === 'delete') {
+            return $this->service->deleteReaderAnnotation($userId, $payload);
+        }
+
+        return $this->service->saveReaderAnnotation($userId, $payload);
+    }
+
     public function handleComment(string $userId, string $userName, array $payload, string $userRole = ''): array
     {
         $action = (string) ($payload['action'] ?? 'create');

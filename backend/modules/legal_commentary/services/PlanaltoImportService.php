@@ -768,7 +768,9 @@ class PlanaltoImportService
             ];
         }
 
-        $saved = $this->repository->saveAdminPayload($mergedLaw);
+        // A parser can temporarily omit a legal unit. Synchronization must not
+        // delete an existing article, section or editorial as a side effect.
+        $saved = $this->repository->saveAdminPayload($mergedLaw, true);
         $syncStats = $this->calculateSyncStats($existingLaw, $saved);
         $message = ($syncStats['insertedArticles'] + $syncStats['changedArticles'] + $syncStats['revokedArticles']) > 0
             ? 'Lei sincronizada automaticamente a partir do Portal do Planalto com alteracoes registradas.'

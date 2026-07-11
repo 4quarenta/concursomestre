@@ -272,6 +272,8 @@ export const ENDPOINTS = {
         detail: 'legal-commentary/detail.php',
         favorite: 'legal-commentary/favorite.php',
         progress: 'legal-commentary/progress.php',
+        notes: 'legal-commentary/notes.php',
+        readerAnnotations: 'legal-commentary/reader-annotations.php',
         comment: 'legal-commentary/comment.php',
         adminList: 'legal-commentary/admin/list.php',
         adminDetail: 'legal-commentary/admin/detail.php',

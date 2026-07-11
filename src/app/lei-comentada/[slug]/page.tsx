@@ -405,9 +405,6 @@ const getSectionFavoriteStorageKey = (userKey: string, lawId: string) => `cm:leg
 const getTeacherCommentRequestStorageKey = (userKey: string, lawId: string) => (
   `cm:legal-commentary:teacher-comment-requests:${userKey}:${lawId}`
 );
-const getReaderMarkupStorageKey = (userKey: string, lawId: string, sectionId: string) => (
-  `cm:legal-commentary:reader-markup:${userKey || 'guest'}:${lawId}:${sectionId}`
-);
 const buildSectionReadingKey = (section: Pick<LawSectionSummary, 'id' | 'fromArticle' | 'toArticle'>) => {
   const from = String(section.fromArticle || '').trim();
   const to = String(section.toArticle || from).trim();
@@ -449,25 +446,6 @@ const matchesReaderCommandElement = (element: HTMLElement, command: 'bold' | 'it
   }
 
   return tagName === 'u' || element.style.textDecoration.includes('underline');
-};
-
-const readReaderMarkupHtml = (storageKey: string) => {
-  if (typeof window === 'undefined' || !storageKey) return '';
-  try {
-    return normalizeQuestionRichHtml(window.localStorage.getItem(storageKey) || '');
-  } catch {
-    return '';
-  }
-};
-
-const saveReaderMarkupHtml = (storageKey: string, markupHtml: string) => {
-  if (typeof window === 'undefined' || !storageKey) return;
-  window.localStorage.setItem(storageKey, normalizeQuestionRichHtml(markupHtml));
-};
-
-const clearReaderMarkupHtml = (storageKey: string) => {
-  if (typeof window === 'undefined' || !storageKey) return;
-  window.localStorage.removeItem(storageKey);
 };
 
 const readSectionReadingState = (userKey: string, lawId: string): SectionReadingState => {
@@ -2573,22 +2551,45 @@ const LawDetailPage: React.FC = () => {
     return sections[0] || null;
   }, [law, sectionFrom, sectionQueryId, sectionTo, sections]);
 
-  const readerMarkupKey = React.useMemo(() => (
-    law && activeSection
-      ? getReaderMarkupStorageKey(userId || 'guest', law.id, activeSection.id)
-      : ''
+  const readerAnnotationScope = React.useMemo(() => (
+    law && activeSection && userId
+      ? { lawId: String(law.id), sectionId: String(activeSection.id) }
+      : null
   ), [activeSection, law, userId]);
 
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
+  const readerMarkupKey = React.useMemo(() => (
+    readerAnnotationScope
+      ? `reader-annotation:${userId}:${readerAnnotationScope.lawId}:${readerAnnotationScope.sectionId}`
+      : ''
+  ), [readerAnnotationScope, userId]);
 
-    const frame = window.requestAnimationFrame(() => {
-      setSavedReaderMarkupHtml(readerMarkupKey ? readReaderMarkupHtml(readerMarkupKey) : '');
+  React.useEffect(() => {
+    let isMounted = true;
+
+    if (!readerAnnotationScope) {
+      setSavedReaderMarkupHtml('');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void legalCommentaryApiService.getReaderAnnotation(
+      readerAnnotationScope.lawId,
+      readerAnnotationScope.sectionId,
+    ).then((annotation) => {
+      if (!isMounted) return;
+      setSavedReaderMarkupHtml(normalizeQuestionRichHtml(annotation?.markupHtml || ''));
       setReaderMarkupVersion((current) => current + 1);
+    }).catch(() => {
+      if (isMounted) {
+        setSavedReaderMarkupHtml('');
+      }
     });
 
-    return () => window.cancelAnimationFrame(frame);
-  }, [readerMarkupKey]);
+    return () => {
+      isMounted = false;
+    };
+  }, [readerAnnotationScope]);
 
   const sanitizedHtml = React.useMemo(
     () => (savedReaderMarkupHtml ? normalizeQuestionRichHtml(savedReaderMarkupHtml) : ''),
@@ -4191,25 +4192,42 @@ const LawDetailPage: React.FC = () => {
     return () => document.removeEventListener('selectionchange', refreshReaderToolbarState);
   }, [refreshReaderToolbarState]);
 
-  const saveReaderMarkup = React.useCallback(() => {
-    if (!readerMarkupKey) return;
-    const markupHtml = syncReaderMarkupFromDom();
-    saveReaderMarkupHtml(readerMarkupKey, markupHtml);
-    setSavedReaderMarkupHtml(markupHtml);
-    addToast('Marcações salvas nesta seção.', 'success');
-  }, [addToast, readerMarkupKey, syncReaderMarkupFromDom]);
-
-  const resetReaderMarkup = React.useCallback(() => {
-    if (!readerMarkupKey) return;
-    clearReaderMarkupHtml(readerMarkupKey);
-    setSavedReaderMarkupHtml('');
-    clearReaderToolbarState();
-    if (typeof window !== 'undefined') {
-      window.getSelection()?.removeAllRanges();
+  const saveReaderMarkup = React.useCallback(async () => {
+    if (!readerAnnotationScope) {
+      addToast('Faca login para salvar suas marcacoes.', 'error');
+      return;
     }
-    setReaderMarkupVersion((current) => current + 1);
-    addToast('Marcações removidas. Texto original restaurado.', 'success');
-  }, [addToast, clearReaderToolbarState, readerMarkupKey]);
+    const markupHtml = syncReaderMarkupFromDom();
+    try {
+      const annotation = await legalCommentaryApiService.saveReaderAnnotation({
+        ...readerAnnotationScope,
+        markupHtml,
+      });
+      setSavedReaderMarkupHtml(normalizeQuestionRichHtml(annotation?.markupHtml || markupHtml));
+      addToast('Marcacoes salvas nesta secao.', 'success');
+    } catch {
+      addToast('Nao foi possivel salvar suas marcacoes.', 'error');
+    }
+  }, [addToast, readerAnnotationScope, syncReaderMarkupFromDom]);
+
+  const resetReaderMarkup = React.useCallback(async () => {
+    if (!readerAnnotationScope) return;
+    try {
+      await legalCommentaryApiService.deleteReaderAnnotation(
+        readerAnnotationScope.lawId,
+        readerAnnotationScope.sectionId,
+      );
+      setSavedReaderMarkupHtml('');
+      clearReaderToolbarState();
+      if (typeof window !== 'undefined') {
+        window.getSelection()?.removeAllRanges();
+      }
+      setReaderMarkupVersion((current) => current + 1);
+      addToast('Marcacoes removidas. Texto original restaurado.', 'success');
+    } catch {
+      addToast('Nao foi possivel remover suas marcacoes.', 'error');
+    }
+  }, [addToast, clearReaderToolbarState, readerAnnotationScope]);
 
   const totalRelatedQuestions = React.useMemo(() => activeSectionArticles.reduce(
     (sum, article) => sum + Number(article.relatedQuestionCount || article.questoesRelacionadas || 0),

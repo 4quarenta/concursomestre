@@ -62,6 +62,79 @@ interface LegalAdminUpdatesPayload {
   syncLogs: LegalSyncLog[];
 }
 
+export interface LegalUserNote {
+  id: string;
+  lawId: string;
+  articleId: string;
+  note: string;
+  updatedAt: number;
+  lawSlug?: string;
+  lawTitle?: string;
+  lawShortTitle?: string;
+  areaName?: string;
+  articleNumber?: string;
+  articleTitle?: string;
+}
+
+export interface LegalReaderAnnotation {
+  id: string;
+  lawId: string;
+  sectionId: string;
+  markupHtml: string;
+  updatedAt: number;
+}
+
+const normalizeLegalUserNote = (value: unknown): LegalUserNote | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const articleId = String(record.articleId ?? record.article_id ?? '').trim();
+  const note = String(record.note ?? record.body ?? '').trim();
+  if (!articleId || !note) {
+    return null;
+  }
+
+  const parsedTimestamp = Date.parse(String(record.updatedAt ?? record.updated_at ?? ''));
+  return {
+    id: String(record.id ?? `legal-note:${articleId}`),
+    lawId: String(record.lawId ?? record.law_id ?? ''),
+    articleId,
+    note,
+    updatedAt: Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now(),
+    lawSlug: String(record.lawSlug ?? record.law_slug ?? '').trim() || undefined,
+    lawTitle: String(record.lawTitle ?? record.law_title ?? '').trim() || undefined,
+    lawShortTitle: String(record.lawShortTitle ?? record.law_short_title ?? '').trim() || undefined,
+    areaName: String(record.areaName ?? record.area_name ?? '').trim() || undefined,
+    articleNumber: String(record.articleNumber ?? record.article_number ?? '').trim() || undefined,
+    articleTitle: String(record.articleTitle ?? record.article_title ?? '').trim() || undefined,
+  };
+};
+
+const normalizeLegalReaderAnnotation = (value: unknown): LegalReaderAnnotation | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const lawId = String(record.lawId ?? record.law_id ?? '').trim();
+  const sectionId = String(record.sectionId ?? record.section_id ?? '').trim();
+  const markupHtml = String(record.markupHtml ?? record.markup_html ?? '').trim();
+  if (!lawId || !sectionId || !markupHtml) {
+    return null;
+  }
+
+  const parsedTimestamp = Date.parse(String(record.updatedAt ?? record.updated_at ?? ''));
+  return {
+    id: String(record.id ?? `legal-reader-annotation:${lawId}:${sectionId}`),
+    lawId,
+    sectionId,
+    markupHtml,
+    updatedAt: Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now(),
+  };
+};
+
 export interface PlanaltoCatalogItem {
   url: string;
   label: string;
@@ -831,6 +904,55 @@ export const legalCommentaryApiService = {
     });
     invalidateLegalUserStateCaches();
     return readLegalMutationProgress(response);
+  },
+
+  async listUserNotes(): Promise<LegalUserNote[]> {
+    const response = await apiClient.get(ENDPOINTS.legalCommentary.notes);
+    const envelope = assertApiSuccess<{ notes?: unknown[] }>(response, 'Nao foi possivel carregar suas anotacoes.');
+    const payload = unwrap<{ notes?: unknown[] }>(envelope.raw, {});
+    return (Array.isArray(payload.notes) ? payload.notes : [])
+      .map(normalizeLegalUserNote)
+      .filter((note): note is LegalUserNote => Boolean(note));
+  },
+
+  async saveUserNote(input: { lawId: string; articleId: string; note: string }): Promise<LegalUserNote | null> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.notes, input);
+    const envelope = assertApiSuccess<{ deleted?: boolean; note?: unknown }>(response, 'Nao foi possivel salvar sua anotacao.');
+    const payload = unwrap<{ deleted?: boolean; note?: unknown }>(envelope.raw, {});
+    return payload.deleted ? null : normalizeLegalUserNote(payload.note);
+  },
+
+  async deleteUserNote(articleId: string): Promise<void> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.notes, {
+      action: 'delete',
+      articleId,
+    });
+    assertApiSuccess(response, 'Nao foi possivel excluir sua anotacao.');
+  },
+
+  async getReaderAnnotation(lawId: string, sectionId: string): Promise<LegalReaderAnnotation | null> {
+    const response = await apiClient.get(ENDPOINTS.legalCommentary.readerAnnotations, {
+      params: { lawId, sectionId },
+    });
+    const envelope = assertApiSuccess<{ annotation?: unknown }>(response, 'Nao foi possivel carregar suas marcacoes.');
+    const payload = unwrap<{ annotation?: unknown }>(envelope.raw, {});
+    return normalizeLegalReaderAnnotation(payload.annotation);
+  },
+
+  async saveReaderAnnotation(input: { lawId: string; sectionId: string; markupHtml: string }): Promise<LegalReaderAnnotation | null> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.readerAnnotations, input);
+    const envelope = assertApiSuccess<{ deleted?: boolean; annotation?: unknown }>(response, 'Nao foi possivel salvar suas marcacoes.');
+    const payload = unwrap<{ deleted?: boolean; annotation?: unknown }>(envelope.raw, {});
+    return payload.deleted ? null : normalizeLegalReaderAnnotation(payload.annotation);
+  },
+
+  async deleteReaderAnnotation(lawId: string, sectionId: string): Promise<void> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.readerAnnotations, {
+      action: 'delete',
+      lawId,
+      sectionId,
+    });
+    assertApiSuccess(response, 'Nao foi possivel remover suas marcacoes.');
   },
 
   async addUserComment(input: { articleId: string; body: string; parentCommentId?: string | null }): Promise<LegalUserCommentSubmissionResult> {

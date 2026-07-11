@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -34,11 +36,45 @@ class LegalCommentaryRepository
     }
 
     /**
+     * Runtime paths are read/write only. Schema creation belongs exclusively
+     * to the explicit database migration for this module.
+     */
+    private function assertSchemaReady(): void
+    {
+        SchemaReadiness::assertTablesAndColumns($this->db, 'Lei Comentada', [
+            'legal_areas' => ['id', 'slug', 'name'],
+            'laws' => ['id', 'legal_area_id', 'slug', 'official_url', 'created_by_user_id'],
+            'law_sections' => ['id', 'law_id', 'slug', 'assunto_filter_id'],
+            'law_articles' => ['id', 'law_id', 'section_id', 'official_text', 'assunto_filter_id', 'official_status'],
+            'law_article_blocks' => ['id', 'law_article_id', 'block_uid', 'text'],
+            'law_versions' => ['id', 'law_id', 'version_number', 'source_hash'],
+            'law_article_versions' => ['id', 'law_version_id', 'article_number', 'change_type'],
+            'teacher_comments' => ['id', 'law_article_id', 'body'],
+            'article_doutrina' => ['id', 'law_article_id', 'summary'],
+            'article_jurisprudence' => ['id', 'law_article_id', 'summary'],
+            'article_sumulas' => ['id', 'law_article_id', 'text'],
+            'article_exam_tips' => ['id', 'law_article_id', 'body'],
+            'law_section_editorials' => ['id', 'law_id', 'section_id'],
+            'legal_user_favorites' => ['id', 'user_id', 'target_type', 'target_id'],
+            'legal_user_comments' => ['id', 'law_article_id', 'user_id', 'body'],
+            'legal_content_reactions' => ['id', 'target_key', 'user_id'],
+            'legal_user_progress' => ['id', 'user_id', 'law_id'],
+            'legal_user_notes' => ['id', 'user_id', 'law_id', 'law_article_id', 'body'],
+            'legal_user_reader_annotations' => ['id', 'user_id', 'law_id', 'law_section_id', 'markup_html'],
+            'law_updates' => ['id', 'law_id', 'change_type'],
+            'legal_sync_logs' => ['id', 'status', 'started_at'],
+            'sync_errors' => ['id', 'message'],
+            'legal_ai_batch_runs' => ['id', 'law_id', 'status'],
+            'legal_ai_batch_items' => ['id', 'batch_run_id', 'law_article_id', 'status'],
+        ]);
+    }
+
+    /**
      * Garante o schema minimo do produto no primeiro acesso local.
      *
      * @since 1.0.0
      */
-    public function ensureSchema(): void
+    public function applySchemaMigration(): void
     {
         $this->db->exec(
             "CREATE TABLE IF NOT EXISTS legal_areas (
@@ -409,6 +445,40 @@ class LegalCommentaryRepository
         );
 
         $this->db->exec(
+            "CREATE TABLE IF NOT EXISTS legal_user_notes (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(80) NOT NULL,
+                law_id BIGINT UNSIGNED NOT NULL,
+                law_article_id BIGINT UNSIGNED NOT NULL,
+                body LONGTEXT NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_legal_user_note (user_id, law_article_id),
+                INDEX idx_legal_user_notes_user (user_id, updated_at),
+                INDEX idx_legal_user_notes_law (law_id, law_article_id),
+                CONSTRAINT fk_legal_user_notes_law FOREIGN KEY (law_id) REFERENCES laws(id) ON DELETE CASCADE,
+                CONSTRAINT fk_legal_user_notes_article FOREIGN KEY (law_article_id) REFERENCES law_articles(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        $this->db->exec(
+            "CREATE TABLE IF NOT EXISTS legal_user_reader_annotations (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(80) NOT NULL,
+                law_id BIGINT UNSIGNED NOT NULL,
+                law_section_id BIGINT UNSIGNED NOT NULL,
+                markup_html LONGTEXT NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_legal_user_reader_annotation (user_id, law_section_id),
+                INDEX idx_legal_user_reader_annotations_user (user_id, updated_at),
+                INDEX idx_legal_user_reader_annotations_law (law_id, law_section_id),
+                CONSTRAINT fk_legal_user_reader_annotations_law FOREIGN KEY (law_id) REFERENCES laws(id) ON DELETE CASCADE,
+                CONSTRAINT fk_legal_user_reader_annotations_section FOREIGN KEY (law_section_id) REFERENCES law_sections(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        $this->db->exec(
             "CREATE TABLE IF NOT EXISTS law_updates (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 law_id BIGINT UNSIGNED NOT NULL,
@@ -509,12 +579,12 @@ class LegalCommentaryRepository
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         );
 
-        $this->ensureSchemaMigrations();
+        $this->applySchemaCompatibilityMigration();
         $this->seedDefaultAreas();
         $this->normalizeInitialImportUpdateFlags();
     }
 
-    private function ensureSchemaMigrations(): void
+    private function applySchemaCompatibilityMigration(): void
     {
         $this->ensureLawPublishedAtDateTime();
         $this->ensureColumnExists('laws', 'last_imported_at', 'last_imported_at DATETIME NULL AFTER source_name');
@@ -527,6 +597,8 @@ class LegalCommentaryRepository
         $this->ensureColumnExists('laws', 'published_by_user_id', 'published_by_user_id VARCHAR(64) NULL AFTER updated_by_user_id');
         $this->ensureColumnExists('law_articles', 'section_id', 'section_id BIGINT UNSIGNED NULL AFTER law_id');
         $this->ensureColumnExists('law_articles', 'assunto_filter_id', 'assunto_filter_id BIGINT UNSIGNED NULL AFTER related_question_count');
+        $this->ensureColumnExists('law_articles', 'official_status', "official_status VARCHAR(30) NOT NULL DEFAULT 'active' AFTER is_recently_changed");
+        $this->ensureColumnExists('law_articles', 'official_status_changed_at', 'official_status_changed_at DATETIME NULL AFTER official_status');
         $this->ensureColumnExists('law_section_editorials', 'section_id', 'section_id BIGINT UNSIGNED NULL AFTER law_id');
         $this->ensureColumnExists('article_sumulas', 'is_binding', 'is_binding TINYINT(1) NOT NULL DEFAULT 0 AFTER text');
         $this->ensureColumnExists('article_jurisprudence', 'target_json', 'target_json LONGTEXT NULL AFTER source_url');
@@ -545,18 +617,9 @@ class LegalCommentaryRepository
         $this->ensureColumnExists('legal_user_comments', 'parent_comment_id', 'parent_comment_id BIGINT UNSIGNED NULL AFTER law_article_id');
         $this->ensureColumnExists('filters', 'taxonomy_level', "taxonomy_level VARCHAR(20) NULL AFTER meta_materia");
         $this->copyArticleAssuntoFromLegacyTopicColumn();
-        $this->dropIndexIfExists('law_articles', 'idx_law_articles_subject');
-        $this->dropIndexIfExists('law_articles', 'idx_law_articles_topic');
-        $this->dropIndexIfExists('law_section_editorials', 'uniq_law_section_editorial');
-        $this->dropColumnIfExists('law_articles', 'subject_filter_id');
-        $this->dropColumnIfExists('law_articles', 'hierarchy_json');
-        $this->dropColumnIfExists('law_articles', 'blocks_json');
-        $this->dropColumnIfExists('law_articles', 'topic_filter_id');
-        $this->dropColumnIfExists('law_section_editorials', 'section_key');
-        $this->normalizeSectionEditorialRows();
-        $this->ensureLegalContentReactionUniqueness();
         $this->ensureIndexExists('law_articles', 'idx_law_articles_assunto', 'CREATE INDEX idx_law_articles_assunto ON law_articles (assunto_filter_id)');
-        $this->ensureIndexExists('law_section_editorials', 'uniq_law_section_editorial_section', 'CREATE UNIQUE INDEX uniq_law_section_editorial_section ON law_section_editorials (law_id, section_id)');
+        $this->ensureIndexExists('law_articles', 'idx_law_articles_official_status', 'CREATE INDEX idx_law_articles_official_status ON law_articles (law_id, official_status)');
+        $this->ensureLegalContentReactionUniquenessWithoutDeletion();
     }
 
     private function ensureLawPublishedAtDateTime(): void
@@ -600,42 +663,15 @@ class LegalCommentaryRepository
         }
     }
 
-    private function dropColumnIfExists(string $table, string $column): void
-    {
-        $allowedTables = ['law_articles', 'law_section_editorials'];
-        $allowedColumns = ['subject_filter_id', 'hierarchy_json', 'blocks_json', 'topic_filter_id', 'section_key'];
-        if (!in_array($table, $allowedTables, true) || !in_array($column, $allowedColumns, true)) {
-            return;
-        }
-
-        $stmt = $this->db->prepare("SHOW COLUMNS FROM {$table} LIKE :column");
-        $stmt->execute([':column' => $column]);
-
-        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
-            $this->db->exec("ALTER TABLE {$table} DROP COLUMN {$column}");
-        }
-    }
-
-    private function dropIndexIfExists(string $table, string $indexName): void
-    {
-        $allowedTables = ['law_articles', 'law_section_editorials'];
-        $allowedIndexes = ['idx_law_articles_subject', 'idx_law_articles_topic', 'uniq_law_section_editorial'];
-        if (!in_array($table, $allowedTables, true) || !in_array($indexName, $allowedIndexes, true)) {
-            return;
-        }
-
-        $stmt = $this->db->prepare("SHOW INDEX FROM {$table} WHERE Key_name = :index_name");
-        $stmt->execute([':index_name' => $indexName]);
-
-        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
-            $this->db->exec("ALTER TABLE {$table} DROP INDEX {$indexName}");
-        }
-    }
-
     private function ensureIndexExists(string $table, string $indexName, string $createSql): void
     {
         $allowedTables = ['law_articles', 'law_section_editorials', 'legal_content_reactions'];
-        $allowedIndexes = ['idx_law_articles_assunto', 'uniq_law_section_editorial_section', 'uniq_legal_content_reaction'];
+        $allowedIndexes = [
+            'idx_law_articles_assunto',
+            'idx_law_articles_official_status',
+            'uniq_law_section_editorial_section',
+            'uniq_legal_content_reaction',
+        ];
         if (!in_array($table, $allowedTables, true) || !in_array($indexName, $allowedIndexes, true)) {
             return;
         }
@@ -648,50 +684,27 @@ class LegalCommentaryRepository
         }
     }
 
-    private function ensureLegalContentReactionUniqueness(): void
+    private function ensureLegalContentReactionUniquenessWithoutDeletion(): void
     {
-        $this->db->exec(
-            'DELETE duplicate_reactions
-             FROM legal_content_reactions duplicate_reactions
-             INNER JOIN legal_content_reactions kept_reactions
-                ON kept_reactions.target_key = duplicate_reactions.target_key
-               AND kept_reactions.user_id = duplicate_reactions.user_id
-               AND kept_reactions.id > duplicate_reactions.id'
-        );
+        $duplicates = (int) $this->db->query(
+            'SELECT COUNT(*)
+             FROM (
+                SELECT target_key, user_id
+                FROM legal_content_reactions
+                GROUP BY target_key, user_id
+                HAVING COUNT(*) > 1
+             ) duplicate_pairs'
+        )->fetchColumn();
+
+        if ($duplicates > 0) {
+            return;
+        }
 
         $this->ensureIndexExists(
             'legal_content_reactions',
             'uniq_legal_content_reaction',
             'CREATE UNIQUE INDEX uniq_legal_content_reaction ON legal_content_reactions (target_key, user_id)'
         );
-    }
-
-    private function normalizeSectionEditorialRows(): void
-    {
-        if (!$this->columnExists('law_section_editorials', 'section_id')) {
-            return;
-        }
-
-        $this->db->exec('DELETE FROM law_section_editorials WHERE section_id IS NULL OR section_id = 0');
-
-        $rows = $this->db->query(
-            'SELECT law_id, section_id, MAX(id) AS keep_id, COUNT(*) AS total
-             FROM law_section_editorials
-             GROUP BY law_id, section_id
-             HAVING total > 1'
-        )->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        foreach ($rows as $row) {
-            $stmt = $this->db->prepare(
-                'DELETE FROM law_section_editorials
-                 WHERE law_id = :law_id AND section_id = :section_id AND id <> :keep_id'
-            );
-            $stmt->execute([
-                ':law_id' => (int) $row['law_id'],
-                ':section_id' => (int) $row['section_id'],
-                ':keep_id' => (int) $row['keep_id'],
-            ]);
-        }
     }
 
     private function copyArticleAssuntoFromLegacyTopicColumn(): void
@@ -739,14 +752,9 @@ class LegalCommentaryRepository
         ];
 
         $stmt = $this->db->prepare(
-            "INSERT INTO legal_areas (slug, name, description, icon_name, icon_tone, sort_order)
+            "INSERT IGNORE INTO legal_areas (slug, name, description, icon_name, icon_tone, sort_order)
              VALUES (:slug, :name, :description, :icon_name, :icon_tone, :sort_order)
-             ON DUPLICATE KEY UPDATE
-                name = VALUES(name),
-                description = VALUES(description),
-                icon_name = VALUES(icon_name),
-                icon_tone = VALUES(icon_tone),
-                sort_order = VALUES(sort_order)"
+            "
         );
 
         foreach ($areas as $area) {
@@ -990,7 +998,7 @@ class LegalCommentaryRepository
 
     public function fetchHome(?string $userId = null): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $areas = $this->fetchAreas();
         $favorites = $this->fetchFavoriteTargets($userId);
@@ -1034,7 +1042,7 @@ class LegalCommentaryRepository
 
     public function search(string $query, ?string $userId = null): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $normalizedQuery = trim($query);
         if ($normalizedQuery === '') {
@@ -1110,7 +1118,7 @@ class LegalCommentaryRepository
 
     public function fetchLawDetail(string $identifier, ?string $userId = null, bool $incrementAccess = false): ?array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             $this->lawStatsSql() . "
@@ -1214,7 +1222,7 @@ class LegalCommentaryRepository
 
     public function fetchLawOutline(string $identifier, ?string $userId = null): ?array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "SELECT l.id, l.slug, l.title, l.short_title, l.law_number, l.status, l.published_at
@@ -1500,7 +1508,7 @@ class LegalCommentaryRepository
 
     public function hasFavorite(string $userId, string $targetType, string $targetId): bool
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "SELECT 1 FROM legal_user_favorites
@@ -1518,7 +1526,7 @@ class LegalCommentaryRepository
 
     public function toggleFavorite(string $userId, string $targetType, string $targetId): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "SELECT id FROM legal_user_favorites
@@ -1551,9 +1559,252 @@ class LegalCommentaryRepository
         return ['isFavorite' => true];
     }
 
+    public function fetchUserNotes(string $userId): array
+    {
+        $this->assertSchemaReady();
+
+        $stmt = $this->db->prepare(
+            "SELECT
+                note.id,
+                note.law_id,
+                note.law_article_id,
+                note.body,
+                note.created_at,
+                note.updated_at,
+                law.slug AS law_slug,
+                law.title AS law_title,
+                law.short_title AS law_short_title,
+                area.name AS area_name,
+                article.article_number,
+                article.title AS article_title
+             FROM legal_user_notes note
+             INNER JOIN laws law ON law.id = note.law_id
+             INNER JOIN law_articles article ON article.id = note.law_article_id AND article.law_id = law.id
+             INNER JOIN legal_areas area ON area.id = law.legal_area_id
+             WHERE note.user_id = :user_id
+             ORDER BY note.updated_at DESC, note.id DESC"
+        );
+        $stmt->execute([':user_id' => $userId]);
+
+        return array_map([$this, 'mapUserNote'], $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+    }
+
+    public function saveUserNote(string $userId, array $payload): array
+    {
+        $this->assertSchemaReady();
+
+        $lawId = (int) ($payload['lawId'] ?? $payload['law_id'] ?? 0);
+        $articleId = (int) ($payload['articleId'] ?? $payload['article_id'] ?? 0);
+        $body = trim((string) ($payload['body'] ?? $payload['note'] ?? ''));
+
+        if ($lawId <= 0 || $articleId <= 0) {
+            throw new InvalidArgumentException('Informe a lei e o artigo da anotacao.');
+        }
+        if (mb_strlen($body) > 10000) {
+            throw new InvalidArgumentException('A anotacao pode ter no maximo 10.000 caracteres.');
+        }
+
+        $articleStmt = $this->db->prepare(
+            'SELECT id FROM law_articles WHERE id = :article_id AND law_id = :law_id LIMIT 1'
+        );
+        $articleStmt->execute([':article_id' => $articleId, ':law_id' => $lawId]);
+        if (!(int) $articleStmt->fetchColumn()) {
+            throw new InvalidArgumentException('O artigo nao pertence a lei informada.');
+        }
+
+        if ($body === '') {
+            $this->deleteUserNoteByArticle($userId, $articleId);
+            return ['deleted' => true, 'articleId' => (string) $articleId];
+        }
+
+        $stmt = $this->db->prepare(
+            "INSERT INTO legal_user_notes (user_id, law_id, law_article_id, body)
+             VALUES (:user_id, :law_id, :law_article_id, :body)
+             ON DUPLICATE KEY UPDATE body = VALUES(body), updated_at = NOW()"
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':law_id' => $lawId,
+            ':law_article_id' => $articleId,
+            ':body' => $body,
+        ]);
+
+        $note = $this->fetchUserNoteByArticle($userId, $articleId);
+        if ($note === null) {
+            throw new RuntimeException('Nao foi possivel recarregar a anotacao apos salvar.');
+        }
+
+        return ['deleted' => false, 'note' => $note];
+    }
+
+    public function deleteUserNoteByArticle(string $userId, int $articleId): bool
+    {
+        $this->assertSchemaReady();
+
+        $stmt = $this->db->prepare(
+            'DELETE FROM legal_user_notes WHERE user_id = :user_id AND law_article_id = :article_id'
+        );
+        $stmt->execute([':user_id' => $userId, ':article_id' => $articleId]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    private function fetchUserNoteByArticle(string $userId, int $articleId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                note.id,
+                note.law_id,
+                note.law_article_id,
+                note.body,
+                note.created_at,
+                note.updated_at,
+                law.slug AS law_slug,
+                law.title AS law_title,
+                law.short_title AS law_short_title,
+                area.name AS area_name,
+                article.article_number,
+                article.title AS article_title
+             FROM legal_user_notes note
+             INNER JOIN laws law ON law.id = note.law_id
+             INNER JOIN law_articles article ON article.id = note.law_article_id AND article.law_id = law.id
+             INNER JOIN legal_areas area ON area.id = law.legal_area_id
+             WHERE note.user_id = :user_id AND note.law_article_id = :article_id
+             LIMIT 1"
+        );
+        $stmt->execute([':user_id' => $userId, ':article_id' => $articleId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $this->mapUserNote($row) : null;
+    }
+
+    private function mapUserNote(array $row): array
+    {
+        return [
+            'id' => (string) ($row['id'] ?? ''),
+            'lawId' => (string) ($row['law_id'] ?? ''),
+            'articleId' => (string) ($row['law_article_id'] ?? ''),
+            'note' => (string) ($row['body'] ?? ''),
+            'updatedAt' => $this->normalizeDateTime($row['updated_at'] ?? null),
+            'lawSlug' => (string) ($row['law_slug'] ?? ''),
+            'lawTitle' => (string) ($row['law_title'] ?? ''),
+            'lawShortTitle' => (string) ($row['law_short_title'] ?? ''),
+            'areaName' => (string) ($row['area_name'] ?? ''),
+            'articleNumber' => (string) ($row['article_number'] ?? ''),
+            'articleTitle' => (string) ($row['article_title'] ?? ''),
+        ];
+    }
+
+    public function fetchReaderAnnotation(string $userId, int $lawId, int $sectionId): ?array
+    {
+        $this->assertSchemaReady();
+
+        $stmt = $this->db->prepare(
+            'SELECT id, law_id, law_section_id, markup_html, updated_at
+             FROM legal_user_reader_annotations
+             WHERE user_id = :user_id AND law_id = :law_id AND law_section_id = :section_id
+             LIMIT 1'
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':law_id' => $lawId,
+            ':section_id' => $sectionId,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $this->mapReaderAnnotation($row) : null;
+    }
+
+    public function saveReaderAnnotation(string $userId, array $payload): array
+    {
+        $this->assertSchemaReady();
+
+        $lawId = (int) ($payload['lawId'] ?? $payload['law_id'] ?? 0);
+        $sectionId = (int) ($payload['sectionId'] ?? $payload['section_id'] ?? 0);
+        $markupHtml = $this->sanitizeReaderMarkup((string) ($payload['markupHtml'] ?? $payload['markup_html'] ?? ''));
+
+        if ($lawId <= 0 || $sectionId <= 0) {
+            throw new InvalidArgumentException('Informe a lei e a secao das marcacoes.');
+        }
+        if (mb_strlen($markupHtml) > 100000) {
+            throw new InvalidArgumentException('As marcacoes desta secao excedem o limite de 100.000 caracteres.');
+        }
+
+        $sectionStmt = $this->db->prepare(
+            'SELECT id FROM law_sections WHERE id = :section_id AND law_id = :law_id LIMIT 1'
+        );
+        $sectionStmt->execute([':section_id' => $sectionId, ':law_id' => $lawId]);
+        if (!(int) $sectionStmt->fetchColumn()) {
+            throw new InvalidArgumentException('A secao nao pertence a lei informada.');
+        }
+
+        if ($markupHtml === '') {
+            $this->deleteReaderAnnotation($userId, $lawId, $sectionId);
+            return ['deleted' => true, 'sectionId' => (string) $sectionId];
+        }
+
+        $stmt = $this->db->prepare(
+            "INSERT INTO legal_user_reader_annotations (user_id, law_id, law_section_id, markup_html)
+             VALUES (:user_id, :law_id, :section_id, :markup_html)
+             ON DUPLICATE KEY UPDATE markup_html = VALUES(markup_html), updated_at = NOW()"
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':law_id' => $lawId,
+            ':section_id' => $sectionId,
+            ':markup_html' => $markupHtml,
+        ]);
+
+        $annotation = $this->fetchReaderAnnotation($userId, $lawId, $sectionId);
+        if ($annotation === null) {
+            throw new RuntimeException('Nao foi possivel recarregar as marcacoes apos salvar.');
+        }
+
+        return ['deleted' => false, 'annotation' => $annotation];
+    }
+
+    public function deleteReaderAnnotation(string $userId, int $lawId, int $sectionId): bool
+    {
+        $this->assertSchemaReady();
+
+        $stmt = $this->db->prepare(
+            'DELETE FROM legal_user_reader_annotations
+             WHERE user_id = :user_id AND law_id = :law_id AND law_section_id = :section_id'
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':law_id' => $lawId,
+            ':section_id' => $sectionId,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    private function mapReaderAnnotation(array $row): array
+    {
+        return [
+            'id' => (string) ($row['id'] ?? ''),
+            'lawId' => (string) ($row['law_id'] ?? ''),
+            'sectionId' => (string) ($row['law_section_id'] ?? ''),
+            'markupHtml' => (string) ($row['markup_html'] ?? ''),
+            'updatedAt' => $this->normalizeDateTime($row['updated_at'] ?? null),
+        ];
+    }
+
+    private function sanitizeReaderMarkup(string $markupHtml): string
+    {
+        $allowedTags = '<p><br><strong><b><em><i><u><span><div><ul><ol><li><mark>';
+        $clean = strip_tags(trim($markupHtml), $allowedTags);
+        $clean = preg_replace('/\s+on[a-z]+\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/iu', '', $clean) ?? '';
+        $clean = preg_replace('/\s+(?:href|src)\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/iu', '', $clean) ?? '';
+        $clean = preg_replace('/(?:javascript:|data:text\/html|expression\s*\(|@import|url\s*\()/iu', '', $clean) ?? '';
+
+        return trim($clean);
+    }
+
     public function recordLawView(string $userId, string $lawId): void
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "INSERT INTO legal_user_progress (user_id, law_id, viewed_article_ids_json, last_viewed_at, progress_percent)
@@ -1568,7 +1819,7 @@ class LegalCommentaryRepository
 
     public function recordArticleView(string $userId, string $lawId, string $articleId): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
         $startedTransaction = !$this->db->inTransaction();
 
         try {
@@ -1643,7 +1894,7 @@ class LegalCommentaryRepository
 
     public function createUserComment(string $userId, string $userName, string $articleId, string $body, ?string $parentCommentId = null): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $trimmedBody = trim($body);
         if ($trimmedBody === '') {
@@ -1678,7 +1929,7 @@ class LegalCommentaryRepository
 
     public function updateUserComment(string $userId, string $commentId, string $body): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
         $comment = $this->fetchUserCommentById((int) $commentId, false);
         if (!$comment) {
             throw new RuntimeException('Comentario nao encontrado.');
@@ -1701,7 +1952,7 @@ class LegalCommentaryRepository
 
     public function deleteUserComment(string $userId, string $commentId): void
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
         $comment = $this->fetchUserCommentById((int) $commentId, false);
         if (!$comment) {
             throw new RuntimeException('Comentario nao encontrado.');
@@ -1719,7 +1970,7 @@ class LegalCommentaryRepository
 
     public function reportUserComment(string $userId, string $commentId): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $normalizedUserId = trim($userId);
         $normalizedCommentId = (int) $commentId;
@@ -1758,7 +2009,7 @@ class LegalCommentaryRepository
 
     public function setContentReaction(string $userId, string $targetKey, ?string $reactionValue): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $normalizedTargetKey = trim($targetKey);
         if ($normalizedTargetKey === '') {
@@ -1810,7 +2061,7 @@ class LegalCommentaryRepository
 
     public function fetchContentReactionSummary(string $targetKey, ?string $userId = null): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $normalizedTargetKey = trim($targetKey);
         if ($normalizedTargetKey !== '') {
@@ -1913,7 +2164,7 @@ class LegalCommentaryRepository
 
     public function fetchAdminList(?string $query = null): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
         $favorites = [];
         $progress = [];
 
@@ -1922,21 +2173,31 @@ class LegalCommentaryRepository
         }, $this->fetchLawRows($query, false));
     }
 
-    public function saveAdminPayload(array $payload): array
+    public function saveAdminPayload(array $payload, bool $preserveUnmatched = false): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
         $this->db->beginTransaction();
 
         try {
             $lawId = $this->upsertLaw($payload);
-            $sectionIdMap = $this->syncSections($lawId, is_array($payload['sections'] ?? null) ? $payload['sections'] : [], is_array($payload['articles'] ?? null) ? $payload['articles'] : []);
-            $articleIdMap = $this->syncArticles($lawId, $payload['articles'] ?? [], $sectionIdMap);
+            $sectionIdMap = $this->syncSections(
+                $lawId,
+                is_array($payload['sections'] ?? null) ? $payload['sections'] : [],
+                is_array($payload['articles'] ?? null) ? $payload['articles'] : [],
+                $preserveUnmatched
+            );
+            $articleIdMap = $this->syncArticles($lawId, $payload['articles'] ?? [], $sectionIdMap, $preserveUnmatched);
             $this->syncNestedContent($articleIdMap, $payload['teacherComments'] ?? [], 'teacher_comments');
             $this->syncNestedContent($articleIdMap, $payload['jurisprudence'] ?? [], 'article_jurisprudence');
             $this->syncNestedContent($articleIdMap, $payload['examTips'] ?? [], 'article_exam_tips');
             $this->syncNestedContent($articleIdMap, $payload['sumulas'] ?? [], 'article_sumulas');
             if (array_key_exists('sectionEditorials', $payload)) {
-                $this->syncSectionEditorials($lawId, is_array($payload['sectionEditorials']) ? $payload['sectionEditorials'] : [], $sectionIdMap);
+                $this->syncSectionEditorials(
+                    $lawId,
+                    is_array($payload['sectionEditorials']) ? $payload['sectionEditorials'] : [],
+                    $sectionIdMap,
+                    $preserveUnmatched
+                );
             }
             $this->db->commit();
 
@@ -1951,7 +2212,7 @@ class LegalCommentaryRepository
 
     public function deleteLaw(int $lawId, string $adminUserId = '', string $adminRole = ''): void
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
         $ownership = $this->findLawOwnership($lawId);
         if ($ownership === null) {
             throw new InvalidArgumentException('Lei nao encontrada.');
@@ -1988,7 +2249,7 @@ class LegalCommentaryRepository
 
     public function replaceArticleEditorialContent(int $lawId, int $articleId, array $editorial): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         if ($lawId <= 0 || $articleId <= 0) {
             throw new InvalidArgumentException('Lei ou artigo invalido para persistir o editorial.');
@@ -2042,7 +2303,7 @@ class LegalCommentaryRepository
 
     public function replaceSectionEditorialContent(int $lawId, array $editorial): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         if ($lawId <= 0) {
             throw new InvalidArgumentException('Lei invalida para persistir a analise do capitulo.');
@@ -2076,7 +2337,7 @@ class LegalCommentaryRepository
 
     public function fetchArticleEditorialSnapshot(int $lawId, int $articleId): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $articleStmt = $this->db->prepare(
             "SELECT *
@@ -2114,7 +2375,7 @@ class LegalCommentaryRepository
 
     public function createAiBatchRun(int $lawId, ?string $adminUserId = null, array $articleIds = []): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $articleRows = $this->fetchBatchArticleRows($lawId, $articleIds);
         if (empty($articleRows)) {
@@ -2165,7 +2426,7 @@ class LegalCommentaryRepository
 
     public function fetchAiBatchRun(int $runId): ?array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "SELECT *
@@ -2185,7 +2446,7 @@ class LegalCommentaryRepository
 
     public function fetchLatestAiBatchRunForLaw(int $lawId): ?array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "SELECT *
@@ -2202,7 +2463,7 @@ class LegalCommentaryRepository
 
     public function createRetryAiBatchRun(int $sourceRunId, ?string $adminUserId = null): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "SELECT law_id
@@ -2236,7 +2497,7 @@ class LegalCommentaryRepository
 
     public function stopAiBatchRun(int $runId): ?array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "SELECT id
@@ -2305,7 +2566,7 @@ class LegalCommentaryRepository
 
     public function markAiBatchItemRunning(int $runId, int $articleId): void
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $this->db->prepare(
             "UPDATE legal_ai_batch_items
@@ -2325,7 +2586,7 @@ class LegalCommentaryRepository
 
     public function recordAiBatchItemResult(int $runId, int $articleId, array $result): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $this->db->beginTransaction();
 
@@ -2424,7 +2685,7 @@ class LegalCommentaryRepository
 
     public function findLawIdByOfficialUrl(string $url): ?int
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "SELECT id
@@ -2440,7 +2701,7 @@ class LegalCommentaryRepository
 
     public function fetchCatalogSnapshotByOfficialUrl(): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->query(
             "SELECT
@@ -2477,7 +2738,7 @@ class LegalCommentaryRepository
 
     public function ensureLegalTaxonomies(string $subjectName, ?string $topicName = null): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $subjectId = $this->findOrCreateAssunto($subjectName, null, true, null, 'materia');
         $topicId = null;
@@ -2499,7 +2760,7 @@ class LegalCommentaryRepository
         ?string $assuntoName = null
     ): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $subjectId = $this->findOrCreateAssunto($subjectName, null, true, null, 'materia');
         $lawTopicId = $this->findOrCreateAssunto($lawTopicName, $subjectId, false, $subjectName, 'topico');
@@ -2535,7 +2796,7 @@ class LegalCommentaryRepository
         int $changedArticles = 0,
         int $revokedArticles = 0
     ): void {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $stmt = $this->db->prepare(
             "INSERT INTO legal_sync_logs (
@@ -2587,7 +2848,7 @@ class LegalCommentaryRepository
 
     public function fetchSyncLogs(?int $lawId = null, int $limit = 80): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         if ($lawId !== null && $lawId > 0) {
             $stmt = $this->db->prepare(
@@ -2612,7 +2873,7 @@ class LegalCommentaryRepository
 
     public function recordSyncOutcome(?array $previousLaw, array $savedLaw, string $sourceUrl, string $rawSnapshot, array $syncStats): void
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $lawId = (int) ($savedLaw['id'] ?? 0);
         if ($lawId <= 0) {
@@ -2784,7 +3045,7 @@ class LegalCommentaryRepository
 
     public function recordSyncFailure(?int $lawId, string $sourceUrl, Throwable $error): void
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $this->recordSyncLog(
             $lawId,
@@ -2813,7 +3074,7 @@ class LegalCommentaryRepository
 
     public function fetchSyncCandidates(int $limit = 10): array
     {
-        $this->ensureSchema();
+        $this->assertSchemaReady();
 
         $safeLimit = max(1, min($limit, 50));
         $stmt = $this->db->query(
@@ -3229,6 +3490,16 @@ class LegalCommentaryRepository
             }
         }
 
+        $actorId = trim((string) ($payload['_admin_user_id'] ?? ''));
+        $actorRole = strtolower(trim((string) ($payload['_admin_user_role'] ?? '')));
+        if ($id > 0 && $actorId !== '' && $actorRole !== 'admin') {
+            $ownership = $this->findLawOwnership($id);
+            $ownerId = trim((string) ($ownership['created_by_user_id'] ?? ''));
+            if ($ownerId === '' || $ownerId !== $actorId) {
+                throw new DomainException('Staff so pode alterar leis criadas por ele.');
+            }
+        }
+
         $fields = [
             ':legal_area_id' => $areaId,
             ':law_topic_filter_id' => $this->nullableInt($payload['lawTopicFilterId'] ?? $payload['law_topic_filter_id'] ?? null),
@@ -3327,7 +3598,7 @@ class LegalCommentaryRepository
         return (int) $stmt->fetchColumn();
     }
 
-    private function syncArticles(int $lawId, array $articles, array $sectionIdMap = []): array
+    private function syncArticles(int $lawId, array $articles, array $sectionIdMap = [], bool $preserveUnmatched = false): array
     {
         $incomingIds = [];
         $map = [];
@@ -3386,6 +3657,8 @@ class LegalCommentaryRepository
                 ':doctrine_json' => $this->jsonEncode($article['doctrine'] ?? []),
                 ':official_anchor' => $this->boundedString($article['officialAnchor'] ?? null, 180),
                 ':is_recently_changed' => !empty($article['isRecentlyChanged']) ? 1 : 0,
+                ':official_status' => 'active',
+                ':official_status_changed_at' => null,
                 ':related_question_count' => max(0, (int) ($article['relatedQuestionCount'] ?? 0)),
                 ':assunto_filter_id' => $this->nullableInt($articleAssuntoFilterId),
                 ':sort_order' => (int) ($article['sortOrder'] ?? $index),
@@ -3406,6 +3679,8 @@ class LegalCommentaryRepository
                          doctrine_json = :doctrine_json,
                          official_anchor = :official_anchor,
                          is_recently_changed = :is_recently_changed,
+                         official_status = :official_status,
+                         official_status_changed_at = :official_status_changed_at,
                          related_question_count = :related_question_count,
                          assunto_filter_id = :assunto_filter_id,
                          sort_order = :sort_order
@@ -3417,12 +3692,12 @@ class LegalCommentaryRepository
                     "INSERT INTO law_articles (
                         law_id, section_id, slug, article_number, title, official_text, paragraphs_json,
                         jurisprudence_notes_json, doctrine_json,
-                        official_anchor, is_recently_changed, related_question_count,
+                        official_anchor, is_recently_changed, official_status, official_status_changed_at, related_question_count,
                         assunto_filter_id, sort_order
                     ) VALUES (
                         :law_id, :section_id, :slug, :article_number, :title, :official_text, :paragraphs_json,
                         :jurisprudence_notes_json, :doctrine_json,
-                        :official_anchor, :is_recently_changed, :related_question_count,
+                        :official_anchor, :is_recently_changed, :official_status, :official_status_changed_at, :related_question_count,
                         :assunto_filter_id, :sort_order
                     )"
                 );
@@ -3436,10 +3711,18 @@ class LegalCommentaryRepository
             $this->syncArticleBlocks($id, is_array($blocks) ? $blocks : []);
         }
 
-        if (!empty($incomingIds)) {
+        if (!empty($incomingIds) && !$preserveUnmatched) {
             $placeholders = implode(',', array_fill(0, count($incomingIds), '?'));
             $this->db->prepare("DELETE FROM law_articles WHERE law_id = ? AND id NOT IN ($placeholders)")
                 ->execute(array_merge([$lawId], $incomingIds));
+        } elseif (!empty($incomingIds)) {
+            $placeholders = implode(',', array_fill(0, count($incomingIds), '?'));
+            $this->db->prepare(
+                "UPDATE law_articles
+                 SET official_status = CASE WHEN official_status = 'active' THEN 'needs_review' ELSE official_status END,
+                     official_status_changed_at = CASE WHEN official_status = 'active' THEN NOW() ELSE official_status_changed_at END
+                 WHERE law_id = ? AND id NOT IN ($placeholders)"
+            )->execute(array_merge([$lawId], $incomingIds));
         }
 
         return $map;
@@ -3575,7 +3858,7 @@ class LegalCommentaryRepository
         return $number !== '' ? $number : 'sem-numero';
     }
 
-    private function syncSections(int $lawId, array $sections, array $articles = []): array
+    private function syncSections(int $lawId, array $sections, array $articles = [], bool $preserveUnmatched = false): array
     {
         $incomingIds = [];
         $map = [];
@@ -3664,11 +3947,11 @@ class LegalCommentaryRepository
             }
         }
 
-        if (!empty($incomingIds)) {
+        if (!empty($incomingIds) && !$preserveUnmatched) {
             $placeholders = implode(',', array_fill(0, count($incomingIds), '?'));
             $this->db->prepare("DELETE FROM law_sections WHERE law_id = ? AND id NOT IN ($placeholders)")
                 ->execute(array_merge([$lawId], $incomingIds));
-        } elseif (empty($articles)) {
+        } elseif (empty($articles) && !$preserveUnmatched) {
             $this->db->prepare('DELETE FROM law_sections WHERE law_id = :law_id')->execute([':law_id' => $lawId]);
         }
 
@@ -3706,7 +3989,7 @@ class LegalCommentaryRepository
         return array_values(array_unique(array_filter($candidates, static fn ($value) => $value !== '')));
     }
 
-    private function syncSectionEditorials(int $lawId, array $items, array $sectionIdMap = []): void
+    private function syncSectionEditorials(int $lawId, array $items, array $sectionIdMap = [], bool $preserveUnmatched = false): void
     {
         $incomingSectionIds = [];
 
@@ -3724,9 +4007,13 @@ class LegalCommentaryRepository
             $incomingSectionIds[] = $sectionId;
         }
 
-        if (empty($incomingSectionIds)) {
+        if (empty($incomingSectionIds) && !$preserveUnmatched) {
             $this->db->prepare('DELETE FROM law_section_editorials WHERE law_id = :law_id')
                 ->execute([':law_id' => $lawId]);
+            return;
+        }
+
+        if ($preserveUnmatched) {
             return;
         }
 
