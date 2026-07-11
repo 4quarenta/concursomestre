@@ -49,6 +49,11 @@ interface SeoSitemapBuildResult {
 const QUESTION_PAGE_LIMIT = 500;
 const MAX_QUESTION_PAGES = 100;
 const FETCH_TIMEOUT_MS = 5000;
+const QUESTION_PAGE_CONCURRENCY = 4;
+const SITEMAP_CACHE_TTL_MS = 10 * 60 * 1000;
+
+let sitemapBuildCache: { expiresAt: number; result: SeoSitemapBuildResult } | null = null;
+let sitemapBuildInFlight: Promise<SeoSitemapBuildResult> | null = null;
 
 export const SEO_PUBLIC_ROUTES = [
   { path: '/', changeFrequency: 'daily', priority: 1 },
@@ -208,36 +213,44 @@ const fetchMarketingLandingPages = async (): Promise<MarketingLandingPage[]> => 
   }
 };
 
+const fetchQuestionPage = async (page: number): Promise<{ rows: Question[]; total: number }> => {
+  const url = new URL('questionsList', getApiBaseUrl());
+  url.searchParams.set('page', String(page));
+  url.searchParams.set('limit', String(QUESTION_PAGE_LIMIT));
+
+  const payload = readEnvelopeData<{ rows?: Question[]; total?: number }>(
+    await fetchJson(url.toString()),
+    { rows: [], total: 0 },
+  );
+
+  return {
+    rows: Array.isArray(payload.rows) ? payload.rows : [],
+    total: Number(payload.total || 0),
+  };
+};
+
 const fetchAllQuestions = async (): Promise<Question[]> => {
-  const questions: Question[] = [];
-  let currentPage = 1;
-  let total = Number.POSITIVE_INFINITY;
-
   try {
-    while (questions.length < total && currentPage <= MAX_QUESTION_PAGES) {
-      const url = new URL('questionsList', getApiBaseUrl());
-      url.searchParams.set('page', String(currentPage));
-      url.searchParams.set('limit', String(QUESTION_PAGE_LIMIT));
+    const firstPage = await fetchQuestionPage(1);
+    const totalPages = Math.min(
+      MAX_QUESTION_PAGES,
+      Math.max(1, Math.ceil(firstPage.total / QUESTION_PAGE_LIMIT)),
+    );
+    const questions = [...firstPage.rows];
 
-      const payload = readEnvelopeData<{ rows?: Question[]; total?: number }>(
-        await fetchJson(url.toString()),
-        { rows: [], total: 0 },
+    for (let page = 2; page <= totalPages; page += QUESTION_PAGE_CONCURRENCY) {
+      const batch = Array.from(
+        { length: Math.min(QUESTION_PAGE_CONCURRENCY, totalPages - page + 1) },
+        (_, index) => page + index,
       );
-      const rows = Array.isArray(payload.rows) ? payload.rows : [];
-      total = Number(payload.total || rows.length || 0);
-
-      if (rows.length === 0) {
-        break;
-      }
-
-      questions.push(...rows);
-      currentPage += 1;
+      const results = await Promise.all(batch.map(fetchQuestionPage));
+      results.forEach((result) => questions.push(...result.rows));
     }
-  } catch {
-    return questions;
-  }
 
-  return questions;
+    return questions;
+  } catch {
+    return [];
+  }
 };
 
 const createCoverageBucket = (total: number, indexed: number): SitemapCoverageBucket => ({
@@ -260,6 +273,44 @@ const createEntry = (
   category,
 });
 
+const resolveLastModified = (item: unknown, fallback: Date): Date => {
+  if (!item || typeof item !== 'object') {
+    return fallback;
+  }
+
+  const record = item as Record<string, unknown>;
+  const candidates = [
+    record.updatedAt,
+    record.updated_at,
+    record.publishedAt,
+    record.published_at,
+    record.createdAt,
+    record.created_at,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate instanceof Date && !Number.isNaN(candidate.getTime())) {
+      return candidate;
+    }
+
+    if (typeof candidate === 'number' && candidate > 0) {
+      const parsed = new Date(candidate < 10_000_000_000 ? candidate * 1000 : candidate);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+
+    if (typeof candidate === 'string' && candidate.trim() !== '') {
+      const parsed = new Date(candidate);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+  }
+
+  return fallback;
+};
+
 const buildDynamicEntries = <TItem,>(
   items: TItem[],
   getId: (item: TItem) => unknown,
@@ -279,7 +330,13 @@ const buildDynamicEntries = <TItem,>(
       continue;
     }
 
-    indexedEntries.push(createEntry(getPath(item), category, 'weekly', 0.6, now));
+    indexedEntries.push(createEntry(
+      getPath(item),
+      category,
+      'weekly',
+      0.6,
+      resolveLastModified(item, now),
+    ));
   }
 
   return {
@@ -289,7 +346,7 @@ const buildDynamicEntries = <TItem,>(
   };
 };
 
-export const buildSeoSitemapEntries = async (): Promise<SeoSitemapBuildResult> => {
+const buildSeoSitemapEntriesUncached = async (): Promise<SeoSitemapBuildResult> => {
   const now = new Date();
   const [questions, rankings, materials, landingPages] = await Promise.all([
     fetchAllQuestions(),
@@ -359,6 +416,39 @@ export const buildSeoSitemapEntries = async (): Promise<SeoSitemapBuildResult> =
       landings: landingResult.missingLabels.slice(0, 10),
     },
   };
+};
+
+/**
+ * Limpa o cache quando uma mutacao editorial precisar refletir no sitemap sem
+ * aguardar o TTL. A invalidacao e opt-in para nao acoplar toda mutacao ao SEO.
+ */
+export const invalidateSeoSitemapCache = (): void => {
+  sitemapBuildCache = null;
+};
+
+export const buildSeoSitemapEntries = async (): Promise<SeoSitemapBuildResult> => {
+  const now = Date.now();
+  if (sitemapBuildCache && sitemapBuildCache.expiresAt > now) {
+    return sitemapBuildCache.result;
+  }
+
+  if (sitemapBuildInFlight) {
+    return sitemapBuildInFlight;
+  }
+
+  sitemapBuildInFlight = buildSeoSitemapEntriesUncached()
+    .then((result) => {
+      sitemapBuildCache = {
+        result,
+        expiresAt: Date.now() + SITEMAP_CACHE_TTL_MS,
+      };
+      return result;
+    })
+    .finally(() => {
+      sitemapBuildInFlight = null;
+    });
+
+  return sitemapBuildInFlight;
 };
 
 export const buildSeoSitemapStatus = async (): Promise<SeoSitemapStatusPayload> => {
