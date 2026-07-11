@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -273,105 +275,22 @@ class NotificationsRepository
         )));
     }
 
-    /**
-     * Garante que o schema usado pelo servico atual exista tambem em bancos
-     * instalados a partir do SQL legado.
-     *
-     * @since 1.0.0
-     */
     private function ensureSchema(): void
     {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS notifications (
-                id VARCHAR(64) PRIMARY KEY,
-                user_id VARCHAR(64) NOT NULL,
-                title VARCHAR(255) NULL,
-                message TEXT NULL,
-                type VARCHAR(20) NOT NULL DEFAULT 'info',
-                category VARCHAR(40) NOT NULL DEFAULT 'system',
-                is_read TINYINT(1) NOT NULL DEFAULT 0,
-                link VARCHAR(255) NULL,
-                evidence_url VARCHAR(500) NULL,
-                deleted_at DATETIME NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_notifications_user_visible (user_id, deleted_at, created_at),
-                INDEX idx_notifications_user_unread (user_id, is_read, deleted_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-
-        $this->ensureColumn('category', "ALTER TABLE notifications ADD COLUMN category VARCHAR(40) NOT NULL DEFAULT 'system' AFTER type");
-        $this->ensureColumn('is_read', "ALTER TABLE notifications ADD COLUMN is_read TINYINT(1) NOT NULL DEFAULT 0 AFTER type");
-        $this->ensureColumn('link', "ALTER TABLE notifications ADD COLUMN link VARCHAR(255) NULL AFTER is_read");
-        $this->ensureColumn('evidence_url', "ALTER TABLE notifications ADD COLUMN evidence_url VARCHAR(500) NULL AFTER link");
-        $this->ensureColumn('deleted_at', "ALTER TABLE notifications ADD COLUMN deleted_at DATETIME NULL AFTER evidence_url");
-        $this->ensureColumn('created_at', "ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
-
-        $this->ensureIdColumnCapacity();
-        $this->ensureIndex('idx_notifications_user_visible', 'CREATE INDEX idx_notifications_user_visible ON notifications (user_id, deleted_at, created_at)');
-        $this->ensureIndex('idx_notifications_user_unread', 'CREATE INDEX idx_notifications_user_unread ON notifications (user_id, is_read, deleted_at)');
-    }
-
-    private function ensureColumn(string $column, string $alterSql): void
-    {
-        if ($this->columnExists($column)) {
-            return;
-        }
-
-        $this->db->exec($alterSql);
-    }
-
-    private function columnExists(string $column): bool
-    {
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'notifications'
-              AND COLUMN_NAME = :column
-        ");
-        $stmt->execute([':column' => $column]);
-
-        return (int) $stmt->fetchColumn() > 0;
-    }
-
-    private function ensureIdColumnCapacity(): void
-    {
-        $stmt = $this->db->prepare("
-            SELECT CHARACTER_MAXIMUM_LENGTH
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'notifications'
-              AND COLUMN_NAME = 'id'
-            LIMIT 1
-        ");
-        $stmt->execute();
-        $length = (int) $stmt->fetchColumn();
-
-        if ($length > 0 && $length < 64) {
-            $this->db->exec('ALTER TABLE notifications MODIFY id VARCHAR(64) NOT NULL');
-        }
-    }
-
-    private function ensureIndex(string $indexName, string $createSql): void
-    {
-        if ($this->indexExists($indexName)) {
-            return;
-        }
-
-        $this->db->exec($createSql);
-    }
-
-    private function indexExists(string $indexName): bool
-    {
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.STATISTICS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'notifications'
-              AND INDEX_NAME = :index_name
-        ");
-        $stmt->execute([':index_name' => $indexName]);
-
-        return (int) $stmt->fetchColumn() > 0;
+        SchemaReadiness::assertTablesAndColumns($this->db, 'notificacoes', [
+            'notifications' => [
+                'id',
+                'user_id',
+                'title',
+                'message',
+                'type',
+                'category',
+                'is_read',
+                'link',
+                'evidence_url',
+                'deleted_at',
+                'created_at',
+            ],
+        ]);
     }
 }

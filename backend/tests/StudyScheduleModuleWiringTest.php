@@ -57,8 +57,8 @@ assertContainsStudySchedule(
 
 assertContainsStudySchedule(
     $base . '/modules/study_schedule/repositories/StudyScheduleRepository.php',
-    'CREATE TABLE IF NOT EXISTS user_study_schedules',
-    'Study schedule repository must provision persistent storage'
+    'SchemaReadiness::assertTablesAndColumns',
+    'Study schedule repository must require a migrated schema without provisioning storage during requests'
 );
 
 assertContainsStudySchedule(
@@ -68,9 +68,9 @@ assertContainsStudySchedule(
 );
 
 assertContainsStudySchedule(
-    $base . '/database/migrations/20260501_user_study_schedules.sql',
+    $base . '/database/migrations/20260711_000200_runtime_schema_foundation.php',
     'user_study_schedules',
-    'Study schedule migration must exist'
+    'Study schedule migration must exist in the versioned migration runner'
 );
 
 fwrite(STDOUT, "Study schedule module wiring assertions passed.\n");

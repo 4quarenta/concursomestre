@@ -15,6 +15,7 @@ require_once __DIR__ . '/JWTAuth.php';
 require_once __DIR__ . '/AuthConfig.php';
 require_once __DIR__ . '/AuthCookies.php';
 require_once __DIR__ . '/AuthLogger.php';
+require_once __DIR__ . '/../database/SchemaReadiness.php';
 
 /**
  * Garante que as tabelas de sessão e refresh token existam antes de operar auth.
@@ -24,51 +25,10 @@ require_once __DIR__ . '/AuthLogger.php';
  */
 function ensureAuthTables(PDO $db): void
 {
-    $db->exec(
-        "CREATE TABLE IF NOT EXISTS auth_sessions (
-            id CHAR(36) PRIMARY KEY,
-            user_id VARCHAR(64) NOT NULL,
-            status VARCHAR(20) NOT NULL DEFAULT 'active',
-            csrf_token_hash CHAR(64) NOT NULL,
-            user_agent TEXT NULL,
-            ip_address VARCHAR(45) NULL,
-            issuer_host VARCHAR(255) NULL,
-            created_at DATETIME NOT NULL,
-            updated_at DATETIME NOT NULL,
-            last_seen_at DATETIME NULL,
-            last_refreshed_at DATETIME NULL,
-            expires_at DATETIME NOT NULL,
-            revoked_at DATETIME NULL,
-            revoked_reason VARCHAR(120) NULL,
-            reuse_detected_at DATETIME NULL,
-            INDEX idx_auth_sessions_user (user_id),
-            INDEX idx_auth_sessions_status (status),
-            INDEX idx_auth_sessions_expires (expires_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-    );
-
-    $db->exec(
-        "CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
-            id CHAR(36) PRIMARY KEY,
-            session_id CHAR(36) NOT NULL,
-            token_hash CHAR(64) NOT NULL UNIQUE,
-            previous_token_id CHAR(36) NULL,
-            rotated_to_token_id CHAR(36) NULL,
-            status VARCHAR(20) NOT NULL DEFAULT 'active',
-            created_at DATETIME NOT NULL,
-            expires_at DATETIME NOT NULL,
-            used_at DATETIME NULL,
-            rotated_at DATETIME NULL,
-            revoked_at DATETIME NULL,
-            revoked_reason VARCHAR(120) NULL,
-            reuse_detected_at DATETIME NULL,
-            ip_address VARCHAR(45) NULL,
-            user_agent TEXT NULL,
-            INDEX idx_auth_refresh_session (session_id),
-            INDEX idx_auth_refresh_status (status),
-            INDEX idx_auth_refresh_expires (expires_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-    );
+    SchemaReadiness::assertTablesAndColumns($db, 'autenticacao', [
+        'auth_sessions' => ['id', 'user_id', 'status', 'csrf_token_hash', 'expires_at'],
+        'auth_refresh_tokens' => ['id', 'session_id', 'token_hash', 'status', 'expires_at'],
+    ]);
 }
 
 /**

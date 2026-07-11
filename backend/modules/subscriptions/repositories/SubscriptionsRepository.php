@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -650,80 +652,21 @@ class SubscriptionsRepository
         return $row ?: null;
     }
 
-    /**
-     * Garante a tabela de idempotencia dos webhooks financeiros em bases novas.
-     *
-     * @since 1.0.0
-     */
     private function ensureProviderWebhookEventsSchema(): void
     {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS provider_webhook_events (
-                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                provider VARCHAR(40) NOT NULL,
-                event_id VARCHAR(191) NOT NULL,
-                event_type VARCHAR(120) NULL,
-                object_id VARCHAR(191) NULL,
-                payload_hash VARCHAR(128) NULL,
-                status VARCHAR(30) NOT NULL DEFAULT 'processing',
-                event_created_at DATETIME NULL,
-                processed_at DATETIME NULL,
-                error_message VARCHAR(1000) NULL,
-                attempt_count INT NOT NULL DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE KEY uq_provider_webhook_event (provider, event_id),
-                INDEX idx_provider_webhook_status (provider, status, updated_at),
-                INDEX idx_provider_webhook_object (provider, object_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-
-        $this->ensureWebhookColumn('event_type', "ALTER TABLE provider_webhook_events ADD COLUMN event_type VARCHAR(120) NULL AFTER event_id");
-        $this->ensureWebhookColumn('object_id', "ALTER TABLE provider_webhook_events ADD COLUMN object_id VARCHAR(191) NULL AFTER event_type");
-        $this->ensureWebhookColumn('payload_hash', "ALTER TABLE provider_webhook_events ADD COLUMN payload_hash VARCHAR(128) NULL AFTER object_id");
-        $this->ensureWebhookColumn('status', "ALTER TABLE provider_webhook_events ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'processing' AFTER payload_hash");
-        $this->ensureWebhookColumn('event_created_at', "ALTER TABLE provider_webhook_events ADD COLUMN event_created_at DATETIME NULL AFTER status");
-        $this->ensureWebhookColumn('processed_at', "ALTER TABLE provider_webhook_events ADD COLUMN processed_at DATETIME NULL AFTER event_created_at");
-        $this->ensureWebhookColumn('error_message', "ALTER TABLE provider_webhook_events ADD COLUMN error_message VARCHAR(1000) NULL AFTER processed_at");
-        $this->ensureWebhookColumn('attempt_count', "ALTER TABLE provider_webhook_events ADD COLUMN attempt_count INT NOT NULL DEFAULT 1 AFTER error_message");
-        $this->ensureWebhookColumn('created_at', "ALTER TABLE provider_webhook_events ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER attempt_count");
-        $this->ensureWebhookColumn('updated_at', "ALTER TABLE provider_webhook_events ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
-
-        $this->ensureWebhookIndex('uq_provider_webhook_event', 'CREATE UNIQUE INDEX uq_provider_webhook_event ON provider_webhook_events (provider, event_id)');
-        $this->ensureWebhookIndex('idx_provider_webhook_status', 'CREATE INDEX idx_provider_webhook_status ON provider_webhook_events (provider, status, updated_at)');
-        $this->ensureWebhookIndex('idx_provider_webhook_object', 'CREATE INDEX idx_provider_webhook_object ON provider_webhook_events (provider, object_id)');
-    }
-
-    private function ensureWebhookColumn(string $column, string $ddl): void
-    {
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'provider_webhook_events'
-              AND COLUMN_NAME = :column
-        ");
-        $stmt->execute([':column' => $column]);
-
-        if ((int) $stmt->fetchColumn() === 0) {
-            $this->db->exec($ddl);
-        }
-    }
-
-    private function ensureWebhookIndex(string $indexName, string $ddl): void
-    {
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.STATISTICS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'provider_webhook_events'
-              AND INDEX_NAME = :index_name
-        ");
-        $stmt->execute([':index_name' => $indexName]);
-
-        if ((int) $stmt->fetchColumn() === 0) {
-            $this->db->exec($ddl);
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'webhooks de pagamento', [
+            'provider_webhook_events' => [
+                'id',
+                'provider',
+                'event_id',
+                'event_type',
+                'object_id',
+                'payload_hash',
+                'status',
+                'attempt_count',
+                'updated_at',
+            ],
+        ]);
     }
 
     /**

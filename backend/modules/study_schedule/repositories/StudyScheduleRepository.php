@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -23,26 +25,15 @@ class StudyScheduleRepository
     }
 
     /**
-     * Cria a tabela operacional caso o deploy ainda nao tenha aplicado migration.
+     * Confirma que a migration operacional ja foi aplicada.
      *
      * @since 1.0.0
      */
     public function ensureSchema(): void
     {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS user_study_schedules (
-                user_id VARCHAR(36) PRIMARY KEY,
-                form_json MEDIUMTEXT NOT NULL,
-                plan_json MEDIUMTEXT NULL,
-                generated_at DATETIME NULL,
-                saved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_user_study_schedules_saved_at (saved_at),
-                CONSTRAINT fk_user_study_schedules_user
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
+        SchemaReadiness::assertTablesAndColumns($this->db, 'cronograma de estudos', [
+            'user_study_schedules' => ['user_id', 'form_json', 'saved_at'],
+        ]);
     }
 
     /**
