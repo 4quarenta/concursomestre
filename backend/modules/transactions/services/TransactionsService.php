@@ -16,6 +16,7 @@ require_once __DIR__ . '/../validators/TransactionsValidator.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/TransactionsRefundSupport.php';
+require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
 require_once __DIR__ . '/../../../config/stripe.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../config/gamification_helper.php';
@@ -139,8 +140,12 @@ class TransactionsService
             $effectiveStatus = $this->normalizeTransactionStatus($row);
             $revenueRecognized = $this->isRevenueRecognizedTransaction($row);
             $amount = (float) $row['amount'];
-            $platformFee = $revenueRecognized ? (float) $row['platform_fee'] : 0.0;
-            $netAmount = $revenueRecognized ? ($amount - $platformFee) : 0.0;
+            $refundedAmount = $this->resolveRefundedAmount($row, $effectiveStatus, $amount);
+            $recognizedAmount = $revenueRecognized ? max(0.0, $amount - $refundedAmount) : 0.0;
+            $platformFee = $revenueRecognized && $amount > 0
+                ? round(((float) $row['platform_fee']) * ($recognizedAmount / $amount), 2)
+                : 0.0;
+            $netAmount = $revenueRecognized ? ($recognizedAmount - $platformFee) : 0.0;
             $buyerEmail = trim((string) ($row['payer_email'] ?? ''));
             if ($buyerEmail === '') {
                 $buyerEmail = trim((string) ($row['buyerEmail'] ?? ''));
@@ -180,6 +185,8 @@ class TransactionsService
                 'sellerId' => $row['seller_id'],
                 'sellerName' => $row['sellerName'] ?: 'Plataforma',
                 'amount' => $amount,
+                'refundedAmount' => $refundedAmount,
+                'recognizedAmount' => $recognizedAmount,
                 'platformFee' => $platformFee,
                 'netAmount' => $netAmount,
                 'status' => $effectiveStatus ?: 'completed',
@@ -258,6 +265,12 @@ class TransactionsService
             trim((string) ($transaction['provider_refund_id'] ?? '')) !== ''
             || trim((string) ($transaction['refunded_at'] ?? '')) !== ''
         ) {
+            if (
+                (float) ($transaction['refunded_amount'] ?? 0) > 0
+                && (float) ($transaction['refunded_amount'] ?? 0) < (float) ($transaction['amount'] ?? 0)
+            ) {
+                return 'partially_refunded';
+            }
             return 'refunded';
         }
 
@@ -274,7 +287,20 @@ class TransactionsService
 
     private function isRevenueRecognizedTransaction(array $transaction): bool
     {
-        return in_array($this->normalizeTransactionStatus($transaction), ['approved', 'completed'], true);
+        return in_array($this->normalizeTransactionStatus($transaction), ['approved', 'completed', 'partially_refunded'], true);
+    }
+
+    private function resolveRefundedAmount(array $transaction, string $status, float $amount): float
+    {
+        if ($status === 'refunded') {
+            return $amount;
+        }
+
+        if ($status === 'partially_refunded') {
+            return min($amount, max(0.0, (float) ($transaction['refunded_amount'] ?? 0)));
+        }
+
+        return 0.0;
     }
 
     private function buildStatusFilterCondition(string $status): ?array
@@ -293,7 +319,7 @@ class TransactionsService
 
         if ($normalizedStatus === 'refunded') {
             return [
-                'condition' => "(t.status = 'refunded' OR COALESCE(t.provider_refund_id, '') <> '' OR t.refunded_at IS NOT NULL)",
+                'condition' => "(t.status IN ('refunded', 'partially_refunded') OR COALESCE(t.provider_refund_id, '') <> '' OR t.refunded_at IS NOT NULL)",
                 'params' => [],
             ];
         }
@@ -365,6 +391,7 @@ class TransactionsService
             $finalAmount,
             $platformFee
         );
+        FinancialLedger::syncTransactionById($this->db, $transactionId, 'material_purchase');
         $this->repository->incrementMaterialSalesCount((string) $material['id']);
 
         if (!empty($couponResult['valid']) && !empty($couponResult['coupon']['code'])) {

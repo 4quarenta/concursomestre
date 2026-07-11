@@ -22,6 +22,7 @@ require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../config/stripe.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /**
  * Calcula a hierarquia do plano por nome.
@@ -681,37 +682,13 @@ function resolveBestAutomaticCoupon(array $coupons, float $amount, array $contex
  */
 function ensureCouponReservationsTable(PDO $db): void
 {
-    static $ensured = false;
-
-    if ($ensured) {
-        return;
-    }
-
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS coupon_reservations (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            coupon_code VARCHAR(80) NOT NULL,
-            user_id VARCHAR(64) NOT NULL,
-            checkout_attempt_id VARCHAR(120) NOT NULL,
-            provider VARCHAR(40) NOT NULL DEFAULT 'stripe',
-            provider_session_id VARCHAR(255) NULL,
-            provider_subscription_id VARCHAR(255) NULL,
-            provider_invoice_id VARCHAR(255) NULL,
-            status VARCHAR(40) NOT NULL DEFAULT 'reserved',
-            reserved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            expires_at DATETIME NOT NULL,
-            consumed_at DATETIME NULL,
-            released_at DATETIME NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_coupon_reservation_attempt (coupon_code, user_id, checkout_attempt_id, provider),
-            INDEX idx_coupon_reservations_active (coupon_code, status, expires_at),
-            INDEX idx_coupon_reservations_provider_session (provider_session_id),
-            INDEX idx_coupon_reservations_provider_subscription (provider_subscription_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
-
-    $ensured = true;
+    SchemaReadiness::assertTablesAndColumns($db, 'reservas de cupom', [
+        'coupon_reservations' => [
+            'coupon_code', 'user_id', 'checkout_attempt_id', 'provider',
+            'provider_session_id', 'provider_subscription_id', 'provider_invoice_id',
+            'status', 'reserved_at', 'expires_at', 'consumed_at', 'released_at',
+        ],
+    ]);
 }
 
 /**

@@ -18,6 +18,7 @@
 require_once dirname(__DIR__, 3) . '/config/payment_provider.php';
 require_once dirname(__DIR__, 3) . '/config/stripe.php';
 require_once dirname(__DIR__, 3) . '/modules/subscriptions/services/SubscriptionsBillingSupport.php';
+require_once dirname(__DIR__, 2) . '/finance/services/FinancialLedger.php';
 
 /**
  * Normaliza o rotulo do tipo de referencia bancaria do reembolso.
@@ -69,6 +70,8 @@ function extractStripeRefundDetails($refund): array
     }
 
     return [
+        'refund_amount' => isset($refund->amount) ? round(((float) $refund->amount) / 100, 2) : null,
+        'currency' => strtoupper(trim((string) ($refund->currency ?? 'BRL'))),
         'refund_status' => trim((string) ($refund->status ?? '')),
         'refund_created_at' => !empty($refund->created) ? date('Y-m-d H:i:s', (int) $refund->created) : null,
         'destination_type' => $destinationType,
@@ -1011,12 +1014,20 @@ function cancelStripeSubscriptionImmediatelyAfterRefund(PDO $db, array $transact
  */
 function markTransactionAsRefunded(PDO $db, string $transactionId, ?string $refundReason, array $refundResult): void
 {
+    $refundAmount = round((float) ($refundResult['provider_refund_details']['refund_amount'] ?? 0), 2);
     $stmt = $db->prepare("
         UPDATE transactions
-        SET status = 'refunded',
+        SET status = CASE
+                WHEN :status_refunded_amount > 0 AND :status_refunded_amount < amount THEN 'partially_refunded'
+                ELSE 'refunded'
+            END,
             refund_reason = :refund_reason,
             refund_requested_at = NOW(),
             refunded_at = NOW(),
+            refunded_amount = CASE
+                WHEN :stored_refunded_amount > 0 THEN :stored_refunded_amount
+                ELSE amount
+            END,
             provider_refund_id = :provider_refund_id,
             provider_payment_intent_id = CASE
                 WHEN provider_payment_intent_id IS NULL OR provider_payment_intent_id = ''
@@ -1034,12 +1045,16 @@ function markTransactionAsRefunded(PDO $db, string $transactionId, ?string $refu
 
     $stmt->execute([
         ':refund_reason' => $refundReason,
+        ':status_refunded_amount' => $refundAmount,
+        ':stored_refunded_amount' => $refundAmount,
         ':provider_refund_id' => trim((string) ($refundResult['provider_refund_id'] ?? '')),
         ':provider_payment_intent_id' => trim((string) ($refundResult['provider_payment_intent_id'] ?? '')),
         ':provider_refund_details_json' => json_encode($refundResult['provider_refund_details'] ?? [], JSON_UNESCAPED_UNICODE),
         ':provider_invoice_id' => trim((string) ($refundResult['provider_invoice_id'] ?? '')),
         ':id' => $transactionId,
     ]);
+
+    FinancialLedger::syncTransactionById($db, (int) $transactionId, 'refund_gateway');
 }
 
 /**

@@ -68,6 +68,9 @@ class AdminAnalyticsRepository
         $refundedAtSelect = $this->columnExists('transactions', 'refunded_at')
             ? 'refunded_at'
             : 'NULL AS refunded_at';
+        $refundedAmountSelect = $this->columnExists('transactions', 'refunded_amount')
+            ? 'refunded_amount'
+            : 'NULL AS refunded_amount';
         $providerRefundIdSelect = $this->columnExists('transactions', 'provider_refund_id')
             ? 'provider_refund_id'
             : 'NULL AS provider_refund_id';
@@ -91,7 +94,7 @@ class AdminAnalyticsRepository
         }
 
         $query = "SELECT id, user_id, {$planIdSelect}, amount, status, type, material_id, created_at,
-                         {$providerCustomerIdSelect}, {$providerInvoiceIdSelect}, {$refundedAtSelect}, {$providerRefundIdSelect}
+                         {$providerCustomerIdSelect}, {$providerInvoiceIdSelect}, {$refundedAtSelect}, {$refundedAmountSelect}, {$providerRefundIdSelect}
                   FROM transactions";
         if ($conditions !== []) {
             $query .= ' WHERE ' . implode(' AND ', $conditions);

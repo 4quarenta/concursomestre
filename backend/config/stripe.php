@@ -44,6 +44,23 @@ function resolveStripeKeyMode(?string $key): string
     return '';
 }
 
+/**
+ * Rejects a signed event from the opposite Stripe environment. Signature
+ * verification proves origin, but a test event must never mutate live data.
+ */
+function assertStripeEventMatchesConfiguredMode(object $event): void
+{
+    $expectedMode = resolveStripeKeyMode(STRIPE_SECRET_KEY);
+    if ($expectedMode === '' || !property_exists($event, 'livemode')) {
+        return;
+    }
+
+    $eventMode = !empty($event->livemode) ? 'live' : 'test';
+    if ($eventMode !== $expectedMode) {
+        throw new InvalidArgumentException('Evento Stripe recebido em ambiente incompatível.');
+    }
+}
+
 function stripeIsConfigured(): bool
 {
     return isValidStripeSecretKey(STRIPE_SECRET_KEY);

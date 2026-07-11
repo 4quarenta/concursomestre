@@ -205,6 +205,58 @@ class AdminStatsBoundedWindowFakeRepository extends AdminStatsRepository
     }
 }
 
+class AdminStatsPartialRefundFakeRepository extends AdminStatsRepository
+{
+    public function __construct()
+    {
+    }
+
+    public function getConnection(): PDO
+    {
+        throw new RuntimeException('Ledger intentionally unavailable in aggregation fallback test.');
+    }
+
+    public function fetchTransactions(string $dateCondition, array $params): array
+    {
+        return [
+            [
+                'amount' => 100.00,
+                'platform_fee' => 20.00,
+                'type' => 'material',
+                'material_id' => 7,
+                'created_at' => '2000-01-10 10:00:00',
+                'status' => 'partially_refunded',
+                'refunded_amount' => 25.00,
+            ],
+        ];
+    }
+
+    public function fetchSubscriptionStatusCounts(string $now): array
+    {
+        return [];
+    }
+
+    public function fetchActiveSubscriptionPlans(string $now): array
+    {
+        return [];
+    }
+
+    public function countNewUsers(string $dateCondition, array $params): int
+    {
+        return 0;
+    }
+
+    public function countNewQuestions(string $dateCondition, array $params): int
+    {
+        return 0;
+    }
+
+    public function fetchGlobalCounters(): array
+    {
+        return [];
+    }
+}
+
 try {
     $service = new AdminStatsService(new AdminStatsFakeRepository(), new AdminStatsValidator());
     $stats = $service->getStats('custom', '2000-01-01', '2000-01-31');
@@ -238,6 +290,12 @@ try {
     foreach (['today', 'week', 'month', 'year'] as $period) {
         (new AdminStatsService(new AdminStatsBoundedWindowFakeRepository($period), new AdminStatsValidator()))->getStats($period, null, null);
     }
+
+    $partialRefundStats = (new AdminStatsService(new AdminStatsPartialRefundFakeRepository(), new AdminStatsValidator()))->getStats('all', null, null);
+    adminStatsAssertAlmost((float) $partialRefundStats['total_revenue'], 75.00, 'Estorno parcial deve reduzir somente a parcela estornada da receita.');
+    adminStatsAssertAlmost((float) $partialRefundStats['total_refunded'], 25.00, 'Estorno parcial deve aparecer separadamente no total estornado.');
+    adminStatsAssertAlmost((float) $partialRefundStats['platform_revenue'], 15.00, 'Comissao deve ser proporcional ao valor restante apos estorno parcial.');
+    adminStatsAssertAlmost((float) $partialRefundStats['seller_payout'], 60.00, 'Repasse deve refletir a parcela ainda reconhecida apos estorno parcial.');
 
     fwrite(STDOUT, "AdminStatsAggregationTest: PASS\n");
 } catch (Throwable $e) {

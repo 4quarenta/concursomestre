@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../repositories/AdminStatsRepository.php';
 require_once __DIR__ . '/../validators/AdminStatsValidator.php';
+require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
 
 /**
  * Servico do dashboard administrativo.
@@ -81,6 +82,19 @@ class AdminStatsService
         ];
 
         $transactions = $this->repository->fetchTransactions($dateCondition, $params);
+        $ledgerSummary = null;
+        try {
+            $ledgerSummary = FinancialLedger::summarize(
+                $this->repository->getConnection(),
+                $params[':start'] ?? null,
+                $params[':end'] ?? null
+            );
+        } catch (Throwable) {
+            // Isolated unit fakes and pre-migration installations keep using
+            // the conservative transaction aggregation until the ledger is
+            // available. Production never hides a schema failure in writes.
+            $ledgerSummary = null;
+        }
 
         $totalVolume = 0.0;
         $subscriptionRevenue = 0.0;
@@ -115,7 +129,17 @@ class AdminStatsService
                 continue;
             }
 
-            if (!in_array($normalizedStatus, ['completed', 'approved'], true)) {
+            if ($normalizedStatus === 'partially_refunded') {
+                $refundedAmount = min($amount, max(0.0, (float) ($transaction['refunded_amount'] ?? 0)));
+                $totalRefunded += $refundedAmount;
+                $originalAmount = $amount;
+                $amount = max(0.0, $amount - $refundedAmount);
+                $platformFee = $originalAmount > 0.0
+                    ? round($platformFee * ($amount / $originalAmount), 2)
+                    : 0.0;
+            }
+
+            if (!in_array($normalizedStatus, ['completed', 'approved', 'partially_refunded'], true) || $amount <= 0.0) {
                 continue;
             }
 
@@ -181,6 +205,29 @@ class AdminStatsService
         $response['held_balance'] = round($heldBalance, 2);
         $response['total_paid'] = round($totalPaid, 2);
 
+        if (is_array($ledgerSummary)) {
+            $ledgerByType = is_array($ledgerSummary['by_type'] ?? null) ? $ledgerSummary['by_type'] : [];
+            $subscriptionLedger = $ledgerByType['plan'] ?? $ledgerByType['subscription'] ?? [];
+            $marketplaceLedger = $ledgerByType['material'] ?? [];
+            $subscriptionRevenue = (float) ($subscriptionLedger['recognized_gross'] ?? 0);
+            $marketplaceRevenue = (float) ($marketplaceLedger['recognized_gross'] ?? 0);
+            $marketplaceFee = (float) ($marketplaceLedger['recognized_fee'] ?? 0);
+            $marketplaceNet = (float) ($marketplaceLedger['recognized_net'] ?? 0);
+            $recognizedRevenue = (float) ($ledgerSummary['recognized_gross'] ?? 0);
+
+            $response['total_revenue'] = round($recognizedRevenue, 2);
+            $response['available_total_revenue'] = round(max(0.0, $recognizedRevenue - $heldBalance), 2);
+            $response['subscription_revenue'] = round($subscriptionRevenue, 2);
+            $response['marketplace_revenue'] = round($marketplaceRevenue, 2);
+            $response['platform_revenue'] = round($subscriptionRevenue + $marketplaceFee, 2);
+            $response['seller_payout'] = round(max(0.0, $marketplaceNet), 2);
+            $response['total_refunded'] = round((float) ($ledgerSummary['refunded_amount'] ?? 0), 2);
+            $response['transactions_count'] = (int) ($ledgerSummary['captured_transactions'] ?? 0);
+            $response['financial_source'] = 'ledger';
+        } else {
+            $response['financial_source'] = 'transactions_legacy';
+        }
+
         foreach ($this->repository->fetchSubscriptionStatusCounts($metricsNowSql) as $row) {
             if (($row['status'] ?? '') === 'active') {
                 $response['active_subscriptions'] = (int) $row['count'];
@@ -223,6 +270,12 @@ class AdminStatsService
             trim((string) ($transaction['provider_refund_id'] ?? '')) !== ''
             || trim((string) ($transaction['refunded_at'] ?? '')) !== ''
         ) {
+            if (
+                (float) ($transaction['refunded_amount'] ?? 0) > 0
+                && (float) ($transaction['refunded_amount'] ?? 0) < (float) ($transaction['amount'] ?? 0)
+            ) {
+                return 'partially_refunded';
+            }
             return 'refunded';
         }
 

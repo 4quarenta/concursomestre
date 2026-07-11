@@ -14,6 +14,7 @@
 require_once __DIR__ . '/../repositories/AdminAnalyticsRepository.php';
 require_once __DIR__ . '/../validators/AdminAnalyticsValidator.php';
 require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSupport.php';
+require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
 
 /**
@@ -59,10 +60,28 @@ class AdminAnalyticsService
         $transactions = $this->repository->fetchTransactions($window['startDateTime'], $window['endDateTime']);
         $projectionTransactions = $this->repository->fetchTransactions();
         $subscriptions = $this->repository->fetchSubscriptionsWithPlansAndUsers();
+        $ledgerSummary = null;
+        try {
+            $ledgerSummary = FinancialLedger::summarize(
+                $this->repository->getConnection(),
+                $window['startDateTime'],
+                $window['endDateTime']
+            );
+        } catch (Throwable) {
+            // Non-production report fakes and installs pending the additive
+            // migration retain the legacy aggregation for read-only reports.
+            $ledgerSummary = null;
+        }
         $userDirectory = $this->indexUsers($this->repository->fetchUserDirectory());
         $journeys = $this->buildLeadJourneys($events, $userDirectory);
 
-        $summary = $this->buildFinanceSummary($events, $transactions, $subscriptions, $projectionTransactions);
+        $summary = $this->buildFinanceSummary(
+            $events,
+            $transactions,
+            $subscriptions,
+            $projectionTransactions,
+            $ledgerSummary
+        );
         $funnel = $this->buildFunnel($events);
         $funnelDetails = $this->buildFunnelDetails($journeys);
         $conversionByCycle = $this->buildConversionByCycle($events, $subscriptions);
@@ -393,7 +412,8 @@ class AdminAnalyticsService
         array $events,
         array $transactions,
         array $subscriptions,
-        array $projectionTransactions = []
+        array $projectionTransactions = [],
+        ?array $ledgerSummary = null
     ): array
     {
         $totalRevenue = 0.0;
@@ -410,9 +430,20 @@ class AdminAnalyticsService
                 $paidTransactionsCount++;
             } elseif ($status === 'refund_requested') {
                 $refundRequestedAmount += $amount;
+            } elseif ($status === 'partially_refunded') {
+                $refundedPartialAmount = min($amount, max(0.0, (float) ($transaction['refunded_amount'] ?? 0)));
+                $totalRevenue += max(0.0, $amount - $refundedPartialAmount);
+                $paidTransactionsCount++;
+                $refundedAmount += $refundedPartialAmount;
             } elseif ($status === 'refunded') {
                 $refundedAmount += $amount;
             }
+        }
+
+        if (is_array($ledgerSummary)) {
+            $totalRevenue = (float) ($ledgerSummary['recognized_gross'] ?? 0);
+            $paidTransactionsCount = (int) ($ledgerSummary['captured_transactions'] ?? 0);
+            $refundedAmount = (float) ($ledgerSummary['refunded_amount'] ?? 0);
         }
 
         $activeSubscribers = $this->countSubscriptionsByStatuses($subscriptions, ['active', 'trialing']);
@@ -430,6 +461,8 @@ class AdminAnalyticsService
 
         return [
             'totalRevenue' => round($totalRevenue, 2),
+            'grossCapturedAmount' => round((float) ($ledgerSummary['gross_captured'] ?? $totalRevenue), 2),
+            'financeSource' => is_array($ledgerSummary) ? 'ledger' : 'transactions_legacy',
             'mrr' => round($mrr, 2),
             'arr' => round($arr, 2),
             'projectedConfirmedRevenue' => $projection['totalProjectedAmount'],
@@ -2192,6 +2225,12 @@ class AdminAnalyticsService
             trim((string) ($transaction['provider_refund_id'] ?? '')) !== ''
             || trim((string) ($transaction['refunded_at'] ?? '')) !== ''
         ) {
+            if (
+                (float) ($transaction['refunded_amount'] ?? 0) > 0
+                && (float) ($transaction['refunded_amount'] ?? 0) < (float) ($transaction['amount'] ?? 0)
+            ) {
+                return 'partially_refunded';
+            }
             return 'refunded';
         }
 

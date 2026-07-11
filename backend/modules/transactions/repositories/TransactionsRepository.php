@@ -322,18 +322,35 @@ class TransactionsRepository
      */
     public function fetchTransactionTotals(string $whereClause, array $params): array
     {
-        $recognizedRevenueCondition = "
-            t.status IN ('approved', 'completed')
-            AND COALESCE(t.provider_refund_id, '') = ''
-            AND t.refunded_at IS NULL
+        $recognizedRevenueAmount = "
+            CASE
+                WHEN t.status IN ('approved', 'completed', 'partially_refunded')
+                    THEN GREATEST(0, COALESCE(t.amount, 0) - COALESCE(NULLIF(t.refunded_amount, 0), 0))
+                ELSE 0
+            END
+        ";
+        $recognizedFeeAmount = "
+            CASE
+                WHEN t.status IN ('approved', 'completed', 'partially_refunded')
+                     AND COALESCE(t.amount, 0) > 0
+                    THEN ROUND(
+                        COALESCE(t.platform_fee, 0)
+                        * ({$recognizedRevenueAmount})
+                        / COALESCE(t.amount, 1),
+                        2
+                    )
+                ELSE 0
+            END
         ";
 
         $query = "SELECT
                     COUNT(*) as total_count,
-                    SUM(CASE WHEN {$recognizedRevenueCondition} THEN amount ELSE 0 END) as total_revenue,
-                    SUM(CASE WHEN {$recognizedRevenueCondition} THEN platform_fee ELSE 0 END) as total_fees,
-                    SUM(CASE WHEN {$recognizedRevenueCondition} THEN (amount - platform_fee) ELSE 0 END) as net_revenue,
-                    SUM(CASE WHEN {$recognizedRevenueCondition} AND t.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN (amount - platform_fee) ELSE 0 END) as total_held
+                    SUM({$recognizedRevenueAmount}) as total_revenue,
+                    SUM({$recognizedFeeAmount}) as total_fees,
+                    SUM(({$recognizedRevenueAmount}) - ({$recognizedFeeAmount})) as net_revenue,
+                    SUM(CASE WHEN t.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                             THEN ({$recognizedRevenueAmount}) - ({$recognizedFeeAmount})
+                             ELSE 0 END) as total_held
                   FROM transactions t
                   {$whereClause}";
 

@@ -15,6 +15,7 @@ require_once __DIR__ . '/../repositories/SubscriptionsRepository.php';
 require_once __DIR__ . '/../validators/SubscriptionsValidator.php';
 require_once __DIR__ . '/../../../shared/security/Recaptcha.php';
 require_once __DIR__ . '/../../transactions/services/TransactionsRefundSupport.php';
+require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../../config/stripe.php';
@@ -1020,6 +1021,7 @@ class SubscriptionsService
         }
 
         $event = Webhook::constructEvent($payload, $signature, STRIPE_WEBHOOK_SECRET);
+        assertStripeEventMatchesConfiguredMode($event);
         return $this->processStripeWebhookEventObject(
             $event,
             hash('sha256', $payload)
@@ -4596,18 +4598,33 @@ class SubscriptionsService
             $refundResult['provider_invoice_id'] = trim((string) ($transaction['provider_invoice_id'] ?? ''));
         }
 
+        $refundAmount = round(((float) ($refund->amount ?? $charge->amount_refunded ?? 0)) / 100, 2);
+        $transactionAmount = round((float) ($transaction['amount'] ?? 0), 2);
+        $isPartialRefund = $refundAmount > 0 && $transactionAmount > 0 && $refundAmount < $transactionAmount;
+
         $this->db->prepare("
             UPDATE transactions
-            SET status = 'refunded',
+            SET status = :status,
                 refunded_at = COALESCE(refunded_at, NOW()),
+                refunded_amount = CASE
+                    WHEN :refund_amount_for_condition > 0 THEN :refund_amount_for_storage
+                    ELSE amount
+                END,
                 provider_refund_id = :provider_refund_id,
                 provider_refund_details_json = :provider_refund_details_json
             WHERE provider_payment_intent_id = :provider_payment_intent_id
         ")->execute([
+            ':status' => $isPartialRefund ? 'partially_refunded' : 'refunded',
+            ':refund_amount_for_condition' => $refundAmount,
+            ':refund_amount_for_storage' => $refundAmount,
             ':provider_refund_id' => $refundId,
             ':provider_refund_details_json' => json_encode($refundDetails, JSON_UNESCAPED_UNICODE),
             ':provider_payment_intent_id' => $paymentIntentId,
         ]);
+
+        if ($transaction) {
+            FinancialLedger::syncTransactionById($this->db, (int) $transaction['id'], 'stripe_refund_webhook');
+        }
 
         if ($transaction && trim((string) ($transaction['provider_refund_id'] ?? '')) !== $refundId) {
             $this->sendStripeRefundWebhookEmail($transaction, $refundResult);
@@ -4617,6 +4634,7 @@ class SubscriptionsService
             $transaction
             && (($transaction['type'] ?? '') === 'plan' || empty($transaction['material_id']))
             && !empty($transaction['user_id'])
+            && !$isPartialRefund
         ) {
             $cancellationResult = cancelStripeSubscriptionImmediatelyAfterRefund($this->db, $transaction, $refundResult);
             if (!empty($cancellationResult['warning'])) {
@@ -5440,7 +5458,7 @@ class SubscriptionsService
         $existing = $check->fetch(PDO::FETCH_ASSOC);
         if ($existing) {
             $currentStatus = strtolower(trim((string) ($existing['status'] ?? '')));
-            if (in_array($currentStatus, ['approved', 'completed', 'refunded'], true)) {
+            if (in_array($currentStatus, ['approved', 'completed', 'refunded', 'partially_refunded'], true)) {
                 return false;
             }
 
@@ -5475,6 +5493,8 @@ class SubscriptionsService
                 ':id' => (int) $existing['id'],
             ]);
 
+            FinancialLedger::syncTransactionById($this->db, (int) $existing['id'], 'stripe_invoice_webhook');
+
             return true;
         }
 
@@ -5503,6 +5523,11 @@ class SubscriptionsService
                 ':installments' => $invoiceInstallmentNumber,
                 ':payer_email' => (string) ($invoice->customer_email ?: ''),
             ]);
+            FinancialLedger::syncTransactionById(
+                $this->db,
+                (int) $this->db->lastInsertId(),
+                'stripe_invoice_webhook'
+            );
         } catch (PDOException $e) {
             if ($e->getCode() === '23000') {
                 return false;
@@ -5541,7 +5566,7 @@ class SubscriptionsService
             SELECT id
             FROM transactions
             WHERE (provider_invoice_id = :provider_invoice_id OR external_id = :external_id)
-              AND status IN ('approved', 'completed', 'refunded')
+              AND status IN ('approved', 'completed', 'refunded', 'partially_refunded')
             LIMIT 1
         ");
         $stmt->execute([

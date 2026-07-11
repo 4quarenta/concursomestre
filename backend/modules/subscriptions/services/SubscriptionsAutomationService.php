@@ -30,7 +30,7 @@ class SubscriptionsAutomationService
             'cron_url' => $cronUrl,
             'download_url' => $apiBaseUrl . '/subscriptions/automation_helper.php?action=download_bat',
             'linux_command' => '*/15 * * * * curl -fsS "' . $cronUrl . '" >> /var/log/concursomestre/stripe-cron.log 2>&1',
-            'cli_command' => '*/15 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/reconcile_stripe_subscriptions.php >> /var/log/concursomestre/stripe-cron.log 2>&1',
+            'cli_command' => '*/15 * * * * /usr/bin/php /var/www/concursomestre/backend/scripts/tasks/reconcile_stripe_subscriptions.php >> /home/concursomestre/logs/cron/stripe-reconciliation.log 2>&1',
             'instructions' => [
                 'windows' => [
                     'title' => 'Windows (XAMPP)',

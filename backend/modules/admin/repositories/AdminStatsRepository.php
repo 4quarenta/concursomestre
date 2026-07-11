@@ -33,6 +33,11 @@ class AdminStatsRepository
         $this->db = $db;
     }
 
+    public function getConnection(): PDO
+    {
+        return $this->db;
+    }
+
     /**
      * Lista transacoes filtradas para agregacao financeira.
      *
@@ -50,11 +55,14 @@ class AdminStatsRepository
         $refundedAtSelect = $this->columnExists('transactions', 'refunded_at')
             ? 'refunded_at'
             : "NULL AS refunded_at";
+        $refundedAmountSelect = $this->columnExists('transactions', 'refunded_amount')
+            ? 'refunded_amount'
+            : "NULL AS refunded_amount";
 
         $query = "
-            SELECT amount, platform_fee, type, material_id, created_at, status, {$providerRefundIdSelect}, {$refundedAtSelect}
+            SELECT amount, platform_fee, type, material_id, created_at, status, {$providerRefundIdSelect}, {$refundedAtSelect}, {$refundedAmountSelect}
             FROM transactions
-            WHERE status IN ('completed', 'approved', 'refunded', 'refund_requested', 'cancelled', 'canceled', 'failed', 'rejected')"
+            WHERE status IN ('completed', 'approved', 'refunded', 'partially_refunded', 'refund_requested', 'cancelled', 'canceled', 'failed', 'rejected')"
             . $this->buildFinancialTransactionExclusionCondition()
             . $dateCondition;
 

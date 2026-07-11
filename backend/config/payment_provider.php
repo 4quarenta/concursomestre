@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../shared/database/SchemaReadiness.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -1284,171 +1286,36 @@ function ensurePaymentProviderSchema(PDO $db): void
         return;
     }
 
-    addColumnIfMissing($db, 'users', 'stripe_customer_id', 'VARCHAR(255) NULL');
-
-    addColumnIfMissing($db, 'plans', 'stripe_product_id', 'VARCHAR(255) NULL AFTER external_plan_id');
-
-    addColumnIfMissing($db, 'user_cards', 'payment_provider', "VARCHAR(50) NOT NULL DEFAULT 'stripe' AFTER user_id");
-    addColumnIfMissing($db, 'user_cards', 'stripe_payment_method_id', 'VARCHAR(255) NULL AFTER mp_card_id');
-    addColumnIfMissing($db, 'user_cards', 'provider_customer_id', 'VARCHAR(255) NULL AFTER mp_customer_id');
-
-    addColumnIfMissing($db, 'user_subscriptions', 'payment_provider', "VARCHAR(50) NOT NULL DEFAULT 'stripe' AFTER plan_id");
-    addColumnIfMissing($db, 'user_subscriptions', 'provider_subscription_id', 'VARCHAR(255) NULL AFTER payment_provider');
-    addColumnIfMissing($db, 'user_subscriptions', 'provider_customer_id', 'VARCHAR(255) NULL AFTER provider_subscription_id');
-    addColumnIfMissing($db, 'user_subscriptions', 'provider_checkout_session_id', 'VARCHAR(255) NULL AFTER provider_customer_id');
-    addColumnIfMissing($db, 'user_subscriptions', 'provider_current_period_start', 'DATETIME NULL AFTER provider_checkout_session_id');
-    addColumnIfMissing($db, 'user_subscriptions', 'provider_current_period_end', 'DATETIME NULL AFTER provider_current_period_start');
-    addColumnIfMissing($db, 'user_subscriptions', 'provider_last_webhook_event_at', 'DATETIME NULL AFTER provider_current_period_end');
-    addColumnIfMissing($db, 'user_subscriptions', 'provider_schedule_id', 'VARCHAR(255) NULL AFTER provider_last_webhook_event_at');
-    addColumnIfMissing($db, 'user_subscriptions', 'cancel_at_period_end', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER auto_renew');
-    addColumnIfMissing($db, 'user_subscriptions', 'antifraud_blocked', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER paid_installments');
-    addColumnIfMissing($db, 'user_subscriptions', 'antifraud_reason', 'TEXT NULL AFTER antifraud_blocked');
-    addColumnIfMissing($db, 'user_subscriptions', 'renewal_iteration', 'INT NOT NULL DEFAULT 0 AFTER antifraud_reason');
-    addColumnIfMissing($db, 'user_subscriptions', 'superseded_by_subscription_id', 'INT NULL AFTER renewal_iteration');
-    addColumnIfMissing($db, 'user_subscriptions', 'next_renewal_amount', 'DECIMAL(10,2) NULL AFTER superseded_by_subscription_id');
-    addColumnIfMissing($db, 'user_subscriptions', 'next_renewal_date', 'DATETIME NULL AFTER next_renewal_amount');
-    addColumnIfMissing($db, 'user_subscriptions', 'next_renewal_price_source', 'VARCHAR(50) NULL AFTER next_renewal_date');
-    addColumnIfMissing($db, 'user_subscriptions', 'next_renewal_cycle_label', 'VARCHAR(80) NULL AFTER next_renewal_price_source');
-    addColumnIfMissing($db, 'user_subscriptions', 'next_renewal_snapshot_json', 'LONGTEXT NULL AFTER next_renewal_cycle_label');
-    addColumnIfMissing($db, 'user_subscriptions', 'renewal_reminder_sent_for', 'VARCHAR(80) NULL AFTER next_renewal_snapshot_json');
-    addColumnIfMissing($db, 'user_subscriptions', 'renewal_reminder_sent_at', 'DATETIME NULL AFTER renewal_reminder_sent_for');
-
-    if (paymentProviderTableExists($db, 'transactions')) {
-        addColumnIfMissing($db, 'transactions', 'external_id', 'VARCHAR(255) NULL AFTER id');
-        addColumnIfMissing($db, 'transactions', 'user_id', 'VARCHAR(64) NULL AFTER external_id');
-        addColumnIfMissing($db, 'transactions', 'user_subscription_id', 'INT NULL AFTER user_id');
-        backfillColumnIfBothExist($db, 'transactions', 'user_id', 'buyer_id');
-        addColumnIfMissing($db, 'transactions', 'material_id', 'VARCHAR(36) NULL AFTER user_id');
-        modifyColumnIfExists($db, 'transactions', 'material_id', 'VARCHAR(36) NULL');
-        addColumnIfMissing($db, 'transactions', 'seller_id', 'VARCHAR(64) NULL AFTER material_id');
-        modifyColumnIfExists($db, 'transactions', 'seller_id', 'VARCHAR(64) NULL');
-        addColumnIfMissing($db, 'transactions', 'status', "VARCHAR(50) NULL DEFAULT 'completed' AFTER platform_fee");
-        addColumnIfMissing($db, 'transactions', 'payment_method', 'VARCHAR(50) NULL AFTER status');
-        addColumnIfMissing($db, 'transactions', 'refund_reason', 'TEXT NULL AFTER status');
-        addColumnIfMissing($db, 'transactions', 'refund_requested_at', 'DATETIME NULL AFTER refund_reason');
-    }
-
-    addColumnIfMissing($db, 'transactions', 'payment_provider', "VARCHAR(50) NOT NULL DEFAULT 'stripe' AFTER payment_method");
-    addColumnIfMissing($db, 'transactions', 'provider_payment_intent_id', 'VARCHAR(255) NULL AFTER payment_provider');
-    addColumnIfMissing($db, 'transactions', 'provider_invoice_id', 'VARCHAR(255) NULL AFTER provider_payment_intent_id');
-    addColumnIfMissing($db, 'transactions', 'provider_refund_id', 'VARCHAR(255) NULL AFTER provider_invoice_id');
-    addColumnIfMissing($db, 'transactions', 'provider_customer_id', 'VARCHAR(255) NULL AFTER provider_refund_id');
-    addColumnIfMissing($db, 'transactions', 'provider_refund_details_json', 'LONGTEXT NULL AFTER provider_customer_id');
-    addColumnIfMissing($db, 'transactions', 'installments', 'INT NULL DEFAULT 1 AFTER provider_refund_details_json');
-    addColumnIfMissing($db, 'transactions', 'payer_email', 'VARCHAR(255) NULL AFTER installments');
-    addColumnIfMissing($db, 'transactions', 'type', "VARCHAR(20) NULL DEFAULT 'material' AFTER payer_email");
-    addColumnIfMissing($db, 'transactions', 'plan_id', 'INT NULL AFTER material_id');
-    addColumnIfMissing($db, 'transactions', 'plan_name', 'VARCHAR(255) NULL AFTER plan_id');
-
-    dropIndexIfExists($db, 'user_subscriptions', 'unique_user_id');
-
-    addIndexIfMissing($db, 'user_subscriptions', 'idx_user_subscriptions_provider_subscription', 'provider_subscription_id');
-    addIndexIfMissing($db, 'user_subscriptions', 'idx_user_subscriptions_user_status', 'user_id, status');
-    addUniqueIndexIfMissing($db, 'user_subscriptions', 'uniq_user_subscriptions_provider_subscription', 'provider_subscription_id');
-    addUniqueIndexIfMissing($db, 'user_subscriptions', 'uniq_user_subscriptions_mp_preapproval', 'mp_preapproval_id');
-    addIndexIfMissing($db, 'transactions', 'idx_transactions_provider_payment_intent', 'provider_payment_intent_id');
-    addUniqueIndexIfNoDuplicates($db, 'transactions', 'uniq_transactions_provider_payment_intent', 'provider_payment_intent_id');
-    addIndexIfMissing($db, 'transactions', 'idx_transactions_provider_invoice', 'provider_invoice_id');
-    addUniqueIndexIfNoDuplicates($db, 'transactions', 'uniq_transactions_provider_invoice', 'provider_invoice_id');
-    addIndexIfMissing($db, 'transactions', 'idx_transactions_user_subscription', 'user_subscription_id');
-    addIndexIfMissing($db, 'transactions', 'idx_transactions_plan_id', 'plan_id');
-    addIndexIfMissing($db, 'user_cards', 'idx_user_cards_provider', 'payment_provider');
-    addIndexIfMissing($db, 'user_cards', 'idx_user_cards_stripe_pm', 'stripe_payment_method_id');
-    dropIndexIfExists($db, 'user_cards', 'idx_user_card_unique');
-
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS provider_webhook_events (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            provider VARCHAR(50) NOT NULL,
-            event_id VARCHAR(255) NOT NULL,
-            event_type VARCHAR(120) NOT NULL,
-            object_id VARCHAR(255) NULL,
-            payload_hash CHAR(64) NULL,
-            status VARCHAR(30) NOT NULL DEFAULT 'processing',
-            attempt_count INT NOT NULL DEFAULT 1,
-            error_message TEXT NULL,
-            event_created_at DATETIME NULL,
-            processed_at DATETIME NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_provider_webhook_event (provider, event_id),
-            INDEX idx_provider_webhook_status (provider, status),
-            INDEX idx_provider_webhook_object (provider, object_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
-
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS coupon_reservations (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            coupon_code VARCHAR(80) NOT NULL,
-            user_id VARCHAR(64) NOT NULL,
-            checkout_attempt_id VARCHAR(120) NOT NULL,
-            provider VARCHAR(40) NOT NULL DEFAULT 'stripe',
-            provider_session_id VARCHAR(255) NULL,
-            provider_subscription_id VARCHAR(255) NULL,
-            provider_invoice_id VARCHAR(255) NULL,
-            status VARCHAR(40) NOT NULL DEFAULT 'reserved',
-            reserved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            expires_at DATETIME NOT NULL,
-            consumed_at DATETIME NULL,
-            released_at DATETIME NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_coupon_reservation_attempt (coupon_code, user_id, checkout_attempt_id, provider),
-            INDEX idx_coupon_reservations_active (coupon_code, status, expires_at),
-            INDEX idx_coupon_reservations_provider_session (provider_session_id),
-            INDEX idx_coupon_reservations_provider_subscription (provider_subscription_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
-
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS stripe_testing_matrix_runs (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            run_id VARCHAR(64) NOT NULL,
-            scenario_id VARCHAR(120) NOT NULL,
-            scenario_label VARCHAR(255) NOT NULL,
-            category_id VARCHAR(80) NOT NULL,
-            stripe_reference VARCHAR(255) NULL,
-            platform_flow VARCHAR(80) NULL,
-            platform_status VARCHAR(40) NOT NULL,
-            execution_result VARCHAR(20) NOT NULL,
-            evidence_json LONGTEXT NULL,
-            notes TEXT NULL,
-            executed_by_admin_id VARCHAR(64) NOT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_stripe_testing_run_id (run_id),
-            INDEX idx_stripe_testing_runs_scenario (scenario_id),
-            INDEX idx_stripe_testing_runs_result (execution_result),
-            INDEX idx_stripe_testing_runs_admin (executed_by_admin_id),
-            INDEX idx_stripe_testing_runs_created (created_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
+    SchemaReadiness::assertTablesAndColumns($db, 'pagamentos e assinaturas', [
+        'users' => ['stripe_customer_id'],
+        'plans' => ['stripe_product_id'],
+        'user_cards' => ['payment_provider', 'stripe_payment_method_id', 'provider_customer_id'],
+        'user_subscriptions' => [
+            'payment_provider', 'provider_subscription_id', 'provider_customer_id',
+            'provider_checkout_session_id', 'provider_current_period_start',
+            'provider_current_period_end', 'provider_last_webhook_event_at',
+            'cancel_at_period_end', 'antifraud_blocked', 'renewal_iteration',
+            'superseded_by_subscription_id', 'next_renewal_amount',
+            'next_renewal_date', 'next_renewal_snapshot_json',
+        ],
+        'transactions' => [
+            'user_subscription_id', 'plan_id', 'plan_name', 'payment_provider',
+            'provider_payment_intent_id', 'provider_invoice_id',
+            'provider_refund_id', 'provider_refund_details_json', 'refunded_amount',
+            'refunded_at', 'installments', 'payer_email', 'type',
+        ],
+        'coupon_reservations' => [
+            'coupon_code', 'user_id', 'checkout_attempt_id', 'provider',
+            'status', 'expires_at', 'consumed_at', 'released_at',
+        ],
+    ]);
 
     $schemaEnsured = true;
 }
 
 function backfillTransactionPlanMetadata(PDO $db): void
 {
-    static $metadataBackfilled = false;
-
-    if ($metadataBackfilled) {
-        return;
-    }
-
-    $db->exec("
-        UPDATE transactions t
-        LEFT JOIN user_subscriptions us
-            ON us.user_id = t.user_id
-        LEFT JOIN plans p
-            ON p.id = COALESCE(t.plan_id, us.plan_id)
-        SET
-            t.plan_id = COALESCE(t.plan_id, us.plan_id),
-            t.plan_name = COALESCE(NULLIF(t.plan_name, ''), p.name)
-        WHERE
-            t.type = 'plan'
-            AND (t.plan_id IS NULL OR t.plan_name IS NULL OR t.plan_name = '')
-    ");
-
-    $metadataBackfilled = true;
+    // Legacy data repair is intentionally a CLI migration concern. Updating
+    // plan metadata from a read endpoint can select an unrelated historical
+    // subscription when a user changed plans more than once.
 }

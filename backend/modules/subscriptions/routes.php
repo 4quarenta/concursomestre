@@ -235,7 +235,20 @@ function handleSubscriptionsStripeWebhookRoute(PDO $db): void
 {
     try {
         $controller = buildSubscriptionsController($db);
-        $payload = (string) @file_get_contents('php://input');
+        $maxPayloadBytes = 1024 * 1024;
+        $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+        if ($contentLength > $maxPayloadBytes) {
+            throw new InvalidArgumentException('Payload de webhook acima do limite permitido.');
+        }
+
+        $stream = fopen('php://input', 'rb');
+        $payload = $stream ? (string) stream_get_contents($stream, $maxPayloadBytes + 1) : '';
+        if (is_resource($stream)) {
+            fclose($stream);
+        }
+        if (strlen($payload) > $maxPayloadBytes) {
+            throw new InvalidArgumentException('Payload de webhook acima do limite permitido.');
+        }
         $signature = (string) ($_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '');
         $result = $controller->processStripeWebhook($payload, $signature);
 
@@ -244,14 +257,15 @@ function handleSubscriptionsStripeWebhookRoute(PDO $db): void
         echo json_encode($result, JSON_UNESCAPED_UNICODE);
         exit;
     } catch (Throwable $e) {
+        error_log('[subscriptions_stripe_webhook] ' . $e->getMessage());
         $statusCode = ($e instanceof RuntimeException && $e->getMessage() === 'Stripe webhook nao configurado.')
             ? 500
-            : 400;
+            : ($e instanceof InvalidArgumentException ? 413 : 400);
         http_response_code($statusCode);
         header('Content-Type: application/json; charset=UTF-8');
         echo json_encode([
             'success' => false,
-            'message' => $e->getMessage(),
+            'message' => 'Webhook Stripe não pôde ser processado.',
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
