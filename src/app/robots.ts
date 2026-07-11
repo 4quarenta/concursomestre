@@ -11,7 +11,10 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: SEO_ROBOT_DISALLOW_PATHS,
     },
-    sitemap: buildSiteUrl('/sitemap.xml', siteUrl),
+    sitemap: [
+      buildSiteUrl('/sitemap-index.xml', siteUrl),
+      buildSiteUrl('/sitemap.xml', siteUrl),
+    ],
     host: siteUrl.origin,
   };
 }
