@@ -190,6 +190,12 @@ class NotificationsService
                 'category' => $normalized['category'],
                 'link' => $normalized['link'],
                 'evidence_url' => $normalized['evidenceUrl'],
+                'event_key' => $normalized['eventKey'],
+                'severity' => $normalized['severity'],
+                'channel' => $normalized['channel'],
+                'entity_type' => $normalized['entityType'],
+                'entity_id' => $normalized['entityId'],
+                'action_key' => $normalized['actionKey'],
                 'is_read' => 0,
                 'created_at' => date('Y-m-d H:i:s'),
             ];
@@ -255,6 +261,12 @@ class NotificationsService
             'timestamp' => $createdTimestamp * 1000,
             'link' => ($row['link'] ?? null) ?: null,
             'evidenceUrl' => ($row['evidence_url'] ?? null) ?: null,
+            'eventKey' => ($row['event_key'] ?? null) ?: null,
+            'severity' => ($row['severity'] ?? null) ?: $type,
+            'channel' => ($row['channel'] ?? null) ?: 'in_app',
+            'entityType' => ($row['entity_type'] ?? null) ?: null,
+            'entityId' => ($row['entity_id'] ?? null) ?: null,
+            'actionKey' => ($row['action_key'] ?? null) ?: null,
             'deletedAt' => $deletedAt,
         ];
     }

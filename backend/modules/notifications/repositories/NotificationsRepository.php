@@ -42,7 +42,7 @@ class NotificationsRepository
         $roleStmt = $this->db->prepare('SELECT role FROM users WHERE id = :user_id LIMIT 1');
         $roleStmt->execute([':user_id' => $userId]);
         $userRole = strtolower(trim((string) $roleStmt->fetchColumn()));
-        $query = "SELECT id, user_id, title, message, type, category, is_read, created_at, link, evidence_url, deleted_at
+        $query = "SELECT id, user_id, title, message, type, category, event_key, severity, channel, entity_type, entity_id, action_key, is_read, created_at, link, evidence_url, deleted_at
                   FROM notifications
                   WHERE user_id = :user_id
                     AND (
@@ -205,6 +205,12 @@ class NotificationsRepository
                 category,
                 link,
                 evidence_url,
+                event_key,
+                severity,
+                channel,
+                entity_type,
+                entity_id,
+                action_key,
                 is_read,
                 created_at
             ) VALUES (
@@ -216,6 +222,12 @@ class NotificationsRepository
                 :category,
                 :link,
                 :evidence_url,
+                :event_key,
+                :severity,
+                :channel,
+                :entity_type,
+                :entity_id,
+                :action_key,
                 :is_read,
                 :created_at
             )"
@@ -229,6 +241,12 @@ class NotificationsRepository
         $stmt->bindValue(':category', $notification['category']);
         $stmt->bindValue(':link', $notification['link']);
         $stmt->bindValue(':evidence_url', $notification['evidence_url']);
+        $stmt->bindValue(':event_key', $notification['event_key'] ?? null);
+        $stmt->bindValue(':severity', $notification['severity'] ?? null);
+        $stmt->bindValue(':channel', $notification['channel'] ?? null);
+        $stmt->bindValue(':entity_type', $notification['entity_type'] ?? null);
+        $stmt->bindValue(':entity_id', $notification['entity_id'] ?? null);
+        $stmt->bindValue(':action_key', $notification['action_key'] ?? null);
         $stmt->bindValue(':is_read', (int) ($notification['is_read'] ?? 0), PDO::PARAM_INT);
         $stmt->bindValue(':created_at', $notification['created_at']);
         $stmt->execute();

@@ -99,6 +99,12 @@ class NotificationsValidator
         $category = trim((string) ($payload['category'] ?? 'system'));
         $link = trim((string) ($payload['action_url'] ?? $payload['actionUrl'] ?? $payload['link'] ?? ''));
         $evidenceUrl = trim((string) ($payload['evidence_url'] ?? $payload['evidenceUrl'] ?? ''));
+        $eventKey = trim((string) ($payload['event_key'] ?? $payload['eventKey'] ?? ''));
+        $severity = trim((string) ($payload['severity'] ?? $type));
+        $channel = trim((string) ($payload['channel'] ?? 'in_app'));
+        $entityType = trim((string) ($payload['entity_type'] ?? $payload['entityType'] ?? ''));
+        $entityId = trim((string) ($payload['entity_id'] ?? $payload['entityId'] ?? ''));
+        $actionKey = trim((string) ($payload['action_key'] ?? $payload['actionKey'] ?? ''));
 
         if ($userId === '') {
             throw new InvalidArgumentException('O destinatario da notificacao e obrigatorio.');
@@ -115,6 +121,14 @@ class NotificationsValidator
         $allowedTypes = ['info', 'success', 'warning', 'error'];
         if (!in_array($type, $allowedTypes, true)) {
             $type = 'info';
+        }
+
+        if (!in_array($severity, $allowedTypes, true)) {
+            $severity = $type;
+        }
+
+        if (!in_array($channel, ['in_app', 'email', 'push'], true)) {
+            $channel = 'in_app';
         }
 
         if ($category === 'report') {
@@ -134,6 +148,12 @@ class NotificationsValidator
             'category' => $category,
             'link' => $link !== '' ? $link : null,
             'evidenceUrl' => $evidenceUrl !== '' ? $evidenceUrl : null,
+            'eventKey' => $eventKey !== '' ? substr($eventKey, 0, 120) : null,
+            'severity' => $severity,
+            'channel' => $channel,
+            'entityType' => $entityType !== '' ? substr($entityType, 0, 64) : null,
+            'entityId' => $entityId !== '' ? substr($entityId, 0, 64) : null,
+            'actionKey' => $actionKey !== '' ? substr($actionKey, 0, 120) : null,
         ];
     }
 

@@ -665,6 +665,12 @@ export interface Notification {
   timestamp: number;
   link?: string;
   evidenceUrl?: string; // Novo: URL de imagem/prova da decisão
+  eventKey?: string;
+  severity?: 'info' | 'success' | 'warning' | 'error';
+  channel?: 'in_app' | 'email' | 'push';
+  entityType?: string;
+  entityId?: string;
+  actionKey?: string;
   deletedAt?: number;
 }
 

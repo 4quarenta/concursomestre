@@ -21,7 +21,7 @@ function assertContainsNotificationsDelegate(string $path, string $needle, strin
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__);
 
 assertContainsNotificationsDelegate(
     $base . '/api/notifications/list.php',
