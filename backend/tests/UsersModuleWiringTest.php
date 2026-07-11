@@ -21,7 +21,7 @@ function assertContainsUsersDelegate(string $path, string $needle, string $messa
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__);
 
 assertContainsUsersDelegate(
     $base . '/api/tasks/ProcessRewards.php',

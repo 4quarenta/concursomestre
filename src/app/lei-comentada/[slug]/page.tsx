@@ -401,7 +401,6 @@ type SectionReadingEntry = { startedAt?: string; completedAt?: string; restarted
 type SectionReadingState = Record<string, SectionReadingEntry>;
 
 const getSectionReadingStorageKey = (userKey: string, lawId: string) => `cm:legal-commentary:section-reading:${userKey}:${lawId}`;
-const getSectionFavoriteStorageKey = (userKey: string, lawId: string) => `cm:legal-commentary:favorite-sections:${userKey}:${lawId}`;
 const getTeacherCommentRequestStorageKey = (userKey: string, lawId: string) => (
   `cm:legal-commentary:teacher-comment-requests:${userKey}:${lawId}`
 );
@@ -480,21 +479,6 @@ const isSectionReadingRestartPending = (entry?: SectionReadingEntry) => (
 const getSectionArticleIds = (section: Pick<LawSectionSummary, 'articleIds'>) => (section.articleIds || [])
   .map((articleId) => String(articleId || '').trim())
   .filter(Boolean);
-
-const readFavoriteSectionIds = (userKey: string, lawId: string) => {
-  if (typeof window === 'undefined' || !userKey || !lawId) return new Set<string>();
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(getSectionFavoriteStorageKey(userKey, lawId)) || '[]');
-    return new Set(Array.isArray(parsed) ? parsed.map((item) => String(item)).filter(Boolean) : []);
-  } catch {
-    return new Set<string>();
-  }
-};
-
-const saveFavoriteSectionIds = (userKey: string, lawId: string, ids: Set<string>) => {
-  if (typeof window === 'undefined' || !userKey || !lawId) return;
-  window.localStorage.setItem(getSectionFavoriteStorageKey(userKey, lawId), JSON.stringify(Array.from(ids)));
-};
 
 const readTeacherCommentRequestKeys = (userKey: string, lawId: string) => {
   if (typeof window === 'undefined' || !userKey || !lawId) return new Set<string>();
@@ -1470,21 +1454,12 @@ const ReactionControls: React.FC<{
   const reactionRequestInFlightRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
     const frameId = window.requestAnimationFrame(() => {
-      const storedReaction = window.localStorage.getItem(`cm:legal-reaction:${storageKey}`);
       setCounts({
         likes: Math.max(0, Number(initialLikes || 0)),
         dislikes: Math.max(0, Number(initialDislikes || 0)),
       });
-      if (typeof initialReaction !== 'undefined') {
-        setReaction(initialReaction === 'like' || initialReaction === 'dislike' ? initialReaction : null);
-        return;
-      }
-      setReaction(storedReaction === 'like' || storedReaction === 'dislike' ? storedReaction : null);
+      setReaction(initialReaction === 'like' || initialReaction === 'dislike' ? initialReaction : null);
     });
 
     return () => window.cancelAnimationFrame(frameId);
@@ -1502,21 +1477,11 @@ const ReactionControls: React.FC<{
       likes: Math.max(0, previousCounts.likes - (previousReaction === 'like' ? 1 : 0) + (resolvedReaction === 'like' ? 1 : 0)),
       dislikes: Math.max(0, previousCounts.dislikes - (previousReaction === 'dislike' ? 1 : 0) + (resolvedReaction === 'dislike' ? 1 : 0)),
     };
-    const storageReactionKey = `cm:legal-reaction:${storageKey}`;
-
     reactionRequestInFlightRef.current = true;
     legalReactionInFlightKeys.add(storageKey);
     setIsSavingReaction(true);
     setReaction(resolvedReaction);
     setCounts(optimisticCounts);
-    if (typeof window !== 'undefined') {
-      if (resolvedReaction) {
-        window.localStorage.setItem(storageReactionKey, resolvedReaction);
-      } else {
-        window.localStorage.removeItem(storageReactionKey);
-      }
-    }
-
     void Promise.resolve()
       .then(() => legalCommentaryApiService.setContentReaction(storageKey, resolvedReaction))
       .then((result) => {
@@ -1528,24 +1493,10 @@ const ReactionControls: React.FC<{
           dislikes: Math.max(0, Number(result.dislikes || 0)),
         });
         setReaction(persistedReaction);
-        if (typeof window !== 'undefined') {
-          if (persistedReaction) {
-            window.localStorage.setItem(storageReactionKey, persistedReaction);
-          } else {
-            window.localStorage.removeItem(storageReactionKey);
-          }
-        }
       })
       .catch(() => {
         setCounts(previousCounts);
         setReaction(previousReaction);
-        if (typeof window !== 'undefined') {
-          if (previousReaction) {
-            window.localStorage.setItem(storageReactionKey, previousReaction);
-          } else {
-            window.localStorage.removeItem(storageReactionKey);
-          }
-        }
       })
       .finally(() => {
         reactionRequestInFlightRef.current = false;
@@ -2846,10 +2797,7 @@ const LawDetailPage: React.FC = () => {
         return;
       }
 
-      const nextFavorites = readFavoriteSectionIds(userId, readingStorageLawId);
-      backendFavoriteSectionIds.forEach((sectionId) => nextFavorites.add(sectionId));
-      setFavoriteSectionIds(nextFavorites);
-      saveFavoriteSectionIds(userId, readingStorageLawId, nextFavorites);
+      setFavoriteSectionIds(new Set(backendFavoriteSectionIds));
       setSectionReadingState(readSectionReadingState(userId, readingStorageLawId));
       setRequestedTeacherCommentKeys(readTeacherCommentRequestKeys(userId, readingStorageLawId));
     });
@@ -3123,7 +3071,6 @@ const LawDetailPage: React.FC = () => {
       } else {
         next.delete(activeSection.id);
       }
-      saveFavoriteSectionIds(userId, law.id, next);
       return next;
     });
 
@@ -3137,7 +3084,6 @@ const LawDetailPage: React.FC = () => {
         } else {
           next.delete(activeSection.id);
         }
-        saveFavoriteSectionIds(userId, law.id, next);
         return next;
       });
       addToast(
@@ -3154,7 +3100,6 @@ const LawDetailPage: React.FC = () => {
         } else {
           next.add(activeSection.id);
         }
-        saveFavoriteSectionIds(userId, law.id, next);
         return next;
       });
       addToast('Não foi possível atualizar o favorito agora.', 'error');

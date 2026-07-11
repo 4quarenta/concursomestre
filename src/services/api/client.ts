@@ -137,7 +137,7 @@ const readFailedResponseMessage = async (response: Response): Promise<string> =>
  * Ele sustenta os fluxos de download e preview protegidos pelo backend oficial.
  * @since v1.0.0
  */
-const fetchAuthenticatedResource = async (
+export const fetchAuthenticatedResource = async (
     resource: string,
     init: RequestInit = {},
     hasRetried = false

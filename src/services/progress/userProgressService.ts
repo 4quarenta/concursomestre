@@ -9,8 +9,8 @@
 *
 */
 
-import { apiClient, ENDPOINTS, readApiData } from '@services/api';
-import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
+import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { UserAnswer, UserNote } from '@types';
 
 type QuestionNoteRecord = {
@@ -23,6 +23,11 @@ type QuestionNoteRecord = {
 
 type QuestionNotesResponse = {
   notes?: QuestionNoteRecord[];
+};
+
+type QuestionNoteMutationResponse = {
+  deleted?: boolean;
+  note?: QuestionNoteRecord | null;
 };
 
 const SECONDS_TIMESTAMP_LIMIT = 10_000_000_000;
@@ -85,6 +90,20 @@ const parseBooleanCandidate = (value: unknown): boolean => {
 
   const normalizedValue = value.trim().toLowerCase();
   return ['1', 'true', 'sim', 'yes', 'correct', 'correto', 'certo'].includes(normalizedValue);
+};
+
+const normalizeQuestionNoteRecord = (note: QuestionNoteRecord): UserNote | null => {
+  const questionId = Number(note.itemId);
+  if (!Number.isFinite(questionId) || questionId <= 0) {
+    return null;
+  }
+
+  return {
+    id: String(note.id || ''),
+    questionId,
+    text: typeof note.text === 'string' ? note.text : '',
+    timestamp: typeof note.updatedAt === 'string' ? parseTimestampCandidate(note.updatedAt) || Date.now() : Date.now(),
+  };
 };
 
 const normalizeUserAnswerRecord = (answer: unknown): UserAnswer | null => {
@@ -210,13 +229,27 @@ export const userProgressService = {
 
       return notes
         .filter((note) => note?.type === 'question')
-        .map((note) => ({
-          id: String(note.id),
-          questionId: Number(note.itemId),
-          text: typeof note.text === 'string' ? note.text : '',
-          timestamp: typeof note.updatedAt === 'string' ? new Date(note.updatedAt).getTime() : Date.now(),
-        }));
+        .map(normalizeQuestionNoteRecord)
+        .filter((note): note is UserNote => Boolean(note));
     }, 15000);
+  },
+
+  /**
+   * Saves the note remotely and returns the backend representation. The empty
+   * string is the official idempotent delete instruction.
+   */
+  async saveUserQuestionNote(questionId: number, text: string): Promise<UserNote | null> {
+    const response = await apiClient.post<unknown>(ENDPOINTS.users.notes, {
+      questionId,
+      text,
+    });
+    const envelope = assertApiSuccess<QuestionNoteMutationResponse>(response, 'Nao foi possivel salvar a anotacao.');
+    const payload = readApiData<QuestionNoteMutationResponse>(envelope.raw, {});
+    clearRequestCoalescing('user-progress:question-notes');
+
+    return payload.deleted || !payload.note
+      ? null
+      : normalizeQuestionNoteRecord(payload.note);
   },
 };
 

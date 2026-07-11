@@ -328,13 +328,31 @@ function handleUsersCommentsRoute(PDO $db): void
 function handleUsersNotesRoute(PDO $db): void
 {
     try {
-        $payload = verifyAuthenticatedUserPayload();
-        $authenticatedUserId = trim((string) ($payload['user_id'] ?? ''));
-        $requestedUserId = trim((string) (($_GET['userId'] ?? '') ?: ($_GET['user_id'] ?? '')));
-        $isAdmin = (($payload['role'] ?? '') === 'admin');
+        $authPayload = verifyAuthenticatedUserPayload();
+        $authenticatedUserId = trim((string) ($authPayload['user_id'] ?? ''));
+        $isAdmin = (($authPayload['role'] ?? '') === 'admin');
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
-        $result = buildUsersController($db)->listUserNotes($authenticatedUserId, $requestedUserId, $isAdmin);
-        Response::success($result, 'User notes retrieved');
+        if ($method === 'GET') {
+            $requestedUserId = trim((string) (($_GET['userId'] ?? '') ?: ($_GET['user_id'] ?? '')));
+            $result = buildUsersController($db)->listUserNotes($authenticatedUserId, $requestedUserId, $isAdmin);
+            Response::success($result, 'User notes retrieved');
+        }
+
+        if ($method !== 'POST') {
+            Response::badRequest('Metodo nao suportado para anotacoes.');
+        }
+
+        $validator = new UsersValidator();
+        $normalized = $validator->validateQuestionNotePayload(readUsersJsonRequestBody());
+        $result = buildUsersController($db)->saveUserQuestionNote(
+            $authenticatedUserId,
+            $normalized['requestedUserId'],
+            $isAdmin,
+            $normalized['questionId'],
+            $normalized['text']
+        );
+        Response::success($result, $result['deleted'] ? 'Anotacao removida.' : 'Anotacao salva.');
     } catch (InvalidArgumentException $e) {
         Response::badRequest($e->getMessage());
     } catch (RuntimeException $e) {

@@ -22,6 +22,7 @@ import type {
   SystemSettings,
 } from '@types';
 import { aiService, questionService, type PageExtractionResult } from '@services/questions';
+import { fetchAuthenticatedResource } from '@services/api';
 import { adminService } from '@services/admin/adminService';
 import { examService } from '@services/exams/examService';
 import {
@@ -8107,8 +8108,7 @@ export const useAdminImportWorkflow = ({
       : exam.answerKeyUrl || exam.gabaritoUrl);
     if (!url) return null;
 
-    const response = await fetch(url, { credentials: 'include' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const response = await fetchAuthenticatedResource(url);
     const blob = await response.blob();
     const fallbackName = kind === 'prova' ? `prova-${exam.id}.pdf` : `gabarito-${exam.id}.pdf`;
     return new File([blob], attachment?.name || fallbackName, {

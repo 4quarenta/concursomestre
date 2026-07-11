@@ -35,6 +35,10 @@ type NotificationListResponse = {
   notifications?: Notification[];
 };
 
+type NotificationRequestOptions = {
+  signal?: AbortSignal;
+};
+
 const readNotifications = (response: NotificationListResponse): Notification[] => {
   const payload = readApiData<Notification[] | NotificationListPayload>(response, []);
 
@@ -96,14 +100,16 @@ export const notificationService = {
    * Carrega as notificações do usuário autenticado.
    * @since 1.0.0
    */
-  async getNotifications(): Promise<Notification[]> {
+  async getNotifications(options: NotificationRequestOptions = {}): Promise<Notification[]> {
     const accessToken = getAccessToken();
     if (!accessToken || isAccessTokenExpired(accessToken, 10)) {
       return [];
     }
 
     try {
-      const response = await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list);
+      const response = options.signal
+        ? await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list, { signal: options.signal })
+        : await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list);
       return readNotifications(response);
     } catch (error) {
       clientLog.warn('Error fetching notifications:', error);
@@ -116,9 +122,9 @@ export const notificationService = {
    * o usuário autenticado no backend.
    * @since 1.0.0
    */
-  async getUserNotifications(_userId: string): Promise<Notification[]> {
+  async getUserNotifications(_userId: string, options: NotificationRequestOptions = {}): Promise<Notification[]> {
     void _userId;
-    return this.getNotifications();
+    return this.getNotifications(options);
   },
 
   /**

@@ -12,6 +12,7 @@ import {
 } from './userProgressQuery';
 import { useUserProgressStore } from './userProgressStore';
 import { clientLog } from '@services/monitoring/clientLog';
+import { userProgressService } from '@services/progress';
 
 /**
  * User-progress actions backed by Zustand + TanStack Query.
@@ -39,6 +40,7 @@ export const useUserProgressActions = () => {
   const loadedSlices = useUserProgressStore((store) => store.loadedSlices);
   const replaceUserProgress = useUserProgressStore((store) => store.replaceUserProgress);
   const saveUserQuestionNote = useUserProgressStore((store) => store.saveUserQuestionNote);
+  const setUserNotes = useUserProgressStore((store) => store.setUserNotes);
 
   const resolveProgressScope = useCallback((scope?: UserProgressFetchScope) => ({
     includeAnswers: scope?.includeAnswers !== false,
@@ -121,19 +123,37 @@ export const useUserProgressActions = () => {
     resolveProgressScope,
   ]);
 
-  const saveNote = useCallback((questionId: number, text: string) => {
-    saveUserQuestionNote(questionId, text);
-
-    if (currentUserId) {
-      const updatedNotes = useUserProgressStore.getState().userNotes;
-      patchUserProgressCache(currentUserId, (current) => ({
-        ...current,
-        notes: updatedNotes,
-      }));
+  const saveNote = useCallback(async (questionId: number, text: string) => {
+    if (!currentUserId) {
+      addToast('Entre na sua conta para salvar uma nota.', 'warning');
+      return;
     }
 
-    addToast('Nota salva!', 'success');
-  }, [addToast, currentUserId, patchUserProgressCache, saveUserQuestionNote]);
+    if (!Number.isFinite(questionId) || questionId <= 0) {
+      addToast('Nao foi possivel identificar a questao da anotacao.', 'error');
+      return;
+    }
+
+    const previousNotes = useUserProgressStore.getState().userNotes;
+    saveUserQuestionNote(questionId, text);
+    const optimisticNotes = useUserProgressStore.getState().userNotes;
+    patchUserProgressCache(currentUserId, (current) => ({ ...current, notes: optimisticNotes }));
+
+    try {
+      const persistedNote = await userProgressService.saveUserQuestionNote(questionId, text);
+      const authoritativeNotes = persistedNote
+        ? [...optimisticNotes.filter((note) => Number(note.questionId) !== questionId), persistedNote]
+        : optimisticNotes.filter((note) => Number(note.questionId) !== questionId);
+      setUserNotes(currentUserId, authoritativeNotes);
+      patchUserProgressCache(currentUserId, (current) => ({ ...current, notes: authoritativeNotes }));
+      addToast(persistedNote ? 'Nota salva!' : 'Nota removida.', 'success');
+    } catch (error) {
+      setUserNotes(currentUserId, previousNotes);
+      patchUserProgressCache(currentUserId, (current) => ({ ...current, notes: previousNotes }));
+      clientLog.warn('Failed to save user question note:', error);
+      addToast('Nao foi possivel salvar a nota. Tente novamente.', 'error');
+    }
+  }, [addToast, currentUserId, patchUserProgressCache, saveUserQuestionNote, setUserNotes]);
 
   return {
     userAnswers,

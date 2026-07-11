@@ -12,7 +12,7 @@
 import React from 'react';
 import { CalendarClock, ChevronDown, ChevronRight, Download, FileCheck2, FileText, Link2, Loader2, Pencil, PlusCircle, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import type { ExamFileAttachment, ExamFileKind, Prova, Question } from '@types';
-import { resolveApiResourceUrl } from '@services/api';
+import { fetchAuthenticatedResource } from '@services/api';
 import { adminService } from '@services/admin/adminService';
 import { examService } from '@services/exams/examService';
 import { clientLog } from '@services/monitoring/clientLog';
@@ -2500,10 +2500,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
       return localFile;
     }
 
-    const response = await fetch(resolveApiResourceUrl(attachedFile.url), { credentials: 'include' });
-    if (!response.ok) {
-      throw new Error('NÃ£o foi possÃ­vel abrir o edital anexado.');
-    }
+    const response = await fetchAuthenticatedResource(attachedFile.url);
     const blob = await response.blob();
     return new File([blob], attachedFile.name || 'edital.pdf', {
       type: attachedFile.mimeType || blob.type || 'application/pdf',

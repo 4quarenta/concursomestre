@@ -103,6 +103,27 @@ class UsersController
     }
 
     /**
+     * Saves or clears one question note inside the authenticated user scope.
+     *
+     * @since 1.0.0
+     */
+    public function saveUserQuestionNote(
+        string $authenticatedUserId,
+        ?string $requestedUserId,
+        bool $isAdmin,
+        int $questionId,
+        string $text
+    ): array {
+        return $this->service->saveUserQuestionNote(
+            $authenticatedUserId,
+            $requestedUserId,
+            $isAdmin,
+            $questionId,
+            $text
+        );
+    }
+
+    /**
      * Lista historico de respostas do usuario no escopo autorizado.
      * @since 1.0.0
      */

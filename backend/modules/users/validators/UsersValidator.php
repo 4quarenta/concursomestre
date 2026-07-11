@@ -220,6 +220,30 @@ class UsersValidator
     }
 
     /**
+     * Validates a question note before it reaches the persistence layer.
+     *
+     * @since 1.0.0
+     */
+    public function validateQuestionNotePayload(array $payload): array
+    {
+        $questionId = (int) ($payload['questionId'] ?? $payload['question_id'] ?? $payload['itemId'] ?? 0);
+        if ($questionId <= 0) {
+            throw new InvalidArgumentException('Questao da anotacao e obrigatoria.');
+        }
+
+        $text = trim((string) ($payload['text'] ?? $payload['note'] ?? ''));
+        if (mb_strlen($text) > 10000) {
+            throw new InvalidArgumentException('A anotacao pode ter no maximo 10.000 caracteres.');
+        }
+
+        return [
+            'requestedUserId' => $this->extractRequestedUserIdFromPayload($payload),
+            'questionId' => $questionId,
+            'text' => $text,
+        ];
+    }
+
+    /**
      * Garante que a solicitacao de exclusao tenha motivo legivel antes de seguir.
      *
      * @since 1.0.0

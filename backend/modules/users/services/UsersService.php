@@ -344,6 +344,46 @@ class UsersService
     }
 
     /**
+     * Persists a question note and returns the authoritative row for an
+     * optimistic frontend update. Clearing a note is intentionally idempotent.
+     *
+     * @since 1.0.0
+     */
+    public function saveUserQuestionNote(
+        string $authenticatedUserId,
+        ?string $requestedUserId,
+        bool $isAdmin,
+        int $questionId,
+        string $text
+    ): array {
+        $targetUserId = $this->validator->resolveRequestedUserId($authenticatedUserId, $requestedUserId, $isAdmin);
+
+        if ($text === '') {
+            $this->repository->deleteUserNoteByItem($targetUserId, (string) $questionId, 'question');
+            return [
+                'deleted' => true,
+                'note' => null,
+            ];
+        }
+
+        $note = $this->repository->upsertUserQuestionNote($targetUserId, $questionId, $text);
+        if (!is_array($note)) {
+            throw new RuntimeException('Nao foi possivel salvar a anotacao.');
+        }
+
+        return [
+            'deleted' => false,
+            'note' => [
+                'id' => (string) ($note['id'] ?? ''),
+                'itemId' => (string) ($note['item_id'] ?? $questionId),
+                'type' => 'question',
+                'text' => (string) ($note['note_text'] ?? $text),
+                'updatedAt' => $note['updated_at'] ?? null,
+            ],
+        ];
+    }
+
+    /**
      * Retorna as respostas do Usuario no formato esperado pela camada de progresso.
       * @since 1.0.0
      */
@@ -928,4 +968,3 @@ class UsersService
         return 'Os dados informados conflitam com um registro existente.';
     }
 }
-

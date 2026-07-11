@@ -7,6 +7,7 @@ import { buildNotificationsQueryKey, fetchNotificationsList } from '@/state/noti
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
 import { clientLog } from '@services/monitoring/clientLog';
 import { getAccessToken, isAccessTokenExpired } from '@services/auth/session';
+import { createVisibilityAwarePoller } from '@services/api';
 
 interface NotificationsProviderProps {
   children: React.ReactNode;
@@ -74,7 +75,7 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({ ch
     try {
       const notifications = await queryClient.fetchQuery({
         queryKey: buildNotificationsQueryKey(userId),
-        queryFn: () => fetchNotificationsList(userId),
+        queryFn: ({ signal }) => fetchNotificationsList(userId, signal),
         staleTime: force ? 0 : 30_000,
       });
       replaceNotifications(userId, notifications);
@@ -108,38 +109,35 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({ ch
       });
     }
 
-    let timeoutId: number | null = null;
-    let cancelled = false;
-
-    const schedulePoll = (delayMs: number) => {
-      timeoutId = window.setTimeout(async () => {
-        if (cancelled) {
-          return;
-        }
-
+    const notificationQueryKey = buildNotificationsQueryKey(currentUserId);
+    const poller = createVisibilityAwarePoller({
+      isVisible: () => document.visibilityState === 'visible',
+      poll: async () => {
         await fetchNotifications(currentUserId);
-        const nextDelay = document.visibilityState === 'visible' ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
-        schedulePoll(nextDelay);
-      }, delayMs);
-    };
+        poller.resume(ACTIVE_POLL_INTERVAL_MS);
+      },
+      onPause: () => {
+        void queryClient.cancelQueries({ queryKey: notificationQueryKey });
+      },
+    });
 
     const refreshOnFocus = () => {
       if (document.visibilityState !== 'visible') {
+        poller.pause();
         return;
       }
+
       void fetchNotifications(currentUserId, true);
+      poller.resume(ACTIVE_POLL_INTERVAL_MS);
     };
 
-    schedulePoll(ACTIVE_POLL_INTERVAL_MS);
+    poller.start(ACTIVE_POLL_INTERVAL_MS);
     window.addEventListener('focus', refreshOnFocus);
     document.addEventListener('visibilitychange', refreshOnFocus);
 
     return () => {
-      cancelled = true;
       cancelBootstrapFetch();
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
+      poller.stop();
       window.removeEventListener('focus', refreshOnFocus);
       document.removeEventListener('visibilitychange', refreshOnFocus);
     };

@@ -24,6 +24,7 @@ interface UserProgressState {
     notes?: boolean;
   }) => void;
   setUserComments: (userId: string, comments: QuestaoComentario[]) => void;
+  setUserNotes: (userId: string, notes: UserNote[]) => void;
   upsertUserAnswer: (answer: UserAnswer) => void;
   saveUserQuestionNote: (questionId: number, text: string) => void;
   removeQuestionProgress: (questionId: number | string) => void;
@@ -89,6 +90,15 @@ export const useUserProgressStore = create<UserProgressState>((set) => ({
       comments: true,
     },
     userComments: comments,
+    isUserProgressLoaded: state.isUserProgressLoaded || Boolean(userId),
+  })),
+  setUserNotes: (userId, notes) => set((state) => ({
+    loadedUserId: userId || state.loadedUserId,
+    loadedSlices: {
+      ...state.loadedSlices,
+      notes: true,
+    },
+    userNotes: notes,
     isUserProgressLoaded: state.isUserProgressLoaded || Boolean(userId),
   })),
   upsertUserAnswer: (answer) => set((state) => ({

@@ -549,6 +549,85 @@ class UsersRepository
     }
 
     /**
+     * Creates or updates one private question note for its owner.
+     * The unique user/item/type key makes this mutation idempotent.
+     *
+     * @since 1.0.0
+     */
+    public function upsertUserQuestionNote(string $userId, int $questionId, string $noteText): ?array
+    {
+        $stmt = $this->db->prepare(
+            "INSERT INTO user_notes (id, user_id, item_id, type, note_text)
+             VALUES (:id, :user_id, :item_id, 'question', :note_text)
+             ON DUPLICATE KEY UPDATE
+                 note_text = VALUES(note_text),
+                 updated_at = CURRENT_TIMESTAMP"
+        );
+        $stmt->execute([
+            ':id' => bin2hex(random_bytes(16)),
+            ':user_id' => $userId,
+            ':item_id' => (string) $questionId,
+            ':note_text' => $noteText,
+        ]);
+
+        return $this->findUserNoteByItem($userId, (string) $questionId, 'question');
+    }
+
+    /**
+     * Deletes a note by its logical owner/item key. Missing notes are harmless
+     * because clearing a note must be idempotent from the interface.
+     *
+     * @since 1.0.0
+     */
+    public function deleteUserNoteByItem(string $userId, string $itemId, string $type): bool
+    {
+        $stmt = $this->db->prepare(
+            'DELETE FROM user_notes WHERE user_id = :user_id AND item_id = :item_id AND type = :type'
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':item_id' => $itemId,
+            ':type' => $type,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Loads the note row returned to the frontend after a successful mutation.
+     *
+     * @since 1.0.0
+     */
+    private function findUserNoteByItem(string $userId, string $itemId, string $type): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                n.id,
+                n.item_id,
+                n.type,
+                n.note_text,
+                n.updated_at,
+                q.enunciado_clean AS question_snippet,
+                m.title AS material_title
+             FROM user_notes n
+             LEFT JOIN questions q ON n.item_id = q.id AND n.type = 'question'
+             LEFT JOIN materials m ON n.item_id = m.id AND n.type = 'material'
+             WHERE n.user_id = :user_id
+               AND n.item_id = :item_id
+               AND n.type = :type
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':item_id' => $itemId,
+            ':type' => $type,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /**
      * Lista as respostas do Usuario para historico e progresso consolidado.
       * @since 1.0.0
      */

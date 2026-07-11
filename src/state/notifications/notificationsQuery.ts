@@ -5,8 +5,8 @@ export const buildNotificationsQueryKey = (userId: string) => (
   ['notifications', userId] as const
 );
 
-export const fetchNotificationsList = async (userId: string): Promise<Notification[]> => {
-  const notifications = await notificationService.getUserNotifications(userId);
+export const fetchNotificationsList = async (userId: string, signal?: AbortSignal): Promise<Notification[]> => {
+  const notifications = await notificationService.getUserNotifications(userId, { signal });
   return Array.isArray(notifications) ? notifications : [];
 };
 
