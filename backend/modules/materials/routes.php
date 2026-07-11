@@ -490,8 +490,7 @@ function handleMaterialsUploadRoute(PDO $db): void
             Response::badRequest('Nenhum arquivo foi enviado.');
         }
 
-        $password = isset($_POST['password']) ? (string) $_POST['password'] : null;
-        $result = buildMaterialsController($db)->uploadFile((string) $payload['user_id'], $file, $password);
+        $result = buildMaterialsController($db)->uploadFile((string) $payload['user_id'], $file);
 
         Response::success($result, 'Arquivo enviado com sucesso.');
     } catch (InvalidArgumentException $e) {
@@ -565,7 +564,7 @@ function handleMaterialsModerateRoute(PDO $db): void
         $reason = trim((string) ($data['reason'] ?? ''));
         $evidenceUrl = trim((string) ($data['evidence_url'] ?? ''));
 
-        $payload = buildMaterialsController($db)->moderate($materialId, $status, $reason);
+        $payload = buildMaterialsController($db)->moderate($materialId, $status, $reason, $adminUserId);
 
         logAdminAudit($db, $adminUserId, 'material.moderate', 'material', $materialId, [
             'previous_status' => $payload['previousStatus'] ?? null,
@@ -603,7 +602,7 @@ function handleMaterialsDeleteRoute(PDO $db): void
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
         $materialId = trim((string) ($data['id'] ?? ($_GET['id'] ?? '')));
 
-        $payload = buildMaterialsController($db)->delete($materialId);
+        $payload = buildMaterialsController($db)->delete($materialId, $adminUserId);
 
         logAdminAudit($db, $adminUserId, 'material.delete', 'material', $materialId, [
             'previous_status' => $payload['previousStatus'] ?? null,

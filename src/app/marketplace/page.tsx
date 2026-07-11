@@ -764,7 +764,7 @@ const Marketplace: React.FC = () => {
             }
         } else {
             // Read Online - Redirect to Full Screen Reader
-            if (material.fileUrl) {
+            if (material.hasFile) {
                 router.push(`/read/${material.id}`);
             } else {
                 addToast('Erro: Arquivo não disponível para visualização.', 'error');

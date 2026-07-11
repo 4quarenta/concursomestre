@@ -1451,8 +1451,10 @@ export interface Material {
   examTarget?: string;
   coverUrl?: string;
   previewUrl?: string;
-  fileUrl?: string;
-  pdfPassword?: string;
+  /** Referencia opaca retornada apenas apos um upload privado. */
+  fileRef?: string;
+  /** Indica que existe PDF protegido sem revelar caminho de armazenamento. */
+  hasFile?: boolean;
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string;
   salesCount: number;

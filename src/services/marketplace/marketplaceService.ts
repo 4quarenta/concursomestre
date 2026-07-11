@@ -26,12 +26,12 @@ type MarketplaceTransactionListParams = {
 };
 
 type UploadMaterialFileParams = {
-  password?: string;
   onProgress?: (progress: number) => void;
 };
 
 type UploadMaterialFileResult = {
-  url: string;
+  fileRef?: string;
+  publicUrl?: string;
   pageCount?: number;
 };
 
@@ -58,7 +58,8 @@ type MaterialsListResponse = {
 
 type UploadMaterialResponse = {
   success?: boolean;
-  url?: string;
+  fileRef?: string;
+  publicUrl?: string;
   pageCount?: number;
 };
 
@@ -308,10 +309,6 @@ export const marketplaceService = {
     const formData = new FormData();
     formData.append('file', file);
 
-    if (options.password) {
-      formData.append('password', options.password);
-    }
-
     const response = await apiClient.post<UploadMaterialResponse>(ENDPOINTS.materials.upload, formData, {
       onUploadProgress: (progressEvent) => {
         if (!options.onProgress) {
@@ -326,7 +323,7 @@ export const marketplaceService = {
     });
 
     const payload = readApiData<UploadMaterialResponse>(response, {});
-    const uploadSucceeded = Boolean(payload.success ?? payload.url);
+    const uploadSucceeded = Boolean(payload.success ?? payload.fileRef ?? payload.publicUrl);
     if (!uploadSucceeded) {
       return null;
     }
@@ -334,7 +331,8 @@ export const marketplaceService = {
     assertApiSuccess({ success: true, data: payload }, 'Erro ao enviar arquivo.');
 
     return {
-      url: payload.url || '',
+      fileRef: payload.fileRef,
+      publicUrl: payload.publicUrl,
       pageCount: payload.pageCount,
     };
   },

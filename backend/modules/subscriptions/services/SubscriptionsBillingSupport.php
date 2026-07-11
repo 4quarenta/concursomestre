@@ -1120,7 +1120,7 @@ function validateCouponForAmount(PDO $db, ?string $couponCode, float $amount, ar
  *
  * @since 1.0.0
  */
-function incrementCouponUsage(PDO $db, string $couponCode): void
+function incrementCouponUsage(PDO $db, string $couponCode, bool $enforceUsageLimit = false): void
 {
     $normalizedCode = strtoupper(trim($couponCode));
     if ($normalizedCode === '') {
@@ -1151,7 +1151,13 @@ function incrementCouponUsage(PDO $db, string $couponCode): void
             $candidateCode = strtoupper(trim((string) ($candidate['code'] ?? '')));
 
             if ($candidateCode === $normalizedCode) {
-                $candidate['uses'] = (int) ($candidate['uses'] ?? 0) + 1;
+                $maxUses = max(0, (int) ($candidate['maxUses'] ?? 0));
+                $currentUses = max(0, (int) ($candidate['uses'] ?? 0));
+                if ($enforceUsageLimit && $maxUses > 0 && $currentUses >= $maxUses) {
+                    throw new RuntimeException('Cupom esgotado.');
+                }
+
+                $candidate['uses'] = $currentUses + 1;
                 $coupon = $candidate;
                 $updated = true;
                 break;

@@ -193,19 +193,19 @@ describe('marketplaceService', () => {
     mockPost.mockResolvedValueOnce({
       success: true,
       data: {
-        url: '/uploads/materials/file.pdf',
+        fileRef: 'private://materials/file.pdf',
         pageCount: 42,
       },
     });
 
     const file = new File(['conteúdo'], 'arquivo.pdf', { type: 'application/pdf' });
-    const result = await marketplaceService.uploadFile(file, { password: '1234' });
+    const result = await marketplaceService.uploadFile(file);
 
     expect(mockPost).toHaveBeenCalledWith('upload.php', expect.any(FormData), expect.objectContaining({
       onUploadProgress: expect.any(Function),
     }));
     expect(result).toEqual({
-      url: '/uploads/materials/file.pdf',
+      fileRef: 'private://materials/file.pdf',
       pageCount: 42,
     });
   });

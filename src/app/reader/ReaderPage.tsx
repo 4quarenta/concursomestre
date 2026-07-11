@@ -17,7 +17,7 @@ import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useAuth } from '@providers/AuthProvider';
 import PdfViewer from '../../components/shared/overlays/PdfViewer';
 import { Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
-import { getAssetUrl } from '@services/api';
+import { buildMaterialAccessEndpoint, createAuthenticatedFileObjectUrl } from '@services/api';
 import { clientLog } from '@services/monitoring/clientLog';
 
 const ReaderPage: React.FC = () => {
@@ -94,21 +94,42 @@ const ReaderPage: React.FC = () => {
             };
         }
 
-        if (!material.fileUrl) {
+        if (!material.hasFile) {
             scheduleState({ error: "O arquivo deste material não está disponível.", loading: false });
             return () => {
                 if (frameId !== null) window.cancelAnimationFrame(frameId);
             };
         }
 
-        scheduleState({
-            error: null,
-            loading: false,
-            materialUrl: getAssetUrl(material.fileUrl),
-            materialTitle: material.title,
-        });
+        let objectUrl = '';
+        let cancelled = false;
+
+        void createAuthenticatedFileObjectUrl(buildMaterialAccessEndpoint(material.id))
+            .then((url) => {
+                if (cancelled) {
+                    URL.revokeObjectURL(url);
+                    return;
+                }
+
+                objectUrl = url;
+                scheduleState({
+                    error: null,
+                    loading: false,
+                    materialUrl: url,
+                    materialTitle: material.title,
+                });
+            })
+            .catch((readError: unknown) => {
+                if (cancelled) return;
+                const message = readError instanceof Error
+                    ? readError.message
+                    : 'Nao foi possivel carregar o arquivo deste material.';
+                scheduleState({ error: message, loading: false });
+            });
 
         return () => {
+            cancelled = true;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
             if (frameId !== null) window.cancelAnimationFrame(frameId);
         };
 
@@ -141,8 +162,6 @@ const ReaderPage: React.FC = () => {
         );
     }
 
-    const targetMaterial = materials.find(m => m.id === id);
-
     return (
         <div className="h-screen w-screen overflow-hidden bg-slate-900">
             <PdfViewer
@@ -151,7 +170,6 @@ const ReaderPage: React.FC = () => {
                 url={materialUrl}
                 title={materialTitle}
                 materialId={id || ''}
-                password={targetMaterial?.pdfPassword} // Passa a senha armazenada, se existir
                 onClose={() => router.back()} // Go back on close
             />
         </div>

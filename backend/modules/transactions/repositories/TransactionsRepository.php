@@ -34,7 +34,22 @@ class TransactionsRepository
      */
     public function findMaterialById(string $materialId): ?array
     {
-        $stmt = $this->db->prepare('SELECT id, title, price, author_id FROM materials WHERE id = :id LIMIT 1');
+        $stmt = $this->db->prepare('SELECT id, title, price, author_id, status FROM materials WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $materialId]);
+        $material = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $material ?: null;
+    }
+
+    /**
+     * Busca e bloqueia a linha do material durante a aquisicao gratuita para
+     * impedir duas compras concorrentes do mesmo usuario.
+     */
+    public function findMaterialByIdForUpdate(string $materialId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, title, price, author_id, status FROM materials WHERE id = :id LIMIT 1 FOR UPDATE'
+        );
         $stmt->execute([':id' => $materialId]);
         $material = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -80,7 +95,7 @@ class TransactionsRepository
             FROM transactions
             WHERE user_id = :user_id
               AND material_id = :material_id
-              AND status = 'completed'
+              AND status IN ('completed', 'approved')
             LIMIT 1
         ");
         $stmt->execute([

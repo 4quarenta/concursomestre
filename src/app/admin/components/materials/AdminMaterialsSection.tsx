@@ -116,7 +116,7 @@ const AdminMaterialsSection = ({
                           >
                             Moderar
                           </button>
-                          {material.fileUrl ? (
+                          {material.hasFile ? (
                             <>
                               <span className="text-slate-300 dark:text-slate-700">|</span>
                               <button

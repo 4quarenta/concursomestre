@@ -158,9 +158,9 @@ class MaterialsController
      *
      * @since 1.0.0
      */
-    public function uploadFile(string $authenticatedUserId, array $file, ?string $password): array
+    public function uploadFile(string $authenticatedUserId, array $file): array
     {
-        return $this->service->uploadFile($authenticatedUserId, $file, $password);
+        return $this->service->uploadFile($authenticatedUserId, $file);
     }
 
     /**
@@ -188,9 +188,9 @@ class MaterialsController
      *
      * @since 1.0.0
      */
-    public function moderate(string $materialId, string $status, ?string $reason): array
+    public function moderate(string $materialId, string $status, ?string $reason, string $moderatorUserId): array
     {
-        return $this->service->moderate($materialId, $status, $reason);
+        return $this->service->moderate($materialId, $status, $reason, $moderatorUserId);
     }
 
     /**
@@ -198,9 +198,9 @@ class MaterialsController
      *
      * @since 1.0.0
      */
-    public function delete(string $materialId): array
+    public function delete(string $materialId, string $moderatorUserId): array
     {
-        return $this->service->delete($materialId);
+        return $this->service->delete($materialId, $moderatorUserId);
     }
 
     /**

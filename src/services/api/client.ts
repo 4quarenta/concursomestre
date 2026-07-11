@@ -327,6 +327,18 @@ const stripBackendPathPrefix = (resource: string, backendRoot: string): string =
     return `${cleanResource}${suffix}`;
 };
 
+/**
+ * Cria uma URL de objeto para um arquivo protegido baixado com a sessao atual.
+ * O chamador deve revogar a URL assim que o visualizador for desmontado.
+ * @since v1.0.0
+ */
+export const createAuthenticatedFileObjectUrl = async (resource: string): Promise<string> => {
+    const response = await fetchAuthenticatedResource(resource);
+    const blob = await response.blob();
+
+    return URL.createObjectURL(blob);
+};
+
 export const getAssetUrl = (path: string) => {
     const rawPath = String(path || '').trim();
     if (!rawPath || ['null', 'undefined'].includes(rawPath.toLowerCase())) return '';

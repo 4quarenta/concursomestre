@@ -13,7 +13,8 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import type { ErrorReport, Material } from '@types';
-import { AlertTriangle, CheckCircle2, Eye, FileText, Image as ImageIcon, Lock, ShieldAlert, X, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Eye, FileText, Image as ImageIcon, ShieldAlert, X, XCircle } from 'lucide-react';
+import { buildMaterialAccessEndpoint, openAuthenticatedFile } from '@services/api';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import {
   ADMIN_MODAL_PANEL_CLASS,
@@ -173,22 +174,23 @@ const MaterialModerationModal = ({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="rounded-md bg-indigo-100 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
-                        <Lock size={16} />
+                        <FileText size={16} />
                       </div>
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 dark:text-indigo-300">Senha do PDF</p>
-                        <p className="text-sm font-mono font-semibold text-indigo-700 dark:text-indigo-200">{material.pdfPassword || 'Sem senha'}</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 dark:text-indigo-300">Arquivo protegido</p>
+                        <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-200">Acesso controlado pela plataforma.</p>
                       </div>
                     </div>
-                    {material.fileUrl ? (
-                      <a
-                        href={material.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                    {material.hasFile ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void openAuthenticatedFile(buildMaterialAccessEndpoint(material.id)).catch(() => undefined);
+                        }}
                         className={ADMIN_PRIMARY_BUTTON_CLASS}
                       >
                         <FileText size={14} /> Abrir PDF
-                      </a>
+                      </button>
                     ) : null}
                   </div>
                 </div>

@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 /**
  * Repositorio do dominio de materiais.
  * Concentra acesso ao banco para listagem, CRUD, moderacao e avaliacao.
@@ -20,6 +22,7 @@
 class MaterialsRepository
 {
     private PDO $db;
+    private bool $schemaChecked = false;
 
     /**
      * Injeta o PDO usado pelas consultas do marketplace.
@@ -29,6 +32,33 @@ class MaterialsRepository
     public function __construct(PDO $db)
     {
         $this->db = $db;
+    }
+
+    /**
+     * Confere apenas a disponibilidade do schema. DDL pertence exclusivamente
+     * ao runner de migrations para que uma requisicao HTTP nunca altere tabelas.
+     */
+    public function ensureSchema(): void
+    {
+        if ($this->schemaChecked) {
+            return;
+        }
+
+        $this->schemaChecked = true;
+        SchemaReadiness::assertTablesAndColumns($this->db, 'marketplace e conteudo de usuarios', [
+            'materials' => [
+                'id', 'author_id', 'files_json', 'status', 'updated_by_user_id',
+                'moderated_by_user_id', 'moderated_at', 'moderation_reason',
+            ],
+            'material_ratings' => ['user_id', 'material_id', 'rating'],
+            'material_uploads' => [
+                'storage_key', 'uploaded_by_user_id', 'mime_type', 'size_bytes',
+                'checksum_sha256', 'status', 'attached_material_id',
+            ],
+            'material_moderation_events' => [
+                'material_id', 'actor_user_id', 'action', 'next_status', 'reason',
+            ],
+        ]);
     }
 
     /**
@@ -341,24 +371,130 @@ class MaterialsRepository
     }
 
     /**
+     * Registra um PDF privado enviado pelo autor antes de ele ser associado a
+     * um material. A associacao posterior confere o mesmo usuario.
+     */
+    public function createMaterialUpload(array $payload): void
+    {
+        $this->ensureSchema();
+
+        $stmt = $this->db->prepare(
+            "INSERT INTO material_uploads (
+                storage_key, uploaded_by_user_id, mime_type, size_bytes,
+                checksum_sha256, status, created_at
+            ) VALUES (
+                :storage_key, :uploaded_by_user_id, :mime_type, :size_bytes,
+                :checksum_sha256, 'pending', NOW()
+            )"
+        );
+        $stmt->execute($payload);
+    }
+
+    /**
+     * Busca somente um upload pendente pertencente ao autor autenticado.
+     */
+    public function findPendingMaterialUploadForOwner(string $storageKey, string $userId): ?array
+    {
+        $this->ensureSchema();
+
+        $stmt = $this->db->prepare(
+            "SELECT *
+             FROM material_uploads
+             WHERE storage_key = :storage_key
+               AND uploaded_by_user_id = :user_id
+               AND status = 'pending'
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':storage_key' => $storageKey,
+            ':user_id' => $userId,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /**
+     * Marca o upload como associado de forma atomica para impedir que um mesmo
+     * arquivo privado seja anexado a mais de um material por replay de request.
+     */
+    public function attachPendingMaterialUpload(string $storageKey, string $userId, string $materialId): bool
+    {
+        $this->ensureSchema();
+
+        $stmt = $this->db->prepare(
+            "UPDATE material_uploads
+             SET status = 'attached',
+                 attached_material_id = :material_id,
+                 attached_at = NOW()
+             WHERE storage_key = :storage_key
+               AND uploaded_by_user_id = :user_id
+               AND status = 'pending'"
+        );
+        $stmt->execute([
+            ':material_id' => $materialId,
+            ':storage_key' => $storageKey,
+            ':user_id' => $userId,
+        ]);
+
+        return $stmt->rowCount() === 1;
+    }
+
+    /**
      * Aplica status de moderacao e motivo de rejeicao.
      *
      * @since 1.0.0
      */
-    public function updateModeration(string $materialId, string $status, ?string $reason): void
+    public function updateModeration(string $materialId, string $status, ?string $reason, string $moderatorUserId): void
     {
         $stmt = $this->db->prepare(
             "
             UPDATE materials
             SET status = :status,
-                rejection_reason = :reason
+                rejection_reason = :reason,
+                moderation_reason = :reason,
+                moderated_by_user_id = :moderator_user_id,
+                moderated_at = NOW()
             WHERE id = :id
             "
         );
         $stmt->execute([
             ':status' => $status,
             ':reason' => $reason,
+            ':moderator_user_id' => $moderatorUserId,
             ':id' => $materialId,
+        ]);
+    }
+
+    /**
+     * Mantem uma trilha append-only de cada decisao de moderacao.
+     */
+    public function recordModerationEvent(
+        string $materialId,
+        string $actorUserId,
+        string $action,
+        ?string $previousStatus,
+        string $nextStatus,
+        ?string $reason
+    ): void {
+        $this->ensureSchema();
+
+        $stmt = $this->db->prepare(
+            "INSERT INTO material_moderation_events (
+                material_id, actor_user_id, action, previous_status,
+                next_status, reason, created_at
+            ) VALUES (
+                :material_id, :actor_user_id, :action, :previous_status,
+                :next_status, :reason, NOW()
+            )"
+        );
+        $stmt->execute([
+            ':material_id' => $materialId,
+            ':actor_user_id' => $actorUserId,
+            ':action' => $action,
+            ':previous_status' => $previousStatus,
+            ':next_status' => $nextStatus,
+            ':reason' => $reason,
         ]);
     }
 
@@ -369,7 +505,7 @@ class MaterialsRepository
      */
     public function markAsRemoved(string $materialId, string $reason): void
     {
-        $this->updateModeration($materialId, 'rejected', $reason);
+        throw new LogicException('Use updateModeration com o moderador autenticado.');
     }
 
     /**
@@ -602,38 +738,13 @@ class MaterialsRepository
     }
 
     /**
-     * Garante que a tabela de ratings de materiais exista.
-     *
-     * @since 1.0.0
-     */
-    public function ensureMaterialRatingsTable(): void
-    {
-        $this->db->exec(
-            "
-            CREATE TABLE IF NOT EXISTS material_ratings (
-                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                user_id VARCHAR(64) NOT NULL,
-                material_id VARCHAR(64) NOT NULL,
-                rating DECIMAL(3,1) NOT NULL,
-                created_at DATETIME NOT NULL,
-                UNIQUE KEY uniq_material_ratings_user_material (user_id, material_id),
-                INDEX idx_material_ratings_material (material_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            "
-        );
-
-        $this->db->exec('ALTER TABLE material_ratings MODIFY user_id VARCHAR(64) NOT NULL');
-        $this->db->exec('ALTER TABLE material_ratings MODIFY material_id VARCHAR(64) NOT NULL');
-    }
-
-    /**
      * Busca a avaliacao ja registrada por um usuario.
      *
      * @since 1.0.0
      */
     public function findUserRating(string $userId, string $materialId): ?int
     {
-        $this->ensureMaterialRatingsTable();
+        $this->ensureSchema();
 
         $stmt = $this->db->prepare(
             'SELECT rating FROM material_ratings WHERE user_id = :user_id AND material_id = :material_id LIMIT 1'
@@ -658,7 +769,7 @@ class MaterialsRepository
      */
     public function upsertRating(string $userId, string $materialId, float $rating): void
     {
-        $this->ensureMaterialRatingsTable();
+        $this->ensureSchema();
 
         $stmt = $this->db->prepare(
             "
@@ -683,7 +794,7 @@ class MaterialsRepository
      */
     public function refreshMaterialRatingStats(string $materialId): array
     {
-        $this->ensureMaterialRatingsTable();
+        $this->ensureSchema();
 
         $stmt = $this->db->prepare(
             'SELECT AVG(rating) AS avg_rating, COUNT(*) AS total_ratings FROM material_ratings WHERE material_id = :material_id'

@@ -35,7 +35,7 @@ import { useRouter } from 'next/navigation';
 import { useTheme } from '@providers/ThemeProvider';
 import { DashboardSidebar } from '../../components/shared/layout/DashboardSidebar';
 import Footer from '../../components/shared/layout/Footer';
-import { getAssetUrl } from '@services/api';
+import { buildMaterialAccessEndpoint, getAssetUrl, openAuthenticatedFile } from '@services/api';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { clientLog } from '@services/monitoring/clientLog';
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
@@ -171,7 +171,7 @@ const PartnerDashboard: React.FC = () => {
     title: '', description: '', price: 0, type: 'PDF',
     subjectId: undefined, subjectText: '',
     topicId: undefined, topic: '',
-    examTarget: '', previewUrl: '', details: '', pdfPassword: '',
+    examTarget: '', previewUrl: '', details: '',
     pageCount: 0, year: new Date().getFullYear()
   });
   const [fullFile, setFullFile] = useState<File | null>(null);
@@ -300,17 +300,22 @@ const PartnerDashboard: React.FC = () => {
     setIsPublishing(true);
 
     try {
-      let fileUrl = '';
+      let fileRef = '';
       let coverUrl = '';
       let uploadedPageCount = newMaterial.pageCount || 0;
 
       if (fullFile) {
-        const uploadResult = await uploadFile(fullFile, newMaterial.pdfPassword);
+        const uploadResult = await uploadFile(fullFile);
         if (!uploadResult) {
           setIsPublishing(false);
           return; // Stop if upload fails
         }
-        fileUrl = uploadResult.url;
+        fileRef = uploadResult.fileRef || '';
+        if (!fileRef) {
+          addToast('O envio do PDF nao retornou uma referencia valida.', 'error');
+          setIsPublishing(false);
+          return;
+        }
         uploadedPageCount = uploadResult.pageCount || 0;
       }
 
@@ -318,7 +323,7 @@ const PartnerDashboard: React.FC = () => {
       if (coverFile) {
         const uploadResult = await uploadFile(coverFile);
         if (uploadResult) {
-          coverUrl = uploadResult.url;
+          coverUrl = uploadResult.publicUrl || '';
         }
       }
 
@@ -340,8 +345,7 @@ const PartnerDashboard: React.FC = () => {
         examTarget: newMaterial.examTarget,
         previewUrl: newMaterial.previewUrl,
         coverUrl: coverUrl,
-        fileUrl: fileUrl, // Real URL from server
-        pdfPassword: newMaterial.pdfPassword,
+        fileRef,
         details: newMaterial.details,
         status: 'pending',
         salesCount: 0,
@@ -359,7 +363,7 @@ const PartnerDashboard: React.FC = () => {
           subjectId: undefined, subjectText: '',
           topicId: undefined, topic: '',
           examTarget: '', previewUrl: '', details: '',
-          pdfPassword: '', pageCount: 0, year: new Date().getFullYear()
+          pageCount: 0, year: new Date().getFullYear()
         });
         setFullFile(null);
         setCoverFile(null);
@@ -392,21 +396,20 @@ const PartnerDashboard: React.FC = () => {
         year: editingMaterial.year,
         examTarget: editingMaterial.examTarget,
         previewUrl: editingMaterial.previewUrl,
-        pdfPassword: editingMaterial.pdfPassword
       };
 
       if (coverFile) {
         const uploadResult = await uploadFile(coverFile);
         if (uploadResult) {
-          updates.coverUrl = uploadResult.url;
+          updates.coverUrl = uploadResult.publicUrl || '';
         }
       }
 
       // If there's a new file and material is not approved, upload it
       if (fullFile && editingMaterial.status !== 'approved') {
-        const uploadResult = await uploadFile(fullFile, editingMaterial.pdfPassword);
+        const uploadResult = await uploadFile(fullFile);
         if (uploadResult) {
-          updates.fileUrl = uploadResult.url;
+          updates.fileRef = uploadResult.fileRef;
           updates.pageCount = uploadResult.pageCount || 0;
         }
       }
@@ -447,7 +450,7 @@ const PartnerDashboard: React.FC = () => {
       if (docFile) {
         // Fazer upload do documento usando o uploadFile do contexto
         const result = await uploadFile(docFile);
-        if (result) docUrl = result.url;
+        if (result?.publicUrl) docUrl = result.publicUrl;
       }
 
       const dataToSave = { ...bankForm, docPhotoUrl: docUrl };
@@ -1061,16 +1064,20 @@ const PartnerDashboard: React.FC = () => {
                               >
                                 <Edit size={16} />
                               </button>
-                              {m.fileUrl && (
-                                <a
-                                  href={m.fileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                              {m.hasFile && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void openAuthenticatedFile(buildMaterialAccessEndpoint(m.id)).catch((error: unknown) => {
+                                      const message = error instanceof Error ? error.message : 'Nao foi possivel abrir o arquivo.';
+                                      addToast(message, 'error');
+                                    });
+                                  }}
                                   className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-xl transition-all"
-                                  title="Baixar Arquivo"
+                                  title="Abrir arquivo protegido"
                                 >
                                   <Download size={16} />
-                                </a>
+                                </button>
                               )}
                             </div>
                           </td>
@@ -1284,25 +1291,6 @@ const PartnerDashboard: React.FC = () => {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                          <Lock size={14} className="text-indigo-500" /> Senha (Opcional)
-                        </label>
-                        <input
-                          type="text"
-                          value={newMaterial.pdfPassword}
-                          onChange={e => setNewMaterial({ ...newMaterial, pdfPassword: e.target.value })}
-                          className="w-full h-12 px-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-slate-800 dark:text-slate-200 text-sm outline-none focus:border-indigo-500 transition-all"
-                          placeholder="Senha que protege o PDF"
-                        />
-                      </div>
-                      <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-2xl border border-amber-100 dark:border-amber-900/20">
-                        <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed font-bold">
-                          A senha será liberada automaticamente para o comprador após o pagamento. Isso ajuda a evitar pirataria.
-                        </p>
-                      </div>
-                    </div>
                   </div>
 
                   <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -1901,20 +1889,6 @@ const PartnerDashboard: React.FC = () => {
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Senha do PDF</label>
-                        <div className="relative">
-                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
-                          <input
-                            type="password"
-                            value={editingMaterial.pdfPassword || ''}
-                            disabled={true}
-                            className="w-full h-12 pl-10 pr-6 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-slate-400 dark:text-slate-500 cursor-not-allowed outline-none"
-                            placeholder="Alteração não permitida"
-                          />
-                        </div>
-                        <p className="text-[9px] font-medium text-slate-400 mt-1 ml-1">A senha é imutável após a criação para segurança do arquivo.</p>
-                      </div>
                     </div>
 
                     <div className="space-y-4">

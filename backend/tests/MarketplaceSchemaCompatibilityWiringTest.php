@@ -29,11 +29,11 @@ function assertMarketplaceSchemaNotContains(string $path, string $needle, string
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__);
 $schema = $base . '/database/schema.sql';
-$paymentProvider = $base . '/config/payment_provider.php';
 $materialsRepository = $base . '/modules/materials/repositories/MaterialsRepository.php';
 $migration = $base . '/scripts/migrations/migrate_marketplace_schema_compatibility.php';
+$securityMigration = $base . '/database/migrations/20260711_040000_marketplace_content_security.php';
 
 assertMarketplaceSchemaContains(
     $schema,
@@ -72,21 +72,21 @@ assertMarketplaceSchemaContains(
 );
 
 assertMarketplaceSchemaContains(
-    $paymentProvider,
-    'backfillColumnIfBothExist($db, \'transactions\', \'user_id\', \'buyer_id\')',
-    'Payment provider schema guard must migrate buyer_id into user_id when needed'
-);
-
-assertMarketplaceSchemaContains(
-    $paymentProvider,
-    'modifyColumnIfExists($db, \'transactions\', \'material_id\', \'VARCHAR(36) NULL\')',
-    'Payment provider schema guard must normalize transactions.material_id to varchar'
-);
-
-assertMarketplaceSchemaContains(
     $materialsRepository,
-    'ALTER TABLE material_ratings MODIFY material_id VARCHAR(64) NOT NULL',
-    'Materials repository must repair legacy material_ratings material IDs'
+    'SchemaReadiness::assertTablesAndColumns',
+    'Materials repository must only verify the marketplace schema at runtime'
+);
+
+assertMarketplaceSchemaNotContains(
+    $materialsRepository,
+    'CREATE TABLE',
+    'Materials repository must not execute DDL during HTTP requests'
+);
+
+assertMarketplaceSchemaContains(
+    $securityMigration,
+    'CREATE TABLE IF NOT EXISTS material_uploads',
+    'Marketplace security migration must create the private upload registry'
 );
 
 assertMarketplaceSchemaContains(

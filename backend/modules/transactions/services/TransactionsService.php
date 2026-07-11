@@ -352,14 +352,24 @@ class TransactionsService
     public function createMaterialPurchase(string $userId, array $data): array
     {
         $payload = $this->validator->validateMaterialPurchase($data);
-        $material = $this->repository->findMaterialById($payload['material_id']);
+        $this->db->beginTransaction();
+        try {
+        $material = $this->repository->findMaterialByIdForUpdate($payload['material_id']);
         if (!$material) {
             throw new OutOfBoundsException('Material não encontrado.');
+        }
+
+        if (($material['status'] ?? '') !== 'approved') {
+            throw new RuntimeException('Este material ainda nao esta disponivel para compra.');
         }
 
         $user = $this->repository->findUserById($userId);
         if (!$user) {
             throw new OutOfBoundsException('Usuário não encontrado.');
+        }
+
+        if (hash_equals((string) ($material['author_id'] ?? ''), $userId)) {
+            throw new RuntimeException('Nao e permitido comprar o proprio material.');
         }
 
         if ($this->repository->hasCompletedMaterialPurchase($userId, $payload['material_id'])) {
@@ -395,7 +405,15 @@ class TransactionsService
         $this->repository->incrementMaterialSalesCount((string) $material['id']);
 
         if (!empty($couponResult['valid']) && !empty($couponResult['coupon']['code'])) {
-            incrementCouponUsage($this->db, (string) $couponResult['coupon']['code']);
+            incrementCouponUsage($this->db, (string) $couponResult['coupon']['code'], true);
+        }
+
+        $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
         }
 
         $this->notifyMaterialPurchaseCompleted($material, $user, (string) $transactionId, $finalAmount, $platformFee);

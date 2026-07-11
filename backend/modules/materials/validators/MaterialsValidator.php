@@ -324,7 +324,7 @@ class MaterialsValidator
      *
      * @since 1.0.0
      */
-    public function validateUploadPayload(array $file, ?string $password): array
+    public function validateUploadPayload(array $file): array
     {
         $upload = UploadSecurity::validate($file, self::ALLOWED_UPLOAD_MIME_TYPES, [
             'invalidTypeMessage' => 'Tipo de arquivo invalido. Apenas PDF e imagens JPG, PNG e WEBP sao permitidos.',
@@ -334,7 +334,6 @@ class MaterialsValidator
             'mimeType' => $upload['mimeType'],
             'folder' => $upload['folder'],
             'extension' => $upload['extension'],
-            'password' => $password !== null ? trim($password) : null,
         ];
     }
 }

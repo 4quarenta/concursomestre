@@ -44,6 +44,7 @@ class MaterialsService
         $this->db = $db;
         $this->repository = $repository;
         $this->validator = $validator;
+        $this->repository->ensureSchema();
     }
 
     /**
@@ -431,29 +432,55 @@ class MaterialsService
      *
      * @since 1.0.0
      */
-    public function uploadFile(string $authenticatedUserId, array $file, ?string $password): array
+    public function uploadFile(string $authenticatedUserId, array $file): array
     {
         $user = $this->repository->findUserById($authenticatedUserId);
         if (!$user) {
             throw new RuntimeException('Usuario autenticado nao encontrado.');
         }
 
-        $upload = $this->validator->validateUploadPayload($file, $password);
-        $uploadDirectory = $this->ensureUploadDirectory($upload['folder']);
-        $filename = $authenticatedUserId . '_' . uniqid('', true) . '.' . $upload['extension'];
+        $upload = $this->validator->validateUploadPayload($file);
+        $filename = bin2hex(random_bytes(20)) . '.' . $upload['extension'];
+
+        if ($upload['mimeType'] !== 'application/pdf') {
+            $uploadDirectory = $this->ensurePublicCoverUploadDirectory();
+            $targetPath = $uploadDirectory . DIRECTORY_SEPARATOR . $filename;
+
+            if (!move_uploaded_file((string) $file['tmp_name'], $targetPath)) {
+                throw new RuntimeException('Falha ao salvar o arquivo no servidor.');
+            }
+
+            return [
+                'publicUrl' => '/uploads/covers/' . $filename,
+                'pageCount' => null,
+            ];
+        }
+
+        $uploadDirectory = $this->ensurePrivateMaterialStorageDirectory();
         $targetPath = $uploadDirectory . DIRECTORY_SEPARATOR . $filename;
 
         if (!move_uploaded_file((string) $file['tmp_name'], $targetPath)) {
             throw new RuntimeException('Falha ao salvar o arquivo no servidor.');
         }
 
-        $pageCount = null;
-        if ($upload['mimeType'] === 'application/pdf') {
-            $pageCount = $this->applyPdfProtectionIfNeeded($targetPath, $upload['password']);
+        $pageCount = $this->readPdfPageCount($targetPath);
+        $storageKey = 'private://materials/' . $filename;
+
+        try {
+            $this->repository->createMaterialUpload([
+                ':storage_key' => $storageKey,
+                ':uploaded_by_user_id' => $authenticatedUserId,
+                ':mime_type' => $upload['mimeType'],
+                ':size_bytes' => (int) $upload['size'],
+                ':checksum_sha256' => hash_file('sha256', $targetPath),
+            ]);
+        } catch (Throwable $e) {
+            @unlink($targetPath);
+            throw $e;
         }
 
         return [
-            'url' => '/questao-pro-backend/uploads/' . $upload['folder'] . '/' . $filename,
+            'fileRef' => $storageKey,
             'pageCount' => $pageCount,
         ];
     }
@@ -477,29 +504,49 @@ class MaterialsService
             $materialId = 'mat-' . uniqid();
         }
 
-        $this->repository->createMaterial([
-            ':id' => $materialId,
-            ':author_id' => $authorId,
-            ':title' => trim((string) ($data['title'] ?? '')),
-            ':description' => trim((string) ($data['description'] ?? '')),
-            ':price' => (float) ($data['price'] ?? 0),
-            ':type' => $this->validator->normalizeMaterialType($data['type'] ?? null),
-            ':subject_id' => $this->normalizeNullableInteger($data, 'subjectId'),
-            ':topic_id' => $this->normalizeNullableInteger($data, 'topicId'),
-            ':subject_text' => $this->normalizeNullableString($data, 'subjectText'),
-            ':topic' => $this->normalizeNullableString($data, 'topic'),
-            ':page_count' => $this->normalizeNullableInteger($data, 'pageCount'),
-            ':year' => $this->normalizeNullableInteger($data, 'year'),
-            ':exam_target' => $this->normalizeNullableString($data, 'examTarget'),
-            ':files_json' => json_encode([
-                'fileUrl' => trim((string) ($data['fileUrl'] ?? '')),
-                'previewUrl' => trim((string) ($data['previewUrl'] ?? '')),
-                'pdfPassword' => trim((string) ($data['pdfPassword'] ?? '')),
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ':preview_url' => $this->normalizeNullableString($data, 'previewUrl'),
-            ':cover_url' => $this->normalizeNullableString($data, 'coverUrl'),
-            ':status' => 'pending',
-        ]);
+        $type = $this->validator->normalizeMaterialType($data['type'] ?? null);
+        $fileAttachment = $this->resolveOwnedPendingMaterialUpload($authorId, $data);
+        if ($type === 'PDF' && $fileAttachment === null) {
+            throw new InvalidArgumentException('Envie o PDF pelo fluxo seguro antes de criar o material.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $this->repository->createMaterial([
+                ':id' => $materialId,
+                ':author_id' => $authorId,
+                ':title' => trim((string) ($data['title'] ?? '')),
+                ':description' => trim((string) ($data['description'] ?? '')),
+                ':price' => (float) ($data['price'] ?? 0),
+                ':type' => $type,
+                ':subject_id' => $this->normalizeNullableInteger($data, 'subjectId'),
+                ':topic_id' => $this->normalizeNullableInteger($data, 'topicId'),
+                ':subject_text' => $this->normalizeNullableString($data, 'subjectText'),
+                ':topic' => $this->normalizeNullableString($data, 'topic'),
+                ':page_count' => $this->normalizeNullableInteger($data, 'pageCount'),
+                ':year' => $this->normalizeNullableInteger($data, 'year'),
+                ':exam_target' => $this->normalizeNullableString($data, 'examTarget'),
+                ':files_json' => $this->encodeMaterialFiles($fileAttachment),
+                ':preview_url' => $this->normalizeNullableString($data, 'previewUrl'),
+                ':cover_url' => $this->normalizeNullableString($data, 'coverUrl'),
+                ':status' => 'pending',
+            ]);
+
+            if ($fileAttachment !== null && !$this->repository->attachPendingMaterialUpload(
+                (string) $fileAttachment['storage_key'],
+                $authorId,
+                $materialId
+            )) {
+                throw new RuntimeException('O arquivo privado nao esta mais disponivel para este material.');
+            }
+
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
 
         createNotification(
             $this->db,
@@ -548,6 +595,7 @@ class MaterialsService
         }
 
         $fields = [];
+        $fields['updated_by_user_id'] = $userId;
 
         if (array_key_exists('title', $data)) {
             $fields['title'] = trim((string) $data['title']);
@@ -598,30 +646,40 @@ class MaterialsService
         }
 
         $existingFiles = json_decode((string) ($material['files_json'] ?? '{}'), true) ?: [];
-        $existingFileUrl = trim((string) ($existingFiles['fileUrl'] ?? ''));
-        $incomingFileUrl = trim((string) ($data['fileUrl'] ?? ''));
-        if (($material['status'] ?? '') === 'approved' && $incomingFileUrl !== '' && $incomingFileUrl !== $existingFileUrl) {
+        $existingStorageKey = trim((string) ($existingFiles['storageKey'] ?? $existingFiles['fileUrl'] ?? ''));
+        $incomingFileRef = trim((string) ($data['fileRef'] ?? ''));
+        if (($material['status'] ?? '') === 'approved' && $incomingFileRef !== '' && $incomingFileRef !== $existingStorageKey) {
             throw new RuntimeException('Nao e permitido trocar o PDF de um material aprovado.');
         }
 
         $canUpdateFiles = ($material['status'] ?? '') !== 'approved';
-        if ($canUpdateFiles && (array_key_exists('fileUrl', $data) || array_key_exists('previewUrl', $data) || array_key_exists('pdfPassword', $data))) {
-            $fields['files_json'] = json_encode([
-                'fileUrl' => array_key_exists('fileUrl', $data) ? trim((string) ($data['fileUrl'] ?? '')) : $existingFileUrl,
-                'previewUrl' => array_key_exists('previewUrl', $data)
-                    ? trim((string) ($data['previewUrl'] ?? ''))
-                    : trim((string) ($existingFiles['previewUrl'] ?? ($material['preview_url'] ?? ''))),
-                'pdfPassword' => array_key_exists('pdfPassword', $data)
-                    ? trim((string) ($data['pdfPassword'] ?? ''))
-                    : trim((string) ($existingFiles['pdfPassword'] ?? '')),
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $fileAttachment = null;
+        if ($canUpdateFiles && $incomingFileRef !== '' && $incomingFileRef !== $existingStorageKey) {
+            $fileAttachment = $this->resolveOwnedPendingMaterialUpload($userId, $data);
+            $fields['files_json'] = $this->encodeMaterialFiles($fileAttachment);
         }
 
-        if ($fields === []) {
+        if (count($fields) === 1) {
             throw new InvalidArgumentException('Nenhum campo valido foi enviado para atualizacao.');
         }
 
-        $this->repository->updateMaterial($materialId, $fields);
+        $this->db->beginTransaction();
+        try {
+            $this->repository->updateMaterial($materialId, $fields);
+            if ($fileAttachment !== null && !$this->repository->attachPendingMaterialUpload(
+                (string) $fileAttachment['storage_key'],
+                $userId,
+                $materialId
+            )) {
+                throw new RuntimeException('O arquivo privado nao esta mais disponivel para este material.');
+            }
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
 
         $updatedMaterial = $this->repository->fetchMaterialDetailsById($materialId);
         if (!$updatedMaterial) {
@@ -636,7 +694,7 @@ class MaterialsService
      *
      * @since 1.0.0
      */
-    public function moderate(string $materialId, string $status, ?string $reason): array
+    public function moderate(string $materialId, string $status, ?string $reason, string $moderatorUserId): array
     {
         $normalizedReason = trim((string) $reason);
         $this->validator->validateModerationPayload($materialId, $status);
@@ -648,6 +706,15 @@ class MaterialsService
 
         $this->repository->updateModeration(
             $materialId,
+            $status,
+            $normalizedReason !== '' ? $normalizedReason : null,
+            $moderatorUserId
+        );
+        $this->repository->recordModerationEvent(
+            $materialId,
+            $moderatorUserId,
+            'moderate',
+            isset($material['status']) ? (string) $material['status'] : null,
             $status,
             $normalizedReason !== '' ? $normalizedReason : null
         );
@@ -706,7 +773,7 @@ class MaterialsService
      *
      * @since 1.0.0
      */
-    public function delete(string $materialId): array
+    public function delete(string $materialId, string $moderatorUserId): array
     {
         $this->validator->validateDeletePayload($materialId);
 
@@ -716,7 +783,15 @@ class MaterialsService
         }
 
         $removalReason = 'Material removido administrativamente da vitrine e do fluxo comercial.';
-        $this->repository->markAsRemoved($materialId, $removalReason);
+        $this->repository->updateModeration($materialId, 'rejected', $removalReason, $moderatorUserId);
+        $this->repository->recordModerationEvent(
+            $materialId,
+            $moderatorUserId,
+            'remove',
+            isset($material['status']) ? (string) $material['status'] : null,
+            'rejected',
+            $removalReason
+        );
 
         $authorId = (string) ($material['author_id'] ?? '');
         if ($authorId !== '') {
@@ -767,6 +842,14 @@ class MaterialsService
         $material = $this->repository->findMaterialRecordById($materialId);
         if (!$material) {
             throw new OutOfBoundsException('Material nao encontrado.');
+        }
+
+        if (($material['status'] ?? '') !== 'approved') {
+            throw new RuntimeException('Avaliacao indisponivel para um material que nao esta publicado.');
+        }
+
+        if (hash_equals((string) ($material['author_id'] ?? ''), $userId)) {
+            throw new RuntimeException('O autor nao pode avaliar o proprio material.');
         }
 
         if (!$this->repository->hasApprovedPurchase($userId, $materialId)) {
@@ -892,8 +975,7 @@ class MaterialsService
             'examTarget' => (string) ($row['examTarget'] ?? ''),
             'coverUrl' => $this->normalizeNullableValue($row['coverUrl'] ?? null),
             'previewUrl' => $this->normalizeNullableValue($row['previewUrl'] ?? ($files['previewUrl'] ?? null)),
-            'fileUrl' => $this->normalizeNullableValue($files['fileUrl'] ?? null),
-            'pdfPassword' => $this->normalizeNullableValue($files['pdfPassword'] ?? ($files['password'] ?? null)),
+            'hasFile' => trim((string) ($files['storageKey'] ?? $files['fileUrl'] ?? '')) !== '',
             'status' => (string) ($row['status'] ?? 'approved'),
             'rejectionReason' => $this->normalizeNullableValue($row['rejectionReason'] ?? null),
             'salesCount' => (int) ($row['salesCount'] ?? 0),
@@ -934,12 +1016,12 @@ class MaterialsService
         $isAuthor = $context['isAuthor'];
 
         $filesObj = json_decode((string) ($material['files_json'] ?? '{}'), true) ?: [];
-        $fileUrl = trim((string) ($filesObj['fileUrl'] ?? ''));
-        if ($fileUrl === '') {
+        $storageKey = trim((string) ($filesObj['storageKey'] ?? $filesObj['fileUrl'] ?? ''));
+        if ($storageKey === '') {
             throw new OutOfBoundsException('Arquivo do material nao encontrado.');
         }
 
-        $filePath = $this->resolveMaterialFilePath($fileUrl);
+        $filePath = $this->resolveMaterialFilePath($storageKey);
         if (!$filePath || !file_exists($filePath)) {
             throw new OutOfBoundsException('Arquivo PDF nao encontrado no servidor.');
         }
@@ -998,35 +1080,32 @@ class MaterialsService
      *
      * @since 1.0.0
      */
-    private function resolveMaterialFilePath(string $fileUrl): ?string
+    private function resolveMaterialFilePath(string $storageKey): ?string
     {
-        $backendRoot = realpath(__DIR__ . '/../../../');
-        if (!$backendRoot) {
+        $storageKey = trim($storageKey);
+        $privatePrefix = 'private://materials/';
+        if (str_starts_with($storageKey, $privatePrefix)) {
+            $basename = basename(substr($storageKey, strlen($privatePrefix)));
+            if ($basename === '' || $basename !== substr($storageKey, strlen($privatePrefix))) {
+                return null;
+            }
+
+            return $this->resolvePathInsideDirectory($this->privateMaterialStorageDirectory(), $basename);
+        }
+
+        // Temporary compatibility for a legacy record that predates private
+        // storage. New uploads never receive this form and the public list no
+        // longer exposes it.
+        $legacyPrefix = 'uploads/materials/';
+        $legacyRelativePath = ltrim((string) preg_replace('#^/questao-pro-backend/#', '', $storageKey), '/');
+        if (!str_starts_with($legacyRelativePath, $legacyPrefix)) {
             return null;
         }
 
-        $normalizedRelativePath = preg_replace('#^/questao-pro-backend/?#', '', trim($fileUrl));
-        $normalizedRelativePath = ltrim((string) $normalizedRelativePath, "/\\");
-
-        $candidatePath = realpath(
-            $backendRoot . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $normalizedRelativePath)
+        return $this->resolvePathInsideDirectory(
+            dirname(__DIR__, 3) . '/uploads/materials',
+            basename(substr($legacyRelativePath, strlen($legacyPrefix)))
         );
-
-        if (!$candidatePath) {
-            return null;
-        }
-
-        $normalizedBackendRoot = rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $backendRoot), DIRECTORY_SEPARATOR);
-        $normalizedCandidatePath = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $candidatePath);
-
-        if (
-            $normalizedCandidatePath !== $normalizedBackendRoot
-            && strpos($normalizedCandidatePath, $normalizedBackendRoot . DIRECTORY_SEPARATOR) !== 0
-        ) {
-            return null;
-        }
-
-        return $candidatePath;
     }
 
     /**
@@ -1135,9 +1214,9 @@ class MaterialsService
      *
      * @since 1.0.0
      */
-    private function ensureUploadDirectory(string $folder): string
+    private function ensurePrivateMaterialStorageDirectory(): string
     {
-        $directory = dirname(__DIR__, 3) . '/uploads/' . $folder;
+        $directory = $this->privateMaterialStorageDirectory();
         if (!is_dir($directory)) {
             mkdir($directory, 0775, true);
         }
@@ -1146,32 +1225,109 @@ class MaterialsService
     }
 
     /**
+     * Capas podem ser publicas; PDFs integrais nunca compartilham esse diretorio.
+     */
+    private function ensurePublicCoverUploadDirectory(): string
+    {
+        $directory = dirname(__DIR__, 3) . '/uploads/covers';
+        if (!is_dir($directory)) {
+            mkdir($directory, 0775, true);
+        }
+
+        return $directory;
+    }
+
+    /**
+     * Resolve o diretorio privado fora do webroot do CloudPanel.
+     */
+    private function privateMaterialStorageDirectory(): string
+    {
+        $configured = trim((string) (getenv('MATERIAL_PRIVATE_STORAGE_PATH') ?: ''));
+        if ($configured !== '') {
+            return rtrim($configured, "/\\");
+        }
+
+        return dirname(dirname(__DIR__, 3), 3) . '/private/materials';
+    }
+
+    /**
+     * Resolve somente arquivos fisicos abaixo do diretorio permitido.
+     */
+    private function resolvePathInsideDirectory(string $directory, string $filename): ?string
+    {
+        if ($filename === '' || basename($filename) !== $filename) {
+            return null;
+        }
+
+        $root = realpath($directory);
+        $candidate = realpath(rtrim($directory, "/\\") . DIRECTORY_SEPARATOR . $filename);
+        if ($root === false || $candidate === false) {
+            return null;
+        }
+
+        $root = rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $root), DIRECTORY_SEPARATOR);
+        $candidate = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $candidate);
+
+        return str_starts_with($candidate, $root . DIRECTORY_SEPARATOR) ? $candidate : null;
+    }
+
+    /**
      * Le a contagem de paginas do PDF e aplica senha opcional para materiais pagos.
      *
      * @since 1.0.0
      */
-    private function applyPdfProtectionIfNeeded(string $targetPath, ?string $password): ?int
+    private function readPdfPageCount(string $targetPath): ?int
     {
         try {
             $pdf = new \setasign\Fpdi\TcpdfFpdi();
-            $pageCount = $pdf->setSourceFile($targetPath);
-
-            if ($password !== null && $password !== '') {
-                $pdf->SetProtection(['print', 'copy'], $password, null, 0, null);
-
-                for ($page = 1; $page <= $pageCount; $page++) {
-                    $templateIndex = $pdf->importPage($page);
-                    $pdf->AddPage();
-                    $pdf->useTemplate($templateIndex, 10, 10, 200);
-                }
-
-                $pdf->Output($targetPath, 'F');
-            }
-
-            return $pageCount;
+            return $pdf->setSourceFile($targetPath);
         } catch (Throwable $e) {
             error_log('Materials upload PDF processing error: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Confere que um PDF privado foi enviado pela mesma conta e ainda nao foi
+     * anexado a outro material. O frontend nunca escolhe caminho de disco.
+     */
+    private function resolveOwnedPendingMaterialUpload(string $userId, array $data): ?array
+    {
+        $storageKey = trim((string) ($data['fileRef'] ?? ''));
+        if ($storageKey === '') {
+            return null;
+        }
+
+        if (!str_starts_with($storageKey, 'private://materials/')) {
+            throw new InvalidArgumentException('Referencia de arquivo invalida. Envie o PDF pelo fluxo seguro.');
+        }
+
+        $upload = $this->repository->findPendingMaterialUploadForOwner($storageKey, $userId);
+        if (!$upload) {
+            throw new RuntimeException('O arquivo informado nao pertence a sua conta ou ja foi utilizado.');
+        }
+
+        if ($this->resolveMaterialFilePath($storageKey) === null) {
+            throw new OutOfBoundsException('Arquivo privado nao encontrado no servidor.');
+        }
+
+        return $upload;
+    }
+
+    /**
+     * Persiste apenas metadados nao secretos do PDF privado.
+     */
+    private function encodeMaterialFiles(?array $upload): string
+    {
+        if ($upload === null) {
+            return '{}';
+        }
+
+        return json_encode([
+            'storageKey' => (string) $upload['storage_key'],
+            'mimeType' => (string) $upload['mime_type'],
+            'sizeBytes' => (int) $upload['size_bytes'],
+            'checksumSha256' => (string) $upload['checksum_sha256'],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 }

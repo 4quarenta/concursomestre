@@ -44,7 +44,7 @@ interface MarketplaceContextType {
   deleteMaterial: (id: string) => Promise<void>;
   deleteMaterialComment: (materialId: string, commentId: string) => Promise<void>;
   resolveRefund: (transactionId: string, resolution: 'approved' | 'retention_offer') => Promise<void>;
-  uploadFile: (file: File, password?: string) => Promise<{ url: string; pageCount?: number } | null>;
+  uploadFile: (file: File) => Promise<{ fileRef?: string; publicUrl?: string; pageCount?: number } | null>;
   uploadProgress: number;
 }
 
@@ -412,11 +412,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * Envia arquivo de material ou capa exibindo progresso no provider.
    * @since 1.0.0
    */
-  const uploadFile = async (file: File, password?: string): Promise<{ url: string; pageCount?: number } | null> => {
+  const uploadFile = async (file: File): Promise<{ fileRef?: string; publicUrl?: string; pageCount?: number } | null> => {
     try {
       setUploadProgress(0);
       return await marketplaceService.uploadFile(file, {
-        password,
         onProgress: (progress) => {
           setUploadProgress(progress);
         },
