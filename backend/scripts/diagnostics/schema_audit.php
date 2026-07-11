@@ -149,7 +149,7 @@ try {
            AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
            AND (
                local_column.COLUMN_TYPE <> referenced_column.COLUMN_TYPE
-               OR COALESCE(local_column.COLLATION_NAME, '') <> COALESCE(referenced_column.COLLATION_NAME, '')
+               OR BINARY COALESCE(local_column.COLLATION_NAME, '') <> BINARY COALESCE(referenced_column.COLLATION_NAME, '')
            )
          ORDER BY kcu.TABLE_NAME, kcu.COLUMN_NAME"
     )->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -176,7 +176,7 @@ try {
             "SELECT COUNT(*)
              FROM {$table} source_row
              LEFT JOIN {$referenceTable} referenced_row
-               ON referenced_row.{$referenceColumn} = source_row.{$column}
+               ON BINARY referenced_row.{$referenceColumn} = BINARY source_row.{$column}
              WHERE source_row.{$column} IS NOT NULL
                AND source_row.{$column} <> ''
                AND referenced_row.{$referenceColumn} IS NULL"

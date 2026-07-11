@@ -49,13 +49,23 @@ final class SchemaMigrationRunner
         $applied = $this->loadAppliedMigrations();
         $recorded = [];
 
-        foreach ($this->discoverMigrations() as $migration) {
-            if (strcmp($migration['version'], self::BASELINE_VERSION) >= 0 || isset($applied[$migration['version']])) {
-                continue;
-            }
+        $this->db->beginTransaction();
+        try {
+            foreach ($this->discoverMigrations() as $migration) {
+                if (strcmp($migration['version'], self::BASELINE_VERSION) >= 0 || isset($applied[$migration['version']])) {
+                    continue;
+                }
 
-            $this->recordMigration($migration, 0, 'baseline');
-            $recorded[] = $migration['version'];
+                $this->recordMigration($migration, 0, 'baseline');
+                $recorded[] = $migration['version'];
+                $applied[$migration['version']] = ['version' => $migration['version']];
+            }
+            $this->db->commit();
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
         }
 
         return $recorded;
@@ -102,7 +112,7 @@ final class SchemaMigrationRunner
             glob($this->migrationDirectory . '/*.sql') ?: [],
             glob($this->migrationDirectory . '/*.php') ?: []
         );
-        $migrations = [];
+        $discovered = [];
 
         foreach ($files as $path) {
             $filename = basename($path);
@@ -115,13 +125,40 @@ final class SchemaMigrationRunner
                 throw new RuntimeException('Nao foi possivel ler migration: ' . $filename);
             }
 
-            $migrations[] = [
-                'version' => $matches[1],
+            $discovered[] = [
+                'base_version' => $matches[1],
                 'name' => $matches[2],
                 'type' => strtolower($matches[3]),
                 'path' => $path,
+                'filename' => $filename,
                 'checksum' => hash('sha256', $contents),
             ];
+        }
+
+        usort($discovered, static fn (array $left, array $right): int => [
+            $left['base_version'],
+            $left['filename'],
+        ] <=> [
+            $right['base_version'],
+            $right['filename'],
+        ]);
+
+        $baseVersionCounts = [];
+        foreach ($discovered as $migration) {
+            $baseVersion = (string) $migration['base_version'];
+            $baseVersionCounts[$baseVersion] = ($baseVersionCounts[$baseVersion] ?? 0) + 1;
+        }
+
+        $migrations = [];
+        foreach ($discovered as $migration) {
+            $baseVersion = (string) $migration['base_version'];
+            // Older files used a date-only prefix. A filename digest keeps
+            // colliding legacy versions individually baselineable and stable.
+            $version = $baseVersion;
+            if (($baseVersionCounts[$baseVersion] ?? 0) > 1) {
+                $version .= '_' . substr(hash('sha256', (string) $migration['filename']), 0, 12);
+            }
+            $migrations[] = [...$migration, 'version' => $version];
         }
 
         usort($migrations, static fn (array $left, array $right): int => strcmp($left['version'], $right['version']));

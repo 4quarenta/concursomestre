@@ -47,4 +47,15 @@ assertDatabasePhase03(
     'Indice unico de webhook deve consultar duplicidades antes de criar a restricao.'
 );
 
+$runnerSource = (string) file_get_contents($root . '/shared/database/SchemaMigrationRunner.php');
+assertDatabasePhase03(
+    str_contains($runnerSource, "substr(hash('sha256', (string) \$migration['filename']), 0, 12)"),
+    'Runner deve diferenciar migrations legadas que compartilham a mesma versao por data.'
+);
+assertDatabasePhase03(
+    str_contains($runnerSource, '$this->db->beginTransaction();')
+        && str_contains($runnerSource, '$this->db->rollBack();'),
+    'Baseline legado deve ser transacional para nao registrar parcialmente o historico.'
+);
+
 fwrite(STDOUT, "Database phase 03 migration assertions passed.\n");
