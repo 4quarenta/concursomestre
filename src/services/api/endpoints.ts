@@ -44,6 +44,10 @@ export const ENDPOINTS = {
 
     questions: {
         list: 'questionsList',
+        v2List: 'v2/questions/list.php',
+        v2Show: 'v2/questions/show.php',
+        v2Answer: 'v2/questions/answer.php',
+        v2AdminShow: 'v2/admin/questions/show.php',
         show: 'questions/show.php',
         edit: 'questions/edit.php',
         create: 'questionsCreate',

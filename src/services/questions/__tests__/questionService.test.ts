@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -61,6 +61,10 @@ vi.mock('@services/api', () => ({
   ENDPOINTS: {
     questions: {
       list: 'questionsList',
+      v2List: 'v2/questions/list.php',
+      v2Show: 'v2/questions/show.php',
+      v2Answer: 'v2/questions/answer.php',
+      v2AdminShow: 'v2/admin/questions/show.php',
       show: 'questionsShow',
       create: 'questionsCreate',
       examImport: 'questionsExamImport',
@@ -91,20 +95,20 @@ describe('questionService', () => {
     vi.clearAllMocks();
   });
 
-  it('unwraps paginated question responses from the official list endpoint', async () => {
+  it('unwraps paginated question responses from the public v2 list endpoint', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: {
-        rows: [
-          { id: 1, enunciado: 'Questão 1' },
+        items: [
+          { id: 1, statementPreview: 'Questao 1', type: 'single_choice', difficulty: 'Medio', publication: { status: 'published', visibility: 'public' } },
         ],
-        total: 120,
+        pagination: { total: 120 },
       },
     });
 
     const result = await questionService.getQuestionPage({ page: 2, limit: 50 });
 
-    expect(mockGet).toHaveBeenCalledWith('questionsList', {
+    expect(mockGet).toHaveBeenCalledWith('v2/questions/list.php', {
       params: {
         page: 2,
         limit: 50,
@@ -114,9 +118,10 @@ describe('questionService', () => {
     });
     expect(result.rows).toHaveLength(1);
     expect(result.total).toBe(120);
+    expect(result.rows[0].resposta).toBe(-1);
   });
 
-  it('submits an answer with the backend payload expected by questionsAnswer', async () => {
+  it('submits an answer with the v2 alternative identifier contract', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
       message: 'Resposta salva',
@@ -138,11 +143,11 @@ describe('questionService', () => {
       timeTaken: 18,
     });
 
-    expect(mockPost).toHaveBeenCalledWith('questionsAnswer', {
-      question_id: 9,
-      selected_option: 2,
-      time_taken: 18,
-      simulation_id: null,
+    expect(mockPost).toHaveBeenCalledWith('v2/questions/answer.php', {
+      questionId: 9,
+      selectedAlternativeId: 'C',
+      timeTaken: 18,
+      simulationId: null,
     });
     expect(result.success).toBe(true);
     expect(result.newXp).toBe(250);
@@ -257,7 +262,7 @@ describe('questionService', () => {
       data: { id: 33 },
     });
 
-    const payload = { id: 33, enunciado: 'Questão atualizada' } as QuestionUpdatePayload;
+    const payload = { id: 33, enunciado: 'QuestÃ£o atualizada' } as QuestionUpdatePayload;
     const result = await questionService.updateQuestion('33', payload);
 
     expect(mockPost).toHaveBeenCalledWith(
@@ -265,7 +270,7 @@ describe('questionService', () => {
       expect.objectContaining({
         id: '33',
         content: expect.objectContaining({
-          statement: 'Questão atualizada',
+          statement: 'QuestÃ£o atualizada',
         }),
         publication: expect.objectContaining({
           status: 'published',
@@ -279,7 +284,7 @@ describe('questionService', () => {
   it('deletes a question through the backend contract that expects query params', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
-      message: 'Questão excluida',
+      message: 'QuestÃ£o excluida',
     });
 
     const result = await questionService.deleteQuestion(44);
@@ -297,7 +302,7 @@ describe('questionService', () => {
       xpGain: 3,
       new_xp: 1203,
       new_level: 2,
-      message: 'Questão salva',
+      message: 'QuestÃ£o salva',
     });
 
     const result = await questionService.toggleSavedQuestion('user-2', 77);

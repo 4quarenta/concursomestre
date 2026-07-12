@@ -39,6 +39,16 @@ class QuestionsController
     }
 
     /**
+     * Encaminha resposta usando o contrato v2 por identificador de alternativa.
+     *
+     * @since 1.0.0
+     */
+    public function submitAnswerV2(string $authenticatedUserId, bool $isAdmin, array $payload): array
+    {
+        return $this->service->submitAnswerV2($authenticatedUserId, $isAdmin, $payload);
+    }
+
+    /**
      * Lista questoes para a tela principal.
      *
      * @since 1.0.0
@@ -58,6 +68,16 @@ class QuestionsController
     }
 
     /**
+     * Lista questoes no contrato publico v2, leve e sem campos legados.
+     *
+     * @since 1.0.0
+     */
+    public function listQuestionsV2(?string $authenticatedUserId, array $query): array
+    {
+        return $this->service->listQuestionsV2($authenticatedUserId, $query);
+    }
+
+    /**
      * Carrega uma questao publica isolada para rotas indexaveis e compartilhamento.
      *
      * @since 1.0.0
@@ -74,6 +94,26 @@ class QuestionsController
             $canViewDetailedAnalysis,
             $query
         );
+    }
+
+    /**
+     * Carrega detalhe de pratica no contrato v2 sem gabarito/editoriais.
+     *
+     * @since 1.0.0
+     */
+    public function getQuestionPracticeV2(?string $authenticatedUserId, array $query): array
+    {
+        return $this->service->getQuestionPracticeV2($authenticatedUserId, $query);
+    }
+
+    /**
+     * Carrega detalhe administrativo v2 com gabarito e editoriais.
+     *
+     * @since 1.0.0
+     */
+    public function getQuestionAdminV2(string $authenticatedUserId, bool $isAdmin, array $query): array
+    {
+        return $this->service->getQuestionAdminV2($authenticatedUserId, $isAdmin, $query);
     }
 
     /**

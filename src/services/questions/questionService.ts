@@ -114,6 +114,107 @@ type QuestionPageResponse = {
   total?: number;
 };
 
+type QuestionV2TaxonomyItem = {
+  id?: string | number | null;
+  label?: string;
+  slug?: string;
+  parentId?: string | number | null;
+};
+
+type QuestionV2Asset = {
+  tempId?: string;
+  type?: string;
+  usage?: string;
+  url?: string;
+  base64?: string;
+  alt?: string;
+  caption?: string;
+  sourcePage?: number | null;
+  order?: number;
+};
+
+type QuestionV2Alternative = {
+  id?: string;
+  tempId?: string;
+  order?: number;
+  label?: string;
+  text?: string;
+  textClean?: string;
+  assets?: QuestionV2Asset[];
+};
+
+type QuestionV2Detail = {
+  id?: string | number;
+  source?: {
+    origin?: string;
+    examId?: string | number | null;
+    questionNumber?: string | number | null;
+    questionGroupId?: string | number | null;
+    sourcePage?: string | number | null;
+  };
+  content?: {
+    statement?: string;
+    statementClean?: string;
+    supportText?: string;
+    reference?: string;
+  };
+  assets?: QuestionV2Asset[];
+  filters?: {
+    subjects?: QuestionV2TaxonomyItem[];
+    topics?: QuestionV2TaxonomyItem[];
+    subtopics?: QuestionV2TaxonomyItem[];
+    examBoards?: QuestionV2TaxonomyItem[];
+    organizations?: QuestionV2TaxonomyItem[];
+    roles?: QuestionV2TaxonomyItem[];
+    careers?: QuestionV2TaxonomyItem[];
+    years?: Array<string | number>;
+    levels?: QuestionV2TaxonomyItem[];
+    examTypes?: QuestionV2TaxonomyItem[];
+  };
+  type?: string;
+  difficulty?: string;
+  alternatives?: QuestionV2Alternative[];
+  publication?: {
+    status?: string;
+    visibility?: string;
+    scheduledAt?: string | null;
+    publishedAt?: string | null;
+  };
+  stats?: {
+    totalAttempts?: number;
+    correctCount?: number;
+    wrongCount?: number;
+  };
+  userAnswer?: unknown;
+};
+
+type QuestionV2ListItem = {
+  id?: string | number;
+  statementPreview?: string;
+  type?: string;
+  difficulty?: string;
+  hasImage?: boolean;
+  taxonomySummary?: QuestionV2Detail['filters'];
+  stats?: {
+    attempts?: number;
+    correct?: number;
+    wrong?: number;
+  };
+  publication?: {
+    status?: string;
+    visibility?: string;
+  };
+  publishedAt?: string | null;
+  createdAt?: string | null;
+};
+
+type QuestionV2PageResponse = {
+  items?: QuestionV2ListItem[];
+  pagination?: {
+    total?: number;
+  };
+};
+
 type SubmitAnswerApiResponse = {
   new_xp?: number;
   new_level?: number;
@@ -581,6 +682,169 @@ const readExamFileAttachment = (value: unknown, fallbackKind: ExamFileKind): Exa
   };
 };
 
+const mapV2TaxonomyItems = (items: QuestionV2TaxonomyItem[] | undefined): QuestionFilterValuePayload[] => (
+  Array.isArray(items)
+    ? items
+      .map((item) => ({
+        ...(item.id !== undefined && item.id !== null ? { id: item.id } : {}),
+        label: readText(item.label).trim(),
+        slug: readText(item.slug).trim() || undefined,
+      }))
+      .filter((item) => item.label)
+    : []
+);
+
+const mapV2DifficultyToLegacy = (difficulty: string | undefined): number => {
+  const normalized = readText(difficulty).toLowerCase();
+  if (normalized.includes('facil') || normalized.includes('fácil') || normalized === 'easy') return 1;
+  if (normalized.includes('dificil') || normalized.includes('difícil') || normalized === 'hard') return 3;
+  return 2;
+};
+
+const mapV2TypeToLegacy = (type: string | undefined): string => (
+  readText(type).toLowerCase() === 'true_false' ? 'certo ou errado' : 'multipla escolha'
+);
+
+const mapV2FiltersToLegacy = (filters: QuestionV2Detail['filters']): QuestionFiltersPayload => ({
+  subjects: mapV2TaxonomyItems(filters?.subjects),
+  topics: mapV2TaxonomyItems(filters?.topics),
+  subtopics: mapV2TaxonomyItems(filters?.subtopics),
+  examBoards: mapV2TaxonomyItems(filters?.examBoards),
+  organizations: mapV2TaxonomyItems(filters?.organizations),
+  roles: mapV2TaxonomyItems(filters?.roles),
+  careers: mapV2TaxonomyItems(filters?.careers),
+  years: toQuestionFilterValues(filters?.years || []),
+  levels: mapV2TaxonomyItems(filters?.levels),
+  examTypes: mapV2TaxonomyItems(filters?.examTypes),
+});
+
+const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
+  const filters = mapV2FiltersToLegacy(detail.filters);
+  const alternatives = Array.isArray(detail.alternatives) ? detail.alternatives : [];
+  const firstAssetUrl = Array.isArray(detail.assets)
+    ? detail.assets.find((asset) => readText(asset.url).trim())?.url || ''
+    : '';
+  const legacyQuestion: Question = {
+    id: detail.id as Question['id'],
+    source: detail.source,
+    content: detail.content,
+    assets: detail.assets || [],
+    enunciado: detail.content?.statement || '',
+    enunciado_clean: detail.content?.statementClean || stripHtml(detail.content?.statement || ''),
+    introText: detail.content?.supportText || '',
+    referenceText: detail.content?.reference || '',
+    imageUrl: firstAssetUrl,
+    tipo: mapV2TypeToLegacy(detail.type),
+    questionType: detail.type,
+    dificuldade: mapV2DifficultyToLegacy(detail.difficulty),
+    difficulty: detail.difficulty,
+    resposta: -1,
+    itens: alternatives.map((alternative, index) => ({
+      id: alternative.tempId || alternative.id || `alt_${index + 1}`,
+      ordem: alternative.order || index + 1,
+      rotulo: alternative.label || String.fromCharCode(65 + index),
+      corpo: alternative.text || '',
+      corpo_clean: alternative.textClean || stripHtml(alternative.text || ''),
+      assets: alternative.assets || [],
+    })),
+    alternatives,
+    filters,
+    assuntos: [
+      ...(filters.subjects || []),
+      ...(filters.topics || []),
+      ...(filters.subtopics || []),
+    ],
+    bancas: filters.examBoards || [],
+    orgaos: filters.organizations || [],
+    cargos: filters.roles || [],
+    carreiras: filters.careers || [],
+    anos: filters.years || [],
+    nivel: filters.levels?.[0]?.label,
+    tiposProva: filters.examTypes || [],
+    publishStatus: detail.publication?.status,
+    publicationStatus: detail.publication?.status,
+    publish_status: detail.publication?.status,
+    visibilityStatus: detail.publication?.visibility,
+    visibility_status: detail.publication?.visibility,
+    publishedAt: detail.publication?.publishedAt || undefined,
+    stats: {
+      totalAttempts: detail.stats?.totalAttempts || 0,
+      correctCount: detail.stats?.correctCount || 0,
+      wrongCount: detail.stats?.wrongCount || 0,
+    },
+  } as unknown as Question;
+
+  return withQuestionPublicationAliases(legacyQuestion);
+};
+
+const mapV2ListItemToQuestion = (item: QuestionV2ListItem): Question => {
+  const filters = mapV2FiltersToLegacy(item.taxonomySummary);
+  return withQuestionPublicationAliases({
+    id: item.id as Question['id'],
+    enunciado: item.statementPreview || '',
+    enunciado_clean: item.statementPreview || '',
+    tipo: mapV2TypeToLegacy(item.type),
+    questionType: item.type,
+    dificuldade: mapV2DifficultyToLegacy(item.difficulty),
+    difficulty: item.difficulty,
+    resposta: -1,
+    imageUrl: item.hasImage ? '__has_image__' : '',
+    filters,
+    assuntos: [
+      ...(filters.subjects || []),
+      ...(filters.topics || []),
+      ...(filters.subtopics || []),
+    ],
+    bancas: filters.examBoards || [],
+    orgaos: filters.organizations || [],
+    cargos: filters.roles || [],
+    carreiras: filters.careers || [],
+    anos: filters.years || [],
+    nivel: filters.levels?.[0]?.label,
+    publishStatus: item.publication?.status,
+    publicationStatus: item.publication?.status,
+    publish_status: item.publication?.status,
+    visibilityStatus: item.publication?.visibility,
+    visibility_status: item.publication?.visibility,
+    publishedAt: item.publishedAt || undefined,
+    stats: {
+      totalAttempts: item.stats?.attempts || 0,
+      correctCount: item.stats?.correct || 0,
+      wrongCount: item.stats?.wrong || 0,
+    },
+    itens: [],
+    alternatives: [],
+  } as unknown as Question);
+};
+
+const resolveSelectedAlternativeId = (answer: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>): string => {
+  const record = toRecord(answer);
+  const explicitId = readText(record?.selectedAlternativeId ?? record?.selected_alternative_id).trim();
+  if (explicitId) {
+    return explicitId;
+  }
+
+  const alternatives = Array.isArray(record?.alternatives) ? record.alternatives : [];
+  const selectedIndex = Number(answer.selectedOptionIndex);
+  const selectedAlternative = alternatives[selectedIndex];
+  const selectedRecord = toRecord(selectedAlternative);
+  const candidate = readText(
+    selectedRecord?.tempId
+    ?? selectedRecord?.id
+    ?? selectedRecord?.label
+    ?? selectedRecord?.rotulo
+    ?? '',
+  ).trim();
+
+  if (candidate) {
+    return candidate;
+  }
+
+  return Number.isInteger(selectedIndex) && selectedIndex >= 0
+    ? String.fromCharCode(65 + selectedIndex)
+    : '';
+};
+
 /**
  * Fachada oficial do dominio de questoes.
  * Ela conecta prática, histórico, estatísticas e manutenção administrativa ao backend oficial.
@@ -602,24 +866,31 @@ export const questionService = {
       };
 
     return withRequestCoalescing(buildRequestCacheKey('questions:list', params), async () => {
-      const response = await apiClient.get<QuestionPageResponse | Question[]>(
-        ENDPOINTS.questions.list,
+      const response = await apiClient.get<QuestionPageResponse | Question[] | QuestionV2PageResponse>(
+        includeUnpublished ? ENDPOINTS.questions.list : ENDPOINTS.questions.v2List,
         {
           params,
         },
       );
 
-      const payload = readApiData<QuestionPageResponse | Question[]>(response, {});
-      const rows = Array.isArray(payload)
+      const payload = readApiData<QuestionPageResponse | Question[] | QuestionV2PageResponse>(response, {});
+      const v2Items = !includeUnpublished && !Array.isArray(payload) && Array.isArray((payload as QuestionV2PageResponse).items)
+        ? (payload as QuestionV2PageResponse).items || []
+        : null;
+      const rows = v2Items
+        ? v2Items.map(mapV2ListItemToQuestion)
+        : Array.isArray(payload)
         ? payload
-        : Array.isArray(payload.rows)
+        : 'rows' in payload && Array.isArray(payload.rows)
           ? payload.rows
           : [];
       const normalizedRows = rows.map((row) => withQuestionPublicationAliases(row));
       const visibleRows = includeUnpublished
         ? normalizedRows
         : normalizedRows.filter((row) => isQuestionPubliclyVisible(row));
-      const total = Array.isArray(payload) ? visibleRows.length : Number(payload.total || visibleRows.length);
+      const total = v2Items
+        ? Number((payload as QuestionV2PageResponse).pagination?.total || visibleRows.length)
+        : Array.isArray(payload) ? visibleRows.length : Number(('total' in payload ? payload.total : undefined) || visibleRows.length);
 
       return {
         rows: visibleRows,
@@ -642,8 +913,8 @@ export const questionService = {
    * @since v1.0.0
    */
   async getQuestionById(questionId: string | number): Promise<Question> {
-    const response = await apiClient.get<Question>(
-      ENDPOINTS.questions.show,
+    const response = await apiClient.get<QuestionV2Detail>(
+      ENDPOINTS.questions.v2Show,
       {
         params: {
           id: String(questionId),
@@ -651,7 +922,7 @@ export const questionService = {
       },
     );
 
-    return withQuestionPublicationAliases(readApiData<Question>(response, {} as Question));
+    return mapV2DetailToQuestion(readApiData<QuestionV2Detail>(response, {}));
   },
 
   /**
@@ -685,12 +956,12 @@ export const questionService = {
    */
   async submitUserAnswer(answer: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>): Promise<SubmitAnswerResult> {
     const response = await apiClient.post<SubmitAnswerApiResponse>(
-      ENDPOINTS.questions.submit,
+      ENDPOINTS.questions.v2Answer,
       {
-        question_id: answer.questionId,
-        selected_option: answer.selectedOptionIndex,
-        time_taken: answer.timeTaken || 0,
-        simulation_id: (() => {
+        questionId: answer.questionId,
+        selectedAlternativeId: resolveSelectedAlternativeId(answer),
+        timeTaken: answer.timeTaken || 0,
+        simulationId: (() => {
           const rawSimulationId = answer.simulationId;
           if (typeof rawSimulationId === 'number') return rawSimulationId;
           if (typeof rawSimulationId === 'string' && /^\d+$/.test(rawSimulationId.trim())) {

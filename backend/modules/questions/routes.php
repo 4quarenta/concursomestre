@@ -181,6 +181,29 @@ function handleQuestionsListRoute(PDO $db): void
         Response::serverError('No foi possvel carregar as questes.', $e);
     }
 }
+
+/**
+ * Rota publica v2 da listagem leve de questoes.
+ *
+ * @since 1.0.0
+ */
+function handleQuestionsV2ListRoute(PDO $db): void
+{
+    try {
+        $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
+        $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
+        $result = buildQuestionsController($db)->listQuestionsV2(
+            $authenticatedUserId !== '' ? $authenticatedUserId : null,
+            $_GET
+        );
+
+        Response::success($result, 'Questoes carregadas com sucesso.');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar as questoes.', $e);
+    }
+}
 /**
  * Rota publica do detalhe de uma questao isolada.
   * @since 1.0.0
@@ -207,6 +230,56 @@ function handleQuestionDetailsRoute(PDO $db): void
         Response::notFound($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel carregar a questao.', $e);
+    }
+}
+
+/**
+ * Rota publica v2 do detalhe de pratica sem gabarito.
+ *
+ * @since 1.0.0
+ */
+function handleQuestionsV2ShowRoute(PDO $db): void
+{
+    try {
+        $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
+        $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
+        $result = buildQuestionsController($db)->getQuestionPracticeV2(
+            $authenticatedUserId !== '' ? $authenticatedUserId : null,
+            $_GET
+        );
+
+        Response::success($result, 'Questao carregada com sucesso.');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar a questao.', $e);
+    }
+}
+
+/**
+ * Rota administrativa v2 com gabarito, revisao e editoriais.
+ *
+ * @since 1.0.0
+ */
+function handleQuestionsV2AdminShowRoute(PDO $db): void
+{
+    try {
+        $authenticatedUserPayload = verifyAuthenticatedUserPayload();
+        $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
+        $isAdmin = in_array((string) ($authenticatedUserPayload['role'] ?? ''), ['admin', 'staff'], true);
+        $result = buildQuestionsController($db)->getQuestionAdminV2($authenticatedUserId, $isAdmin, $_GET);
+
+        Response::success($result, 'Questao administrativa carregada com sucesso.');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar a questao administrativa.', $e);
     }
 }
 
@@ -617,6 +690,38 @@ function handleQuestionsAnswerRoute(PDO $db): void
             $isAdmin,
             readQuestionsJsonRequestBody()
         );
+
+        Response::success($result, 'Resposta salva com sucesso.', 201);
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
+    } catch (DomainException $e) {
+        Response::forbidden($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Erro ao salvar resposta.', $e);
+    }
+}
+
+/**
+ * Rota v2 para submissao de resposta por identificador de alternativa.
+ *
+ * @since 1.0.0
+ */
+function handleQuestionsV2AnswerRoute(PDO $db): void
+{
+    try {
+        $authenticatedUserPayload = verifyAuthenticatedUserPayload();
+        $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
+        $isAdmin = in_array((string) ($authenticatedUserPayload['role'] ?? ''), ['admin', 'staff'], true);
+        $payload = readQuestionsJsonRequestBody();
+        if (!isset($payload['questionId']) && isset($_GET['id'])) {
+            $payload['questionId'] = $_GET['id'];
+        }
+
+        $result = buildQuestionsController($db)->submitAnswerV2($authenticatedUserId, $isAdmin, $payload);
 
         Response::success($result, 'Resposta salva com sucesso.', 201);
     } catch (InvalidArgumentException $e) {

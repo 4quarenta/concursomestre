@@ -548,6 +548,98 @@ class QuestionsRepository
     }
 
     /**
+     * Lista uma pagina publica leve pelo contrato v2. Nao carrega data_json,
+     * alternativas, editoriais, contextos completos nem agregados canonicos.
+     *
+     * @since 1.0.0
+     */
+    public function listQuestionSummaryRows(int $limit, int $offset, array $filters = [], ?string $userId = null): array
+    {
+        $this->ensurePublicationColumns();
+        [$whereClause, $params] = $this->buildPublicQuestionWhereClause($filters, $userId);
+
+        $stmt = $this->db->prepare(
+            "SELECT q.id,
+                    q.enunciado_clean,
+                    q.tipo,
+                    q.dificuldade,
+                    q.anulada,
+                    q.desatualizada,
+                    q.publish_status,
+                    q.visibility_status,
+                    q.published_at,
+                    q.created_at,
+                    q.prova_id,
+                    q.grupo_questao_id,
+                    qs.total_attempts,
+                    qs.correct_count,
+                    qs.wrong_count,
+                    EXISTS (
+                        SELECT 1
+                        FROM question_assets qa
+                        WHERE qa.question_id = q.id
+                        LIMIT 1
+                    ) AS has_canonical_asset
+             FROM questions q
+             LEFT JOIN question_stats qs ON qs.question_id = q.id
+             WHERE {$whereClause}
+             ORDER BY COALESCE(q.published_at, q.created_at) DESC, q.id DESC
+             LIMIT :limit OFFSET :offset"
+        );
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Carrega somente os campos base necessarios aos DTOs v2 de detalhe.
+     *
+     * @since 1.0.0
+     */
+    public function findQuestionContractRowById(string|int $questionId): ?array
+    {
+        $this->ensurePublicationColumns();
+
+        $stmt = $this->db->prepare(
+            "SELECT id,
+                    enunciado,
+                    enunciado_clean,
+                    intro_text,
+                    reference_text,
+                    tipo,
+                    dificuldade,
+                    resposta_correta_item_index,
+                    anulada,
+                    desatualizada,
+                    publish_status,
+                    visibility_status,
+                    scheduled_at,
+                    published_at,
+                    created_at,
+                    prova_id,
+                    grupo_questao_id,
+                    import_fingerprint,
+                    source_exam_key,
+                    source_question_number,
+                    source_page,
+                    data_json
+             FROM questions
+             WHERE id = :question_id
+             LIMIT 1"
+        );
+        $stmt->bindValue(':question_id', $questionId);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
+    /**
      * Monta o WHERE compartilhado entre pagina e total da pratica.
      * @since 1.0.0
      */

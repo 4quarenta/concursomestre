@@ -141,6 +141,50 @@ class QuestionsService
         ];
     }
 
+    /**
+     * Lista publica v2: DTO leve, camelCase e sem aliases/campos legados.
+     *
+     * @since 1.0.0
+     */
+    public function listQuestionsV2(?string $authenticatedUserId, array $query): array
+    {
+        if (!$this->repository->hasQuestionsTable()) {
+            return [
+                'items' => [],
+                'pagination' => [
+                    'page' => 1,
+                    'perPage' => 0,
+                    'total' => 0,
+                    'pages' => 0,
+                ],
+            ];
+        }
+
+        $data = $this->validator->validateListQuery($query);
+        $rows = $this->repository->listQuestionSummaryRows(
+            $data['limit'],
+            $data['offset'],
+            $data['filters'],
+            $authenticatedUserId
+        );
+        $total = $this->repository->countAllQuestions($data['filters'], $authenticatedUserId);
+        $ids = $this->extractQuestionIds($rows);
+        $filters = $this->repository->listQuestionFiltersByIds($ids);
+
+        return [
+            'items' => array_map(
+                fn (array $row): array => $this->buildQuestionListItemV2($row, $filters[(string) ($row['id'] ?? '')] ?? []),
+                $rows
+            ),
+            'pagination' => [
+                'page' => $data['page'],
+                'perPage' => $data['limit'],
+                'total' => $total,
+                'pages' => $data['limit'] > 0 ? (int) ceil($total / $data['limit']) : 0,
+            ],
+        ];
+    }
+
     public function getQuestionDetails(
         ?string $authenticatedUserId,
         bool $canViewTeacherComments,
@@ -170,6 +214,114 @@ class QuestionsService
             $canViewTeacherComments,
             $canViewDetailedAnalysis
         );
+    }
+
+    /**
+     * Detalhe publico v2 para pratica: inclui conteudo e alternativas, mas
+     * nunca inclui gabarito, revisao administrativa ou editoriais bloqueados.
+     *
+     * @since 1.0.0
+     */
+    public function getQuestionPracticeV2(?string $authenticatedUserId, array $query): array
+    {
+        $identity = $this->validator->validateQuestionIdentityQuery($query, 'ID da questao nao fornecido.');
+        $row = $this->repository->findQuestionContractRowById($identity['questionId']);
+        if ($row === null || !$this->isPublishedNow($row)) {
+            throw new OutOfBoundsException('Questao nao encontrada.');
+        }
+
+        $id = (string) ($row['id'] ?? $identity['questionId']);
+        $filtersMap = $this->repository->listQuestionFiltersByIds([$id]);
+        $statsMap = $this->repository->listQuestionStatsMap([$id]);
+        $answerMap = $authenticatedUserId ? $this->repository->listLatestUserAnswersMap($authenticatedUserId, [$id]) : [];
+        $aggregate = $this->loadCanonicalAggregateForRead((int) $id);
+
+        return $this->buildQuestionDetailV2(
+            $row,
+            $aggregate,
+            $filtersMap[$id] ?? [],
+            $statsMap[$id] ?? null,
+            $answerMap[$id] ?? null,
+            false,
+            false
+        );
+    }
+
+    /**
+     * Detalhe administrativo v2: somente admin/staff recebe gabarito,
+     * editoriais e estado de revisao.
+     *
+     * @since 1.0.0
+     */
+    public function getQuestionAdminV2(string $authenticatedUserId, bool $isAdmin, array $query): array
+    {
+        $this->assertAdmin($authenticatedUserId, $isAdmin);
+        $identity = $this->validator->validateQuestionIdentityQuery($query, 'ID da questao nao fornecido.');
+        $row = $this->repository->findQuestionContractRowById($identity['questionId']);
+        if ($row === null) {
+            throw new OutOfBoundsException('Questao nao encontrada.');
+        }
+
+        $id = (string) ($row['id'] ?? $identity['questionId']);
+        $filtersMap = $this->repository->listQuestionFiltersByIds([$id]);
+        $statsMap = $this->repository->listQuestionStatsMap([$id]);
+        $aggregate = $this->loadCanonicalAggregateForRead((int) $id);
+
+        return $this->buildQuestionDetailV2(
+            $row,
+            $aggregate,
+            $filtersMap[$id] ?? [],
+            $statsMap[$id] ?? null,
+            null,
+            true,
+            true
+        );
+    }
+
+    /**
+     * Submissao v2: o cliente envia o identificador da alternativa, e o
+     * backend resolve o indice interno antes de corrigir.
+     *
+     * @since 1.0.0
+     */
+    public function submitAnswerV2(string $authenticatedUserId, bool $isAdmin, array $payload): array
+    {
+        $questionId = trim((string) ($payload['questionId'] ?? $payload['question_id'] ?? ''));
+        $selectedAlternativeId = trim((string) ($payload['selectedAlternativeId'] ?? $payload['selected_alternative_id'] ?? ''));
+        if ($questionId === '' || $selectedAlternativeId === '') {
+            throw new InvalidArgumentException('Informe questionId e selectedAlternativeId.');
+        }
+
+        $row = $this->repository->findQuestionContractRowById($questionId);
+        if ($row === null) {
+            throw new OutOfBoundsException('Questao nao encontrada.');
+        }
+
+        $aggregate = $this->loadCanonicalAggregateForRead((int) $questionId);
+        $alternatives = $this->resolveAlternativesForV2($row, $aggregate);
+        $selectedIndex = null;
+        foreach ($alternatives as $index => $alternative) {
+            $candidates = [
+                (string) ($alternative['id'] ?? ''),
+                (string) ($alternative['tempId'] ?? ''),
+                (string) ($alternative['label'] ?? ''),
+            ];
+            if (in_array($selectedAlternativeId, $candidates, true)) {
+                $selectedIndex = $index;
+                break;
+            }
+        }
+
+        if ($selectedIndex === null) {
+            throw new InvalidArgumentException('Alternativa selecionada invalida.');
+        }
+
+        return $this->submitAnswer($authenticatedUserId, $isAdmin, [
+            'question_id' => $questionId,
+            'selected_option' => $selectedIndex,
+            'time_taken' => (int) ($payload['timeTaken'] ?? $payload['time_taken'] ?? 0),
+            'simulation_id' => $payload['simulationId'] ?? $payload['simulation_id'] ?? null,
+        ]);
     }
 
     public function filterQuestions(bool $canViewTeacherComments, bool $canViewDetailedAnalysis, array $query): array
@@ -765,6 +917,344 @@ class QuestionsService
 
         $url = $this->buildUploadUrl('/uploads/question-contexts/' . $filename);
         return ['url' => $url, 'image_url' => $url, 'imageUrl' => $url];
+    }
+
+    private function buildQuestionListItemV2(array $row, array $filters): array
+    {
+        $buckets = $this->partitionFilters($filters);
+        $attempts = max(0, (int) ($row['total_attempts'] ?? 0));
+        $correct = max(0, (int) ($row['correct_count'] ?? 0));
+        $wrong = max(0, (int) ($row['wrong_count'] ?? 0));
+
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'statementPreview' => $this->truncateQuestionPreview((string) ($row['enunciado_clean'] ?? ''), 180),
+            'type' => $this->canonicalQuestionTypeForOutput((string) ($row['tipo'] ?? '')),
+            'difficulty' => $this->difficultyLabel((int) ($row['dificuldade'] ?? 2)),
+            'hasImage' => !empty($row['has_canonical_asset']),
+            'taxonomySummary' => $this->buildTaxonomySummaryV2($buckets),
+            'stats' => [
+                'attempts' => $attempts,
+                'correct' => $correct,
+                'wrong' => $wrong,
+                'accuracy' => $attempts > 0 ? round(($correct / $attempts) * 100, 2) : 0,
+            ],
+            'publication' => [
+                'status' => (string) ($row['publish_status'] ?? 'draft'),
+                'visibility' => (string) ($row['visibility_status'] ?? 'public'),
+            ],
+            'publishedAt' => $row['published_at'] ?? null,
+            'createdAt' => $row['created_at'] ?? null,
+        ];
+    }
+
+    private function buildQuestionDetailV2(
+        array $row,
+        ?array $aggregate,
+        array $filters,
+        ?array $stats,
+        ?array $userAnswer,
+        bool $includeAnswer,
+        bool $includeEditorial
+    ): array {
+        $legacy = $this->decodeQuestionJson($row['data_json'] ?? null);
+        $buckets = $this->partitionFilters($filters);
+        $alternatives = $this->resolveAlternativesForV2($row, $aggregate);
+        $questionAssets = $this->normalizeAssetsV2(is_array($aggregate['assets'] ?? null) ? $aggregate['assets'] : []);
+        $legacyImage = trim((string) ($legacy['imageUrl'] ?? $legacy['image_url'] ?? ''));
+        if ($questionAssets === [] && $legacyImage !== '') {
+            $questionAssets[] = [
+                'tempId' => 'legacy_statement_image',
+                'type' => 'image',
+                'usage' => 'statement',
+                'url' => $legacyImage,
+                'base64' => '',
+                'alt' => 'Imagem da questao.',
+                'caption' => '',
+                'sourcePage' => null,
+                'order' => 1,
+            ];
+        }
+
+        $attempts = max(0, (int) ($stats['totalAttempts'] ?? $stats['total_attempts'] ?? 0));
+        $correct = max(0, (int) ($stats['correctCount'] ?? $stats['correct_count'] ?? 0));
+        $wrong = max(0, (int) ($stats['wrongCount'] ?? $stats['wrong_count'] ?? 0));
+        $question = [
+            'id' => (int) ($row['id'] ?? 0),
+            'source' => [
+                'origin' => !empty($row['prova_id']) ? 'exam' : (string) ($legacy['questionOrigin'] ?? $legacy['question_origin'] ?? 'platform'),
+                'examId' => is_numeric($row['prova_id'] ?? null) ? (int) $row['prova_id'] : null,
+                'questionNumber' => $this->nullableInt($row['source_question_number'] ?? $legacy['sourceQuestionNumber'] ?? $legacy['questionNumber'] ?? null),
+                'questionGroupId' => is_numeric($row['grupo_questao_id'] ?? null) ? (int) $row['grupo_questao_id'] : null,
+                'sourcePage' => $this->nullableInt($row['source_page'] ?? $legacy['sourcePage'] ?? null),
+            ],
+            'content' => [
+                'statement' => (string) ($row['enunciado'] ?? ''),
+                'statementClean' => (string) ($row['enunciado_clean'] ?? ''),
+                'supportText' => (string) ($row['intro_text'] ?? $legacy['introText'] ?? ''),
+                'reference' => (string) ($row['reference_text'] ?? $legacy['referenceText'] ?? $legacy['reference_text'] ?? ''),
+            ],
+            'assets' => $questionAssets,
+            'contexts' => $this->normalizeContextsV2(is_array($aggregate['contexts'] ?? null) ? $aggregate['contexts'] : []),
+            'filters' => $this->buildFiltersV2($buckets),
+            'type' => $this->canonicalQuestionTypeForOutput((string) ($row['tipo'] ?? '')),
+            'difficulty' => $this->difficultyLabel((int) ($row['dificuldade'] ?? 2)),
+            'alternatives' => $alternatives,
+            'publication' => [
+                'status' => (string) ($row['publish_status'] ?? 'draft'),
+                'visibility' => (string) ($row['visibility_status'] ?? 'public'),
+                'scheduledAt' => $row['scheduled_at'] ?? null,
+                'publishedAt' => $row['published_at'] ?? null,
+            ],
+            'stats' => [
+                'totalAttempts' => $attempts,
+                'correctCount' => $correct,
+                'wrongCount' => $wrong,
+                'accuracy' => $attempts > 0 ? round(($correct / $attempts) * 100, 2) : 0,
+            ],
+        ];
+
+        if ($userAnswer !== null) {
+            $question['userAnswer'] = [
+                'selectedOptionIndex' => isset($userAnswer['selected_option_index']) ? (int) $userAnswer['selected_option_index'] : null,
+                'selectedAlternativeId' => $this->alternativeIdByIndex($alternatives, $userAnswer['selected_option_index'] ?? null),
+                'isCorrect' => isset($userAnswer['is_correct']) ? (bool) $userAnswer['is_correct'] : null,
+                'answeredAt' => $userAnswer['created_at'] ?? null,
+            ];
+        }
+
+        if ($includeAnswer) {
+            $question['answer'] = $this->resolveAnswerForV2($row, $aggregate, $alternatives);
+            $question['review'] = [
+                'needsReview' => false,
+                'statusReasons' => [],
+                'annulled' => !empty($row['anulada']),
+                'outdated' => !empty($row['desatualizada']),
+            ];
+        }
+
+        if ($includeEditorial) {
+            $question['editorial'] = $this->resolveEditorialForV2($aggregate, $legacy);
+        }
+
+        return $question;
+    }
+
+    private function loadCanonicalAggregateForRead(int $questionId): ?array
+    {
+        if (!$this->canonicalRepository->isAvailable()) {
+            return null;
+        }
+
+        try {
+            return $this->canonicalRepository->loadQuestionAggregate($questionId);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function resolveAlternativesForV2(array $row, ?array $aggregate): array
+    {
+        $legacy = $this->decodeQuestionJson($row['data_json'] ?? null);
+        $source = is_array($aggregate['alternatives'] ?? null) && $aggregate['alternatives'] !== []
+            ? $aggregate['alternatives']
+            : $this->canonicalAlternativesFromItems($this->normalizeItems($legacy['itens'] ?? []));
+
+        $alternatives = [];
+        foreach (array_values($source) as $index => $alternative) {
+            if (!is_array($alternative)) {
+                continue;
+            }
+            $label = trim((string) ($alternative['label'] ?? chr(65 + $index)));
+            $tempId = trim((string) ($alternative['tempId'] ?? $alternative['id'] ?? ''));
+            if ($tempId === '') {
+                $tempId = 'alt_' . strtolower($label !== '' ? $label : chr(65 + $index));
+            }
+            $text = (string) ($alternative['text'] ?? $alternative['body'] ?? '');
+            $alternatives[] = [
+                'id' => $tempId,
+                'tempId' => $tempId,
+                'order' => (int) ($alternative['order'] ?? $index + 1),
+                'label' => $label !== '' ? $label : chr(65 + $index),
+                'text' => $text,
+                'textClean' => (string) ($alternative['textClean'] ?? $alternative['bodyClean'] ?? strip_tags($text)),
+                'assets' => $this->normalizeAssetsV2(is_array($alternative['assets'] ?? null) ? $alternative['assets'] : []),
+            ];
+        }
+
+        return $alternatives;
+    }
+
+    private function resolveAnswerForV2(array $row, ?array $aggregate, array $alternatives): array
+    {
+        if (is_array($aggregate['answer'] ?? null)) {
+            $answer = $aggregate['answer'];
+            return [
+                'mode' => (string) ($answer['mode'] ?? 'single'),
+                'raw' => (string) ($answer['raw'] ?? ''),
+                'correctAlternativeTempIds' => array_values(array_filter(array_map('strval', (array) ($answer['correctAlternativeTempIds'] ?? [])))),
+            ];
+        }
+
+        $answerIndex = is_numeric($row['resposta_correta_item_index'] ?? null) ? (int) $row['resposta_correta_item_index'] : 0;
+        $alternative = $alternatives[$answerIndex] ?? null;
+        $alternativeId = is_array($alternative) ? (string) ($alternative['tempId'] ?? $alternative['id'] ?? '') : '';
+
+        return [
+            'mode' => 'single',
+            'raw' => is_array($alternative) ? (string) ($alternative['label'] ?? '') : '',
+            'correctAlternativeTempIds' => $alternativeId !== '' ? [$alternativeId] : [],
+        ];
+    }
+
+    private function resolveEditorialForV2(?array $aggregate, array $legacy): array
+    {
+        $editorials = is_array($aggregate['editorial'] ?? null) ? $aggregate['editorial'] : [];
+        if ($editorials !== []) {
+            return array_values(array_map(static fn (array $editorial): array => [
+                'type' => (string) ($editorial['type'] ?? ''),
+                'title' => (string) ($editorial['title'] ?? ''),
+                'body' => (string) ($editorial['body'] ?? ''),
+                'status' => (string) ($editorial['status'] ?? 'draft'),
+            ], $editorials));
+        }
+
+        return [
+            [
+                'type' => 'teacher_comment',
+                'title' => '',
+                'body' => (string) ($legacy['teacherComment'] ?? ''),
+                'status' => 'draft',
+            ],
+            [
+                'type' => 'detailed_analysis',
+                'title' => '',
+                'body' => (string) ($legacy['detailedComment'] ?? ''),
+                'status' => 'draft',
+            ],
+        ];
+    }
+
+    private function normalizeContextsV2(array $contexts): array
+    {
+        return array_values(array_map(fn (array $context): array => [
+            'id' => is_numeric($context['id'] ?? null) ? (int) $context['id'] : null,
+            'tempId' => (string) ($context['tempId'] ?? $context['externalKey'] ?? ''),
+            'type' => (string) ($context['type'] ?? 'shared'),
+            'body' => (string) ($context['body'] ?? ''),
+            'bodyClean' => (string) ($context['bodyClean'] ?? strip_tags((string) ($context['body'] ?? ''))),
+            'reference' => (string) ($context['reference'] ?? ''),
+            'sourcePage' => $this->nullableInt($context['sourcePage'] ?? null),
+            'assets' => $this->normalizeAssetsV2(is_array($context['assets'] ?? null) ? $context['assets'] : []),
+        ], $contexts));
+    }
+
+    private function normalizeAssetsV2(array $assets): array
+    {
+        $normalized = [];
+        foreach (array_values($assets) as $index => $asset) {
+            if (!is_array($asset)) {
+                continue;
+            }
+            $url = trim((string) ($asset['url'] ?? $asset['publicUrl'] ?? $asset['public_url'] ?? ''));
+            $base64 = trim((string) ($asset['base64'] ?? ''));
+            if ($url === '' && $base64 === '') {
+                continue;
+            }
+            $normalized[] = [
+                'tempId' => (string) ($asset['tempId'] ?? $asset['id'] ?? 'asset_' . ($index + 1)),
+                'type' => (string) ($asset['type'] ?? 'image'),
+                'usage' => (string) ($asset['usage'] ?? 'statement'),
+                'url' => $url,
+                'base64' => $base64,
+                'alt' => (string) ($asset['alt'] ?? ''),
+                'caption' => (string) ($asset['caption'] ?? ''),
+                'sourcePage' => $this->nullableInt($asset['sourcePage'] ?? $asset['source_page'] ?? null),
+                'order' => (int) ($asset['order'] ?? $index + 1),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function buildTaxonomySummaryV2(array $buckets): array
+    {
+        return [
+            'subjects' => $this->taxonomyItemsV2($this->filterItemsByTaxonomyLevel($buckets['assuntos'] ?? [], 'materia')),
+            'topics' => $this->taxonomyItemsV2($this->filterItemsByTaxonomyLevel($buckets['assuntos'] ?? [], 'topico')),
+            'subtopics' => $this->taxonomyItemsV2($this->filterItemsByTaxonomyLevel($buckets['assuntos'] ?? [], 'assunto')),
+            'examBoards' => $this->taxonomyItemsV2($buckets['bancas'] ?? []),
+            'organizations' => $this->taxonomyItemsV2($buckets['orgaos'] ?? []),
+            'roles' => $this->taxonomyItemsV2($buckets['cargos'] ?? []),
+            'careers' => $this->taxonomyItemsV2($buckets['carreiras'] ?? []),
+            'years' => array_values($buckets['anos'] ?? []),
+            'levels' => $this->taxonomyItemsV2($buckets['niveis'] ?? []),
+            'examTypes' => $this->taxonomyItemsV2($buckets['tiposProva'] ?? []),
+        ];
+    }
+
+    private function buildFiltersV2(array $buckets): array
+    {
+        return $this->buildTaxonomySummaryV2($buckets);
+    }
+
+    private function taxonomyItemsV2(array $items): array
+    {
+        $normalized = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $label = trim((string) ($item['name'] ?? $item['nome'] ?? $item['label'] ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $normalized[] = [
+                'id' => is_numeric($item['id'] ?? null) ? (int) $item['id'] : null,
+                'label' => $label,
+                'slug' => (string) ($item['slug'] ?? $this->slugify($label)),
+                'parentId' => is_numeric($item['parentId'] ?? $item['parent_id'] ?? null) ? (int) ($item['parentId'] ?? $item['parent_id']) : null,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function canonicalQuestionTypeForOutput(string $type): string
+    {
+        $normalized = strtolower(trim($type));
+        return match ($normalized) {
+            'certo ou errado', 'certo/errado', 'true_false', 'true-false' => 'true_false',
+            'multipla escolha', 'multipla-escolha', 'multiple_choice', 'single_choice' => 'single_choice',
+            default => $normalized !== '' ? $normalized : 'single_choice',
+        };
+    }
+
+    private function truncateQuestionPreview(string $text, int $limit): string
+    {
+        $clean = trim(preg_replace('/\s+/u', ' ', strip_tags($text)) ?? strip_tags($text));
+        if (function_exists('mb_strlen') && mb_strlen($clean) > $limit) {
+            return rtrim((string) mb_substr($clean, 0, $limit - 1)) . '...';
+        }
+        if (!function_exists('mb_strlen') && strlen($clean) > $limit) {
+            return rtrim(substr($clean, 0, $limit - 1)) . '...';
+        }
+
+        return $clean;
+    }
+
+    private function alternativeIdByIndex(array $alternatives, mixed $index): ?string
+    {
+        if (!is_numeric($index)) {
+            return null;
+        }
+        $alternative = $alternatives[(int) $index] ?? null;
+        return is_array($alternative) ? (string) ($alternative['tempId'] ?? $alternative['id'] ?? '') : null;
+    }
+
+    private function nullableInt(mixed $value): ?int
+    {
+        return is_numeric($value) ? (int) $value : null;
     }
 
     public function deleteQuestionGroup(string $authenticatedUserId, bool $isAdmin, array $payload): array
