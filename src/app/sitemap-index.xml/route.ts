@@ -1,4 +1,5 @@
 import { buildSiteUrl, getConfiguredSiteUrl } from '@/config/siteUrl';
+import { buildSeoSitemapEntries } from '@/services/seo/sitemapData';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,9 +9,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET() {
   const siteUrl = getConfiguredSiteUrl();
-  const sitemapUrl = buildSiteUrl('/sitemap.xml', siteUrl);
+  const result = await buildSeoSitemapEntries();
   const lastModified = new Date().toISOString();
-  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <sitemap><loc>${sitemapUrl}</loc><lastmod>${lastModified}</lastmod></sitemap>\n</sitemapindex>`;
+  const kinds = ['institutional', 'questions', 'rankings', 'materials', 'landings'];
+  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${kinds.filter((kind) => result.entries.some((entry) => entry.category === kind)).map((kind) => `  <sitemap><loc>${buildSiteUrl(`/sitemaps/${kind}/1`, siteUrl)}</loc><lastmod>${lastModified}</lastmod></sitemap>`).join('\n')}\n</sitemapindex>`;
 
   return new Response(body, {
     headers: {
