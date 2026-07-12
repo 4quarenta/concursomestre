@@ -18,12 +18,31 @@ require_once __DIR__ . '/../../../shared/security/UploadSecurity.php';
 
 class QuestionsValidator
 {
+    /** @var list<string> */
+    private const CLIENT_VERDICT_FIELDS = [
+        'is_correct',
+        'isCorrect',
+        'correct',
+        'answerCorrect',
+        'answer_correct',
+        'correctOptionIndex',
+        'correct_option_index',
+        'correctAlternativeId',
+        'correct_alternative_id',
+        'correctAlternativeTempIds',
+        'correct_alternative_temp_ids',
+        'resposta',
+        'resposta_correta_item_index',
+    ];
+
     /**
      * Valida o payload de resposta submetida pelo usurio.
       * @since 1.0.0
      */
     public function validateAnswerPayload(array $payload): array
     {
+        $this->assertClientDoesNotSendVerdict($payload);
+
         $missing = [];
         if (!array_key_exists('question_id', $payload) && !array_key_exists('questionId', $payload)) {
             $missing[] = 'question_id';
@@ -47,6 +66,49 @@ class QuestionsValidator
             'timeTaken' => (int) ($payload['time_taken'] ?? $payload['timeTaken'] ?? 0),
             'simulationId' => ($payload['simulation_id'] ?? $payload['simulationId'] ?? null) ?: null,
         ];
+    }
+
+    /**
+     * O cliente pode informar somente a alternativa escolhida. Qualquer
+     * tentativa de enviar veredito, gabarito ou indice correto e recusada
+     * antes de a resposta chegar ao service de persistencia.
+     */
+    private function assertClientDoesNotSendVerdict(array $payload): void
+    {
+        $found = $this->findClientVerdictField($payload);
+        if ($found !== null) {
+            throw new InvalidArgumentException('O resultado da resposta e calculado exclusivamente pelo servidor.');
+        }
+    }
+
+    private function findClientVerdictField(array $value): ?string
+    {
+        foreach ($value as $key => $item) {
+            if (is_string($key) && $this->isClientVerdictField($key)) {
+                return $key;
+            }
+
+            if (is_array($item)) {
+                $nested = $this->findClientVerdictField($item);
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isClientVerdictField(string $candidate): bool
+    {
+        $candidate = strtolower($candidate);
+        foreach (self::CLIENT_VERDICT_FIELDS as $field) {
+            if ($candidate === strtolower($field)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

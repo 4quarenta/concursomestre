@@ -1037,7 +1037,12 @@ class QuestionsService
             $question['editorial'] = $this->resolveEditorialForV2($aggregate, $legacy);
         }
 
-        return $question;
+        return $this->outputPolicy->forRead(
+            $question,
+            $includeAnswer,
+            $includeEditorial,
+            $includeEditorial
+        );
     }
 
     private function loadCanonicalAggregateForRead(int $questionId): ?array

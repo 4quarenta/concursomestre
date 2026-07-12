@@ -37,6 +37,21 @@ assertAdminRouteAccessContains(
 );
 assertAdminRouteAccessContains(
     $base . '/modules/auth/routes.php',
+    "Response::notFound('Recurso nao encontrado.')",
+    'Admin route access must hide anonymous, invalid and ordinary sessions behind 404.'
+);
+assertAdminRouteAccessContains(
+    $base . '/modules/auth/routes.php',
+    "|| !empty(\$record['session_revoked_at'])",
+    'Admin route access must reject revoked refresh sessions.'
+);
+assertAdminRouteAccessContains(
+    $base . '/modules/auth/routes.php',
+    "strtotime((string) \$record['session_expires_at']) < time()",
+    'Admin route access must reject expired sessions.'
+);
+assertAdminRouteAccessContains(
+    $base . '/modules/auth/routes.php',
     "(string) (\$record['session_status'] ?? '') !== 'active'",
     'Admin route access must validate the active refresh-session state.'
 );

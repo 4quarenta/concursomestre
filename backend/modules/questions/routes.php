@@ -109,10 +109,14 @@ function sendQuestionsSuccessEnvelope(array $response, int $code = 200): void
  * Resolve os aliases novos e legados do Controle de Acesso por Plano.
  * @since 1.0.0
  */
-function userCanViewQuestionTeacherComment(PDO $db, string $userId): bool
+function userCanViewQuestionTeacherComment(PDO $db, string $userId, ?string $role = null): bool
 {
     if ($userId === '') {
         return false;
+    }
+
+    if (in_array(strtolower(trim((string) $role)), ['admin', 'staff'], true)) {
+        return true;
     }
 
     return userHasPlanBenefit($db, $userId, 'teacher_comments');
@@ -122,10 +126,14 @@ function userCanViewQuestionTeacherComment(PDO $db, string $userId): bool
  * Resolve os aliases novos e legados da analise detalhada da questao.
  * @since 1.0.0
  */
-function userCanViewQuestionDetailedAnalysis(PDO $db, string $userId): bool
+function userCanViewQuestionDetailedAnalysis(PDO $db, string $userId, ?string $role = null): bool
 {
     if ($userId === '') {
         return false;
+    }
+
+    if (in_array(strtolower(trim((string) $role)), ['admin', 'staff'], true)) {
+        return true;
     }
 
     return userHasPlanBenefit($db, $userId, 'question.detailed_analysis')
@@ -141,8 +149,9 @@ function handleQuestionsListRoute(PDO $db): void
     try {
         $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
-        $canViewTeacherComments = userCanViewQuestionTeacherComment($db, $authenticatedUserId);
-        $canViewDetailedAnalysis = userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId);
+        $role = (string) ($authenticatedUserPayload['role'] ?? '');
+        $canViewTeacherComments = userCanViewQuestionTeacherComment($db, $authenticatedUserId, $role);
+        $canViewDetailedAnalysis = userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId, $role);
 
         $cacheSettings = getQuestionsCacheSettings($db);
         $cache = new SimpleCache(
@@ -213,8 +222,9 @@ function handleQuestionDetailsRoute(PDO $db): void
     try {
         $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
-        $canViewTeacherComments = userCanViewQuestionTeacherComment($db, $authenticatedUserId);
-        $canViewDetailedAnalysis = userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId);
+        $role = (string) ($authenticatedUserPayload['role'] ?? '');
+        $canViewTeacherComments = userCanViewQuestionTeacherComment($db, $authenticatedUserId, $role);
+        $canViewDetailedAnalysis = userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId, $role);
 
         $result = buildQuestionsController($db)->getQuestionDetails(
             $authenticatedUserId !== '' ? $authenticatedUserId : null,
@@ -299,8 +309,8 @@ function handleQuestionsFilterRoute(PDO $db): void
         }
 
         $result = buildQuestionsController($db)->filterQuestions(
-            userCanViewQuestionTeacherComment($db, $authenticatedUserId),
-            userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId),
+            userCanViewQuestionTeacherComment($db, $authenticatedUserId, (string) ($authenticatedUserPayload['role'] ?? '')),
+            userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId, (string) ($authenticatedUserPayload['role'] ?? '')),
             $_GET
         );
 

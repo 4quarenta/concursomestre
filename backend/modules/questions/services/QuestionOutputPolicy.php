@@ -14,11 +14,26 @@ final class QuestionOutputPolicy
     private const ANSWER_KEY_FIELDS = [
         'answer',
         'resposta',
+        'correct',
+        'answerCorrect',
+        'answer_correct',
         'correctOptionIndex',
         'correct_option_index',
         'resposta_correta_item_index',
+        'correctAlternativeId',
+        'correct_alternative_id',
+        'correctAlternativeTempIds',
+        'correct_alternative_temp_ids',
         'is_correct',
         'isCorrect',
+    ];
+
+    /** @var list<string> */
+    private const RAW_INTERNAL_FIELDS = [
+        'data_json',
+        'dataJson',
+        'raw_json',
+        'rawJson',
     ];
 
     /** @var list<string> */
@@ -35,6 +50,14 @@ final class QuestionOutputPolicy
         'analiseDetalhada',
     ];
 
+    /** @var list<string> */
+    private const EDITORIAL_COLLECTION_FIELDS = [
+        'editorial',
+        'questionEditorials',
+        'question_editorials',
+        'editorialComments',
+    ];
+
     /**
      * @param array<string, mixed> $question
      * @return array<string, mixed>
@@ -45,50 +68,127 @@ final class QuestionOutputPolicy
         bool $canViewTeacherComments,
         bool $canViewDetailedAnalysis
     ): array {
-        if (!$includeAnswerKey) {
-            foreach (self::ANSWER_KEY_FIELDS as $field) {
-                unset($question[$field]);
+        return $this->sanitizeValue(
+            $question,
+            $includeAnswerKey,
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis
+        );
+    }
+
+    /**
+     * Remove informacoes internas em qualquer profundidade da resposta. Isso
+     * cobre contratos legados, agregados canonicos e futuros objetos aninhados
+     * sem depender de o chamador lembrar cada alias manualmente.
+     *
+     * @return array<string|int, mixed>
+     */
+    private function sanitizeValue(
+        array $value,
+        bool $includeAnswerKey,
+        bool $canViewTeacherComments,
+        bool $canViewDetailedAnalysis
+    ): array {
+        $sanitized = [];
+
+        foreach ($value as $key => $item) {
+            if (!is_string($key)) {
+                $sanitized[$key] = is_array($item)
+                    ? $this->sanitizeValue($item, $includeAnswerKey, $canViewTeacherComments, $canViewDetailedAnalysis)
+                    : $item;
+                continue;
             }
-        }
 
-        foreach (self::TEACHER_EDITORIAL_FIELDS as $field) {
-            if (!$canViewTeacherComments) {
-                unset($question[$field]);
+            if ($this->matchesField($key, self::RAW_INTERNAL_FIELDS)) {
+                continue;
             }
-        }
 
-        foreach (self::DETAILED_EDITORIAL_FIELDS as $field) {
-            if (!$canViewDetailedAnalysis) {
-                unset($question[$field]);
+            if (!$includeAnswerKey && $this->matchesField($key, self::ANSWER_KEY_FIELDS)) {
+                continue;
             }
+
+            if (!$canViewTeacherComments && $this->matchesField($key, self::TEACHER_EDITORIAL_FIELDS)) {
+                continue;
+            }
+
+            if (!$canViewDetailedAnalysis && $this->matchesField($key, self::DETAILED_EDITORIAL_FIELDS)) {
+                continue;
+            }
+
+            if ($this->matchesField($key, self::EDITORIAL_COLLECTION_FIELDS)) {
+                $editorials = $this->sanitizeEditorialCollection(
+                    $item,
+                    $includeAnswerKey,
+                    $canViewTeacherComments,
+                    $canViewDetailedAnalysis
+                );
+                if ($editorials !== []) {
+                    $sanitized[$key] = $editorials;
+                }
+                continue;
+            }
+
+            $sanitized[$key] = is_array($item)
+                ? $this->sanitizeValue($item, $includeAnswerKey, $canViewTeacherComments, $canViewDetailedAnalysis)
+                : $item;
         }
 
-        if (!isset($question['editorial']) || !is_array($question['editorial'])) {
-            unset($question['editorial']);
-            return $question;
+        return $sanitized;
+    }
+
+    /**
+     * @return list<array<string|int, mixed>>
+     */
+    private function sanitizeEditorialCollection(
+        mixed $value,
+        bool $includeAnswerKey,
+        bool $canViewTeacherComments,
+        bool $canViewDetailedAnalysis
+    ): array {
+        if (!is_array($value)) {
+            return [];
         }
 
-        $visibleEditorials = [];
-        foreach ($question['editorial'] as $editorial) {
+        $visible = [];
+        foreach ($value as $editorial) {
             if (!is_array($editorial)) {
                 continue;
             }
 
-            $type = (string) ($editorial['type'] ?? '');
-            if ($type === 'teacher_comment' && $canViewTeacherComments) {
-                $visibleEditorials[] = $editorial;
+            $type = strtolower(trim((string) ($editorial['type'] ?? '')));
+            if ($type === 'teacher_comment' && !$canViewTeacherComments) {
+                continue;
             }
-            if ($type === 'detailed_analysis' && $canViewDetailedAnalysis) {
-                $visibleEditorials[] = $editorial;
+            if ($type === 'detailed_analysis' && !$canViewDetailedAnalysis) {
+                continue;
+            }
+            if (!in_array($type, ['teacher_comment', 'detailed_analysis'], true)) {
+                continue;
+            }
+
+            $visible[] = $this->sanitizeValue(
+                $editorial,
+                $includeAnswerKey,
+                $canViewTeacherComments,
+                $canViewDetailedAnalysis
+            );
+        }
+
+        return $visible;
+    }
+
+    /**
+     * @param list<string> $fields
+     */
+    private function matchesField(string $candidate, array $fields): bool
+    {
+        $candidate = strtolower($candidate);
+        foreach ($fields as $field) {
+            if ($candidate === strtolower($field)) {
+                return true;
             }
         }
 
-        if ($visibleEditorials === []) {
-            unset($question['editorial']);
-        } else {
-            $question['editorial'] = $visibleEditorials;
-        }
-
-        return $question;
+        return false;
     }
 }

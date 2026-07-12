@@ -14,7 +14,7 @@ describe('admin route access guard', () => {
     vi.unstubAllGlobals();
   });
 
-  it('denies a request without the refresh session cookie', async () => {
+  it('returns 404 to an anonymous visitor before calling the backend guard', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
@@ -22,7 +22,19 @@ describe('admin route access guard', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('allows only the explicit backend authorization result', async () => {
+  it.each([
+    ['aluno autenticado', 404],
+    ['cookie com sessao invalida', 404],
+    ['sessao expirada', 404],
+    ['resposta proibida da API', 403],
+    ['erro de autenticacao da API', 401],
+  ])('returns 404 for %s', async (_scenario, status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status })));
+
+    await expect(canAccessAdminRoute(requestWithCookie())).resolves.toBe(false);
+  });
+
+  it.each(['staff', 'admin'])('allows %s only after the backend confirms the active privileged session', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -33,10 +45,7 @@ describe('admin route access guard', () => {
     );
   });
 
-  it('fails closed for a common user, an API error or a network failure', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
-    await expect(canAccessAdminRoute(requestWithCookie())).resolves.toBe(false);
-
+  it('fails closed for a network failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network unavailable')));
     await expect(canAccessAdminRoute(requestWithCookie())).resolves.toBe(false);
   });
