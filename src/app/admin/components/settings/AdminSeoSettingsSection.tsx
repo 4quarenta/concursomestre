@@ -10,9 +10,10 @@
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Globe, RefreshCcw, Search, Sparkles } from 'lucide-react';
+import { ExternalLink, Globe, RefreshCcw, Search, Sparkles, Upload } from 'lucide-react';
 import type { SeoPageSettings, SeoSettings } from '@types';
 import { seoService, type SitemapStatusPayload } from '@services/seo';
+import { adminService } from '@services/admin/adminService';
 import {
   buildSeoOgPreview,
   buildSeoSerpPreview,
@@ -96,6 +97,16 @@ const AdminSeoSettingsSection = ({
         [field]: value,
       },
     });
+  };
+
+  const uploadDefaultOgImage = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
+      window.alert('Envie uma imagem de ate 5 MB.');
+      return;
+    }
+    const url = await adminService.uploadQuestionContextImage(file);
+    updateGlobalField('default_og_image', url);
   };
 
   const updatePageField = (pageKey: keyof SeoSettings['pages'], field: keyof SeoPageSettings, value: string) => {
@@ -242,7 +253,13 @@ const AdminSeoSettingsSection = ({
             </div>
             <div className="space-y-1.5">
               <label className={labelClassName}>Default OG image</label>
-              <input value={seoSettings.global.default_og_image} onChange={(event) => updateGlobalField('default_og_image', event.target.value)} className={inputClassName} placeholder="https://..." />
+              <div className="flex gap-2">
+                <input value={seoSettings.global.default_og_image} onChange={(event) => updateGlobalField('default_og_image', event.target.value)} className={inputClassName} placeholder="https://..." />
+                <label className={`${ADMIN_SECONDARY_BUTTON_CLASS} cursor-pointer`} title="Enviar imagem Open Graph">
+                  <Upload size={15} />
+                  <input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadDefaultOgImage(event.target.files?.[0] || null)} />
+                </label>
+              </div>
             </div>
             <div className="space-y-1.5">
               <label className={labelClassName}>Default OG title</label>
