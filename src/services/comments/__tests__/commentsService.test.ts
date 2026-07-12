@@ -124,9 +124,27 @@ describe('commentService', () => {
     const comments = await commentService.getCurrentUserComments(10);
 
     expect(mockGet).toHaveBeenCalledWith('users/me/comments.php', {
-      params: { limit: 10 },
+      params: { limit: 10, range: 'all' },
     });
     expect(comments[0].id).toBe('com-me');
+  });
+
+  it('preserva o total agregado de comentarios sem baixar o historico', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        items: [],
+        summary: { totalComments: 57 },
+      },
+    });
+
+    const page = await commentService.getCurrentUserCommentsPage({ limit: 1, range: 'week' });
+
+    expect(mockGet).toHaveBeenCalledWith('users/me/comments.php', {
+      params: { limit: 1, range: 'week' },
+    });
+    expect(page.items).toHaveLength(0);
+    expect(page.totalComments).toBe(57);
   });
 
   it('creates a comment through commentsHandle', async () => {

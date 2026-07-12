@@ -755,6 +755,8 @@ export interface UserProfile {
   referralCode?: string;
   googleId?: string;
   facebookId?: string;
+  hasGoogleLinked?: boolean;
+  hasFacebookLinked?: boolean;
   appleId?: string;
   studyStreak?: {
     current: number;

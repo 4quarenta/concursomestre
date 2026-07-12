@@ -508,15 +508,10 @@ class UsersRepository
                 xp,
                 reputation,
                 email_verified,
-                target_exam,
-                preferences,
                 status,
-                two_factor_enabled,
                 photo_url,
-                google_sub AS google_id,
-                facebook_id,
-                referral_code,
-                deletion_requested_at
+                CASE WHEN google_sub IS NULL OR TRIM(google_sub) = '' THEN 0 ELSE 1 END AS has_google_linked,
+                CASE WHEN facebook_id IS NULL OR TRIM(facebook_id) = '' THEN 0 ELSE 1 END AS has_facebook_linked
             FROM users
             WHERE id = :id
             LIMIT 1"
@@ -543,11 +538,11 @@ class UsersRepository
      * Lista os comentarios publicados pelo Usuario para o historico de atividade.
       * @since 1.0.0
      */
-    public function fetchUserCommentsById(string $userId, int $limit = 20, ?string $cursor = null): array
+    public function fetchUserCommentsById(string $userId, int $limit = 20, ?array $cursor = null, ?string $since = null): array
     {
         $safeLimit = max(1, min($limit, 50));
-        $cursorParts = $this->decodeCursor($cursor);
-        $stmt = $this->db->prepare(
+        $cursorParts = $cursor ?? ['createdAt' => null, 'id' => ''];
+        $query =
             "SELECT
                 id,
                 target_id,
@@ -556,6 +551,7 @@ class UsersRepository
                 created_at
             FROM comments
             WHERE user_id = :id
+              AND (:since IS NULL OR created_at >= :since)
               AND (
                 :cursor_created_at IS NULL
                 OR created_at < :cursor_created_at
@@ -563,14 +559,34 @@ class UsersRepository
               )
             ORDER BY created_at DESC, id DESC
             LIMIT " . ($safeLimit + 1)
-        );
+        ;
+        $stmt = $this->db->prepare($query);
         $stmt->execute([
             ':id' => $userId,
+            ':since' => $since,
             ':cursor_created_at' => $cursorParts['createdAt'],
             ':cursor_id' => $cursorParts['id'],
         ]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Conta comentarios do usuario no recorte solicitado sem carregar o historico.
+     *
+     * @since 1.0.0
+     */
+    public function countUserCommentsByIdSince(string $userId, ?string $since = null): int
+    {
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*)
+             FROM comments
+             WHERE user_id = :id
+               AND (:since IS NULL OR created_at >= :since)'
+        );
+        $stmt->execute([':id' => $userId, ':since' => $since]);
+
+        return (int) $stmt->fetchColumn();
     }
 
     /**
@@ -682,51 +698,12 @@ class UsersRepository
      * Lista as respostas do Usuario para historico e progresso consolidado.
       * @since 1.0.0
      */
-    public function fetchUserAnswersById(string $userId, int $limit = 200, ?string $cursor = null): array
+    public function fetchUserAnswersById(string $userId, int $limit = 20, ?array $cursor = null, ?string $since = null): array
     {
-        $safeLimit = max(1, min($limit, 500));
-        $cursorParts = $this->decodeCursor($cursor);
+        $safeLimit = max(1, min($limit, 50));
+        $cursorParts = $cursor ?? ['createdAt' => null, 'id' => ''];
         $stmt = $this->db->prepare(
             "SELECT
-                ua.id,
-                ua.question_id,
-                ua.is_correct,
-                ua.selected_option_index,
-                ua.created_at,
-                ua.time_taken_seconds,
-                ua.simulation_id,
-                COALESCE(
-                    MAX(CASE WHEN f.meta_materia = 1 THEN f.name END),
-                    MAX(CASE WHEN parent_filter.meta_materia = 1 THEN parent_filter.name END),
-                    MAX(CASE WHEN f.parent_id IS NULL THEN f.name END),
-                    ''
-                ) AS subject_name,
-                GROUP_CONCAT(
-                    DISTINCT CONCAT(
-                        f.id,
-                        '::',
-                        f.name,
-                        '::',
-                        COALESCE(f.slug, ''),
-                        '::',
-                        COALESCE(f.parent_id, ''),
-                        '::',
-                        COALESCE(f.meta_materia, 0)
-                    )
-                    ORDER BY f.meta_materia DESC, f.parent_id IS NULL DESC, f.name
-                    SEPARATOR '||'
-                ) AS subject_filters
-            FROM user_answers ua
-            LEFT JOIN question_filters qf ON qf.question_id = ua.question_id
-            LEFT JOIN filters f ON f.id = qf.filter_id AND f.type = 'assunto'
-            LEFT JOIN filters parent_filter ON parent_filter.id = f.parent_id
-            WHERE ua.user_id = :id
-              AND (
-                :cursor_created_at IS NULL
-                OR ua.created_at < :cursor_created_at
-                OR (ua.created_at = :cursor_created_at AND ua.id < :cursor_id)
-              )
-            GROUP BY
                 ua.id,
                 ua.question_id,
                 ua.is_correct,
@@ -734,16 +711,111 @@ class UsersRepository
                 ua.created_at,
                 ua.time_taken_seconds,
                 ua.simulation_id
+            FROM user_answers ua
+            WHERE ua.user_id = :id
+              AND (:since IS NULL OR ua.created_at >= :since)
+              AND (
+                :cursor_created_at IS NULL
+                OR ua.created_at < :cursor_created_at
+                OR (ua.created_at = :cursor_created_at AND ua.id < :cursor_id)
+              )
             ORDER BY ua.created_at DESC, ua.id DESC
             LIMIT " . ($safeLimit + 1)
         );
         $stmt->execute([
             ':id' => $userId,
+            ':since' => $since,
             ':cursor_created_at' => $cursorParts['createdAt'],
             ':cursor_id' => $cursorParts['id'],
         ]);
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $answers = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return $this->hydrateUserAnswerSubjects($answers);
+    }
+
+    /**
+     * Carrega taxonomias das respostas em lote. A pagina principal permanece
+     * indexavel por user_id/created_at/id e evita GROUP BY + filesort.
+     *
+     * @param array<int, array<string, mixed>> $answers
+     * @return array<int, array<string, mixed>>
+     */
+    private function hydrateUserAnswerSubjects(array $answers): array
+    {
+        $questionIds = array_values(array_unique(array_filter(array_map(
+            static fn (array $answer): int => (int) ($answer['question_id'] ?? 0),
+            $answers
+        ), static fn (int $questionId): bool => $questionId > 0)));
+
+        if ($questionIds === []) {
+            return $answers;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($questionIds), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT
+                qf.question_id,
+                f.id,
+                f.name,
+                f.slug,
+                f.parent_id,
+                f.meta_materia,
+                parent_filter.name AS parent_name,
+                parent_filter.meta_materia AS parent_meta_materia
+             FROM question_filters qf
+             JOIN filters f ON f.id = qf.filter_id AND f.type = 'assunto'
+             LEFT JOIN filters parent_filter ON parent_filter.id = f.parent_id
+             WHERE qf.question_id IN ({$placeholders})
+             ORDER BY qf.question_id, f.meta_materia DESC, f.parent_id IS NULL DESC, f.name"
+        );
+        $stmt->execute($questionIds);
+
+        $metadataByQuestion = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $questionId = (int) ($row['question_id'] ?? 0);
+            $filterId = (int) ($row['id'] ?? 0);
+            $filterName = trim((string) ($row['name'] ?? ''));
+            if ($questionId <= 0 || $filterId <= 0 || $filterName === '') {
+                continue;
+            }
+
+            $candidatePriority = ((int) ($row['meta_materia'] ?? 0) === 1)
+                ? 3
+                : (((int) ($row['parent_meta_materia'] ?? 0) === 1) ? 2 : (empty($row['parent_id']) ? 1 : 0));
+            $candidateName = $candidatePriority === 2
+                ? trim((string) ($row['parent_name'] ?? ''))
+                : $filterName;
+            $metadataByQuestion[$questionId] ??= [
+                'subject_name' => '',
+                'subject_priority' => -1,
+                'subject_filters' => [],
+            ];
+
+            if ($candidateName !== '' && $candidatePriority > $metadataByQuestion[$questionId]['subject_priority']) {
+                $metadataByQuestion[$questionId]['subject_name'] = $candidateName;
+                $metadataByQuestion[$questionId]['subject_priority'] = $candidatePriority;
+            }
+
+            $metadataByQuestion[$questionId]['subject_filters'][$filterId] = implode('::', [
+                $filterId,
+                $filterName,
+                (string) ($row['slug'] ?? ''),
+                (string) ($row['parent_id'] ?? ''),
+                (string) ((int) ($row['meta_materia'] ?? 0)),
+            ]);
+        }
+
+        foreach ($answers as &$answer) {
+            $questionId = (int) ($answer['question_id'] ?? 0);
+            $metadata = $metadataByQuestion[$questionId] ?? null;
+            $answer['subject_name'] = is_array($metadata) ? (string) $metadata['subject_name'] : '';
+            $answer['subject_filters'] = is_array($metadata)
+                ? implode('||', array_values($metadata['subject_filters']))
+                : '';
+        }
+        unset($answer);
+
+        return $answers;
     }
 
     /**
@@ -751,18 +823,20 @@ class UsersRepository
      *
      * @since 1.0.0
      */
-    public function fetchUserAnswerSummary(string $userId): array
+    public function fetchUserAnswerSummary(string $userId, ?string $since = null): array
     {
         $stmt = $this->db->prepare(
             "SELECT
                 COUNT(*) AS total_attempts,
                 SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct_count,
                 SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END) AS wrong_count,
+                MIN(created_at) AS first_activity_at,
                 MAX(created_at) AS last_activity_at
              FROM user_answers
-             WHERE user_id = :id"
+             WHERE user_id = :id
+               AND (:since IS NULL OR created_at >= :since)"
         );
-        $stmt->execute([':id' => $userId]);
+        $stmt->execute([':id' => $userId, ':since' => $since]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return is_array($row) ? $row : [];
@@ -1379,19 +1453,4 @@ class UsersRepository
         ]);
     }
 
-    private function decodeCursor(?string $cursor): array
-    {
-        $value = trim((string) $cursor);
-        if ($value === '') {
-            return ['createdAt' => null, 'id' => ''];
-        }
-
-        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
-        $parts = is_string($decoded) ? explode('|', $decoded, 2) : [];
-
-        return [
-            'createdAt' => trim((string) ($parts[0] ?? '')) !== '' ? (string) $parts[0] : null,
-            'id' => (string) ($parts[1] ?? ''),
-        ];
-    }
 }

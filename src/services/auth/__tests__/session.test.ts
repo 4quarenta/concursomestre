@@ -281,7 +281,7 @@ describe('auth session manager', () => {
     expect(storageState.get('cm-auth-session-present')).toBeUndefined();
   });
 
-  it('aguarda refresh de outra aba quando encontra lock externo ativo', async () => {
+  it('reidrata pelo proprio cookie ao receber refresh de outra aba sem transportar token', async () => {
     cookieJar = 'cm_csrf=test-csrf';
     storageState.set('cm-auth-refresh-lock', JSON.stringify({
       owner: 'other-tab',
@@ -289,7 +289,7 @@ describe('auth session manager', () => {
     }));
 
     const futureExp = Math.floor(Date.now() / 1000) + 1800;
-    const sharedToken =
+    const refreshedToken =
       'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.' +
       Buffer.from(JSON.stringify({
         exp: futureExp,
@@ -298,32 +298,40 @@ describe('auth session manager', () => {
       })).toString('base64url') +
       '.signature';
 
+    mockPost.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          token: refreshedToken,
+          user: {
+            id: 'user-shared',
+            name: 'Outra Aba',
+            email: 'shared@teste.com',
+          },
+        },
+      },
+    });
+
     const session = await importSessionModule();
 
     const pending = session.refreshAuthSession({ reason: 'http-401', force: true });
 
+    storageState.delete('cm-auth-refresh-lock');
     (window as MockWindowWithStorageEmitter).__emitStorage({
       key: 'cm-auth-event',
       newValue: JSON.stringify({
         type: 'refresh-success',
         sourceTabId: 'other-tab',
-        accessToken: sharedToken,
-        accessTokenExpMs: futureExp * 1000,
-        user: {
-          id: 'user-shared',
-          name: 'Outra Aba',
-          email: 'shared@teste.com',
-        },
         at: Date.now(),
       }),
     });
 
     const snapshot = await pending;
 
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(mockPost).toHaveBeenCalledTimes(1);
     expect(snapshot?.isAuthenticated).toBe(true);
     expect(snapshot?.currentUser?.id).toBe('user-shared');
-    expect(session.getAccessToken()).toBe(sharedToken);
+    expect(session.getAccessToken()).toBe(refreshedToken);
   });
 
   it('limpa a sessão local no logout', async () => {

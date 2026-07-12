@@ -12,4 +12,9 @@
 /**
  * Fachada oficial do progresso do usuário na arquitetura congelada.
  */
-export { userProgressService } from './userProgressService';
+export {
+  userProgressService,
+  type CurrentUserAnswersPage,
+  type CurrentUserAnswersRequest,
+  type CurrentUserAnswerSummary,
+} from './userProgressService';

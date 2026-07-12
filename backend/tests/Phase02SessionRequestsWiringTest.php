@@ -58,6 +58,10 @@ function phase02SessionExtractMethod(string $content, string $methodName): strin
 
 try {
     $base = dirname(__DIR__);
+    $projectRoot = dirname($base);
+    $frontendRoot = is_file($projectRoot . '/src/app/dashboard/DashboardPage.tsx')
+        ? $projectRoot
+        : $projectRoot . '/frontend';
 
     phase02SessionAssertContains(
         $base . '/api/auth/me.php',
@@ -88,15 +92,66 @@ try {
         );
     }
 
+    $usersService = phase02SessionRead($base . '/modules/users/services/UsersService.php');
+    $sessionPayloadMethod = phase02SessionExtractMethod($usersService, 'getAuthenticatedSession');
+    foreach (['cpf', 'phone', 'address', 'bankAccount', 'billing', 'googleId', 'facebookId', 'referralCode', 'twoFactorEnabled'] as $forbiddenSessionField) {
+        phase02SessionAssertNotContains(
+            $sessionPayloadMethod,
+            "'" . $forbiddenSessionField . "' =>",
+            'DTO de sessao nao pode serializar campo privado: ' . $forbiddenSessionField
+        );
+    }
+
     phase02SessionAssertContains(
         $base . '/api/users/me/comments.php',
-        "unset(\$_GET['user_id'], \$_GET['userId']);",
-        'Endpoint proprio de comentarios nao deve aceitar user_id do cliente.'
+        'handleCurrentUserCommentsRoute($db)',
+        'Endpoint proprio de comentarios precisa usar rota autocontida.'
     );
     phase02SessionAssertContains(
         $base . '/api/users/me/answers.php',
-        "unset(\$_GET['user_id'], \$_GET['userId']);",
-        'Endpoint proprio de respostas nao deve aceitar user_id do cliente.'
+        'handleCurrentUserAnswersRoute($db)',
+        'Endpoint proprio de respostas precisa usar rota autocontida.'
+    );
+
+    foreach (['getCurrentUserComments', 'getCurrentUserAnswers'] as $methodName) {
+        $method = phase02SessionExtractMethod($usersService, $methodName);
+        phase02SessionAssertNotContains(
+            $method,
+            'resolveRequestedUserId',
+            $methodName . ' nao pode resolver escopo com identificador do cliente.'
+        );
+        phase02SessionAssertNotContains(
+            $method,
+            'listUser',
+            $methodName . ' nao pode delegar para metodo de escopo legado.'
+        );
+    }
+
+    $dashboard = phase02SessionRead($frontendRoot . '/src/app/dashboard/DashboardPage.tsx');
+    phase02SessionAssertNotContains(
+        $dashboard,
+        'getCurrentUserAnswers(240)',
+        'Dashboard nao pode baixar centenas de respostas no primeiro carregamento.'
+    );
+    phase02SessionAssertContains(
+        $frontendRoot . '/src/app/dashboard/DashboardPage.tsx',
+        'getCurrentUserAnswersPage({ limit: 20, range: timeRange })',
+        'Dashboard deve usar pagina curta e resumo server-side.'
+    );
+    phase02SessionAssertNotContains(
+        $dashboard,
+        'getCurrentUserAnswers(',
+        'Dashboard nao pode depender do metodo legado que baixa historico integral.'
+    );
+    phase02SessionAssertNotContains(
+        $dashboard,
+        'getCurrentUserComments(',
+        'Dashboard nao pode depender do metodo legado de comentarios.'
+    );
+    phase02SessionAssertContains(
+        $frontendRoot . '/src/app/dashboard/DashboardPage.tsx',
+        'getCurrentUserCommentsPage({ limit: 1, range: timeRange })',
+        'Dashboard deve obter apenas o contador server-side de comentarios.'
     );
 
     phase02SessionAssertContains(
@@ -109,6 +164,27 @@ try {
         "'unreadCount' => \$this->repository->countUnreadByUserId(\$authenticatedUserId)",
         'Listagem de notificacoes deve devolver unreadCount sem carregar tudo para badge.'
     );
+
+    phase02SessionAssertContains(
+        $base . '/shared/pagination/SignedKeysetCursor.php',
+        'hash_hmac',
+        'Cursores precisam ser assinados contra adulteracao.'
+    );
+
+    $session = phase02SessionRead($frontendRoot . '/src/services/auth/session.ts');
+    $broadcastStart = strpos($session, 'interface AuthBroadcastEvent');
+    $broadcastEnd = $broadcastStart === false ? false : strpos($session, 'export interface AuthSessionSnapshot', $broadcastStart);
+    if ($broadcastStart === false || $broadcastEnd === false) {
+        throw new RuntimeException('Contrato de evento entre abas nao encontrado.');
+    }
+    $broadcastContract = substr($session, $broadcastStart, $broadcastEnd - $broadcastStart);
+    foreach (['accessToken', 'accessTokenExpMs', 'user?:'] as $forbiddenEventField) {
+        phase02SessionAssertNotContains(
+            $broadcastContract,
+            $forbiddenEventField,
+            'Evento entre abas nao pode transportar segredo ou perfil: ' . $forbiddenEventField
+        );
+    }
 
     fwrite(STDOUT, "Phase02SessionRequestsWiringTest: PASS\n");
 } catch (Throwable $exception) {

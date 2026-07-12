@@ -135,11 +135,44 @@ describe('userProgressService', () => {
     const answers = await userProgressService.getCurrentUserAnswers(25);
 
     expect(mockGet).toHaveBeenCalledWith('/users/me/answers.php', {
-      params: { limit: 25 },
+      params: { limit: 25, range: 'all' },
     });
     expect(answers).toHaveLength(1);
     expect(answers[0].questionId).toBe(21);
     expect(answers[0].isCorrect).toBe(false);
+  });
+
+  it('preserva o resumo server-side e o cursor na pagina do usuario autenticado', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        items: [{ questionId: 22, selectedOptionIndex: 1, isCorrect: true }],
+        hasMore: true,
+        nextCursor: 'cursor-assinado',
+        summary: {
+          totalAttempts: 1820,
+          correct: 1400,
+          wrong: 420,
+          accuracy: 76.92,
+          firstActivityAt: '2026-01-02 08:00:00',
+          lastActivityAt: '2026-07-12 12:00:00',
+        },
+      },
+    });
+
+    const page = await userProgressService.getCurrentUserAnswersPage({
+      limit: 20,
+      range: 'month',
+      cursor: 'cursor-anterior',
+    });
+
+    expect(mockGet).toHaveBeenCalledWith('/users/me/answers.php', {
+      params: { limit: 20, range: 'month', cursor: 'cursor-anterior' },
+    });
+    expect(page.items).toHaveLength(1);
+    expect(page.summary.totalAttempts).toBe(1820);
+    expect(page.nextCursor).toBe('cursor-assinado');
+    expect(page.hasMore).toBe(true);
   });
 
   it('normaliza apenas notas de questões no endpoint oficial de notes', async () => {

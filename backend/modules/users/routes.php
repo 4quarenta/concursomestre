@@ -343,6 +343,27 @@ function handleUsersCommentsRoute(PDO $db): void
 }
 
 /**
+ * Ponto de entrada autocontido para comentarios do usuario autenticado.
+ *
+ * @since 1.0.0
+ */
+function handleCurrentUserCommentsRoute(PDO $db): void
+{
+    try {
+        $payload = verifyAuthenticatedUserPayload();
+        $authenticatedUserId = trim((string) ($payload['user_id'] ?? ''));
+        $result = buildUsersController($db)->getCurrentUserComments($authenticatedUserId, $_GET);
+        Response::success($result, 'Current user comments retrieved');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Failed to fetch current user comments', $e);
+    }
+}
+
+/**
  * Ponto de entrada oficial para listar anotacoes do proprio usurio.
  *
  * @since 1.0.0
@@ -405,6 +426,27 @@ function handleUsersAnswersRoute(PDO $db): void
         Response::unauthorized($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Failed to fetch user answers', $e);
+    }
+}
+
+/**
+ * Ponto de entrada autocontido para respostas do usuario autenticado.
+ *
+ * @since 1.0.0
+ */
+function handleCurrentUserAnswersRoute(PDO $db): void
+{
+    try {
+        $payload = verifyAuthenticatedUserPayload();
+        $authenticatedUserId = trim((string) ($payload['user_id'] ?? ''));
+        $result = buildUsersController($db)->getCurrentUserAnswers($authenticatedUserId, $_GET);
+        Response::success($result, 'Current user answers retrieved');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Failed to fetch current user answers', $e);
     }
 }
 

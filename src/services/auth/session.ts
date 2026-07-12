@@ -29,9 +29,6 @@ interface AuthBroadcastEvent {
     type: AuthEventType;
     sourceTabId: string;
     reason?: string | null;
-    accessToken?: string | null;
-    accessTokenExpMs?: number | null;
-    user?: UserProfile | null;
     at: number;
 }
 export interface AuthSessionSnapshot {
@@ -46,6 +43,7 @@ interface RefreshOptions {
     reason: 'bootstrap' | 'http-401' | 'scheduled' | 'manual';
     allowAnonymousFailure?: boolean;
     force?: boolean;
+    broadcast?: boolean;
 }
 interface RefreshSessionResponsePayload {
     token?: string | null;
@@ -69,6 +67,8 @@ type AuthRawUserProfile = Partial<UserProfile> & {
     is_staff?: boolean | number | string;
     is_partner?: boolean | number | string;
     can_access_admin?: boolean | number | string;
+    hasGoogleLinked?: boolean | number | string;
+    hasFacebookLinked?: boolean | number | string;
 };
 
 const authHttp = axios.create({
@@ -127,6 +127,13 @@ const normalizeAuthUserProfile = (rawUser: UserProfile | null | undefined): User
         savedQuestionIds: Array.isArray(user.savedQuestionIds) ? user.savedQuestionIds : [],
         simulations: Array.isArray(user.simulations) ? user.simulations : [],
         purchasedMaterialIds: Array.isArray(user.purchasedMaterialIds) ? user.purchasedMaterialIds : [],
+        billing: user.billing && typeof user.billing === 'object'
+            ? user.billing
+            : {
+                plan: String(user.plan || 'Gratuito'),
+                billingCycle: 'monthly' as const,
+                nextBilling: undefined,
+            },
     } as UserProfile;
 
     normalizedProfile.isAdmin = parseBooleanLike(
@@ -144,6 +151,14 @@ const normalizeAuthUserProfile = (rawUser: UserProfile | null | undefined): User
     normalizedProfile.canAccessAdmin = parseBooleanLike(
         user.canAccessAdmin ?? user.can_access_admin,
         canAccessAdminPanel(normalizedProfile),
+    );
+    normalizedProfile.hasGoogleLinked = parseBooleanLike(
+        user.hasGoogleLinked,
+        false,
+    );
+    normalizedProfile.hasFacebookLinked = parseBooleanLike(
+        user.hasFacebookLinked,
+        false,
     );
 
     return normalizedProfile;
@@ -639,20 +654,12 @@ const finalizeExternalAuthEvent = async (event: AuthBroadcastEvent): Promise<Aut
         return null;
     }
 
-    if (event.type === 'refresh-success' && event.accessToken) {
-        updateSessionState(event.accessToken, event.user ?? currentUser, {
-            isBootstrapped: true,
-            broadcast: false,
-            reason: event.reason || 'external_refresh_success',
-        });
-        return getSnapshot();
-    }
-
     try {
         return await refreshAuthSession({
             reason: 'manual',
             allowAnonymousFailure: true,
             force: true,
+            broadcast: false,
         });
     } catch {
         clearAuthenticatedSession('external_login_refresh_failed', false);
@@ -782,7 +789,14 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         if (!acquiredLock) {
             const externalResult = await waitForExternalRefresh();
             if (externalResult) {
-                return await finalizeExternalAuthEvent(externalResult);
+                if (externalResult.type === 'logout') {
+                    updateSessionState(null, null, {
+                        isBootstrapped: true,
+                        broadcast: false,
+                        reason: externalResult.reason || 'external_logout',
+                    });
+                    return null;
+                }
             }
 
             if (!tryAcquireRefreshLock()) {
@@ -818,6 +832,12 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
                 isBootstrapped: shouldPublishReadySession,
                 broadcast: false,
             });
+            // A outra aba recebe apenas o sinal e renova pelo proprio cookie
+            // HttpOnly; nenhum access token atravessa canais do navegador.
+            releaseRefreshLock();
+            if (options.broadcast !== false) {
+                broadcastAuthEvent({ type: 'refresh-success' });
+            }
 
             return getSnapshot();
         } catch (error: unknown) {

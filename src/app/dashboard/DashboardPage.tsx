@@ -38,7 +38,7 @@ import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useAuth } from '@providers/AuthProvider';
 import { useStudyTracker } from '@providers/StudyTrackerProvider';
 import { commentService } from '@services/comments';
-import { userProgressService } from '@services/progress';
+import { userProgressService, type CurrentUserAnswersPage } from '@services/progress';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import {
@@ -56,7 +56,6 @@ import {
   buildSubjectPerformanceDataFromStatistics,
   calculateAccuracySummary,
   calculateLevelProgress,
-  filterAnswersByRange,
   formatDashboardDate,
   getDailyMotivationForDate,
   resolveDashboardAnswerTimestamp,
@@ -66,7 +65,20 @@ import { loadDailyMotivationMarkdown } from '@services/dashboard/dailyMotivation
 import { getStudyStreakSnapshot, touchStudyStreak, type StudyStreakSnapshot } from '@services/dashboard/studyStreakService';
 import { formatStudyDuration } from '@services/statistics/studyTimeFormatting';
 import { getBenefitRequiredPlan, hasPlanBenefit, type CanonicalPlanName } from '@services/plans/planAccess';
-import type { QuestaoComentario, UserAnswer } from '@types';
+
+const EMPTY_DASHBOARD_ANSWER_PAGE: CurrentUserAnswersPage = {
+  items: [],
+  hasMore: false,
+  nextCursor: null,
+  summary: {
+    totalAttempts: 0,
+    correct: 0,
+    wrong: 0,
+    accuracy: 0,
+    firstActivityAt: null,
+    lastActivityAt: null,
+  },
+};
 
 const EMPTY_STREAK: StudyStreakSnapshot = {
   current: 0,
@@ -222,15 +234,16 @@ const Dashboard: React.FC = () => {
   const [timeRange, setTimeRange] = useState<DashboardTimeRange>('today');
   const [showCorrectTimeline, setShowCorrectTimeline] = useState<boolean>(true);
   const [fallbackDailyMotivationMarkdown, setFallbackDailyMotivationMarkdown] = useState<string>('');
-  const [dashboardAnswers, setDashboardAnswers] = useState<UserAnswer[]>([]);
-  const [dashboardAnswersOwnerId, setDashboardAnswersOwnerId] = useState<string | null>(null);
-  const [dashboardComments, setDashboardComments] = useState<QuestaoComentario[]>([]);
-  const [dashboardCommentsOwnerId, setDashboardCommentsOwnerId] = useState<string | null>(null);
+  const [dashboardAnswerPage, setDashboardAnswerPage] = useState<CurrentUserAnswersPage>(EMPTY_DASHBOARD_ANSWER_PAGE);
+  const [dashboardAnswersOwnerKey, setDashboardAnswersOwnerKey] = useState<string | null>(null);
+  const [dashboardCommentsCount, setDashboardCommentsCount] = useState(0);
+  const [dashboardCommentsOwnerKey, setDashboardCommentsOwnerKey] = useState<string | null>(null);
   const [studyStreak, setStudyStreak] = useState<StudyStreakSnapshot>(() => (
     currentUser?.id ? getStudyStreakSnapshot(currentUser.id) : EMPTY_STREAK
   ));
   const hasDashboardAccess = hasPlanBenefit(currentUser, 'module.dashboard', systemSettings.planEntitlements);
   const dashboardRequiredPlan = getBenefitRequiredPlan('module.dashboard', systemSettings.planEntitlements) as CanonicalPlanName;
+  const dashboardActivityKey = currentUser?.id ? `${currentUser.id}:${timeRange}` : null;
 
   /**
    * O dashboard precisa apenas das respostas para renderizar cards e grafico.
@@ -243,7 +256,7 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    if (dashboardAnswersOwnerId === currentUser.id) {
+    if (dashboardActivityKey && dashboardAnswersOwnerKey === dashboardActivityKey) {
       return;
     }
 
@@ -251,17 +264,17 @@ const Dashboard: React.FC = () => {
     let cancelScheduledFetch: (() => void) | null = null;
     const timeoutId = window.setTimeout(() => {
       cancelScheduledFetch = scheduleLowPriorityTask(() => {
-        userProgressService.getCurrentUserAnswers(240)
-          .then((answers) => {
+        userProgressService.getCurrentUserAnswersPage({ limit: 20, range: timeRange })
+          .then((page) => {
             if (isMounted) {
-              setDashboardAnswers(Array.isArray(answers) ? answers : []);
-              setDashboardAnswersOwnerId(currentUser.id);
+              setDashboardAnswerPage(page);
+              setDashboardAnswersOwnerKey(dashboardActivityKey);
             }
           })
           .catch(() => {
             if (isMounted) {
-              setDashboardAnswers([]);
-              setDashboardAnswersOwnerId(currentUser.id);
+              setDashboardAnswerPage(EMPTY_DASHBOARD_ANSWER_PAGE);
+              setDashboardAnswersOwnerKey(dashboardActivityKey);
             }
           });
       });
@@ -274,40 +287,39 @@ const Dashboard: React.FC = () => {
         cancelScheduledFetch();
       }
     };
-  }, [currentUser?.id, dashboardAnswersOwnerId, hasDashboardAccess]);
+  }, [currentUser?.id, dashboardActivityKey, dashboardAnswersOwnerKey, hasDashboardAccess, timeRange]);
 
   React.useEffect(() => {
     if (
       !currentUser?.id
       || !hasDashboardAccess
-      || timeRange === 'all'
     ) {
       return;
     }
 
-    if (dashboardCommentsOwnerId === currentUser.id) {
+    if (dashboardActivityKey && dashboardCommentsOwnerKey === dashboardActivityKey) {
       return;
     }
 
     let isMounted = true;
-    commentService.getCurrentUserComments(20)
-      .then((comments) => {
+    commentService.getCurrentUserCommentsPage({ limit: 1, range: timeRange })
+      .then((page) => {
         if (isMounted) {
-          setDashboardComments(Array.isArray(comments) ? comments : []);
-          setDashboardCommentsOwnerId(currentUser.id);
+          setDashboardCommentsCount(page.totalComments);
+          setDashboardCommentsOwnerKey(dashboardActivityKey);
         }
       })
       .catch(() => {
         if (isMounted) {
-          setDashboardComments([]);
-          setDashboardCommentsOwnerId(currentUser.id);
+          setDashboardCommentsCount(0);
+          setDashboardCommentsOwnerKey(dashboardActivityKey);
         }
       });
 
     return () => {
       isMounted = false;
     };
-  }, [currentUser?.id, dashboardCommentsOwnerId, hasDashboardAccess, timeRange]);
+  }, [currentUser?.id, dashboardActivityKey, dashboardCommentsOwnerKey, hasDashboardAccess, timeRange]);
 
   /**
    * Atualiza a base de motivacoes conforme o admin salva um markdown novo.
@@ -360,15 +372,13 @@ const Dashboard: React.FC = () => {
     return () => window.cancelAnimationFrame(frame);
   }, [currentUser?.id]);
 
-  const effectiveDashboardAnswers = useMemo(
-    () => (dashboardAnswersOwnerId === currentUser?.id ? dashboardAnswers : []),
-    [currentUser?.id, dashboardAnswers, dashboardAnswersOwnerId],
+  const effectiveDashboardAnswerPage = useMemo(
+    () => (dashboardActivityKey && dashboardAnswersOwnerKey === dashboardActivityKey
+      ? dashboardAnswerPage
+      : EMPTY_DASHBOARD_ANSWER_PAGE),
+    [dashboardActivityKey, dashboardAnswerPage, dashboardAnswersOwnerKey],
   );
-
-  const effectiveDashboardComments = useMemo(
-    () => (dashboardCommentsOwnerId === currentUser?.id ? dashboardComments : []),
-    [currentUser?.id, dashboardComments, dashboardCommentsOwnerId],
-  );
+  const effectiveDashboardAnswers = effectiveDashboardAnswerPage.items;
 
   const dailyMotivationMarkdown = useMemo(() => {
     const configuredMarkdown = String(systemSettings.dailyMotivationMarkdown || '').trim();
@@ -379,14 +389,18 @@ const Dashboard: React.FC = () => {
     return fallbackDailyMotivationMarkdown;
   }, [fallbackDailyMotivationMarkdown, systemSettings.dailyMotivationMarkdown]);
 
-  const filteredAnswers = useMemo(
-    () => filterAnswersByRange(effectiveDashboardAnswers, timeRange),
-    [effectiveDashboardAnswers, timeRange],
-  );
+  // O servidor ja aplica o recorte; o browser mantem somente a amostra recente
+  // necessaria para o grafico, sem baixar o historico integral de respostas.
+  const filteredAnswers = effectiveDashboardAnswers;
 
   const accuracySummary = useMemo(
-    () => calculateAccuracySummary(filteredAnswers),
-    [filteredAnswers],
+    () => ({
+      totalQuestions: effectiveDashboardAnswerPage.summary.totalAttempts,
+      correctAnswers: effectiveDashboardAnswerPage.summary.correct,
+      wrongAnswers: effectiveDashboardAnswerPage.summary.wrong,
+      accuracyRate: effectiveDashboardAnswerPage.summary.accuracy,
+    }),
+    [effectiveDashboardAnswerPage.summary],
   );
 
   const subjectMetrics = useMemo(
@@ -426,19 +440,12 @@ const Dashboard: React.FC = () => {
   );
 
   const userCommentsCount = useMemo(() => {
-    if (!currentUser) {
-      return 0;
+    if (dashboardActivityKey && dashboardCommentsOwnerKey === dashboardActivityKey) {
+      return dashboardCommentsCount;
     }
 
-    if (timeRange === 'all') {
-      return currentUser.commentsCount || 0;
-    }
-
-    const startTimestamp = timelineData[0]?.timestamp || 0;
-    return (effectiveDashboardComments || []).filter((comment) => (
-      resolveDashboardAnswerTimestamp(comment as unknown as Record<string, unknown>) >= startTimestamp
-    )).length;
-  }, [currentUser, effectiveDashboardComments, timeRange, timelineData]);
+    return 0;
+  }, [dashboardActivityKey, dashboardCommentsCount, dashboardCommentsOwnerKey]);
 
   const topSubjects = subjectMetrics.slice(0, 5);
   const currentStudyStreakDays = studyStreak.current;
@@ -470,7 +477,11 @@ const Dashboard: React.FC = () => {
       return 0;
     }
 
-    const firstAnswerTimestamp = (effectiveDashboardAnswers || [])
+    const firstAnswerTimestamp = resolveDashboardAnswerTimestamp(
+      effectiveDashboardAnswerPage.summary.firstActivityAt
+        ? { createdAt: effectiveDashboardAnswerPage.summary.firstActivityAt }
+        : null,
+    ) || (effectiveDashboardAnswers || [])
       .map(resolveDashboardAnswerTimestamp)
       .filter((timestamp) => Number.isFinite(timestamp) && timestamp > 0)
       .sort((left, right) => left - right)[0];
@@ -490,7 +501,7 @@ const Dashboard: React.FC = () => {
     }
 
     return Math.max(0, Math.round(totalStudySeconds / totalStudyDays));
-  }, [currentStudyStreakDays, displayTotals.totalSeconds, effectiveDashboardAnswers, userStatistics?.lastActivity]);
+  }, [currentStudyStreakDays, displayTotals.totalSeconds, effectiveDashboardAnswerPage.summary.firstActivityAt, effectiveDashboardAnswers, userStatistics?.lastActivity]);
 
   const dailyMotivation = useMemo(
     () => getDailyMotivationForDate(dailyMotivationMarkdown, new Date()),

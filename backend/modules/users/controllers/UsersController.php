@@ -103,6 +103,16 @@ class UsersController
     }
 
     /**
+     * Lista comentarios do dono da sessao sem aceitar um escopo do cliente.
+     *
+     * @since 1.0.0
+     */
+    public function getCurrentUserComments(string $authenticatedUserId, array $query = []): array
+    {
+        return $this->service->getCurrentUserComments($authenticatedUserId, $query);
+    }
+
+    /**
      * Lista anotacoes privadas do usuario no escopo autorizado.
      * @since 1.0.0
      */
@@ -139,6 +149,16 @@ class UsersController
     public function listUserAnswers(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin, array $query = []): array
     {
         return $this->service->listUserAnswers($authenticatedUserId, $requestedUserId, $isAdmin, $query);
+    }
+
+    /**
+     * Lista respostas do dono da sessao sem aceitar um escopo do cliente.
+     *
+     * @since 1.0.0
+     */
+    public function getCurrentUserAnswers(string $authenticatedUserId, array $query = []): array
+    {
+        return $this->service->getCurrentUserAnswers($authenticatedUserId, $query);
     }
 
     /**

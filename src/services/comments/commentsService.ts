@@ -15,6 +15,19 @@ import { reportsService } from '@services/reports';
 import type { ApiResponse } from '@services/api';
 import type { QuestaoComentario } from 'types';
 
+export type CurrentUserCommentsPage = {
+  items: QuestaoComentario[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  totalComments: number;
+};
+
+export type CurrentUserCommentsRequest = {
+  limit?: number;
+  cursor?: string | null;
+  range?: 'today' | 'week' | 'month' | 'year' | 'all';
+};
+
 type AddCommentInput = {
   questionId: string;
   content: string;
@@ -144,11 +157,24 @@ export const commentService = {
    * Lista um recorte dos comentarios do proprio usuario autenticado.
    * Nao envia user_id e respeita a paginacao do backend.
    */
-  async getCurrentUserComments(limit = 20): Promise<QuestaoComentario[]> {
-    return withRequestCoalescing(buildRequestCacheKey('comments:me', { limit }), async () => {
+  async getCurrentUserCommentsPage(options: CurrentUserCommentsRequest = {}): Promise<CurrentUserCommentsPage> {
+    const limit = Math.max(1, Math.min(50, Number(options.limit ?? 20) || 20));
+    const range = options.range ?? 'all';
+
+    return withRequestCoalescing(buildRequestCacheKey('comments:me', {
+      limit,
+      range,
+      cursor: options.cursor || null,
+    }), async () => {
       const response = await apiClient.get(
         ENDPOINTS.users.myComments,
-        { params: { limit } },
+        {
+          params: {
+            limit,
+            range,
+            ...(options.cursor ? { cursor: options.cursor } : {}),
+          },
+        },
       ) as unknown;
 
       const payload = readApiData<{ items?: QuestaoComentario[]; comments?: QuestaoComentario[] } | QuestaoComentario[]>(response, []);
@@ -156,8 +182,26 @@ export const commentService = {
         ? payload
         : (Array.isArray(payload?.items) ? payload.items : payload?.comments);
 
-      return Array.isArray(comments) ? comments.map(normalizeCommentRecord) : [];
+      const record = payload && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+      const summary = record.summary && typeof record.summary === 'object'
+        ? record.summary as Record<string, unknown>
+        : {};
+
+      return {
+        items: Array.isArray(comments) ? comments.map(normalizeCommentRecord) : [],
+        hasMore: record.hasMore === true,
+        nextCursor: typeof record.nextCursor === 'string' && record.nextCursor.trim() !== ''
+          ? record.nextCursor
+          : null,
+        totalComments: Math.max(0, Number(summary.totalComments ?? 0) || 0),
+      };
     }, 4000);
+  },
+
+  /** Alias de itens para consumidores legados sem acesso ao envelope paginado. */
+  async getCurrentUserComments(limit = 20): Promise<QuestaoComentario[]> {
+    const page = await this.getCurrentUserCommentsPage({ limit });
+    return page.items;
   },
 
   /**

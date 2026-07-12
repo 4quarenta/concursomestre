@@ -13,6 +13,28 @@ import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/a
 import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { UserAnswer, UserNote } from '@types';
 
+export type CurrentUserAnswerSummary = {
+  totalAttempts: number;
+  correct: number;
+  wrong: number;
+  accuracy: number;
+  firstActivityAt: string | null;
+  lastActivityAt: string | null;
+};
+
+export type CurrentUserAnswersPage = {
+  items: UserAnswer[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  summary: CurrentUserAnswerSummary;
+};
+
+export type CurrentUserAnswersRequest = {
+  limit?: number;
+  cursor?: string | null;
+  range?: 'today' | 'week' | 'month' | 'year' | 'all';
+};
+
 type QuestionNoteRecord = {
   id?: number | string;
   itemId?: number | string;
@@ -191,6 +213,25 @@ const extractUserAnswerRecords = (payload: unknown): unknown[] => {
   return candidates.find(Array.isArray) as unknown[] | undefined || [];
 };
 
+const readCurrentUserAnswerSummary = (payload: unknown): CurrentUserAnswerSummary => {
+  const record = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+  const summary = record.summary && typeof record.summary === 'object'
+    ? record.summary as Record<string, unknown>
+    : {};
+  const totalAttempts = Math.max(0, Number(summary.totalAttempts ?? summary.total_attempts ?? 0) || 0);
+  const correct = Math.max(0, Number(summary.correct ?? summary.correct_count ?? 0) || 0);
+  const wrong = Math.max(0, Number(summary.wrong ?? summary.wrong_count ?? Math.max(0, totalAttempts - correct)) || 0);
+
+  return {
+    totalAttempts,
+    correct,
+    wrong,
+    accuracy: Math.max(0, Number(summary.accuracy ?? (totalAttempts > 0 ? (correct / totalAttempts) * 100 : 0)) || 0),
+    firstActivityAt: typeof summary.firstActivityAt === 'string' ? summary.firstActivityAt : null,
+    lastActivityAt: typeof summary.lastActivityAt === 'string' ? summary.lastActivityAt : null,
+  };
+};
+
 /**
  * Reune o progresso persistido do usuário em uma fachada unica e previsivel.
  */
@@ -216,17 +257,43 @@ export const userProgressService = {
    * Carrega um recorte paginado do historico do proprio usuario autenticado.
    * Usado no dashboard para evitar baixar todo o historico no login.
    */
-  async getCurrentUserAnswers(limit = 200): Promise<UserAnswer[]> {
-    return withRequestCoalescing(buildRequestCacheKey('user-progress:me-answers', { limit }), async () => {
+  async getCurrentUserAnswersPage(options: CurrentUserAnswersRequest = {}): Promise<CurrentUserAnswersPage> {
+    const limit = Math.max(1, Math.min(50, Number(options.limit ?? 20) || 20));
+    const range = options.range ?? 'all';
+
+    return withRequestCoalescing(buildRequestCacheKey('user-progress:me-answers', {
+      limit,
+      range,
+      cursor: options.cursor || null,
+    }), async () => {
       const response = await apiClient.get<unknown>(ENDPOINTS.users.myAnswers, {
-        params: { limit },
+        params: {
+          limit,
+          range,
+          ...(options.cursor ? { cursor: options.cursor } : {}),
+        },
       });
 
       const payload = readApiData<unknown>(response, []);
-      return extractUserAnswerRecords(payload)
-        .map(normalizeUserAnswerRecord)
-        .filter((answer): answer is UserAnswer => Boolean(answer));
+      const record = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+
+      return {
+        items: extractUserAnswerRecords(payload)
+          .map(normalizeUserAnswerRecord)
+          .filter((answer): answer is UserAnswer => Boolean(answer)),
+        hasMore: record.hasMore === true,
+        nextCursor: typeof record.nextCursor === 'string' && record.nextCursor.trim() !== ''
+          ? record.nextCursor
+          : null,
+        summary: readCurrentUserAnswerSummary(payload),
+      };
     }, 15000);
+  },
+
+  /** Alias de itens para consumidores legados sem acesso ao envelope paginado. */
+  async getCurrentUserAnswers(limit = 20): Promise<UserAnswer[]> {
+    const page = await this.getCurrentUserAnswersPage({ limit });
+    return page.items;
   },
 
   /**

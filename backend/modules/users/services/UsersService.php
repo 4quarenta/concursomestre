@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSupport.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 /**
  * Service do dominio de Usuarios.
@@ -244,14 +245,6 @@ class UsersService
             throw new RuntimeException('Usuario nao encontrado.');
         }
 
-        $preferences = !empty($row['preferences']) ? json_decode((string) $row['preferences']) : null;
-        if (!is_object($preferences)) {
-            $preferences = (object) [
-                'shareData' => true,
-                'notifications' => true,
-            ];
-        }
-
         $role = (string) ($row['role'] ?? 'user');
         $basePlan = canonicalUserPlanValue($row['plan'] ?? null);
         $userResponse = [
@@ -268,47 +261,21 @@ class UsersService
             'isStaff' => $role === 'staff',
             'isPartner' => in_array($role, ['partner', 'admin'], true),
             'canAccessAdmin' => in_array($role, ['admin', 'staff'], true),
-            'targetExam' => $row['target_exam'],
-            'preferences' => $preferences,
             'status' => $row['status'],
             'photoUrl' => $row['photo_url'] ?? null,
-            'googleId' => $row['google_id'] ?? null,
-            'facebookId' => $row['facebook_id'] ?? null,
-            'referralCode' => $row['referral_code'] ?? null,
-            'isDeletionPending' => !empty($row['deletion_requested_at']),
-            'deletionRequestedAt' => $row['deletion_requested_at'] ?? null,
-            'twoFactorEnabled' => (bool) ($row['two_factor_enabled'] ?? false),
-            'commentsCount' => 0,
-            'savedQuestionIds' => [],
-            'simulations' => [],
-            'purchasedMaterialIds' => [],
-            'billing' => [
-                'plan' => $basePlan,
-                'billingCycle' => 'monthly',
-                'nextBilling' => null,
-            ],
+            'hasGoogleLinked' => (bool) ($row['has_google_linked'] ?? false),
+            'hasFacebookLinked' => (bool) ($row['has_facebook_linked'] ?? false),
             'hasActivePlan' => false,
         ];
 
         $subscription = $this->repository->findLatestSubscriptionSnapshot($userId);
         if ($subscription) {
             $canonicalPlan = canonicalUserPlanValue($subscription['plan_name'] ?? null);
-            $billingCycle = billingCycleFromInterval($subscription['interval_unit'] ?? null, $subscription['interval_count'] ?? null);
             $userResponse['plan'] = $canonicalPlan;
             $userResponse['planDisplayName'] = $subscription['plan_name'] ?? $canonicalPlan;
             $userResponse['hasActivePlan'] = hasActivePlanAccess($subscription['status'] ?? null);
-            $userResponse['billing'] = [
-                'plan' => $canonicalPlan,
-                'billingCycle' => $billingCycle,
-                'nextBilling' => $subscription['current_period_end'] ?? null,
-            ];
             $userResponse['subscription'] = [
-                'id' => $subscription['id'],
                 'status' => $subscription['status'],
-                'auto_renew' => (bool) ($subscription['auto_renew'] ?? false),
-                'current_period_start' => $subscription['current_period_start'] ?? null,
-                'current_period_end' => $subscription['current_period_end'] ?? null,
-                'cancel_at_period_end' => !empty($subscription['cancel_at_period_end']),
                 'plan' => [
                     'id' => $subscription['plan_id'],
                     'name' => $subscription['plan_name'],
@@ -381,15 +348,38 @@ class UsersService
     public function listUserComments(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin, array $query = []): array
     {
         $targetUserId = $this->validator->resolveRequestedUserId($authenticatedUserId, $requestedUserId, $isAdmin);
-        $limit = $this->resolveCursorLimit($query['limit'] ?? null, 20, 50);
-        $comments = $this->repository->fetchUserCommentsById($targetUserId, $limit, $this->resolveCursorValue($query));
+        return $this->buildUserCommentsPage($targetUserId, $query, 20, 50);
+    }
+
+    /**
+     * Lista comentarios exclusivamente do usuario extraido da sessao autenticada.
+     * Nenhum identificador vindo da requisicao participa da definicao de escopo.
+     *
+     * @since 1.0.0
+     */
+    public function getCurrentUserComments(string $authenticatedUserId, array $query = []): array
+    {
+        $this->validator->validateAuthenticatedUserId($authenticatedUserId);
+        return $this->buildUserCommentsPage($authenticatedUserId, $query, 20, 50);
+    }
+
+    private function buildUserCommentsPage(string $userId, array $query, int $defaultLimit, int $maximumLimit): array
+    {
+        $limit = $this->resolveCursorLimit($query['limit'] ?? null, $defaultLimit, $maximumLimit);
+        $since = $this->resolveActivityRangeStart($query);
+        $comments = $this->repository->fetchUserCommentsById(
+            $userId,
+            $limit,
+            $this->resolveCursorValue($query, 'users.comments'),
+            $since
+        );
         $hasMore = count($comments) > $limit;
         if ($hasMore) {
             $comments = array_slice($comments, 0, $limit);
         }
 
         $items = array_map(
-            static function (array $row) use ($targetUserId): array {
+            static function (array $row) use ($userId): array {
                 return [
                     'id' => $row['id'],
                     'questionId' => ($row['target_type'] ?? '') === 'question' ? ($row['target_id'] ?? null) : null,
@@ -397,7 +387,7 @@ class UsersService
                     'targetType' => $row['target_type'] ?? 'question',
                     'text' => $row['content'] ?? '',
                     'date' => $row['created_at'] ?? null,
-                    'userId' => $targetUserId,
+                    'userId' => $userId,
                     'likes' => 0,
                     'replies' => [],
                 ];
@@ -408,9 +398,13 @@ class UsersService
         return [
             'items' => $items,
             'comments' => $items,
+            'limit' => $limit,
             'count' => count($items),
             'hasMore' => $hasMore,
-            'nextCursor' => $hasMore ? self::encodeCursorFromRow($comments[count($comments) - 1] ?? null) : null,
+            'nextCursor' => $hasMore ? $this->encodeCursorFromRow($comments[count($comments) - 1] ?? null, 'users.comments') : null,
+            'summary' => [
+                'totalComments' => $this->repository->countUserCommentsByIdSince($userId, $since),
+            ],
         ];
     }
 
@@ -496,8 +490,31 @@ class UsersService
     public function listUserAnswers(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin, array $query = []): array
     {
         $targetUserId = $this->validator->resolveRequestedUserId($authenticatedUserId, $requestedUserId, $isAdmin);
-        $limit = $this->resolveCursorLimit($query['limit'] ?? null, 200, 500);
-        $answers = $this->repository->fetchUserAnswersById($targetUserId, $limit, $this->resolveCursorValue($query));
+        return $this->buildUserAnswersPage($targetUserId, $query, 20, 50);
+    }
+
+    /**
+     * Lista respostas exclusivamente do usuario extraido da sessao autenticada.
+     * Nenhum identificador vindo da requisicao participa da definicao de escopo.
+     *
+     * @since 1.0.0
+     */
+    public function getCurrentUserAnswers(string $authenticatedUserId, array $query = []): array
+    {
+        $this->validator->validateAuthenticatedUserId($authenticatedUserId);
+        return $this->buildUserAnswersPage($authenticatedUserId, $query, 20, 50);
+    }
+
+    private function buildUserAnswersPage(string $userId, array $query, int $defaultLimit, int $maximumLimit): array
+    {
+        $limit = $this->resolveCursorLimit($query['limit'] ?? null, $defaultLimit, $maximumLimit);
+        $since = $this->resolveActivityRangeStart($query);
+        $answers = $this->repository->fetchUserAnswersById(
+            $userId,
+            $limit,
+            $this->resolveCursorValue($query, 'users.answers'),
+            $since
+        );
         $hasMore = count($answers) > $limit;
         if ($hasMore) {
             $answers = array_slice($answers, 0, $limit);
@@ -543,7 +560,7 @@ class UsersService
             $answers
         );
 
-        $summary = $this->repository->fetchUserAnswerSummary($targetUserId);
+        $summary = $this->repository->fetchUserAnswerSummary($userId, $since);
         $total = (int) ($summary['total_attempts'] ?? 0);
         $correct = (int) ($summary['correct_count'] ?? 0);
         $wrong = (int) ($summary['wrong_count'] ?? 0);
@@ -551,14 +568,16 @@ class UsersService
         return [
             'items' => $items,
             'answers' => $items,
+            'limit' => $limit,
             'count' => count($items),
             'hasMore' => $hasMore,
-            'nextCursor' => $hasMore ? self::encodeCursorFromRow($answers[count($answers) - 1] ?? null) : null,
+            'nextCursor' => $hasMore ? $this->encodeCursorFromRow($answers[count($answers) - 1] ?? null, 'users.answers') : null,
             'summary' => [
                 'totalAttempts' => $total,
                 'correct' => $correct,
                 'wrong' => $wrong,
                 'accuracy' => $total > 0 ? round(($correct / $total) * 100, 2) : 0.0,
+                'firstActivityAt' => $summary['first_activity_at'] ?? null,
                 'lastActivityAt' => $summary['last_activity_at'] ?? null,
             ],
         ];
@@ -1105,13 +1124,28 @@ class UsersService
         return max(1, min($limit, $maximum));
     }
 
-    private function resolveCursorValue(array $query): ?string
+    private function resolveCursorValue(array $query, string $scope): ?array
     {
         $cursor = trim((string) ($query['cursor'] ?? $query['after'] ?? ''));
-        return $cursor !== '' ? $cursor : null;
+        return SignedKeysetCursor::decode($cursor !== '' ? $cursor : null, $scope);
     }
 
-    private static function encodeCursorFromRow(?array $row): ?string
+    private function resolveActivityRangeStart(array $query): ?string
+    {
+        $range = strtolower(trim((string) ($query['range'] ?? 'all')));
+        $today = new DateTimeImmutable('today');
+
+        return match ($range) {
+            '', 'all' => null,
+            'today' => $today->format('Y-m-d H:i:s'),
+            'week' => $today->modify('-6 days')->format('Y-m-d H:i:s'),
+            'month' => $today->modify('-29 days')->format('Y-m-d H:i:s'),
+            'year' => $today->modify('first day of -11 months')->format('Y-m-d H:i:s'),
+            default => throw new InvalidArgumentException('Recorte de atividade invalido.'),
+        };
+    }
+
+    private function encodeCursorFromRow(?array $row, string $scope): ?string
     {
         if (!is_array($row)) {
             return null;
@@ -1123,6 +1157,6 @@ class UsersService
             return null;
         }
 
-        return rtrim(strtr(base64_encode($createdAt . '|' . $id), '+/', '-_'), '=');
+        return SignedKeysetCursor::encode($scope, $createdAt, $id);
     }
 }

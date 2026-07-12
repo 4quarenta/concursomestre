@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -297,6 +299,6 @@ class NotificationsService
             return null;
         }
 
-        return rtrim(strtr(base64_encode($createdAt . '|' . $id), '+/', '-_'), '=');
+        return SignedKeysetCursor::encode('notifications.list', $createdAt, $id);
     }
 }

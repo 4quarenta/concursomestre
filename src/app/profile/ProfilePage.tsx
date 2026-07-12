@@ -499,8 +499,8 @@ const Profile: React.FC = () => {
         profileFacebookAppId
         && (process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || systemSettings?.hasFacebookAuthConfigured)
     );
-    const isGoogleConnected = Boolean(currentUser?.googleId);
-    const isFacebookConnected = Boolean(currentUser?.facebookId);
+    const isGoogleConnected = Boolean(currentUser?.hasGoogleLinked || currentUser?.googleId);
+    const isFacebookConnected = Boolean(currentUser?.hasFacebookLinked || currentUser?.facebookId);
 
     const [activeTab, setActiveTab] = useState<ProfileTab>('personal');
     const [evolutionRange, setEvolutionRange] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month');

@@ -9,5 +9,4 @@ require_once __DIR__ . '/../../../modules/users/routes.php';
 $database = new Database();
 $db = $database->getConnection();
 
-unset($_GET['user_id'], $_GET['userId']);
-handleUsersCommentsRoute($db);
+handleCurrentUserCommentsRoute($db);

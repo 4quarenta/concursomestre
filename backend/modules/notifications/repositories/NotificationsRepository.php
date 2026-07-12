@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 /*
 * ----------------------------------------------------
@@ -39,7 +40,10 @@ class NotificationsRepository
     public function listByUserId(string $userId, ?string $since = null, int $limit = 10, ?string $cursor = null): array
     {
         $safeLimit = max(1, min($limit, 50));
-        $cursorParts = $this->decodeCursor($cursor);
+        $cursorParts = SignedKeysetCursor::decode($cursor, 'notifications.list') ?? [
+            'createdAt' => null,
+            'id' => '',
+        ];
         $roleStmt = $this->db->prepare('SELECT role FROM users WHERE id = :user_id LIMIT 1');
         $roleStmt->execute([':user_id' => $userId]);
         $userRole = strtolower(trim((string) $roleStmt->fetchColumn()));
@@ -339,19 +343,4 @@ class NotificationsRepository
         ]);
     }
 
-    private function decodeCursor(?string $cursor): array
-    {
-        $value = trim((string) $cursor);
-        if ($value === '') {
-            return ['createdAt' => null, 'id' => ''];
-        }
-
-        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
-        $parts = is_string($decoded) ? explode('|', $decoded, 2) : [];
-
-        return [
-            'createdAt' => trim((string) ($parts[0] ?? '')) !== '' ? (string) $parts[0] : null,
-            'id' => (string) ($parts[1] ?? ''),
-        ];
-    }
 }
