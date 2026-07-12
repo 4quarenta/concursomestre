@@ -110,7 +110,11 @@ export const commentService = {
         },
       ) as unknown;
 
-      const comments = readApiData<QuestaoComentario[]>(response, []);
+      const payload = readApiData<{ items?: QuestaoComentario[]; comments?: QuestaoComentario[] } | QuestaoComentario[]>(response, []);
+      const comments = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload?.items) ? payload.items : payload?.comments);
+
       return Array.isArray(comments) ? comments.map(normalizeCommentRecord) : [];
     }, 2500);
   },
@@ -127,7 +131,31 @@ export const commentService = {
         { params: { user_id: userId } },
       ) as unknown;
 
-      const comments = readApiData<QuestaoComentario[]>(response, []);
+      const payload = readApiData<{ items?: QuestaoComentario[]; comments?: QuestaoComentario[] } | QuestaoComentario[]>(response, []);
+      const comments = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload?.items) ? payload.items : payload?.comments);
+
+      return Array.isArray(comments) ? comments.map(normalizeCommentRecord) : [];
+    }, 4000);
+  },
+
+  /**
+   * Lista um recorte dos comentarios do proprio usuario autenticado.
+   * Nao envia user_id e respeita a paginacao do backend.
+   */
+  async getCurrentUserComments(limit = 20): Promise<QuestaoComentario[]> {
+    return withRequestCoalescing(buildRequestCacheKey('comments:me', { limit }), async () => {
+      const response = await apiClient.get(
+        ENDPOINTS.users.myComments,
+        { params: { limit } },
+      ) as unknown;
+
+      const payload = readApiData<{ items?: QuestaoComentario[]; comments?: QuestaoComentario[] } | QuestaoComentario[]>(response, []);
+      const comments = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload?.items) ? payload.items : payload?.comments);
+
       return Array.isArray(comments) ? comments.map(normalizeCommentRecord) : [];
     }, 4000);
   },

@@ -230,6 +230,99 @@ class UsersService
     }
 
     /**
+     * Retorna o contrato minimo usado para sessao global e refresh.
+     * Dados sensiveis de perfil, endereco, banco e billing ficam em rotas proprias.
+     *
+     * @since 1.0.0
+     */
+    public function getAuthenticatedSession(string $userId): array
+    {
+        $this->validator->validateAuthenticatedUserId($userId);
+
+        $row = $this->repository->findSessionRowById($userId);
+        if (!$row) {
+            throw new RuntimeException('Usuario nao encontrado.');
+        }
+
+        $preferences = !empty($row['preferences']) ? json_decode((string) $row['preferences']) : null;
+        if (!is_object($preferences)) {
+            $preferences = (object) [
+                'shareData' => true,
+                'notifications' => true,
+            ];
+        }
+
+        $role = (string) ($row['role'] ?? 'user');
+        $basePlan = canonicalUserPlanValue($row['plan'] ?? null);
+        $userResponse = [
+            'id' => $row['id'],
+            'name' => $row['name'],
+            'email' => $row['email'],
+            'role' => $role,
+            'plan' => $basePlan,
+            'level' => (int) ($row['level'] ?? 1),
+            'xp' => (int) ($row['xp'] ?? 0),
+            'reputation' => (int) ($row['reputation'] ?? 0),
+            'emailVerified' => (bool) ($row['email_verified'] ?? false),
+            'isAdmin' => $role === 'admin',
+            'isStaff' => $role === 'staff',
+            'isPartner' => in_array($role, ['partner', 'admin'], true),
+            'canAccessAdmin' => in_array($role, ['admin', 'staff'], true),
+            'targetExam' => $row['target_exam'],
+            'preferences' => $preferences,
+            'status' => $row['status'],
+            'photoUrl' => $row['photo_url'] ?? null,
+            'googleId' => $row['google_id'] ?? null,
+            'facebookId' => $row['facebook_id'] ?? null,
+            'referralCode' => $row['referral_code'] ?? null,
+            'isDeletionPending' => !empty($row['deletion_requested_at']),
+            'deletionRequestedAt' => $row['deletion_requested_at'] ?? null,
+            'twoFactorEnabled' => (bool) ($row['two_factor_enabled'] ?? false),
+            'commentsCount' => 0,
+            'savedQuestionIds' => [],
+            'simulations' => [],
+            'purchasedMaterialIds' => [],
+            'billing' => [
+                'plan' => $basePlan,
+                'billingCycle' => 'monthly',
+                'nextBilling' => null,
+            ],
+            'hasActivePlan' => false,
+        ];
+
+        $subscription = $this->repository->findLatestSubscriptionSnapshot($userId);
+        if ($subscription) {
+            $canonicalPlan = canonicalUserPlanValue($subscription['plan_name'] ?? null);
+            $billingCycle = billingCycleFromInterval($subscription['interval_unit'] ?? null, $subscription['interval_count'] ?? null);
+            $userResponse['plan'] = $canonicalPlan;
+            $userResponse['planDisplayName'] = $subscription['plan_name'] ?? $canonicalPlan;
+            $userResponse['hasActivePlan'] = hasActivePlanAccess($subscription['status'] ?? null);
+            $userResponse['billing'] = [
+                'plan' => $canonicalPlan,
+                'billingCycle' => $billingCycle,
+                'nextBilling' => $subscription['current_period_end'] ?? null,
+            ];
+            $userResponse['subscription'] = [
+                'id' => $subscription['id'],
+                'status' => $subscription['status'],
+                'auto_renew' => (bool) ($subscription['auto_renew'] ?? false),
+                'current_period_start' => $subscription['current_period_start'] ?? null,
+                'current_period_end' => $subscription['current_period_end'] ?? null,
+                'cancel_at_period_end' => !empty($subscription['cancel_at_period_end']),
+                'plan' => [
+                    'id' => $subscription['plan_id'],
+                    'name' => $subscription['plan_name'],
+                    'tier' => canonicalPlanTier($subscription['plan_name'] ?? null, $subscription['tier'] ?? null),
+                ],
+            ];
+        }
+
+        return [
+            'user' => $userResponse,
+        ];
+    }
+
+    /**
      * Atualiza o perfil autenticado dentro de uma transacao unica.
      * O service aplica whitelist de campos para evitar mutacoes sensiveis indevidas.
       * @since 1.0.0
@@ -285,12 +378,17 @@ class UsersService
      * Retorna os comentarios publicados pelo Usuario dentro do escopo permitido.
       * @since 1.0.0
      */
-    public function listUserComments(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin): array
+    public function listUserComments(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin, array $query = []): array
     {
         $targetUserId = $this->validator->resolveRequestedUserId($authenticatedUserId, $requestedUserId, $isAdmin);
-        $comments = $this->repository->fetchUserCommentsById($targetUserId);
+        $limit = $this->resolveCursorLimit($query['limit'] ?? null, 20, 50);
+        $comments = $this->repository->fetchUserCommentsById($targetUserId, $limit, $this->resolveCursorValue($query));
+        $hasMore = count($comments) > $limit;
+        if ($hasMore) {
+            $comments = array_slice($comments, 0, $limit);
+        }
 
-        return array_map(
+        $items = array_map(
             static function (array $row) use ($targetUserId): array {
                 return [
                     'id' => $row['id'],
@@ -306,6 +404,14 @@ class UsersService
             },
             $comments
         );
+
+        return [
+            'items' => $items,
+            'comments' => $items,
+            'count' => count($items),
+            'hasMore' => $hasMore,
+            'nextCursor' => $hasMore ? self::encodeCursorFromRow($comments[count($comments) - 1] ?? null) : null,
+        ];
     }
 
     /**
@@ -387,12 +493,17 @@ class UsersService
      * Retorna as respostas do Usuario no formato esperado pela camada de progresso.
       * @since 1.0.0
      */
-    public function listUserAnswers(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin): array
+    public function listUserAnswers(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin, array $query = []): array
     {
         $targetUserId = $this->validator->resolveRequestedUserId($authenticatedUserId, $requestedUserId, $isAdmin);
-        $answers = $this->repository->fetchUserAnswersById($targetUserId);
+        $limit = $this->resolveCursorLimit($query['limit'] ?? null, 200, 500);
+        $answers = $this->repository->fetchUserAnswersById($targetUserId, $limit, $this->resolveCursorValue($query));
+        $hasMore = count($answers) > $limit;
+        if ($hasMore) {
+            $answers = array_slice($answers, 0, $limit);
+        }
 
-        return array_map(
+        $items = array_map(
             static function (array $answer): array {
                 $subjectName = trim((string) ($answer['subject_name'] ?? ''));
                 $subjects = [];
@@ -431,6 +542,26 @@ class UsersService
             },
             $answers
         );
+
+        $summary = $this->repository->fetchUserAnswerSummary($targetUserId);
+        $total = (int) ($summary['total_attempts'] ?? 0);
+        $correct = (int) ($summary['correct_count'] ?? 0);
+        $wrong = (int) ($summary['wrong_count'] ?? 0);
+
+        return [
+            'items' => $items,
+            'answers' => $items,
+            'count' => count($items),
+            'hasMore' => $hasMore,
+            'nextCursor' => $hasMore ? self::encodeCursorFromRow($answers[count($answers) - 1] ?? null) : null,
+            'summary' => [
+                'totalAttempts' => $total,
+                'correct' => $correct,
+                'wrong' => $wrong,
+                'accuracy' => $total > 0 ? round(($correct / $total) * 100, 2) : 0.0,
+                'lastActivityAt' => $summary['last_activity_at'] ?? null,
+            ],
+        ];
     }
 
     /**
@@ -966,5 +1097,32 @@ class UsersService
         }
 
         return 'Os dados informados conflitam com um registro existente.';
+    }
+
+    private function resolveCursorLimit(mixed $rawLimit, int $default, int $maximum): int
+    {
+        $limit = is_numeric($rawLimit) ? (int) $rawLimit : $default;
+        return max(1, min($limit, $maximum));
+    }
+
+    private function resolveCursorValue(array $query): ?string
+    {
+        $cursor = trim((string) ($query['cursor'] ?? $query['after'] ?? ''));
+        return $cursor !== '' ? $cursor : null;
+    }
+
+    private static function encodeCursorFromRow(?array $row): ?string
+    {
+        if (!is_array($row)) {
+            return null;
+        }
+
+        $createdAt = trim((string) ($row['created_at'] ?? ''));
+        $id = trim((string) ($row['id'] ?? ''));
+        if ($createdAt === '' || $id === '') {
+            return null;
+        }
+
+        return rtrim(strtr(base64_encode($createdAt . '|' . $id), '+/', '-_'), '=');
     }
 }

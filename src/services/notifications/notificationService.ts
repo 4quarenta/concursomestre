@@ -21,6 +21,9 @@ type NotificationListPayload = {
   notifications?: Notification[];
   data?: Notification[];
   count?: number;
+  unreadCount?: number;
+  nextCursor?: string | null;
+  hasMore?: boolean;
 };
 
 /**
@@ -37,6 +40,8 @@ type NotificationListResponse = {
 
 type NotificationRequestOptions = {
   signal?: AbortSignal;
+  limit?: number;
+  cursor?: string | null;
 };
 
 const readNotifications = (response: NotificationListResponse): Notification[] => {
@@ -107,9 +112,13 @@ export const notificationService = {
     }
 
     try {
+      const params = {
+        limit: options.limit ?? 10,
+        ...(options.cursor ? { cursor: options.cursor } : {}),
+      };
       const response = options.signal
-        ? await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list, { signal: options.signal })
-        : await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list);
+        ? await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list, { params, signal: options.signal })
+        : await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list, { params });
       return readNotifications(response);
     } catch (error) {
       clientLog.warn('Error fetching notifications:', error);

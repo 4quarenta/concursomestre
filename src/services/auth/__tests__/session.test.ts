@@ -352,6 +352,7 @@ describe('auth session manager', () => {
       email: 'teste@teste.com',
     } as UserProfile);
 
+    expect(mockGet).not.toHaveBeenCalled();
     expect(session.getAccessToken()).toBe(validToken);
 
     await session.logoutAuthSession();

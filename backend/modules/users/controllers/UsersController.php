@@ -76,6 +76,15 @@ class UsersController
     }
 
     /**
+     * Retorna somente o DTO minimo de sessao para auth/login, refresh e /auth/me.
+     * @since 1.0.0
+     */
+    public function getAuthenticatedSession(string $userId): array
+    {
+        return $this->service->getAuthenticatedSession($userId);
+    }
+
+    /**
      * Atualiza os campos editaveis do perfil e estruturas relacionadas.
      * @since 1.0.0
      */
@@ -88,9 +97,9 @@ class UsersController
      * Lista comentarios do usuario em escopo proprio ou administrativo.
      * @since 1.0.0
      */
-    public function listUserComments(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin): array
+    public function listUserComments(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin, array $query = []): array
     {
-        return $this->service->listUserComments($authenticatedUserId, $requestedUserId, $isAdmin);
+        return $this->service->listUserComments($authenticatedUserId, $requestedUserId, $isAdmin, $query);
     }
 
     /**
@@ -127,9 +136,9 @@ class UsersController
      * Lista historico de respostas do usuario no escopo autorizado.
      * @since 1.0.0
      */
-    public function listUserAnswers(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin): array
+    public function listUserAnswers(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin, array $query = []): array
     {
-        return $this->service->listUserAnswers($authenticatedUserId, $requestedUserId, $isAdmin);
+        return $this->service->listUserAnswers($authenticatedUserId, $requestedUserId, $isAdmin, $query);
     }
 
     /**

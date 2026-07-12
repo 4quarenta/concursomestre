@@ -38,12 +38,26 @@ class NotificationsService
     public function listNotifications(string $authenticatedUserId, array $query): array
     {
         $filters = $this->validator->validateListQuery($query);
-        $rows = $this->repository->listByUserId($authenticatedUserId, $filters['since']);
+        $rows = $this->repository->listByUserId(
+            $authenticatedUserId,
+            $filters['since'],
+            $filters['limit'],
+            $filters['cursor']
+        );
+        $hasMore = count($rows) > $filters['limit'];
+        if ($hasMore) {
+            $rows = array_slice($rows, 0, $filters['limit']);
+        }
+
         $items = array_map([$this, 'mapNotificationRow'], $rows);
 
         return [
             'items' => $items,
             'count' => count($items),
+            'limit' => $filters['limit'],
+            'hasMore' => $hasMore,
+            'nextCursor' => $hasMore ? $this->encodeCursorFromRow($rows[count($rows) - 1] ?? null) : null,
+            'unreadCount' => $this->repository->countUnreadByUserId($authenticatedUserId),
         ];
     }
 
@@ -269,5 +283,20 @@ class NotificationsService
             'actionKey' => ($row['action_key'] ?? null) ?: null,
             'deletedAt' => $deletedAt,
         ];
+    }
+
+    private function encodeCursorFromRow(?array $row): ?string
+    {
+        if (!is_array($row)) {
+            return null;
+        }
+
+        $createdAt = trim((string) ($row['created_at'] ?? ''));
+        $id = trim((string) ($row['id'] ?? ''));
+        if ($createdAt === '' || $id === '') {
+            return null;
+        }
+
+        return rtrim(strtr(base64_encode($createdAt . '|' . $id), '+/', '-_'), '=');
     }
 }

@@ -213,6 +213,23 @@ export const userProgressService = {
   },
 
   /**
+   * Carrega um recorte paginado do historico do proprio usuario autenticado.
+   * Usado no dashboard para evitar baixar todo o historico no login.
+   */
+  async getCurrentUserAnswers(limit = 200): Promise<UserAnswer[]> {
+    return withRequestCoalescing(buildRequestCacheKey('user-progress:me-answers', { limit }), async () => {
+      const response = await apiClient.get<unknown>(ENDPOINTS.users.myAnswers, {
+        params: { limit },
+      });
+
+      const payload = readApiData<unknown>(response, []);
+      return extractUserAnswerRecords(payload)
+        .map(normalizeUserAnswerRecord)
+        .filter((answer): answer is UserAnswer => Boolean(answer));
+    }, 15000);
+  },
+
+  /**
    * Carrega e normaliza as anotacoes de questões do usuário.
    * Notas de outros tipos ficam fora daqui para manter o contrato do app.
    */

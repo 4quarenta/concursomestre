@@ -156,6 +156,8 @@ export const ENDPOINTS = {
         update: 'users/update.php',
         comments: 'users/comments.php',
         answers: 'users/answers.php',
+        myComments: 'users/me/comments.php',
+        myAnswers: 'users/me/answers.php',
         notes: 'users/notes.php',
         materials: 'users/materials.php',
         referralStats: 'referrals/stats.php',

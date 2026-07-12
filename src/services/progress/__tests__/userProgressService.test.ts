@@ -42,6 +42,7 @@ vi.mock('@services/api', () => ({
   ENDPOINTS: {
     users: {
       answers: '/users/answers.php',
+      myAnswers: '/users/me/answers.php',
       notes: '/users/notes.php',
     },
   },
@@ -114,6 +115,31 @@ describe('userProgressService', () => {
     expect(answers).toHaveLength(1);
     expect(answers[0].subjectName).toBe('Direito Penal');
     expect(answers[0].assuntos?.[0]?.nome).toBe('Direito Penal');
+  });
+
+  it('carrega respostas do usuario atual sem enviar user_id', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        items: [
+          {
+            questionId: 21,
+            selectedOptionIndex: 0,
+            isCorrect: false,
+            created_at: '2026-06-08 12:00:00',
+          },
+        ],
+      },
+    });
+
+    const answers = await userProgressService.getCurrentUserAnswers(25);
+
+    expect(mockGet).toHaveBeenCalledWith('/users/me/answers.php', {
+      params: { limit: 25 },
+    });
+    expect(answers).toHaveLength(1);
+    expect(answers[0].questionId).toBe(21);
+    expect(answers[0].isCorrect).toBe(false);
   });
 
   it('normaliza apenas notas de questões no endpoint oficial de notes', async () => {

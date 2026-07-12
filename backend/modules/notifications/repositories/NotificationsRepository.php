@@ -36,9 +36,10 @@ class NotificationsRepository
      *
      * @since 1.0.0
      */
-    public function listByUserId(string $userId, ?string $since = null, int $limit = 50): array
+    public function listByUserId(string $userId, ?string $since = null, int $limit = 10, ?string $cursor = null): array
     {
-        $safeLimit = max(1, min($limit, 100));
+        $safeLimit = max(1, min($limit, 50));
+        $cursorParts = $this->decodeCursor($cursor);
         $roleStmt = $this->db->prepare('SELECT role FROM users WHERE id = :user_id LIMIT 1');
         $roleStmt->execute([':user_id' => $userId]);
         $userRole = strtolower(trim((string) $roleStmt->fetchColumn()));
@@ -71,7 +72,14 @@ class NotificationsRepository
             $query .= " AND created_at > :since";
         }
 
-        $query .= " ORDER BY created_at DESC LIMIT {$safeLimit}";
+        if ($cursorParts['createdAt'] !== null) {
+            $query .= " AND (
+                created_at < :cursor_created_at
+                OR (created_at = :cursor_created_at AND id < :cursor_id)
+            )";
+        }
+
+        $query .= " ORDER BY created_at DESC, id DESC LIMIT " . ($safeLimit + 1);
 
         $stmt = $this->db->prepare($query);
         $stmt->bindValue(':user_id', $userId);
@@ -80,8 +88,27 @@ class NotificationsRepository
             $stmt->bindValue(':since', $since);
         }
 
+        if ($cursorParts['createdAt'] !== null) {
+            $stmt->bindValue(':cursor_created_at', $cursorParts['createdAt']);
+            $stmt->bindValue(':cursor_id', $cursorParts['id']);
+        }
+
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function countUnreadByUserId(string $userId): int
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*)
+             FROM notifications
+             WHERE user_id = :user_id
+               AND is_read = 0
+               AND deleted_at IS NULL"
+        );
+        $stmt->execute([':user_id' => $userId]);
+
+        return (int) $stmt->fetchColumn();
     }
 
     /**
@@ -310,5 +337,21 @@ class NotificationsRepository
                 'created_at',
             ],
         ]);
+    }
+
+    private function decodeCursor(?string $cursor): array
+    {
+        $value = trim((string) $cursor);
+        if ($value === '') {
+            return ['createdAt' => null, 'id' => ''];
+        }
+
+        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+        $parts = is_string($decoded) ? explode('|', $decoded, 2) : [];
+
+        return [
+            'createdAt' => trim((string) ($parts[0] ?? '')) !== '' ? (string) $parts[0] : null,
+            'id' => (string) ($parts[1] ?? ''),
+        ];
     }
 }

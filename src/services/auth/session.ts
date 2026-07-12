@@ -23,12 +23,15 @@ const REFRESH_LOCK_TTL_MS = 15000;
 const EXTERNAL_REFRESH_WAIT_MS = 8000;
 const PROACTIVE_REFRESH_LEEWAY_MS = 60_000;
 
-type AuthEventType = 'login' | 'logout';
+type AuthEventType = 'login' | 'logout' | 'refresh-success';
 
 interface AuthBroadcastEvent {
     type: AuthEventType;
     sourceTabId: string;
     reason?: string | null;
+    accessToken?: string | null;
+    accessTokenExpMs?: number | null;
+    user?: UserProfile | null;
     at: number;
 }
 export interface AuthSessionSnapshot {
@@ -590,7 +593,7 @@ const waitForExternalRefresh = (): Promise<AuthBroadcastEvent | null> => {
                 return;
             }
 
-            if (event.type === 'logout' || event.type === 'login') {
+            if (event.type === 'logout' || event.type === 'login' || event.type === 'refresh-success') {
                 finish(event);
             }
         };
@@ -634,6 +637,15 @@ const finalizeExternalAuthEvent = async (event: AuthBroadcastEvent): Promise<Aut
             reason: event.reason || 'external_logout',
         });
         return null;
+    }
+
+    if (event.type === 'refresh-success' && event.accessToken) {
+        updateSessionState(event.accessToken, event.user ?? currentUser, {
+            isBootstrapped: true,
+            broadcast: false,
+            reason: event.reason || 'external_refresh_success',
+        });
+        return getSnapshot();
     }
 
     try {
@@ -708,14 +720,8 @@ export const establishAuthenticatedSession = async (token: string | null | undef
         broadcast: false,
     });
 
-    try {
+    if (!user) {
         await fetchAuthenticatedUser();
-    } catch (error) {
-        if (!user) {
-            throw error;
-        }
-
-        clientLog.warn('Failed to hydrate authenticated user after login. Keeping provided session payload.', error);
     }
 
     broadcastAuthEvent({

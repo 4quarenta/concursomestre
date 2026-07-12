@@ -1657,7 +1657,7 @@ class AuthService
             new UsersValidator()
         );
 
-        $payload = $usersService->getAuthenticatedProfile($userId);
+        $payload = $usersService->getAuthenticatedSession($userId);
         return $payload['user'] ?? [];
     }
 

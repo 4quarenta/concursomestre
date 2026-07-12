@@ -27,9 +27,14 @@ class NotificationsValidator
     public function validateListQuery(array $query): array
     {
         $since = trim((string) ($query['since'] ?? ''));
+        $cursor = trim((string) ($query['cursor'] ?? $query['after'] ?? ''));
+        $rawLimit = $query['limit'] ?? null;
+        $limit = is_numeric($rawLimit) ? (int) $rawLimit : 10;
 
         return [
             'since' => $since !== '' ? $since : null,
+            'cursor' => $cursor !== '' ? $cursor : null,
+            'limit' => max(1, min($limit, 50)),
         ];
     }
 

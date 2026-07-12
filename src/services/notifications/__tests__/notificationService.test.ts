@@ -84,7 +84,9 @@ describe('notificationService', () => {
 
     const result = await notificationService.getNotifications();
 
-    expect(mockGet).toHaveBeenCalledWith('notifications/list.php');
+    expect(mockGet).toHaveBeenCalledWith('notifications/list.php', {
+      params: { limit: 10 },
+    });
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('n1');
   });

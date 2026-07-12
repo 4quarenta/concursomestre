@@ -268,6 +268,28 @@ function handleUsersAuthenticatedProfileRoute(PDO $db): void
 }
 
 /**
+ * Ponto de entrada para o snapshot minimo de sessao do usuario autenticado.
+ *
+ * @since 1.0.0
+ */
+function handleUsersAuthenticatedSessionRoute(PDO $db): void
+{
+    try {
+        $payload = verifyAuthenticatedUserPayload();
+        $userId = trim((string) ($payload['user_id'] ?? ''));
+
+        $result = buildUsersController($db)->getAuthenticatedSession($userId);
+        Response::success($result, 'Session data retrieved');
+    } catch (InvalidArgumentException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Failed to fetch session data', $e);
+    }
+}
+
+/**
  * Ponto de entrada oficial para atualizacao do perfil do proprio usurio.
  * A rota aceita apenas campos previstos pelo dominio para evitar escalacao indevida.
  *
@@ -309,7 +331,7 @@ function handleUsersCommentsRoute(PDO $db): void
         $requestedUserId = trim((string) (($_GET['user_id'] ?? '') ?: ($_GET['userId'] ?? '')));
         $isAdmin = (($payload['role'] ?? '') === 'admin');
 
-        $result = buildUsersController($db)->listUserComments($authenticatedUserId, $requestedUserId, $isAdmin);
+        $result = buildUsersController($db)->listUserComments($authenticatedUserId, $requestedUserId, $isAdmin, $_GET);
         Response::success($result, 'User comments retrieved');
     } catch (InvalidArgumentException $e) {
         Response::badRequest($e->getMessage());
@@ -375,7 +397,7 @@ function handleUsersAnswersRoute(PDO $db): void
         $requestedUserId = trim((string) (($_GET['user_id'] ?? '') ?: ($_GET['userId'] ?? '')));
         $isAdmin = (($payload['role'] ?? '') === 'admin');
 
-        $result = buildUsersController($db)->listUserAnswers($authenticatedUserId, $requestedUserId, $isAdmin);
+        $result = buildUsersController($db)->listUserAnswers($authenticatedUserId, $requestedUserId, $isAdmin, $_GET);
         Response::success($result, 'User answers retrieved');
     } catch (InvalidArgumentException $e) {
         Response::badRequest($e->getMessage());

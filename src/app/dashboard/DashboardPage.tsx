@@ -251,7 +251,7 @@ const Dashboard: React.FC = () => {
     let cancelScheduledFetch: (() => void) | null = null;
     const timeoutId = window.setTimeout(() => {
       cancelScheduledFetch = scheduleLowPriorityTask(() => {
-        userProgressService.getUserAnswers(currentUser.id)
+        userProgressService.getCurrentUserAnswers(240)
           .then((answers) => {
             if (isMounted) {
               setDashboardAnswers(Array.isArray(answers) ? answers : []);
@@ -290,7 +290,7 @@ const Dashboard: React.FC = () => {
     }
 
     let isMounted = true;
-    commentService.getUserComments(currentUser.id)
+    commentService.getCurrentUserComments(20)
       .then((comments) => {
         if (isMounted) {
           setDashboardComments(Array.isArray(comments) ? comments : []);

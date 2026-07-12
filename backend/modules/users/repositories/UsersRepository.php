@@ -489,6 +489,45 @@ class UsersRepository
     }
 
     /**
+     * Carrega apenas os campos necessarios para montar a sessao global.
+     *
+     * @since 1.0.0
+     */
+    public function findSessionRowById(string $userId): ?array
+    {
+        $this->ensureUserProfileColumns();
+
+        $stmt = $this->db->prepare(
+            "SELECT
+                id,
+                name,
+                email,
+                role,
+                plan,
+                level,
+                xp,
+                reputation,
+                email_verified,
+                target_exam,
+                preferences,
+                status,
+                two_factor_enabled,
+                photo_url,
+                google_sub AS google_id,
+                facebook_id,
+                referral_code,
+                deletion_requested_at
+            FROM users
+            WHERE id = :id
+            LIMIT 1"
+        );
+        $stmt->execute([':id' => $userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $row : null;
+    }
+
+    /**
      * Conta comentarios do proprio Usuario para enriquecer o snapshot de sessao/perfil.
       * @since 1.0.0
      */
@@ -504,8 +543,10 @@ class UsersRepository
      * Lista os comentarios publicados pelo Usuario para o historico de atividade.
       * @since 1.0.0
      */
-    public function fetchUserCommentsById(string $userId): array
+    public function fetchUserCommentsById(string $userId, int $limit = 20, ?string $cursor = null): array
     {
+        $safeLimit = max(1, min($limit, 50));
+        $cursorParts = $this->decodeCursor($cursor);
         $stmt = $this->db->prepare(
             "SELECT
                 id,
@@ -515,9 +556,19 @@ class UsersRepository
                 created_at
             FROM comments
             WHERE user_id = :id
-            ORDER BY created_at DESC"
+              AND (
+                :cursor_created_at IS NULL
+                OR created_at < :cursor_created_at
+                OR (created_at = :cursor_created_at AND id < :cursor_id)
+              )
+            ORDER BY created_at DESC, id DESC
+            LIMIT " . ($safeLimit + 1)
         );
-        $stmt->execute([':id' => $userId]);
+        $stmt->execute([
+            ':id' => $userId,
+            ':cursor_created_at' => $cursorParts['createdAt'],
+            ':cursor_id' => $cursorParts['id'],
+        ]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
@@ -631,8 +682,10 @@ class UsersRepository
      * Lista as respostas do Usuario para historico e progresso consolidado.
       * @since 1.0.0
      */
-    public function fetchUserAnswersById(string $userId): array
+    public function fetchUserAnswersById(string $userId, int $limit = 200, ?string $cursor = null): array
     {
+        $safeLimit = max(1, min($limit, 500));
+        $cursorParts = $this->decodeCursor($cursor);
         $stmt = $this->db->prepare(
             "SELECT
                 ua.id,
@@ -668,6 +721,11 @@ class UsersRepository
             LEFT JOIN filters f ON f.id = qf.filter_id AND f.type = 'assunto'
             LEFT JOIN filters parent_filter ON parent_filter.id = f.parent_id
             WHERE ua.user_id = :id
+              AND (
+                :cursor_created_at IS NULL
+                OR ua.created_at < :cursor_created_at
+                OR (ua.created_at = :cursor_created_at AND ua.id < :cursor_id)
+              )
             GROUP BY
                 ua.id,
                 ua.question_id,
@@ -676,11 +734,38 @@ class UsersRepository
                 ua.created_at,
                 ua.time_taken_seconds,
                 ua.simulation_id
-            ORDER BY ua.created_at DESC"
+            ORDER BY ua.created_at DESC, ua.id DESC
+            LIMIT " . ($safeLimit + 1)
         );
-        $stmt->execute([':id' => $userId]);
+        $stmt->execute([
+            ':id' => $userId,
+            ':cursor_created_at' => $cursorParts['createdAt'],
+            ':cursor_id' => $cursorParts['id'],
+        ]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Resume respostas do usuario sem baixar todo o historico.
+     *
+     * @since 1.0.0
+     */
+    public function fetchUserAnswerSummary(string $userId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                COUNT(*) AS total_attempts,
+                SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct_count,
+                SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END) AS wrong_count,
+                MAX(created_at) AS last_activity_at
+             FROM user_answers
+             WHERE user_id = :id"
+        );
+        $stmt->execute([':id' => $userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $row : [];
     }
 
     /**
@@ -1292,5 +1377,21 @@ class UsersRepository
             ':holder_document' => $bankAccount['holder_document'] ?? null,
             ':account_type' => $bankAccount['account_type'] ?? 'checking',
         ]);
+    }
+
+    private function decodeCursor(?string $cursor): array
+    {
+        $value = trim((string) $cursor);
+        if ($value === '') {
+            return ['createdAt' => null, 'id' => ''];
+        }
+
+        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+        $parts = is_string($decoded) ? explode('|', $decoded, 2) : [];
+
+        return [
+            'createdAt' => trim((string) ($parts[0] ?? '')) !== '' ? (string) $parts[0] : null,
+            'id' => (string) ($parts[1] ?? ''),
+        ];
     }
 }

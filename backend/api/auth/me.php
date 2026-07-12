@@ -20,4 +20,4 @@ require_once __DIR__ . '/../../modules/users/routes.php';
 $database = new Database();
 $db = $database->getConnection();
 
-handleUsersAuthenticatedProfileRoute($db);
+handleUsersAuthenticatedSessionRoute($db);

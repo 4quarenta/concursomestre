@@ -56,6 +56,7 @@ vi.mock('@services/api', () => ({
     },
     users: {
       comments: 'users/comments.php',
+      myComments: 'users/me/comments.php',
     },
   },
 }));
@@ -76,9 +77,11 @@ describe('commentService', () => {
   it('loads comments for a target with the official params', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
-      data: [
+      data: {
+        items: [
         { id: 'com-1', text: 'Comentário', replies: [] },
-      ],
+        ],
+      },
     });
 
     const comments = await commentService.getComments('123', 'user-1');
@@ -106,6 +109,24 @@ describe('commentService', () => {
       params: { user_id: 'user-7' },
     });
     expect(comments[0].id).toBe('com-2');
+  });
+
+  it('loads current user comments without sending user_id', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        items: [
+          { id: 'com-me', questionId: 8, text: 'Meu comentario recente', replies: [] },
+        ],
+      },
+    });
+
+    const comments = await commentService.getCurrentUserComments(10);
+
+    expect(mockGet).toHaveBeenCalledWith('users/me/comments.php', {
+      params: { limit: 10 },
+    });
+    expect(comments[0].id).toBe('com-me');
   });
 
   it('creates a comment through commentsHandle', async () => {
