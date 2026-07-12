@@ -106,6 +106,62 @@ function handleAuthLoginRoute(PDO $db): void
 }
 
 /**
+ * Confirma somente se a sessão de refresh atual pode acessar o shell admin.
+ * É consumida pelo proxy do Next e falha como 404 para não revelar dados,
+ * permissões ou a própria existência do painel a membros comuns.
+ */
+function handleAuthAdminRouteAccessRoute(PDO $db): void
+{
+    $notFound = static function (): never {
+        Response::notFound('Recurso nao encontrado.');
+    };
+
+    try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            $notFound();
+        }
+        if (trim((string) ($_SERVER['HTTP_X_CONCURSOMESTRE_ADMIN_ROUTE_CHECK'] ?? '')) !== '1') {
+            $notFound();
+        }
+
+        $refreshToken = getRefreshTokenFromCookie();
+        if ($refreshToken === null) {
+            $notFound();
+        }
+
+        $record = findRefreshTokenRecord($db, $refreshToken);
+        if ($record === null
+            || !empty($record['revoked_at'])
+            || (string) ($record['status'] ?? '') !== 'active'
+            || (string) ($record['session_status'] ?? '') !== 'active'
+            || !empty($record['session_revoked_at'])
+            || (!empty($record['expires_at']) && strtotime((string) $record['expires_at']) < time())
+            || (!empty($record['session_expires_at']) && strtotime((string) $record['session_expires_at']) < time())
+        ) {
+            $notFound();
+        }
+
+        $userId = trim((string) ($record['user_id'] ?? ''));
+        if ($userId === '') {
+            $notFound();
+        }
+
+        $statement = $db->prepare('SELECT role FROM users WHERE id = :id LIMIT 1');
+        $statement->execute([':id' => $userId]);
+        $role = strtolower(trim((string) $statement->fetchColumn()));
+        if (!in_array($role, ['admin', 'staff'], true)) {
+            $notFound();
+        }
+
+        header('Cache-Control: no-store, private');
+        http_response_code(204);
+        exit();
+    } catch (Throwable) {
+        $notFound();
+    }
+}
+
+/**
  * Ponto de entrada oficial para cadastro de nova conta.
  *
  * @since 1.0.0

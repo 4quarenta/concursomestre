@@ -13,6 +13,8 @@
 
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/QuestionAnswerEvaluator.php';
+require_once __DIR__ . '/QuestionOutputPolicy.php';
+require_once __DIR__ . '/QuestionOwnershipPolicy.php';
 require_once __DIR__ . '/../repositories/QuestionCanonicalRepository.php';
 
 class QuestionsService
@@ -23,14 +25,20 @@ class QuestionsService
         private readonly QuestionsRewardService $rewardService,
         private readonly PDO $db,
         ?QuestionAnswerEvaluator $answerEvaluator = null,
-        ?QuestionCanonicalRepository $canonicalRepository = null
+        ?QuestionCanonicalRepository $canonicalRepository = null,
+        ?QuestionOutputPolicy $outputPolicy = null,
+        ?QuestionOwnershipPolicy $ownershipPolicy = null
     ) {
         $this->answerEvaluator = $answerEvaluator ?? new QuestionAnswerEvaluator();
         $this->canonicalRepository = $canonicalRepository ?? new QuestionCanonicalRepository($db);
+        $this->outputPolicy = $outputPolicy ?? new QuestionOutputPolicy();
+        $this->ownershipPolicy = $ownershipPolicy ?? new QuestionOwnershipPolicy();
     }
 
     private readonly QuestionAnswerEvaluator $answerEvaluator;
     private readonly QuestionCanonicalRepository $canonicalRepository;
+    private readonly QuestionOutputPolicy $outputPolicy;
+    private readonly QuestionOwnershipPolicy $ownershipPolicy;
 
     public function submitAnswer(string $authenticatedUserId, bool $isAdmin, array $payload): array
     {
@@ -362,6 +370,10 @@ class QuestionsService
                 $contextData['updated_by_user_id'] = $authenticatedUserId;
                 $groupIdByTempId[$tempId] = $this->repository->saveQuestionGroup($contextData);
                 $canonicalContext = $context;
+                // A chave temporaria do importador (por exemplo, ctx_1) só é
+                // única dentro da prova. Escopá-la evita que um novo lote
+                // sobrescreva um contexto canônico de outro autor/prova.
+                $canonicalContext['tempId'] = 'prova_' . $examId . '_' . $tempId;
                 $canonicalContext['body'] = $contextData['texto'];
                 $canonicalContext['assets'] = $contextData['assets'];
                 $canonicalContextIdByTempId[$tempId] = $this->canonicalRepository->saveContext($canonicalContext, $authenticatedUserId);
@@ -709,7 +721,10 @@ class QuestionsService
                 $this->repository->syncQuestionGroupLinks($groupId, $data['question_ids']);
             }
             $canonicalContext = is_array($data['canonical_context'] ?? null) ? $data['canonical_context'] : [];
-            $canonicalContext['tempId'] = trim((string) ($canonicalContext['tempId'] ?? '')) ?: 'legacy_group_' . $groupId;
+            // Contextos criados no editor manual recebem uma chave estável do
+            // próprio registro. Não aceite tempIds arbitrários que possam
+            // coincidir com o contexto de outro usuário.
+            $canonicalContext['tempId'] = 'legacy_group_' . $groupId;
             $canonicalContext['assets'] = $data['assets'];
             $canonicalContextId = $this->canonicalRepository->saveContext($canonicalContext, $authenticatedUserId);
             foreach (is_array($data['question_ids']) ? $data['question_ids'] : [] as $questionId) {
@@ -1043,11 +1058,14 @@ class QuestionsService
         ];
         $question['type'] = $question['tipo'] === 'certo ou errado' ? 'true_false' : 'single_choice';
         $question['alternatives'] = $canonicalAlternatives;
-        $question['answer'] = [
-            'mode' => $question['type'] === 'true_false' ? 'boolean' : 'single',
-            'raw' => (string) ($items[$answerIndex]['rotulo'] ?? ''),
-            'correctAlternativeTempIds' => $correctAlternative !== null ? [$correctAlternative] : [],
-        ];
+        if ($includeAnswerKey) {
+            $question['answer'] = [
+                'mode' => $question['type'] === 'true_false' ? 'boolean' : 'single',
+                'raw' => (string) ($items[$answerIndex]['rotulo'] ?? ''),
+                'correctAlternativeTempIds' => $correctAlternative !== null ? [$correctAlternative] : [],
+            ];
+        }
+
         $question['editorial'] = $this->canonicalEditorialsForOutput($editorials, $teacher, $detailed);
         $question['publication'] = [
             'status' => $question['publishStatus'],
@@ -1079,7 +1097,12 @@ class QuestionsService
             $question['resolvida'] = true;
         }
 
-        return $question;
+        return $this->outputPolicy->forRead(
+            $question,
+            $includeAnswerKey,
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis
+        );
     }
 
     private function editorialBodyByType(array $editorials, string $type): ?string
@@ -2493,17 +2516,8 @@ class QuestionsService
             throw new OutOfBoundsException($notFoundMessage);
         }
 
-        if ($this->repository->findUserRoleById($authenticatedUserId) === 'admin') {
-            return;
-        }
-
-        $owners = [
-            trim((string) ($ownership['created_by_user_id'] ?? '')),
-            trim((string) ($ownership['updated_by_user_id'] ?? '')),
-            trim((string) ($ownership['published_by_user_id'] ?? '')),
-        ];
-
-        if (in_array($authenticatedUserId, $owners, true)) {
+        $role = strtolower(trim((string) $this->repository->findUserRoleById($authenticatedUserId)));
+        if ($this->ownershipPolicy->canManage($role, $authenticatedUserId, $ownership)) {
             return;
         }
 

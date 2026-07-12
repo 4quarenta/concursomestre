@@ -38,3 +38,11 @@ tmp_*.json
 config/deploy/*.local.json
 
 .vercel
+
+# Artefatos operacionais que podem conter dados pessoais ou segredos.
+/backups/
+/tmp/
+*.sql.gz
+*.sql.bak
+*.dump
+*.dump.sql

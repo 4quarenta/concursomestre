@@ -44,8 +44,8 @@ if (!existsSync(proxyFile)) {
 
 const proxySource = readFileSync(proxyFile, 'utf8');
 
-if (!/\bexport\s+function\s+proxy\s*\(/.test(proxySource)) {
-  console.error('[next-proxy] src/proxy.ts precisa exportar function proxy(request).');
+if (!/\bexport\s+(?:async\s+)?function\s+proxy\s*\(/.test(proxySource)) {
+  console.error('[next-proxy] src/proxy.ts precisa exportar function ou async function proxy(request).');
   process.exit(1);
 }
 

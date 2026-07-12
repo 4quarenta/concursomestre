@@ -1,20 +1,22 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { resolveCanonicalAuthRedirectPath } from '@services/auth/canonicalAuthRedirect';
+import { canAccessAdminRoute } from '@services/auth/adminRouteAccess';
 
-export function proxy(request: NextRequest) {
+const adminNotFound = () => new NextResponse(null, {
+  status: 404,
+  headers: {
+    'Cache-Control': 'no-store',
+  },
+});
+
+export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/admin')) {
-    // The refresh cookie is HttpOnly and is the only server-visible session
-    // signal on the Next edge. Detailed admin/staff authorization remains in
-    // the PHP API, but anonymous route enumeration must receive a real 404.
-    const refreshCookieName = process.env.NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME || 'cm_refresh';
-    if (!request.cookies.has(refreshCookieName)) {
-      return new NextResponse(null, {
-        status: 404,
-        headers: {
-          'Cache-Control': 'no-store',
-        },
-      });
+    // This is a server-side role check against the active refresh session.
+    // Presence of a cookie alone is insufficient because a normal member has
+    // the same refresh cookie as an admin or staff member.
+    if (!(await canAccessAdminRoute(request))) {
+      return adminNotFound();
     }
   }
 

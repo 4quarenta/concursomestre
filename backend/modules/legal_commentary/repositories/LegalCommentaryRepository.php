@@ -2219,13 +2219,9 @@ class LegalCommentaryRepository
         }
 
         if (strtolower(trim($adminRole)) !== 'admin') {
-            $owners = [
-                trim((string) ($ownership['created_by_user_id'] ?? '')),
-                trim((string) ($ownership['updated_by_user_id'] ?? '')),
-                trim((string) ($ownership['published_by_user_id'] ?? '')),
-            ];
-            if ($adminUserId === '' || !in_array($adminUserId, $owners, true)) {
-                throw new DomainException('Staff so pode excluir leis publicadas por ele.');
+            $creatorId = trim((string) ($ownership['created_by_user_id'] ?? ''));
+            if ($adminUserId === '' || $creatorId === '' || !hash_equals($creatorId, $adminUserId)) {
+                throw new DomainException('Staff so pode excluir leis criadas por ele.');
             }
         }
 

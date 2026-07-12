@@ -18,6 +18,7 @@
     "check:text-encoding": "node scripts/checks/check-mojibake.mjs",
     "fix:text-encoding": "node scripts/checks/fix-mojibake.mjs",
     "check:generated-artifacts": "node scripts/checks/check-generated-artifacts.mjs",
+    "check:secrets": "node scripts/checks/check-versioned-secrets.mjs",
     "check:next-proxy": "node scripts/checks/check-next-proxy-convention.mjs",
     "check:billing-e2e": "node scripts/checks/run-billing-e2e-validation.mjs",
     "check:hard-refresh-budget": "node scripts/checks/hard-refresh-budget.mjs",
