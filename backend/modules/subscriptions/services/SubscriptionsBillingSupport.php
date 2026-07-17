@@ -3210,6 +3210,71 @@ function cancelStaleIncompleteStripeSubscriptions(PDO $db, string $userId, strin
 }
 
 /**
+ * Politica local para invoices sem um next_payment_attempt fornecido pela Stripe.
+ *
+ * @return array{delays:list<int>,maximum_attempts:int}
+ */
+function getStripeInvoiceCollectionRetryPolicy(): array
+{
+    $rawDelays = trim((string) ($_ENV['STRIPE_PAYMENT_RETRY_DELAYS_SECONDS']
+        ?? getenv('STRIPE_PAYMENT_RETRY_DELAYS_SECONDS')
+        ?? '3600,86400,259200'));
+    $delays = [];
+
+    foreach (explode(',', $rawDelays) as $rawDelay) {
+        $delay = filter_var(trim($rawDelay), FILTER_VALIDATE_INT);
+        if ($delay === false) {
+            continue;
+        }
+
+        $delays[] = max(300, min(2592000, (int) $delay));
+    }
+
+    if ($delays === []) {
+        $delays = [3600, 86400, 259200];
+    }
+
+    $configuredMaximum = filter_var(
+        $_ENV['STRIPE_PAYMENT_RETRY_MAX_ATTEMPTS']
+            ?? getenv('STRIPE_PAYMENT_RETRY_MAX_ATTEMPTS')
+            ?? (count($delays) + 1),
+        FILTER_VALIDATE_INT
+    );
+    $maximumAttempts = max(
+        2,
+        min(10, $configuredMaximum === false ? count($delays) + 1 : (int) $configuredMaximum)
+    );
+
+    while (count($delays) < ($maximumAttempts - 1)) {
+        $delays[] = (int) end($delays);
+    }
+
+    return [
+        'delays' => array_slice($delays, 0, $maximumAttempts - 1),
+        'maximum_attempts' => $maximumAttempts,
+    ];
+}
+
+/**
+ * Prioriza a agenda remota. Sem ela, aplica a janela local 1h/24h/72h.
+ */
+function resolveStripeInvoiceCollectionRetryNextAt(int $attemptCount, int $remoteNextPaymentAttempt = 0): ?string
+{
+    if ($remoteNextPaymentAttempt > (time() + 60)) {
+        return date('Y-m-d H:i:s', $remoteNextPaymentAttempt);
+    }
+
+    $policy = getStripeInvoiceCollectionRetryPolicy();
+    $normalizedAttemptCount = max(1, $attemptCount);
+    if ($normalizedAttemptCount >= $policy['maximum_attempts']) {
+        return null;
+    }
+
+    $delayIndex = min(count($policy['delays']) - 1, $normalizedAttemptCount - 1);
+    return date('Y-m-d H:i:s', time() + (int) ($policy['delays'][$delayIndex] ?? 3600));
+}
+
+/**
  * Calcula a data final da assinatura.
  *
  * @since 1.0.0

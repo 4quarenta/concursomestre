@@ -1036,6 +1036,90 @@ class SubscriptionsService
     }
 
     /**
+     * Valida a assinatura Stripe e persiste um job duravel para resposta HTTP rapida.
+     */
+    public function enqueueStripeWebhook(string $payload, string $signature): array
+    {
+        if (!stripeIsConfigured() || empty(STRIPE_WEBHOOK_SECRET)) {
+            throw new RuntimeException('Stripe webhook nao configurado.');
+        }
+        if ($payload === '' || strlen($payload) > 1_048_576) {
+            throw new InvalidArgumentException('Payload Stripe vazio ou acima de 1 MiB.');
+        }
+
+        $event = Webhook::constructEvent($payload, $signature, STRIPE_WEBHOOK_SECRET);
+        assertStripeEventMatchesConfiguredMode($event);
+        $eventId = trim((string) ($event->id ?? ''));
+        $eventType = trim((string) ($event->type ?? ''));
+        if ($eventId === '' || $eventType === '') {
+            throw new InvalidArgumentException('Evento Stripe sem identidade valida.');
+        }
+        $eventCreatedAt = (int) ($event->created ?? 0);
+        $objectId = $this->extractStripeEventObjectId($event->data->object ?? null);
+        $result = $this->repository->enqueueStripeWebhookEvent([
+            'event_id' => $eventId,
+            'event_type' => $eventType,
+            'object_id' => $objectId,
+            'payload_hash' => hash('sha256', $payload),
+            'payload_json' => $payload,
+            'event_created_at' => $this->formatStripeTimestamp($eventCreatedAt),
+        ]);
+
+        $this->writeStripeWebhookHeartbeat(
+            $eventId,
+            $eventType,
+            $objectId,
+            $eventCreatedAt,
+            !empty($result['duplicate']) ? 'duplicate' : 'queued',
+            !empty($result['duplicate']),
+            !empty($result['duplicate'])
+                ? 'Evento Stripe duplicado reconhecido na fila.'
+                : 'Evento Stripe autenticado e enfileirado.'
+        );
+
+        return [
+            'received' => true,
+            'queued' => !empty($result['queued']),
+            'duplicate' => !empty($result['duplicate']),
+            'eventId' => $eventId,
+        ];
+    }
+
+    /** Processa um evento previamente autenticado e reservado pelo worker. */
+    public function processNextQueuedStripeWebhook(): ?array
+    {
+        $job = $this->repository->claimNextStripeWebhookEvent();
+        if ($job === null) {
+            return null;
+        }
+
+        $eventId = (string) ($job['event_id'] ?? '');
+        $claimToken = (string) ($job['claim_token'] ?? '');
+        try {
+            $event = json_decode((string) ($job['payload_json'] ?? ''), false, 64, JSON_THROW_ON_ERROR);
+            if (!is_object($event)) {
+                throw new UnexpectedValueException('Payload Stripe enfileirado invalido.');
+            }
+            $result = $this->processStripeWebhookEventObject(
+                $event,
+                (string) ($job['payload_hash'] ?? ''),
+                null,
+                $claimToken
+            );
+            return ['eventId' => $eventId, 'result' => $result];
+        } catch (Throwable $exception) {
+            $this->repository->markProviderWebhookEventFailed(
+                'stripe',
+                $eventId,
+                $exception->getMessage(),
+                $claimToken,
+                'ASYNC_PROCESSING_ERROR'
+            );
+            throw $exception;
+        }
+    }
+
+    /**
      * Processa um objeto de evento Stripe ja validado.
      *
      * Essa entrada existe para suites operacionais e simuladores locais que
@@ -1044,7 +1128,12 @@ class SubscriptionsService
      *
      * @since 1.0.0
      */
-    public function processStripeWebhookEventObject(object $event, ?string $payloadHash = null, $stripeClient = null): array
+    public function processStripeWebhookEventObject(
+        object $event,
+        ?string $payloadHash = null,
+        $stripeClient = null,
+        ?string $preclaimedToken = null
+    ): array
     {
         $eventId = trim((string) ($event->id ?? ''));
         $eventType = trim((string) ($event->type ?? ''));
@@ -1052,7 +1141,7 @@ class SubscriptionsService
         $objectId = $this->extractStripeEventObjectId($event->data->object ?? null);
         $payloadHash = $payloadHash ?: hash('sha256', json_encode($event, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
-        if ($eventId !== '' && !$this->repository->claimProviderWebhookEvent(
+        if ($eventId !== '' && $preclaimedToken === null && !$this->repository->claimProviderWebhookEvent(
             'stripe',
             $eventId,
             $eventType,
@@ -1103,7 +1192,12 @@ class SubscriptionsService
             );
 
             if ($eventId !== '') {
-                $this->repository->markProviderWebhookEventFailed('stripe', $eventId, $exception->getMessage());
+                $this->repository->markProviderWebhookEventFailed(
+                    'stripe',
+                    $eventId,
+                    $exception->getMessage(),
+                    $preclaimedToken
+                );
             }
 
             throw $exception;
@@ -1112,7 +1206,12 @@ class SubscriptionsService
         $ignoredReason = $this->consumeStripeWebhookIgnoreReason();
         if (!$handled) {
             if ($eventId !== '') {
-                $this->repository->markProviderWebhookEventIgnored('stripe', $eventId, 'Evento ignorado pelo dominio de subscriptions.');
+                $this->repository->markProviderWebhookEventIgnored(
+                    'stripe',
+                    $eventId,
+                    'Evento ignorado pelo dominio de subscriptions.',
+                    $preclaimedToken
+                );
             }
 
             $this->writeStripeWebhookHeartbeat(
@@ -1132,7 +1231,7 @@ class SubscriptionsService
         }
 
         if ($ignoredReason !== null && $eventId !== '') {
-            $this->repository->markProviderWebhookEventIgnored('stripe', $eventId, $ignoredReason);
+            $this->repository->markProviderWebhookEventIgnored('stripe', $eventId, $ignoredReason, $preclaimedToken);
 
             $this->writeStripeWebhookHeartbeat(
                 $eventId,
@@ -1152,7 +1251,7 @@ class SubscriptionsService
         }
 
         if ($eventId !== '') {
-            $this->repository->markProviderWebhookEventProcessed('stripe', $eventId);
+            $this->repository->markProviderWebhookEventProcessed('stripe', $eventId, $preclaimedToken);
         }
 
         $this->writeStripeWebhookHeartbeat(
@@ -2445,6 +2544,11 @@ class SubscriptionsService
             'synced_flags' => 0,
             'materialized_invoices' => 0,
             'local_expired' => 0,
+            'collection_retries_due' => 0,
+            'collection_retries_attempted' => 0,
+            'collection_retries_deferred_to_stripe' => 0,
+            'collection_retries_succeeded' => 0,
+            'collection_retries_exhausted' => 0,
             'issues' => 0,
             'rows' => [],
         ];
@@ -2462,6 +2566,18 @@ class SubscriptionsService
 
         try {
             $stripe = getStripeClient();
+            $collectionRetrySummary = $this->recoverDueStripeInvoicePayments($stripe);
+            foreach ($collectionRetrySummary as $key => $value) {
+                if ($key === 'rows') {
+                    foreach ($value as $retryRow) {
+                        $summary['rows'][] = $retryRow;
+                    }
+                    continue;
+                }
+                if (array_key_exists($key, $summary)) {
+                    $summary[$key] += $value;
+                }
+            }
             $subscriptions = $this->repository->findStripeSubscriptionsForReconciliation();
 
             foreach ($subscriptions as $subscriptionRow) {
@@ -5587,6 +5703,144 @@ class SubscriptionsService
         return (bool) $stmt->fetchColumn();
     }
 
+    /** Recupera invoices abertas sem uma proxima tentativa remota. */
+    private function recoverDueStripeInvoicePayments($stripe): array
+    {
+        $policy = getStripeInvoiceCollectionRetryPolicy();
+        $rows = $this->repository->findDueStripeInvoiceCollectionRetries($policy['maximum_attempts']);
+        $summary = [
+            'collection_retries_due' => count($rows),
+            'collection_retries_attempted' => 0,
+            'collection_retries_deferred_to_stripe' => 0,
+            'collection_retries_succeeded' => 0,
+            'collection_retries_exhausted' => 0,
+            'issues' => 0,
+            'rows' => [],
+        ];
+
+        foreach ($rows as $row) {
+            $invoiceId = trim((string) ($row['provider_invoice_id'] ?? ''));
+            if ($invoiceId === '') {
+                continue;
+            }
+
+            $retryRow = [
+                'kind' => 'stripe_collection_retry',
+                'invoice_id' => $invoiceId,
+                'subscription_id' => (int) ($row['subscription_id'] ?? 0),
+                'user_id' => (string) ($row['user_id'] ?? ''),
+            ];
+
+            try {
+                $invoice = $stripe->invoices->retrieve($invoiceId, [
+                    'expand' => ['payment_intent', 'lines.data'],
+                ]);
+                $invoiceStatus = strtolower(trim((string) ($invoice->status ?? '')));
+                $attemptCount = max(
+                    1,
+                    (int) ($row['collection_retry_count'] ?? 0),
+                    (int) ($invoice->attempt_count ?? 0)
+                );
+                $remoteNextAttempt = (int) ($invoice->next_payment_attempt ?? 0);
+
+                if ($invoiceStatus === 'paid' || (int) ($invoice->amount_remaining ?? 1) === 0) {
+                    $this->handleStripeInvoicePaid($stripe, $invoice);
+                    $this->repository->clearStripeInvoiceCollectionRetry($invoiceId);
+                    $summary['collection_retries_succeeded']++;
+                    $retryRow['result'] = 'already_paid';
+                } elseif ($remoteNextAttempt > (time() + 60)) {
+                    $nextRetryAt = date('Y-m-d H:i:s', $remoteNextAttempt);
+                    $this->repository->scheduleStripeInvoiceCollectionRetry(
+                        $invoiceId,
+                        $attemptCount,
+                        $nextRetryAt,
+                        'stripe_retry_scheduled'
+                    );
+                    $summary['collection_retries_deferred_to_stripe']++;
+                    $retryRow['result'] = 'deferred_to_stripe';
+                    $retryRow['next_retry_at'] = $nextRetryAt;
+                } elseif (in_array($invoiceStatus, ['void', 'uncollectible'], true)
+                    || $attemptCount >= $policy['maximum_attempts']) {
+                    $this->repository->clearStripeInvoiceCollectionRetry($invoiceId, 'collection_retry_exhausted');
+                    $summary['collection_retries_exhausted']++;
+                    $retryRow['result'] = 'exhausted';
+                } elseif ($invoiceStatus !== 'open') {
+                    $this->repository->clearStripeInvoiceCollectionRetry(
+                        $invoiceId,
+                        'invoice_not_collectible:' . $invoiceStatus
+                    );
+                    $retryRow['result'] = 'invoice_not_collectible';
+                    $retryRow['invoice_status'] = $invoiceStatus;
+                } else {
+                    $nextAttemptCount = $attemptCount + 1;
+                    $this->repository->scheduleStripeInvoiceCollectionRetry(
+                        $invoiceId,
+                        $nextAttemptCount,
+                        null,
+                        null,
+                        true
+                    );
+                    $summary['collection_retries_attempted']++;
+
+                    try {
+                        $paidInvoice = $stripe->invoices->pay(
+                            $invoiceId,
+                            [],
+                            ['idempotency_key' => 'invoice_recovery_' . $invoiceId . '_' . $nextAttemptCount]
+                        );
+                        $paidStatus = strtolower(trim((string) ($paidInvoice->status ?? '')));
+                        if ($paidStatus === 'paid' || (int) ($paidInvoice->amount_remaining ?? 1) === 0) {
+                            $this->handleStripeInvoicePaid($stripe, $paidInvoice);
+                            $this->repository->clearStripeInvoiceCollectionRetry($invoiceId);
+                            $summary['collection_retries_succeeded']++;
+                            $retryRow['result'] = 'paid';
+                        } else {
+                            $resolvedAttemptCount = max($nextAttemptCount, (int) ($paidInvoice->attempt_count ?? 0));
+                            $nextRetryAt = resolveStripeInvoiceCollectionRetryNextAt(
+                                $resolvedAttemptCount,
+                                (int) ($paidInvoice->next_payment_attempt ?? 0)
+                            );
+                            $this->repository->scheduleStripeInvoiceCollectionRetry(
+                                $invoiceId,
+                                $resolvedAttemptCount,
+                                $nextRetryAt,
+                                $nextRetryAt === null ? 'collection_retry_exhausted' : 'payment_still_open'
+                            );
+                            if ($nextRetryAt === null) {
+                                $summary['collection_retries_exhausted']++;
+                            }
+                            $retryRow['result'] = $nextRetryAt === null ? 'exhausted' : 'rescheduled';
+                            $retryRow['next_retry_at'] = $nextRetryAt;
+                        }
+                    } catch (Throwable $paymentError) {
+                        $nextRetryAt = resolveStripeInvoiceCollectionRetryNextAt($nextAttemptCount);
+                        $this->repository->scheduleStripeInvoiceCollectionRetry(
+                            $invoiceId,
+                            $nextAttemptCount,
+                            $nextRetryAt,
+                            $paymentError->getMessage()
+                        );
+                        if ($nextRetryAt === null) {
+                            $summary['collection_retries_exhausted']++;
+                        }
+                        $retryRow['result'] = $nextRetryAt === null ? 'exhausted' : 'rescheduled_after_failure';
+                        $retryRow['next_retry_at'] = $nextRetryAt;
+                        $retryRow['error'] = $paymentError->getMessage();
+                    }
+                }
+            } catch (Throwable $error) {
+                $summary['issues']++;
+                $retryRow['result'] = 'error';
+                $retryRow['error'] = $error->getMessage();
+            }
+
+            $summary['rows'][] = $retryRow;
+            $this->logSubscriptionCron('stripe_collection_retry', $retryRow);
+        }
+
+        return $summary;
+    }
+
     /**
      * Registra a falha de pagamento da fatura Stripe.
      *
@@ -5597,15 +5851,18 @@ class SubscriptionsService
         $invoiceId = (string) $invoice->id;
         $paymentIntentId = getStripeInvoicePaymentIntentId($invoice);
         $amountDue = ((float) $invoice->amount_due) / 100;
+        $attemptCount = max(1, (int) ($invoice->attempt_count ?? 1));
+        $nextRetryAt = resolveStripeInvoiceCollectionRetryNextAt(
+            $attemptCount,
+            (int) ($invoice->next_payment_attempt ?? 0)
+        );
 
         if ($localSubscription && empty($localSubscription['superseded_by_subscription_id'])) {
             $this->db->prepare("UPDATE user_subscriptions SET status = 'past_due' WHERE id = :id")
                 ->execute([':id' => $localSubscription['id']]);
         }
 
-        $check = $this->db->prepare('SELECT id, status FROM transactions WHERE provider_invoice_id = :provider_invoice_id LIMIT 1');
-        $check->execute([':provider_invoice_id' => $invoiceId]);
-        $existing = $check->fetch(PDO::FETCH_ASSOC);
+        $existing = $this->repository->findTransactionByProviderInvoiceId($invoiceId);
 
         if ($existing) {
             $currentStatus = strtolower(trim((string) ($existing['status'] ?? '')));
@@ -5613,17 +5870,17 @@ class SubscriptionsService
                 return;
             }
 
-            $this->db->prepare("
-                UPDATE transactions
-                SET status = 'rejected',
-                    user_subscription_id = COALESCE(user_subscription_id, :user_subscription_id),
-                    provider_payment_intent_id = :provider_payment_intent_id
-                WHERE id = :id
-            ")->execute([
-                ':user_subscription_id' => (int) ($localSubscription['id'] ?? 0) ?: null,
-                ':provider_payment_intent_id' => $paymentIntentId !== '' ? $paymentIntentId : null,
-                ':id' => $existing['id'],
-            ]);
+            $this->repository->markExistingStripeInvoiceTransactionFailed(
+                (int) $existing['id'],
+                (int) ($localSubscription['id'] ?? 0) ?: null,
+                $paymentIntentId !== '' ? $paymentIntentId : null
+            );
+            $this->repository->scheduleStripeInvoiceCollectionRetry(
+                $invoiceId,
+                $attemptCount,
+                $nextRetryAt,
+                $nextRetryAt === null ? 'collection_retry_exhausted' : 'invoice_payment_failed'
+            );
             return;
         }
 
@@ -5632,28 +5889,24 @@ class SubscriptionsService
         }
 
         try {
-            $this->db->prepare("
-                INSERT INTO transactions (
-                    external_id, user_id, user_subscription_id, plan_id, plan_name, amount, platform_fee, status, payment_method, payment_provider,
-                    provider_payment_intent_id, provider_invoice_id, provider_customer_id, installments,
-                    payer_email, type
-                ) VALUES (
-                    :external_id, :user_id, :user_subscription_id, :plan_id, :plan_name, :amount, 0, 'rejected', 'credit_card', 'stripe',
-                    :provider_payment_intent_id, :provider_invoice_id, :provider_customer_id, 1,
-                    :payer_email, 'plan'
-                )
-            ")->execute([
-                ':external_id' => $invoiceId,
-                ':user_id' => $localSubscription['user_id'],
-                ':user_subscription_id' => (int) ($localSubscription['id'] ?? 0) ?: null,
-                ':plan_id' => (int) ($localSubscription['plan_id'] ?? 0),
-                ':plan_name' => (string) ($localSubscription['plan_name'] ?? 'Assinatura'),
-                ':amount' => $amountDue,
-                ':provider_payment_intent_id' => $paymentIntentId !== '' ? $paymentIntentId : null,
-                ':provider_invoice_id' => $invoiceId,
-                ':provider_customer_id' => getStripeObjectId($invoice->customer ?? null),
-                ':payer_email' => (string) ($invoice->customer_email ?: ''),
+            $this->repository->createFailedStripeInvoiceTransaction([
+                'external_id' => $invoiceId,
+                'user_id' => $localSubscription['user_id'],
+                'user_subscription_id' => (int) ($localSubscription['id'] ?? 0) ?: null,
+                'plan_id' => (int) ($localSubscription['plan_id'] ?? 0),
+                'plan_name' => (string) ($localSubscription['plan_name'] ?? 'Assinatura'),
+                'amount' => $amountDue,
+                'provider_payment_intent_id' => $paymentIntentId !== '' ? $paymentIntentId : null,
+                'provider_invoice_id' => $invoiceId,
+                'provider_customer_id' => getStripeObjectId($invoice->customer ?? null),
+                'payer_email' => (string) ($invoice->customer_email ?: ''),
             ]);
+            $this->repository->scheduleStripeInvoiceCollectionRetry(
+                $invoiceId,
+                $attemptCount,
+                $nextRetryAt,
+                $nextRetryAt === null ? 'collection_retry_exhausted' : 'invoice_payment_failed'
+            );
         } catch (PDOException $e) {
             if ($e->getCode() !== '23000') {
                 throw $e;

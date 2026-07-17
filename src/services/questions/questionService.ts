@@ -29,6 +29,11 @@ import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from './que
 type QuestionListResult = {
   rows: Question[];
   total: number;
+  pageInfo?: {
+    limit: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
 };
 
 type SubmitAnswerResult = {
@@ -204,14 +209,22 @@ type QuestionV2ListItem = {
     status?: string;
     visibility?: string;
   };
+  userState?: {
+    answered?: boolean;
+    isSaved?: boolean;
+    selectedOptionId?: string | number | null;
+    selectedOptionIndex?: number | null;
+  };
   publishedAt?: string | null;
   createdAt?: string | null;
 };
 
 type QuestionV2PageResponse = {
   items?: QuestionV2ListItem[];
-  pagination?: {
-    total?: number;
+  pageInfo?: {
+    limit?: number;
+    hasMore?: boolean;
+    nextCursor?: string | null;
   };
 };
 
@@ -812,6 +825,11 @@ const mapV2ListItemToQuestion = (item: QuestionV2ListItem): Question => {
       correctCount: item.stats?.correct || 0,
       wrongCount: item.stats?.wrong || 0,
     },
+    isSaved: Boolean(item.userState?.isSaved),
+    userAnswer: item.userState?.answered ? {
+      selectedOptionId: item.userState.selectedOptionId ?? null,
+      selectedOptionIndex: item.userState.selectedOptionIndex ?? null,
+    } : undefined,
     itens: [],
     alternatives: [],
   } as unknown as Question);
@@ -889,12 +907,22 @@ export const questionService = {
         ? normalizedRows
         : normalizedRows.filter((row) => isQuestionPubliclyVisible(row));
       const total = v2Items
-        ? Number((payload as QuestionV2PageResponse).pagination?.total || visibleRows.length)
+        ? visibleRows.length
         : Array.isArray(payload) ? visibleRows.length : Number(('total' in payload ? payload.total : undefined) || visibleRows.length);
+      const v2PageInfo = v2Items ? (payload as QuestionV2PageResponse).pageInfo : undefined;
 
       return {
         rows: visibleRows,
         total,
+        ...(v2Items ? {
+          pageInfo: {
+            limit: Number(v2PageInfo?.limit || filters?.limit || visibleRows.length || 20),
+            hasMore: Boolean(v2PageInfo?.hasMore),
+            nextCursor: typeof v2PageInfo?.nextCursor === 'string' && v2PageInfo.nextCursor
+              ? v2PageInfo.nextCursor
+              : null,
+          },
+        } : {}),
       };
     }, 2500);
   },
@@ -955,11 +983,15 @@ export const questionService = {
    * @since v1.0.0
    */
   async submitUserAnswer(answer: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>): Promise<SubmitAnswerResult> {
+    const idempotencyKey = typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `answer-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
     const response = await apiClient.post<SubmitAnswerApiResponse>(
       ENDPOINTS.questions.v2Answer,
       {
         questionId: answer.questionId,
         selectedAlternativeId: resolveSelectedAlternativeId(answer),
+        idempotencyKey,
         timeTaken: answer.timeTaken || 0,
         simulationId: (() => {
           const rawSimulationId = answer.simulationId;

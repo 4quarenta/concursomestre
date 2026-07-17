@@ -5,6 +5,7 @@ export interface QuestionBankPageParams {
   [key: string]: string | number | boolean | undefined | null;
   user_id?: string;
   page?: number;
+  cursor?: string;
   limit?: number;
   publication_scope?: string;
   publish_status?: string;
@@ -16,6 +17,11 @@ export interface QuestionBankPageParams {
 export interface QuestionBankPageResult {
   rows: Question[];
   total: number;
+  pageInfo?: {
+    limit: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
 }
 
 export const buildQuestionBankQueryKey = (
@@ -32,6 +38,7 @@ export const fetchQuestionBankPage = async (
   return {
     rows: Array.isArray(result.rows) ? result.rows : [],
     total: Number(result.total || 0),
+    pageInfo: result.pageInfo,
   };
 };
 

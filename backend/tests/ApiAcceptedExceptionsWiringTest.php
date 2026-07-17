@@ -58,8 +58,8 @@ assertExactPhpFiles(
 
 assertExactPhpFiles(
     $base . '/api/system',
-    ['logs.php'],
-    'api/system deve conter apenas o bridge legado oficialmente aceito.'
+    ['health.php', 'logs.php', 'readiness.php'],
+    'api/system deve conter apenas logs e os endpoints operacionais de health/readiness.'
 );
 
 assertExactPhpFiles(

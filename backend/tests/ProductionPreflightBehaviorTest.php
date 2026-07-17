@@ -165,6 +165,7 @@ foreach ([
     'MAIL_SENDER_CONFIGURED',
     'ESSENTIAL_EMAIL_TEMPLATES_ENABLED',
     'PAYMENT_LEGACY_MERCADOPAGO_SDK_REMOVED',
+    'SHARED_RUNTIME_STORE_READY',
 ] as $key) {
     assertPreflightStatus($validResult, $key, 'pass');
 }
@@ -326,6 +327,14 @@ foreach ([
 ] as $key) {
     assertPreflightStatus($invalidResult, $key, 'fail');
 }
+
+setPreflightEnv(array_merge($validEnv, [
+    'APP_INSTANCE_COUNT' => '2',
+    'REDIS_ENABLED' => 'false',
+    'REDIS_REQUIRED' => 'false',
+]));
+$missingSharedRuntimeResult = runProductionPreflight();
+assertPreflightStatus($missingSharedRuntimeResult, 'SHARED_RUNTIME_STORE_READY', 'fail');
 
 @unlink($cronHealthFixturePath);
 @unlink($staleCronHealthFixturePath);

@@ -75,6 +75,7 @@ assertApiInventoryByDirectory($base, [
         'analytics_funnel_export.php',
         'analytics_segments.php',
         'analytics_segments_export.php',
+        'brand_asset_upload.php',
         'cache.php',
         'comments_moderation.php',
         'comments_moderation_bulk.php',
@@ -314,7 +315,9 @@ assertApiInventoryByDirectory($base, [
         'webhook_stripe.php',
     ],
     'system' => [
+        'health.php',
         'logs.php',
+        'readiness.php',
     ],
     'tasks' => [
         'ProcessRewards.php',

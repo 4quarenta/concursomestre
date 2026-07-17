@@ -21,6 +21,7 @@
  */
 
 require_once __DIR__ . '/config/cors.php';
+require_once __DIR__ . '/shared/http/LegacyEndpointDeprecation.php';
 
 /**
  * Normaliza o caminho requisitado depois de /api/.
@@ -221,6 +222,13 @@ if (isset($routes[$path])) {
         exit;
     }
 
+    if (LegacyEndpointDeprecation::shouldReturnGone($path)) {
+        http_response_code(410);
+        echo json_encode(['success' => false, 'message' => 'Endpoint legado removido.']);
+        exit;
+    }
+    LegacyEndpointDeprecation::mark($path, '/' . $routes[$path]);
+
     require_once $file;
     exit;
 }
@@ -242,5 +250,4 @@ if (strpos($path, '/') !== false && isAllowedLegacyApiPath($path)) {
 
 http_response_code(404);
 echo json_encode(['success' => false, 'message' => "Route not found: {$path}"]);
-
 

@@ -19,7 +19,6 @@
 class FiltersRepository
 {
     private PDO $db;
-    private bool $schemaChecked = false;
 
     /**
      * Inicializa o repository com a conexao do banco.
@@ -31,57 +30,6 @@ class FiltersRepository
         $this->db = $db;
     }
 
-    private function ensureSchema(): void
-    {
-        if ($this->schemaChecked) {
-            return;
-        }
-
-        $this->schemaChecked = true;
-
-        try {
-            $this->createBaseTable();
-            $this->ensureColumnExists('description', "description TEXT NULL AFTER parent_id");
-            $this->ensureColumnExists('website', "website VARCHAR(255) NULL AFTER description");
-            $this->ensureColumnExists('meta_materia', "meta_materia TINYINT(1) NOT NULL DEFAULT 0 AFTER website");
-            $this->ensureColumnExists('taxonomy_level', "taxonomy_level VARCHAR(20) NULL AFTER meta_materia");
-            $this->ensureColumnExists('meta_carreira', "meta_carreira TINYINT(1) NOT NULL DEFAULT 0 AFTER taxonomy_level");
-        } catch (Throwable $exception) {
-            error_log('[filters_repository_schema] ' . $exception->getMessage());
-        }
-    }
-
-    private function createBaseTable(): void
-    {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS filters (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                type ENUM('banca', 'orgao', 'cargo', 'assunto', 'ano', 'carreira', 'area', 'nivel', 'tipo_prova', 'modalidade') NOT NULL,
-                name VARCHAR(255) NOT NULL,
-                slug VARCHAR(255) NOT NULL,
-                parent_id INT DEFAULT NULL,
-                description TEXT NULL,
-                website VARCHAR(255) NULL,
-                meta_materia TINYINT(1) NOT NULL DEFAULT 0,
-                taxonomy_level VARCHAR(20) NULL,
-                meta_carreira TINYINT(1) NOT NULL DEFAULT 0,
-                UNIQUE KEY unique_type_slug (type, slug),
-                INDEX idx_type (type),
-                INDEX idx_parent_id (parent_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-    }
-
-    private function ensureColumnExists(string $columnName, string $definition): void
-    {
-        $stmt = $this->db->prepare("SHOW COLUMNS FROM filters LIKE :column_name");
-        $stmt->execute([':column_name' => $columnName]);
-
-        if (!$stmt->fetch(PDO::FETCH_ASSOC)) {
-            $this->db->exec("ALTER TABLE filters ADD COLUMN {$definition}");
-        }
-    }
-
     /**
      * Carrega todas as taxonomias cadastradas.
      *
@@ -89,15 +37,24 @@ class FiltersRepository
      */
     public function fetchAll(): array
     {
-        $this->ensureSchema();
         $stmt = $this->db->prepare("
-            SELECT id, type, name, slug, parent_id, description, website, meta_materia, taxonomy_level, meta_carreira
+            SELECT id, type, name, slug, parent_id, description, website,
+                   asset_url, icon_key, keywords_json,
+                   meta_materia, taxonomy_level, meta_carreira
             FROM filters
             ORDER BY name
         ");
         $stmt->execute();
-
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $aliasesByFilterId = $this->fetchAliasesByFilterIds(array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $rows
+        ));
+        foreach ($rows as &$row) {
+            $row['aliases'] = $aliasesByFilterId[(int) $row['id']] ?? [];
+        }
+        unset($row);
+        return $rows;
     }
 
     /**
@@ -105,15 +62,15 @@ class FiltersRepository
      *
      * @since 1.0.0
      */
-    public function slugExists(string $slug, ?int $exceptId = null): bool
+    public function slugExists(string $type, string $slug, ?int $exceptId = null): bool
     {
-        $this->ensureSchema();
-        $query = 'SELECT id FROM filters WHERE slug = :slug';
+        $query = 'SELECT id FROM filters WHERE type = :type AND slug = :slug';
         if ($exceptId !== null) {
             $query .= ' AND id != :id';
         }
 
         $stmt = $this->db->prepare($query);
+        $stmt->bindValue(':type', $type);
         $stmt->bindValue(':slug', $slug);
         if ($exceptId !== null) {
             $stmt->bindValue(':id', $exceptId, PDO::PARAM_INT);
@@ -125,9 +82,10 @@ class FiltersRepository
 
     public function fetchById(int $id): ?array
     {
-        $this->ensureSchema();
         $stmt = $this->db->prepare("
-            SELECT id, type, name, slug, parent_id, description, website, meta_materia, taxonomy_level, meta_carreira
+            SELECT id, type, name, slug, parent_id, description, website,
+                   asset_url, icon_key, keywords_json,
+                   meta_materia, taxonomy_level, meta_carreira
             FROM filters
             WHERE id = :id
             LIMIT 1
@@ -135,7 +93,12 @@ class FiltersRepository
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+        $aliases = $this->fetchAliasesByFilterIds([$id]);
+        $row['aliases'] = $aliases[$id] ?? [];
+        return $row;
     }
 
     /**
@@ -145,8 +108,12 @@ class FiltersRepository
      */
     public function update(array $payload): void
     {
-        $this->ensureSchema();
-        $stmt = $this->db->prepare("
+        $ownsTransaction = !$this->db->inTransaction();
+        if ($ownsTransaction) {
+            $this->db->beginTransaction();
+        }
+        try {
+            $stmt = $this->db->prepare("
             UPDATE filters
             SET type = :type,
                 name = :name,
@@ -154,23 +121,39 @@ class FiltersRepository
                 parent_id = :parent_id,
                 description = :description,
                 website = :website,
+                asset_url = :asset_url,
+                icon_key = :icon_key,
+                keywords_json = :keywords_json,
                 meta_materia = :meta_materia,
                 taxonomy_level = :taxonomy_level,
                 meta_carreira = :meta_carreira
             WHERE id = :id
-        ");
-        $stmt->execute([
+            ");
+            $stmt->execute([
             ':type' => $payload['type'],
             ':name' => $payload['name'],
             ':slug' => $payload['slug'],
             ':parent_id' => $payload['parent_id'],
             ':description' => $payload['description'],
             ':website' => $payload['website'],
+            ':asset_url' => $payload['asset_url'],
+            ':icon_key' => $payload['icon_key'],
+            ':keywords_json' => $payload['keywords_json'],
             ':meta_materia' => $payload['meta_materia'],
             ':taxonomy_level' => $payload['taxonomy_level'],
             ':meta_carreira' => $payload['meta_carreira'],
             ':id' => $payload['id'],
-        ]);
+            ]);
+            $this->replaceAliases((int) $payload['id'], $payload['aliases']);
+            if ($ownsTransaction) {
+                $this->db->commit();
+            }
+        } catch (Throwable $exception) {
+            if ($ownsTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     /**
@@ -180,24 +163,48 @@ class FiltersRepository
      */
     public function create(array $payload): int
     {
-        $this->ensureSchema();
-        $stmt = $this->db->prepare("
-            INSERT INTO filters (type, name, slug, parent_id, description, website, meta_materia, taxonomy_level, meta_carreira)
-            VALUES (:type, :name, :slug, :parent_id, :description, :website, :meta_materia, :taxonomy_level, :meta_carreira)
-        ");
-        $stmt->execute([
+        $ownsTransaction = !$this->db->inTransaction();
+        if ($ownsTransaction) {
+            $this->db->beginTransaction();
+        }
+        try {
+            $stmt = $this->db->prepare("
+                INSERT INTO filters (
+                    type, name, slug, parent_id, description, website,
+                    asset_url, icon_key, keywords_json,
+                    meta_materia, taxonomy_level, meta_carreira
+                ) VALUES (
+                    :type, :name, :slug, :parent_id, :description, :website,
+                    :asset_url, :icon_key, :keywords_json,
+                    :meta_materia, :taxonomy_level, :meta_carreira
+                )
+            ");
+            $stmt->execute([
             ':type' => $payload['type'],
             ':name' => $payload['name'],
             ':slug' => $payload['slug'],
             ':parent_id' => $payload['parent_id'],
             ':description' => $payload['description'],
             ':website' => $payload['website'],
+            ':asset_url' => $payload['asset_url'],
+            ':icon_key' => $payload['icon_key'],
+            ':keywords_json' => $payload['keywords_json'],
             ':meta_materia' => $payload['meta_materia'],
             ':taxonomy_level' => $payload['taxonomy_level'],
             ':meta_carreira' => $payload['meta_carreira'],
-        ]);
-
-        return (int) $this->db->lastInsertId();
+            ]);
+            $id = (int) $this->db->lastInsertId();
+            $this->replaceAliases($id, $payload['aliases']);
+            if ($ownsTransaction) {
+                $this->db->commit();
+            }
+            return $id;
+        } catch (Throwable $exception) {
+            if ($ownsTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     /**
@@ -207,8 +214,62 @@ class FiltersRepository
      */
     public function delete(int $id): void
     {
-        $this->ensureSchema();
         $stmt = $this->db->prepare('DELETE FROM filters WHERE id = :id');
         $stmt->execute([':id' => $id]);
+    }
+
+    private function fetchAliasesByFilterIds(array $filterIds): array
+    {
+        $filterIds = array_values(array_unique(array_filter(array_map('intval', $filterIds))));
+        if ($filterIds === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($filterIds), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT filter_id, alias FROM filter_aliases
+             WHERE filter_id IN ({$placeholders})
+             ORDER BY alias"
+        );
+        $stmt->execute($filterIds);
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $result[(int) $row['filter_id']][] = (string) $row['alias'];
+        }
+        return $result;
+    }
+
+    private function replaceAliases(int $filterId, array $aliases): void
+    {
+        $delete = $this->db->prepare('DELETE FROM filter_aliases WHERE filter_id = :filter_id');
+        $delete->execute([':filter_id' => $filterId]);
+        if ($aliases === []) {
+            return;
+        }
+        $insert = $this->db->prepare(
+            'INSERT INTO filter_aliases (filter_id, alias, normalized_alias)
+             VALUES (:filter_id, :alias, :normalized_alias)'
+        );
+        $normalizedAliases = [];
+        foreach ($aliases as $alias) {
+            $alias = trim((string) $alias);
+            $normalizedAlias = $this->normalizeLookupText($alias);
+            if ($alias === '' || $normalizedAlias === '' || isset($normalizedAliases[$normalizedAlias])) {
+                continue;
+            }
+            $normalizedAliases[$normalizedAlias] = true;
+            $insert->execute([
+                ':filter_id' => $filterId,
+                ':alias' => $alias,
+                ':normalized_alias' => $normalizedAlias,
+            ]);
+        }
+    }
+
+    private function normalizeLookupText(string $value): string
+    {
+        $value = trim(mb_strtolower($value, 'UTF-8'));
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        $value = $transliterated !== false ? $transliterated : $value;
+        return trim((string) preg_replace('/[^a-z0-9]+/', ' ', $value));
     }
 }

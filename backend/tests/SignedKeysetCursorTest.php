@@ -23,6 +23,17 @@ try {
         SignedKeysetCursor::decode($first, 'users.answers') === ['createdAt' => '2026-07-12 10:00:00', 'id' => 'a-1'],
         'Cursor valido deve preservar created_at e id.'
     );
+    $questionCursor = SignedKeysetCursor::encodePayload([
+        'publishedAt' => '2026-07-17 10:00:00',
+        'id' => '991',
+    ], 'questions.public.v2.filters');
+    phase02CursorAssert(
+        SignedKeysetCursor::decodePayload($questionCursor, 'questions.public.v2.filters') === [
+            'publishedAt' => '2026-07-17 10:00:00',
+            'id' => '991',
+        ],
+        'Cursor generico deve preservar a chave composta da listagem de questoes.'
+    );
 
     foreach ([substr($first, 0, -1) . 'x', $first] as $index => $cursor) {
         try {

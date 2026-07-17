@@ -37,6 +37,7 @@ require_once __DIR__ . '/services/AdminUserActionsService.php';
 require_once __DIR__ . '/services/AdminDatabaseMaintenanceService.php';
 require_once __DIR__ . '/services/AdminCacheService.php';
 require_once __DIR__ . '/services/AdminSettingsService.php';
+require_once __DIR__ . '/services/AdminBrandAssetsService.php';
 require_once __DIR__ . '/services/AdminAnalyticsService.php';
 require_once __DIR__ . '/services/AdminCommentsModerationService.php';
 require_once __DIR__ . '/services/AdminSecurityIpsService.php';
@@ -743,6 +744,54 @@ function handleAdminSettingsRoute(PDO $db): void
     } catch (Throwable $e) {
         error_log('[admin_settings_route] ' . $e->getMessage());
         Response::serverError('Nao foi possivel carregar/salvar configuracoes.', $e);
+    }
+}
+
+/**
+ * Recebe imagens de identidade visual sem reutilizar uploads de outros dominios.
+ *
+ * @since 1.0.0
+ */
+function handleAdminBrandAssetUploadRoute(PDO $db): void
+{
+    try {
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($method !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+
+        $context = requirePlatformAdminSessionContext($db);
+        $purpose = trim((string) ($_POST['purpose'] ?? ''));
+        $file = $_FILES['asset'] ?? null;
+        if (!is_array($file)) {
+            Response::validationError('Selecione uma imagem valida.');
+        }
+
+        $asset = (new AdminBrandAssetsService())->upload($file, $purpose, dirname(__DIR__, 2));
+
+        logAdminAudit(
+            $context['db'],
+            (string) $context['admin_user_id'],
+            'settings.brand_asset.upload',
+            'brand_asset',
+            null,
+            [
+                'purpose' => $purpose,
+                'mime_type' => $asset['mimeType'],
+                'size_bytes' => $asset['size'],
+                'width' => $asset['width'],
+                'height' => $asset['height'],
+                'storage_key' => $asset['storageKey'],
+            ]
+        );
+
+        unset($asset['storageKey']);
+        Response::success($asset, 'Imagem enviada com sucesso.');
+    } catch (InvalidArgumentException $e) {
+        Response::validationError($e->getMessage());
+    } catch (Throwable $e) {
+        error_log('[admin_brand_asset_upload_route] ' . $e->getMessage());
+        Response::serverError('Nao foi possivel enviar a imagem administrativa.', $e);
     }
 }
 

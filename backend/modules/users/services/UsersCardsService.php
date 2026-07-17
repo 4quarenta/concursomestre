@@ -81,32 +81,38 @@ class UsersCardsService
 
         $totalCards = $this->repository->countUserCards($targetUserId);
 
-        if ((int) ($card['locked_by_recurring'] ?? 0) === 1) {
-            if ($totalCards <= 1) {
-                throw new DomainException('Este e o unico cartao vinculado a sua assinatura. Adicione outro cartao e defina-o como padrao antes de remover este.');
-            }
-
+        $protectedSubscription = $this->repository->findCardProtectedStripeSubscription($targetUserId);
+        $isProtectedByBilling = $this->isCardProtectedByActiveBilling($card, $protectedSubscription);
+        if ($protectedSubscription && $totalCards <= 1) {
+            throw new DomainException('Este e o unico cartao vinculado a sua assinatura. Adicione outro cartao e defina-o como padrao antes de remover este.');
+        }
+        if ($isProtectedByBilling) {
             throw new DomainException('Este cartao esta vinculado a uma assinatura recorrente ativa. Defina outro cartao como padrao antes de remove-lo.');
         }
 
         if (($card['payment_provider'] ?? 'stripe') === 'stripe'
             && !empty($card['stripe_payment_method_id'])
-            && stripeIsConfigured()
         ) {
-            $stripe = getStripeClient();
-
-            try {
-                markStripePaymentMethodAsSaved($stripe, (string) $card['stripe_payment_method_id'], false);
-            } catch (Throwable $e) {
-                // Seguimos com a limpeza local mesmo se o metadata update falhar.
+            if (!stripeIsConfigured()) {
+                throw new RuntimeException('Stripe nao esta configurada. Remocao cancelada.');
             }
-
-            if (!empty($card['provider_customer_id'])) {
-                try {
+            $stripe = getStripeClient();
+            try {
+                $paymentMethod = $stripe->paymentMethods->retrieve((string) $card['stripe_payment_method_id'], []);
+                $remoteCustomerId = getStripeObjectId($paymentMethod->customer ?? null);
+                if ($remoteCustomerId !== '') {
+                    $expectedCustomerId = trim((string) ($card['provider_customer_id'] ?? ''));
+                    if ($expectedCustomerId !== '' && !hash_equals($expectedCustomerId, $remoteCustomerId)) {
+                        throw new RuntimeException('O cartao pertence a outro cliente Stripe. Remocao cancelada.');
+                    }
                     $stripe->paymentMethods->detach((string) $card['stripe_payment_method_id'], []);
-                } catch (Throwable $e) {
-                    // Se o metodo j estiver desanexado, mantemos a limpeza local.
                 }
+            } catch (Throwable $e) {
+                throw new RuntimeException(
+                    'Nao foi possivel confirmar a remocao do cartao na Stripe. Nenhum dado local foi removido.',
+                    0,
+                    $e
+                );
             }
         }
 
@@ -126,6 +132,61 @@ class UsersCardsService
         return [
             'message' => 'Carto removido com sucesso!',
         ];
+    }
+
+    private function isCardProtectedByActiveBilling(array $card, ?array $subscription): bool
+    {
+        if (!$subscription) {
+            return false;
+        }
+        if ((int) ($card['locked_by_recurring'] ?? 0) === 1 || (int) ($card['is_default'] ?? 0) === 1) {
+            return true;
+        }
+
+        $paymentMethodId = trim((string) ($card['stripe_payment_method_id'] ?? ''));
+        if ($paymentMethodId === '') {
+            return false;
+        }
+        if (!stripeIsConfigured()) {
+            throw new RuntimeException('Nao foi possivel validar o vinculo do cartao porque a Stripe nao esta configurada. Remocao cancelada.');
+        }
+
+        try {
+            $stripe = getStripeClient();
+            $protectedPaymentMethodIds = [];
+            $providerSubscriptionId = trim((string) ($subscription['provider_subscription_id'] ?? ''));
+            $providerCustomerId = trim((string) ($subscription['provider_customer_id'] ?? ''));
+            if ($providerSubscriptionId !== '') {
+                $remoteSubscription = $stripe->subscriptions->retrieve($providerSubscriptionId, [
+                    'expand' => ['default_payment_method', 'latest_invoice.default_payment_method'],
+                ]);
+                foreach ([
+                    getStripeObjectId($remoteSubscription->default_payment_method ?? null),
+                    getStripeObjectId($remoteSubscription->latest_invoice->default_payment_method ?? null),
+                ] as $remotePaymentMethodId) {
+                    if ($remotePaymentMethodId !== '') {
+                        $protectedPaymentMethodIds[] = $remotePaymentMethodId;
+                    }
+                }
+                if ($providerCustomerId === '') {
+                    $providerCustomerId = getStripeObjectId($remoteSubscription->customer ?? null);
+                }
+            }
+            if ($providerCustomerId !== '') {
+                $customer = $stripe->customers->retrieve($providerCustomerId, []);
+                $customerPaymentMethodId = getStripeObjectId($customer->invoice_settings->default_payment_method ?? null);
+                if ($customerPaymentMethodId !== '') {
+                    $protectedPaymentMethodIds[] = $customerPaymentMethodId;
+                }
+            }
+            return in_array($paymentMethodId, array_unique($protectedPaymentMethodIds), true);
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                'Nao foi possivel validar o vinculo do cartao com a assinatura na Stripe. Remocao cancelada.',
+                0,
+                $e
+            );
+        }
     }
 
     /**

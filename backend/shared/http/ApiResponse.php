@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../errors/ApiErrorDetails.php';
 require_once __DIR__ . '/../responses/ApiEnvelope.php';
+require_once __DIR__ . '/../observability/RequestContext.php';
 
 /**
  * shared/http/ApiResponse.php
@@ -36,6 +37,7 @@ class ApiResponse
             ob_end_clean();
         }
 
+        RequestContext::applyResponseHeaders();
         header('Content-Type: application/json; charset=UTF-8');
         echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit();

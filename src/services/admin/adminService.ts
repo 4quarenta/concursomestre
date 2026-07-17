@@ -15,10 +15,52 @@ import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } f
 import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
 import { getSupportReasonLabel } from '@services/support/supportReasonLabels';
 import type { ErrorReport, Question, QuestionAsset, Ranking, SystemSettings, UserProfile } from '@types';
+import { normalizeAdminFeedbackThread, normalizeAdminQuestionListPayload } from './adminService.normalizers';
+import type {
+  FeedbackStatus,
+  ReportResolution,
+  AdminLooseRecord,
+  AdminPlanCatalogItem,
+  AdminReportWorkbenchPayload,
+  AdminReportWorkbenchApplyPayload,
+  AdminReportWorkbenchApplyResult,
+  AdminReportWorkbenchSuggestion,
+  AdminFeedbackThread,
+  AdminFeedbackReply,
+  CacheStatsPayload,
+  SystemLogsPayload,
+  AdminSecurityIpsPayload,
+  AdminStatsPayload,
+  AdminAnalyticsRange,
+  AdminFinanceAnalyticsPayload,
+  AdminDashboardAnalyticsPayload,
+  AdminLeadSegment,
+  AdminAnalyticsExportParams,
+  AdminCommentModerationStatus,
+  AdminCommentModerationFilter,
+  AdminCommentModerationCounts,
+  AdminCommentModerationItem,
+  AdminCommentModerationListPayload,
+  AdminUserDetailsPayload,
+  AdminUserActionPayload,
+  AdminUserActionResult,
+  AdminDatabaseResetPayload,
+  AdminTwoFactorSetupPayload,
+  AdminSettingsTestResult,
+  AdminQuestionListPayload,
+  AdminQuestionGroupItem,
+  AdminQuestionGroupPayload,
+} from './adminService.types';
+export * from './adminService.types';
 
-type FeedbackStatus = 'new' | 'read' | 'resolved';
-type ReportResolution = 'resolved' | 'ignored';
-export type AdminLooseRecord = Record<string, unknown>;
+
+export interface AdminBrandAsset {
+  url: string;
+  mimeType: string;
+  size: number;
+  width: number;
+  height: number;
+}
 
 const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
 const toLooseRecord = (value: unknown): AdminLooseRecord | undefined => (
@@ -27,182 +69,6 @@ const toLooseRecord = (value: unknown): AdminLooseRecord | undefined => (
     : undefined
 );
 
-export interface AdminUserProfileRecord extends AdminLooseRecord {
-  id?: string | number;
-  name?: string;
-  email?: string;
-  cpf?: string;
-  phone?: string;
-  target_exam?: string;
-  role?: 'user' | 'staff' | 'partner' | 'admin' | 'tester';
-  status?: 'active' | 'suspended' | 'banned' | 'pending';
-  reputation?: string | number;
-  email_verified?: boolean;
-  has_saved_card?: boolean;
-  photo_url?: string | null;
-}
-
-export interface AdminUserSubscriptionRecord extends AdminLooseRecord {
-  id?: string | number;
-  status?: string;
-  plan_id?: string | number;
-  plan_name?: string;
-  current_period_start?: string | null;
-  current_period_end?: string | null;
-  auto_renew?: boolean;
-}
-
-export interface AdminUserTransactionRecord extends AdminLooseRecord {
-  id?: string | number;
-  created_at?: string | null;
-  type?: string;
-  amount?: number | string | null;
-  status?: string;
-}
-
-export interface AdminAvailablePlanRecord extends AdminLooseRecord {
-  id?: string | number;
-  name?: string;
-  price?: number | string | null;
-  active?: number | string | boolean;
-}
-
-export interface AdminPlanCatalogItem extends AdminLooseRecord {
-  id: number;
-  name: string;
-  description?: string;
-  price: number;
-  interval_count: number;
-  interval_unit: 'day' | 'week' | 'month' | 'year';
-  tier?: number | null;
-  active: boolean;
-  external_plan_id?: string | null;
-  stripe_product_id?: string | null;
-  stripe_price_id?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  is_test_plan?: boolean;
-  can_edit_interval?: boolean;
-  can_toggle_active?: boolean;
-}
-
-export interface AdminUserCommentRecord extends AdminLooseRecord {
-  id?: string | number;
-  created_at?: string | null;
-  question_id?: string | number;
-  comment?: string;
-}
-
-export interface AdminUserFeedbackRecord extends AdminLooseRecord {
-  id?: string | number;
-  type?: string;
-  reason?: string;
-  details?: string;
-  status?: string;
-  created_at?: string | null;
-  public_rating?: number | string | null;
-  public_display_name?: string | null;
-  public_headline?: string | null;
-  home_published_at?: string | null;
-}
-
-export interface AdminUserReportRecord extends AdminLooseRecord {
-  id?: string | number;
-  target_type?: string;
-  target_id?: string | number;
-  reason?: string;
-  details?: string;
-  status?: string;
-  created_at?: string | null;
-  resolved_at?: string | null;
-  admin_reason?: string | null;
-  user_response?: string | null;
-  internal_note?: string | null;
-  moderation_action?: string | null;
-}
-
-export interface AdminReportWorkbenchAction {
-  slug: string;
-  label: string;
-  fields?: string[];
-  mutatesTarget?: boolean;
-  finalizes?: boolean;
-  destructive?: boolean;
-  reasonSlug?: string;
-}
-
-export interface AdminReportWorkbenchPayload {
-  report: {
-    id: string;
-    reportType: 'error' | 'request' | string;
-    reason: string;
-    reasonSlug: string;
-    details: string;
-    status: string;
-    workflowStatus?: string;
-    priority?: string;
-    targetType: ErrorReport['targetType'] | string;
-    targetId: string;
-    reporter?: {
-      id?: string;
-      name?: string;
-      email?: string | null;
-      role?: string | null;
-    };
-    evidenceUrl?: string | null;
-    createdAt?: string | null;
-  };
-  target: {
-    type: string;
-    id: string;
-    exists: boolean;
-    label?: string;
-    url?: string | null;
-    error?: string;
-    current?: AdminLooseRecord;
-  };
-  configuration: {
-    title: string;
-    reportType: 'error' | 'request' | string;
-    reasonSlug: string;
-    actions: AdminReportWorkbenchAction[];
-  };
-  draft?: {
-    id?: number;
-    action_slug?: string | null;
-    changes_json?: string | AdminLooseRecord | null;
-    user_response?: string | null;
-    internal_note?: string | null;
-  } | null;
-  history?: AdminLooseRecord[];
-}
-
-export interface AdminReportWorkbenchApplyPayload {
-  report_id: string;
-  report_ids?: string[];
-  action_slug: string;
-  changes?: AdminLooseRecord;
-  justification?: string;
-  user_response: string;
-  internal_note?: string;
-}
-
-export interface AdminReportWorkbenchApplyResult {
-  actionSlug: string;
-  status: string;
-  workflowStatus?: string;
-  target?: AdminLooseRecord;
-  historyIds?: Record<string, number>;
-  emailResults?: Record<string, AdminLooseRecord>;
-}
-
-export interface AdminReportWorkbenchSuggestion {
-  kind: string;
-  text: string;
-  generatedAt?: string;
-  moderatorId?: string;
-}
-
 const NON_FINAL_REPORT_WORKBENCH_ACTIONS = new Set([
   'request_more_information',
   'forward_to_teacher',
@@ -210,535 +76,6 @@ const NON_FINAL_REPORT_WORKBENCH_ACTIONS = new Set([
   'forward_to_manual_review',
   'forward_to_technical_team',
 ]);
-
-export interface AdminFeedbackThread {
-  id: number;
-  user_id: string;
-  user_name: string;
-  user_email: string;
-  user_role?: string;
-  type: string;
-  reason: string;
-  details: string;
-  created_at: string;
-  status: FeedbackStatus;
-  public_rating?: number | string | null;
-  public_display_name?: string | null;
-  public_headline?: string | null;
-  home_published_at?: string | null;
-  reply_count?: number;
-}
-
-export interface AdminFeedbackReply extends AdminFeedbackThread {
-  parent_id: number;
-}
-
-const normalizeAdminFeedbackThread = <T extends AdminFeedbackThread>(thread: T): T => ({
-  ...thread,
-  reason: getSupportReasonLabel(thread.reason),
-});
-
-export interface CacheStatsPayload {
-  total_files: number;
-  valid_entries: number;
-  expired_entries: number;
-  total_size_mb: number;
-  enabled: boolean;
-  default_ttl?: number;
-  table_name?: string | null;
-  source?: string;
-  supports_expiration?: boolean;
-  supports_size_estimate?: boolean;
-}
-
-export interface SystemLogsPayload {
-  lines: string[];
-  path?: string;
-  size_bytes?: number;
-  updated_at?: string | null;
-  cleared?: boolean;
-}
-
-export interface AdminSecurityIpSignal {
-  key: string;
-  label: string;
-  count: number;
-}
-
-export interface AdminSecuritySuspiciousIp {
-  ipAddress: string;
-  score: number;
-  signals: AdminSecurityIpSignal[];
-  sessionsCount: number;
-  refreshCount: number;
-  usersCount: number;
-  firstSeenAt?: string | null;
-  lastSeenAt?: string | null;
-  isBanned: boolean;
-  banReason?: string | null;
-  bannedAt?: string | null;
-  blockedHits?: number;
-}
-
-export interface AdminSecurityBannedIp {
-  ipAddress: string;
-  reason: string;
-  blockedHits: number;
-  lastBlockedAt?: string | null;
-  bannedUntil?: string | null;
-  createdBy?: string | null;
-  updatedBy?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-}
-
-export interface AdminSecurityIpsPayload {
-  suspicious: AdminSecuritySuspiciousIp[];
-  banned: AdminSecurityBannedIp[];
-  stats: {
-    suspiciousCount: number;
-    bannedCount: number;
-  };
-}
-
-export interface AdminStatsPayload {
-  total_revenue: number;
-  available_total_revenue: number;
-  platform_revenue: number;
-  subscription_revenue: number;
-  available_subscription_revenue: number;
-  marketplace_revenue: number;
-  active_subscriptions: number;
-  cancelled_subscriptions: number;
-  expired_subscriptions: number;
-  trial_subscriptions: number;
-  mrr: number;
-  new_users: number;
-  new_questions: number;
-  seller_payout: number;
-  available_seller_payout: number;
-  transactions_count: number;
-  refund_requests_count: number;
-  refund_requested_amount: number;
-  total_refunded: number;
-  held_balance: number;
-  total_paid: number;
-  feedback_count: number;
-  support_threads_count?: number;
-  reports_count?: number;
-  questions_count: number;
-  users_count: number;
-  materials_count: number;
-  pending_materials_count?: number;
-  rankings_count: number;
-  available_platform_revenue: number;
-  laws_count?: number;
-  comments_count?: number;
-  pending_comments_count?: number;
-  approved_comments_count?: number;
-  spam_comments_count?: number;
-  active_vendors_count?: number;
-  published_marketplace_materials_count?: number;
-}
-
-export interface AdminAnalyticsRange {
-  startDate?: string | null;
-  endDate?: string | null;
-}
-
-export interface AdminFinanceAnalyticsSummary {
-  totalRevenue: number;
-  mrr: number;
-  arr: number;
-  projectedConfirmedRevenue: number;
-  projectedRemainingInstallments: number;
-  activeSubscribers: number;
-  churnedSubscribers: number;
-  churnRate: number;
-  pastDueSubscribers: number;
-  recoveredSubscribers: number;
-  avgTicket: number;
-  ltvOperational: number;
-  refundRequestedAmount: number;
-  refundedAmount: number;
-}
-
-export interface AdminAnalyticsFunnelStep {
-  key: string;
-  label: string;
-  count: number;
-  conversionFromPrevious: number | null;
-}
-
-export interface AdminFinanceFunnelLead {
-  leadKey: string;
-  userId?: string | null;
-  email: string;
-  name?: string | null;
-  referrerLabel: string;
-  referrerUrl?: string | null;
-  originUrl?: string | null;
-  utmSource?: string | null;
-  utmMedium?: string | null;
-  utmCampaign?: string | null;
-  currentStage: string;
-  emailCaptured: boolean;
-  createdAccount: boolean;
-  checkoutStarted: boolean;
-  paymentStarted: boolean;
-  purchased: boolean;
-  firstEventAt: string;
-  lastEventAt: string;
-}
-
-export interface AdminFinanceFunnelAttributionItem {
-  key: string;
-  label: string;
-  leads: number;
-  capturedEmails: number;
-  createdAccounts: number;
-  checkouts: number;
-  purchases: number;
-}
-
-export interface AdminFinanceFunnelDetails {
-  identifiedLeads: number;
-  capturedEmailsCount: number;
-  createdAccountsCount: number;
-  checkoutStartedCount: number;
-  paymentStartedCount: number;
-  purchasedCount: number;
-  recentLeads: AdminFinanceFunnelLead[];
-  topReferrers: AdminFinanceFunnelAttributionItem[];
-  topCampaigns: AdminFinanceFunnelAttributionItem[];
-}
-
-export interface AdminAnalyticsCycleConversion {
-  key: string;
-  label: string;
-  purchases: number;
-  activeSubscribers: number;
-}
-
-export interface AdminBillingHealthSnapshot {
-  failedPayments: number;
-  pastDueSubscribers: number;
-  recoveredSubscribers: number;
-  refundRequestedCount: number;
-  refundedCount: number;
-  cardExpiredSubscribers?: number;
-  cardExpiringSubscribers?: number;
-  missingCardSubscribers?: number;
-  riskRows?: AdminBillingRiskRow[];
-}
-
-export interface AdminBillingRiskRow {
-  riskType: string;
-  severity: 'blocking' | 'warning' | 'attention' | 'error' | string;
-  source: string;
-  reason: string;
-  actionLabel?: string;
-  subscriptionId?: string;
-  userId?: string | null;
-  userName?: string | null;
-  userEmail: string;
-  planName?: string;
-  status?: string;
-  cardLabel?: string;
-  lastSignalAt?: string | null;
-  canSendEmail?: boolean;
-}
-
-export interface AdminAnalyticsAcquisitionCohort {
-  month: string;
-  capturedEmails: number;
-  createdAccounts: number;
-  checkoutStarted: number;
-  purchases: number;
-  signupRate: number;
-  purchaseRate: number;
-}
-
-export interface AdminAnalyticsRevenueCohort {
-  month: string;
-  buyers: number;
-  currentlyActive: number;
-  renewed: number;
-  retentionRate: number;
-}
-
-export interface AdminAnalyticsCohortsPayload {
-  acquisition: AdminAnalyticsAcquisitionCohort[];
-  revenue: AdminAnalyticsRevenueCohort[];
-}
-
-export interface AdminRevenueProjectionCycle {
-  key: string;
-  label: string;
-  subscriptions: number;
-  remainingInstallments: number;
-  projectedAmount: number;
-}
-
-export interface AdminRevenueProjectionMonth {
-  key: string;
-  label: string;
-  year: number;
-  month: number;
-  installments: number;
-  amount: number;
-  atRiskAmount: number;
-}
-
-export interface AdminRevenueProjectionItem {
-  subscriptionId: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  planName: string;
-  status: string;
-  cycleKey: string;
-  cycleLabel: string;
-  totalInstallments: number;
-  paidInstallments: number;
-  remainingInstallments: number;
-  installmentAmount: number;
-  projectedAmount: number;
-  nextBillingAt?: string | null;
-  currentPeriodEnd?: string | null;
-  intervalUnit?: 'day' | 'week' | 'month' | 'year' | string;
-  intervalCount?: number;
-  chargeIntervalUnit?: 'day' | 'week' | 'month' | 'year' | string;
-  chargeIntervalCount?: number;
-  projectionMode?: 'installments' | 'auto_renew' | string;
-}
-
-export interface AdminRevenueProjectionOverduePayment {
-  subscriptionId: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  planName: string;
-  status: string;
-  cycleKey: string;
-  cycleLabel: string;
-  installmentNumber: number;
-  installmentCount: number;
-  amount: number;
-  dueAt: string;
-  daysOverdue: number;
-  reason: string;
-}
-
-export interface AdminRevenueProjectionPayload {
-  totalProjectedAmount: number;
-  totalRemainingInstallments: number;
-  activeContracts: number;
-  atRiskProjectedAmount: number;
-  overduePaymentCount?: number;
-  overduePaymentAmount?: number;
-  overduePayments?: AdminRevenueProjectionOverduePayment[];
-  breakdownByCycle: AdminRevenueProjectionCycle[];
-  breakdownByMonth: AdminRevenueProjectionMonth[];
-  items: AdminRevenueProjectionItem[];
-}
-
-export interface AdminFinanceAnalyticsPayload {
-  period: string;
-  range: AdminAnalyticsRange;
-  summary: AdminFinanceAnalyticsSummary;
-  funnel: AdminAnalyticsFunnelStep[];
-  funnelDetails: AdminFinanceFunnelDetails;
-  conversionByCycle: AdminAnalyticsCycleConversion[];
-  billingHealth: AdminBillingHealthSnapshot;
-  cohorts: AdminAnalyticsCohortsPayload;
-  revenueProjection: AdminRevenueProjectionPayload;
-}
-
-export interface AdminDashboardTrend {
-  key: string;
-  label: string;
-  current: number;
-  previous: number;
-  deltaPercent: number;
-}
-
-export interface AdminDashboardInsight {
-  tone: 'success' | 'warning' | 'info';
-  title: string;
-  body: string;
-}
-
-export interface AdminDashboardAnalyticsPayload {
-  period: string;
-  counts: Record<string, number>;
-  trends: AdminDashboardTrend[];
-  insights: AdminDashboardInsight[];
-  funnelSummary: AdminAnalyticsFunnelStep[];
-  billingHealth: AdminBillingHealthSnapshot;
-}
-
-export interface AdminLeadSegmentItem {
-  userId?: string | null;
-  email: string;
-  name?: string | null;
-  lastEventAt: string;
-  notes: string;
-}
-
-export interface AdminLeadSegment {
-  key: string;
-  label: string;
-  count: number;
-  items: AdminLeadSegmentItem[];
-}
-
-export interface AdminAnalyticsExportParams {
-  period: 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
-  startDate?: string;
-  endDate?: string;
-}
-
-export type AdminCommentModerationStatus = 'pending' | 'approved' | 'spam' | 'trash';
-export type AdminCommentModerationFilter = 'all' | AdminCommentModerationStatus;
-export type AdminCommentModerationCounts = Record<AdminCommentModerationFilter, number>;
-
-export interface AdminCommentModerationItem {
-  id: string;
-  origin: 'question' | 'material' | 'law';
-  sourceType: 'comment' | 'law';
-  sourceId: string;
-  authorId: string;
-  authorName: string;
-  excerpt: string;
-  targetLabel: string;
-  targetPath: string;
-  status: AdminCommentModerationStatus;
-  createdAt: string;
-}
-
-export interface AdminCommentModerationListPayload {
-  items: AdminCommentModerationItem[];
-  total: number;
-  page: number;
-  perPage: number;
-  pages: number;
-  counts: AdminCommentModerationCounts;
-}
-
-export interface AdminUserDetailsPayload {
-  profile: AdminUserProfileRecord;
-  subscriptions: AdminUserSubscriptionRecord[];
-  transactions: AdminUserTransactionRecord[];
-  available_plans: AdminAvailablePlanRecord[];
-  materials: AdminLooseRecord[];
-  stats: {
-    comments_count: number;
-    feedback_count: number;
-    reports_count: number;
-    open_reports_count: number;
-  };
-  last_comments: AdminUserCommentRecord[];
-  feedback_threads: AdminUserFeedbackRecord[];
-  reports: AdminUserReportRecord[];
-}
-
-export interface AdminUserActionPayload {
-  user_id?: string;
-  action: string;
-  transaction_id?: number;
-  plan_id?: number;
-  days?: number;
-  password?: string;
-  name?: string;
-  email?: string;
-  cpf?: string;
-  phone?: string;
-  targetExam?: string;
-  role?: string;
-  status?: string;
-  reputation?: number;
-}
-
-export interface AdminUserActionResult {
-  message?: string;
-  data?: AdminLooseRecord;
-}
-
-export interface AdminDatabaseResetPayload {
-  password: string;
-  twoFactorCode?: string;
-  tables: string[];
-}
-
-export interface AdminTwoFactorSetupPayload {
-  secret: string;
-  qrCodeUrl: string;
-}
-
-export interface AdminSettingsTestResult {
-  message: string;
-  data?: AdminLooseRecord;
-}
-
-export interface AdminQuestionListPayload {
-  rows: Question[];
-  total: number;
-  perPage: number;
-  pages: number;
-  page: number;
-}
-
-const normalizeAdminQuestionListPayload = (payload: unknown, fallbackPage: number): AdminQuestionListPayload => {
-  const record = toLooseRecord(payload);
-  const nestedRecord = toLooseRecord(record?.data);
-  const source = nestedRecord || record || {};
-  const nestedRows = Array.isArray(record?.data) ? record?.data : undefined;
-  const rowsCandidate = source.rows
-    || source.questions
-    || source.items
-    || source.results
-    || source.records
-    || (Array.isArray(source.data) ? source.data : undefined)
-    || nestedRows
-    || (Array.isArray(payload) ? payload : undefined);
-  const rows = Array.isArray(rowsCandidate) ? rowsCandidate as Question[] : [];
-  const total = Number(source.total ?? source.count ?? source.totalRows ?? source.total_items ?? rows.length);
-  const perPage = Number(source.perPage ?? source.per_page ?? source.limit ?? 20) || 20;
-  const page = Number(source.page ?? source.currentPage ?? source.current_page ?? fallbackPage) || fallbackPage;
-  const pages = Number(source.pages ?? source.totalPages ?? source.total_pages ?? Math.max(1, Math.ceil(total / Math.max(1, perPage)))) || 1;
-
-  return {
-    rows: rows.map((row) => withQuestionPublicationAliases(row)),
-    total,
-    perPage,
-    pages,
-    page,
-  };
-};
-
-export interface AdminQuestionGroupItem {
-  id: number;
-  texto: string;
-  assets?: QuestionAsset[];
-  questionIds?: Array<number | string> | string | null;
-  question_count?: number;
-  questionCount?: number;
-  // Leitura temporária de registros legados.
-  enunciado?: string;
-  enunciado_clean?: string;
-  enunciadoClean?: string;
-  image_url?: string | null;
-  imageUrl?: string | null;
-  question_ids?: Array<number | string> | string | null;
-}
-
-export interface AdminQuestionGroupPayload {
-  id?: number | string | null;
-  texto: string;
-  assets: QuestionAsset[];
-  questionIds: Array<number | string>;
-}
 
 const EMPTY_COMMENT_MODERATION_COUNTS: AdminCommentModerationCounts = {
   all: 0,
@@ -891,6 +228,35 @@ export const adminService = {
       can_edit_interval: item.can_edit_interval === true,
       can_toggle_active: item.can_toggle_active === true,
     })).filter((item) => item.id > 0 && item.name !== '');
+  },
+
+  /**
+   * Envia uma imagem de identidade visual pelo endpoint administrativo dedicado.
+   * @since v1.0.0
+   */
+  async uploadBrandAsset(file: File, purpose: 'email-logo' | 'og-image'): Promise<AdminBrandAsset> {
+    const formData = new FormData();
+    formData.append('purpose', purpose);
+    formData.append('asset', file);
+
+    const response = await requestApi<AdminBrandAsset>(apiClient.post<ApiResponse<AdminBrandAsset>>(
+      ENDPOINTS.settings.uploadBrandAsset,
+      formData,
+    ));
+    const envelope = assertApiSuccess<AdminBrandAsset>(response, 'Nao foi possivel enviar a imagem.');
+    const asset = readApiData<AdminBrandAsset>(envelope.raw, {
+      url: '',
+      mimeType: '',
+      size: 0,
+      width: 0,
+      height: 0,
+    });
+
+    if (!asset.url) {
+      throw new Error('O backend nao retornou a URL da imagem.');
+    }
+
+    return asset;
   },
 
   /**

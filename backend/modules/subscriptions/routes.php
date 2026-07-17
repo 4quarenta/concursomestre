@@ -250,7 +250,7 @@ function handleSubscriptionsStripeWebhookRoute(PDO $db): void
             throw new InvalidArgumentException('Payload de webhook acima do limite permitido.');
         }
         $signature = (string) ($_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '');
-        $result = $controller->processStripeWebhook($payload, $signature);
+        $result = $controller->enqueueStripeWebhook($payload, $signature);
 
         http_response_code(200);
         header('Content-Type: application/json; charset=UTF-8');

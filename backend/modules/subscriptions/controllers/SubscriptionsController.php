@@ -80,6 +80,16 @@ class SubscriptionsController
         return $this->service->processStripeWebhook($payload, $signature);
     }
 
+    public function enqueueStripeWebhook(string $payload, string $signature): array
+    {
+        return $this->service->enqueueStripeWebhook($payload, $signature);
+    }
+
+    public function processNextQueuedStripeWebhook(): ?array
+    {
+        return $this->service->processNextQueuedStripeWebhook();
+    }
+
     public function validateCoupon(array $data): ?array
     {
         return $this->service->validateCoupon($data);

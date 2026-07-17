@@ -461,6 +461,141 @@ class SubscriptionsRepository
     }
 
     /**
+     * Persiste um evento Stripe cuja assinatura ja foi validada pela camada de servico.
+     * A chave unica (provider, event_id) torna entregas repetidas idempotentes.
+     */
+    public function enqueueStripeWebhookEvent(array $event): array
+    {
+        $eventId = trim((string) ($event['event_id'] ?? ''));
+        $eventType = trim((string) ($event['event_type'] ?? ''));
+        $payloadHash = trim((string) ($event['payload_hash'] ?? ''));
+        $payloadJson = (string) ($event['payload_json'] ?? '');
+        if ($eventId === '' || $eventType === '' || $payloadHash === '' || $payloadJson === '') {
+            throw new InvalidArgumentException('Evento Stripe incompleto para enfileiramento.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT id, event_type, object_id, payload_hash, status
+                 FROM provider_webhook_events
+                 WHERE provider = 'stripe' AND event_id = :event_id
+                 LIMIT 1 FOR UPDATE"
+            );
+            $stmt->execute([':event_id' => $eventId]);
+            $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (is_array($existing)) {
+                $integrityMismatch = !hash_equals((string) ($existing['payload_hash'] ?? ''), $payloadHash)
+                    || (string) ($existing['event_type'] ?? '') !== $eventType
+                    || ((string) ($existing['object_id'] ?? '') !== ''
+                        && (string) ($event['object_id'] ?? '') !== ''
+                        && (string) $existing['object_id'] !== (string) $event['object_id']);
+                if ($integrityMismatch) {
+                    $this->db->prepare(
+                        "UPDATE provider_webhook_events
+                         SET status = 'integrity_error', dead_lettered_at = COALESCE(dead_lettered_at, NOW()),
+                             last_error_code = 'PAYLOAD_INTEGRITY_MISMATCH',
+                             error_message = 'Mesmo event_id recebido com payload divergente.',
+                             delivery_count = delivery_count + 1, last_received_at = NOW()
+                         WHERE id = :id"
+                    )->execute([':id' => $existing['id']]);
+                    $this->db->commit();
+                    throw new DomainException('Integridade do webhook Stripe violada.');
+                }
+
+                $status = strtolower((string) ($existing['status'] ?? ''));
+                $this->db->prepare(
+                    'UPDATE provider_webhook_events
+                     SET delivery_count = delivery_count + 1, last_received_at = NOW()
+                     WHERE id = :id'
+                )->execute([':id' => $existing['id']]);
+                $this->db->commit();
+                return [
+                    'queued' => false,
+                    'duplicate' => true,
+                    'terminal' => in_array($status, ['processed', 'ignored', 'dead_lettered', 'integrity_error'], true),
+                    'status' => $status,
+                    'eventId' => $eventId,
+                ];
+            }
+
+            $insert = $this->db->prepare(
+                "INSERT INTO provider_webhook_events (
+                    provider, event_id, event_type, object_id, payload_hash, payload_json,
+                    signature_verified_at, queued_at, status, event_created_at,
+                    first_received_at, last_received_at, attempt_count, delivery_count
+                 ) VALUES (
+                    'stripe', :event_id, :event_type, :object_id, :payload_hash, :payload_json,
+                    NOW(), NOW(), 'queued', :event_created_at,
+                    NOW(), NOW(), 0, 1
+                 )"
+            );
+            $insert->execute([
+                ':event_id' => $eventId,
+                ':event_type' => $eventType,
+                ':object_id' => $event['object_id'] ?? null,
+                ':payload_hash' => $payloadHash,
+                ':payload_json' => $payloadJson,
+                ':event_created_at' => $event['event_created_at'] ?? null,
+            ]);
+            $this->db->commit();
+            return ['queued' => true, 'duplicate' => false, 'status' => 'queued', 'eventId' => $eventId];
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    /** Reserva um evento pendente sem bloquear outro worker. */
+    public function claimNextStripeWebhookEvent(): ?array
+    {
+        $maximumAttempts = max(1, min(20, (int) ($_ENV['STRIPE_WEBHOOK_WORKER_MAX_ATTEMPTS']
+            ?? getenv('STRIPE_WEBHOOK_WORKER_MAX_ATTEMPTS') ?: 8)));
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT id, event_id, payload_json, payload_hash, attempt_count
+                 FROM provider_webhook_events
+                 WHERE provider = 'stripe'
+                   AND (status IN ('queued', 'failed')
+                        OR (status = 'processing' AND updated_at <= DATE_SUB(NOW(), INTERVAL 5 MINUTE)))
+                   AND attempt_count < :maximum_attempts
+                   AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                 ORDER BY COALESCE(next_retry_at, queued_at, created_at) ASC, id ASC
+                 LIMIT 1 FOR UPDATE SKIP LOCKED"
+            );
+            $stmt->bindValue(':maximum_attempts', $maximumAttempts, PDO::PARAM_INT);
+            $stmt->execute();
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                $this->db->commit();
+                return null;
+            }
+
+            $claimToken = bin2hex(random_bytes(16));
+            $this->db->prepare(
+                "UPDATE provider_webhook_events
+                 SET status = 'processing', claim_token = :claim_token,
+                     attempt_count = attempt_count + 1, error_message = NULL,
+                     last_error_code = NULL, updated_at = NOW()
+                 WHERE id = :id"
+            )->execute([':claim_token' => $claimToken, ':id' => $row['id']]);
+            $this->db->commit();
+            $row['claim_token'] = $claimToken;
+            $row['attempt_count'] = (int) ($row['attempt_count'] ?? 0) + 1;
+            return $row;
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    /**
      * Reserva um evento de webhook do provider para processamento idempotente.
      *
      * @since 1.0.0
@@ -570,19 +705,26 @@ class SubscriptionsRepository
      *
      * @since 1.0.0
      */
-    public function markProviderWebhookEventProcessed(string $provider, string $eventId): void
+    public function markProviderWebhookEventProcessed(string $provider, string $eventId, ?string $claimToken = null): void
     {
+        $whereToken = $claimToken !== null && $claimToken !== '' ? ' AND claim_token = :claim_token' : '';
+        $params = [':provider' => $provider, ':event_id' => $eventId];
+        if ($whereToken !== '') {
+            $params[':claim_token'] = $claimToken;
+        }
         $this->db->prepare("
             UPDATE provider_webhook_events
             SET status = 'processed',
                 processed_at = NOW(),
-                error_message = NULL
+                error_message = NULL,
+                last_error_code = NULL,
+                next_retry_at = NULL,
+                claim_token = NULL,
+                payload_json = NULL
             WHERE provider = :provider
               AND event_id = :event_id
-        ")->execute([
-            ':provider' => $provider,
-            ':event_id' => $eventId,
-        ]);
+              {$whereToken}
+        ")->execute($params);
     }
 
     /**
@@ -590,19 +732,49 @@ class SubscriptionsRepository
      *
      * @since 1.0.0
      */
-    public function markProviderWebhookEventFailed(string $provider, string $eventId, string $errorMessage): void
+    public function markProviderWebhookEventFailed(
+        string $provider,
+        string $eventId,
+        string $errorMessage,
+        ?string $claimToken = null,
+        string $errorCode = 'PROCESSING_ERROR'
+    ): void
     {
-        $this->db->prepare("
-            UPDATE provider_webhook_events
-            SET status = 'failed',
-                error_message = :error_message
-            WHERE provider = :provider
-              AND event_id = :event_id
-        ")->execute([
+        $maximumAttempts = max(1, min(20, (int) ($_ENV['STRIPE_WEBHOOK_WORKER_MAX_ATTEMPTS']
+            ?? getenv('STRIPE_WEBHOOK_WORKER_MAX_ATTEMPTS') ?: 8)));
+        $whereToken = $claimToken !== null && $claimToken !== '' ? ' AND claim_token = :claim_token' : '';
+        $params = [
             ':provider' => $provider,
             ':event_id' => $eventId,
             ':error_message' => substr($errorMessage, 0, 1000),
-        ]);
+            ':error_code' => substr($errorCode, 0, 80),
+            ':maximum_attempts_status' => $maximumAttempts,
+            ':maximum_attempts_retry' => $maximumAttempts,
+            ':maximum_attempts_dead_letter' => $maximumAttempts,
+            ':maximum_attempts_payload' => $maximumAttempts,
+        ];
+        if ($whereToken !== '') {
+            $params[':claim_token'] = $claimToken;
+        }
+        $this->db->prepare("
+            UPDATE provider_webhook_events
+            SET status = CASE WHEN attempt_count >= :maximum_attempts_status THEN 'dead_lettered' ELSE 'failed' END,
+                error_message = :error_message,
+                last_error_code = :error_code,
+                next_retry_at = CASE
+                    WHEN attempt_count >= :maximum_attempts_retry THEN NULL
+                    ELSE DATE_ADD(NOW(), INTERVAL LEAST(3600, POW(2, LEAST(attempt_count, 6)) * 30) SECOND)
+                END,
+                dead_lettered_at = CASE
+                    WHEN attempt_count >= :maximum_attempts_dead_letter THEN COALESCE(dead_lettered_at, NOW())
+                    ELSE dead_lettered_at
+                END,
+                claim_token = NULL,
+                payload_json = CASE WHEN attempt_count >= :maximum_attempts_payload THEN NULL ELSE payload_json END
+            WHERE provider = :provider
+              AND event_id = :event_id
+              {$whereToken}
+        ")->execute($params);
     }
 
     /**
@@ -610,20 +782,35 @@ class SubscriptionsRepository
      *
      * @since 1.0.0
      */
-    public function markProviderWebhookEventIgnored(string $provider, string $eventId, string $reason): void
+    public function markProviderWebhookEventIgnored(
+        string $provider,
+        string $eventId,
+        string $reason,
+        ?string $claimToken = null
+    ): void
     {
+        $whereToken = $claimToken !== null && $claimToken !== '' ? ' AND claim_token = :claim_token' : '';
+        $params = [
+            ':provider' => $provider,
+            ':event_id' => $eventId,
+            ':error_message' => substr($reason, 0, 1000),
+        ];
+        if ($whereToken !== '') {
+            $params[':claim_token'] = $claimToken;
+        }
         $this->db->prepare("
             UPDATE provider_webhook_events
             SET status = 'ignored',
                 processed_at = NOW(),
-                error_message = :error_message
+                error_message = :error_message,
+                last_error_code = NULL,
+                next_retry_at = NULL,
+                claim_token = NULL,
+                payload_json = NULL
             WHERE provider = :provider
               AND event_id = :event_id
-        ")->execute([
-            ':provider' => $provider,
-            ':event_id' => $eventId,
-            ':error_message' => substr($reason, 0, 1000),
-        ]);
+              {$whereToken}
+        ")->execute($params);
     }
 
     /**
@@ -634,7 +821,8 @@ class SubscriptionsRepository
     public function findProviderWebhookEventStatus(string $provider, string $eventId): ?array
     {
         $stmt = $this->db->prepare("
-            SELECT event_type, object_id, status, processed_at, error_message, updated_at
+            SELECT event_type, object_id, status, processed_at, error_message, updated_at,
+                   attempt_count, next_retry_at, dead_lettered_at, last_error_code
             FROM provider_webhook_events
             WHERE provider = :provider
               AND event_id = :event_id
@@ -980,6 +1168,121 @@ class SubscriptionsRepository
         $stmt->execute([':user_id' => $userId]);
 
         return (int) $stmt->fetchColumn();
+    }
+
+    public function scheduleStripeInvoiceCollectionRetry(
+        string $invoiceId,
+        int $attemptCount,
+        ?string $nextRetryAt,
+        ?string $lastError = null,
+        bool $markAttemptedNow = false
+    ): void {
+        $stmt = $this->db->prepare(
+            "UPDATE transactions
+             SET collection_retry_count = GREATEST(collection_retry_count, :attempt_count),
+                 collection_retry_next_at = :next_retry_at,
+                 collection_retry_last_at = CASE WHEN :mark_attempted_now = 1 THEN NOW() ELSE collection_retry_last_at END,
+                 collection_retry_last_error = :last_error
+             WHERE payment_provider = 'stripe' AND provider_invoice_id = :provider_invoice_id"
+        );
+        $stmt->execute([
+            ':attempt_count' => max(0, $attemptCount),
+            ':next_retry_at' => $nextRetryAt,
+            ':mark_attempted_now' => $markAttemptedNow ? 1 : 0,
+            ':last_error' => $lastError !== null ? mb_substr($lastError, 0, 500) : null,
+            ':provider_invoice_id' => $invoiceId,
+        ]);
+    }
+
+    public function findDueStripeInvoiceCollectionRetries(int $maximumAttempts, int $limit = 50): array
+    {
+        $safeLimit = max(1, min(200, $limit));
+        $stmt = $this->db->prepare(
+            "SELECT t.id AS transaction_id, t.provider_invoice_id, t.collection_retry_count,
+                    t.collection_retry_next_at, us.id AS subscription_id,
+                    us.provider_subscription_id, us.user_id
+             FROM transactions t
+             JOIN user_subscriptions us ON us.id = t.user_subscription_id
+             WHERE t.payment_provider = 'stripe'
+               AND t.status = 'rejected'
+               AND t.provider_invoice_id IS NOT NULL
+               AND t.collection_retry_next_at IS NOT NULL
+               AND t.collection_retry_next_at <= NOW()
+               AND t.collection_retry_count < :maximum_attempts
+               AND us.status IN ('past_due', 'incomplete', 'active', 'trialing')
+               AND us.superseded_by_subscription_id IS NULL
+             ORDER BY t.collection_retry_next_at ASC, t.id ASC
+             LIMIT {$safeLimit}"
+        );
+        $stmt->bindValue(':maximum_attempts', max(1, $maximumAttempts), PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function clearStripeInvoiceCollectionRetry(string $invoiceId, ?string $lastError = null): void
+    {
+        $this->db->prepare(
+            "UPDATE transactions
+             SET collection_retry_next_at = NULL, collection_retry_last_error = :last_error
+             WHERE payment_provider = 'stripe' AND provider_invoice_id = :provider_invoice_id"
+        )->execute([
+            ':last_error' => $lastError !== null ? mb_substr($lastError, 0, 500) : null,
+            ':provider_invoice_id' => $invoiceId,
+        ]);
+    }
+
+    public function findTransactionByProviderInvoiceId(string $invoiceId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, status FROM transactions WHERE provider_invoice_id = :provider_invoice_id LIMIT 1'
+        );
+        $stmt->execute([':provider_invoice_id' => $invoiceId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    public function markExistingStripeInvoiceTransactionFailed(
+        int $transactionId,
+        ?int $subscriptionId,
+        ?string $paymentIntentId
+    ): void {
+        $this->db->prepare(
+            "UPDATE transactions
+             SET status = 'rejected',
+                 user_subscription_id = COALESCE(user_subscription_id, :user_subscription_id),
+                 provider_payment_intent_id = :provider_payment_intent_id
+             WHERE id = :id AND status NOT IN ('approved', 'completed', 'refunded', 'partially_refunded')"
+        )->execute([
+            ':user_subscription_id' => $subscriptionId,
+            ':provider_payment_intent_id' => $paymentIntentId,
+            ':id' => $transactionId,
+        ]);
+    }
+
+    public function createFailedStripeInvoiceTransaction(array $transaction): void
+    {
+        $this->db->prepare(
+            "INSERT INTO transactions (
+                external_id, user_id, user_subscription_id, plan_id, plan_name, amount, platform_fee, status,
+                payment_method, payment_provider, provider_payment_intent_id, provider_invoice_id,
+                provider_customer_id, installments, payer_email, type
+             ) VALUES (
+                :external_id, :user_id, :user_subscription_id, :plan_id, :plan_name, :amount, 0, 'rejected',
+                'credit_card', 'stripe', :provider_payment_intent_id, :provider_invoice_id,
+                :provider_customer_id, 1, :payer_email, 'plan'
+             )"
+        )->execute([
+            ':external_id' => $transaction['external_id'],
+            ':user_id' => $transaction['user_id'],
+            ':user_subscription_id' => $transaction['user_subscription_id'],
+            ':plan_id' => $transaction['plan_id'],
+            ':plan_name' => $transaction['plan_name'],
+            ':amount' => $transaction['amount'],
+            ':provider_payment_intent_id' => $transaction['provider_payment_intent_id'],
+            ':provider_invoice_id' => $transaction['provider_invoice_id'],
+            ':provider_customer_id' => $transaction['provider_customer_id'],
+            ':payer_email' => $transaction['payer_email'],
+        ]);
     }
 
     /**

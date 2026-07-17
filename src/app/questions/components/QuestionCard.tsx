@@ -1676,7 +1676,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                               <span>Alternativa {item.rotulo || String.fromCharCode(65 + idx)}</span>
                               <span className="flex items-center gap-1">
                                 <span className="text-slate-700 dark:text-slate-300">{percent}%</span>
-                                <span className="text-slate-400 font-medium">({count} votos)</span>
+                                <span className="text-slate-400 font-medium">({count} respostas)</span>
                               </span>
                             </div>
                             <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">

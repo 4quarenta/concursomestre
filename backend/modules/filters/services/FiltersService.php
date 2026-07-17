@@ -67,6 +67,10 @@ class FiltersService
                 'slug' => $row['slug'],
                 'description' => $row['description'],
                 'website' => $row['website'],
+                'assetUrl' => $row['asset_url'],
+                'iconKey' => $row['icon_key'],
+                'keywords' => $this->decodeStringList($row['keywords_json'] ?? null),
+                'aliases' => array_values($row['aliases'] ?? []),
             ];
 
             switch ($row['type']) {
@@ -140,6 +144,10 @@ class FiltersService
         $parentId = isset($data['parent_id']) && $data['parent_id'] !== '' ? (int) $data['parent_id'] : null;
         $description = trim((string) ($data['description'] ?? ''));
         $website = trim((string) ($data['website'] ?? ''));
+        $assetUrl = trim((string) ($data['assetUrl'] ?? $data['asset_url'] ?? ''));
+        $iconKey = trim((string) ($data['iconKey'] ?? $data['icon_key'] ?? ''));
+        $aliases = $this->normalizeStringList($data['aliases'] ?? []);
+        $keywords = $this->normalizeStringList($data['keywords'] ?? []);
         $taxonomyLevelInput = strtolower(trim((string) ($data['taxonomy_level'] ?? $data['taxonomyLevel'] ?? '')));
 
         $metaMateria = 0;
@@ -174,8 +182,8 @@ class FiltersService
             $metaCarreira = $parentId ? 0 : 1;
         }
 
-        if ($this->repository->slugExists($slug, $id)) {
-            throw new RuntimeException("O slug '{$slug}' ja esta em uso por outra taxonomia.", 409);
+        if ($this->repository->slugExists($type, $slug, $id)) {
+            throw new RuntimeException("O slug '{$slug}' ja esta em uso neste tipo de taxonomia.", 409);
         }
 
         $payload = [
@@ -186,6 +194,10 @@ class FiltersService
             'parent_id' => $parentId,
             'description' => $description !== '' ? $description : null,
             'website' => $website !== '' ? $website : null,
+            'asset_url' => $assetUrl !== '' ? $assetUrl : null,
+            'icon_key' => $iconKey !== '' ? $iconKey : null,
+            'keywords_json' => $keywords !== [] ? json_encode($keywords, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
+            'aliases' => $aliases,
             'meta_materia' => $metaMateria,
             'taxonomy_level' => $taxonomyLevel,
             'meta_carreira' => $metaCarreira,
@@ -229,5 +241,35 @@ class FiltersService
             'audit_action' => 'filter.delete',
             'audit_entity_id' => (string) $id,
         ];
+    }
+
+    private function normalizeStringList(mixed $value): array
+    {
+        if (is_string($value)) {
+            $value = preg_split('/[,;\r\n]+/', $value) ?: [];
+        }
+        if (!is_array($value)) {
+            return [];
+        }
+        $normalized = [];
+        foreach ($value as $item) {
+            $item = trim((string) $item);
+            if ($item !== '') {
+                $normalized[mb_strtolower($item, 'UTF-8')] = $item;
+            }
+        }
+        return array_values($normalized);
+    }
+
+    private function decodeStringList(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $this->normalizeStringList($value);
+        }
+        if (!is_string($value) || trim($value) === '') {
+            return [];
+        }
+        $decoded = json_decode($value, true);
+        return $this->normalizeStringList(is_array($decoded) ? $decoded : []);
     }
 }

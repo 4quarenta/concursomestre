@@ -69,7 +69,11 @@ vi.mock('@services/api', () => ({
       logs: 'admin/logs.php',
     },
     cache: { manage: 'admin/cache.php' },
-    settings: { get: 'settings.php', update: 'admin/settings.php' },
+    settings: {
+      get: 'settings.php',
+      update: 'admin/settings.php',
+      uploadBrandAsset: 'admin/brand_asset_upload.php',
+    },
     rankings: { update: 'rankingsUpdate', delete: 'rankingsDelete' },
     system: { logs: 'system/logs.php' },
   },
@@ -305,6 +309,31 @@ describe('adminService', () => {
       total_size_mb: 4.5,
       enabled: true,
     });
+  });
+
+  it('uploads brand images through the protected admin endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        url: '/uploads/admin-assets/email-logo/logo.png',
+        mimeType: 'image/png',
+        size: 128,
+        width: 300,
+        height: 80,
+      },
+    });
+
+    const file = new File(['png'], 'logo.png', { type: 'image/png' });
+    const asset = await adminService.uploadBrandAsset(file, 'email-logo');
+
+    expect(mockPost).toHaveBeenCalledWith(
+      'admin/brand_asset_upload.php',
+      expect.any(FormData),
+    );
+    const formData = mockPost.mock.calls[0]?.[1] as FormData;
+    expect(formData.get('purpose')).toBe('email-logo');
+    expect(formData.get('asset')).toBe(file);
+    expect(asset.url).toBe('/uploads/admin-assets/email-logo/logo.png');
   });
 
   it('clears frontend request coalescing after cache mutations', async () => {

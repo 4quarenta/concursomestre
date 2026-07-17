@@ -15,7 +15,9 @@ require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/QuestionAnswerEvaluator.php';
 require_once __DIR__ . '/QuestionOutputPolicy.php';
 require_once __DIR__ . '/QuestionOwnershipPolicy.php';
+require_once __DIR__ . '/QuestionPublicPageCache.php';
 require_once __DIR__ . '/../repositories/QuestionCanonicalRepository.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 class QuestionsService
 {
@@ -27,20 +29,28 @@ class QuestionsService
         ?QuestionAnswerEvaluator $answerEvaluator = null,
         ?QuestionCanonicalRepository $canonicalRepository = null,
         ?QuestionOutputPolicy $outputPolicy = null,
-        ?QuestionOwnershipPolicy $ownershipPolicy = null
+        ?QuestionOwnershipPolicy $ownershipPolicy = null,
+        ?QuestionPublicPageCache $publicPageCache = null
     ) {
         $this->answerEvaluator = $answerEvaluator ?? new QuestionAnswerEvaluator();
         $this->canonicalRepository = $canonicalRepository ?? new QuestionCanonicalRepository($db);
         $this->outputPolicy = $outputPolicy ?? new QuestionOutputPolicy();
         $this->ownershipPolicy = $ownershipPolicy ?? new QuestionOwnershipPolicy();
+        $this->publicPageCache = $publicPageCache ?? QuestionPublicPageCache::fromEnvironment();
     }
 
     private readonly QuestionAnswerEvaluator $answerEvaluator;
     private readonly QuestionCanonicalRepository $canonicalRepository;
     private readonly QuestionOutputPolicy $outputPolicy;
     private readonly QuestionOwnershipPolicy $ownershipPolicy;
+    private readonly QuestionPublicPageCache $publicPageCache;
 
-    public function submitAnswer(string $authenticatedUserId, bool $isAdmin, array $payload): array
+    public function submitAnswer(
+        string $authenticatedUserId,
+        bool $isAdmin,
+        array $payload,
+        array $submissionContext = []
+    ): array
     {
         $data = $this->validator->validateAnswerPayload($payload);
         if ($data['requestedUserId'] !== null && $data['requestedUserId'] !== $authenticatedUserId) {
@@ -66,14 +76,42 @@ class QuestionsService
 
         $xpGain = $isCorrect ? 10 : 2;
         $levelBefore = (int) ($before['level'] ?? 1);
+        $selectedOptionId = is_numeric($submissionContext['selectedOptionId'] ?? null)
+            ? (int) $submissionContext['selectedOptionId']
+            : null;
+        $idempotencyKey = trim((string) ($submissionContext['idempotencyKey'] ?? '')) ?: null;
+        $requestHash = trim((string) ($submissionContext['requestHash'] ?? '')) ?: null;
+        $canonicalAnswerStorageReady = $this->repository->questionScaleColumnsReady();
+        if (!$canonicalAnswerStorageReady) {
+            $selectedOptionId = null;
+            $idempotencyKey = null;
+            $requestHash = null;
+        }
 
         $this->db->beginTransaction();
         try {
-            $this->repository->insertUserAnswer([
+            $idempotency = null;
+            if ($idempotencyKey !== null && $requestHash !== null) {
+                $idempotency = $this->repository->reserveAnswerIdempotency([
+                    'user_id' => $userId,
+                    'idempotency_key' => $idempotencyKey,
+                    'request_hash' => $requestHash,
+                    'question_id' => $data['questionId'],
+                    'selected_option_id' => $selectedOptionId,
+                ]);
+                $cachedResponse = json_decode((string) ($idempotency['response_json'] ?? ''), true);
+                if (($idempotency['status'] ?? '') === 'completed' && is_array($cachedResponse)) {
+                    $this->commitIfNeeded();
+                    return $cachedResponse;
+                }
+            }
+
+            $userAnswerId = $this->repository->insertUserAnswer([
                 'user_id' => $userId,
                 'question_id' => $data['questionId'],
                 'simulation_id' => $data['simulationId'],
                 'selected_option_index' => $data['selectedOption'],
+                'selected_option_id' => $selectedOptionId,
                 'is_correct' => $isCorrect ? 1 : 0,
                 'time_taken_seconds' => $data['timeTaken'],
             ]);
@@ -85,24 +123,33 @@ class QuestionsService
             if ((int) ($after['level'] ?? 1) > $levelBefore) {
                 $this->rewardService->applyLevelUpReward($after);
             }
+
+            $result = [
+                'success' => true,
+                'message' => 'Resposta salva com sucesso.',
+                'new_xp' => (int) ($after['xp'] ?? 0),
+                'new_level' => (int) ($after['level'] ?? 1),
+                'newXp' => (int) ($after['xp'] ?? 0),
+                'newLevel' => (int) ($after['level'] ?? 1),
+                'xpGain' => $xpGain,
+                'levelUp' => (int) ($after['level'] ?? 1) > $levelBefore,
+                'gamification' => $gamification,
+                'answer' => $answerEvaluation,
+            ];
+            if (is_array($idempotency)) {
+                $this->repository->completeAnswerIdempotency(
+                    (int) $idempotency['id'],
+                    $userAnswerId,
+                    $result
+                );
+            }
             $this->commitIfNeeded();
         } catch (Throwable $e) {
             $this->rollback();
             throw $e;
         }
 
-        return [
-            'success' => true,
-            'message' => 'Resposta salva com sucesso.',
-            'new_xp' => (int) ($after['xp'] ?? 0),
-            'new_level' => (int) ($after['level'] ?? 1),
-            'newXp' => (int) ($after['xp'] ?? 0),
-            'newLevel' => (int) ($after['level'] ?? 1),
-            'xpGain' => $xpGain,
-            'levelUp' => (int) ($after['level'] ?? 1) > $levelBefore,
-            'gamification' => $gamification,
-            'answer' => $answerEvaluation,
-        ];
+        return $result;
     }
 
     public function listQuestions(
@@ -151,36 +198,75 @@ class QuestionsService
         if (!$this->repository->hasQuestionsTable()) {
             return [
                 'items' => [],
-                'pagination' => [
-                    'page' => 1,
-                    'perPage' => 0,
-                    'total' => 0,
-                    'pages' => 0,
+                'pageInfo' => [
+                    'limit' => 0,
+                    'hasMore' => false,
+                    'nextCursor' => null,
                 ],
             ];
         }
 
-        $data = $this->validator->validateListQuery($query);
-        $rows = $this->repository->listQuestionSummaryRows(
-            $data['limit'],
-            $data['offset'],
-            $data['filters'],
-            $authenticatedUserId
-        );
-        $total = $this->repository->countAllQuestions($data['filters'], $authenticatedUserId);
+        $data = $this->validator->validateListQueryV2($query);
+        $scope = $this->questionListCursorScope($data['filters'], $authenticatedUserId);
+        $cursorPayload = SignedKeysetCursor::decodePayload($data['cursor'], $scope);
+
+        $cached = $this->publicPageCache->get($data['limit'], $data['cursor'], $data['filters']);
+        if ($cached !== null) {
+            $rows = $cached['rows'];
+            $filters = $cached['filters'];
+            $hasMore = !empty($cached['hasMore']);
+        } else {
+            $rows = $this->repository->listQuestionListRowsByCursor(
+                $data['limit'] + 1,
+                $cursorPayload,
+                $data['filters'],
+                $authenticatedUserId
+            );
+            $hasMore = count($rows) > $data['limit'];
+            if ($hasMore) {
+                $rows = array_slice($rows, 0, $data['limit']);
+            }
+            $ids = $this->extractQuestionIds($rows);
+            $filters = $this->repository->listQuestionFiltersByIds($ids);
+            $this->publicPageCache->set($data['limit'], $data['cursor'], $data['filters'], [
+                'rows' => $rows,
+                'filters' => $filters,
+                'hasMore' => $hasMore,
+            ]);
+        }
+
         $ids = $this->extractQuestionIds($rows);
-        $filters = $this->repository->listQuestionFiltersByIds($ids);
+        $stats = $this->repository->listQuestionStatsMap($ids);
+        $answers = $authenticatedUserId !== null && $authenticatedUserId !== ''
+            ? $this->repository->listLatestUserAnswersMap($authenticatedUserId, $ids)
+            : [];
+        $savedQuestionIds = $authenticatedUserId !== null && $authenticatedUserId !== ''
+            ? $this->repository->listSavedQuestionIds($authenticatedUserId, $ids)
+            : [];
+        $lastRow = $rows === [] ? null : $rows[array_key_last($rows)];
+        $nextCursor = $hasMore && is_array($lastRow)
+            ? SignedKeysetCursor::encodePayload([
+                'publishedAt' => (string) ($lastRow['published_sort_at'] ?? ''),
+                'id' => (string) ($lastRow['id'] ?? ''),
+            ], $scope)
+            : null;
 
         return [
             'items' => array_map(
-                fn (array $row): array => $this->buildQuestionListItemV2($row, $filters[(string) ($row['id'] ?? '')] ?? []),
+                fn (array $row): array => $this->buildQuestionListItemV2(
+                    $row,
+                    $filters[(string) ($row['id'] ?? '')] ?? [],
+                    $stats[(string) ($row['id'] ?? '')] ?? null,
+                    $answers[(string) ($row['id'] ?? '')] ?? null,
+                    isset($savedQuestionIds[(string) ($row['id'] ?? '')]),
+                    $authenticatedUserId !== null && $authenticatedUserId !== ''
+                ),
                 $rows
             ),
-            'pagination' => [
-                'page' => $data['page'],
-                'perPage' => $data['limit'],
-                'total' => $total,
-                'pages' => $data['limit'] > 0 ? (int) ceil($total / $data['limit']) : 0,
+            'pageInfo' => [
+                'limit' => $data['limit'],
+                'hasMore' => $hasMore,
+                'nextCursor' => $nextCursor,
             ],
         ];
     }
@@ -300,6 +386,7 @@ class QuestionsService
         $aggregate = $this->loadCanonicalAggregateForRead((int) $questionId);
         $alternatives = $this->resolveAlternativesForV2($row, $aggregate);
         $selectedIndex = null;
+        $selectedCanonicalOptionId = null;
         foreach ($alternatives as $index => $alternative) {
             $candidates = [
                 (string) ($alternative['id'] ?? ''),
@@ -308,6 +395,11 @@ class QuestionsService
             ];
             if (in_array($selectedAlternativeId, $candidates, true)) {
                 $selectedIndex = $index;
+                $rawAlternative = $aggregate['alternatives'][$index] ?? null;
+                $selectedCanonicalOptionId = is_array($rawAlternative)
+                    && is_numeric($rawAlternative['canonicalId'] ?? null)
+                    ? (int) $rawAlternative['canonicalId']
+                    : null;
                 break;
             }
         }
@@ -316,11 +408,26 @@ class QuestionsService
             throw new InvalidArgumentException('Alternativa selecionada invalida.');
         }
 
+        $idempotencyKey = trim((string) ($payload['idempotencyKey'] ?? $payload['idempotency_key'] ?? ''));
+        if ($idempotencyKey !== '' && preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{7,119}$/', $idempotencyKey) !== 1) {
+            throw new InvalidArgumentException('Chave de idempotencia invalida.');
+        }
+        $requestHash = hash('sha256', json_encode([
+            'questionId' => (string) $questionId,
+            'selectedAlternativeId' => $selectedAlternativeId,
+            'selectedOptionId' => $selectedCanonicalOptionId,
+            'simulationId' => $payload['simulationId'] ?? $payload['simulation_id'] ?? null,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+
         return $this->submitAnswer($authenticatedUserId, $isAdmin, [
             'question_id' => $questionId,
             'selected_option' => $selectedIndex,
             'time_taken' => (int) ($payload['timeTaken'] ?? $payload['time_taken'] ?? 0),
             'simulation_id' => $payload['simulationId'] ?? $payload['simulation_id'] ?? null,
+        ], [
+            'selectedOptionId' => $selectedCanonicalOptionId,
+            'idempotencyKey' => $idempotencyKey !== '' ? $idempotencyKey : null,
+            'requestHash' => $idempotencyKey !== '' ? $requestHash : null,
         ]);
     }
 
@@ -378,6 +485,7 @@ class QuestionsService
             $this->rollback();
             throw $e;
         }
+        $this->publicPageCache->invalidate();
 
         $saved = $this->repository->findQuestionById($questionId);
         $filters = $this->repository->listQuestionFiltersByIds([$questionId]);
@@ -472,6 +580,15 @@ class QuestionsService
         $duplicateSkipped = [];
         $itemFailures = [];
         $seenImportKeys = [];
+        $importTraceId = $this->repository->beginExamQuestionImportTrace($authenticatedUserId, [
+            'examId' => $examPayload['id'] ?? null,
+            'requestedQuestionCount' => count($questions),
+            'requestedContextCount' => count($contexts),
+            'sourceExamKey' => $examPayload['sourceKey']
+                ?? $examPayload['source_key']
+                ?? $examPayload['title']
+                ?? null,
+        ]);
 
         $this->db->beginTransaction();
         try {
@@ -500,6 +617,7 @@ class QuestionsService
             if ($examId <= 0) {
                 throw new RuntimeException('A prova precisa ser salva antes de vincular questoes.');
             }
+            $this->repository->attachExamQuestionImportTraceToExam($importTraceId, $examId);
             $exam = $this->buildImportedExamResponse($examId, $examRecord);
 
             foreach ($contexts as $context) {
@@ -533,11 +651,27 @@ class QuestionsService
 
             foreach (array_values($questions) as $questionPosition => $question) {
                 if (!is_array($question)) {
+                    $diagnostic = [
+                        'code' => 'invalid_item_contract',
+                        'message' => 'O item da importacao nao e um objeto de questao valido.',
+                    ];
+                    $itemFailures[] = [
+                        'questionNumber' => null,
+                        'tempId' => null,
+                        'code' => $diagnostic['code'],
+                        'message' => $diagnostic['message'],
+                    ];
+                    $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
+                        'examId' => $examId,
+                        'status' => 'failed',
+                        'diagnosticCode' => $diagnostic['code'],
+                        'diagnosticMessage' => $diagnostic['message'],
+                    ]);
                     continue;
                 }
 
                 $savepoint = 'question_import_' . $questionPosition;
-                $this->db->exec('SAVEPOINT ' . $savepoint);
+                $this->repository->createSavepoint($savepoint);
                 try {
 
                 $questionSource = is_array($question['source'] ?? null) ? $question['source'] : [];
@@ -591,11 +725,19 @@ class QuestionsService
                 $importIdentity = $this->buildImportedQuestionIdentity($validatedQuestion, $examRecord);
                 $batchDuplicateKey = $this->buildImportedQuestionBatchKey($importIdentity);
                 if (isset($seenImportKeys[$batchDuplicateKey])) {
-                    $duplicateSkipped[] = [
+                    $duplicate = [
                         'reason' => 'duplicate_in_batch',
                         'questionNumber' => $importIdentity['source_question_number'],
                     ];
-                    $this->db->exec('RELEASE SAVEPOINT ' . $savepoint);
+                    $duplicateSkipped[] = $duplicate;
+                    $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
+                        'examId' => $examId,
+                        'externalKey' => $question['tempId'] ?? null,
+                        'questionNumber' => $importIdentity['source_question_number'],
+                        'status' => 'duplicate',
+                        'reason' => $duplicate['reason'],
+                    ]);
+                    $this->repository->releaseSavepoint($savepoint);
                     continue;
                 }
                 $seenImportKeys[$batchDuplicateKey] = true;
@@ -606,12 +748,21 @@ class QuestionsService
                     $importIdentity['source_question_number']
                 );
                 if ($existingQuestion !== null) {
-                    $duplicateSkipped[] = [
+                    $duplicate = [
                         'reason' => 'already_exists',
                         'questionId' => $existingQuestion['id'] ?? null,
                         'questionNumber' => $importIdentity['source_question_number'],
                     ];
-                    $this->db->exec('RELEASE SAVEPOINT ' . $savepoint);
+                    $duplicateSkipped[] = $duplicate;
+                    $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
+                        'examId' => $examId,
+                        'questionId' => $existingQuestion['id'] ?? null,
+                        'externalKey' => $question['tempId'] ?? null,
+                        'questionNumber' => $importIdentity['source_question_number'],
+                        'status' => 'duplicate',
+                        'reason' => $duplicate['reason'],
+                    ]);
+                    $this->repository->releaseSavepoint($savepoint);
                     continue;
                 }
 
@@ -624,17 +775,33 @@ class QuestionsService
                 foreach ($createdTaxonomies as $taxonomy) {
                     $newTaxonomies[] = $taxonomy;
                 }
-                $this->canonicalRepository->recordExtractionItem($examId, (int) $questionId, $question, 'imported');
-                $this->db->exec('RELEASE SAVEPOINT ' . $savepoint);
+                $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
+                    'examId' => $examId,
+                    'questionId' => $questionId,
+                    'externalKey' => $question['tempId'] ?? null,
+                    'questionNumber' => $importIdentity['source_question_number'],
+                    'status' => 'created',
+                ]);
+                $this->repository->releaseSavepoint($savepoint);
                 } catch (Throwable $questionError) {
-                    $this->db->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
-                    $this->db->exec('RELEASE SAVEPOINT ' . $savepoint);
+                    $this->repository->rollbackToSavepoint($savepoint);
+                    $this->repository->releaseSavepoint($savepoint);
                     $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+                    $diagnostic = $this->buildSanitizedBulkImportDiagnostic($questionError);
                     $itemFailures[] = [
                         'questionNumber' => $source['questionNumber'] ?? null,
                         'tempId' => $question['tempId'] ?? null,
-                        'message' => $questionError->getMessage(),
+                        'code' => $diagnostic['code'],
+                        'message' => $diagnostic['message'],
                     ];
+                    $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
+                        'examId' => $examId,
+                        'externalKey' => $question['tempId'] ?? null,
+                        'questionNumber' => $source['questionNumber'] ?? null,
+                        'status' => 'failed',
+                        'diagnosticCode' => $diagnostic['code'],
+                        'diagnosticMessage' => $diagnostic['message'],
+                    ]);
                     continue;
                 }
             }
@@ -664,7 +831,28 @@ class QuestionsService
             $this->commitIfNeeded();
         } catch (Throwable $e) {
             $this->rollback();
+            $diagnostic = $this->buildSanitizedBulkImportDiagnostic($e);
+            $this->repository->finishExamQuestionImportTrace($importTraceId, 'failed', [
+                'createdCount' => count($createdQuestionIds),
+                'duplicateCount' => count($duplicateSkipped),
+                'failedCount' => count($itemFailures) + 1,
+                'processedCount' => count($createdQuestionIds) + count($duplicateSkipped) + count($itemFailures),
+                'errorMessage' => $diagnostic['message'],
+            ]);
             throw $e;
+        }
+        $this->repository->finishExamQuestionImportTrace(
+            $importTraceId,
+            $itemFailures === [] ? 'done' : 'review',
+            [
+                'createdCount' => count($createdQuestionIds),
+                'duplicateCount' => count($duplicateSkipped),
+                'failedCount' => count($itemFailures),
+                'processedCount' => count($createdQuestionIds) + count($duplicateSkipped) + count($itemFailures),
+            ]
+        );
+        if ($createdQuestionIds !== []) {
+            $this->publicPageCache->invalidate();
         }
 
         $filters = $this->repository->listQuestionFiltersByIds($createdQuestionIds);
@@ -700,6 +888,7 @@ class QuestionsService
             'new_taxonomies' => $newTaxonomies,
             'itemFailures' => $itemFailures,
             'item_failures' => $itemFailures,
+            'importTraceId' => $importTraceId,
         ];
     }
 
@@ -828,6 +1017,7 @@ class QuestionsService
         if ($this->repository->deleteQuestionById($identity['questionId']) < 1) {
             throw new OutOfBoundsException('Questao nao encontrada.');
         }
+        $this->publicPageCache->invalidate();
     }
 
     public function listQuestionGroups(string $authenticatedUserId, bool $isAdmin, array $query): array
@@ -887,6 +1077,7 @@ class QuestionsService
             $this->rollback();
             throw $e;
         }
+        $this->publicPageCache->invalidate();
 
         $row = $this->repository->findQuestionGroupById($groupId);
         if ($row === null) {
@@ -919,20 +1110,32 @@ class QuestionsService
         return ['url' => $url, 'image_url' => $url, 'imageUrl' => $url];
     }
 
-    private function buildQuestionListItemV2(array $row, array $filters): array
+    private function buildQuestionListItemV2(
+        array $row,
+        array $filters,
+        ?array $stats,
+        ?array $userAnswer,
+        bool $isSaved,
+        bool $includeUserState
+    ): array
     {
         $buckets = $this->partitionFilters($filters);
-        $attempts = max(0, (int) ($row['total_attempts'] ?? 0));
-        $correct = max(0, (int) ($row['correct_count'] ?? 0));
-        $wrong = max(0, (int) ($row['wrong_count'] ?? 0));
+        $attempts = max(0, (int) ($stats['totalAttempts'] ?? 0));
+        $correct = max(0, (int) ($stats['correctCount'] ?? 0));
+        $wrong = max(0, (int) ($stats['wrongCount'] ?? 0));
 
-        return [
+        $item = [
             'id' => (int) ($row['id'] ?? 0),
             'statementPreview' => $this->truncateQuestionPreview((string) ($row['enunciado_clean'] ?? ''), 180),
             'type' => $this->canonicalQuestionTypeForOutput((string) ($row['tipo'] ?? '')),
             'difficulty' => $this->difficultyLabel((int) ($row['dificuldade'] ?? 2)),
-            'hasImage' => !empty($row['has_canonical_asset']),
+            'hasImage' => !empty($row['has_image']),
             'taxonomySummary' => $this->buildTaxonomySummaryV2($buckets),
+            'examSummary' => !empty($row['exam_id']) ? [
+                'id' => (int) $row['exam_id'],
+                'name' => (string) ($row['exam_name'] ?? ''),
+                'year' => is_numeric($row['exam_year'] ?? null) ? (int) $row['exam_year'] : null,
+            ] : null,
             'stats' => [
                 'attempts' => $attempts,
                 'correct' => $correct,
@@ -943,9 +1146,61 @@ class QuestionsService
                 'status' => (string) ($row['publish_status'] ?? 'draft'),
                 'visibility' => (string) ($row['visibility_status'] ?? 'public'),
             ],
-            'publishedAt' => $row['published_at'] ?? null,
+            'publishedAt' => $row['published_sort_at'] ?? $row['published_at'] ?? null,
             'createdAt' => $row['created_at'] ?? null,
         ];
+
+        if ($includeUserState) {
+            $item['userState'] = [
+                'answered' => $userAnswer !== null,
+                'isSaved' => $isSaved,
+                'selectedOptionId' => is_numeric($userAnswer['selectedOptionId'] ?? null)
+                    ? (int) $userAnswer['selectedOptionId']
+                    : null,
+                'selectedOptionIndex' => $userAnswer !== null
+                    ? (int) ($userAnswer['selectedOptionIndex'] ?? 0)
+                    : null,
+            ];
+        }
+
+        return $item;
+    }
+
+    private function questionListCursorScope(array $filters, ?string $authenticatedUserId): string
+    {
+        $normalized = $this->normalizeCursorScopeValue($filters);
+        $privateUser = (!empty($filters['onlySaved']) || !empty($filters['excludeAnswered']))
+            ? (string) $authenticatedUserId
+            : '';
+        $payload = json_encode([
+            'filters' => $normalized,
+            'user' => $privateUser,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return 'questions.public.v2.' . hash('sha256', is_string($payload) ? $payload : '');
+    }
+
+    private function normalizeCursorScopeValue(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        if (array_is_list($value)) {
+            $normalized = array_map(
+                fn (mixed $item): mixed => $this->normalizeCursorScopeValue($item),
+                $value
+            );
+            usort($normalized, static fn (mixed $a, mixed $b): int => strcmp(
+                (string) json_encode($a),
+                (string) json_encode($b)
+            ));
+            return $normalized;
+        }
+        ksort($value);
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->normalizeCursorScopeValue($item);
+        }
+        return $value;
     }
 
     private function buildQuestionDetailV2(
@@ -1723,7 +1978,6 @@ class QuestionsService
             $questionId = $data['id'];
             $this->repository->updateQuestion($questionId, $record);
         } else {
-            $this->repository->countAllQuestions();
             $questionId = $this->repository->insertQuestion($record);
         }
 
@@ -1754,6 +2008,7 @@ class QuestionsService
             $canonical,
             is_numeric($data['canonical_context_id'] ?? null) ? (int) $data['canonical_context_id'] : null
         );
+        $this->repository->refreshQuestionScaleReadModel($questionId);
 
         return [$questionId, $newTaxonomies];
     }
@@ -2068,6 +2323,37 @@ class QuestionsService
         }
 
         return 'fingerprint:' . trim((string) ($identity['import_fingerprint'] ?? ''));
+    }
+
+    /**
+     * Retorna um diagnostico seguro para a revisao do lote sem expor SQL,
+     * caminhos internos, e-mails ou payload editorial.
+     *
+     * @return array{code:string,message:string}
+     */
+    private function buildSanitizedBulkImportDiagnostic(Throwable $error): array
+    {
+        $isContractError = $error instanceof InvalidArgumentException
+            || $error instanceof OutOfBoundsException
+            || $error instanceof DomainException;
+        if (!$isContractError) {
+            return [
+                'code' => 'import_persistence_failed',
+                'message' => 'Nao foi possivel persistir este item. Consulte a trilha pelo identificador da importacao.',
+            ];
+        }
+
+        $message = trim(strip_tags($error->getMessage()));
+        $message = preg_replace('/[\r\n\t]+/', ' ', $message) ?? '';
+        $message = preg_replace('/\s{2,}/', ' ', $message) ?? '';
+        $message = preg_replace('/\b[A-Z]:[\\\/][^ ]+|\/(?:var|home|root|workspace|tmp)\/[^ ]+/i', '[path]', $message) ?? '';
+        $message = preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', '[email]', $message) ?? '';
+        $message = preg_replace('/https?:\/\/\S+/i', '[url]', $message) ?? '';
+
+        return [
+            'code' => 'import_contract_invalid',
+            'message' => substr($message !== '' ? $message : 'O item nao atende ao contrato de importacao.', 0, 300),
+        ];
     }
 
     private function buildImportedExamKey(array $examRecord): string

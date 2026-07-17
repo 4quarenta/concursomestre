@@ -61,8 +61,29 @@ export interface FilterSavePayload {
   taxonomy_level?: 'materia' | 'topico' | 'assunto' | string;
   description?: string;
   website?: string;
+  assetUrl?: string;
+  iconKey?: string;
+  aliases?: string[];
+  keywords?: string[];
   metadata?: Record<string, unknown>;
 }
+
+const readStringList = (value: unknown): string[] => Array.isArray(value)
+  ? value.map((item) => String(item || '').trim()).filter(Boolean)
+  : [];
+
+const readTaxonomyPresentation = (item: RawFilterNode) => ({
+  description: typeof item.description === 'string' ? item.description : undefined,
+  website: typeof item.website === 'string' ? item.website : undefined,
+  assetUrl: typeof item.assetUrl === 'string'
+    ? item.assetUrl
+    : typeof item.asset_url === 'string' ? item.asset_url : undefined,
+  iconKey: typeof item.iconKey === 'string'
+    ? item.iconKey
+    : typeof item.icon_key === 'string' ? item.icon_key : undefined,
+  aliases: readStringList(item.aliases),
+  keywords: readStringList(item.keywords),
+});
 
 export const ENEM_FOCUS_NAME = 'ENEM';
 
@@ -310,8 +331,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
     id: String(item.id),
     name: readNamedValue(item, ['nome', 'name']),
     slug: typeof item.slug === 'string' ? item.slug : undefined,
-    description: typeof item.description === 'string' ? item.description : undefined,
-    website: typeof item.website === 'string' ? item.website : undefined,
+    ...readTaxonomyPresentation(item),
     materia: true,
     taxonomyLevel: 'materia',
     type: 'subject',
@@ -334,8 +354,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
       id: String(item.id),
       name: readNamedValue(item, ['nome', 'name']),
       slug: typeof item.slug === 'string' ? item.slug : undefined,
-      description: typeof item.description === 'string' ? item.description : undefined,
-      website: typeof item.website === 'string' ? item.website : undefined,
+      ...readTaxonomyPresentation(item),
       parentId,
       rootSubjectId: rootSubjectId && subjectIds.has(String(rootSubjectId)) ? String(rootSubjectId) : undefined,
       materia: false,
@@ -350,8 +369,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
       name: readNamedValue(item, ['nome', 'name']),
       sigla: typeof item.sigla === 'string' ? item.sigla : undefined,
       slug: typeof item.slug === 'string' ? item.slug : undefined,
-      description: typeof item.description === 'string' ? item.description : undefined,
-      website: typeof item.website === 'string' ? item.website : undefined,
+      ...readTaxonomyPresentation(item),
       type: 'agency',
     })),
     organizations: (data.orgaos || []).map((item) => ({
@@ -359,8 +377,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
       name: readNamedValue(item, ['nome', 'name']),
       sigla: typeof item.sigla === 'string' ? item.sigla : undefined,
       slug: typeof item.slug === 'string' ? item.slug : undefined,
-      description: typeof item.description === 'string' ? item.description : undefined,
-      website: typeof item.website === 'string' ? item.website : undefined,
+      ...readTaxonomyPresentation(item),
       type: 'organization',
     })),
     subjects,
@@ -371,8 +388,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
       id: String(item.id),
       name: readNamedValue(item, ['descrição', 'descricao', 'name']),
       slug: typeof item.slug === 'string' ? item.slug : undefined,
-      description: typeof item.description === 'string' ? item.description : undefined,
-      website: typeof item.website === 'string' ? item.website : undefined,
+      ...readTaxonomyPresentation(item),
       parentId: item.pai || item.parent_id ? String(item.pai || item.parent_id) : undefined,
       type: 'role',
     })),
@@ -380,8 +396,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
       id: String(item.id),
       name: readNamedValue(item, ['nome', 'name']),
       slug: typeof item.slug === 'string' ? item.slug : undefined,
-      description: typeof item.description === 'string' ? item.description : undefined,
-      website: typeof item.website === 'string' ? item.website : undefined,
+      ...readTaxonomyPresentation(item),
       parentId: item.pai || item.parent_id ? String(item.pai || item.parent_id) : undefined,
       type: 'career',
     })),

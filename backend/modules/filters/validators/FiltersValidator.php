@@ -31,6 +31,19 @@ class FiltersValidator
         if ($type === '' || $name === '') {
             throw new InvalidArgumentException('Tipo e nome sao obrigatorios');
         }
+
+        foreach (['aliases', 'keywords'] as $field) {
+            if (isset($data[$field]) && !is_array($data[$field]) && !is_string($data[$field])) {
+                throw new InvalidArgumentException("{$field} deve ser uma lista ou texto separado por virgulas.");
+            }
+        }
+
+        foreach (['website', 'assetUrl', 'asset_url'] as $field) {
+            $url = trim((string) ($data[$field] ?? ''));
+            if ($url !== '' && filter_var($url, FILTER_VALIDATE_URL) === false) {
+                throw new InvalidArgumentException("{$field} deve conter uma URL valida.");
+            }
+        }
     }
 
     /**

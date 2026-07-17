@@ -176,6 +176,22 @@ class QuestionsValidator
         ];
     }
 
+    /** Lista publica v2 com cursor opaco e limite deliberadamente pequeno. */
+    public function validateListQueryV2(array $query): array
+    {
+        $limit = max(1, min(50, (int) ($query['limit'] ?? 20)));
+        $legacy = $this->validateListQuery(array_merge($query, [
+            'page' => 1,
+            'limit' => $limit,
+        ]));
+
+        return [
+            'limit' => $limit,
+            'cursor' => trim((string) ($query['cursor'] ?? '')) ?: null,
+            'filters' => $legacy['filters'],
+        ];
+    }
+
     /**
      * Normaliza filtros multivalorados vindos da pratica.
      * @since 1.0.0

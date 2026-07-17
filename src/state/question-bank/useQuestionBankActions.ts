@@ -33,6 +33,8 @@ export const useQuestionBankActions = () => {
 
   const questions = useQuestionBankStore((store) => store.questions);
   const totalQuestions = useQuestionBankStore((store) => store.totalQuestions);
+  const hasMoreQuestions = useQuestionBankStore((store) => store.hasMoreQuestions);
+  const nextQuestionCursor = useQuestionBankStore((store) => store.nextQuestionCursor);
   const isQuestionsLoaded = useQuestionBankStore((store) => store.isQuestionsLoaded);
   const loadedQuestionBankOwnerKey = useQuestionBankStore((store) => store.loadedOwnerKey);
   const replaceQuestionBank = useQuestionBankStore((store) => store.replaceQuestionBank);
@@ -80,6 +82,8 @@ export const useQuestionBankActions = () => {
       replaceQuestionBank(currentDataOwnerKey, {
         questions: sanitized,
         totalQuestions: result.total || sanitized.length,
+        hasMoreQuestions: result.pageInfo?.hasMore,
+        nextQuestionCursor: result.pageInfo?.nextCursor,
       });
     } catch (error) {
       clientLog.warn('Failed to load initial questions:', error);
@@ -96,15 +100,15 @@ export const useQuestionBankActions = () => {
     replaceQuestionBank,
   ]);
 
-  const fetchMoreQuestions = useCallback(async (page: number, paramsOverride: QuestionBankPageParams = {}) => {
-    if (authIsLoading) {
+  const fetchMoreQuestions = useCallback(async (_page: number, paramsOverride: QuestionBankPageParams = {}) => {
+    if (authIsLoading || !hasMoreQuestions || !nextQuestionCursor) {
       return;
     }
 
     const params: QuestionBankPageParams = {
       ...(currentUserId ? { user_id: currentUserId } : {}),
-      page,
-      limit: 100,
+      cursor: nextQuestionCursor,
+      limit: 50,
       ...paramsOverride,
     };
 
@@ -121,15 +125,31 @@ export const useQuestionBankActions = () => {
 
       const questionRows = Array.isArray(result.rows) ? result.rows : [];
       const sanitized = questionRows.map((question) => ({ ...question, comments: null as Question['comments'] }));
-      appendQuestions(currentDataOwnerKey, sanitized, result.total || 0);
+      appendQuestions(
+        currentDataOwnerKey,
+        sanitized,
+        undefined,
+        result.pageInfo?.hasMore,
+        result.pageInfo?.nextCursor,
+      );
     } catch (error) {
       clientLog.warn('Failed to fetch more questions:', error);
     }
-  }, [appendQuestions, authIsLoading, currentAccountId, currentDataOwnerKey, currentUserId, queryClient]);
+  }, [
+    appendQuestions,
+    authIsLoading,
+    currentAccountId,
+    currentDataOwnerKey,
+    currentUserId,
+    hasMoreQuestions,
+    nextQuestionCursor,
+    queryClient,
+  ]);
 
   return {
     questions,
     totalQuestions,
+    hasMoreQuestions,
     isQuestionsLoaded,
     ensureQuestionsLoaded,
     fetchMoreQuestions,

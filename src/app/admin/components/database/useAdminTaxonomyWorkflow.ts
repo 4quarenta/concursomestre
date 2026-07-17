@@ -41,6 +41,10 @@ type TaxonomyItem = {
   type?: string;
   description?: string;
   website?: string;
+  assetUrl?: string;
+  iconKey?: string;
+  aliases?: string[];
+  keywords?: string[];
   parent_id?: number | string | null;
   parentId?: number | string | null;
   metadata?: Record<string, unknown>;
@@ -81,6 +85,9 @@ export const useAdminTaxonomyWorkflow = ({
   const [filterSlug, setFilterSlug] = useState('');
   const [filterDescription, setFilterDescription] = useState('');
   const [filterWebsite, setFilterWebsite] = useState('');
+  const [filterAssetUrl, setFilterAssetUrl] = useState('');
+  const [filterAliases, setFilterAliases] = useState('');
+  const [filterKeywords, setFilterKeywords] = useState('');
   const [filterSearch, setFilterSearch] = useState('');
   const [editingFilterItem, setEditingFilterItem] = useState<EditingFilterItem | null>(null);
   const [pendingDeleteFilter, setPendingDeleteFilter] = useState<PendingDeleteFilterItem | null>(null);
@@ -101,6 +108,9 @@ export const useAdminTaxonomyWorkflow = ({
     setFilterSlug('');
     setFilterDescription('');
     setFilterWebsite('');
+    setFilterAssetUrl('');
+    setFilterAliases('');
+    setFilterKeywords('');
     setEditingFilterItem(null);
     setSelectedParentId(null);
   };
@@ -142,6 +152,9 @@ export const useAdminTaxonomyWorkflow = ({
         taxonomy_level: KNOWLEDGE_TAXONOMY_TYPES.includes(uiTypeToSave) ? uiTypeToSave : undefined,
         description: filterDescription,
         website: filterWebsite,
+        assetUrl: filterAssetUrl,
+        aliases: filterAliases.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean),
+        keywords: filterKeywords.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean),
         parent_id: parentIdToSave,
         metadata: {
           ...(editingFilterItem?.item?.metadata || {}),
@@ -197,6 +210,9 @@ export const useAdminTaxonomyWorkflow = ({
     setFilterSlug(item.slug || slugify(itemName));
     setFilterDescription(item.description || '');
     setFilterWebsite(item.website || '');
+    setFilterAssetUrl(item.assetUrl || '');
+    setFilterAliases((item.aliases || []).join(', '));
+    setFilterKeywords((item.keywords || []).join(', '));
     setEditingFilterItem({ id: item.id, item, originalName: itemName, type: item.type });
     setSelectedParentId(item.parent_id || item.parentId);
     setShowTaxonomyModal(true);
@@ -245,6 +261,12 @@ export const useAdminTaxonomyWorkflow = ({
     setFilterDescription,
     filterWebsite,
     setFilterWebsite,
+    filterAssetUrl,
+    setFilterAssetUrl,
+    filterAliases,
+    setFilterAliases,
+    filterKeywords,
+    setFilterKeywords,
     filterSearch,
     setFilterSearch,
     editingFilterItem,

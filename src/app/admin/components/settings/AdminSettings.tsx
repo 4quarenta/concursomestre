@@ -21,7 +21,7 @@ import { useAuth } from '@providers/AuthProvider';
 import type { AdminSecurityIpsPayload, AdminSettingsTestResult } from '@services/admin/adminService';
 import type { EmailTemplateModel, PlanBenefitKey, PlanUsageLimitKey, SeoSettings, SystemSettings } from '@types';
 import apiClient from '@services/api/client';
-import { readApiErrorMessage } from '@services/api';
+import { getAssetUrl, readApiErrorMessage } from '@services/api';
 import { adminService } from '@services/admin/adminService';
 import { clientLog } from '@services/monitoring/clientLog';
 import { validateAdsTxtContent } from '@services/ads/adsTxt';
@@ -36,6 +36,7 @@ import AdminSettingsTabsBar from './AdminSettingsTabsBar';
 import { LogViewer } from './LogViewer';
 import AdminCacheManagement from './AdminCacheManagement';
 import AdminSeoSettingsSection from './AdminSeoSettingsSection';
+import AdminBrandAssetUpload from './AdminBrandAssetUpload';
 import AdminEmailTemplatesSection from './AdminEmailTemplatesSection';
 import AdminGamificationSettingsSection from './AdminGamificationSettingsSection';
 import AdminNotificationSettingsSection from './AdminNotificationSettingsSection';
@@ -1191,15 +1192,19 @@ const AdminSettings = ({
                   className={inputClassName}
                   placeholder="https://concursomestre.com/branding/logo-light.png"
                 />
+                <AdminBrandAssetUpload
+                  purpose="email-logo"
+                  onUploaded={(url) => setField('emailLogoUrl', url)}
+                />
                 <p className="text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                  Use uma URL publica em HTTPS. Essa imagem substitui o bloco <strong>CM</strong> no cabecalho do modelo padrao dos e-mails.
+                  Envie uma imagem ou informe uma URL publica. Ela substitui o bloco <strong>CM</strong> no cabecalho do modelo padrao dos e-mails.
                 </p>
               </div>
               <div className="flex h-24 items-center justify-center rounded-sm border border-slate-200 bg-slate-950 p-4 dark:border-slate-700">
-                {/^https?:\/\/\S+$/i.test(String(localSettings.emailLogoUrl || '').trim()) ? (
+                {String(localSettings.emailLogoUrl || '').trim() ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={String(localSettings.emailLogoUrl || '').trim()}
+                    src={getAssetUrl(String(localSettings.emailLogoUrl || '').trim())}
                     alt="Logo dos e-mails"
                     className="max-h-14 max-w-[140px] object-contain"
                   />
@@ -1680,7 +1685,6 @@ const AdminSettings = ({
         <AdminSeoSettingsSection
           seoSettings={localSeoSettings}
           onChange={setLocalSeoSettings}
-          onValidationError={(message) => addToast(message, 'error')}
         />
       )}
       {activeTab === 'performance' && <div className={ADMIN_PAGE_PANEL_CLASS}><AdminCacheManagement /></div>}

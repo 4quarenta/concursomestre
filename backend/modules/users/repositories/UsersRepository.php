@@ -1099,6 +1099,29 @@ class UsersRepository
      * Lista usuarios com assinatura ativa e renovacao automatica para auditoria periodica de cartao.
       * @since 1.0.0
      */
+    public function findCardProtectedStripeSubscription(string $userId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id, user_id, status, auto_renew, cancel_at_period_end,
+                    paid_installments, total_installments, payment_provider,
+                    provider_subscription_id, provider_customer_id
+             FROM user_subscriptions
+             WHERE user_id = :user_id
+               AND payment_provider = 'stripe'
+               AND status IN ('active', 'trialing', 'past_due', 'incomplete')
+               AND superseded_by_subscription_id IS NULL
+               AND (
+                    (auto_renew = 1 AND (cancel_at_period_end IS NULL OR cancel_at_period_end = 0))
+                    OR COALESCE(paid_installments, 0) < GREATEST(1, COALESCE(total_installments, 1))
+               )
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([':user_id' => $userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
     public function listActiveAutoRenewingSubscriptionUserIds(): array
     {
         $stmt = $this->db->query(

@@ -1229,6 +1229,10 @@ export interface TaxonomyItem {
   type?: 'agency' | 'subject' | 'topic' | 'role' | 'year' | 'modality' | 'career' | string;
   description?: string;
   website?: string;
+  assetUrl?: string;
+  iconKey?: string;
+  aliases?: string[];
+  keywords?: string[];
 }
 
 export interface GlobalTaxonomies {

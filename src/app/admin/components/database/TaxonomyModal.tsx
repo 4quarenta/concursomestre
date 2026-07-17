@@ -42,6 +42,9 @@ interface TaxonomyModalProps {
   filterSlug: string;
   filterDescription: string;
   filterWebsite: string;
+  filterAssetUrl: string;
+  filterAliases: string;
+  filterKeywords: string;
   selectedParentId: number | string | null;
   taxonomies?: GlobalTaxonomies;
   onActiveFilterTypeChange: (value: string) => void;
@@ -49,6 +52,9 @@ interface TaxonomyModalProps {
   onFilterSlugChange: (value: string) => void;
   onFilterDescriptionChange: (value: string) => void;
   onFilterWebsiteChange: (value: string) => void;
+  onFilterAssetUrlChange: (value: string) => void;
+  onFilterAliasesChange: (value: string) => void;
+  onFilterKeywordsChange: (value: string) => void;
   onSelectedParentIdChange: (value: number | string | null) => void;
   onClose: () => void;
   onSave: () => void;
@@ -62,6 +68,9 @@ const TaxonomyModal = ({
   filterSlug,
   filterDescription,
   filterWebsite,
+  filterAssetUrl,
+  filterAliases,
+  filterKeywords,
   selectedParentId,
   taxonomies,
   onActiveFilterTypeChange,
@@ -69,6 +78,9 @@ const TaxonomyModal = ({
   onFilterSlugChange,
   onFilterDescriptionChange,
   onFilterWebsiteChange,
+  onFilterAssetUrlChange,
+  onFilterAliasesChange,
+  onFilterKeywordsChange,
   onSelectedParentIdChange,
   onClose,
   onSave,
@@ -239,6 +251,40 @@ const TaxonomyModal = ({
                 </div>
               </>
             )}
+
+            {(currentType === 'banca' || currentType === 'orgao') && (
+              <div className="space-y-2">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Logo ou icone (URL)</label>
+                <input
+                  type="url"
+                  value={filterAssetUrl}
+                  onChange={(event) => onFilterAssetUrlChange(event.target.value)}
+                  placeholder="https://cdn.exemplo.com.br/taxonomias/logo.webp"
+                  className={`${ADMIN_FIELD_CLASS} w-full font-medium`}
+                />
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Aliases de busca</label>
+                <textarea
+                  value={filterAliases}
+                  onChange={(event) => onFilterAliasesChange(event.target.value)}
+                  placeholder="Ex.: PMPB, Policia Militar da Paraiba"
+                  className={`${ADMIN_TEXTAREA_CLASS} h-20 resize-none`}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Palavras-chave</label>
+                <textarea
+                  value={filterKeywords}
+                  onChange={(event) => onFilterKeywordsChange(event.target.value)}
+                  placeholder="Separe por virgula ou linha"
+                  className={`${ADMIN_TEXTAREA_CLASS} h-20 resize-none`}
+                />
+              </div>
+            </div>
 
             {currentType === 'materia' ? (
               <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-300">

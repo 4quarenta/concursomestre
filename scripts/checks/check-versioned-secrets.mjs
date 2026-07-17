@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 
 const ignoredPaths = [
   /^backend\/tests\//,
@@ -18,16 +18,39 @@ const checks = [
   { name: 'Private key block', pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
 ];
 
-const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' })
-  .split('\0')
-  .filter(Boolean)
-  .filter((file) => !ignoredPaths.some((pattern) => pattern.test(file)));
+const root = process.cwd();
+const ignoredDirectories = new Set(['.git', '.next', '.tmp', '.turbo', 'coverage', 'node_modules', 'vendor']);
+
+const listPackageFiles = (directory, files = []) => {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue;
+    const absolutePath = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (!ignoredDirectories.has(entry.name)) listPackageFiles(absolutePath, files);
+      continue;
+    }
+    if (entry.isFile()) files.push(relative(root, absolutePath).replaceAll('\\', '/'));
+  }
+  return files;
+};
+
+const listFiles = () => {
+  try {
+    return execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .split('\0')
+      .filter(Boolean);
+  } catch {
+    return listPackageFiles(root);
+  }
+};
+
+const files = listFiles().filter((file) => !ignoredPaths.some((pattern) => pattern.test(file)));
 
 const findings = [];
 for (const file of files) {
   let content;
   try {
-    content = readFileSync(resolve(file), 'utf8');
+    content = readFileSync(resolve(root, file), 'utf8');
   } catch {
     continue;
   }

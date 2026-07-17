@@ -2,6 +2,50 @@
 
 Data: `2026-05-01`
 
+## Release versionada 1.0.0
+
+O fluxo preferencial usa um pacote-fonte verificavel e diretorios imutaveis em
+`CM_RELEASES_DIR`. O deploy troca os links do frontend e backend somente depois
+do build, preflight e validacao de migrations do candidato.
+
+Preparacao do artefato:
+
+```bash
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run release:manifest -- --revision=selective-r6.1
+npm run release:verify
+```
+
+O ZIP deve excluir `.git`, `.next`, `.tmp`, `node_modules`, ambientes reais,
+logs, dumps, chaves e outros ZIPs. Depois de extrair o pacote em um diretorio
+limpo, execute `npm run check:release-package`.
+
+Validacao do host e plano de deploy, sem alteracoes:
+
+```bash
+scripts/deploy/verify-host.sh --config=/etc/concursomestre/deploy.env --archive=/tmp/concursomestre-1.0.0.zip --sha256=<sha256>
+scripts/deploy/deploy-release.sh --config=/etc/concursomestre/deploy.env --archive=/tmp/concursomestre-1.0.0.zip --sha256=<sha256>
+```
+
+A execucao real exige `--execute=DEPLOY_STAGING` ou
+`--execute=DEPLOY_PRODUCTION`. Migrations nao sao aplicadas por padrao; quando
+aditivas e homologadas, exigem `--apply-migrations=true` e
+`--migration-token=APPLY_ADDITIVE_MIGRATIONS`.
+
+Rollback de codigo:
+
+```bash
+scripts/deploy/rollback-release.sh --config=/etc/concursomestre/deploy.env --release=<release-id>
+scripts/deploy/rollback-release.sh --config=/etc/concursomestre/deploy.env --release=<release-id> --execute=ROLLBACK_STAGING
+```
+
+O rollback nunca restaura banco automaticamente. Migrations publicadas devem
+ser forward-compatible; qualquer reversao de dados exige plano, backup e janela
+operacional separados.
+
 ## Arquitetura alvo
 
 - Frontend: Next.js na raiz `C:/dev/concursomestre`, build com `npm run build`, processo com `npm run start` ou PM2.

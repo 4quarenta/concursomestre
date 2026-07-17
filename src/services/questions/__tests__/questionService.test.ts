@@ -100,9 +100,21 @@ describe('questionService', () => {
       success: true,
       data: {
         items: [
-          { id: 1, statementPreview: 'Questao 1', type: 'single_choice', difficulty: 'Medio', publication: { status: 'published', visibility: 'public' } },
+          {
+            id: 1,
+            statementPreview: 'Questao 1',
+            type: 'single_choice',
+            difficulty: 'Medio',
+            publication: { status: 'published', visibility: 'public' },
+            userState: {
+              answered: true,
+              isSaved: true,
+              selectedOptionId: 81,
+              selectedOptionIndex: 2,
+            },
+          },
         ],
-        pagination: { total: 120 },
+        pageInfo: { limit: 50, hasMore: true, nextCursor: 'cursor-2' },
       },
     });
 
@@ -117,8 +129,14 @@ describe('questionService', () => {
       },
     });
     expect(result.rows).toHaveLength(1);
-    expect(result.total).toBe(120);
+    expect(result.total).toBe(1);
+    expect(result.pageInfo).toEqual({ limit: 50, hasMore: true, nextCursor: 'cursor-2' });
     expect(result.rows[0].resposta).toBe(-1);
+    expect(result.rows[0].isSaved).toBe(true);
+    expect(result.rows[0].userAnswer).toEqual({
+      selectedOptionId: 81,
+      selectedOptionIndex: 2,
+    });
   });
 
   it('submits an answer with the v2 alternative identifier contract', async () => {
@@ -146,6 +164,7 @@ describe('questionService', () => {
     expect(mockPost).toHaveBeenCalledWith('v2/questions/answer.php', {
       questionId: 9,
       selectedAlternativeId: 'C',
+      idempotencyKey: expect.any(String),
       timeTaken: 18,
       simulationId: null,
     });

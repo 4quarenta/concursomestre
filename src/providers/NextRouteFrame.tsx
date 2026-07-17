@@ -17,8 +17,12 @@ import DebugBanner from '@/components/shared/feedback/debug/DebugBanner';
 import { StudyTrackerBridge } from './StudyTrackerProvider';
 import { buildProfilePath } from '../app/profile/profileNavigation';
 import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPageNavigationConfig';
-import { resolvePaymentStatusIssue, resolveUserPaymentIssue } from '@/services/billing/paymentIssue';
-import { paymentStatusService, type PaymentStatus } from '@/services/billing/paymentStatus';
+import { resolvePaymentStatusIssue } from '@/services/billing/paymentIssue';
+import {
+  paymentStatusService,
+  shouldLoadPaymentStatusForPath,
+  type PaymentStatus,
+} from '@/services/billing/paymentStatus';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import type { PlanBenefitKey } from '@types';
 
@@ -275,7 +279,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   const loginRequired = resolveSystemFeatureFlag(systemSettings, 'loginRequired', false);
   const featureGate = featureGateForPath(pathname);
   const planGate = planGateForPath(pathname);
-  const isBillingRoute = pathname.startsWith('/profile') || pathname.startsWith('/checkout');
+  const isBillingRoute = shouldLoadPaymentStatusForPath(pathname);
   const isPastDueSubscription = paymentStatus?.subscriptionStatus === 'past_due';
   const allowAuthLoadingPassThrough = (
     pathname.startsWith('/auth')
@@ -283,8 +287,8 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     || pathname.startsWith('/confirm-email')
   );
   const paymentIssue = React.useMemo(
-    () => resolvePaymentStatusIssue(paymentStatus) || resolveUserPaymentIssue(currentUser),
-    [currentUser, paymentStatus],
+    () => (isBillingRoute ? resolvePaymentStatusIssue(paymentStatus) : null),
+    [isBillingRoute, paymentStatus],
   );
   const hasPaymentIssue = Boolean(paymentIssue || isPastDueSubscription);
   const isBlockingPaymentIssue = Boolean(isPastDueSubscription || paymentIssue?.interactionLock);

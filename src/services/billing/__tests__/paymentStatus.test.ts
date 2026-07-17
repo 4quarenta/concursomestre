@@ -21,7 +21,11 @@ vi.mock('@services/api/requestCoalescer', () => ({
   withRequestCoalescing: mocks.coalesce,
 }));
 
-import { paymentStatusService, shouldShowPaymentWarning } from '../paymentStatus';
+import {
+  paymentStatusService,
+  shouldLoadPaymentStatusForPath,
+  shouldShowPaymentWarning,
+} from '../paymentStatus';
 
 describe('paymentStatusService', () => {
   beforeEach(() => {
@@ -62,5 +66,16 @@ describe('paymentStatusService', () => {
   it('invalidates the financial status after card mutations', () => {
     paymentStatusService.invalidate();
     expect(mocks.clear).toHaveBeenCalledWith('billing:payment-status');
+  });
+
+  it('loads authoritative billing status only on financial routes', () => {
+    expect(shouldLoadPaymentStatusForPath('/profile/billing')).toBe(true);
+    expect(shouldLoadPaymentStatusForPath('/profile/personal')).toBe(true);
+    expect(shouldLoadPaymentStatusForPath('/profile/billing-history')).toBe(true);
+    expect(shouldLoadPaymentStatusForPath('/checkout')).toBe(true);
+    expect(shouldLoadPaymentStatusForPath('/checkout/card')).toBe(true);
+    expect(shouldLoadPaymentStatusForPath('/dashboard')).toBe(false);
+    expect(shouldLoadPaymentStatusForPath('/practice')).toBe(false);
+    expect(shouldLoadPaymentStatusForPath('/profile/privacy')).toBe(false);
   });
 });

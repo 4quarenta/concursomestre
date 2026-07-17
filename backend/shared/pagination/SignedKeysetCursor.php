@@ -12,10 +12,21 @@ final class SignedKeysetCursor
 {
     public static function encode(string $scope, string $createdAt, string $id): string
     {
-        $payload = json_encode([
-            'scope' => $scope,
+        return self::encodePayload([
             'createdAt' => $createdAt,
             'id' => $id,
+        ], $scope);
+    }
+
+    /**
+     * Assina um payload de cursor especifico do dominio sem criar um segundo
+     * formato de assinatura. O escopo impede reutilizacao entre endpoints.
+     */
+    public static function encodePayload(array $data, string $scope): string
+    {
+        $payload = json_encode([
+            'scope' => $scope,
+            'data' => $data,
         ], JSON_UNESCAPED_SLASHES);
 
         if (!is_string($payload)) {
@@ -32,6 +43,23 @@ final class SignedKeysetCursor
      * @return array{createdAt: string, id: string}|null
      */
     public static function decode(?string $cursor, string $scope): ?array
+    {
+        $payload = self::decodePayload($cursor, $scope);
+        if ($payload === null) {
+            return null;
+        }
+        if (trim((string) ($payload['createdAt'] ?? '')) === ''
+            || trim((string) ($payload['id'] ?? '')) === '') {
+            throw new InvalidArgumentException('Cursor de paginacao invalido.');
+        }
+
+        return [
+            'createdAt' => (string) $payload['createdAt'],
+            'id' => (string) $payload['id'],
+        ];
+    }
+
+    public static function decodePayload(?string $cursor, string $scope): ?array
     {
         $value = trim((string) $cursor);
         if ($value === '') {
@@ -52,15 +80,11 @@ final class SignedKeysetCursor
         $payload = is_string($decoded) ? json_decode($decoded, true) : null;
         if (!is_array($payload)
             || !hash_equals($scope, (string) ($payload['scope'] ?? ''))
-            || trim((string) ($payload['createdAt'] ?? '')) === ''
-            || trim((string) ($payload['id'] ?? '')) === '') {
+            || !is_array($payload['data'] ?? null)) {
             throw new InvalidArgumentException('Cursor de paginacao invalido.');
         }
 
-        return [
-            'createdAt' => (string) $payload['createdAt'],
-            'id' => (string) $payload['id'],
-        ];
+        return $payload['data'];
     }
 
     private static function secret(): string

@@ -20,6 +20,13 @@ export type PaymentStatus = {
 const PAYMENT_STATUS_CACHE_KEY = buildRequestCacheKey('billing:payment-status', { scope: 'self' });
 const PAYMENT_STATUS_STALE_TIME_MS = 60_000;
 
+export const shouldLoadPaymentStatusForPath = (pathname: string): boolean => (
+  pathname === '/profile/billing'
+  || pathname === '/profile/personal'
+  || pathname === '/profile/billing-history'
+  || pathname.startsWith('/checkout')
+);
+
 export const shouldShowPaymentWarning = (status: PaymentStatus | null | undefined): boolean => Boolean(
   status
   && status.subscriptionStatus === 'active'

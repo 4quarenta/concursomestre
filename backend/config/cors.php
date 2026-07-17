@@ -16,7 +16,9 @@ error_reporting(E_ALL);
 
 require_once __DIR__ . '/env.php';
 require_once __DIR__ . '/security_headers.php';
+require_once __DIR__ . '/../shared/observability/RequestContext.php';
 
+RequestContext::bootstrap();
 applyApiSecurityHeaders();
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? null;

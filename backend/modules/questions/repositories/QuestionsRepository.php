@@ -31,10 +31,28 @@ class QuestionsRepository
      * Persiste uma resposta individual do usurio.
       * @since 1.0.0
      */
-    public function insertUserAnswer(array $answer): void
+    public function insertUserAnswer(array $answer): int
     {
-        $stmt = $this->db->prepare(
-            "INSERT INTO user_answers (
+        $canonicalOptionReady = $this->questionScaleColumnsReady();
+        $stmt = $this->db->prepare($canonicalOptionReady
+            ? "INSERT INTO user_answers (
+                user_id,
+                question_id,
+                simulation_id,
+                selected_option_index,
+                selected_option_id,
+                is_correct,
+                time_taken_seconds
+            ) VALUES (
+                :user_id,
+                :question_id,
+                :simulation_id,
+                :selected_option_index,
+                :selected_option_id,
+                :is_correct,
+                :time_taken_seconds
+            )"
+            : "INSERT INTO user_answers (
                 user_id,
                 question_id,
                 simulation_id,
@@ -55,9 +73,17 @@ class QuestionsRepository
         $stmt->bindValue(':question_id', $answer['question_id']);
         $stmt->bindValue(':simulation_id', $answer['simulation_id']);
         $stmt->bindValue(':selected_option_index', $answer['selected_option_index']);
+        if ($canonicalOptionReady) {
+            $stmt->bindValue(
+                ':selected_option_id',
+                $answer['selected_option_id'] ?? null,
+                isset($answer['selected_option_id']) ? PDO::PARAM_INT : PDO::PARAM_NULL
+            );
+        }
         $stmt->bindValue(':is_correct', $answer['is_correct'], PDO::PARAM_INT);
         $stmt->bindValue(':time_taken_seconds', $answer['time_taken_seconds']);
         $stmt->execute();
+        return (int) $this->db->lastInsertId();
     }
 
     /**
@@ -274,6 +300,233 @@ class QuestionsRepository
         $stmt->bindValue(':type', $notification['type']);
         $stmt->bindValue(':link', $notification['link']);
         $stmt->execute();
+    }
+
+    public function createSavepoint(string $name): void
+    {
+        $this->db->exec('SAVEPOINT ' . $this->normalizeSavepointName($name));
+    }
+
+    public function releaseSavepoint(string $name): void
+    {
+        $this->db->exec('RELEASE SAVEPOINT ' . $this->normalizeSavepointName($name));
+    }
+
+    public function rollbackToSavepoint(string $name): void
+    {
+        $this->db->exec('ROLLBACK TO SAVEPOINT ' . $this->normalizeSavepointName($name));
+    }
+
+    private function normalizeSavepointName(string $name): string
+    {
+        $normalized = preg_replace('/[^a-z0-9_]+/i', '_', $name) ?? '';
+        if ($normalized === '') {
+            throw new InvalidArgumentException('Savepoint invalido.');
+        }
+        return $normalized;
+    }
+
+    /** Abre uma trilha operacional sem copiar o conteudo editorial do lote. */
+    public function beginExamQuestionImportTrace(string $createdBy, array $summary): int
+    {
+        $stmt = $this->db->prepare(
+            "INSERT INTO prova_extracoes (
+                prova_id, arquivo_id, origem, status, parser_profile,
+                extracted_json, error_message, created_by, created_at, updated_at
+             ) VALUES (
+                :prova_id, NULL, 'prova', 'processing', 'questions_bulk_import_v2',
+                :summary_json, NULL, :created_by, NOW(), NOW()
+             )"
+        );
+        $stmt->execute([
+            ':prova_id' => !empty($summary['examId']) ? (int) $summary['examId'] : null,
+            ':summary_json' => $this->encodeImportTraceJson([
+                'startedAt' => gmdate(DATE_ATOM),
+                'requestedQuestionCount' => max(0, (int) ($summary['requestedQuestionCount'] ?? 0)),
+                'requestedContextCount' => max(0, (int) ($summary['requestedContextCount'] ?? 0)),
+                'sourceExamKey' => $this->sanitizeImportTraceIdentifier($summary['sourceExamKey'] ?? null, 120),
+            ]),
+            ':created_by' => $createdBy !== '' ? $createdBy : null,
+        ]);
+        return (int) $this->db->lastInsertId();
+    }
+
+    public function attachExamQuestionImportTraceToExam(int $traceId, int $examId): void
+    {
+        if ($traceId <= 0 || $examId <= 0) {
+            return;
+        }
+        $stmt = $this->db->prepare(
+            'UPDATE prova_extracoes SET prova_id = :prova_id, updated_at = NOW() WHERE id = :id'
+        );
+        $stmt->execute([':prova_id' => $examId, ':id' => $traceId]);
+    }
+
+    /** Registra somente identificadores e diagnosticos tecnicos sanitizados. */
+    public function recordExamQuestionImportTraceItem(int $traceId, array $item): void
+    {
+        if ($traceId <= 0) {
+            return;
+        }
+
+        $status = strtolower(trim((string) ($item['status'] ?? 'failed')));
+        if (!in_array($status, ['created', 'duplicate', 'failed'], true)) {
+            $status = 'failed';
+        }
+
+        $questionNumber = $this->sanitizeImportTraceIdentifier($item['questionNumber'] ?? null, 40);
+        $externalKey = $this->sanitizeImportTraceIdentifier($item['externalKey'] ?? null, 120);
+        $reason = $this->sanitizeImportTraceIdentifier($item['reason'] ?? null, 80);
+        $diagnosticCode = $this->sanitizeImportTraceIdentifier($item['diagnosticCode'] ?? null, 80);
+        $diagnosticMessage = $this->sanitizeImportTraceText($item['diagnosticMessage'] ?? null, 300);
+
+        $stmt = $this->db->prepare(
+            "INSERT INTO prova_extracao_itens (
+                extracao_id, prova_id, question_id, external_key, item_type,
+                item_number, status, payload_json, diagnostics_json, created_at, updated_at
+             ) VALUES (
+                :extracao_id, :prova_id, :question_id, :external_key, 'question',
+                :item_number, :status, :payload_json, :diagnostics_json, NOW(), NOW()
+             )"
+        );
+        $stmt->execute([
+            ':extracao_id' => $traceId,
+            ':prova_id' => !empty($item['examId']) ? (int) $item['examId'] : null,
+            ':question_id' => !empty($item['questionId']) ? (int) $item['questionId'] : null,
+            ':external_key' => $externalKey,
+            ':item_number' => $questionNumber !== null && ctype_digit($questionNumber) ? (int) $questionNumber : null,
+            ':status' => $status,
+            ':payload_json' => $this->encodeImportTraceJson(array_filter([
+                'questionNumber' => $questionNumber,
+                'reason' => $reason,
+            ], static fn ($value): bool => $value !== null && $value !== '')),
+            ':diagnostics_json' => $this->encodeImportTraceJson(array_filter([
+                'code' => $diagnosticCode,
+                'message' => $diagnosticMessage,
+            ], static fn ($value): bool => $value !== null && $value !== '')),
+        ]);
+    }
+
+    public function finishExamQuestionImportTrace(int $traceId, string $status, array $summary): void
+    {
+        if ($traceId <= 0) {
+            return;
+        }
+        $status = strtolower(trim($status));
+        if (!in_array($status, ['done', 'review', 'failed'], true)) {
+            $status = 'failed';
+        }
+        $stmt = $this->db->prepare(
+            "UPDATE prova_extracoes
+             SET status = :status, review_json = :summary_json,
+                 error_message = :error_message, updated_at = NOW()
+             WHERE id = :id"
+        );
+        $stmt->execute([
+            ':status' => $status,
+            ':summary_json' => $this->encodeImportTraceJson([
+                'finishedAt' => gmdate(DATE_ATOM),
+                'createdCount' => max(0, (int) ($summary['createdCount'] ?? 0)),
+                'duplicateCount' => max(0, (int) ($summary['duplicateCount'] ?? 0)),
+                'failedCount' => max(0, (int) ($summary['failedCount'] ?? 0)),
+                'processedCount' => max(0, (int) ($summary['processedCount'] ?? 0)),
+            ]),
+            ':error_message' => $this->sanitizeImportTraceText($summary['errorMessage'] ?? null, 300),
+            ':id' => $traceId,
+        ]);
+    }
+
+    private function encodeImportTraceJson(array $value): string
+    {
+        $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($encoded)) {
+            throw new RuntimeException('Nao foi possivel serializar a trilha da importacao.');
+        }
+        return $encoded;
+    }
+
+    private function sanitizeImportTraceIdentifier(mixed $value, int $maxLength): ?string
+    {
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return null;
+        }
+        $normalized = preg_replace('/[^A-Za-z0-9._:\/-]+/', '-', $normalized) ?? '';
+        $normalized = trim($normalized, '-');
+        return $normalized !== '' ? substr($normalized, 0, $maxLength) : null;
+    }
+
+    private function sanitizeImportTraceText(mixed $value, int $maxLength): ?string
+    {
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return null;
+        }
+        $normalized = preg_replace('/[\r\n\t]+/', ' ', $normalized) ?? '';
+        $normalized = preg_replace('/\s{2,}/', ' ', $normalized) ?? '';
+        $normalized = preg_replace('/\b[A-Z]:[\\\/][^ ]+|\/(?:var|home|root|workspace|tmp)\/[^ ]+/i', '[path]', $normalized) ?? '';
+        $normalized = preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', '[email]', $normalized) ?? '';
+        $normalized = preg_replace('/https?:\/\/\S+/i', '[url]', $normalized) ?? '';
+        return substr($normalized, 0, $maxLength);
+    }
+
+    public function reserveAnswerIdempotency(array $data): array
+    {
+        $insert = $this->db->prepare(
+            "INSERT IGNORE INTO question_answer_idempotency
+                (user_id, idempotency_key, request_hash, question_id, selected_option_id, status, created_at, expires_at)
+             VALUES
+                (:user_id, :idempotency_key, :request_hash, :question_id, :selected_option_id, 'processing', NOW(), DATE_ADD(NOW(), INTERVAL 24 HOUR))"
+        );
+        $insert->execute([
+            ':user_id' => $data['user_id'],
+            ':idempotency_key' => $data['idempotency_key'],
+            ':request_hash' => $data['request_hash'],
+            ':question_id' => $data['question_id'],
+            ':selected_option_id' => $data['selected_option_id'],
+        ]);
+
+        $select = $this->db->prepare(
+            'SELECT id, request_hash, response_json, status
+             FROM question_answer_idempotency
+             WHERE user_id = :user_id AND idempotency_key = :idempotency_key
+             LIMIT 1 FOR UPDATE'
+        );
+        $select->execute([
+            ':user_id' => $data['user_id'],
+            ':idempotency_key' => $data['idempotency_key'],
+        ]);
+        $row = $select->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            throw new RuntimeException('Nao foi possivel reservar a submissao da resposta.');
+        }
+        if (!hash_equals((string) $row['request_hash'], (string) $data['request_hash'])) {
+            throw new DomainException('A chave de idempotencia ja foi usada com outro payload.');
+        }
+        return $row;
+    }
+
+    public function completeAnswerIdempotency(
+        int $idempotencyId,
+        int $userAnswerId,
+        array $response
+    ): void {
+        $json = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json)) {
+            throw new RuntimeException('Nao foi possivel serializar a resposta idempotente.');
+        }
+        $stmt = $this->db->prepare(
+            "UPDATE question_answer_idempotency
+             SET user_answer_id = :user_answer_id,
+                 response_json = :response_json,
+                 status = 'completed'
+             WHERE id = :id"
+        );
+        $stmt->execute([
+            ':user_answer_id' => $userAnswerId,
+            ':response_json' => $json,
+            ':id' => $idempotencyId,
+        ]);
     }
 
     /**
@@ -597,6 +850,69 @@ class QuestionsRepository
     }
 
     /**
+     * Lista publica leve por keyset. O limite deve ser recebido como
+     * tamanho_da_pagina + 1 para detectar continuidade sem COUNT(*).
+     */
+    public function listQuestionListRowsByCursor(
+        int $limit,
+        ?array $cursor,
+        array $filters = [],
+        ?string $userId = null
+    ): array {
+        $scaleReady = $this->questionScaleColumnsReady();
+        [$whereClause, $params] = $this->buildPublicQuestionWhereClause($filters, $userId);
+        $sortExpression = $scaleReady ? 'q.published_sort_at' : 'COALESCE(q.published_at, q.created_at)';
+        $hasImageExpression = $scaleReady
+            ? 'q.has_image'
+            : 'EXISTS (SELECT 1 FROM question_assets qa WHERE qa.question_id = q.id LIMIT 1)';
+
+        if ($cursor !== null) {
+            $publishedAt = trim((string) ($cursor['publishedAt'] ?? ''));
+            $questionId = (int) ($cursor['id'] ?? 0);
+            if ($publishedAt === '' || $questionId < 1) {
+                throw new InvalidArgumentException('Cursor de questoes invalido.');
+            }
+            $whereClause .= " AND (
+                {$sortExpression} < :cursor_published_at
+                OR ({$sortExpression} = :cursor_published_at_equal AND q.id < :cursor_id)
+            )";
+            $params[':cursor_published_at'] = $publishedAt;
+            $params[':cursor_published_at_equal'] = $publishedAt;
+            $params[':cursor_id'] = $questionId;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT q.id,
+                    q.enunciado_clean,
+                    q.tipo,
+                    q.dificuldade,
+                    q.prova_id,
+                    q.publish_status,
+                    q.visibility_status,
+                    q.published_at,
+                    {$sortExpression} AS published_sort_at,
+                    {$hasImageExpression} AS has_image,
+                    q.updated_at,
+                    q.created_at,
+                    p.id AS exam_id,
+                    p.nome AS exam_name,
+                    p.ano AS exam_year
+             FROM questions q
+             LEFT JOIN provas p ON p.id = q.prova_id
+             WHERE {$whereClause}
+             ORDER BY {$sortExpression} DESC, q.id DESC
+             LIMIT :limit"
+        );
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->bindValue(':limit', max(1, min(51, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
      * Carrega somente os campos base necessarios aos DTOs v2 de detalhe.
      *
      * @since 1.0.0
@@ -645,13 +961,47 @@ class QuestionsRepository
      */
     private function buildPublicQuestionWhereClause(array $filters = [], ?string $userId = null): array
     {
-        $clauses = [
-            "(q.publish_status = 'published' OR (q.publish_status = 'scheduled' AND q.scheduled_at IS NOT NULL AND q.scheduled_at <= NOW()))",
-        ];
+        $scaleReady = $this->questionScaleColumnsReady();
+        $searchReady = $scaleReady && $this->questionSearchDocumentsReady();
+        $clauses = $scaleReady
+            ? [
+                "q.publish_status IN ('published', 'scheduled')",
+                "q.visibility_status = 'public'",
+                'q.published_sort_at IS NOT NULL',
+                'q.published_sort_at <= NOW()',
+            ]
+            : [
+                "(q.publish_status = 'published' OR (q.publish_status = 'scheduled' AND q.scheduled_at IS NOT NULL AND q.scheduled_at <= NOW()))",
+                "q.visibility_status = 'public'",
+            ];
         $params = [];
 
         $keyword = trim((string) ($filters['keyword'] ?? ''));
-        if ($keyword !== '') {
+        if ($keyword !== '' && $searchReady) {
+            $searchTerms = preg_split('/\s+/u', $keyword, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $normalizedTerms = array_values(array_filter(array_map(
+                static fn (string $term): string => (string) preg_replace('/[^\pL\pN_-]+/u', '', $term),
+                array_slice($searchTerms, 0, 8)
+            ), static fn (string $term): bool => $term !== ''));
+            $booleanQuery = implode(' ', array_map(
+                static fn (string $term): string => '+' . $term . '*',
+                $normalizedTerms
+            ));
+            if ($booleanQuery !== '') {
+                $searchClause = "EXISTS (
+                    SELECT 1
+                    FROM question_search_documents qsd
+                    WHERE qsd.question_id = q.id
+                      AND MATCH(qsd.statement_text) AGAINST (:keyword_search IN BOOLEAN MODE)
+                )";
+                if (ctype_digit($keyword)) {
+                    $searchClause = '(q.id = :keyword_question_id OR ' . $searchClause . ')';
+                    $params[':keyword_question_id'] = (int) $keyword;
+                }
+                $clauses[] = $searchClause;
+                $params[':keyword_search'] = $booleanQuery;
+            }
+        } elseif ($keyword !== '') {
             $clauses[] = '(q.enunciado_clean LIKE :keyword OR q.enunciado LIKE :keyword OR q.id LIKE :keyword)';
             $params[':keyword'] = '%' . $keyword . '%';
         }
@@ -689,10 +1039,14 @@ class QuestionsRepository
         $this->appendInClause($clauses, $params, 'q.tipo', 'modality', array_values(array_unique($modalities)));
 
         if (!empty($filters['hasTeacherComment'])) {
-            $clauses[] = "(JSON_UNQUOTE(JSON_EXTRACT(q.data_json, '$.teacherComment')) IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(q.data_json, '$.teacherComment')) <> '')";
+            $clauses[] = $scaleReady
+                ? 'q.has_teacher_comment = 1'
+                : "(JSON_UNQUOTE(JSON_EXTRACT(q.data_json, '$.teacherComment')) IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(q.data_json, '$.teacherComment')) <> '')";
         }
         if (!empty($filters['hasDetailedComment'])) {
-            $clauses[] = "(JSON_UNQUOTE(JSON_EXTRACT(q.data_json, '$.detailedComment')) IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(q.data_json, '$.detailedComment')) <> '')";
+            $clauses[] = $scaleReady
+                ? 'q.has_detailed_comment = 1'
+                : "(JSON_UNQUOTE(JSON_EXTRACT(q.data_json, '$.detailedComment')) IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(q.data_json, '$.detailedComment')) <> '')";
         }
         if (!empty($filters['excludeCanceled'])) {
             $clauses[] = '(q.anulada IS NULL OR q.anulada = 0)';
@@ -1225,12 +1579,15 @@ class QuestionsRepository
         }
 
         [$placeholders, $bindings] = $this->buildInClause('answer_question_id', $questionIds);
+        $selectedOptionColumn = $this->questionScaleColumnsReady()
+            ? 'selected_option_id'
+            : 'NULL AS selected_option_id';
         $stmt = $this->db->prepare(
-            "SELECT question_id, is_correct, selected_option_index, created_at
+            "SELECT question_id, is_correct, selected_option_index, {$selectedOptionColumn}, created_at
              FROM user_answers
              WHERE user_id = :user_id
                AND question_id IN ({$placeholders})
-             ORDER BY created_at DESC"
+             ORDER BY created_at DESC, id DESC"
         );
         $stmt->bindValue(':user_id', $userId);
 
@@ -1251,6 +1608,9 @@ class QuestionsRepository
             $mapped[$questionId] = [
                 'isCorrect' => (bool) ($row['is_correct'] ?? false),
                 'selectedOptionIndex' => (int) ($row['selected_option_index'] ?? 0),
+                'selectedOptionId' => is_numeric($row['selected_option_id'] ?? null)
+                    ? (int) $row['selected_option_id']
+                    : null,
             ];
         }
 
@@ -1433,6 +1793,32 @@ class QuestionsRepository
         return $mapped;
     }
 
+    /** @return array<string, true> */
+    public function listSavedQuestionIds(string $userId, array $questionIds): array
+    {
+        if ($questionIds === []) {
+            return [];
+        }
+        [$placeholders, $bindings] = $this->buildInClause('saved_question_id', $questionIds);
+        $stmt = $this->db->prepare(
+            "SELECT question_id
+             FROM user_saved_questions
+             WHERE user_id = :user_id
+               AND question_id IN ({$placeholders})"
+        );
+        $stmt->bindValue(':user_id', $userId);
+        foreach ($bindings as $placeholder => $value) {
+            $stmt->bindValue($placeholder, $value);
+        }
+        $stmt->execute();
+
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $questionId) {
+            $result[(string) $questionId] = true;
+        }
+        return $result;
+    }
+
     /**
      * Localiza uma questao ja importada pela identidade oficial da prova.
      *
@@ -1542,7 +1928,9 @@ class QuestionsRepository
         $this->bindQuestionRecord($stmt, $record);
         $stmt->execute();
 
-        return (string) $this->db->lastInsertId();
+        $questionId = (string) $this->db->lastInsertId();
+        $this->syncQuestionScaleReadModel($questionId, $record);
+        return $questionId;
     }
 
     /**
@@ -1583,6 +1971,7 @@ class QuestionsRepository
         $this->bindQuestionRecord($stmt, $record);
         $stmt->bindValue(':question_id', $questionId);
         $stmt->execute();
+        $this->syncQuestionScaleReadModel($questionId, $record);
     }
 
     /**
@@ -2108,6 +2497,144 @@ class QuestionsRepository
         }
 
         return [implode(', ', $placeholders), $bindings];
+    }
+
+    /**
+     * Mantem o read model de listagem sincronizado no mesmo fluxo de escrita.
+     * data_json continua apenas como snapshot de compatibilidade durante o
+     * backfill do conteudo legado; a listagem nao o consulta.
+     */
+    private function syncQuestionScaleReadModel(string|int $questionId, array $record): void
+    {
+        if (!$this->questionScaleColumnsReady() || !$this->questionSearchDocumentsReady()) {
+            return;
+        }
+        $data = [];
+        if (is_string($record['data_json'] ?? null)) {
+            $decoded = json_decode((string) $record['data_json'], true);
+            $data = is_array($decoded) ? $decoded : [];
+        }
+
+        $statement = (string) ($record['enunciado'] ?? '');
+        $supportText = (string) ($record['intro_text'] ?? '');
+        $referenceText = (string) ($record['reference_text'] ?? '');
+        $assets = $data['assets'] ?? [];
+        $legacyImageUrl = trim((string) ($data['imageUrl'] ?? $data['image_url'] ?? ''));
+        $hasImage = stripos($statement . $supportText, '<img') !== false
+            || $legacyImageUrl !== ''
+            || (is_array($assets) && $assets !== []);
+
+        $teacherComment = trim((string) (
+            $data['editorialComments']['teacherComment']
+            ?? $data['teacherComment']
+            ?? ''
+        ));
+        $detailedComment = trim((string) (
+            $data['editorialComments']['detailedComment']
+            ?? $data['detailedComment']
+            ?? ''
+        ));
+        foreach (is_array($data['editorial'] ?? null) ? $data['editorial'] : [] as $editorial) {
+            if (!is_array($editorial)) {
+                continue;
+            }
+            $type = strtolower(trim((string) ($editorial['type'] ?? '')));
+            if ($type === 'teacher_comment') {
+                $teacherComment = trim((string) ($editorial['body'] ?? $teacherComment));
+            } elseif ($type === 'detailed_analysis') {
+                $detailedComment = trim((string) ($editorial['body'] ?? $detailedComment));
+            }
+        }
+
+        $canonicalAsset = $this->db->prepare(
+            'SELECT 1 FROM question_assets WHERE question_id = :question_id LIMIT 1'
+        );
+        $canonicalAsset->execute([':question_id' => $questionId]);
+        $hasImage = $hasImage || $canonicalAsset->fetchColumn() !== false;
+
+        $canonicalEditorial = $this->db->prepare(
+            "SELECT editorial_type, body
+             FROM question_editorials
+             WHERE question_id = :question_id
+               AND editorial_type IN ('teacher_comment', 'detailed_analysis')"
+        );
+        $canonicalEditorial->execute([':question_id' => $questionId]);
+        foreach ($canonicalEditorial->fetchAll(PDO::FETCH_ASSOC) ?: [] as $editorial) {
+            if (($editorial['editorial_type'] ?? '') === 'teacher_comment') {
+                $teacherComment = trim((string) ($editorial['body'] ?? $teacherComment));
+            } elseif (($editorial['editorial_type'] ?? '') === 'detailed_analysis') {
+                $detailedComment = trim((string) ($editorial['body'] ?? $detailedComment));
+            }
+        }
+
+        $status = strtolower(trim((string) ($record['publish_status'] ?? 'draft')));
+        $publishedSortAt = null;
+        if ($status === 'published') {
+            $publishedSortAt = trim((string) ($record['published_at'] ?? '')) ?: null;
+        } elseif ($status === 'scheduled') {
+            $publishedSortAt = trim((string) ($record['scheduled_at'] ?? '')) ?: null;
+        }
+
+        $update = $this->db->prepare(
+            'UPDATE questions
+             SET published_sort_at = COALESCE(:published_sort_at, CASE WHEN :status = \'published\' THEN created_at ELSE NULL END),
+                 has_image = :has_image,
+                 has_teacher_comment = :has_teacher_comment,
+                 has_detailed_comment = :has_detailed_comment
+             WHERE id = :question_id'
+        );
+        $update->execute([
+            ':published_sort_at' => $publishedSortAt,
+            ':status' => $status,
+            ':has_image' => $hasImage ? 1 : 0,
+            ':has_teacher_comment' => $teacherComment !== '' ? 1 : 0,
+            ':has_detailed_comment' => $detailedComment !== '' ? 1 : 0,
+            ':question_id' => $questionId,
+        ]);
+
+        $searchText = trim(strip_tags(implode("\n", array_filter([
+            (string) ($record['enunciado_clean'] ?? $statement),
+            $supportText,
+            $referenceText,
+        ]))));
+        $search = $this->db->prepare(
+            'INSERT INTO question_search_documents (question_id, statement_text, updated_at)
+             VALUES (:question_id, :statement_text, NOW())
+             ON DUPLICATE KEY UPDATE statement_text = VALUES(statement_text), updated_at = NOW()'
+        );
+        $search->execute([
+            ':question_id' => $questionId,
+            ':statement_text' => $searchText,
+        ]);
+    }
+
+    public function refreshQuestionScaleReadModel(string|int $questionId): void
+    {
+        if (!$this->questionScaleColumnsReady() || !$this->questionSearchDocumentsReady()) {
+            return;
+        }
+        $stmt = $this->db->prepare(
+            'SELECT id, enunciado, enunciado_clean, intro_text, reference_text,
+                    data_json, publish_status, scheduled_at, published_at
+             FROM questions
+             WHERE id = :question_id
+             LIMIT 1'
+        );
+        $stmt->execute([':question_id' => $questionId]);
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($record)) {
+            $this->syncQuestionScaleReadModel($questionId, $record);
+        }
+    }
+
+    public function questionScaleColumnsReady(): bool
+    {
+        return filter_var(getenv('QUESTIONS_SCALE_COLUMNS_READY') ?: 'false', FILTER_VALIDATE_BOOLEAN) === true;
+    }
+
+    public function questionSearchDocumentsReady(): bool
+    {
+        return filter_var(getenv('QUESTIONS_SEARCH_DOCUMENTS_READY') ?: 'false', FILTER_VALIDATE_BOOLEAN) === true;
     }
 
     /**

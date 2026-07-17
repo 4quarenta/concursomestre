@@ -15,10 +15,12 @@ require_once __DIR__ . '/env.php';
 require_once __DIR__ . '/stripe.php';
 require_once __DIR__ . '/../shared/utils/MailConfiguration.php';
 require_once __DIR__ . '/../shared/utils/EmailTemplateResolver.php';
+require_once __DIR__ . '/../shared/runtime/RuntimeStoreFactory.php';
 
 function runProductionPreflight(): array
 {
     $checks = [];
+    RuntimeStoreFactory::reset();
 
     $required = [
         'APP_URL',
@@ -411,6 +413,13 @@ function runProductionPreflight(): array
         $appEnv === 'production'
     );
 
+    $instanceCount = max(1, (int) getEnvString('APP_INSTANCE_COUNT', '1'));
+    $redisRequired = filter_var(
+        getEnvString('REDIS_REQUIRED', 'false'),
+        FILTER_VALIDATE_BOOLEAN
+    );
+    $checks[] = buildRuntimeStorePreflightCheck($redisRequired || $instanceCount > 1, $instanceCount);
+
     $allowMailSettingsDatabase = !in_array(
         strtolower(getEnvString('MAIL_CONFIGURATION_ALLOW_DATABASE', 'true')),
         ['0', 'false', 'no', 'off'],
@@ -432,6 +441,27 @@ function runProductionPreflight(): array
         'checked_at' => gmdate(DATE_ATOM),
         'checks' => $checks,
         'failed' => $failed,
+    ];
+}
+
+function buildRuntimeStorePreflightCheck(bool $required, int $instanceCount): array
+{
+    $store = RuntimeStoreFactory::shared();
+    $shared = $store->isShared();
+
+    return [
+        'key' => 'SHARED_RUNTIME_STORE_READY',
+        'status' => !$required || $shared ? 'pass' : 'fail',
+        'message' => $shared
+            ? 'Redis compartilhado disponivel para cache, rate limit e locks.'
+            : ($required
+                ? 'Redis compartilhado indisponivel para o numero de instancias configurado.'
+                : 'Runtime compartilhado opcional; fallback local permitido para instancia unica.'),
+        'details' => [
+            'required' => $required,
+            'shared' => $shared,
+            'instance_count' => max(1, $instanceCount),
+        ],
     ];
 }
 

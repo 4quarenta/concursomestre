@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../auth/AuthConfig.php';
+require_once __DIR__ . '/../runtime/RuntimeStoreFactory.php';
 
 /*
 * ----------------------------------------------------
@@ -23,6 +24,7 @@ class RateLimiter
     private $cacheDir;
     private int $maxRequests;
     private int $timeWindow;
+    private RuntimeStoreInterface $runtimeStore;
 
     private const PROFILES = [
         'auth_login' => ['max' => 10, 'window' => 300],
@@ -44,13 +46,18 @@ class RateLimiter
      * Os valores podem ser sobrescritos por variaveis de ambiente.
      * @since 1.0.0
      */
-    public function __construct($maxRequests = 100, $timeWindow = 60)
+    public function __construct(
+        $maxRequests = 100,
+        $timeWindow = 60,
+        ?RuntimeStoreInterface $runtimeStore = null
+    )
     {
         $this->cacheDir = getenv('RATE_LIMIT_DIR') ?: dirname(__DIR__, 2) . '/storage/runtime/rate_limits';
         $this->maxRequests = max(1, (int) (getenv('RATE_LIMIT_MAX_REQUESTS') ?: $maxRequests));
         $this->timeWindow = max(1, (int) (getenv('RATE_LIMIT_TIME_WINDOW') ?: $timeWindow));
+        $this->runtimeStore = $runtimeStore ?? RuntimeStoreFactory::shared();
 
-        if (!file_exists($this->cacheDir)) {
+        if (!$this->requiresSharedStore() && !file_exists($this->cacheDir)) {
             mkdir($this->cacheDir, 0755, true);
         }
     }
@@ -87,12 +94,18 @@ class RateLimiter
             $identifier = $this->getClientIP();
         }
 
-        if ($this->shouldUseRedisStore()) {
-            return $this->checkRedis((string) $identifier, $retryAfter);
+        if ($this->runtimeStore->isShared()) {
+            $result = $this->runtimeStore->consumeFixedWindow(
+                'rate-limit:' . hash('sha256', (string) $identifier),
+                $this->maxRequests,
+                $this->timeWindow
+            );
+            $retryAfter = max(1, (int) ($result['retryAfter'] ?? $this->timeWindow));
+            return (bool) ($result['allowed'] ?? false);
         }
 
-        if ($this->isProductionEnvironment()) {
-            throw new RuntimeException('Rate limit store redis indisponivel em producao.');
+        if ($this->requiresSharedStore()) {
+            throw new RuntimeException('Rate limit compartilhado indisponivel; Redis e obrigatorio neste ambiente.');
         }
 
         $file = $this->cacheDir . '/' . hash('sha256', (string) $identifier) . '.json';
@@ -192,83 +205,25 @@ class RateLimiter
      *
      * @since 1.0.0
      */
-    private function shouldUseRedisStore(): bool
+    private function requiresSharedStore(): bool
     {
         $configured = strtolower(trim((string) (getenv('RATE_LIMIT_STORE') ?: '')));
-        if ($configured === '') {
-            $configured = $this->isProductionEnvironment() ? 'redis' : 'file';
+        if ($configured === 'redis') {
+            return true;
         }
 
-        return $configured === 'redis';
+        $redisRequired = filter_var(
+            (string) (getenv('REDIS_REQUIRED') ?: 'false'),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $instanceCount = max(1, (int) (getenv('APP_INSTANCE_COUNT') ?: 1));
+
+        return $redisRequired || $instanceCount > 1 || $this->isProductionEnvironment();
     }
 
     private function isProductionEnvironment(): bool
     {
         return strtolower(trim((string) (getenv('APP_ENV') ?: 'development'))) === 'production';
-    }
-
-    private function checkRedis(string $identifier, ?int &$retryAfter): bool
-    {
-        if (!class_exists('Redis')) {
-            throw new RuntimeException('Extensao Redis indisponivel para rate limit.');
-        }
-
-        $dsn = trim((string) (getenv('RATE_LIMIT_REDIS_DSN') ?: ''));
-        if ($dsn === '') {
-            throw new RuntimeException('RATE_LIMIT_REDIS_DSN nao configurado.');
-        }
-
-        $parts = parse_url($dsn);
-        if (!is_array($parts) || empty($parts['host'])) {
-            throw new RuntimeException('RATE_LIMIT_REDIS_DSN invalido.');
-        }
-
-        $scheme = strtolower((string) ($parts['scheme'] ?? 'redis'));
-        $host = (string) $parts['host'];
-        if ($scheme === 'rediss') {
-            $host = 'tls://' . $host;
-        }
-        $port = isset($parts['port']) ? (int) $parts['port'] : 6379;
-        $database = isset($parts['path']) ? max(0, (int) ltrim((string) $parts['path'], '/')) : 0;
-        $prefix = trim((string) (getenv('RATE_LIMIT_REDIS_PREFIX') ?: 'cm:rate-limit:'));
-        $key = $prefix . hash('sha256', $identifier);
-
-        $redis = new Redis();
-        try {
-            if (!$redis->connect($host, $port, 1.5)) {
-                throw new RuntimeException('Nao foi possivel conectar ao Redis de rate limit.');
-            }
-            if (isset($parts['pass']) && (string) $parts['pass'] !== '' && !$redis->auth((string) $parts['pass'])) {
-                throw new RuntimeException('Autenticacao Redis de rate limit recusada.');
-            }
-            if ($database > 0 && !$redis->select($database)) {
-                throw new RuntimeException('Banco Redis de rate limit invalido.');
-            }
-
-            $result = $redis->eval(
-                "local current = redis.call('INCR', KEYS[1])\n"
-                . "if current == 1 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end\n"
-                . "local ttl = redis.call('TTL', KEYS[1])\n"
-                . "if current > tonumber(ARGV[1]) then return {0, ttl} end\n"
-                . "return {1, ttl}",
-                [$key, (string) $this->maxRequests, (string) $this->timeWindow],
-                1
-            );
-        } catch (Throwable $exception) {
-            throw new RuntimeException('Rate limit Redis indisponivel.', 0, $exception);
-        } finally {
-            try {
-                $redis->close();
-            } catch (Throwable) {
-                // Connection cleanup must not mask the security result.
-            }
-        }
-
-        $allowed = is_array($result) && (int) ($result[0] ?? 0) === 1;
-        $ttl = is_array($result) ? (int) ($result[1] ?? $this->timeWindow) : $this->timeWindow;
-        $retryAfter = max(1, $ttl > 0 ? $ttl : $this->timeWindow);
-
-        return $allowed;
     }
 
     /**

@@ -69,6 +69,7 @@ type AuthAction =
   | { type: 'UPDATE_USER'; payload: Partial<UserProfile> }
   | { type: 'ADD_XP'; payload: number }
   | { type: 'TOGGLE_SAVED'; payload: string }
+  | { type: 'SET_SAVED'; payload: { questionId: string; isSaved: boolean } }
   | { type: 'ADD_SIMULATION'; payload: SimulationSession }
   | { type: 'PURCHASE_MATERIAL'; payload: string }
   | { type: 'REMOVE_MATERIAL'; payload: string }
@@ -131,6 +132,23 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
       };
     }
 
+    case 'SET_SAVED': {
+      const user = state.currentUser!;
+      const { questionId, isSaved } = action.payload;
+      const savedQuestionIds = user.savedQuestionIds.includes(questionId)
+        ? user.savedQuestionIds
+        : [...user.savedQuestionIds, questionId];
+      return {
+        ...state,
+        currentUser: {
+          ...user,
+          savedQuestionIds: isSaved
+            ? savedQuestionIds
+            : savedQuestionIds.filter((id) => id !== questionId),
+        },
+      };
+    }
+
     case 'ADD_SIMULATION':
       return {
         ...state,
@@ -177,7 +195,7 @@ interface AuthContextType extends AuthState {
   logout: () => Promise<void>;
   updateUser: (updates: Partial<UserProfile>) => Promise<void>;
   addXp: (amount: number) => void;
-  toggleSavedQuestion: (id: string) => void;
+  toggleSavedQuestion: (id: string) => Promise<boolean>;
   addSimulation: (sim: SimulationSession, persist?: boolean) => void;
   purchaseMaterial: (id: string) => void;
   removeMaterialAccess: (id: string) => void;
@@ -342,29 +360,50 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * Mantem o app responsivo enquanto sincroniza o favorito no backend.
    * @since 1.0.0
    */
-  const toggleSavedQuestion = React.useCallback((payload: string) => {
-    dispatch({ type: 'TOGGLE_SAVED', payload });
-
-    if (state.currentUser) {
-      questionService.toggleSavedQuestion(state.currentUser.id, payload)
-        .then((result) => {
-          if (!state.currentUser || !result.success || result.newXp === undefined) {
-            return;
-          }
-
-          const nextUser = {
-            ...state.currentUser,
-            xp: result.newXp,
-            level: result.newLevel ?? state.currentUser.level,
-          };
-          dispatch({ type: 'UPDATE_USER', payload: { xp: nextUser.xp, level: nextUser.level } });
-          updateCurrentUserSnapshot(nextUser);
-        })
-        .catch(err => {
-          clientLog.error('Failed to toggle save', err);
-        });
+  const toggleSavedQuestion = React.useCallback(async (questionId: string): Promise<boolean> => {
+    const currentUser = state.currentUser;
+    if (!currentUser) {
+      return false;
     }
-  }, [state.currentUser]);
+
+    const wasSaved = currentUser.savedQuestionIds.includes(questionId);
+    dispatch({ type: 'SET_SAVED', payload: { questionId, isSaved: !wasSaved } });
+
+    try {
+      const result = await questionService.toggleSavedQuestion(currentUser.id, questionId);
+      if (!result.success || result.isSaved === undefined) {
+        dispatch({ type: 'SET_SAVED', payload: { questionId, isSaved: wasSaved } });
+        addToast(result.message || 'Não foi possível atualizar a questão salva.', 'error');
+        return false;
+      }
+
+      dispatch({ type: 'SET_SAVED', payload: { questionId, isSaved: result.isSaved } });
+      const nextSavedIds = result.isSaved
+        ? Array.from(new Set([...currentUser.savedQuestionIds, questionId]))
+        : currentUser.savedQuestionIds.filter((id) => id !== questionId);
+      const nextUser = {
+        ...currentUser,
+        savedQuestionIds: nextSavedIds,
+        xp: result.newXp ?? currentUser.xp,
+        level: result.newLevel ?? currentUser.level,
+      };
+      dispatch({
+        type: 'UPDATE_USER',
+        payload: {
+          savedQuestionIds: nextUser.savedQuestionIds,
+          xp: nextUser.xp,
+          level: nextUser.level,
+        },
+      });
+      updateCurrentUserSnapshot(nextUser);
+      return true;
+    } catch (error) {
+      dispatch({ type: 'SET_SAVED', payload: { questionId, isSaved: wasSaved } });
+      clientLog.error('Failed to toggle save', error);
+      addToast('Não foi possível atualizar a questão salva.', 'error');
+      return false;
+    }
+  }, [addToast, state.currentUser]);
 
   /**
    * Registra um simulado no estado local e o envia para persistencia oficial.

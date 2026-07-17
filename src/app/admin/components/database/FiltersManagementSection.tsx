@@ -122,6 +122,8 @@ const FiltersManagementSection = ({
   const visibleItems = getUnifiedTaxonomyList(systemSettings, activeFilterType).filter((item) => (
     (item.name || '').toLowerCase().includes(filterSearch.toLowerCase())
     || (item.slug || '').toLowerCase().includes(filterSearch.toLowerCase())
+    || (item.aliases || []).some((alias) => alias.toLowerCase().includes(filterSearch.toLowerCase()))
+    || (item.keywords || []).some((keyword) => keyword.toLowerCase().includes(filterSearch.toLowerCase()))
   ));
 
   return (
@@ -188,7 +190,12 @@ const FiltersManagementSection = ({
               {visibleItems.map((item) => (
                 <tr key={`${item.type}-${item.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <td className="p-4">
-                    <div className="font-bold text-slate-900 dark:text-slate-100">{item.name}</div>
+                    <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
+                      {item.assetUrl && (
+                        <img src={item.assetUrl} alt="" className="h-7 w-7 rounded object-contain" loading="lazy" />
+                      )}
+                      <span>{item.name}</span>
+                    </div>
                     {(item.parentId || item.parent_id) && (
                       <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
                         <span className="opacity-50">Subitem de:</span>

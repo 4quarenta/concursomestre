@@ -18,7 +18,6 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import PromoBanner from '../feedback/PromoBanner';
-import GlobalPaymentIssueBanner from '../feedback/GlobalPaymentIssueBanner';
 import { Notification, ErrorReport, SystemSettings } from '@types';
 import Footer from './Footer';
 import AdBanner from '../feedback/AdBanner';
@@ -41,7 +40,6 @@ import {
   hasPlanBenefit,
 } from '@services/plans/planAccess';
 import type { PlanBenefitKey } from '@types';
-import { resolveUserPaymentIssue } from '@services/billing/paymentIssue';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
 import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
@@ -258,12 +256,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     };
   }, [locationHash, pathname, searchParams]);
   const canOpenAdminPanel = canAccessAdminPanel(user);
-  const paymentIssue = React.useMemo(() => resolveUserPaymentIssue(user), [user]);
-  const hasGlobalPaymentIssueBanner = Boolean(paymentIssue);
-  const paymentIssueFixPath = React.useMemo(
-    () => paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`,
-    [paymentIssue?.actionTarget],
-  );
   const simulationSearchParams = React.useMemo(
     () => new URLSearchParams(location.search),
     [location.search],
@@ -1055,14 +1047,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
           <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[84px] sm:p-4 sm:pt-[88px] md:p-6 md:pt-6 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
             <div className={`${isSimulationFullscreenPage ? 'mx-auto w-full max-w-7xl pb-6' : `${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-12`}`}>
-              {hasGlobalPaymentIssueBanner ? (
-                <GlobalPaymentIssueBanner
-                  message={paymentIssue?.message || 'Atualize seu cartão para manter o acesso e as próximas cobranças em dia.'}
-                  blocking={Boolean(paymentIssue?.interactionLock)}
-                  actionLabel={paymentIssue?.actionLabel || 'Cadastrar cartão'}
-                  onAction={() => router.push(paymentIssueFixPath)}
-                />
-              ) : null}
               {!isSimulationFullscreenPage && <AdBanner type="top" className="mb-8" />}
               {children}
               {!isSimulationFullscreenPage && <AdBanner type="bottom" className="mt-8" />}

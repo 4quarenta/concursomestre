@@ -55,10 +55,13 @@ class Database {
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->conn->exec("SET time_zone = '" . getDatabaseTimezoneOffset() . "'");
         } catch(PDOException $exception) {
-            // Log the error
-            error_log("Connection error: " . $exception->getMessage());
-            // Throw exception to be caught by endpoint
-            throw new Exception("Database connection failed: " . $exception->getMessage());
+            try {
+                $reference = bin2hex(random_bytes(8));
+            } catch (Throwable) {
+                $reference = substr(hash('sha256', uniqid('db-', true)), 0, 16);
+            }
+            error_log(sprintf('[database_connection_failed] reference=%s detail=%s', $reference, $exception->getMessage()));
+            throw new RuntimeException('Database connection failed. Reference: ' . $reference);
         }
 
         return $this->conn;

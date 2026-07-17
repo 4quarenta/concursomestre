@@ -25,18 +25,15 @@ import {
   ClipboardList,
   FileText,
   GraduationCap,
-  Instagram,
   Landmark,
   Menu,
   Repeat2,
   Scale,
-  Send,
   ShieldCheck,
   Smartphone,
   Star,
   Target,
   X,
-  Youtube,
   Zap,
 } from 'lucide-react';
 import type { Plan } from '@types';
@@ -56,6 +53,7 @@ import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
+import { landingSocialIconMap } from '../landingContent';
 
 const NAV_ITEMS = [
   { label: 'Recursos', href: '#recursos' },
@@ -962,7 +960,11 @@ export const FinalCTA = () => (
   </section>
 );
 
-export const Footer = () => (
+export const Footer = () => {
+  const socialLinks = useAppConfigStore((state) => state.systemSettings.landingPageContent?.socialLinks ?? [])
+    .filter((link) => link.enabled && /^https?:\/\//i.test(link.url));
+
+  return (
   <footer id="blog" className="mx-auto w-full max-w-7xl px-5 pb-10 pt-6 sm:px-8">
     <div className="grid gap-10 border-t border-slate-100 pt-10 lg:grid-cols-[1.4fr_2fr_0.8fr]">
       <div>
@@ -992,26 +994,28 @@ export const Footer = () => (
       <div>
         <h3 className="text-sm font-black text-[#07103a]">Siga a gente</h3>
         <div className="mt-4 flex gap-3">
-          {[
-            { label: 'Instagram', icon: Instagram, href: 'https://instagram.com' },
-            { label: 'YouTube', icon: Youtube, href: 'https://youtube.com' },
-            { label: 'Telegram', icon: Send, href: 'https://telegram.org' },
-          ].map(({ label, icon: Icon, href }) => (
+          {socialLinks.map(({ id, label, iconKey, url }) => {
+            const Icon = landingSocialIconMap[iconKey];
+            return (
             <Link
-              key={label}
-              href={href}
+              key={id}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-[#07103a] transition hover:border-[#684cff] hover:text-[#684cff]"
               aria-label={label}
             >
               <Icon size={17} />
             </Link>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
     <p className="mt-10 text-center text-xs font-medium text-slate-400">© 2026 ConcursoMestre. Todos os direitos reservados.</p>
   </footer>
-);
+  );
+};
 
 const LandingCommercialPage: React.FC = () => (
   <div className="min-h-screen bg-white text-[#07103a]">

@@ -38,7 +38,10 @@ foreach ([
 $service = (string) file_get_contents($root . '/modules/questions/services/QuestionsService.php');
 assertQuestionsPhase04(str_contains($service, "schemaVersion'] ?? null) !== 'question-import.v2'"), 'Importacao em massa deve exigir question-import.v2.');
 assertQuestionsPhase04(str_contains($service, "\$savepoint = 'question_import_'"), 'Importacao deve isolar falhas por item com savepoint.');
-assertQuestionsPhase04(str_contains($service, 'recordExtractionItem'), 'Importacao deve registrar itens da extracao.');
+assertQuestionsPhase04(
+    str_contains($service, 'recordExamQuestionImportTraceItem'),
+    'Importacao deve registrar itens sanitizados da extracao.'
+);
 
 $statsRepository = (string) file_get_contents($root . '/modules/questions/repositories/QuestionsRepository.php');
 assertQuestionsPhase04(!str_contains($statsRepository, 'MAX(id) AS latest_id'), 'Estatisticas publicas devem usar todas as tentativas, nao apenas a ultima por aluno.');

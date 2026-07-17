@@ -7,15 +7,25 @@ import type { QuestaoComentario, Question, QuestionStats } from '@types';
 interface ReplaceQuestionBankPayload {
   questions: Question[];
   totalQuestions: number;
+  hasMoreQuestions?: boolean;
+  nextQuestionCursor?: string | null;
 }
 
 interface QuestionBankState {
   loadedOwnerKey: string | null;
   questions: Question[];
   totalQuestions: number;
+  hasMoreQuestions: boolean;
+  nextQuestionCursor: string | null;
   isQuestionsLoaded: boolean;
   replaceQuestionBank: (ownerKey: string, payload: ReplaceQuestionBankPayload) => void;
-  appendQuestions: (ownerKey: string, questions: Question[], totalQuestions?: number) => void;
+  appendQuestions: (
+    ownerKey: string,
+    questions: Question[],
+    totalQuestions?: number,
+    hasMoreQuestions?: boolean,
+    nextQuestionCursor?: string | null,
+  ) => void;
   prependQuestion: (question: Question) => void;
   upsertQuestion: (question: Question) => void;
   removeQuestion: (questionId: number | string) => void;
@@ -81,19 +91,30 @@ export const useQuestionBankStore = create<QuestionBankState>((set) => ({
   loadedOwnerKey: null,
   questions: [],
   totalQuestions: 0,
+  hasMoreQuestions: false,
+  nextQuestionCursor: null,
   isQuestionsLoaded: false,
   replaceQuestionBank: (ownerKey, payload) => set({
     loadedOwnerKey: ownerKey,
     questions: payload.questions.map(normalizeQuestionForStore),
     totalQuestions: payload.totalQuestions,
+    hasMoreQuestions: Boolean(payload.hasMoreQuestions),
+    nextQuestionCursor: payload.nextQuestionCursor ?? null,
     isQuestionsLoaded: true,
   }),
-  appendQuestions: (ownerKey, incoming, totalQuestions) => set((state) => ({
-    loadedOwnerKey: ownerKey,
-    questions: mergeUniqueQuestions(state.questions, incoming),
-    totalQuestions: typeof totalQuestions === 'number' ? totalQuestions : state.totalQuestions,
-    isQuestionsLoaded: true,
-  })),
+  appendQuestions: (ownerKey, incoming, totalQuestions, hasMoreQuestions, nextQuestionCursor) => set((state) => {
+    const questions = mergeUniqueQuestions(state.questions, incoming);
+    return {
+      loadedOwnerKey: ownerKey,
+      questions,
+      totalQuestions: typeof totalQuestions === 'number'
+        ? Math.max(totalQuestions, questions.length)
+        : Math.max(state.totalQuestions, questions.length),
+      hasMoreQuestions: typeof hasMoreQuestions === 'boolean' ? hasMoreQuestions : state.hasMoreQuestions,
+      nextQuestionCursor: nextQuestionCursor === undefined ? state.nextQuestionCursor : nextQuestionCursor,
+      isQuestionsLoaded: true,
+    };
+  }),
   prependQuestion: (question) => set((state) => ({
     questions: [normalizeQuestionForStore(question), ...state.questions],
     totalQuestions: state.totalQuestions + 1,
@@ -214,6 +235,8 @@ export const useQuestionBankStore = create<QuestionBankState>((set) => ({
     loadedOwnerKey: null,
     questions: [],
     totalQuestions: 0,
+    hasMoreQuestions: false,
+    nextQuestionCursor: null,
     isQuestionsLoaded: false,
   }),
 }));

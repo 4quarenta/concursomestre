@@ -1,0 +1,24 @@
+gate,status,evidence,risk
+vitest,PASS,"65 files; 425 tests",low
+typescript_normal,PASS,"npm run typecheck",low
+next_build,PASS,"41 routes/pages",low
+eslint,PASS_WITH_DEBT,"0 errors; 76 warnings",medium
+typescript_strict,FAIL,"182 diagnostics",medium
+typescript_no_unchecked,FAIL,"561 diagnostics",medium
+encoding,PASS,"no mojibake",low
+secrets,PASS,"no versioned provider secret",low
+generated_artifacts,PASS,"clean root gate",low
+source_size,PASS_WITH_DEBT,"no new oversized file; known debt ratcheted",medium
+npm_audit,PASS,"0 vulnerabilities",low
+composer_validate,PASS,"VPS isolated",low
+composer_install,PASS,"lock installable",low
+php_lint,PASS,"1301 files",low
+php_tests,PASS,"134 deterministic tests",low
+stripe_operational,NOT_RUN,"no disposable test credential in this run",high
+mysql_migrations,PASS,"idempotent up in isolated schema",low
+mysql_backfills,PASS,"dry-run and apply",low
+redis,PASS,"real Redis isolated DB",low
+question_fixture_100k,PASS_WITH_LIMITATION,"100000 questions; reverse filter filesort",medium
+question_fixture_3m,NOT_RUN,"capacity not claimed",high
+release_package,PASS,"1549 files; 15.49 MiB; release package gate",low
+final_candidate_staging,NOT_RUN,"raw R6.1 staging only",high

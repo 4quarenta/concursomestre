@@ -744,6 +744,7 @@ const Practice: React.FC = () => {
   const {
     questions,
     totalQuestions,
+    hasMoreQuestions,
     ensureQuestionsLoaded,
     fetchMoreQuestions,
   } = useQuestionBankActions();
@@ -1224,14 +1225,14 @@ const Practice: React.FC = () => {
   }, [highlightedQuestionId, resolvedQuestions.length, scopedQuestionIds.length, totalQuestions]);
 
   const loadNextPage = useCallback(async () => {
-    if (isLoadingMore || questions.length >= totalQuestions) return;
+    if (isLoadingMore || !hasMoreQuestions) return;
     
     setIsLoadingMore(true);
     const nextPage = lastFetchedPage + 1;
     await fetchMoreQuestions(nextPage, questionQueryParams);
     setLastFetchedPage(nextPage);
     setIsLoadingMore(false);
-  }, [fetchMoreQuestions, isLoadingMore, lastFetchedPage, questionQueryParams, questions.length, totalQuestions]);
+  }, [fetchMoreQuestions, hasMoreQuestions, isLoadingMore, lastFetchedPage, questionQueryParams]);
 
   const paginatedList = useMemo(() => resolvedQuestions.slice(0, visibleCount), [resolvedQuestions, visibleCount]);
 
@@ -1241,7 +1242,7 @@ const Practice: React.FC = () => {
         if (viewMode === 'list') {
             if (visibleCount < resolvedQuestions.length) {
               setVisibleCount(prev => prev + PAGE_SIZE);
-            } else if (questions.length < totalQuestions) {
+            } else if (hasMoreQuestions) {
               // Trigger backend fetch for more
               loadNextPage();
             }
@@ -1250,11 +1251,11 @@ const Practice: React.FC = () => {
     }, { threshold: 0.1 });
     if (loaderRef.current) observer.observe(loaderRef.current);
     return () => observer.disconnect();
-  }, [loadNextPage, questions.length, resolvedQuestions.length, totalQuestions, viewMode, visibleCount]);
+  }, [hasMoreQuestions, loadNextPage, resolvedQuestions.length, viewMode, visibleCount]);
 
   // Load more when reaching end of cards in focus mode
   useEffect(() => {
-    if (viewMode !== 'card' || currentQuestionIndex < resolvedQuestions.length - 1 || questions.length >= totalQuestions) {
+    if (viewMode !== 'card' || currentQuestionIndex < resolvedQuestions.length - 1 || !hasMoreQuestions) {
       return;
     }
 
@@ -1263,7 +1264,7 @@ const Practice: React.FC = () => {
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [currentQuestionIndex, loadNextPage, questions.length, resolvedQuestions.length, totalQuestions, viewMode]);
+  }, [currentQuestionIndex, hasMoreQuestions, loadNextPage, resolvedQuestions.length, viewMode]);
 
   useEffect(() => {
     if (currentQuestionIndex < resolvedQuestions.length) {
@@ -2347,7 +2348,7 @@ const Practice: React.FC = () => {
               />
             ))}
             <div ref={loaderRef} className="h-10 flex items-center justify-center">
-              {(visibleCount < resolvedQuestions.length || questions.length < totalQuestions) && <Loader2 className="animate-spin text-indigo-400" size={24} />}
+              {(visibleCount < resolvedQuestions.length || hasMoreQuestions) && <Loader2 className="animate-spin text-indigo-400" size={24} />}
             </div>
           </div>
         )}

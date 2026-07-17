@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -12,17 +14,29 @@
 */
 
 require_once __DIR__ . '/env.php';
+require_once __DIR__ . '/../shared/runtime/RuntimeStoreFactory.php';
 
 final class CronLockHandle
 {
     private $handle;
     private string $path;
+    private ?RuntimeStoreInterface $runtimeStore;
+    private string $runtimeKey;
+    private string $runtimeToken;
     private bool $released = false;
 
-    public function __construct($handle, string $path)
-    {
+    public function __construct(
+        $handle = null,
+        string $path = '',
+        ?RuntimeStoreInterface $runtimeStore = null,
+        string $runtimeKey = '',
+        string $runtimeToken = ''
+    ) {
         $this->handle = $handle;
         $this->path = $path;
+        $this->runtimeStore = $runtimeStore;
+        $this->runtimeKey = $runtimeKey;
+        $this->runtimeToken = $runtimeToken;
     }
 
     public function release(): void
@@ -32,6 +46,10 @@ final class CronLockHandle
         }
 
         $this->released = true;
+
+        if ($this->runtimeStore !== null && $this->runtimeKey !== '' && $this->runtimeToken !== '') {
+            $this->runtimeStore->releaseLock($this->runtimeKey, $this->runtimeToken);
+        }
 
         if (is_resource($this->handle)) {
             @ftruncate($this->handle, 0);
@@ -125,12 +143,27 @@ function acquireCronLockOrRespond(string $name, int $maxRuntimeSeconds = 3300): 
 
 function acquireCronLockOrThrow(string $name, int $maxRuntimeSeconds = 3300): CronLockHandle
 {
+    $safeName = normalizeCronLockName($name);
+    $runtimeStore = RuntimeStoreFactory::shared();
+    if ($runtimeStore->isShared()) {
+        $runtimeKey = 'cron-lock:' . $safeName;
+        $runtimeToken = bin2hex(random_bytes(24));
+        if (!$runtimeStore->acquireLock($runtimeKey, $runtimeToken, max(1, $maxRuntimeSeconds))) {
+            throw new RuntimeException('Job de cron ja esta em execucao: ' . $safeName . '.');
+        }
+
+        return new CronLockHandle(null, '', $runtimeStore, $runtimeKey, $runtimeToken);
+    }
+
+    if (isSharedCronRuntimeRequired()) {
+        throw new RuntimeException('Lock distribuido indisponivel; Redis e obrigatorio neste ambiente.');
+    }
+
     $directory = getCronLockDirectory();
     if (!is_dir($directory) || !is_writable($directory)) {
         throw new RuntimeException('Diretorio de lock do cron indisponivel.');
     }
 
-    $safeName = normalizeCronLockName($name);
     $path = rtrim($directory, '/\\') . DIRECTORY_SEPARATOR . $safeName . '.lock';
     $handle = @fopen($path, 'c+');
 
@@ -161,5 +194,19 @@ function acquireCronLockOrThrow(string $name, int $maxRuntimeSeconds = 3300): Cr
     @fflush($handle);
 
     return new CronLockHandle($handle, $path);
+}
+
+function isSharedCronRuntimeRequired(): bool
+{
+    $required = filter_var(
+        (string) ($_ENV['REDIS_REQUIRED'] ?? getenv('REDIS_REQUIRED') ?: 'false'),
+        FILTER_VALIDATE_BOOLEAN
+    );
+    $instanceCount = max(
+        1,
+        (int) ($_ENV['APP_INSTANCE_COUNT'] ?? getenv('APP_INSTANCE_COUNT') ?: 1)
+    );
+
+    return $required || $instanceCount > 1;
 }
 ?>

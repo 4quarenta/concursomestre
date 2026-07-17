@@ -53,6 +53,9 @@ interface AdminDatabaseModalsProps {
   filterSlug: string;
   filterDescription: string;
   filterWebsite: string;
+  filterAssetUrl: string;
+  filterAliases: string;
+  filterKeywords: string;
   selectedParentId: number | string | null;
   taxonomies: GlobalTaxonomies;
   onActiveFilterTypeChange: (value: string) => void;
@@ -60,6 +63,9 @@ interface AdminDatabaseModalsProps {
   onFilterSlugChange: (value: string) => void;
   onFilterDescriptionChange: (value: string) => void;
   onFilterWebsiteChange: (value: string) => void;
+  onFilterAssetUrlChange: (value: string) => void;
+  onFilterAliasesChange: (value: string) => void;
+  onFilterKeywordsChange: (value: string) => void;
   onSelectedParentIdChange: (value: number | string | null) => void;
   onCloseTaxonomyModal: () => void;
   onSaveFilter: () => Promise<unknown>;
@@ -99,6 +105,9 @@ const AdminDatabaseModals = ({
   filterSlug,
   filterDescription,
   filterWebsite,
+  filterAssetUrl,
+  filterAliases,
+  filterKeywords,
   selectedParentId,
   taxonomies,
   onActiveFilterTypeChange,
@@ -106,6 +115,9 @@ const AdminDatabaseModals = ({
   onFilterSlugChange,
   onFilterDescriptionChange,
   onFilterWebsiteChange,
+  onFilterAssetUrlChange,
+  onFilterAliasesChange,
+  onFilterKeywordsChange,
   onSelectedParentIdChange,
   onCloseTaxonomyModal,
   onSaveFilter,
@@ -155,6 +167,9 @@ const AdminDatabaseModals = ({
         filterSlug={filterSlug}
         filterDescription={filterDescription}
         filterWebsite={filterWebsite}
+        filterAssetUrl={filterAssetUrl}
+        filterAliases={filterAliases}
+        filterKeywords={filterKeywords}
         selectedParentId={selectedParentId}
         taxonomies={taxonomies}
         onActiveFilterTypeChange={onActiveFilterTypeChange}
@@ -162,6 +177,9 @@ const AdminDatabaseModals = ({
         onFilterSlugChange={onFilterSlugChange}
         onFilterDescriptionChange={onFilterDescriptionChange}
         onFilterWebsiteChange={onFilterWebsiteChange}
+        onFilterAssetUrlChange={onFilterAssetUrlChange}
+        onFilterAliasesChange={onFilterAliasesChange}
+        onFilterKeywordsChange={onFilterKeywordsChange}
         onSelectedParentIdChange={onSelectedParentIdChange}
         onClose={onCloseTaxonomyModal}
         onSave={onSaveFilter}

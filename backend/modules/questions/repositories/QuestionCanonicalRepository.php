@@ -67,14 +67,12 @@ final class QuestionCanonicalRepository
         $this->db->prepare('DELETE FROM question_editorials WHERE question_id = :question_id')->execute([
             ':question_id' => $questionId,
         ]);
-        $this->db->prepare('DELETE FROM question_options WHERE question_id = :question_id')->execute([
-            ':question_id' => $questionId,
-        ]);
         $this->db->prepare('DELETE FROM question_context_questions WHERE question_id = :question_id')->execute([
             ':question_id' => $questionId,
         ]);
 
         $optionIdsByKey = [];
+        $currentOptionIds = [];
         $answer = is_array($question['answer'] ?? null) ? $question['answer'] : [];
         $correctKeys = array_values(array_filter(array_map(
             static fn (mixed $key): string => trim((string) $key),
@@ -84,25 +82,124 @@ final class QuestionCanonicalRepository
         ), static fn (string $key): bool => $key !== ''));
         $rawAnswer = strtoupper(trim((string) ($answer['raw'] ?? '')));
 
+        $alternatives = [];
+        $seenExternalKeys = [];
+        $seenDisplayOrders = [];
+        foreach (array_values(is_array($question['alternatives'] ?? null) ? $question['alternatives'] : []) as $index => $alternative) {
+            if (!is_array($alternative)) {
+                continue;
+            }
+            $externalKey = trim((string) ($alternative['tempId'] ?? $alternative['id'] ?? ''));
+            if ($externalKey !== '') {
+                if (isset($seenExternalKeys[$externalKey])) {
+                    throw new InvalidArgumentException('As alternativas da questao possuem external_key duplicada.');
+                }
+                $seenExternalKeys[$externalKey] = true;
+            }
+            $displayOrder = max(1, (int) ($alternative['order'] ?? ($index + 1)));
+            if (isset($seenDisplayOrders[$displayOrder])) {
+                throw new InvalidArgumentException('As alternativas da questao possuem ordem duplicada.');
+            }
+            $seenDisplayOrders[$displayOrder] = true;
+            $alternatives[] = [
+                'payload' => $alternative,
+                'external_key' => $externalKey,
+                'display_order' => $displayOrder,
+                'label' => trim((string) ($alternative['label'] ?? chr(65 + $index))) ?: chr(65 + $index),
+                'index' => $index,
+            ];
+        }
+
+        $existingStatement = $this->db->prepare(
+            'SELECT id, external_key, display_order
+             FROM question_options
+             WHERE question_id = :question_id
+             ORDER BY display_order, id'
+        );
+        $existingStatement->execute([':question_id' => $questionId]);
+        $existingOptions = $existingStatement->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $existingByKey = [];
+        $existingByOrder = [];
+        foreach ($existingOptions as $parkingIndex => $existing) {
+            $existingId = (int) ($existing['id'] ?? 0);
+            $existingKey = trim((string) ($existing['external_key'] ?? ''));
+            if ($existingId < 1) {
+                continue;
+            }
+            if ($existingKey !== '') {
+                $existingByKey[$existingKey] = $existing;
+            }
+            $existingByOrder[(int) ($existing['display_order'] ?? 0)] = $existing;
+        }
+
+        $matchedExistingIds = [];
+        foreach ($alternatives as $index => $normalized) {
+            $externalKey = $normalized['external_key'];
+            if ($externalKey === '' || !isset($existingByKey[$externalKey])) {
+                continue;
+            }
+            $existingId = (int) $existingByKey[$externalKey]['id'];
+            $alternatives[$index]['existing_id'] = $existingId;
+            $matchedExistingIds[$existingId] = true;
+        }
+        foreach ($alternatives as $index => $normalized) {
+            if (isset($normalized['existing_id'])) {
+                continue;
+            }
+            $candidate = $existingByOrder[$normalized['display_order']] ?? null;
+            $candidateId = is_array($candidate) ? (int) ($candidate['id'] ?? 0) : 0;
+            if ($candidateId < 1 || isset($matchedExistingIds[$candidateId])) {
+                continue;
+            }
+            $alternatives[$index]['existing_id'] = $candidateId;
+            $matchedExistingIds[$candidateId] = true;
+        }
+
+        // Libera temporariamente a chave unica (question_id, display_order),
+        // permitindo reordenar opcoes sem apagar seus IDs canonicos.
+        $parkOption = $this->db->prepare(
+            'UPDATE question_options SET display_order = :display_order WHERE id = :id AND question_id = :question_id'
+        );
+        foreach ($existingOptions as $parkingIndex => $existing) {
+            $existingId = (int) ($existing['id'] ?? 0);
+            if ($existingId > 0) {
+                $parkOption->execute([
+                    ':display_order' => -($parkingIndex + 1),
+                    ':id' => $existingId,
+                    ':question_id' => $questionId,
+                ]);
+            }
+        }
+
         $insertOption = $this->db->prepare(
             'INSERT INTO question_options
                 (question_id, external_key, display_order, label, body, body_clean, is_correct, metadata_json)
              VALUES
                 (:question_id, :external_key, :display_order, :label, :body, :body_clean, :is_correct, :metadata_json)'
         );
-        foreach (array_values(is_array($question['alternatives'] ?? null) ? $question['alternatives'] : []) as $index => $alternative) {
-            if (!is_array($alternative)) {
-                continue;
-            }
-            $externalKey = trim((string) ($alternative['tempId'] ?? $alternative['id'] ?? ''));
-            $label = trim((string) ($alternative['label'] ?? chr(65 + $index)));
-            $displayOrder = max(1, (int) ($alternative['order'] ?? ($index + 1)));
+        $updateOption = $this->db->prepare(
+            'UPDATE question_options
+             SET external_key = :external_key,
+                 display_order = :display_order,
+                 label = :label,
+                 body = :body,
+                 body_clean = :body_clean,
+                 is_correct = :is_correct,
+                 metadata_json = :metadata_json
+             WHERE id = :id AND question_id = :question_id'
+        );
+        foreach ($alternatives as $normalized) {
+            $alternative = $normalized['payload'];
+            $index = (int) $normalized['index'];
+            $externalKey = (string) $normalized['external_key'];
+            $label = (string) $normalized['label'];
+            $displayOrder = (int) $normalized['display_order'];
             $isCorrect = ($externalKey !== '' && in_array($externalKey, $correctKeys, true))
                 || ($rawAnswer !== '' && $rawAnswer === strtoupper($label));
             $metadata = [
                 'text_clean' => (string) ($alternative['textClean'] ?? ''),
             ];
-            $insertOption->execute([
+            $bindings = [
                 ':question_id' => $questionId,
                 ':external_key' => $externalKey !== '' ? $externalKey : null,
                 ':display_order' => $displayOrder,
@@ -111,12 +208,31 @@ final class QuestionCanonicalRepository
                 ':body_clean' => (string) ($alternative['textClean'] ?? strip_tags((string) ($alternative['text'] ?? ''))),
                 ':is_correct' => $isCorrect ? 1 : 0,
                 ':metadata_json' => $this->encodeJson($metadata),
-            ]);
-            $optionId = (int) $this->db->lastInsertId();
+            ];
+            $optionId = (int) ($normalized['existing_id'] ?? 0);
+            if ($optionId > 0) {
+                $updateOption->execute($bindings + [':id' => $optionId]);
+            } else {
+                $insertOption->execute($bindings);
+                $optionId = (int) $this->db->lastInsertId();
+            }
             if ($externalKey !== '') {
                 $optionIdsByKey[$externalKey] = $optionId;
             }
+            $currentOptionIds[] = $optionId;
             $this->insertAssets($questionId, null, $optionId, $alternative['assets'] ?? []);
+        }
+
+        $currentOptionIds = array_values(array_unique(array_filter($currentOptionIds)));
+        if ($currentOptionIds === []) {
+            $deleteOptions = $this->db->prepare('DELETE FROM question_options WHERE question_id = :question_id');
+            $deleteOptions->execute([':question_id' => $questionId]);
+        } else {
+            $placeholders = implode(',', array_fill(0, count($currentOptionIds), '?'));
+            $deleteOptions = $this->db->prepare(
+                "DELETE FROM question_options WHERE question_id = ? AND id NOT IN ({$placeholders})"
+            );
+            $deleteOptions->execute(array_merge([$questionId], $currentOptionIds));
         }
 
         $this->insertAssets($questionId, null, null, $question['assets'] ?? []);
@@ -235,8 +351,16 @@ final class QuestionCanonicalRepository
             ':item_type' => 'question',
             ':item_number' => $this->positiveIntOrNull($source['questionNumber'] ?? null),
             ':status' => $status,
-            ':payload_json' => $this->encodeJson($question),
-            ':diagnostics_json' => $this->encodeJson(is_array($question['review'] ?? null) ? $question['review'] : []),
+            ':payload_json' => $this->encodeJson([
+                'tempId' => trim((string) ($question['tempId'] ?? '')) ?: null,
+                'questionNumber' => $this->positiveIntOrNull($source['questionNumber'] ?? null),
+            ]),
+            ':diagnostics_json' => $this->encodeJson([
+                'needsReview' => !empty($question['review']['needsReview']) || !empty($question['review']['required']),
+                'reasonCount' => is_array($question['review']['statusReasons'] ?? $question['review']['reasons'] ?? null)
+                    ? count($question['review']['statusReasons'] ?? $question['review']['reasons'])
+                    : 0,
+            ]),
         ]);
     }
 
@@ -263,6 +387,7 @@ final class QuestionCanonicalRepository
         foreach ($optionRows as $row) {
             $externalKey = trim((string) ($row['external_key'] ?? ''));
             $alternatives[] = [
+                'canonicalId' => (int) $row['id'],
                 'tempId' => $externalKey !== '' ? $externalKey : 'option_' . (int) $row['id'],
                 'order' => (int) $row['display_order'],
                 'label' => (string) $row['label'],

@@ -30,9 +30,10 @@ class ApiEnvelope
             $response['message'] = $message;
         }
 
-        if (!empty($data)) {
-            $response['data'] = $data;
-        }
+        // `data` faz parte do contrato mesmo quando o valor valido e falsy.
+        // Remover o campo para [], 0, false, null ou "" altera a semantica
+        // da resposta e obriga cada consumidor a inventar um fallback.
+        $response['data'] = $data;
 
         if ($pagination !== null) {
             $response['pagination'] = $pagination;
