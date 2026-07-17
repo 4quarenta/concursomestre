@@ -21,7 +21,7 @@ function assertContainsStudySchedule(string $path, string $needle, string $messa
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 foreach (['get', 'save', 'delete'] as $endpoint) {
     assertContainsStudySchedule(

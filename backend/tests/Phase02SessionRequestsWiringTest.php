@@ -70,7 +70,7 @@ try {
     );
 
     $authService = phase02SessionRead($base . '/modules/auth/services/AuthService.php');
-    $authPayloadMethod = phase02SessionExtractMethod($authService, 'buildAuthenticatedUserPayload');
+    $authPayloadMethod = phase02SessionExtractMethod($authService, 'buildAuthenticatedSessionPayload');
     phase02SessionAssertNotContains(
         $authPayloadMethod,
         'getAuthenticatedProfile($userId)',
@@ -94,11 +94,19 @@ try {
 
     $usersService = phase02SessionRead($base . '/modules/users/services/UsersService.php');
     $sessionPayloadMethod = phase02SessionExtractMethod($usersService, 'getAuthenticatedSession');
-    foreach (['cpf', 'phone', 'address', 'bankAccount', 'billing', 'googleId', 'facebookId', 'referralCode', 'twoFactorEnabled'] as $forbiddenSessionField) {
+    foreach (['cpf', 'phone', 'address', 'bankAccount', 'billing', 'googleId', 'facebookId', 'referralCode', 'twoFactorEnabled', 'isAdmin', 'isStaff', 'canAccessAdmin', 'planDisplayName', 'hasActivePlan', 'hasGoogleLinked', 'hasFacebookLinked', 'isPartner'] as $forbiddenSessionField) {
         phase02SessionAssertNotContains(
             $sessionPayloadMethod,
             "'" . $forbiddenSessionField . "' =>",
             'DTO de sessao nao pode serializar campo privado: ' . $forbiddenSessionField
+        );
+    }
+
+    foreach (["'displayName' =>", "'avatarUrl' =>", "'permissions' =>", "'subscription' =>", "'gamification' =>", "'linkedProviders' =>", "'partnership' =>"] as $canonicalSessionField) {
+        phase02SessionAssertContains(
+            $base . '/modules/users/services/UsersService.php',
+            $canonicalSessionField,
+            'DTO de sessao deve conter o campo canônico: ' . $canonicalSessionField
         );
     }
 

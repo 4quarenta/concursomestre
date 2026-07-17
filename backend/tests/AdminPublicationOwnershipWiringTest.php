@@ -11,7 +11,7 @@ function assertPublicationOwnershipContains(string $path, string $needle, string
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $questionsRoutes = $base . '/modules/questions/routes.php';
 $questionsRepository = $base . '/modules/questions/repositories/QuestionsRepository.php';
 $questionsService = $base . '/modules/questions/services/QuestionsService.php';
@@ -51,7 +51,7 @@ assertPublicationOwnershipContains(
 
 assertPublicationOwnershipContains(
     $legalRepository,
-    'Staff so pode excluir leis publicadas por ele.',
+    'Staff so pode excluir leis criadas por ele.',
     'Staff must not delete legal commentary laws published by other users'
 );
 

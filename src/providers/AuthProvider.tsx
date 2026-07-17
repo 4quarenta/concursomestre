@@ -19,11 +19,11 @@ import { clientLog } from '@services/monitoring/clientLog';
 import { useToast } from '@providers/ToastProvider';
 import {
   bootstrapAuthSession,
+  type CanonicalSessionData,
   establishAuthenticatedSession,
   fetchAuthenticatedUser,
   getAccessToken,
   logoutAuthSession,
-  refreshAuthSession,
   subscribeToAuthSession,
   updateCurrentUserSnapshot,
 } from '@services/auth/session';
@@ -173,7 +173,7 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  login: (user: UserProfile | null, token?: string | null) => Promise<void>;
+  login: (session: CanonicalSessionData | null, token?: string | null) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<UserProfile>) => Promise<void>;
   addXp: (amount: number) => void;
@@ -195,9 +195,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
   const { addToast } = useToast();
-  const missingPhotoHydrationRef = React.useRef<Set<string>>(new Set());
-  const photoHydrationUserId = state.currentUser?.id || '';
-  const photoHydrationPhotoUrl = state.currentUser?.photoUrl || '';
   
   /**
    * Escuta o estado global da sessão e executa o bootstrap inicial ao subir o app.
@@ -210,8 +207,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return;
       }
 
-      // Durante o bootstrap pode existir token renovado antes de resolver o usuario.
-      // Nesse estado transitorio evitamos derrubar para LOGOUT e aguardamos o fetch de /auth/me.
+      // Durante o bootstrap pode existir token renovado antes de a sessao canonica
+      // ser aplicada. Nesse estado transitorio aguardamos o refresh autocontido.
       if (snapshot.accessToken && !snapshot.currentUser) {
         return;
       }
@@ -232,57 +229,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   /**
-   * Algumas sessoes antigas ou reusadas por HMR podem chegar com dados basicos
-   * do usuario, mas sem o campo `photoUrl`. Nesse caso buscamos uma unica vez o
-   * snapshot completo, que vem da rota oficial de perfil e inclui `photoUrl`.
-   */
-  React.useEffect(() => {
-    if (!photoHydrationUserId || photoHydrationPhotoUrl) {
-      return;
-    }
-
-    if (missingPhotoHydrationRef.current.has(photoHydrationUserId)) {
-      return;
-    }
-
-    missingPhotoHydrationRef.current.add(photoHydrationUserId);
-
-    void (async () => {
-      if (!getAccessToken()) {
-        const refreshedSession = await refreshAuthSession({
-          reason: 'manual',
-          force: true,
-          allowAnonymousFailure: true,
-        });
-
-        if (refreshedSession?.currentUser?.photoUrl) {
-          updateCurrentUserSnapshot(refreshedSession.currentUser);
-          dispatch({ type: 'LOGIN', payload: refreshedSession.currentUser });
-          return;
-        }
-      }
-
-      if (!getAccessToken()) {
-        return;
-      }
-
-      const freshUser = await fetchAuthenticatedUser();
-      if (freshUser) {
-        updateCurrentUserSnapshot(freshUser);
-        dispatch({ type: 'LOGIN', payload: freshUser });
-      }
-    })()
-      .catch((error) => {
-        clientLog.warn('Failed to hydrate authenticated user photo:', error);
-      });
-  }, [photoHydrationPhotoUrl, photoHydrationUserId]);
-
-  /**
    * Conclui o login no provider a partir do token e do usuário recebidos pelo fluxo de auth.
    * @since 1.0.0
    */
-  const login = React.useCallback(async (payload: UserProfile | null, token?: string | null) => {
-    await establishAuthenticatedSession(token, payload ?? undefined);
+  const login = React.useCallback(async (session: CanonicalSessionData | null, token?: string | null) => {
+    await establishAuthenticatedSession(token, session);
   }, []);
 
   /**

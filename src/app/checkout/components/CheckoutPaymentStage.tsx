@@ -92,6 +92,7 @@ interface CheckoutPaymentStageProps {
   paymentProtectionLabel?: string | null;
   installmentOptions?: InstallmentOption[];
   selectedInstallmentValue?: string;
+  installmentExpiryNotice?: string | null;
   processing: boolean;
   legalNotice?: React.ReactNode;
   pixCapabilityStatus?: string;
@@ -282,6 +283,7 @@ const CheckoutPaymentMethodCard: React.FC<{
   stripeRequiresSavedCard: boolean;
   installmentOptions: InstallmentOption[];
   selectedInstallmentValue: string;
+  installmentExpiryNotice?: string | null;
   processing: boolean;
   pixCapabilityStatus?: string;
   pixCapabilityMessage?: string;
@@ -325,6 +327,7 @@ const CheckoutPaymentMethodCard: React.FC<{
   stripeRequiresSavedCard,
   installmentOptions,
   selectedInstallmentValue,
+  installmentExpiryNotice,
   processing,
   pixCapabilityStatus,
   pixCapabilityMessage,
@@ -596,7 +599,7 @@ const CheckoutPaymentMethodCard: React.FC<{
             </div>
           ) : null}
 
-          {isCardFlow && installmentOptions.length > 1 ? (
+          {isCardFlow && (installmentOptions.length > 1 || installmentExpiryNotice) ? (
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Parcelamento
@@ -613,6 +616,11 @@ const CheckoutPaymentMethodCard: React.FC<{
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 size-4 text-slate-400 dark:text-slate-500" />
               </div>
+              {installmentExpiryNotice ? (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                  {installmentExpiryNotice}
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -963,6 +971,7 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
   paymentProtectionLabel,
   installmentOptions = [],
   selectedInstallmentValue = '1',
+  installmentExpiryNotice,
   processing,
   legalNotice,
   pixCapabilityStatus,
@@ -1035,6 +1044,7 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
           stripeRequiresSavedCard={stripeRequiresSavedCard}
           installmentOptions={installmentOptions}
           selectedInstallmentValue={selectedInstallmentValue}
+          installmentExpiryNotice={installmentExpiryNotice}
           processing={processing}
           pixCapabilityStatus={pixCapabilityStatus}
           pixCapabilityMessage={pixCapabilityMessage}

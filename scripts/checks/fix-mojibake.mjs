@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const backendRoot = process.env.BACKEND_ROOT
   ? path.resolve(process.env.BACKEND_ROOT)
-  : path.resolve('C:/xampp/htdocs/questao-pro-backend');
+  : path.resolve('backend');
 
 const roots = [
   path.resolve('src'),
@@ -29,7 +29,7 @@ const replacements = new Map([
   ['Ã¿', 'ÿ'], ['Ã ', 'à'],
   ['â€™', '\''], ['â€˜', '\''], ['â€œ', '"'], ['â€\u009d', '"'], ['â€"', '"'],
   ['â€“', '-'], ['â€”', '-'], ['â€¢', '*'],
-  ['Â ', ' '], ['Â', ''],
+  ['Â ', ' '],
 ]);
 
 function shouldIgnore(filePath) {

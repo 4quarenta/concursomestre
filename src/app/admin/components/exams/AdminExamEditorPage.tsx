@@ -159,9 +159,9 @@ const SelectInput = ({
 );
 
 const EXAM_FILE_CONFIG: Array<{ kind: ExamFileKind; label: string; description: string }> = [
-  { kind: 'prova', label: 'Prova', description: 'Arquivo principal do caderno de questÃµes.' },
+  { kind: 'prova', label: 'Prova', description: 'Arquivo principal do caderno de questões.' },
   { kind: 'gabarito', label: 'Gabarito', description: 'Gabarito oficial, definitivo ou preliminar.' },
-  { kind: 'edital', label: 'Edital', description: 'Edital, retificaÃ§Ã£o ou documento do certame.' },
+  { kind: 'edital', label: 'Edital', description: 'Edital, retificação ou documento do certame.' },
 ];
 
 const formatFileSize = (size?: number) => {
@@ -371,7 +371,7 @@ const normalizeExternalScopedItems = (value: unknown): NonNullable<ExtractedExam
         : 'geral';
       return {
         scopeType: normalizedScopeType,
-        scope: readTextValue(item, ['scope', 'escopo', 'aplicarA', 'aplicar_a', 'orgao', 'Ã³rgÃ£o', 'cargo', 'foco']) || 'Todos',
+        scope: readTextValue(item, ['scope', 'escopo', 'aplicarA', 'aplicar_a', 'orgao', 'órgão', 'cargo', 'foco']) || 'Todos',
         chave: readTextValue(item, ['chave', 'key', 'label', 'titulo', 'title', 'nome']),
         texto: readTextValue(item, ['texto', 'text', 'valor', 'value', 'descricao', 'description']),
       };
@@ -385,13 +385,13 @@ const normalizeExternalProgrammaticItems = (value: unknown): NonNullable<Extract
     .map((entry) => {
       const item = asRecord(entry);
       return {
-        materia: readTextValue(item, ['materia', 'matÃ©ria', 'subject', 'disciplina']),
-        topico: readTextValue(item, ['topico', 'tÃ³pico', 'topic']),
+        materia: readTextValue(item, ['materia', 'matéria', 'subject', 'disciplina']),
+        topico: readTextValue(item, ['topico', 'tópico', 'topic']),
         assunto: readTextValue(item, ['assunto', 'specificSubject', 'specific_subject']),
-        questoes: readTextValue(item, ['questoes', 'questÃµes', 'questions', 'totalQuestoes', 'total_questoes']),
-        orgao: readTextValue(item, ['orgao', 'Ã³rgÃ£o', 'organization']),
+        questoes: readTextValue(item, ['questoes', 'questões', 'questions', 'totalQuestoes', 'total_questoes']),
+        orgao: readTextValue(item, ['orgao', 'órgão', 'organization']),
         cargo: readTextValue(item, ['cargo', 'role']),
-        foco: readTextValue(item, ['foco', 'focus', 'area', 'Ã¡rea']),
+        foco: readTextValue(item, ['foco', 'focus', 'area', 'área']),
       };
     })
     .filter((item) => item.materia || item.topico || item.assunto);
@@ -402,7 +402,7 @@ const normalizeExternalStageItems = (value: unknown): NonNullable<ExtractedExamN
   return items
     .map((entry) => {
       const item = asRecord(entry);
-      const rawCriterion = normalizeSearchText(readTextValue(item, ['criterio', 'critÃ©rio', 'criterion', 'tipo']));
+      const rawCriterion = normalizeSearchText(readTextValue(item, ['criterio', 'critério', 'criterion', 'tipo']));
       const criterio: 'eliminatorio' | 'classificatorio' | 'eliminatorio_classificatorio' = rawCriterion.includes('eliminatorio') && rawCriterion.includes('classificatorio')
         ? 'eliminatorio_classificatorio'
         : rawCriterion.includes('eliminatorio')
@@ -412,7 +412,7 @@ const normalizeExternalStageItems = (value: unknown): NonNullable<ExtractedExamN
         nome: readTextValue(item, ['nome', 'name', 'etapa', 'stage']),
         criterio,
         data: readTextValue(item, ['data', 'date']),
-        descricao: readTextValue(item, ['descricao', 'descriÃ§Ã£o', 'description', 'observacao', 'observaÃ§Ã£o']),
+        descricao: readTextValue(item, ['descricao', 'descrição', 'description', 'observacao', 'observação']),
       };
     })
     .filter((item) => item.nome || item.descricao);
@@ -450,7 +450,7 @@ const compactExamOrganization = (value: string) => {
 const compactExamRole = (value: string) => {
   const text = normalizeExamTitlePart(value)
     .replace(/^curso de formacao de\s+/i, '')
-    .replace(/^curso de formaÃ§Ã£o de\s+/i, '')
+    .replace(/^curso de formação de\s+/i, '')
     .replace(/^cargo de\s+/i, '');
   const normalized = normalizeSearchText(text);
 
@@ -491,29 +491,29 @@ const normalizeExternalExamNoticeJson = (payload: unknown): ExternalExamNoticeMe
   const source = Object.keys(metadata).length > 0 ? { ...root, ...metadata } : root;
 
   return {
-    examTitle: readTextValue(source, ['examTitle', 'titulo', 'tÃ­tulo', 'nome', 'nomeProva']),
+    examTitle: readTextValue(source, ['examTitle', 'titulo', 'título', 'nome', 'nomeProva']),
     agency: readTextValue(source, ['agency', 'banca', 'bancaSigla', 'banca_sigla']),
     agencyName: readTextValue(source, ['agencyName', 'bancaNome', 'banca_nome', 'nomeBanca']),
     year: readTextValue(source, ['year', 'ano']),
-    level: readTextValue(source, ['level', 'nivel', 'nÃ­vel']),
+    level: readTextValue(source, ['level', 'nivel', 'nível']),
     examType: readTextValue(source, ['examType', 'tipoProva', 'tipo_prova', 'caderno']),
     bookletType: readTextValue(source, ['bookletType', 'tipoCaderno', 'tipo_caderno']),
     bookletColor: readTextValue(source, ['bookletColor', 'corCaderno', 'cor_caderno']),
-    organizations: readTextListValue(source, ['organizations', 'orgaos', 'Ã³rgÃ£os', 'orgaosVinculados', 'orgaos_vinculados']),
+    organizations: readTextListValue(source, ['organizations', 'orgaos', 'órgãos', 'orgaosVinculados', 'orgaos_vinculados']),
     roles: readTextListValue(source, ['roles', 'cargos', 'cargosVinculados', 'cargos_vinculados']),
-    focuses: readTextListValue(source, ['focuses', 'focos', 'areas', 'Ã¡reas']),
+    focuses: readTextListValue(source, ['focuses', 'focos', 'areas', 'áreas']),
     requirementsDetailed: normalizeExternalScopedItems(pickRecordValue(source, ['requirementsDetailed', 'requisitosDetalhados', 'requisitos_detalhados', 'requirements'])),
-    remunerationsDetailed: normalizeExternalScopedItems(pickRecordValue(source, ['remunerationsDetailed', 'remuneracoesDetalhadas', 'remuneraÃ§ÃµesDetalhadas', 'remuneracoes_detalhadas', 'remunerations', 'remuneracao'])),
+    remunerationsDetailed: normalizeExternalScopedItems(pickRecordValue(source, ['remunerationsDetailed', 'remuneracoesDetalhadas', 'remuneraçõesDetalhadas', 'remuneracoes_detalhadas', 'remunerations', 'remuneracao'])),
     vacanciesDetailed: normalizeExternalScopedItems(pickRecordValue(source, ['vacanciesDetailed', 'vagasDetalhadas', 'vagas_detalhadas', 'vacancies', 'vagas'])),
     programmaticContentDetailed: normalizeExternalProgrammaticItems(pickRecordValue(source, ['programmaticContentDetailed', 'conteudoProgramaticoDetalhado', 'conteudo_programatico_detalhado', 'programmaticContent', 'conteudoProgramatico'])),
     stages: normalizeExternalStageItems(pickRecordValue(source, ['stages', 'etapas'])),
-    registrationStart: readTextValue(source, ['registrationStart', 'inscricaoInicio', 'inscriÃ§Ã£oInÃ­cio', 'dataInscricaoInicio', 'data_inscricao_inicio']),
-    registrationEnd: readTextValue(source, ['registrationEnd', 'inscricaoFim', 'inscriÃ§Ã£oFim', 'dataInscricaoFim', 'data_inscricao_fim']),
+    registrationStart: readTextValue(source, ['registrationStart', 'inscricaoInicio', 'inscriçãoInício', 'dataInscricaoInicio', 'data_inscricao_inicio']),
+    registrationEnd: readTextValue(source, ['registrationEnd', 'inscricaoFim', 'inscriçãoFim', 'dataInscricaoFim', 'data_inscricao_fim']),
     examDate: readTextValue(source, ['examDate', 'dataProva', 'data_prova']),
     registrationFee: readTextValue(source, ['registrationFee', 'valorInscricao', 'valor_inscricao', 'taxaInscricao', 'taxa_inscricao']),
     totalQuestions: readTextValue(source, ['totalQuestions', 'totalQuestoes', 'total_questoes']),
-    platformQuestionIds: readTextListValue(source, ['platformQuestionIds', 'questoesVinculadas', 'questÃµesVinculadas', 'questionIds']),
-    evidence: readTextListValue(source, ['evidence', 'evidencias', 'evidÃªncias']),
+    platformQuestionIds: readTextListValue(source, ['platformQuestionIds', 'questoesVinculadas', 'questõesVinculadas', 'questionIds']),
+    evidence: readTextListValue(source, ['evidence', 'evidencias', 'evidências']),
   };
 };
 
@@ -530,7 +530,7 @@ const isScopedItemFilled = (item: ExamScopedDraftItem) => Boolean(
 );
 
 const getScopeTypeLabel = (scopeType: ExamScopedDraftItem['scopeType']) => {
-  if (scopeType === 'orgao') return 'Ã“rgÃ£o';
+  if (scopeType === 'orgao') return 'Órgão';
   if (scopeType === 'cargo') return 'Cargo';
   if (scopeType === 'foco') return 'Foco';
   return 'Todos';
@@ -580,10 +580,10 @@ const splitProgrammaticSubjectText = (value: string): string[] => {
     return semicolonParts;
   }
 
-  const numberedMarkers = Array.from(cleanValue.matchAll(/(?:^|\s)(\d{1,3})\.\s+(?=[A-ZÃÃ‰ÃÃ“ÃšÃ‚ÃŠÃ”ÃƒÃ•Ã‡])/g));
+  const numberedMarkers = Array.from(cleanValue.matchAll(/(?:^|\s)(\d{1,3})\.\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/g));
   if (numberedMarkers.length > 1) {
     return cleanValue
-      .split(/(?=(?:^|\s)\d{1,3}\.\s+(?=[A-ZÃÃ‰ÃÃ“ÃšÃ‚ÃŠÃ”ÃƒÃ•Ã‡]))/g)
+      .split(/(?=(?:^|\s)\d{1,3}\.\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ]))/g)
       .map((item) => cleanupProgrammaticSubjectText(item.trim().replace(/^\d{1,3}\.\s*/, '')))
       .filter((item) => item.length >= 3);
   }
@@ -808,9 +808,9 @@ const RoleFocusArrayEditor = ({
     <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <FieldLabel>Ãreas, focos e cargos</FieldLabel>
+          <FieldLabel>Áreas, focos e cargos</FieldLabel>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Cada grupo representa uma Ã¡rea/foco. Os cargos selecionados serÃ£o vinculados como subitens dessa Ã¡rea.
+            Cada grupo representa uma área/foco. Os cargos selecionados serão vinculados como subitens dessa área.
           </p>
         </div>
         <button
@@ -819,7 +819,7 @@ const RoleFocusArrayEditor = ({
           className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-9 px-3 py-2 text-xs`}
         >
           <PlusCircle size={14} />
-          Adicionar Ã¡rea/cargos
+          Adicionar área/cargos
         </button>
       </div>
 
@@ -830,7 +830,7 @@ const RoleFocusArrayEditor = ({
             className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-[minmax(220px,0.75fr)_minmax(320px,1.25fr)_auto]"
           >
             <SmartTagSelector
-              label="Ãrea / foco"
+              label="Área / foco"
               options={focusOptions}
               selected={item.foco ? [item.foco] : []}
               onChange={(values) => {
@@ -850,7 +850,7 @@ const RoleFocusArrayEditor = ({
                 next[index] = { ...item, cargos: values };
                 onChange(next);
               }}
-              placeholder={item.foco ? 'Selecione ou cadastre cargos' : 'Selecione primeiro a Ã¡rea / foco'}
+              placeholder={item.foco ? 'Selecione ou cadastre cargos' : 'Selecione primeiro a área / foco'}
               disabled={!item.foco}
             />
             <div className="flex items-end">
@@ -858,7 +858,7 @@ const RoleFocusArrayEditor = ({
                 type="button"
                 onClick={() => onChange(rows.filter((entry) => entry.id !== item.id))}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
-                aria-label="Remover grupo de Ã¡rea e cargos"
+                aria-label="Remover grupo de área e cargos"
               >
                 <Trash2 size={14} />
               </button>
@@ -879,7 +879,7 @@ const ScopedArrayEditor = ({
   placeholder,
   keyValue = false,
   keyPlaceholder = 'Ex.: Escolaridade',
-  valueLabel = 'InformaÃ§Ã£o',
+  valueLabel = 'Informação',
   onChange,
 }: {
   title: string;
@@ -948,7 +948,7 @@ const ScopedArrayEditor = ({
           className={`grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 ${formGridClass}`}
         >
           <div className={keyValue ? 'min-w-0 lg:col-span-2' : 'min-w-0 lg:col-span-3'}>
-            <FieldLabel>Ã“rgÃ£o</FieldLabel>
+            <FieldLabel>Órgão</FieldLabel>
             <SelectInput
               value={draftItem.orgao || 'Todos'}
               onChange={(value) => setDraftItem((current) => ({
@@ -1018,14 +1018,14 @@ const ScopedArrayEditor = ({
             <div className="min-w-0">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  Ã“rgÃ£o: {item.orgao || 'Todos'}
+                  Órgão: {item.orgao || 'Todos'}
                 </span>
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   Cargo: {item.scope || 'Todos'}
                 </span>
                 {item.chave ? <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{item.chave}</span> : null}
               </div>
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.texto || 'Sem descriÃ§Ã£o'}</p>
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.texto || 'Sem descrição'}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button
@@ -1070,7 +1070,7 @@ const ScopedArrayEditor = ({
                 }}
               >
                 <option value="geral">Todos</option>
-                <option value="orgao">Ã“rgÃ£o</option>
+                <option value="orgao">Órgão</option>
                 <option value="cargo">Cargo</option>
                 <option value="foco">Foco</option>
               </SelectInput>
@@ -1223,7 +1223,7 @@ const ProgrammaticArrayEditor = ({
     if (!matter) {
       matter = {
         key: matterKey,
-        label: item.materia || 'Sem matÃ©ria',
+        label: item.materia || 'Sem matéria',
         questoes: item.questoes || '',
         topics: [],
       };
@@ -1236,7 +1236,7 @@ const ProgrammaticArrayEditor = ({
     if (!topic) {
       topic = {
         key: topicKey,
-        label: item.topico || 'Sem tÃ³pico',
+        label: item.topico || 'Sem tópico',
         items: [],
       };
       matter.topics.push(topic);
@@ -1331,17 +1331,17 @@ const ProgrammaticArrayEditor = ({
     <div className="w-full min-w-0 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <FieldLabel>ConteÃºdo programÃ¡tico</FieldLabel>
+          <FieldLabel>Conteúdo programático</FieldLabel>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Use matÃ©ria, tÃ³pico e assunto reais das taxonomias. Informe tambÃ©m a quantidade de questÃµes quando o edital trouxer a distribuiÃ§Ã£o.
+            Use matéria, tópico e assunto reais das taxonomias. Informe também a quantidade de questões quando o edital trouxer a distribuição.
           </p>
         </div>
       </div>
       <div className="space-y-3">
         <div className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-[1fr_1fr_1fr_110px]">
           {[
-            ['MatÃ©ria', 'materia', hierarchyMatterOptions],
-            ['TÃ³pico', 'topico', hierarchyTopicOptions],
+            ['Matéria', 'materia', hierarchyMatterOptions],
+            ['Tópico', 'topico', hierarchyTopicOptions],
             ['Assunto', 'assunto', hierarchySubjectOptions],
           ].map(([label, key, options]) => (
             <div key={String(key)}>
@@ -1358,7 +1358,7 @@ const ProgrammaticArrayEditor = ({
             </div>
           ))}
           <div>
-            <FieldLabel>QuestÃµes</FieldLabel>
+            <FieldLabel>Questões</FieldLabel>
             <TextInput
               type="number"
               value={draftItem.questoes}
@@ -1368,7 +1368,7 @@ const ProgrammaticArrayEditor = ({
           </div>
           <div className="xl:col-span-4 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
             {[
-              ['Ã“rgÃ£o', 'orgao', organizationOptions],
+              ['Órgão', 'orgao', organizationOptions],
               ['Cargo', 'cargo', roleOptions],
               ['Foco', 'foco', focusOptions],
             ].map(([label, key, options]) => (
@@ -1422,8 +1422,8 @@ const ProgrammaticArrayEditor = ({
                   type="button"
                   onClick={() => toggleSetKey(setCollapsedMatters, matter.key)}
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-200"
-                  aria-label={matterCollapsed ? 'Expandir matÃ©ria' : 'Ocultar matÃ©ria'}
-                  title={matterCollapsed ? 'Expandir matÃ©ria' : 'Ocultar matÃ©ria'}
+                  aria-label={matterCollapsed ? 'Expandir matéria' : 'Ocultar matéria'}
+                  title={matterCollapsed ? 'Expandir matéria' : 'Ocultar matéria'}
                 >
                   {matterCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
                 </button>
@@ -1438,27 +1438,27 @@ const ProgrammaticArrayEditor = ({
                         if (event.key === 'Escape') setEditingMatterKey(null);
                       }}
                       className={`h-9 min-w-0 flex-1 ${ADMIN_FIELD_CLASS}`}
-                      aria-label="Nome da matÃ©ria"
+                      aria-label="Nome da matéria"
                     />
                     <button type="button" onClick={() => renameMatter(matter.key)} className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-9 px-3 py-2 text-xs`}>Salvar</button>
-                    <button type="button" onClick={() => setEditingMatterKey(null)} className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Cancelar ediÃ§Ã£o"><X size={14} /></button>
+                    <button type="button" onClick={() => setEditingMatterKey(null)} className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Cancelar edição"><X size={14} /></button>
                   </div>
                 ) : (
                   <div className="truncate text-xs font-black uppercase tracking-[0.2em] text-indigo-700 dark:text-indigo-200">
-                    MatÃ©ria: {matter.label}
+                    Matéria: {matter.label}
                   </div>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {matter.questoes ? (
                   <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-200">
-                    {matter.questoes} questÃµes esperadas
+                    {matter.questoes} questões esperadas
                   </span>
                 ) : null}
                 {editingMatterKey !== matter.key ? (
-                  <button type="button" onClick={() => { setEditingMatterKey(matter.key); setEditingMatterLabel(matter.label); }} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Editar matÃ©ria" title="Editar matÃ©ria"><Pencil size={14} /></button>
+                  <button type="button" onClick={() => { setEditingMatterKey(matter.key); setEditingMatterLabel(matter.label); }} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Editar matéria" title="Editar matéria"><Pencil size={14} /></button>
                 ) : null}
-                <button type="button" onClick={() => commit(listItems.filter((item) => normalizeSearchText(item.materia) !== matter.key))} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300" aria-label="Remover matÃ©ria" title="Remover matÃ©ria e seus tÃ³picos"><Trash2 size={14} /></button>
+                <button type="button" onClick={() => commit(listItems.filter((item) => normalizeSearchText(item.materia) !== matter.key))} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300" aria-label="Remover matéria" title="Remover matéria e seus tópicos"><Trash2 size={14} /></button>
               </div>
             </div>
 
@@ -1470,22 +1470,22 @@ const ProgrammaticArrayEditor = ({
                 <div key={`${matter.key}-${topic.key}`} className="rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                   <div className={`${topicCollapsed ? '' : 'mb-2'} flex flex-wrap items-center justify-between gap-2`}>
                     <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <button type="button" onClick={() => toggleSetKey(setCollapsedTopics, compoundTopicKey)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label={topicCollapsed ? 'Expandir tÃ³pico' : 'Ocultar tÃ³pico'} title={topicCollapsed ? 'Expandir tÃ³pico' : 'Ocultar tÃ³pico'}>{topicCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button>
+                      <button type="button" onClick={() => toggleSetKey(setCollapsedTopics, compoundTopicKey)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label={topicCollapsed ? 'Expandir tópico' : 'Ocultar tópico'} title={topicCollapsed ? 'Expandir tópico' : 'Ocultar tópico'}>{topicCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button>
                       {editingTopicKey === compoundTopicKey ? (
                         <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <input autoFocus value={editingTopicLabel} onChange={(event) => setEditingTopicLabel(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') renameTopic(matter.key, topic.key); if (event.key === 'Escape') setEditingTopicKey(null); }} className={`h-8 min-w-0 flex-1 ${ADMIN_FIELD_CLASS}`} aria-label="Nome do tÃ³pico" />
+                          <input autoFocus value={editingTopicLabel} onChange={(event) => setEditingTopicLabel(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') renameTopic(matter.key, topic.key); if (event.key === 'Escape') setEditingTopicKey(null); }} className={`h-8 min-w-0 flex-1 ${ADMIN_FIELD_CLASS}`} aria-label="Nome do tópico" />
                           <button type="button" onClick={() => renameTopic(matter.key, topic.key)} className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-8 px-3 py-1.5 text-xs`}>Salvar</button>
-                          <button type="button" onClick={() => setEditingTopicKey(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Cancelar ediÃ§Ã£o"><X size={14} /></button>
+                          <button type="button" onClick={() => setEditingTopicKey(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Cancelar edição"><X size={14} /></button>
                         </div>
                       ) : (
                         <span className="truncate rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                          TÃ³pico: {topic.label}
+                          Tópico: {topic.label}
                         </span>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {editingTopicKey !== compoundTopicKey ? <button type="button" onClick={() => { setEditingTopicKey(compoundTopicKey); setEditingTopicLabel(topic.label); }} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Editar tÃ³pico" title="Editar tÃ³pico"><Pencil size={13} /></button> : null}
-                      <button type="button" onClick={() => commit(listItems.filter((item) => !(normalizeSearchText(item.materia) === matter.key && normalizeSearchText(item.topico) === topic.key)))} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-950 dark:text-red-300" aria-label="Remover tÃ³pico" title="Remover tÃ³pico e seus assuntos"><Trash2 size={13} /></button>
+                      {editingTopicKey !== compoundTopicKey ? <button type="button" onClick={() => { setEditingTopicKey(compoundTopicKey); setEditingTopicLabel(topic.label); }} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Editar tópico" title="Editar tópico"><Pencil size={13} /></button> : null}
+                      <button type="button" onClick={() => commit(listItems.filter((item) => !(normalizeSearchText(item.materia) === matter.key && normalizeSearchText(item.topico) === topic.key)))} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-950 dark:text-red-300" aria-label="Remover tópico" title="Remover tópico e seus assuntos"><Trash2 size={13} /></button>
                     </div>
                   </div>
 
@@ -1494,14 +1494,14 @@ const ProgrammaticArrayEditor = ({
                       <div key={item.id} className="flex flex-col gap-3 rounded-sm border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60 lg:flex-row lg:items-center lg:justify-between">
                         <div className="min-w-0">
                           <div className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                            {item.assunto ? `Assunto: ${item.assunto}` : 'Sem assunto especÃ­fico'}
+                            {item.assunto ? `Assunto: ${item.assunto}` : 'Sem assunto específico'}
                           </div>
                           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
                             {[
-                              item.orgao ? `Ã“rgÃ£o: ${item.orgao}` : '',
+                              item.orgao ? `Órgão: ${item.orgao}` : '',
                               item.cargo ? `Cargo: ${item.cargo}` : '',
                               item.foco ? `Foco: ${item.foco}` : '',
-                            ].filter(Boolean).join(' Â· ') || 'Todos os escopos'}
+                            ].filter(Boolean).join(' · ') || 'Todos os escopos'}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
@@ -1536,8 +1536,8 @@ const ProgrammaticArrayEditor = ({
         {shouldRenderLegacyRows && rows.map((item, index) => (
           <div key={item.id} className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-[1fr_1fr_1fr_110px]">
             {[
-              ['MatÃ©ria', 'materia', subjectOptions],
-              ['TÃ³pico', 'topico', topicOptions],
+              ['Matéria', 'materia', subjectOptions],
+              ['Tópico', 'topico', topicOptions],
               ['Assunto', 'assunto', specificSubjectOptions],
             ].map(([label, key, options]) => (
               <div key={String(key)}>
@@ -1558,7 +1558,7 @@ const ProgrammaticArrayEditor = ({
               </div>
             ))}
             <div>
-              <FieldLabel>QuestÃµes</FieldLabel>
+              <FieldLabel>Questões</FieldLabel>
               <TextInput
                 type="number"
                 value={item.questoes}
@@ -1572,7 +1572,7 @@ const ProgrammaticArrayEditor = ({
             </div>
             <div className="xl:col-span-4 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
               {[
-                ['Ã“rgÃ£o', 'orgao', organizationOptions],
+                ['Órgão', 'orgao', organizationOptions],
                 ['Cargo', 'cargo', roleOptions],
                 ['Foco', 'foco', focusOptions],
               ].map(([label, key, options]) => (
@@ -1653,7 +1653,7 @@ const StagesArrayEditor = ({
         <div>
           <FieldLabel>Etapas</FieldLabel>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            Cadastre cada etapa do edital e indique se ela Ã© eliminatÃ³ria, classificatÃ³ria ou ambas.
+            Cadastre cada etapa do edital e indique se ela é eliminatória, classificatória ou ambas.
           </p>
         </div>
       </div>
@@ -1668,14 +1668,14 @@ const StagesArrayEditor = ({
             />
           </div>
           <div>
-            <FieldLabel>CritÃ©rio</FieldLabel>
+            <FieldLabel>Critério</FieldLabel>
             <SelectInput
               value={draftItem.criterio}
               onChange={(value) => setDraftItem((current) => ({ ...current, criterio: value as ExamStageDraftItem['criterio'] }))}
             >
-              <option value="eliminatorio">EliminatÃ³rio</option>
-              <option value="classificatorio">ClassificatÃ³rio</option>
-              <option value="eliminatorio_classificatorio">EliminatÃ³rio e classificatÃ³rio</option>
+              <option value="eliminatorio">Eliminatório</option>
+              <option value="classificatorio">Classificatório</option>
+              <option value="eliminatorio_classificatorio">Eliminatório e classificatório</option>
             </SelectInput>
           </div>
           <div>
@@ -1706,11 +1706,11 @@ const StagesArrayEditor = ({
             </button>
           </div>
           <div className="lg:col-span-4">
-            <FieldLabel>ObservaÃ§Ã£o</FieldLabel>
+            <FieldLabel>Observação</FieldLabel>
             <TextAreaInput
               value={draftItem.descricao}
               onChange={(value) => setDraftItem((current) => ({ ...current, descricao: value }))}
-              placeholder="CritÃ©rios, peso, nota mÃ­nima ou observaÃ§Ãµes do edital."
+              placeholder="Critérios, peso, nota mínima ou observações do edital."
               rows={2}
             />
           </div>
@@ -1776,7 +1776,7 @@ const StagesArrayEditor = ({
               />
             </div>
             <div>
-              <FieldLabel>CritÃ©rio</FieldLabel>
+              <FieldLabel>Critério</FieldLabel>
               <SelectInput
                 value={item.criterio}
                 onChange={(value) => {
@@ -1785,9 +1785,9 @@ const StagesArrayEditor = ({
                   commit(next);
                 }}
               >
-                <option value="eliminatorio">EliminatÃ³rio</option>
-                <option value="classificatorio">ClassificatÃ³rio</option>
-                <option value="eliminatorio_classificatorio">EliminatÃ³rio e classificatÃ³rio</option>
+                <option value="eliminatorio">Eliminatório</option>
+                <option value="classificatorio">Classificatório</option>
+                <option value="eliminatorio_classificatorio">Eliminatório e classificatório</option>
               </SelectInput>
             </div>
             <div>
@@ -1813,7 +1813,7 @@ const StagesArrayEditor = ({
               </button>
             </div>
             <div className="lg:col-span-4">
-              <FieldLabel>ObservaÃ§Ã£o</FieldLabel>
+              <FieldLabel>Observação</FieldLabel>
               <TextAreaInput
                 value={item.descricao}
                 onChange={(value) => {
@@ -1821,7 +1821,7 @@ const StagesArrayEditor = ({
                   next[index] = { ...item, descricao: value };
                   commit(next);
                 }}
-                placeholder="CritÃ©rios, peso, nota mÃ­nima ou observaÃ§Ãµes do edital."
+                placeholder="Critérios, peso, nota mínima ou observações do edital."
                 rows={2}
               />
             </div>
@@ -1985,14 +1985,14 @@ const LinkedQuestionsEditor = ({
   return (
     <div className="w-full min-w-0 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
       <div className="mb-3">
-        <FieldLabel>QuestÃµes da plataforma incluÃ­das</FieldLabel>
+        <FieldLabel>Questões da plataforma incluídas</FieldLabel>
         <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-          Busque a questÃ£o pelo enunciado ou adicione direto pelo ID. Os itens entram na lista abaixo.
+          Busque a questão pelo enunciado ou adicione direto pelo ID. Os itens entram na lista abaixo.
         </p>
       </div>
       <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
         <div>
-          <FieldLabel>Buscar questÃ£o</FieldLabel>
+          <FieldLabel>Buscar questão</FieldLabel>
           <TextInput
             value={searchTerm}
             onChange={setSearchTerm}
@@ -2026,9 +2026,9 @@ const LinkedQuestionsEditor = ({
           <FieldLabel>Resultados da busca</FieldLabel>
           <div className="mt-2 space-y-2">
             {loading ? (
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Buscando questÃµes...</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Buscando questões...</p>
             ) : results.length === 0 ? (
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Nenhuma questÃ£o encontrada.</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Nenhuma questão encontrada.</p>
             ) : results.map((question) => {
               const questionId = String(question.id || '');
               const label = getQuestionPreviewLabel(question);
@@ -2037,7 +2037,7 @@ const LinkedQuestionsEditor = ({
                 <div key={questionId} className="flex flex-col gap-2 rounded-sm border border-slate-200 px-3 py-2 dark:border-slate-800 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Questao #{questionId}</p>
-                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label || 'Sem enunciado disponÃ­vel'}</p>
+                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label || 'Sem enunciado disponível'}</p>
                   </div>
                   <button
                     type="button"
@@ -2054,25 +2054,25 @@ const LinkedQuestionsEditor = ({
         </div>
       ) : null}
       <div className="mt-3">
-        <FieldLabel>QuestÃµes adicionadas</FieldLabel>
+        <FieldLabel>Questões adicionadas</FieldLabel>
         <div className="mt-2 space-y-2">
           {selectedIds.length === 0 ? (
             <div className="rounded-sm border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-              Nenhuma questÃ£o vinculada ainda.
+              Nenhuma questão vinculada ainda.
             </div>
           ) : selectedIds.map((id) => (
             <div key={id} className="flex flex-col gap-2 rounded-sm border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Questao #{id}</p>
                 <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                  {knownLabels[id] || (unavailablePreviewIds[id] ? 'PrÃ©via do enunciado indisponÃ­vel' : 'Carregando prÃ©via do enunciado...')}
+                  {knownLabels[id] || (unavailablePreviewIds[id] ? 'Prévia do enunciado indisponível' : 'Carregando prévia do enunciado...')}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => removeQuestionId(id)}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
-                aria-label={`Remover questÃ£o ${id}`}
+                aria-label={`Remover questão ${id}`}
               >
                 <Trash2 size={14} />
               </button>
@@ -2320,7 +2320,7 @@ const AdminExamEditorPage = ({
     () => Array.from(new Set([
       ...(levelOptions || []),
       'Superior',
-      'MÃ©dio',
+      'Médio',
       'Fundamental',
     ].map(String).map((value) => value.trim()).filter(Boolean))),
     [levelOptions],
@@ -2339,33 +2339,33 @@ const AdminExamEditorPage = ({
   const organizationLabels = React.useMemo(() => organizationOptions.map(getTaxonomyLabel).filter(Boolean), [organizationOptions]);
   const roleLabels = React.useMemo(() => roleOptions.map(getTaxonomyName).filter(Boolean), [roleOptions]);
   const focusLabels = React.useMemo(() => focusOptions.map(getTaxonomyName).filter(Boolean), [focusOptions]);
-  const externalNoticePrompt = React.useMemo(() => `VocÃª Ã© o extrator editorial de editais de concursos pÃºblicos do ConcursoMestre.
+  const externalNoticePrompt = React.useMemo(() => `Você é o extrator editorial de editais de concursos públicos do ConcursoMestre.
 
-Leia o edital/prova anexado e retorne UM ÃšNICO JSON vÃ¡lido, sem markdown, sem comentÃ¡rios fora do JSON e sem inventar dados.
+Leia o edital/prova anexado e retorne UM ÚNICO JSON válido, sem markdown, sem comentários fora do JSON e sem inventar dados.
 
 Voce deve GERAR o JSON final de metadados do Banco de Provas. Nao responda com explicacoes, plano de divisao, sugestao de partes, justificativa de limite ou orientacao para outra ferramenta. Se a interface permitir anexar/criar arquivo, gere um arquivo .json contendo o objeto completo. Se responder no chat, retorne somente o objeto JSON parseavel.
 
 Objetivo: preencher o Banco de Provas do ConcursoMestre.
 
 Regras:
-- Extraia apenas informaÃ§Ãµes comprovadas no documento.
-- Datas devem vir em YYYY-MM-DD quando possÃ­vel.
-- Banca, Ã³rgÃ£os e cargos devem ser os reais do edital. NÃ£o inclua frases soltas, leis, URLs, tÃ­tulos de seÃ§Ã£o ou trechos que nÃ£o sejam Ã³rgÃ£os/cargos.
-- Etapas devem vir da tabela/trecho oficial de etapas, com critÃ©rio: eliminatorio, classificatorio ou eliminatorio_classificatorio.
-- Vagas devem trazer literalmente a quantidade de vagas por Ã³rgÃ£o/cargo quando existir.
-- Requisitos, remuneraÃ§Ã£o e conteÃºdo programÃ¡tico devem vir estruturados para ediÃ§Ã£o posterior.
-- ConteÃºdo programÃ¡tico deve separar materia, topico e assunto. Se o anexo listar vÃ¡rios assuntos numerados, cada assunto deve virar um item separado.
-- metadata.examTitle deve ser curto, comercial e parecido com os tÃ­tulos da plataforma. Use o padrÃ£o "Banca - Ano - Ã“rgÃ£o - Cargo/Prova". Exemplo: "IBFC - 2018 - PM-PB - Soldado PM". NÃ£o use o tÃ­tulo completo do edital.
-- NÃ£o gere questÃµes. Aqui Ã© somente metadados do Banco de Provas.
+- Extraia apenas informações comprovadas no documento.
+- Datas devem vir em YYYY-MM-DD quando possível.
+- Banca, órgãos e cargos devem ser os reais do edital. Não inclua frases soltas, leis, URLs, títulos de seção ou trechos que não sejam órgãos/cargos.
+- Etapas devem vir da tabela/trecho oficial de etapas, com critério: eliminatorio, classificatorio ou eliminatorio_classificatorio.
+- Vagas devem trazer literalmente a quantidade de vagas por órgão/cargo quando existir.
+- Requisitos, remuneração e conteúdo programático devem vir estruturados para edição posterior.
+- Conteúdo programático deve separar materia, topico e assunto. Se o anexo listar vários assuntos numerados, cada assunto deve virar um item separado.
+- metadata.examTitle deve ser curto, comercial e parecido com os títulos da plataforma. Use o padrão "Banca - Ano - Órgão - Cargo/Prova". Exemplo: "IBFC - 2018 - PM-PB - Soldado PM". Não use o título completo do edital.
+- Não gere questões. Aqui é somente metadados do Banco de Provas.
 
-Taxonomias jÃ¡ existentes na plataforma para referÃªncia:
-- Bancas: ${agencyOptions.map(getTaxonomyLabel).filter(Boolean).slice(0, 80).join('; ') || 'nÃ£o informado'}
-- Ã“rgÃ£os: ${organizationLabels.slice(0, 120).join('; ') || 'nÃ£o informado'}
-- Cargos: ${roleLabels.slice(0, 120).join('; ') || 'nÃ£o informado'}
-- Focos/Ã¡reas: ${focusLabels.slice(0, 80).join('; ') || 'nÃ£o informado'}
-- MatÃ©rias: ${subjectOptions.map(getTaxonomyName).filter(Boolean).slice(0, 120).join('; ') || 'nÃ£o informado'}
+Taxonomias já existentes na plataforma para referência:
+- Bancas: ${agencyOptions.map(getTaxonomyLabel).filter(Boolean).slice(0, 80).join('; ') || 'não informado'}
+- Órgãos: ${organizationLabels.slice(0, 120).join('; ') || 'não informado'}
+- Cargos: ${roleLabels.slice(0, 120).join('; ') || 'não informado'}
+- Focos/áreas: ${focusLabels.slice(0, 80).join('; ') || 'não informado'}
+- Matérias: ${subjectOptions.map(getTaxonomyName).filter(Boolean).slice(0, 120).join('; ') || 'não informado'}
 
-Schema obrigatÃ³rio:
+Schema obrigatório:
 {
   "metadata": {
     "examTitle": "",
@@ -2391,7 +2391,7 @@ Schema obrigatÃ³rio:
     { "scopeType": "cargo", "scope": "", "chave": "Escolaridade", "texto": "" }
   ],
   "remuneracoesDetalhadas": [
-    { "scopeType": "cargo", "scope": "", "chave": "RemuneraÃ§Ã£o", "texto": "" }
+    { "scopeType": "cargo", "scope": "", "chave": "Remuneração", "texto": "" }
   ],
   "vagasDetalhadas": [
     { "scopeType": "cargo", "scope": "", "chave": "Vagas", "texto": "" }
@@ -2402,7 +2402,7 @@ Schema obrigatÃ³rio:
   "evidence": []
 }
 
-Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
+Se algum campo não estiver no documento, deixe vazio ou array vazio.`, [
     agencyOptions,
     focusLabels,
     organizationLabels,
@@ -2765,7 +2765,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
       setExternalNoticePromptCopied(true);
       window.setTimeout(() => setExternalNoticePromptCopied(false), 1800);
     } catch {
-      setNoticeExtractionMessage('NÃ£o foi possÃ­vel copiar o prompt automaticamente. Selecione o texto e copie manualmente.');
+      setNoticeExtractionMessage('Não foi possível copiar o prompt automaticamente. Selecione o texto e copie manualmente.');
     }
   };
 
@@ -2791,7 +2791,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
       });
     } catch (error) {
       clientLog.warn('Error applying external exam notice JSON:', error);
-      setNoticeExtractionMessage('NÃ£o foi possÃ­vel ler o JSON colado. Verifique se a resposta contÃ©m um objeto JSON vÃ¡lido.');
+      setNoticeExtractionMessage('Não foi possível ler o JSON colado. Verifique se a resposta contém um objeto JSON válido.');
     } finally {
       setApplyingExternalNoticeJson(false);
     }
@@ -2955,7 +2955,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
       }
       setNoticeExtractionMessage(`Edital lido por IA e parser local. Revise os campos antes de publicar.${editorialMessage}`);
     } catch {
-      setNoticeExtractionMessage('NÃ£o foi possÃ­vel extrair os dados do edital.');
+      setNoticeExtractionMessage('Não foi possível extrair os dados do edital.');
     } finally {
       setExtractingNotice(false);
     }
@@ -2966,7 +2966,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
         <main className="min-w-0 flex-1 space-y-6">
           <EditorPanel
             title="Dados da prova"
-            description="IdentificaÃ§Ã£o principal, banca, Ã³rgÃ£o e cargo usados pela plataforma."
+            description="Identificação principal, banca, órgão e cargo usados pela plataforma."
           >
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="md:col-span-2 xl:col-span-3">
@@ -2985,7 +2985,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
               </div>
               <div>
                 <SmartTagSelector
-                  label="NÃ­vel"
+                  label="Nível"
                   options={normalizedLevelOptions}
                   selected={draft.nivel ? [draft.nivel] : []}
                   onChange={(values) => updateDraft({ nivel: values[0] || '' })}
@@ -3002,11 +3002,11 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
                 <TextInput value={draft.corCaderno} onChange={(value) => updateDraft({ corCaderno: value })} placeholder="Amarelo, Azul" />
               </div>
               <div>
-                <FieldLabel>InscriÃ§Ã£o - inÃ­cio</FieldLabel>
+                <FieldLabel>Inscrição - início</FieldLabel>
                 <TextInput type="date" value={draft.dataInscricaoInicio} onChange={(value) => updateDraft({ dataInscricaoInicio: value })} />
               </div>
               <div>
-                <FieldLabel>InscriÃ§Ã£o - fim</FieldLabel>
+                <FieldLabel>Inscrição - fim</FieldLabel>
                 <TextInput type="date" value={draft.dataInscricaoFim} onChange={(value) => updateDraft({ dataInscricaoFim: value })} />
               </div>
               <div>
@@ -3014,11 +3014,11 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
                 <TextInput type="date" value={draft.dataProva} onChange={(value) => updateDraft({ dataProva: value })} />
               </div>
               <div>
-                <FieldLabel>Valor da inscriÃ§Ã£o</FieldLabel>
+                <FieldLabel>Valor da inscrição</FieldLabel>
                 <TextInput value={draft.valorInscricao} onChange={(value) => updateDraft({ valorInscricao: value })} placeholder="R$ 120,00" />
               </div>
               <div>
-                <FieldLabel>Total de questÃµes</FieldLabel>
+                <FieldLabel>Total de questões</FieldLabel>
                 <TextInput type="number" value={draft.totalQuestoes} onChange={(value) => updateDraft({ totalQuestoes: value })} placeholder="80" />
               </div>
               <div id="exam-taxonomies" className="scroll-mt-24 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
@@ -3038,7 +3038,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
                     <TextInput
                       value={draft.bancaNome}
                       onChange={(value) => updateDraft({ bancaId: '', bancaNome: value })}
-                      placeholder="FundaÃ§Ã£o Getulio Vargas"
+                      placeholder="Fundação Getulio Vargas"
                     />
                   </div>
                 </div>
@@ -3050,14 +3050,14 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
               </div>
               <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
                 <SmartTagSelector
-                  label="Ã“rgÃ£os vinculados"
+                  label="Órgãos vinculados"
                   options={organizationOptions}
                   selected={selectedOrganizationLabels}
                   onChange={selectOrganizations}
-                  placeholder="Selecione ou cadastre um Ã³rgÃ£o"
+                  placeholder="Selecione ou cadastre um órgão"
                 />
                 <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Os Ã³rgÃ£os existentes serÃ£o vinculados. Novos Ã³rgÃ£os serÃ£o criados automaticamente na taxonomia global ao salvar.
+                  Os órgãos existentes serão vinculados. Novos órgãos serão criados automaticamente na taxonomia global ao salvar.
                 </p>
               </div>
               <div id="exam-roles" className="scroll-mt-24 md:col-span-2 xl:col-span-3">
@@ -3080,7 +3080,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
                 />
               </div>
               <div className="hidden md:col-span-2">
-                <FieldLabel>Requisitos extraÃ­dos do edital</FieldLabel>
+                <FieldLabel>Requisitos extraídos do edital</FieldLabel>
                 <TextAreaInput
                   value={draft.requisitosText}
                   onChange={(value) => updateDraft({ requisitosText: value })}
@@ -3088,7 +3088,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
                 />
               </div>
               <div className="hidden">
-                <FieldLabel>RemuneraÃ§Ã£o</FieldLabel>
+                <FieldLabel>Remuneração</FieldLabel>
                 <TextAreaInput
                   value={draft.remuneracaoText}
                   onChange={(value) => updateDraft({ remuneracaoText: value })}
@@ -3103,25 +3103,25 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
                   placeholder={'Soldado PM: 900 vagas + CR\nSoldado BM: 100 vagas'}
                 />
                 <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Use uma linha por cargo quando o edital separar vagas por cargo ou Ã³rgÃ£o.
+                  Use uma linha por cargo quando o edital separar vagas por cargo ou órgão.
                 </p>
               </div>
               <div className="hidden md:col-span-2 xl:col-span-3">
-                <FieldLabel>ConteÃºdo programÃ¡tico</FieldLabel>
+                <FieldLabel>Conteúdo programático</FieldLabel>
                 <TextAreaInput
                   value={draft.conteudoProgramaticoText}
                   onChange={(value) => updateDraft({ conteudoProgramaticoText: value })}
-                  placeholder="Disciplinas, tÃ³picos e assuntos previstos no edital."
+                  placeholder="Disciplinas, tópicos e assuntos previstos no edital."
                   rows={6}
                 />
               </div>
               <div className="hidden">
                 <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <FieldLabel>InscriÃ§Ã£o - inÃ­cio</FieldLabel>
+                  <FieldLabel>Inscrição - início</FieldLabel>
                   <TextInput type="date" value={draft.dataInscricaoInicio} onChange={(value) => updateDraft({ dataInscricaoInicio: value })} />
                 </div>
                 <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <FieldLabel>InscriÃ§Ã£o - fim</FieldLabel>
+                  <FieldLabel>Inscrição - fim</FieldLabel>
                   <TextInput type="date" value={draft.dataInscricaoFim} onChange={(value) => updateDraft({ dataInscricaoFim: value })} />
                 </div>
                 <div className="flex min-w-0 flex-col justify-end gap-1">
@@ -3129,11 +3129,11 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
                   <TextInput type="date" value={draft.dataProva} onChange={(value) => updateDraft({ dataProva: value })} />
                 </div>
                 <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <FieldLabel>Valor da inscriÃ§Ã£o</FieldLabel>
+                  <FieldLabel>Valor da inscrição</FieldLabel>
                   <TextInput value={draft.valorInscricao} onChange={(value) => updateDraft({ valorInscricao: value })} placeholder="R$ 120,00" />
                 </div>
                 <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <FieldLabel>Total de questÃµes</FieldLabel>
+                  <FieldLabel>Total de questões</FieldLabel>
                   <TextInput type="number" value={draft.totalQuestoes} onChange={(value) => updateDraft({ totalQuestoes: value })} placeholder="80" />
                 </div>
               </div>
@@ -3149,14 +3149,14 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
               <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
                 <ScopedArrayEditor
                   title="Requisitos"
-                  description="Adicione requisitos por Ã³rgÃ£o, cargo, foco ou para todos os cargos do edital."
+                  description="Adicione requisitos por órgão, cargo, foco ou para todos os cargos do edital."
                   items={requisitoItems}
                   organizationOptions={scopedOrganizationOptions}
                   roleOptions={scopedRoleOptions}
-                  placeholder="Escolaridade, CNH, idade mÃ­nima, registro profissional..."
+                  placeholder="Escolaridade, CNH, idade mínima, registro profissional..."
                   keyValue
                   keyPlaceholder="Ex.: Escolaridade"
-                  valueLabel="Valor / descriÃ§Ã£o"
+                  valueLabel="Valor / descrição"
                   onChange={(items) => updateDraft({
                     requisitosDetalhadosText: serializeDraftArray(items),
                     requisitosText: items
@@ -3172,19 +3172,19 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
               </div>
               <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
                 <ScopedArrayEditor
-                  title="RemuneraÃ§Ã£o"
-                  description="Informe salÃ¡rios, adicionais e benefÃ­cios separados por Ã³rgÃ£o, cargo ou foco quando o edital trouxer diferenÃ§as."
+                  title="Remuneração"
+                  description="Informe salários, adicionais e benefícios separados por órgão, cargo ou foco quando o edital trouxer diferenças."
                   items={remuneracaoItems}
                   organizationOptions={scopedOrganizationOptions}
                   roleOptions={scopedRoleOptions}
-                  placeholder="R$ 3.500,00 + benefÃ­cios"
+                  placeholder="R$ 3.500,00 + benefícios"
                   onChange={(items) => updateDraft({ remuneracoesDetalhadasText: serializeDraftArray(items), remuneracaoText: items.map((item) => item.texto).filter(Boolean).join('\n') })}
                 />
               </div>
               <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
                 <ScopedArrayEditor
                   title="Vagas"
-                  description="Cadastre vagas por Ã³rgÃ£o, cargo ou foco. Use linhas diferentes para ampla concorrÃªncia, cotas ou cadastro reserva."
+                  description="Cadastre vagas por órgão, cargo ou foco. Use linhas diferentes para ampla concorrência, cotas ou cadastro reserva."
                   items={vagaItems}
                   organizationOptions={scopedOrganizationOptions}
                   roleOptions={scopedRoleOptions}
@@ -3225,10 +3225,10 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/50">
               <div className="min-w-0">
                 <p className="text-sm font-black uppercase tracking-[0.14em] text-slate-900 dark:text-slate-100">
-                  Importador de questÃµes
+                  Importador de questões
                 </p>
                 <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                  Abra o importador para extrair, revisar ou vincular questÃµes a uma prova do Banco de Provas.
+                  Abra o importador para extrair, revisar ou vincular questões a uma prova do Banco de Provas.
                 </p>
               </div>
               <a
@@ -3294,7 +3294,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
 
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                      A aplicaÃ§Ã£o nÃ£o publica a prova. Ela apenas preenche os campos para revisÃ£o.
+                      A aplicação não publica a prova. Ela apenas preenche os campos para revisão.
                     </p>
                     <button
                       type="button"
@@ -3437,7 +3437,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
 
               <div className="space-y-2 border-t border-slate-200 pt-4 text-sm dark:border-slate-700">
                 <div className="flex items-start justify-between gap-3">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">QuestÃµes vinculadas</span>
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Questões vinculadas</span>
                   <span className="inline-flex items-center gap-1 font-semibold text-slate-900 dark:text-slate-100">
                     <Link2 size={13} />
                     {linkedQuestionsCount}
@@ -3486,7 +3486,7 @@ Se algum campo nÃ£o estiver no documento, deixe vazio ou array vazio.`, [
               </div>
               <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                 Banca: {draft.bancaSigla || draft.bancaNome || '-'}<br />
-                Ã“rgÃ£o: {draft.orgaoSigla || draft.orgaoNome || '-'}<br />
+                Órgão: {draft.orgaoSigla || draft.orgaoNome || '-'}<br />
                 Cargo: {draft.cargoDescricao || '-'}<br />
                 Caderno: {draft.caderno || [draft.tipoCaderno, draft.corCaderno].filter(Boolean).join(' - ') || '-'}<br />
                 Arquivos: {(draft.files || []).length}/3

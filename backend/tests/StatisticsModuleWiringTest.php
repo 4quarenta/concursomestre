@@ -21,7 +21,7 @@ function assertContainsStatisticsDelegate(string $path, string $needle, string $
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsStatisticsDelegate(
     $base . '/api/statistics/xray.php',

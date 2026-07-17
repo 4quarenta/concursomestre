@@ -27,7 +27,7 @@ function assertNotContainsText(string $path, string $needle, string $message): v
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsText(
     $base . '/api/settings.php',

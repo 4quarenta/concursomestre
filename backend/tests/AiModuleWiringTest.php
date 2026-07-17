@@ -21,7 +21,7 @@ function assertContainsAiDelegate(string $path, string $needle, string $message)
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsAiDelegate(
     $base . '/api/ai/generate.php',

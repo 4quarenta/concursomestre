@@ -61,7 +61,7 @@ assertContainsUsersDelegate(
 
 assertContainsUsersDelegate(
     $base . '/api/auth/me.php',
-    'handleUsersAuthenticatedProfileRoute',
+    'handleUsersAuthenticatedSessionRoute',
     'Auth me endpoint must delegate to users module routes'
 );
 

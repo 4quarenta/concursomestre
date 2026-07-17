@@ -25,6 +25,41 @@ const PROACTIVE_REFRESH_LEEWAY_MS = 60_000;
 
 type AuthEventType = 'login' | 'logout' | 'refresh-success';
 
+export type SessionStatus = 'idle' | 'bootstrapping' | 'authenticated' | 'anonymous';
+
+export interface CanonicalSessionUser {
+    id: string;
+    displayName: string;
+    email: string;
+    avatarUrl: string | null;
+    status: 'active' | 'suspended' | 'banned' | 'pending';
+    emailVerified: boolean;
+    role: 'user' | 'staff' | 'partner' | 'admin';
+    permissions: string[];
+}
+
+export interface CanonicalSessionData {
+    user: CanonicalSessionUser;
+    subscription: {
+        status: string;
+        plan: {
+            id: number | null;
+            code: string;
+            displayName: string;
+            tier: number;
+        } | null;
+    };
+    gamification: {
+        level: number;
+        xp: number;
+        reputation: number;
+    };
+    linkedProviders: string[];
+    partnership: {
+        status: string;
+    };
+}
+
 interface AuthBroadcastEvent {
     type: AuthEventType;
     sourceTabId: string;
@@ -37,6 +72,7 @@ export interface AuthSessionSnapshot {
     currentUser: UserProfile | null;
     isAuthenticated: boolean;
     isBootstrapped: boolean;
+    status: SessionStatus;
 }
 
 interface RefreshOptions {
@@ -44,10 +80,16 @@ interface RefreshOptions {
     allowAnonymousFailure?: boolean;
     force?: boolean;
     broadcast?: boolean;
+    signal?: AbortSignal;
+    sessionGeneration?: number;
 }
 interface RefreshSessionResponsePayload {
     token?: string | null;
-    user?: UserProfile | null;
+    user?: CanonicalSessionUser | null;
+    subscription?: CanonicalSessionData['subscription'];
+    gamification?: CanonicalSessionData['gamification'];
+    linkedProviders?: string[];
+    partnership?: CanonicalSessionData['partnership'];
 }
 
 type SessionListener = (snapshot: AuthSessionSnapshot) => void;
@@ -96,6 +138,94 @@ const parseBooleanLike = (value: unknown, fallback = false): boolean => {
     }
 
     return fallback;
+};
+
+const planLabelFromCode = (value: unknown): UserProfile['billing']['plan'] => {
+    switch (String(value || '').trim().toLowerCase()) {
+        case 'elite': return 'Elite';
+        case 'pro': return 'Pro';
+        case 'essencial': return 'Essencial';
+        default: return 'Gratuito';
+    }
+};
+
+export const isCanonicalSessionData = (value: unknown): value is CanonicalSessionData => {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Partial<CanonicalSessionData>;
+    return Boolean(
+        candidate.user
+        && typeof candidate.user.id === 'string'
+        && typeof candidate.user.displayName === 'string'
+        && candidate.gamification
+        && Array.isArray(candidate.linkedProviders),
+    );
+};
+
+/**
+ * Adapter local e temporário para o estado visual legado. O backend nunca recebe
+ * nem devolve os aliases derivados daqui; a remoção dos consumidores restantes
+ * está registrada na Fase 08 da auditoria.
+ */
+export const toSessionUserProfile = (session: CanonicalSessionData): UserProfile => {
+    const role = normalizeUserRole(session.user.role);
+    const plan = session.subscription?.plan;
+    const linkedProviders = Array.isArray(session.linkedProviders) ? session.linkedProviders : [];
+    const subscriptionStatus = String(session.subscription?.status || 'inactive');
+    const activeSubscription = subscriptionStatus === 'active' || subscriptionStatus === 'trialing';
+
+    return {
+        id: session.user.id,
+        name: session.user.displayName,
+        email: session.user.email,
+        emailVerified: Boolean(session.user.emailVerified),
+        targetExam: '',
+        level: Number(session.gamification?.level || 1),
+        xp: Number(session.gamification?.xp || 0),
+        reputation: Number(session.gamification?.reputation || 0),
+        commentsCount: 0,
+        role,
+        status: session.user.status,
+        savedQuestionIds: [],
+        simulations: [],
+        purchasedMaterialIds: [],
+        preferences: { shareData: true, notifications: true },
+        photoUrl: session.user.avatarUrl || undefined,
+        subscription: plan && subscriptionStatus !== 'inactive'
+            ? ({
+                id: 0,
+                user_id: session.user.id,
+                plan_id: Number(plan.id || 0),
+                status: subscriptionStatus as UserProfile['subscription'] extends infer T ? T extends { status: infer S } ? S : never : never,
+                current_period_start: '',
+                current_period_end: '',
+                plan: {
+                    id: Number(plan.id || 0),
+                    name: plan.displayName,
+                    price: 0,
+                    interval_unit: 'month',
+                    interval_count: 1,
+                    tier: Number(plan.tier || 1),
+                },
+            } as UserProfile['subscription'])
+            : undefined,
+        billing: {
+            plan: planLabelFromCode(plan?.code),
+            billingCycle: 'monthly',
+        },
+        // Selectors locais de compatibilidade. Não são parte do contrato HTTP.
+        isAdmin: role === 'admin',
+        isStaff: role === 'staff',
+        canAccessAdmin: session.user.permissions.includes('admin.access'),
+        isPartner: session.partnership?.status === 'active',
+        hasGoogleLinked: linkedProviders.includes('google'),
+        hasFacebookLinked: linkedProviders.includes('facebook'),
+        plan: plan?.code || 'free',
+        planDisplayName: plan?.displayName || 'Gratuito',
+        hasActivePlan: activeSubscription,
+        permissions: [...session.user.permissions],
+        linkedProviders,
+        partnershipStatus: session.partnership?.status || 'inactive',
+    } as UserProfile;
 };
 
 const normalizeAuthUserProfile = (rawUser: UserProfile | null | undefined): UserProfile | null => {
@@ -168,7 +298,11 @@ let accessToken: string | null = null;
 let accessTokenExpMs: number | null = null;
 let currentUser: UserProfile | null = null;
 let isBootstrapped = false;
+let sessionStatus: SessionStatus = 'idle';
+let sessionGeneration = 0;
 let refreshPromise: Promise<AuthSessionSnapshot | null> | null = null;
+let bootstrapPromise: Promise<AuthSessionSnapshot> | null = null;
+let bootstrapAbortController: AbortController | null = null;
 let proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 const listeners = new Set<SessionListener>();
@@ -305,6 +439,7 @@ const getSnapshot = (): AuthSessionSnapshot => ({
     currentUser,
     isAuthenticated: Boolean(accessToken && currentUser),
     isBootstrapped,
+    status: sessionStatus,
 });
 
 /**
@@ -433,7 +568,7 @@ const applyAccessToken = (token: string | null | undefined): void => {
 const updateSessionState = (
     nextToken: string | null | undefined,
     nextUser?: UserProfile | null,
-    options?: { isBootstrapped?: boolean; broadcast?: boolean; eventType?: AuthEventType; reason?: string | null }
+    options?: { isBootstrapped?: boolean; broadcast?: boolean; eventType?: AuthEventType; reason?: string | null; status?: SessionStatus }
 ): void => {
     applyAccessToken(nextToken);
     setAuthSessionHint(Boolean(accessToken));
@@ -445,6 +580,9 @@ const updateSessionState = (
     if (options?.isBootstrapped !== undefined) {
         isBootstrapped = options.isBootstrapped;
     }
+
+    sessionStatus = options?.status
+        ?? (accessToken && currentUser ? 'authenticated' : (isBootstrapped ? 'anonymous' : 'idle'));
 
     notifyListeners();
 
@@ -683,6 +821,25 @@ const parseSuccessPayload = <T>(payload: unknown): T | null => {
     return payload as T;
 };
 
+const readCanonicalSessionData = (payload: unknown): CanonicalSessionData | null => {
+    const data = parseSuccessPayload<unknown>(payload);
+    return isCanonicalSessionData(data) ? data : null;
+};
+
+const applyCanonicalSessionData = (
+    token: string,
+    session: CanonicalSessionData,
+    options?: { isBootstrapped?: boolean; broadcast?: boolean; status?: SessionStatus },
+): UserProfile => {
+    const user = toSessionUserProfile(session);
+    updateSessionState(token, user, {
+        isBootstrapped: options?.isBootstrapped ?? true,
+        broadcast: options?.broadcast ?? false,
+        status: options?.status ?? 'authenticated',
+    });
+    return user;
+};
+
 /**
  * Busca o usuário autenticado usando o token atualmente carregado.
  * Essa chamada completa a montagem da sessão depois de login, refresh ou bootstrap.
@@ -702,13 +859,12 @@ export const fetchAuthenticatedUser = async (): Promise<UserProfile> => {
         withCredentials: true,
     });
 
-    const payload = parseSuccessPayload<{ user: UserProfile }>(response.data);
-    if (!payload?.user) {
+    const session = readCanonicalSessionData(response.data);
+    if (!session) {
         throw new Error('Não foi possível obter o usuário autenticado.');
     }
 
-    updateSessionState(token, payload.user, { isBootstrapped: true, broadcast: false });
-    return payload.user;
+    return applyCanonicalSessionData(token, session, { isBootstrapped: true, broadcast: false });
 };
 
 /**
@@ -716,20 +872,26 @@ export const fetchAuthenticatedUser = async (): Promise<UserProfile> => {
  * O fluxo e usado por login, 2FA e integrações que liberam sessão imediatamente.
  * @since 1.0.0
  */
-export const establishAuthenticatedSession = async (token: string | null | undefined, user?: UserProfile | null): Promise<AuthSessionSnapshot> => {
+export const establishAuthenticatedSession = async (token: string | null | undefined, session?: CanonicalSessionData | null): Promise<AuthSessionSnapshot> => {
     const normalizedToken = normalizeToken(token);
     if (!normalizedToken) {
         throw new Error('Token de autenticação ausente.');
     }
 
-    updateSessionState(normalizedToken, user ?? null, {
+    sessionGeneration += 1;
+    bootstrapAbortController?.abort();
+    bootstrapAbortController = null;
+    bootstrapPromise = null;
+
+    if (!session) {
+        throw new Error('Login response did not include a canonical session.');
+    }
+
+    applyCanonicalSessionData(normalizedToken, session, {
         isBootstrapped: true,
         broadcast: false,
+        status: 'authenticated',
     });
-
-    if (!user) {
-        await fetchAuthenticatedUser();
-    }
 
     broadcastAuthEvent({
         type: 'login',
@@ -744,6 +906,7 @@ export const establishAuthenticatedSession = async (token: string | null | undef
  * @since 1.0.0
  */
 export const clearAuthenticatedSession = (reason?: string | null, broadcast = true): void => {
+    sessionGeneration += 1;
     updateSessionState(null, null, {
         isBootstrapped: true,
         broadcast,
@@ -816,7 +979,14 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
                     'X-CSRF-Token': csrfToken,
                 },
                 withCredentials: true,
+                signal: options.signal,
             });
+
+            if (options.signal?.aborted || (options.sessionGeneration !== undefined && options.sessionGeneration !== sessionGeneration)) {
+                const abortError = new Error('Auth bootstrap cancelled by a completed login.');
+                abortError.name = 'AbortError';
+                throw abortError;
+            }
 
             const payload = parseSuccessPayload<RefreshSessionResponsePayload>(response.data);
             const nextToken = payload?.token ?? null;
@@ -824,14 +994,26 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
                 throw new Error('Resposta de refresh sem access token.');
             }
 
-            const nextUser = payload?.user ?? currentUser;
+            const canonicalSession = readCanonicalSessionData(response.data);
+            const nextUser = canonicalSession
+                ? toSessionUserProfile(canonicalSession)
+                : currentUser;
             const hasResolvedUser = Boolean(nextUser);
             const shouldPublishReadySession = options.reason !== 'bootstrap' || hasResolvedUser;
 
-            updateSessionState(nextToken, nextUser, {
-                isBootstrapped: shouldPublishReadySession,
-                broadcast: false,
-            });
+            if (canonicalSession) {
+                applyCanonicalSessionData(nextToken, canonicalSession, {
+                    isBootstrapped: shouldPublishReadySession,
+                    broadcast: false,
+                    status: hasResolvedUser ? 'authenticated' : 'bootstrapping',
+                });
+            } else {
+                updateSessionState(nextToken, nextUser, {
+                    isBootstrapped: shouldPublishReadySession,
+                    broadcast: false,
+                    status: hasResolvedUser ? 'authenticated' : 'bootstrapping',
+                });
+            }
             // A outra aba recebe apenas o sinal e renova pelo proprio cookie
             // HttpOnly; nenhum access token atravessa canais do navegador.
             releaseRefreshLock();
@@ -874,35 +1056,63 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
  * @since 1.0.0
  */
 export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
-    if (isBootstrapped) {
+    if (sessionStatus === 'authenticated' && accessToken && currentUser) {
         return getSnapshot();
     }
 
-    if (!getCsrfToken() || !hasAuthSessionHint()) {
-        isBootstrapped = true;
-        notifyListeners();
-        return getSnapshot();
+    if (bootstrapPromise) {
+        return bootstrapPromise;
     }
+
+    bootstrapPromise = (async () => {
+        if (isBootstrapped) {
+            return getSnapshot();
+        }
+
+        sessionStatus = 'bootstrapping';
+        const activeBootstrapController = new AbortController();
+        const bootstrapGeneration = sessionGeneration;
+        bootstrapAbortController = activeBootstrapController;
+
+        if (!getCsrfToken() || !hasAuthSessionHint()) {
+            isBootstrapped = true;
+            sessionStatus = 'anonymous';
+            notifyListeners();
+            return getSnapshot();
+        }
+
+        try {
+            await refreshAuthSession({
+                reason: 'bootstrap',
+                allowAnonymousFailure: true,
+                force: true,
+                signal: activeBootstrapController.signal,
+                sessionGeneration: bootstrapGeneration,
+            });
+        } catch (error) {
+            if ((error as Error)?.name !== 'AbortError' && bootstrapGeneration === sessionGeneration) {
+                clientLog.warn('Auth bootstrap failed:', error);
+                clearAuthenticatedSession('bootstrap_failed', false);
+            }
+        } finally {
+            if (!activeBootstrapController.signal.aborted && bootstrapGeneration === sessionGeneration) {
+                isBootstrapped = true;
+                if (getSnapshot().status !== 'authenticated') {
+                    sessionStatus = 'anonymous';
+                }
+                notifyListeners();
+            }
+        }
+
+        return getSnapshot();
+    })();
 
     try {
-        const refreshed = await refreshAuthSession({
-            reason: 'bootstrap',
-            allowAnonymousFailure: true,
-            force: true,
-        });
-
-        if (refreshed?.accessToken && !refreshed.currentUser) {
-            await fetchAuthenticatedUser();
-        }
-    } catch (error) {
-        clientLog.warn('Auth bootstrap failed:', error);
-        clearAuthenticatedSession('bootstrap_failed', false);
+        return await bootstrapPromise;
     } finally {
-        isBootstrapped = true;
-        notifyListeners();
+        bootstrapPromise = null;
+        bootstrapAbortController = null;
     }
-
-    return getSnapshot();
 };
 
 /**

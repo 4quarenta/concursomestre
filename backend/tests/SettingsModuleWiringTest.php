@@ -29,7 +29,7 @@ function assertNotContainsSettingsDelegate(string $path, string $needle, string 
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsSettingsDelegate(
     $base . '/api/settings.php',

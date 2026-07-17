@@ -29,7 +29,7 @@ function assertNotContainsCronHardening(string $path, string $needle, string $me
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsCronHardening(
     $base . '/modules/users/routes.php',

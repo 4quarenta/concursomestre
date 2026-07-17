@@ -60,7 +60,7 @@ function assertApiInventoryByDirectory(string $base, array $expectedByDirectory)
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertApiInventoryByDirectory($base, [
     '.' => [
@@ -84,6 +84,7 @@ assertApiInventoryByDirectory($base, [
         'logs.php',
         'plans.php',
         'report_actions.php',
+        'report_workbench.php',
         'reset_db.php',
         'security_ips.php',
         'settings.php',
@@ -98,6 +99,7 @@ assertApiInventoryByDirectory($base, [
         'track.php',
     ],
     'auth' => [
+        'admin-route-access.php',
         'apple.php',
         'confirm-email.php',
         'enable_2fa.php',
@@ -125,6 +127,18 @@ assertApiInventoryByDirectory($base, [
         'list.php',
         'list_cached.php',
     ],
+    'exams' => [
+        'delete.php',
+        'extraction_review.php',
+        'extraction_show.php',
+        'extraction_start.php',
+        'file_delete.php',
+        'file_upload.php',
+        'files.php',
+        'list.php',
+        'save.php',
+        'show.php',
+    ],
     'feedback' => [
         'create.php',
         'list.php',
@@ -136,13 +150,18 @@ assertApiInventoryByDirectory($base, [
         'list.php',
         'save.php',
     ],
+    'internal/questions' => [
+        'ingest.php',
+    ],
     'legal-commentary' => [
         'comment.php',
         'cron_sync_updates.php',
         'detail.php',
         'favorite.php',
         'list.php',
+        'notes.php',
         'progress.php',
+        'reader-annotations.php',
     ],
     'legal-commentary/admin' => [
         'batch-retry.php',
@@ -328,6 +347,10 @@ assertApiInventoryByDirectory($base, [
         'update.php',
         'upload_photo.php',
     ],
+    'users/me' => [
+        'answers.php',
+        'comments.php',
+    ],
     'utils' => [
         'AdminSecurity.php',
         'AuthConfig.php',
@@ -345,6 +368,17 @@ assertApiInventoryByDirectory($base, [
         'SimpleCache.php',
         'SQLSecurity.php',
         'Validator.php',
+    ],
+    'v2/admin/questions' => [
+        'show.php',
+    ],
+    'v2/questions' => [
+        'answer.php',
+        'list.php',
+        'show.php',
+    ],
+    'v2/users/me/billing' => [
+        'payment-status.php',
     ],
 ]);
 

@@ -12,6 +12,7 @@
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { ApiResponse } from '@services/api';
+import { paymentStatusService } from './paymentStatus';
 
 const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
 
@@ -95,6 +96,7 @@ export const cardsService = {
     ));
 
     const envelope = assertApiSuccess(response, 'Não foi possível remover o cartão.');
+    paymentStatusService.invalidate();
     return {
       success: true,
       message: envelope.message || 'Cartão removido com sucesso!',
@@ -115,6 +117,7 @@ export const cardsService = {
     ));
 
     const envelope = assertApiSuccess(response, 'Não foi possível definir o cartão padrão.');
+    paymentStatusService.invalidate();
     return {
       success: true,
       message: envelope.message || 'Cartão padrão atualizado!',
@@ -128,6 +131,7 @@ export const cardsService = {
   async saveLegacyCard(payload: Record<string, unknown>): Promise<SavedCardMutationResult> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.users.saveCard, payload));
     const envelope = assertApiSuccess(response, 'Não foi possível salvar o cartão.');
+    paymentStatusService.invalidate();
     return {
       success: true,
       message: envelope.message || 'Cartão salvo com sucesso!',
@@ -171,6 +175,7 @@ export const cardsService = {
     ));
 
     const envelope = assertApiSuccess(response, 'Não foi possível sincronizar o cartão Stripe.');
+    paymentStatusService.invalidate();
     return {
       success: true,
       message: envelope.message || 'Cartão salvo com sucesso na Stripe!',

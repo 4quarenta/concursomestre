@@ -30,7 +30,7 @@ function assertContainsUploadSecurity(string $path, string $needle, string $mess
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 foreach ([
     '/modules/materials/validators/MaterialsValidator.php',

@@ -21,8 +21,8 @@ function assertContainsSocialProfileCompletion(string $path, string $needle, str
     }
 }
 
-$backendBase = 'C:/xampp/htdocs/questao-pro-backend';
-$frontendBase = 'C:/dev/concursomestre';
+$backendBase = dirname(__DIR__) . '';
+$frontendBase = dirname(__DIR__, 2) . '';
 
 $authService = $backendBase . '/modules/auth/services/AuthService.php';
 $authValidator = $backendBase . '/modules/auth/validators/AuthValidator.php';
@@ -73,7 +73,7 @@ assertContainsSocialProfileCompletion(
 
 assertContainsSocialProfileCompletion(
     $authService,
-    'Conta Google sem dados pessoais. Informe nome e telefone para concluir.',
+    'Conta Google sem dados pessoais. Informe CPF, nome e telefone para concluir.',
     'Google backend must reject missing personal data before creating a new social user.'
 );
 

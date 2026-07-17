@@ -731,6 +731,10 @@ export interface UserProfile {
   reputation: number; // 0 to 100
   commentsCount: number;
   role: 'admin' | 'user' | 'partner' | 'staff';
+  /** Campos derivados exclusivamente pelo adapter local da sessão canônica. */
+  permissions?: string[];
+  linkedProviders?: string[];
+  partnershipStatus?: string;
   twoFactorEnabled?: boolean;
   plan?: string;
   status: 'active' | 'suspended' | 'banned' | 'pending';

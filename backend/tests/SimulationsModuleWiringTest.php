@@ -21,7 +21,7 @@ function assertContainsSimulationsDelegate(string $path, string $needle, string 
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsSimulationsDelegate(
     $base . '/api/simulations/create.php',

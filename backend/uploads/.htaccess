@@ -1,0 +1,24 @@
+Options -Indexes -ExecCGI -Includes
+
+<IfModule mod_mime.c>
+    RemoveHandler .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh
+</IfModule>
+
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(?:php[0-9]?|phtml|phar|cgi|pl|py|sh)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, X-Requested-With"
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>

@@ -12,18 +12,11 @@
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import { readApiErrorMessage } from '@services/api/response';
 import type { ApiResponse } from '@services/api/types';
-import type { UserProfile } from '@types';
+import type { CanonicalSessionData } from './session';
 
 export type AuthFlowSuccessPayload = {
   success: true;
-  data: {
-    user?: UserProfile;
-    token?: string | null;
-    require2FA?: boolean;
-    email?: string;
-    emailDelivery?: AuthEmailDelivery;
-  };
-  user?: UserProfile;
+  data: AuthFlowApiData;
   token?: string | null;
   require2FA?: boolean;
   email?: string;
@@ -73,18 +66,22 @@ export type VerifyTwoFactorPayload = {
   code: string;
 };
 
-type AuthFlowApiData = {
-  user?: UserProfile;
+export type AuthFlowApiData = Partial<CanonicalSessionData> & {
   token?: string | null;
   require2FA?: boolean;
   email?: string;
   emailDelivery?: AuthEmailDelivery;
+  authSession?: {
+    id?: string;
+    accessExpiresIn?: number;
+    refreshExpiresAt?: string;
+  };
 };
 
 type AuthFlowApiResponse = ApiResponse<AuthFlowApiData> | AuthFlowApiData;
 type AuthMessageResponse = ApiResponse<Record<string, never>> | { message?: string };
 type ConfirmEmailApiResponse = ApiResponse<{ newXp?: number }> | { newXp?: number };
-type VerifyTwoFactorApiResponse = ApiResponse<{ token?: string | null }> | { token?: string | null };
+type VerifyTwoFactorApiResponse = ApiResponse<AuthFlowApiData> | AuthFlowApiData;
 
 const normalizeAuthFlowError = (error: unknown, fallbackMessage: string): Error => {
   return new Error(readApiErrorMessage(error, fallbackMessage));
@@ -93,13 +90,12 @@ const normalizeAuthFlowError = (error: unknown, fallbackMessage: string): Error 
 const buildAuthFlowSuccessPayload = (data: AuthFlowApiData): AuthFlowSuccessPayload => ({
   success: true,
   data: {
-    user: data.user,
+    ...data,
     token: data.token ?? null,
     require2FA: Boolean(data.require2FA),
     email: data.email,
     emailDelivery: data.emailDelivery,
   },
-  user: data.user,
   token: data.token ?? null,
   require2FA: Boolean(data.require2FA),
   email: data.email,
@@ -194,12 +190,13 @@ export const authFlowService = {
    * Esse retorno é usado pelo login para concluir a entrada sem duplicar regras na UI.
    * @since 1.0.0
    */
-  async verifyTwoFactor(payload: VerifyTwoFactorPayload): Promise<{ token: string | null; message: string }> {
+  async verifyTwoFactor(payload: VerifyTwoFactorPayload): Promise<AuthFlowApiData & { message: string }> {
     const response = await apiClient.post<VerifyTwoFactorApiResponse>(ENDPOINTS.auth.verifyTwoFactor, payload);
     const envelope = assertApiSuccess(response, 'Não foi possível validar o código de segurança.');
-    const data = readApiData<{ token?: string | null }>(response, {});
+    const data = readApiData<AuthFlowApiData>(response, {});
 
     return {
+      ...data,
       token: data.token ?? null,
       message: envelope.message || 'Código validado com sucesso.',
     };

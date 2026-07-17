@@ -21,7 +21,7 @@ function assertContainsRankingsDelegate(string $path, string $needle, string $me
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 foreach ([
     ['api/rankings/list.php', 'handleRankingsListRoute'],

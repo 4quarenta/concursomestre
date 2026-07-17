@@ -10499,7 +10499,6 @@ export const useAdminImportWorkflow = ({
 
     (pythonResult.logs || []).forEach((message) => addLog(message));
     if (pythonResult.reviewObject && Object.keys(pythonResult.reviewObject).length > 0) {
-      console.log('[ConcursoMestre][Importador] JSON_CANONICO_DA_EXTRACAO', pythonResult.reviewObject);
       addLog(`JSON_CANONICO_DA_EXTRACAO = ${JSON.stringify(pythonResult.reviewObject, null, 2)}`);
     }
 

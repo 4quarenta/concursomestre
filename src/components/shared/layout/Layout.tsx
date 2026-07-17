@@ -613,7 +613,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       const next = !current;
       if (next && unreadCount > 0) {
         void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined).catch((error) => {
-          clientLog.warn('[notifications] Não foi possível marcar notificações como vistas ao abrir o box.', error);
+          clientLog.warn('[notifications] Nao foi possivel marcar notificacoes como vistas ao abrir o box.', error);
         });
       }
       return next;

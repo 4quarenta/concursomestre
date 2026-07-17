@@ -28,10 +28,10 @@ function assertSocialProviderContains(string $path, string $needle, string $mess
     }
 }
 
-require_once 'C:/xampp/htdocs/questao-pro-backend/modules/admin/validators/AdminSettingsValidator.php';
+require_once dirname(__DIR__) . '/modules/admin/validators/AdminSettingsValidator.php';
 
-$backendBase = 'C:/xampp/htdocs/questao-pro-backend';
-$frontendBase = 'C:/dev/concursomestre';
+$backendBase = dirname(__DIR__) . '';
+$frontendBase = dirname(__DIR__, 2) . '';
 
 $authService = $backendBase . '/modules/auth/services/AuthService.php';
 $authRoutes = $backendBase . '/modules/auth/routes.php';

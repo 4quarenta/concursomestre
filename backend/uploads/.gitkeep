@@ -1,0 +1,1 @@
+# User uploads are persisted outside immutable releases in production.

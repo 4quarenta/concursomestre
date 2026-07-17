@@ -13,7 +13,7 @@
 
 declare(strict_types=1);
 
-require_once 'C:/xampp/htdocs/questao-pro-backend/modules/admin/validators/AdminSettingsValidator.php';
+require_once dirname(__DIR__) . '/modules/admin/validators/AdminSettingsValidator.php';
 
 function assertAdminSettingsValidatorStripe(bool $condition, string $message): void
 {

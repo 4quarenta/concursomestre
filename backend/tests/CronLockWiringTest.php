@@ -21,7 +21,7 @@ function assertCronLockContains(string $path, string $needle, string $message): 
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertCronLockContains(
     $base . '/config/cron_lock.php',

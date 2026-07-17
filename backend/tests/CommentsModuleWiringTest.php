@@ -21,7 +21,7 @@ function assertContainsCommentsDelegate(string $path, string $needle, string $me
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsCommentsDelegate(
     $base . '/api/comments/list.php',

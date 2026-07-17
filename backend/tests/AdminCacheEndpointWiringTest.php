@@ -19,7 +19,7 @@ function assertContainsText(string $path, string $needle, string $message): void
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsText($base . '/api/admin/cache.php', 'handleAdminCacheRoute($db);', 'Admin cache endpoint must delegate to the admin module');
 assertContainsText($base . '/api/cache/manage.php', "require_once __DIR__ . '/../admin/cache.php';", 'Legacy cache manage endpoint must bridge to admin/cache.php');

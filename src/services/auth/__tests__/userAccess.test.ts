@@ -26,16 +26,16 @@ describe('userAccess helpers', () => {
     expect(normalizeUserRole(undefined)).toBe('user');
   });
 
-  it('allows staff or admin to access the admin panel', () => {
-    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'staff' }))).toBe(true);
-    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'admin' }))).toBe(true);
-    expect(canAccessAdminPanel(asAdminAccessUser({ canAccessAdmin: true }))).toBe(true);
-    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'partner' }))).toBe(false);
+  it('uses the canonical admin.access permission instead of role aliases', () => {
+    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'staff', permissions: ['admin.access'] }))).toBe(true);
+    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'admin', permissions: ['admin.access'] }))).toBe(true);
+    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'admin', permissions: [] }))).toBe(false);
+    expect(canAccessAdminPanel(asAdminAccessUser({ canAccessAdmin: true, permissions: [] }))).toBe(false);
   });
 
   it('keeps partner access separate from internal staff access', () => {
-    expect(canAccessPartnerArea(asPartnerAccessUser({ role: 'partner' }))).toBe(true);
-    expect(canAccessPartnerArea(asPartnerAccessUser({ role: 'admin' }))).toBe(true);
-    expect(canAccessPartnerArea(asPartnerAccessUser({ role: 'staff' }))).toBe(false);
+    expect(canAccessPartnerArea(asPartnerAccessUser({ permissions: ['partner.access'] }))).toBe(true);
+    expect(canAccessPartnerArea(asPartnerAccessUser({ partnershipStatus: 'active', permissions: [] }))).toBe(true);
+    expect(canAccessPartnerArea(asPartnerAccessUser({ permissions: [] }))).toBe(false);
   });
 });

@@ -1,4 +1,7 @@
 {
+    "name": "concursomestre/backend",
+    "description": "Backend privado da plataforma ConcursoMestre.",
+    "license": "proprietary",
     "require": {
         "setasign/fpdi": "^2.6",
         "tecnickcom/tcpdf": "^6.10",

@@ -80,6 +80,23 @@ vi.mock('@services/api/response', () => ({
 
 import { authFlowService } from '../authFlowService';
 
+const createCanonicalSession = (id: string, displayName: string) => ({
+  user: {
+    id,
+    displayName,
+    email: `${id}@teste.com`,
+    avatarUrl: null,
+    status: 'active',
+    emailVerified: true,
+    role: 'user',
+    permissions: [],
+  },
+  subscription: { status: 'inactive', plan: null },
+  gamification: { level: 1, xp: 0, reputation: 0 },
+  linkedProviders: [],
+  partnership: { status: 'inactive' },
+});
+
 describe('authFlowService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -89,7 +106,7 @@ describe('authFlowService', () => {
     mockPost.mockResolvedValueOnce({
       success: true,
       data: {
-        user: { id: 'user-1', name: 'Teste' },
+        ...createCanonicalSession('user-1', 'Teste'),
         token: 'tok_123',
       },
     });
@@ -110,7 +127,7 @@ describe('authFlowService', () => {
       referralCode: 'REF10',
     });
     expect(result.success).toBe(true);
-    expect(result.data.user.id).toBe('user-1');
+    expect(result.data.user?.id).toBe('user-1');
     expect(result.token).toBe('tok_123');
   });
 
@@ -118,7 +135,7 @@ describe('authFlowService', () => {
     mockPost.mockResolvedValueOnce({
       success: true,
       data: {
-        user: { id: 'user-2', name: 'Maria' },
+        ...createCanonicalSession('user-2', 'Maria'),
         token: 'tok_456',
       },
     });
@@ -135,7 +152,7 @@ describe('authFlowService', () => {
       captchaToken: 'captcha-2',
     });
     expect(result.success).toBe(true);
-    expect(result.user.id).toBe('user-2');
+    expect(result.data.user?.id).toBe('user-2');
   });
 
   it('verifies 2FA through the official auth endpoint', async () => {
@@ -143,6 +160,7 @@ describe('authFlowService', () => {
       success: true,
       message: 'Código validado.',
       data: {
+        ...createCanonicalSession('admin-2fa', 'Admin'),
         token: 'tok_2fa',
       },
     });
@@ -157,6 +175,7 @@ describe('authFlowService', () => {
       code: '123456',
     });
     expect(result.token).toBe('tok_2fa');
+    expect(result.user?.id).toBe('admin-2fa');
     expect(result.message).toBe('Código validado.');
   });
 

@@ -29,7 +29,7 @@ function assertNotContainsTextForAdminActions(string $path, string $needle, stri
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsTextForAdminActions($base . '/shared/middleware/AuthMiddleware.php', "['admin', 'staff']", 'Auth middleware must allow admin and staff roles in the admin panel');
 assertContainsTextForAdminActions($base . '/modules/admin/validators/AdminUserActionsValidator.php', "'staff'", 'Admin user validator must allow the staff role');

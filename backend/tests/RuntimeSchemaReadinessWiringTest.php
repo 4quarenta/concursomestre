@@ -13,7 +13,6 @@ $root = dirname(__DIR__);
 $files = [
     'shared/auth/AuthSession.php' => 'autenticacao',
     'modules/notifications/repositories/NotificationsRepository.php' => 'notificacoes',
-    'modules/subscriptions/repositories/SubscriptionsRepository.php' => 'webhooks de assinatura',
     'modules/study_schedule/repositories/StudyScheduleRepository.php' => 'cronograma de estudos',
 ];
 
@@ -30,6 +29,26 @@ foreach ($files as $relativePath => $operation) {
         );
     }
 }
+
+$subscriptionsRepository = (string) file_get_contents(
+    $root . '/modules/subscriptions/repositories/SubscriptionsRepository.php'
+);
+assertRuntimeSchemaReadiness(
+    !str_contains($subscriptionsRepository, 'SchemaReadiness::assertTablesAndColumns'),
+    'O repository de assinaturas nao deve consultar information_schema em toda requisicao.'
+);
+assertRuntimeSchemaReadiness(
+    !str_contains($subscriptionsRepository, 'ensureSchemaReadiness'),
+    'A validacao de schema de assinaturas deve permanecer exclusiva das migrations e do preflight.'
+);
+
+$runtimeFoundationMigration = (string) file_get_contents(
+    $root . '/database/migrations/20260711_000200_runtime_schema_foundation.php'
+);
+assertRuntimeSchemaReadiness(
+    str_contains($runtimeFoundationMigration, 'provider_webhook_events'),
+    'A tabela de webhooks do provedor deve ser garantida pela migration de fundacao.'
+);
 
 foreach ([
     'scripts/migrations/run_schema_migrations.php',

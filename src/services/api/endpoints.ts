@@ -176,6 +176,7 @@ export const ENDPOINTS = {
         saveCard: 'users/save_card.php',
         createStripeSetupIntent: 'users/create_stripe_setup_intent.php',
         syncStripeCard: 'users/sync_stripe_card.php',
+        paymentStatus: 'v2/users/me/billing/payment-status.php',
     },
 
     reports: {

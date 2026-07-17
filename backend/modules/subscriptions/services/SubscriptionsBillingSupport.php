@@ -1318,42 +1318,11 @@ function getStripeChargeIntervalConfig(array $plan, int $termCycles): array
         ];
     }
 
-    $planIntervalUnit = strtolower(trim((string) ($plan['interval_unit'] ?? 'month')));
-    $planIntervalCount = max(1, (int) ($plan['interval_count'] ?? 1));
-
-    // Preserve calendar billing whenever the contracted term can be divided
-    // exactly into Stripe calendar intervals. Using an arbitrary 30-day
-    // interval for quarterly/annual plans drifts away from the purchase date.
-    if ($planIntervalUnit === 'month' && $planIntervalCount % $safeTermCycles === 0) {
-        return [
-            'charge_interval_unit' => 'month',
-            'charge_interval_count' => max(1, intdiv($planIntervalCount, $safeTermCycles)),
-        ];
-    }
-
-    if ($planIntervalUnit === 'year' && (12 * $planIntervalCount) % $safeTermCycles === 0) {
-        return [
-            'charge_interval_unit' => 'month',
-            'charge_interval_count' => max(1, intdiv(12 * $planIntervalCount, $safeTermCycles)),
-        ];
-    }
-
-    if ($planIntervalUnit === 'week' && $planIntervalCount % $safeTermCycles === 0) {
-        return [
-            'charge_interval_unit' => 'week',
-            'charge_interval_count' => max(1, intdiv($planIntervalCount, $safeTermCycles)),
-        ];
-    }
-
-    $totalPlanDays = getPlanDurationInDays(
-        (string) ($plan['interval_unit'] ?? 'month'),
-        (int) ($plan['interval_count'] ?? 1)
-    );
-    $daysPerInstallment = max(1, (int) round($totalPlanDays / $safeTermCycles));
-
+    // Parcelas selecionadas representam cobrancas mensais consecutivas. O
+    // prazo de acesso continua sendo o prazo integral contratado no plano.
     return [
-        'charge_interval_unit' => 'day',
-        'charge_interval_count' => $daysPerInstallment,
+        'charge_interval_unit' => 'month',
+        'charge_interval_count' => 1,
     ];
 }
 
@@ -1464,6 +1433,120 @@ function getStripeBillingTermConfig(
         'first_invoice_charge_amount' => round($firstInvoiceChargeCents / 100, 2),
         'first_invoice_charge_cents' => $firstInvoiceChargeCents,
     ];
+}
+
+function addStripeBillingIntervals(
+    DateTimeImmutable $date,
+    string $intervalUnit,
+    int $intervalCount,
+    int $numberOfIntervals
+): DateTimeImmutable {
+    $normalizedUnit = strtolower(trim($intervalUnit));
+    $totalCount = max(1, $intervalCount) * max(0, $numberOfIntervals);
+
+    if ($totalCount === 0) {
+        return $date;
+    }
+
+    if ($normalizedUnit === 'month' || $normalizedUnit === 'year') {
+        $monthsToAdd = $normalizedUnit === 'year' ? $totalCount * 12 : $totalCount;
+        $currentMonthIndex = ((int) $date->format('Y') * 12) + ((int) $date->format('n') - 1);
+        $targetMonthIndex = $currentMonthIndex + $monthsToAdd;
+        $targetYear = intdiv($targetMonthIndex, 12);
+        $targetMonth = ($targetMonthIndex % 12) + 1;
+        $targetMonthStart = new DateTimeImmutable(
+            sprintf('%04d-%02d-01 00:00:00', $targetYear, $targetMonth),
+            $date->getTimezone()
+        );
+        $targetDay = min((int) $date->format('j'), (int) $targetMonthStart->format('t'));
+
+        return $date->setDate($targetYear, $targetMonth, $targetDay);
+    }
+
+    if ($normalizedUnit === 'week') {
+        return $date->modify('+' . ($totalCount * 7) . ' days');
+    }
+
+    if ($normalizedUnit === 'day') {
+        return $date->modify('+' . $totalCount . ' days');
+    }
+
+    throw new InvalidArgumentException('Intervalo de cobranca Stripe invalido para validar a validade do cartao.');
+}
+
+function getStripeLastInstallmentChargeAt(
+    array $billingConfig,
+    ?DateTimeImmutable $firstChargeAt = null
+): DateTimeImmutable {
+    $firstChargeAt = $firstChargeAt ?? new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    $termCycles = max(1, (int) ($billingConfig['term_cycles'] ?? 1));
+
+    return addStripeBillingIntervals(
+        $firstChargeAt,
+        (string) ($billingConfig['charge_interval'] ?? 'month'),
+        max(1, (int) ($billingConfig['charge_interval_count'] ?? 1)),
+        $termCycles - 1
+    );
+}
+
+function getStripeCardExpiryEndAt(
+    int $expMonth,
+    int $expYear,
+    ?DateTimeZone $timezone = null
+): DateTimeImmutable {
+    if ($expMonth < 1 || $expMonth > 12 || $expYear < 2000) {
+        throw new InvalidArgumentException('A Stripe nao retornou uma validade de cartao confiavel.');
+    }
+
+    $timezone = $timezone ?? new DateTimeZone('UTC');
+    return (new DateTimeImmutable(
+        sprintf('%04d-%02d-01 00:00:00', $expYear, $expMonth),
+        $timezone
+    ))->modify('last day of this month')->setTime(23, 59, 59);
+}
+
+function getStripeCardInstallmentExpiryEligibility(
+    int $expMonth,
+    int $expYear,
+    array $billingConfig,
+    ?DateTimeImmutable $firstChargeAt = null
+): array {
+    $firstChargeAt = $firstChargeAt ?? new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    $expiryEndAt = getStripeCardExpiryEndAt($expMonth, $expYear, $firstChargeAt->getTimezone());
+    $lastChargeAt = getStripeLastInstallmentChargeAt($billingConfig, $firstChargeAt);
+
+    return [
+        'eligible' => $lastChargeAt <= $expiryEndAt,
+        'expiry_end_at' => $expiryEndAt,
+        'last_charge_at' => $lastChargeAt,
+        'term_cycles' => max(1, (int) ($billingConfig['term_cycles'] ?? 1)),
+    ];
+}
+
+function assertStripeCardCoversInstallmentTerm(
+    $paymentMethod,
+    array $billingConfig,
+    ?DateTimeImmutable $firstChargeAt = null
+): void {
+    $expMonth = (int) ($paymentMethod->card->exp_month ?? 0);
+    $expYear = (int) ($paymentMethod->card->exp_year ?? 0);
+    $eligibility = getStripeCardInstallmentExpiryEligibility(
+        $expMonth,
+        $expYear,
+        $billingConfig,
+        $firstChargeAt
+    );
+
+    if (!empty($eligibility['eligible'])) {
+        return;
+    }
+
+    throw new DomainException(sprintf(
+        'Este cartao vence em %02d/%04d, antes da ultima parcela prevista para %s. Escolha menos parcelas ou use outro cartao.',
+        $expMonth,
+        $expYear,
+        $eligibility['last_charge_at']->format('m/Y')
+    ));
 }
 
 /**

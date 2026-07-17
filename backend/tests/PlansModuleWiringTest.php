@@ -21,7 +21,7 @@ function assertContainsPlansDelegate(string $path, string $needle, string $messa
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsPlansDelegate(
     $base . '/api/plans/list.php',

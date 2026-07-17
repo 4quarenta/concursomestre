@@ -31,7 +31,7 @@ function assertFinanceWiringNotContains(string $path, string $needle, string $me
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $analyticsPath = $base . '/modules/admin/services/AdminAnalyticsService.php';
 $notificationHelperPath = $base . '/config/notification_helper.php';
 $subscriptionsPath = $base . '/modules/subscriptions/services/SubscriptionsService.php';

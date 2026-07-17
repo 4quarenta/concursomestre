@@ -10,7 +10,7 @@ function assertContainsMarketingAutomation(string $path, string $needle, string 
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 foreach ([
     '/modules/marketing_automation/repositories/MarketingAutomationRepository.php',

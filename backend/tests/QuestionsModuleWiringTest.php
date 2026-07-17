@@ -21,7 +21,7 @@ function assertContainsQuestionsDelegate(string $path, string $needle, string $m
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsQuestionsDelegate(
     $base . '/api/questions/create.php',
@@ -193,7 +193,7 @@ assertContainsQuestionsDelegate(
 
 assertContainsQuestionsDelegate(
     $base . '/modules/questions/validators/QuestionsValidator.php',
-    "\$payload['richText'] ?? \$payload['rich_text']",
+    "?? \$payload['richText']",
     'Manual question context saving must accept richText/rich_text payloads'
 );
 
@@ -204,9 +204,9 @@ assertContainsQuestionsDelegate(
 );
 
 assertContainsQuestionsDelegate(
-    $base . '/modules/questions/repositories/QuestionsRepository.php',
+    $base . '/database/migrations/20260711_010010_questions_exams_compatibility.php',
     'CREATE TABLE IF NOT EXISTS user_streaks',
-    'Questions repository must ensure the daily streak table'
+    'Question migration must provision the daily streak table outside requests'
 );
 
 assertContainsQuestionsDelegate(

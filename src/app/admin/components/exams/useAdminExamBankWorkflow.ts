@@ -155,7 +155,7 @@ export const createDraftFromProva = (prova: Prova): ExamDraftState => ({
       || prova.carreira?.nome
       || prova.carreira?.name
       || '',
-    cargo: cargo.descricao || cargo.name || cargo['descriÃ§Ã£o'] || '',
+    cargo: cargo.descricao || cargo.name || cargo['descrição'] || '',
   })).filter((item) => item.cargo)),
   requisitosText: [
     ...(Array.isArray(prova.requisitos) ? prova.requisitos : []),

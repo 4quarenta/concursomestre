@@ -33,7 +33,7 @@ function assertNotContainsPaymentsDelegate(string $path, string $needle, string 
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsPaymentsDelegate(
     $base . '/api/payments/get-installments.php',

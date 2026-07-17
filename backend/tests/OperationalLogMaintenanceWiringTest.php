@@ -30,7 +30,7 @@ function assertOperationalLogMaintenanceContains(string $path, string $needle, s
 
 function runOperationalLogMaintenance(array $arguments): array
 {
-    $script = 'C:/xampp/htdocs/questao-pro-backend/scripts/tasks/operational_log_maintenance.php';
+    $script = dirname(__DIR__) . '/scripts/tasks/operational_log_maintenance.php';
     $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($script);
     foreach ($arguments as $name => $value) {
         $command .= ' --' . $name . '=' . escapeshellarg((string) $value);
@@ -72,9 +72,9 @@ function removeOperationalLogMaintenanceFixture(string $path): void
     @rmdir($path);
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $script = $base . '/scripts/tasks/operational_log_maintenance.php';
-$runbook = 'C:/dev/concursomestre/docs/PRODUCTION_RELEASE_RUNBOOK.md';
+$runbook = dirname(__DIR__, 2) . '/docs/PRODUCTION_RELEASE_RUNBOOK.md';
 
 assertOperationalLogMaintenanceContains(
     $script,

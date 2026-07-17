@@ -21,7 +21,7 @@ function assertSocialGamificationContains(string $path, string $needle, string $
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $commentsService = $base . '/modules/comments/services/CommentsService.php';
 $commentsRepository = $base . '/modules/comments/repositories/CommentsRepository.php';
 $adminCommentsRepository = $base . '/modules/admin/repositories/AdminCommentsModerationRepository.php';

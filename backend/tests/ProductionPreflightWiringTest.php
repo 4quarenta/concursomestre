@@ -21,7 +21,7 @@ function assertContainsProductionPreflight(string $path, string $needle, string 
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsProductionPreflight(
     $base . '/config/cors.php',

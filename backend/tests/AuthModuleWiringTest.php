@@ -21,7 +21,7 @@ function assertContainsAuthDelegate(string $path, string $needle, string $messag
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsAuthDelegate(
     $base . '/api/auth/login.php',

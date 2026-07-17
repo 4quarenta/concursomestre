@@ -71,14 +71,14 @@ class AuthService
         $refreshData = refreshAccessTokenFromCookie($db);
         $payload = [
             'token' => $refreshData['token'],
-            'session' => [
+            'authSession' => [
                 'id' => $refreshData['session_id'],
                 'accessExpiresIn' => $refreshData['access_expires_in'],
             ],
         ];
 
         if ($includeUser && !empty($refreshData['user_id'])) {
-            $payload['user'] = $this->buildAuthenticatedUserPayload((string) $refreshData['user_id']);
+            $payload = array_merge($payload, $this->buildAuthenticatedSessionPayload((string) $refreshData['user_id']));
         }
 
         return $payload;
@@ -112,15 +112,14 @@ class AuthService
             'role' => $user['role'],
         ]);
 
-        return [
-            'user' => $this->buildAuthenticatedUserPayload((string) $user['id']),
+        return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
-            'session' => [
+            'authSession' => [
                 'id' => $tokenData['session_id'],
                 'accessExpiresIn' => $tokenData['access_expires_in'],
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
-        ];
+        ]);
     }
 
     /**
@@ -206,16 +205,15 @@ class AuthService
 
         $emailDelivery = $this->sendVerificationEmail($normalized['email'], $normalized['name'], $verificationToken);
 
-        return [
-            'user' => $this->buildAuthenticatedUserPayload($newUserId),
+        return array_merge($this->buildAuthenticatedSessionPayload($newUserId), [
             'token' => $tokenData['token'],
             'emailDelivery' => $emailDelivery,
-            'session' => [
+            'authSession' => [
                 'id' => $tokenData['session_id'],
                 'accessExpiresIn' => $tokenData['access_expires_in'],
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
-        ];
+        ]);
     }
 
     /**
@@ -365,16 +363,15 @@ class AuthService
             'role' => $user['role'],
         ]);
 
-        return [
-            'user' => $this->buildAuthenticatedUserPayload((string) $user['id']),
+        return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
             'isNewUser' => $isNewUser,
-            'session' => [
+            'authSession' => [
                 'id' => $tokenData['session_id'],
                 'accessExpiresIn' => $tokenData['access_expires_in'],
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
-        ];
+        ]);
     }
 
     /**
@@ -619,16 +616,15 @@ class AuthService
             'role' => $user['role'],
         ]);
 
-        return [
-            'user' => $this->buildAuthenticatedUserPayload((string) $user['id']),
+        return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
             'isNewUser' => $isNewUser,
-            'session' => [
+            'authSession' => [
                 'id' => $tokenData['session_id'],
                 'accessExpiresIn' => $tokenData['access_expires_in'],
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
-        ];
+        ]);
     }
 
     /**
@@ -740,11 +736,10 @@ class AuthService
             $this->linkSocialAccount($provider, $userId, $providerId, $photoUrl);
         }
 
-        return [
-            'user' => $this->buildAuthenticatedUserPayload($userId),
+        return array_merge($this->buildAuthenticatedSessionPayload($userId), [
             'linkedProvider' => $provider,
             'isLinked' => true,
-        ];
+        ]);
     }
 
     /**
@@ -1109,15 +1104,14 @@ class AuthService
             'role' => $user['role'],
         ]);
 
-        return [
+        return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
-            'role' => $user['role'],
-            'session' => [
+            'authSession' => [
                 'id' => $tokenData['session_id'],
                 'accessExpiresIn' => $tokenData['access_expires_in'],
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
-        ];
+        ]);
     }
 
     /**
@@ -1645,7 +1639,7 @@ class AuthService
      *
      * @since 1.0.0
      */
-    private function buildAuthenticatedUserPayload(string $userId): array
+    private function buildAuthenticatedSessionPayload(string $userId): array
     {
         $db = $this->repository->getConnection();
         if (function_exists('ensurePaymentProviderSchema')) {
@@ -1657,8 +1651,7 @@ class AuthService
             new UsersValidator()
         );
 
-        $payload = $usersService->getAuthenticatedSession($userId);
-        return $payload['user'] ?? [];
+        return $usersService->getAuthenticatedSession($userId);
     }
 
     /**

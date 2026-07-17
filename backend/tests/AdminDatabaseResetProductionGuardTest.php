@@ -21,7 +21,7 @@ function assertContainsAdminResetGuard(string $path, string $needle, string $mes
     }
 }
 
-$servicePath = 'C:/xampp/htdocs/questao-pro-backend/modules/admin/services/AdminDatabaseMaintenanceService.php';
+$servicePath = dirname(__DIR__) . '/modules/admin/services/AdminDatabaseMaintenanceService.php';
 
 assertContainsAdminResetGuard(
     $servicePath,

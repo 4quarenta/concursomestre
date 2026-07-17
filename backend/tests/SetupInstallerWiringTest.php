@@ -21,7 +21,7 @@ function assertSetupContains(string $path, string $needle, string $message): voi
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertSetupContains(
     $base . '/api/setup/status.php',

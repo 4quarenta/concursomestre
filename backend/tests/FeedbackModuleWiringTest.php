@@ -21,7 +21,7 @@ function assertContainsFeedbackDelegate(string $path, string $needle, string $me
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsFeedbackDelegate(
     $base . '/api/feedback/list.php',

@@ -1,7 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
-
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -28,7 +26,6 @@ class SubscriptionsRepository
     public function __construct(PDO $db)
     {
         $this->db = $db;
-        $this->ensureProviderWebhookEventsSchema();
     }
 
     /**
@@ -650,23 +647,6 @@ class SubscriptionsRepository
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ?: null;
-    }
-
-    private function ensureProviderWebhookEventsSchema(): void
-    {
-        SchemaReadiness::assertTablesAndColumns($this->db, 'webhooks de pagamento', [
-            'provider_webhook_events' => [
-                'id',
-                'provider',
-                'event_id',
-                'event_type',
-                'object_id',
-                'payload_hash',
-                'status',
-                'attempt_count',
-                'updated_at',
-            ],
-        ]);
     }
 
     /**

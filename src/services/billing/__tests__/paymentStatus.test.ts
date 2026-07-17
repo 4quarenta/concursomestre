@@ -1,0 +1,66 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  assertApiSuccess: vi.fn(),
+  readApiData: vi.fn(),
+  coalesce: vi.fn(async (_key: string, loader: () => Promise<unknown>) => loader()),
+  clear: vi.fn(),
+}));
+
+vi.mock('@services/api', () => ({
+  apiClient: { get: mocks.get },
+  ENDPOINTS: { users: { paymentStatus: 'v2/users/me/billing/payment-status.php' } },
+  assertApiSuccess: mocks.assertApiSuccess,
+  readApiData: mocks.readApiData,
+}));
+
+vi.mock('@services/api/requestCoalescer', () => ({
+  buildRequestCacheKey: (prefix: string) => prefix,
+  clearRequestCoalescing: mocks.clear,
+  withRequestCoalescing: mocks.coalesce,
+}));
+
+import { paymentStatusService, shouldShowPaymentWarning } from '../paymentStatus';
+
+describe('paymentStatusService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reads only the dedicated payment status endpoint', async () => {
+    const payload = {
+      subscriptionStatus: 'active',
+      billingMode: 'recurring_card',
+      requiresPaymentMethod: true,
+      hasValidPaymentMethod: true,
+      actionRequired: null,
+    };
+    mocks.get.mockResolvedValue({ success: true, data: payload });
+    mocks.readApiData.mockReturnValue(payload);
+
+    await expect(paymentStatusService.getCurrentUserStatus()).resolves.toEqual(payload);
+    expect(mocks.get).toHaveBeenCalledWith('v2/users/me/billing/payment-status.php', { signal: undefined });
+    expect(shouldShowPaymentWarning(payload)).toBe(false);
+  });
+
+  it('does not treat loading, errors or incomplete contracts as no card', async () => {
+    mocks.get.mockResolvedValue({ success: true, data: {} });
+    mocks.readApiData.mockReturnValue({ subscriptionStatus: 'active' });
+
+    await expect(paymentStatusService.getCurrentUserStatus()).rejects.toThrow('Contrato de status financeiro incompleto');
+    expect(shouldShowPaymentWarning(undefined)).toBe(false);
+    expect(shouldShowPaymentWarning({
+      subscriptionStatus: 'active',
+      billingMode: 'recurring_card',
+      requiresPaymentMethod: true,
+      hasValidPaymentMethod: false,
+      actionRequired: null,
+    })).toBe(false);
+  });
+
+  it('invalidates the financial status after card mutations', () => {
+    paymentStatusService.invalidate();
+    expect(mocks.clear).toHaveBeenCalledWith('billing:payment-status');
+  });
+});

@@ -21,7 +21,7 @@ function assertContainsReadinessSuite(string $path, string $needle, string $mess
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $script = $base . '/scripts/tasks/production_readiness_suite.php';
 
 assertContainsReadinessSuite(

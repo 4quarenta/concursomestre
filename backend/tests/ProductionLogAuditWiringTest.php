@@ -65,7 +65,7 @@ function apacheProductionLogTimestamp(int $timestamp): string
     return date('D M j H:i:s', $timestamp) . '.123456 ' . date('Y', $timestamp);
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $script = $base . '/scripts/tasks/production_log_audit.php';
 $service = $base . '/modules/admin/services/AdminSystemLogService.php';
 

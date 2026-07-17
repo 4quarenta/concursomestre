@@ -30,7 +30,7 @@ function assertVpsGateContains(string $path, string $needle, string $message): v
 
 function runVpsGate(array $arguments): array
 {
-    $script = 'C:/xampp/htdocs/questao-pro-backend/scripts/tasks/vps_operations_gate.php';
+    $script = dirname(__DIR__) . '/scripts/tasks/vps_operations_gate.php';
     $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($script);
     foreach ($arguments as $name => $value) {
         $command .= ' --' . $name . '=' . escapeshellarg((string) $value);
@@ -71,9 +71,9 @@ function removeVpsGateFixture(string $path): void
     @rmdir($path);
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $script = $base . '/scripts/tasks/vps_operations_gate.php';
-$runbook = 'C:/dev/concursomestre/docs/PRODUCTION_RELEASE_RUNBOOK.md';
+$runbook = dirname(__DIR__, 2) . '/docs/PRODUCTION_RELEASE_RUNBOOK.md';
 
 assertVpsGateContains($script, "PHP_SAPI !== 'cli'", 'VPS operations gate must be CLI-only.');
 assertVpsGateContains($script, 'production_preflight.php', 'VPS operations gate must run production preflight.');

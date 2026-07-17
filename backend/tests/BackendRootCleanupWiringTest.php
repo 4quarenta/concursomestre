@@ -66,7 +66,10 @@ function assertBackendDevScriptsAreOutsidePublicRoot(string $root): void
         throw new RuntimeException('scripts/checks contem artefato temporario de desenvolvimento: ' . basename($devCheckFile));
     }
 
-    $allowedMigrations = ['migrate_marketplace_schema_compatibility.php'];
+    $allowedMigrations = [
+        'migrate_marketplace_schema_compatibility.php',
+        'run_schema_migrations.php',
+    ];
     $migrationsRoot = $root . '/scripts/migrations';
     if (!is_dir($migrationsRoot)) {
         return;

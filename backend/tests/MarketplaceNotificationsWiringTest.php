@@ -21,7 +21,7 @@ function assertMarketplaceNotificationContains(string $path, string $needle, str
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $transactionsService = $base . '/modules/transactions/services/TransactionsService.php';
 $transactionsRepository = $base . '/modules/transactions/repositories/TransactionsRepository.php';
 $transactionsValidator = $base . '/modules/transactions/validators/TransactionsValidator.php';

@@ -21,7 +21,7 @@ function assertContainsFiltersDelegate(string $path, string $needle, string $mes
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsFiltersDelegate(
     $base . '/api/filters/list.php',

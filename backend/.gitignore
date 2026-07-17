@@ -28,6 +28,10 @@
 # User uploads and private media
 /uploads/*
 !/uploads/.gitkeep
+!/uploads/.htaccess
+!/uploads/materials/
+/uploads/materials/*
+!/uploads/materials/.htaccess
 
 # Backups and database dumps
 /database/backups/

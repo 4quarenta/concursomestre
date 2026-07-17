@@ -7,6 +7,15 @@ if (PHP_SAPI !== 'cli') {
     exit("Este script so pode ser executado via CLI.\n");
 }
 
+// Keep subprocess output deterministic and prevent tests from reaching local
+// infrastructure that is intentionally absent in an isolated CI workspace.
+putenv('APP_ENV=test');
+putenv('ENV_LOADER_SILENT=1');
+putenv('MAIL_CONFIG_DISABLE_DATABASE=1');
+$_ENV['APP_ENV'] = $_SERVER['APP_ENV'] = 'test';
+$_ENV['ENV_LOADER_SILENT'] = $_SERVER['ENV_LOADER_SILENT'] = '1';
+$_ENV['MAIL_CONFIG_DISABLE_DATABASE'] = $_SERVER['MAIL_CONFIG_DISABLE_DATABASE'] = '1';
+
 $root = dirname(__DIR__, 2);
 $phpBinary = PHP_BINARY;
 
@@ -149,6 +158,34 @@ function ciCriticalTests(): array
     ];
 }
 
+/**
+ * Discover every versioned top-level PHP test so --all-tests cannot silently
+ * degrade into the smaller critical subset.
+ *
+ * @return list<string>
+ */
+function ciOperationalTests(): array
+{
+    return [
+        'tests/BillingStripeOperationalValidationTest.php',
+    ];
+}
+
+function ciAllTests(string $root, bool $includeOperational = false): array
+{
+    $files = glob($root . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . '*Test.php') ?: [];
+    $tests = array_map(
+        static fn (string $file): string => 'tests/' . basename($file),
+        $files
+    );
+    if (!$includeOperational) {
+        $tests = array_values(array_diff($tests, ciOperationalTests()));
+    }
+    sort($tests);
+
+    return $tests;
+}
+
 function ciRunTests(string $phpBinary, string $root, array $tests): array
 {
     $results = [];
@@ -190,9 +227,10 @@ $skipSyntax = ciBoolOption('skip-syntax', false);
 $jsonOnly = ciBoolOption('json', false);
 $reportFile = ciCliOption('report-file', '');
 $testListOption = ciCliOption('tests', '');
+$includeOperational = ciBoolOption('include-operational', false);
 $tests = $testListOption !== ''
     ? array_values(array_filter(array_map('trim', explode(',', $testListOption))))
-    : ciCriticalTests();
+    : (ciBoolOption('all-tests', false) ? ciAllTests($root, $includeOperational) : ciCriticalTests());
 
 $steps = [];
 
@@ -213,6 +251,11 @@ $payload = [
     'success' => $steps['php_lint']['ok'] && $steps['critical_tests']['ok'],
     'checked_at' => date(DateTimeInterface::ATOM),
     'steps' => $steps,
+    'operational_tests' => [
+        'included' => $includeOperational,
+        'tests' => ciOperationalTests(),
+        'instruction' => 'Execute com --include-operational=true apenas em banco isolado e provedor Stripe de teste.',
+    ],
 ];
 
 if ($reportFile !== '') {

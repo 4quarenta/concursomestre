@@ -39,24 +39,19 @@ export const normalizeUserRole = (value: unknown): PlatformUserRole => {
 
 /**
  * Informa se o usuario pode abrir o painel administrativo.
- * `staff` ganha acesso operacional ao admin sem virar superadmin global.
+ * O backend concede `admin.access` ao staff e ao admin autorizados. O frontend
+ * apenas consome essa permissão; ele nunca deduz acesso pelo papel isoladamente.
  *
  * @since 1.0.0
  */
 export const canAccessAdminPanel = (
-  user: Pick<UserProfile, 'role' | 'isAdmin' | 'isStaff' | 'canAccessAdmin'> | null | undefined,
+  user: Pick<UserProfile, 'permissions'> | null | undefined,
 ): boolean => {
   if (!user) {
     return false;
   }
 
-  return Boolean(
-    user.canAccessAdmin
-    || user.isAdmin
-    || user.isStaff
-    || user.role === 'admin'
-    || user.role === 'staff',
-  );
+  return user.permissions?.includes('admin.access') === true;
 };
 
 /**
@@ -65,15 +60,12 @@ export const canAccessAdminPanel = (
  * @since 1.0.0
  */
 export const canAccessPartnerArea = (
-  user: Pick<UserProfile, 'role' | 'isPartner'> | null | undefined,
+  user: Pick<UserProfile, 'permissions' | 'partnershipStatus'> | null | undefined,
 ): boolean => {
   if (!user) {
     return false;
   }
 
-  return Boolean(
-    user.isPartner
-    || user.role === 'partner'
-    || user.role === 'admin',
-  );
+  return user.permissions?.includes('partner.access') === true
+    || user.partnershipStatus === 'active';
 };

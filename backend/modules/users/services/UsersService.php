@@ -245,47 +245,122 @@ class UsersService
             throw new RuntimeException('Usuario nao encontrado.');
         }
 
-        $role = (string) ($row['role'] ?? 'user');
-        $basePlan = canonicalUserPlanValue($row['plan'] ?? null);
-        $userResponse = [
-            'id' => $row['id'],
-            'name' => $row['name'],
-            'email' => $row['email'],
-            'role' => $role,
-            'plan' => $basePlan,
-            'level' => (int) ($row['level'] ?? 1),
-            'xp' => (int) ($row['xp'] ?? 0),
-            'reputation' => (int) ($row['reputation'] ?? 0),
-            'emailVerified' => (bool) ($row['email_verified'] ?? false),
-            'isAdmin' => $role === 'admin',
-            'isStaff' => $role === 'staff',
-            'isPartner' => in_array($role, ['partner', 'admin'], true),
-            'canAccessAdmin' => in_array($role, ['admin', 'staff'], true),
-            'status' => $row['status'],
-            'photoUrl' => $row['photo_url'] ?? null,
-            'hasGoogleLinked' => (bool) ($row['has_google_linked'] ?? false),
-            'hasFacebookLinked' => (bool) ($row['has_facebook_linked'] ?? false),
-            'hasActivePlan' => false,
-        ];
+        $role = $this->normalizeSessionRole($row['role'] ?? 'user');
+        $linkedProviders = [];
+        if (!empty($row['has_google_linked'])) {
+            $linkedProviders[] = 'google';
+        }
+        if (!empty($row['has_facebook_linked'])) {
+            $linkedProviders[] = 'facebook';
+        }
 
+        $subscriptionResponse = [
+            'status' => 'inactive',
+            'plan' => null,
+        ];
         $subscription = $this->repository->findLatestSubscriptionSnapshot($userId);
         if ($subscription) {
-            $canonicalPlan = canonicalUserPlanValue($subscription['plan_name'] ?? null);
-            $userResponse['plan'] = $canonicalPlan;
-            $userResponse['planDisplayName'] = $subscription['plan_name'] ?? $canonicalPlan;
-            $userResponse['hasActivePlan'] = hasActivePlanAccess($subscription['status'] ?? null);
-            $userResponse['subscription'] = [
-                'status' => $subscription['status'],
+            $planName = (string) ($subscription['plan_name'] ?? 'Gratuito');
+            $subscriptionResponse = [
+                'status' => (string) ($subscription['status'] ?? 'inactive'),
                 'plan' => [
-                    'id' => $subscription['plan_id'],
-                    'name' => $subscription['plan_name'],
-                    'tier' => canonicalPlanTier($subscription['plan_name'] ?? null, $subscription['tier'] ?? null),
+                    'id' => isset($subscription['plan_id']) ? (int) $subscription['plan_id'] : null,
+                    'code' => $this->resolveSessionPlanCode($planName),
+                    'displayName' => $planName,
+                    'tier' => canonicalPlanTier($planName, $subscription['tier'] ?? null),
                 ],
             ];
         }
 
         return [
-            'user' => $userResponse,
+            'user' => [
+                'id' => (string) $row['id'],
+                'displayName' => (string) $row['name'],
+                'email' => (string) $row['email'],
+                'avatarUrl' => $row['photo_url'] ?: null,
+                'status' => (string) ($row['status'] ?? 'active'),
+                'emailVerified' => (bool) ($row['email_verified'] ?? false),
+                'role' => $role,
+                'permissions' => $this->resolveSessionPermissions($role),
+            ],
+            'subscription' => $subscriptionResponse,
+            'gamification' => [
+                'level' => (int) ($row['level'] ?? 1),
+                'xp' => (int) ($row['xp'] ?? 0),
+                'reputation' => (int) ($row['reputation'] ?? 0),
+            ],
+            'linkedProviders' => $linkedProviders,
+            'partnership' => [
+                'status' => in_array($role, ['partner', 'admin'], true) ? 'active' : 'inactive',
+            ],
+        ];
+    }
+
+    /**
+     * Retorna somente o status financeiro necessário para orientar a conta atual.
+     * Dados de cartão e billing detalhado nunca integram o DTO global de sessão.
+     *
+     * @since 1.0.0
+     */
+    public function getCurrentUserPaymentStatus(string $userId): array
+    {
+        $this->validator->validateAuthenticatedUserId($userId);
+
+        $subscription = $this->repository->findLatestSubscriptionSnapshot($userId);
+        if (!$subscription) {
+            return [
+                'subscriptionStatus' => 'inactive',
+                'billingMode' => 'free',
+                'requiresPaymentMethod' => false,
+                'hasValidPaymentMethod' => false,
+                'actionRequired' => null,
+            ];
+        }
+
+        $subscriptionStatus = strtolower(trim((string) ($subscription['status'] ?? 'inactive')));
+        $provider = normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe');
+        $paymentMethod = strtolower(trim((string) ($subscription['payment_method'] ?? '')));
+        $isActive = in_array($subscriptionStatus, ['active', 'trialing'], true);
+        $isManual = $provider === 'manual_admin';
+        $isOffline = in_array($paymentMethod, ['pix', 'boleto', 'bank_slip'], true);
+        $isRecurringCard = $isActive
+            && !$isManual
+            && !$isOffline
+            && !empty($subscription['auto_renew'])
+            && empty($subscription['cancel_at_period_end'])
+            && !empty($subscription['is_recurring']);
+
+        if ($subscriptionStatus === 'past_due') {
+            return [
+                'subscriptionStatus' => $subscriptionStatus,
+                'billingMode' => 'recurring_card',
+                'requiresPaymentMethod' => true,
+                'hasValidPaymentMethod' => false,
+                'actionRequired' => 'payment_failed',
+            ];
+        }
+
+        if (!$isRecurringCard) {
+            return [
+                'subscriptionStatus' => $subscriptionStatus,
+                'billingMode' => $isManual ? 'manual' : ($isOffline ? 'offline' : ($subscriptionStatus === 'trialing' ? 'trial' : 'non_recurring')),
+                'requiresPaymentMethod' => false,
+                'hasValidPaymentMethod' => false,
+                'actionRequired' => null,
+            ];
+        }
+
+        $card = $this->repository->findPreferredCardExpiry($userId);
+        $hasValidCard = $this->isValidPaymentCard($card);
+
+        return [
+            'subscriptionStatus' => $subscriptionStatus,
+            'billingMode' => 'recurring_card',
+            'requiresPaymentMethod' => true,
+            'hasValidPaymentMethod' => $hasValidCard,
+            'actionRequired' => $hasValidCard
+                ? null
+                : ($card ? 'replace_expired_payment_method' : 'add_payment_method'),
         ];
     }
 
@@ -796,6 +871,82 @@ class UsersService
             'holderDocument' => $row['holder_document'] ?? null,
             'type' => $row['account_type'] ?? 'checking',
         ];
+    }
+
+    /**
+     * Mantém os papéis serializados pela sessão dentro do conjunto reconhecido.
+     */
+    private function normalizeSessionRole($role): string
+    {
+        $normalized = strtolower(trim((string) $role));
+        return in_array($normalized, ['user', 'staff', 'partner', 'admin'], true)
+            ? $normalized
+            : 'user';
+    }
+
+    /**
+     * Expõe permissões de interface sem substituir a autorização final do backend.
+     */
+    private function resolveSessionPermissions(string $role): array
+    {
+        if ($role === 'admin') {
+            return [
+                'admin.access',
+                'questions.create',
+                'questions.edit.any',
+                'questions.delete.any',
+                'users.manage',
+            ];
+        }
+
+        if ($role === 'staff') {
+            return [
+                'admin.access',
+                'questions.create',
+                'questions.edit.own',
+                'questions.delete.own',
+            ];
+        }
+
+        if ($role === 'partner') {
+            return ['partner.access'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Converte o nome comercial armazenado para o identificador estável do DTO.
+     */
+    private function resolveSessionPlanCode(string $planName): string
+    {
+        $canonicalPlan = canonicalUserPlanValue($planName);
+        return match ($canonicalPlan) {
+            'Elite' => 'elite',
+            'Pro' => 'pro',
+            'Essencial' => 'essencial',
+            default => 'free',
+        };
+    }
+
+    /**
+     * Uma data de expiração ausente não é considerada cartão válido para recorrência.
+     */
+    private function isValidPaymentCard(?array $card): bool
+    {
+        if (!$card) {
+            return false;
+        }
+
+        $month = (int) ($card['exp_month'] ?? 0);
+        $year = (int) ($card['exp_year'] ?? 0);
+        if ($month < 1 || $month > 12 || $year < 2000) {
+            return false;
+        }
+
+        $currentYear = (int) date('Y');
+        $currentMonth = (int) date('n');
+        return $year > $currentYear || ($year === $currentYear && $month >= $currentMonth);
     }
 
     /**

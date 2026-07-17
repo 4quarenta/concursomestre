@@ -284,18 +284,23 @@ class SubscriptionsService
         $this->assertStripeCheckoutMethodCompatibility($selectedCheckoutMethod, (bool) $payload['auto_renew']);
         $paymentMethodTypes = $this->resolveStripeCheckoutMethodTypes($selectedCheckoutMethod);
 
-        $customerData = getStripeCustomerForUser($this->db, $userId);
-        $stripe = $customerData['stripe'];
-        $stripeCustomerId = $customerData['customer_id'];
-
-        cancelStaleIncompleteStripeSubscriptions($this->db, $userId, $stripeCustomerId, $stripe);
-
         $billingConfig = getStripeBillingTermConfig(
             $context['plan'],
             $context['final_price'],
             $payload['billing_mode'],
             $payload['installment_count']
         );
+        if (in_array('card', $paymentMethodTypes, true) && (int) $billingConfig['term_cycles'] > 1) {
+            throw new DomainException(
+                'O parcelamento com cartao exige checkout interno para validar se a validade cobre todas as parcelas.'
+            );
+        }
+
+        $customerData = getStripeCustomerForUser($this->db, $userId);
+        $stripe = $customerData['stripe'];
+        $stripeCustomerId = $customerData['customer_id'];
+
+        cancelStaleIncompleteStripeSubscriptions($this->db, $userId, $stripeCustomerId, $stripe);
         $initialChargeDescription = buildStripeChargeDescription(
             (string) $context['plan']['name'],
             1,
@@ -450,6 +455,13 @@ class SubscriptionsService
 
         $this->assertStripeCardPaymentMethodEnabled();
 
+        $billingConfig = getStripeBillingTermConfig(
+            $context['plan'],
+            $context['final_price'],
+            $payload['billing_mode'],
+            $payload['installment_count']
+        );
+
         $customerData = getStripeCustomerForUser($this->db, $userId);
         $stripe = $customerData['stripe'];
         $stripeCustomerId = $customerData['customer_id'];
@@ -461,18 +473,13 @@ class SubscriptionsService
             $userId,
             $stripeCustomerId,
             $context['user'],
-            $payload
+            $payload,
+            $billingConfig
         );
         $paymentMethodId = $paymentContext['payment_method_id'];
         $persistCardLocally = $paymentContext['persist_card_locally'];
         $usingSavedCard = $paymentContext['using_saved_card'];
 
-        $billingConfig = getStripeBillingTermConfig(
-            $context['plan'],
-            $context['final_price'],
-            $payload['billing_mode'],
-            $payload['installment_count']
-        );
         $initialChargeDescription = buildStripeChargeDescription(
             (string) $context['plan']['name'],
             1,
@@ -3457,7 +3464,7 @@ class SubscriptionsService
         if ($paymentIntentId === '' && $invoiceId !== '' && stripeIsConfigured()) {
             try {
                 $expandedInvoice = getStripeClient()->invoices->retrieve($invoiceId, [
-                    'expand' => ['payment_intent'],
+                    'expand' => ['payment_intent', 'payments'],
                 ]);
                 $paymentIntentId = getStripeInvoicePaymentIntentId($expandedInvoice);
                 $invoice = $expandedInvoice;
@@ -3595,7 +3602,8 @@ class SubscriptionsService
         string $userId,
         string $stripeCustomerId,
         array $user,
-        array $payload
+        array $payload,
+        array $billingConfig
     ): array {
         $paymentMethodId = (string) $payload['payment_method_id'];
         $savedCardId = (string) $payload['saved_card_id'];
@@ -3612,6 +3620,8 @@ class SubscriptionsService
         }
 
         $paymentMethod = $stripe->paymentMethods->retrieve($paymentMethodId, []);
+        assertStripeCardCoversInstallmentTerm($paymentMethod, $billingConfig);
+
         $paymentMethodCustomerId = (string) ($paymentMethod->customer ?? '');
         if ($paymentMethodCustomerId !== '' && $paymentMethodCustomerId !== $stripeCustomerId) {
             throw new InvalidArgumentException('Este metodo de pagamento pertence a outro cliente Stripe.');
@@ -5958,7 +5968,7 @@ class SubscriptionsService
     }
 
     /**
-     * Garante uma invoice Stripe expandida com payment_intent e lines.
+     * Garante uma invoice Stripe expandida com pagamentos e linhas.
      *
      * @since 1.0.0
      */
@@ -5974,7 +5984,7 @@ class SubscriptionsService
                 'expand' => [
                     'customer',
                     'payment_intent',
-                    'payments.data.payment.payment_intent',
+                    'payments',
                     'lines.data',
                     'lines.data.price.product',
                 ],
@@ -6013,12 +6023,12 @@ class SubscriptionsService
         }
 
         return $stripe->invoices->retrieve($safeInvoiceId, [
-            'expand' => [
-                'customer',
-                'payment_intent',
-                'payments.data.payment.payment_intent',
-                'lines.data',
-                'lines.data.price.product',
+                'expand' => [
+                    'customer',
+                    'payment_intent',
+                    'payments',
+                    'lines.data',
+                    'lines.data.price.product',
             ],
         ]);
     }
@@ -6317,7 +6327,7 @@ class SubscriptionsService
             $invoiceList = $stripe->invoices->all([
                 'subscription' => $subscriptionId,
                 'limit' => 5,
-                'expand' => ['data.payment_intent', 'data.lines.data'],
+                'expand' => ['data.payment_intent', 'data.payments', 'data.lines.data'],
             ]);
         } catch (Throwable $exception) {
             error_log('Stripe invoice list warning: ' . $exception->getMessage());
@@ -6360,7 +6370,7 @@ class SubscriptionsService
                 'subscription' => $subscriptionId,
                 'status' => 'paid',
                 'limit' => max(1, min(100, $limit)),
-                'expand' => ['data.payment_intent', 'data.lines.data'],
+                'expand' => ['data.payment_intent', 'data.payments', 'data.lines.data'],
             ]);
 
             foreach (($invoiceList->data ?? []) as $invoice) {

@@ -40,8 +40,8 @@ try {
     ];
 
     $quarterlyTwoInstallments = getStripeBillingTermConfig($quarterlyPlan, 39.90, 'term_recurring', 2);
-    stripeBillingAssert($quarterlyTwoInstallments['charge_interval'] === 'day', 'Trimestral em 2x deve cobrar em dias.');
-    stripeBillingAssert($quarterlyTwoInstallments['charge_interval_count'] === 45, 'Trimestral em 2x deve cobrar a cada 45 dias.');
+    stripeBillingAssert($quarterlyTwoInstallments['charge_interval'] === 'month', 'Trimestral em 2x deve cobrar por mes-calendario.');
+    stripeBillingAssert($quarterlyTwoInstallments['charge_interval_count'] === 1, 'Trimestral em 2x deve cobrar mensalmente sem deriva de calendario.');
     stripeBillingAssert($quarterlyTwoInstallments['access_interval_unit'] === 'month', 'Trimestral em 2x deve manter acesso em meses.');
     stripeBillingAssert($quarterlyTwoInstallments['access_interval_count'] === 3, 'Trimestral em 2x deve liberar 3 meses no primeiro pagamento.');
     stripeBillingAssert(abs($quarterlyTwoInstallments['cycle_charge_amount'] - 19.95) < 0.001, 'Trimestral em 2x deve cobrar 19,95 por parcela.');
@@ -52,6 +52,12 @@ try {
     stripeBillingAssert($annualTwelveInstallments['access_interval_unit'] === 'year', 'Anual em 12x deve manter acesso em anos.');
     stripeBillingAssert($annualTwelveInstallments['access_interval_count'] === 1, 'Anual em 12x deve liberar 1 ano no primeiro pagamento.');
     stripeBillingAssert(abs($annualTwelveInstallments['cycle_charge_amount'] - 9.90) < 0.001, 'Anual em 12x deve cobrar 9,90 por parcela.');
+
+    $annualFourInstallments = getStripeBillingTermConfig($annualPlan, 118.80, 'term_recurring', 4);
+    stripeBillingAssert($annualFourInstallments['charge_interval'] === 'month', 'Anual em 4x deve cobrar por mes-calendario.');
+    stripeBillingAssert($annualFourInstallments['charge_interval_count'] === 1, 'Anual em 4x deve cobrar mensalmente sem intervalos artificiais.');
+    stripeBillingAssert($annualFourInstallments['access_interval_unit'] === 'year', 'Anual em 4x deve manter acesso anual.');
+    stripeBillingAssert(abs($annualFourInstallments['cycle_charge_amount'] - 29.70) < 0.001, 'Anual em 4x deve cobrar 29,70 por parcela.');
 
     $quarterlyThreeInstallments = getStripeBillingTermConfig($quarterlyPlan, 39.90, 'term_recurring', 3);
     stripeBillingAssert($quarterlyThreeInstallments['charge_interval'] === 'month', 'Trimestral em 3x deve cobrar por mes-calendario.');

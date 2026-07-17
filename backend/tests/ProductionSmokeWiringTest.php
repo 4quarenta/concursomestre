@@ -21,7 +21,7 @@ function assertContainsProductionSmoke(string $path, string $needle, string $mes
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $script = $base . '/scripts/tasks/production_smoke.php';
 
 assertContainsProductionSmoke(

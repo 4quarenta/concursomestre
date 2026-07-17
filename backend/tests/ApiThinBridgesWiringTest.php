@@ -32,6 +32,10 @@ function assertThinApiBridges(string $base): void
         'TRUNCATE TABLE',
     ];
 
+    $documentedAliases = [
+        'subscriptions/webhook_stripe.php' => "require_once __DIR__ . '/stripe_webhook.php';",
+    ];
+
     foreach ($iterator as $fileInfo) {
         if (!$fileInfo->isFile() || strtolower($fileInfo->getExtension()) !== 'php') {
             continue;
@@ -55,6 +59,10 @@ function assertThinApiBridges(string $base): void
             || strpos($content, '/shared/') !== false
             || strpos($content, '../admin/') !== false
             || preg_match('/handle[A-Za-z0-9_]+Route\(/', $content) === 1
+            || (
+                isset($documentedAliases[$relativePath])
+                && strpos($content, $documentedAliases[$relativePath]) !== false
+            )
         );
 
         if (!$delegatesToOfficialLayer) {
@@ -77,7 +85,7 @@ function assertThinApiBridges(string $base): void
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertThinApiBridges($base);
 

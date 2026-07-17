@@ -21,7 +21,7 @@ function assertContainsLegalCommentaryAdmin(string $path, string $needle, string
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $routes = $base . '/modules/legal_commentary/routes.php';
 $repository = $base . '/modules/legal_commentary/repositories/LegalCommentaryRepository.php';
 $service = $base . '/modules/legal_commentary/services/LegalCommentaryService.php';

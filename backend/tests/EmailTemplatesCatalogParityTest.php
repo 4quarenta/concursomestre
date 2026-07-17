@@ -13,7 +13,11 @@
 
 declare(strict_types=1);
 
-require_once 'C:/xampp/htdocs/questao-pro-backend/shared/utils/EmailTemplateResolver.php';
+putenv('APP_ENV=test');
+putenv('ENV_LOADER_SILENT=1');
+putenv('MAIL_CONFIG_DISABLE_DATABASE=1');
+
+require_once dirname(__DIR__) . '/shared/utils/EmailTemplateResolver.php';
 
 function assertEmailTemplateParity(bool $condition, string $message): void
 {
@@ -22,7 +26,7 @@ function assertEmailTemplateParity(bool $condition, string $message): void
     }
 }
 
-$frontendCatalogPath = 'C:/dev/concursomestre/src/constants/email/defaultEmailTemplates.ts';
+$frontendCatalogPath = dirname(__DIR__, 2) . '/src/constants/email/defaultEmailTemplates.ts';
 $frontendContent = file_get_contents($frontendCatalogPath);
 if ($frontendContent === false) {
     throw new RuntimeException('Nao foi possivel ler catalogo frontend de modelos de email.');

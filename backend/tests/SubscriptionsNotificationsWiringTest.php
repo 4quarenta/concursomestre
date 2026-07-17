@@ -21,7 +21,7 @@ function assertContainsSubscriptionNotification(string $path, string $needle, st
     }
 }
 
-$servicePath = 'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php';
+$servicePath = dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php';
 
 assertContainsSubscriptionNotification(
     $servicePath,

@@ -1,5 +1,6 @@
 import type { UserProfile } from '@types';
 import { hasActivePlanAccess } from '@services/plans/planAccess';
+import type { PaymentStatus } from './paymentStatus';
 
 export type ResolvedPaymentIssue = NonNullable<UserProfile['paymentIssue']>;
 
@@ -101,7 +102,7 @@ export const resolveUserPaymentIssue = (user?: UserProfile | null): ResolvedPaym
     };
   }
 
-  if (!hasActivePlanAccess(user) || user.hasSavedCard) {
+  if (!hasActivePlanAccess(user) || user.hasSavedCard || user.hasSavedCard === undefined) {
     return null;
   }
 
@@ -120,4 +121,36 @@ export const resolveUserPaymentIssue = (user?: UserProfile | null): ResolvedPaym
     severity: blocking ? 'blocking' : 'warning',
     interactionLock: blocking,
   };
+};
+
+/**
+ * Traduz exclusivamente o contrato financeiro autoritativo em mensagem de UI.
+ * A ausência, o carregamento ou uma falha HTTP retornam `null` e nunca um falso
+ * diagnóstico de cartão ausente.
+ */
+export const resolvePaymentStatusIssue = (status?: PaymentStatus | null): ResolvedPaymentIssue | null => {
+  if (!status) return null;
+
+  if (status.subscriptionStatus === 'past_due' || status.actionRequired === 'payment_failed') {
+    return PAST_DUE_PAYMENT_ISSUE;
+  }
+
+  if (
+    status.subscriptionStatus !== 'active'
+    || status.requiresPaymentMethod !== true
+    || status.hasValidPaymentMethod !== false
+    || status.actionRequired === null
+  ) {
+    return null;
+  }
+
+  if (status.actionRequired === 'replace_expired_payment_method') {
+    return EXPIRED_CARD_PAYMENT_ISSUE;
+  }
+
+  if (status.actionRequired === 'add_payment_method' || status.actionRequired === 'authentication_required') {
+    return DEFAULT_PAYMENT_ISSUE;
+  }
+
+  return null;
 };

@@ -42,7 +42,7 @@ function assertFileContains(string $path, string $needle, string $message): void
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertExactPhpFiles(
     $base . '/api/cache',

@@ -20,7 +20,7 @@ function adminPlanCatalogRenewalAssertContains(string $path, string $needle, str
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 adminPlanCatalogRenewalAssertContains(
     $base . '/modules/admin/repositories/AdminPlanCatalogRepository.php',

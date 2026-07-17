@@ -21,7 +21,7 @@ function assertContainsReportsDelegate(string $path, string $needle, string $mes
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsReportsDelegate(
     $base . '/api/reports/handle.php',
@@ -55,7 +55,7 @@ assertContainsReportsDelegate(
 
 assertContainsReportsDelegate(
     $base . '/modules/admin/services/AdminReportModerationService.php',
-    "'Denuncia aceita'",
+    "'Denúncia aceita'",
     'Resolved report notification must have an accepted-report title'
 );
 

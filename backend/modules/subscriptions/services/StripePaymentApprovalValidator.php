@@ -179,10 +179,10 @@ function retrieveExpandedStripeInvoice($stripe, $invoice)
     }
 
     return $stripe->invoices->retrieve($invoiceId, [
-        // The nested InvoicePayment -> PaymentIntent path exceeds Stripe's
-        // four-level expansion limit. The unexpanded payment reference still
-        // exposes the PaymentIntent id, which is retrieved explicitly below.
-        'expand' => ['payment_intent'],
+        // Basil removed invoice.payment_intent. Expanding payments keeps the
+        // InvoicePayment reference available without exceeding Stripe's depth
+        // limit; the PaymentIntent itself is retrieved explicitly below.
+        'expand' => ['payment_intent', 'payments'],
     ]);
 }
 
@@ -237,7 +237,7 @@ function getStripePaymentApprovalSnapshot(
 
         if ($resolvedPaymentIntentId !== '') {
             $resolvedPaymentIntent = $stripe->paymentIntents->retrieve($resolvedPaymentIntentId, [
-                'expand' => ['latest_charge', 'payment_method', 'review', 'invoice'],
+                'expand' => ['latest_charge', 'payment_method', 'review'],
             ]);
         }
     }
@@ -249,7 +249,7 @@ function getStripePaymentApprovalSnapshot(
 
         if ($resolvedPaymentIntentId !== '') {
             $resolvedPaymentIntent = $stripe->paymentIntents->retrieve($resolvedPaymentIntentId, [
-                'expand' => ['latest_charge', 'payment_method', 'review', 'invoice'],
+                'expand' => ['latest_charge', 'payment_method', 'review'],
             ]);
         }
     }

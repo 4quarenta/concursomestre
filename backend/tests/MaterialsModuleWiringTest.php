@@ -21,7 +21,7 @@ function assertContainsMaterialsDelegate(string $path, string $needle, string $m
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsMaterialsDelegate(
     $base . '/api/materials/list.php',

@@ -3,13 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "preview": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "lint": "eslint",
+    "lint": "node --max-old-space-size=6144 ./node_modules/eslint/bin/eslint.js . --cache --cache-location .tmp/eslint/.cache",
+    "test": "vitest run --pool=threads --maxWorkers=4",
     "mobile:start": "npm --prefix mobile run start",
     "mobile:android": "npm --prefix mobile run android",
     "mobile:ios": "npm --prefix mobile run ios",
@@ -32,12 +36,12 @@
     "@stripe/react-stripe-js": "^6.0.0",
     "@stripe/stripe-js": "^9.0.0",
     "@tanstack/react-query": "^5.100.9",
-    "axios": "^1.15.2",
+    "axios": "^1.18.1",
     "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.34.2",
     "katex": "^0.16.45",
     "lucide-react": "^0.563.0",
-    "next": "16.2.4",
+    "next": "16.2.10",
     "pdfjs-dist": "4.10.38",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -58,11 +62,14 @@
     "@types/react-google-recaptcha": "^2.1.9",
     "@types/styled-components": "^5.1.36",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "16.2.10",
     "jsdom": "^27.0.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "postcss": "8.5.19"
   },
   "description": "Plataforma web principal do ConcursoMestre em Next.js App Router, consolidada diretamente na raiz do repositorio.",
   "main": "index.js",

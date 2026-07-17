@@ -499,6 +499,7 @@ function billingValidationCreateActiveInlineSubscription(
         'auto_renew' => true,
         'billing_mode' => 'single_installment',
         'installment_count' => 1,
+        'checkout_attempt_id' => 'billing_validation_' . billingValidationMakeRunSuffix(),
     ], $payloadOverrides);
 
     $creation = $service->createStripeInlineSubscription($userId, $payload);
@@ -555,6 +556,25 @@ function billingValidationCreateActiveInlineSubscription(
     $transaction = is_object($latestInvoice)
         ? findStripeTransactionByInvoiceId($db, (string) ($latestInvoice->id ?? ''))
         : null;
+
+    if ($transaction === null) {
+        $invoiceStatus = is_object($latestInvoice) ? (string) ($latestInvoice->status ?? '') : '';
+        $invoiceId = is_object($latestInvoice) ? (string) ($latestInvoice->id ?? '') : '';
+        $subscriptionStatus = (string) ($remoteSubscription->status ?? '');
+        $paymentIntentStatus = is_object($latestInvoice)
+            ? getStripeInvoicePaymentIntentStatus($latestInvoice)
+            : '';
+
+        throw new RuntimeException(
+            'A assinatura foi finalizada sem materializar a transacao inicial. '
+            . 'subscription_status=' . $subscriptionStatus
+            . '; invoice_status=' . $invoiceStatus
+            . '; payment_intent_status=' . $paymentIntentStatus
+            . '; invoice_id=' . $invoiceId
+            . '; finalize_response_type=' . (string) ($finalize['response_type'] ?? 'success')
+            . '; finalize=' . json_encode($finalize, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+    }
 
     return [
         'creation' => $creation,

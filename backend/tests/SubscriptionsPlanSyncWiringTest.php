@@ -31,7 +31,7 @@ function assertNotContainsSubscriptionsPlanSyncDelegate(string $path, string $ne
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsSubscriptionsPlanSyncDelegate(
     $base . '/api/subscriptions/sync_plans_mp.php',

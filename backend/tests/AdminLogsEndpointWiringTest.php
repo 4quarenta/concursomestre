@@ -19,9 +19,10 @@ function assertContainsText(string $path, string $needle, string $message): void
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
-assertContainsText($base . '/api/admin/logs.php', 'handleAdminSystemLogsRoute($db, \'C:\\xampp\\apache\\logs\\error.log\');', 'Admin logs endpoint must delegate to the admin module');
+assertContainsText($base . '/api/admin/logs.php', 'handleAdminSystemLogsRoute($db);', 'Admin logs endpoint must delegate to the admin module');
+assertContainsText($base . '/modules/admin/routes.php', 'AdminSystemLogPathResolver', 'Admin module must resolve the operational log outside the HTTP bridge');
 assertContainsText($base . '/api/system/logs.php', "require_once __DIR__ . '/../admin/logs.php';", 'Legacy system/logs endpoint must bridge to admin/logs.php');
 
 fwrite(STDOUT, "Admin logs endpoint wiring assertions passed.\n");

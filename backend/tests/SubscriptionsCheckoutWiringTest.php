@@ -163,9 +163,15 @@ assertContainsSubscriptionsRouteDelegate(
 );
 
 assertContainsSubscriptionsRouteDelegate(
-    $base . '/modules/subscriptions/repositories/SubscriptionsRepository.php',
+    $base . '/database/migrations/20260711_000200_runtime_schema_foundation.php',
     'CREATE TABLE IF NOT EXISTS provider_webhook_events',
-    'Subscriptions repository must ensure webhook idempotency table'
+    'A migration deve provisionar a tabela de idempotencia dos webhooks fora do request'
+);
+
+assertNotContainsSubscriptionsRouteDelegate(
+    $base . '/modules/subscriptions/repositories/SubscriptionsRepository.php',
+    'ensureProviderWebhookEventsSchema',
+    'O repository de assinaturas nao deve inspecionar ou alterar schema em runtime'
 );
 
 assertContainsSubscriptionsRouteDelegate(

@@ -17,7 +17,8 @@ import DebugBanner from '@/components/shared/feedback/debug/DebugBanner';
 import { StudyTrackerBridge } from './StudyTrackerProvider';
 import { buildProfilePath } from '../app/profile/profileNavigation';
 import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPageNavigationConfig';
-import { resolveUserPaymentIssue } from '@/services/billing/paymentIssue';
+import { resolvePaymentStatusIssue, resolveUserPaymentIssue } from '@/services/billing/paymentIssue';
+import { paymentStatusService, type PaymentStatus } from '@/services/billing/paymentStatus';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import type { PlanBenefitKey } from '@types';
 
@@ -268,18 +269,23 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   const hasInMemoryAccessToken = Boolean(getAccessToken());
   const restoredLegacyHashRouteRef = React.useRef(false);
   const [showLoginBypass, setShowLoginBypass] = React.useState(false);
+  const [paymentStatus, setPaymentStatus] = React.useState<PaymentStatus | null>(null);
   const canAccessAdmin = canAccessAdminPanel(currentUser);
   const isMaintenance = resolveSystemFeatureFlag(systemSettings, 'maintenanceMode', false);
   const loginRequired = resolveSystemFeatureFlag(systemSettings, 'loginRequired', false);
   const featureGate = featureGateForPath(pathname);
   const planGate = planGateForPath(pathname);
-  const isPastDueSubscription = currentUser?.subscription?.status === 'past_due';
+  const isBillingRoute = pathname.startsWith('/profile') || pathname.startsWith('/checkout');
+  const isPastDueSubscription = paymentStatus?.subscriptionStatus === 'past_due';
   const allowAuthLoadingPassThrough = (
     pathname.startsWith('/auth')
     || pathname.startsWith('/reset-password')
     || pathname.startsWith('/confirm-email')
   );
-  const paymentIssue = React.useMemo(() => resolveUserPaymentIssue(currentUser), [currentUser]);
+  const paymentIssue = React.useMemo(
+    () => resolvePaymentStatusIssue(paymentStatus) || resolveUserPaymentIssue(currentUser),
+    [currentUser, paymentStatus],
+  );
   const hasPaymentIssue = Boolean(paymentIssue || isPastDueSubscription);
   const isBlockingPaymentIssue = Boolean(isPastDueSubscription || paymentIssue?.interactionLock);
   const isFixingPayment = pathname === buildProfilePath('billing')
@@ -298,6 +304,29 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     ? 'A renovação da sua assinatura falhou. Atualize ou troque o cartão salvo para regularizar as próximas cobranças.'
     : (paymentIssue?.message || 'Atualize seu cartão para manter o acesso e as próximas cobranças em dia.');
   const paymentIssueActionLabel = paymentIssue?.actionLabel || 'Cadastrar cartão';
+
+  React.useEffect(() => {
+    if (!currentUser || !isBillingRoute) {
+      setPaymentStatus(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    void paymentStatusService.getCurrentUserStatus(controller.signal)
+      .then((status) => {
+        if (!controller.signal.aborted) {
+          setPaymentStatus(status);
+        }
+      })
+      .catch(() => {
+        // A falha de rede não pode ser exibida como cartão ausente.
+        if (!controller.signal.aborted) {
+          setPaymentStatus(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [currentUser?.id, isBillingRoute]);
 
   React.useEffect(() => {
     if (isLoading || restoredLegacyHashRouteRef.current || typeof window === 'undefined') {

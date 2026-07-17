@@ -26,6 +26,7 @@ require_once __DIR__ . '/controllers/AdminCommentsModerationController.php';
 require_once __DIR__ . '/controllers/AdminSecurityIpsController.php';
 require_once __DIR__ . '/controllers/AdminPlanCatalogController.php';
 require_once __DIR__ . '/services/AdminSystemLogService.php';
+require_once __DIR__ . '/services/AdminSystemLogPathResolver.php';
 require_once __DIR__ . '/services/AdminFeedbackService.php';
 require_once __DIR__ . '/services/AdminUserCommunicationService.php';
 require_once __DIR__ . '/services/AdminReportModerationService.php';
@@ -78,9 +79,12 @@ require_once __DIR__ . '/../../config/payment_provider.php';
  *
  * @since 1.0.0
  */
-function handleAdminSystemLogsRoute(PDO $db, string $logFilePath): void
+function handleAdminSystemLogsRoute(PDO $db, ?string $logFilePath = null): void
 {
     try {
+        $logFilePath = trim((string) $logFilePath) !== ''
+            ? (string) $logFilePath
+            : (new AdminSystemLogPathResolver())->resolve();
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $action = trim((string) ($_GET['action'] ?? 'list'));
         $adminContext = requirePlatformAdminSessionContext($db);

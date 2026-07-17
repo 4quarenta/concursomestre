@@ -110,7 +110,7 @@ const AdminTopBar = ({
       const next = !current;
       if (next && unreadCount > 0 && markAllNotificationsAsRead) {
         void Promise.resolve(markAllNotificationsAsRead()).catch((error) => {
-          clientLog.warn('[admin-notifications] Não foi possível marcar notificações como vistas ao abrir o box.', error);
+          clientLog.warn('[admin-notifications] Nao foi possivel marcar notificacoes como vistas ao abrir o box.', error);
         });
       }
       return next;

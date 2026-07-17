@@ -21,7 +21,7 @@ function assertContainsChangelogDelegate(string $path, string $needle, string $m
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsChangelogDelegate(
     $base . '/api/changelog/list.php',

@@ -3229,7 +3229,7 @@ REGRAS:
         $html = $this->closeCommonGeneratedHtmlTags($html);
         $plain = $this->sanitizeInlineText($html);
 
-        $needsChecklist = preg_match('/checklist de revis(?:a|ao|Ã£o) rapida|checklist de revis(?:a|ao|Ã£o) r(?:a|Ã¡)pida/iu', $plain) !== 1;
+        $needsChecklist = preg_match('/checklist de revis(?:a|ao|ão) rapida|checklist de revis(?:a|ao|ão) r(?:a|á)pida/iu', $plain) !== 1;
         if ($needsChecklist) {
             $html = rtrim($html) . "\n" . $this->buildSectionAnalysisFallbackClosingHtml($context);
         }

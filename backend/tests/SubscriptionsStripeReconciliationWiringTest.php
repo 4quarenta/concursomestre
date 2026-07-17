@@ -37,7 +37,7 @@ function assertOrderStripeReconciliationWiring(string $path, string $firstNeedle
 $base = dirname(__DIR__);
 $servicePath = $base . '/modules/subscriptions/services/SubscriptionsService.php';
 $repositoryPath = $base . '/modules/subscriptions/repositories/SubscriptionsRepository.php';
-$schemaConfigPath = $base . '/config/payment_provider.php';
+$invoiceIdentityMigrationPath = $base . '/database/migrations/20260716_010000_transactions_provider_identity_unique.php';
 
 assertContainsStripeReconciliationWiring(
     $servicePath,
@@ -125,15 +125,15 @@ assertContainsStripeReconciliationWiring(
 );
 
 assertContainsStripeReconciliationWiring(
-    $schemaConfigPath,
+    $invoiceIdentityMigrationPath,
     "uniq_transactions_provider_invoice",
-    'Payment schema must enforce one local transaction per Stripe invoice'
+    'A migration deve garantir uma unica transacao local por invoice Stripe'
 );
 
 assertContainsStripeReconciliationWiring(
-    $schemaConfigPath,
+    $invoiceIdentityMigrationPath,
     "uniq_transactions_provider_payment_intent",
-    'Payment schema must enforce one local transaction per Stripe PaymentIntent'
+    'A migration deve garantir uma unica transacao local por PaymentIntent Stripe'
 );
 
 fwrite(STDOUT, "Subscriptions Stripe reconciliation wiring assertions passed.\n");

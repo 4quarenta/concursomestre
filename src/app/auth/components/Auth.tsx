@@ -31,11 +31,11 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Script from 'next/script';
-import type { UserProfile } from '@types';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { apiClient, ENDPOINTS, readApiErrorMessage } from '@services/api';
 import analyticsTrackingService from '@services/analytics/analyticsTrackingService';
-import { authFlowService, canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from '@services/auth';
+import { authFlowService } from '@services/auth';
+import { isCanonicalSessionData, type CanonicalSessionData } from '@services/auth/session';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import { hasInvalidGoogleClientIdCandidate, normalizeGoogleClientId } from '@/config/googleAuth';
 import { useTheme } from '@providers/ThemeProvider';
@@ -125,42 +125,8 @@ declare global {
 }
 
 interface AuthProps {
-  onLogin: (user: UserProfile | null, token?: string | null) => Promise<void>;
+  onLogin: (session: CanonicalSessionData | null, token?: string | null) => Promise<void>;
 }
-
-type AuthApiUser = Record<string, unknown> & {
-  id?: string;
-  name?: string;
-  email?: string;
-  cpf?: string;
-  phone?: string;
-  role?: string;
-  billing?: Record<string, unknown>;
-  plan?: string;
-  billing_cycle?: string;
-  photoUrl?: string;
-  photo_url?: string;
-  profilePhotoUrl?: string;
-  profile_photo_url?: string;
-  userPhotoUrl?: string;
-  user_photo_url?: string;
-  avatarUrl?: string;
-  avatar_url?: string;
-  status?: string;
-  emailVerified?: boolean;
-  email_verified?: boolean;
-  level?: number | string;
-  xp?: number | string;
-  commentsCount?: number | string;
-  comments_count?: number | string;
-  targetExam?: string;
-  target_exam?: string;
-  savedQuestionIds?: string[];
-  simulations?: UserProfile['simulations'];
-  purchasedMaterialIds?: string[];
-  preferences?: UserProfile['preferences'] | string;
-  reputation?: number | string;
-};
 
 type SocialAuthResponse = {
   success?: boolean;
@@ -168,10 +134,22 @@ type SocialAuthResponse = {
   data?: {
     require2FA?: boolean;
     email?: string;
-    user?: AuthApiUser;
+    user?: CanonicalSessionData['user'];
+    subscription?: CanonicalSessionData['subscription'];
+    gamification?: CanonicalSessionData['gamification'];
+    linkedProviders?: string[];
+    partnership?: CanonicalSessionData['partnership'];
     token?: string | null;
     isNewUser?: boolean;
   };
+};
+
+const requireCanonicalSession = (value: unknown): CanonicalSessionData => {
+  if (!isCanonicalSessionData(value)) {
+    throw new Error('A resposta de autenticação não trouxe uma sessão válida.');
+  }
+
+  return value;
 };
 
 type PendingSocialSignup = {
@@ -227,42 +205,6 @@ const decodeJwtProfile = (credential: string): { name: string; email: string } =
   }
 };
 
-const resolveOptionalString = (value: unknown): string | undefined => {
-  if (typeof value === 'string') {
-    const normalized = value.trim();
-    return normalized ? normalized : undefined;
-  }
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return String(value);
-  }
-
-  return undefined;
-};
-
-const resolveBillingPlan = (value: unknown): UserProfile['billing']['plan'] => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'elite') return 'Elite';
-  if (normalized === 'pro') return 'Pro';
-  if (normalized === 'essencial') return 'Essencial';
-  return 'Gratuito';
-};
-
-const resolveBillingCycle = (value: unknown): UserProfile['billing']['billingCycle'] => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'annual') return 'annual';
-  if (normalized === 'quarterly') return 'quarterly';
-  return 'monthly';
-};
-
-const resolveUserStatus = (value: unknown): UserProfile['status'] => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'suspended') return 'suspended';
-  if (normalized === 'banned') return 'banned';
-  if (normalized === 'pending') return 'pending';
-  return 'active';
-};
-
 const featureItems = [
   { label: 'Milhares de questões', icon: CircleHelp },
   { label: 'Desempenho com IA', icon: TrendingUp },
@@ -270,58 +212,6 @@ const featureItems = [
   { label: 'Simulados e rankings', icon: Clock3 },
   { label: 'Conteúdo atualizado', icon: Bookmark },
 ];
-
-const buildUserProfile = (rawUser: UserProfile | AuthApiUser): UserProfile => {
-  const user = rawUser as AuthApiUser;
-  const resolvedBilling = user.billing && typeof user.billing === 'object' ? user.billing : {};
-  const role = normalizeUserRole(user.role);
-  const baseProfile = {
-    ...user,
-    role,
-    isAdmin: role === 'admin',
-    isStaff: role === 'staff',
-  } as UserProfile;
-
-  return {
-    ...baseProfile,
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    cpf: resolveOptionalString(user.cpf),
-    emailVerified: Boolean(user.emailVerified ?? user.email_verified ?? false),
-    phone: resolveOptionalString(user.phone),
-    level: Number(user.level || 1),
-    xp: Number(user.xp || 0),
-    commentsCount: Number(user.commentsCount || user.comments_count || 0),
-    targetExam: user.targetExam || user.target_exam || '',
-    savedQuestionIds: user.savedQuestionIds || [],
-    simulations: user.simulations || [],
-    purchasedMaterialIds: user.purchasedMaterialIds || [],
-    preferences: user.preferences
-      ? (typeof user.preferences === 'string' ? JSON.parse(user.preferences) : user.preferences)
-      : { shareData: true, notifications: true },
-    billing: {
-      plan: resolveBillingPlan(resolvedBilling.plan || user.plan),
-      billingCycle: resolveBillingCycle(resolvedBilling.billingCycle || user.billing_cycle),
-      nextBilling: resolveOptionalString(resolvedBilling.nextBilling),
-      cardLast4: resolveOptionalString(resolvedBilling.cardLast4),
-      paymentDay: Number(resolvedBilling.paymentDay || 0) || undefined,
-    },
-    photoUrl: user.photoUrl
-      || user.photo_url
-      || user.profilePhotoUrl
-      || user.profile_photo_url
-      || user.userPhotoUrl
-      || user.user_photo_url
-      || user.avatarUrl
-      || user.avatar_url
-      || undefined,
-    reputation: Number(user.reputation || 100),
-    status: resolveUserStatus(user.status),
-    isPartner: canAccessPartnerArea(baseProfile),
-    canAccessAdmin: canAccessAdminPanel(baseProfile),
-  };
-};
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
@@ -534,9 +424,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         return;
       }
 
-      const { user, token } = result.data;
+      const { token } = result.data;
       try {
-        await onLogin(buildUserProfile(user), token);
+        await onLogin(requireCanonicalSession(result.data), token);
       } catch (sessionError) {
         setError(readApiErrorMessage(sessionError, 'Login realizado, mas não foi possível concluir sua sessão.'));
       }
@@ -575,13 +465,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         referralCode,
       });
 
-      const { user, token } = result.data;
+      const { token } = result.data;
+      const session = requireCanonicalSession(result.data);
       void analyticsTrackingService.trackLifecycleEvent({
         eventName: 'signup_completed',
         source: 'auth',
         sessionKey: getAnalyticsSessionKey(),
-        userId: user?.id ? String(user.id) : null,
-        email: user?.email || formData.email.trim(),
+        userId: session.user.id,
+        email: session.user.email || formData.email.trim(),
         metadata: { mode: 'signup' },
       });
       try {
@@ -589,7 +480,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         if (typeof window !== 'undefined') {
           if (emailDelivery?.status === 'failed' || emailDelivery?.status === 'disabled') {
             window.sessionStorage.setItem('emailConfirmationDelivery', JSON.stringify({
-              email: user?.email || formData.email.trim(),
+              email: session.user.email || formData.email.trim(),
               status: emailDelivery.status,
               message: emailDelivery.message,
             }));
@@ -598,7 +489,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           }
         }
 
-        await onLogin(buildUserProfile(user), token);
+        await onLogin(session, token);
       } catch (sessionError) {
         setError(readApiErrorMessage(sessionError, 'Cadastro realizado, mas não foi possível concluir sua sessão.'));
       }
@@ -648,7 +539,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       });
 
       try {
-        await onLogin(null, result.token);
+        await onLogin(requireCanonicalSession(result), result.token);
       } catch (sessionError) {
         setError(readApiErrorMessage(sessionError, 'Código validado, mas não foi possível concluir sua sessão.'));
       }
@@ -674,19 +565,20 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
-    const { user, token, isNewUser } = result.data;
+    const { token, isNewUser } = result.data;
+    const session = requireCanonicalSession(result.data);
     if (isNewUser) {
       void analyticsTrackingService.trackLifecycleEvent({
         eventName: 'signup_completed',
         source,
         sessionKey: getAnalyticsSessionKey(),
-        userId: user?.id ? String(user.id) : null,
-        email: user?.email || null,
+        userId: session.user.id,
+        email: session.user.email || null,
         metadata: { mode: provider },
       });
     }
 
-    await onLogin(buildUserProfile(user), token);
+    await onLogin(session, token);
   }, [onLogin]);
 
   const setSocialLoading = React.useCallback((provider: SocialProvider, loading: boolean) => {

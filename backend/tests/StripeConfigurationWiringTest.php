@@ -21,7 +21,7 @@ function assertContainsStripeConfiguration(string $path, string $needle, string 
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $config = $base . '/config/stripe.php';
 
 assertContainsStripeConfiguration(

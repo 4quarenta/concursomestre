@@ -30,7 +30,7 @@ function assertHomologationGateContains(string $path, string $needle, string $me
 
 function runHomologationGate(array $arguments): array
 {
-    $script = 'C:/xampp/htdocs/questao-pro-backend/scripts/tasks/staging_homologation_gate.php';
+    $script = dirname(__DIR__) . '/scripts/tasks/staging_homologation_gate.php';
     $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($script);
     foreach ($arguments as $name => $value) {
         $command .= ' --' . $name . '=' . escapeshellarg((string) $value);
@@ -71,9 +71,9 @@ function removeHomologationGateFixture(string $path): void
     @rmdir($path);
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $script = $base . '/scripts/tasks/staging_homologation_gate.php';
-$runbook = 'C:/dev/concursomestre/docs/PRODUCTION_RELEASE_RUNBOOK.md';
+$runbook = dirname(__DIR__, 2) . '/docs/PRODUCTION_RELEASE_RUNBOOK.md';
 
 assertHomologationGateContains($script, "PHP_SAPI !== 'cli'", 'Homologation gate must be CLI-only.');
 assertHomologationGateContains($script, 'production_readiness_suite.php', 'Homologation gate must run the readiness suite.');

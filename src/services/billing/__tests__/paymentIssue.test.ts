@@ -16,7 +16,7 @@ vi.mock('@services/plans/planAccess', () => ({
   hasActivePlanAccess: (user?: UserProfile | null) => ['active', 'trialing'].includes(String(user?.subscription?.status || '').toLowerCase()),
 }));
 
-import { resolveUserPaymentIssue } from '../paymentIssue';
+import { resolvePaymentStatusIssue, resolveUserPaymentIssue } from '../paymentIssue';
 
 describe('resolveUserPaymentIssue', () => {
   it('treats expired subscription cards as blocking even with legacy payloads', () => {
@@ -62,5 +62,44 @@ describe('resolveUserPaymentIssue', () => {
     expect(issue?.severity).toBe('warning');
     expect(issue?.interactionLock).toBe(false);
     expect(issue?.message).toContain('cortesia');
+  });
+
+  it('never infers missing card from an omitted session field', () => {
+    const issue = resolveUserPaymentIssue({
+      id: 'session-user',
+      subscription: { status: 'active' },
+    } as UserProfile);
+
+    expect(issue).toBeNull();
+  });
+
+  it('shows a warning only for an active recurring subscription with an authoritative missing method', () => {
+    expect(resolvePaymentStatusIssue({
+      subscriptionStatus: 'active',
+      billingMode: 'recurring_card',
+      requiresPaymentMethod: true,
+      hasValidPaymentMethod: false,
+      actionRequired: 'add_payment_method',
+    })?.code).toBe('missing_required_card');
+
+    expect(resolvePaymentStatusIssue({
+      subscriptionStatus: 'active',
+      billingMode: 'recurring_card',
+      requiresPaymentMethod: true,
+      hasValidPaymentMethod: true,
+      actionRequired: null,
+    })).toBeNull();
+  });
+
+  it('keeps payment warnings hidden for non-recurring modes and incomplete responses', () => {
+    expect(resolvePaymentStatusIssue({
+      subscriptionStatus: 'active',
+      billingMode: 'offline',
+      requiresPaymentMethod: false,
+      hasValidPaymentMethod: false,
+      actionRequired: null,
+    })).toBeNull();
+
+    expect(resolvePaymentStatusIssue(null)).toBeNull();
   });
 });

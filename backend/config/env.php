@@ -19,7 +19,11 @@
 class EnvLoader {
     public static function load($path = __DIR__ . '/../.env') {
         if (!file_exists($path)) {
-            error_log("Warning: .env file not found at $path");
+            $silent = getenv('ENV_LOADER_SILENT') === '1'
+                || strtolower((string) getenv('APP_ENV')) === 'test';
+            if (!$silent) {
+                error_log("Warning: .env file not found at $path");
+            }
             return false;
         }
 

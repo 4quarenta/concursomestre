@@ -21,7 +21,7 @@ function assertFeedbackTestimonialsWiring(string $path, string $needle, string $
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertFeedbackTestimonialsWiring(
     $base . '/api/feedback/testimonials.php',

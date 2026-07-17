@@ -55,6 +55,7 @@ import {
   type AdminSettingsSection,
   type AdminSupportSection,
 } from '../../config/adminPageNavigationConfig';
+import { resolveLegacyAdminDestination } from '../../config/adminLegacyNavigation';
 
 type AdminNotificationSummary = {
   deletedAt?: number | string | null;
@@ -510,74 +511,8 @@ export const useAdminPageController = () => {
    * @since 1.0.0
    */
   const handleDashboardNavigate = (tab: string, subTab?: string) => {
-    if ((tab === 'operation' || tab === 'database') && subTab && ['materials', 'blocked'].includes(subTab)) {
-      handleSectionChange('marketplace', subTab);
-      return;
-    }
-
-    if ((tab === 'operation' || tab === 'database') && subTab === 'rankings') {
-      handleSectionChange('support', 'rankings');
-      return;
-    }
-
-    if (tab === 'database' && subTab === 'reports') {
-      handleSectionChange('support', 'reports');
-      return;
-    }
-
-    if (tab === 'database' && subTab && isOperationSection(subTab)) {
-      handleSectionChange('operation', subTab);
-      return;
-    }
-
-    if (tab === 'finance') {
-      if (subTab === 'subscriptions') {
-        handleSectionChange('marketplace', 'vendors');
-        return;
-      }
-
-      if (subTab === 'refunds') {
-        handleSectionChange('support', 'refunds');
-        return;
-      }
-
-      handleSectionChange('finance', subTab && isFinanceSection(subTab) ? subTab : 'transactions');
-      return;
-    }
-
-    if (tab === 'marketplace') {
-      handleSectionChange('marketplace', subTab && isMarketplaceSection(subTab) ? subTab : 'vendors');
-      return;
-    }
-
-    if (tab === 'marketing') {
-      handleSectionChange('marketing', subTab && isMarketingSection(subTab) ? subTab : 'landing-pages');
-      return;
-    }
-
-    if (tab === 'settings') {
-      handleSectionChange('settings', subTab && isSettingsSection(subTab) ? subTab : 'general');
-      return;
-    }
-
-    if (tab === 'support') {
-      handleSectionChange('support', subTab && isSupportSection(subTab) ? subTab : supportLandingSection);
-      return;
-    }
-
-    if (tab === 'feedback') {
-      handleSectionChange('support', 'feedback');
-      return;
-    }
-
-    if (tab === 'reports') {
-      handleSectionChange('support', 'reports');
-      return;
-    }
-
-    if (tab === 'dashboard' || tab === 'panel') {
-      handleSectionChange('panel', subTab && isPanelSection(subTab) ? subTab : 'dashboard');
-    }
+    const destination = resolveLegacyAdminDestination(tab, subTab, supportLandingSection);
+    if (destination) handleSectionChange(destination.tab, destination.section);
   };
 
   const navigate = useCallback((path: string) => {

@@ -21,7 +21,7 @@ function assertContainsBackupMysql(string $path, string $needle, string $message
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $script = $base . '/scripts/tasks/backup_mysql.php';
 $verifyScript = $base . '/scripts/tasks/verify_mysql_backup.php';
 $restoreScript = $base . '/scripts/tasks/restore_mysql_backup.php';

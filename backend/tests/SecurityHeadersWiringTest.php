@@ -21,7 +21,7 @@ function assertContainsSecurityHeaders(string $path, string $needle, string $mes
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $headers = $base . '/config/security_headers.php';
 $cors = $base . '/config/cors.php';
 

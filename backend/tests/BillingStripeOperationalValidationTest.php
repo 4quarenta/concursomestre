@@ -213,8 +213,8 @@ function billingValidationRunRenewalScenarios(PDO $db, SubscriptionsService $ser
                 'synced_period_end=' . (string) ($localAfterReconciliation['provider_current_period_end'] ?? ''),
             ],
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/repositories/SubscriptionsRepository.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/repositories/SubscriptionsRepository.php',
             ],
             'OK',
             'Manter este cenario no pre-deploy para validar renovacao real em modo teste.',
@@ -233,10 +233,10 @@ function billingValidationRunRenewalScenarios(PDO $db, SubscriptionsService $ser
         billingValidationAssert(!empty($remoteAfterOff->cancel_at_period_end), 'A Stripe nao recebeu cancel_at_period_end = true ao desligar a renovacao.');
         billingValidationAssert((int) ($localAfterOff['auto_renew'] ?? 1) === 0, 'O banco local nao persistiu auto_renew = 0.');
 
-        $stripe->subscriptions->update($providerSubscriptionId, ['default_payment_method' => null]);
+        $stripe->subscriptions->update($providerSubscriptionId, ['default_payment_method' => '']);
         $stripe->customers->update($customerId, [
             'invoice_settings' => [
-                'default_payment_method' => null,
+                'default_payment_method' => '',
             ],
         ]);
         $db->prepare("UPDATE user_cards SET is_default = 0 WHERE user_id = :user_id")
@@ -250,7 +250,7 @@ function billingValidationRunRenewalScenarios(PDO $db, SubscriptionsService $ser
         }
 
         billingValidationAssert(
-            str_contains($missingCardError, 'Nenhum cartao padrao'),
+            str_contains($missingCardError, 'Nenhum cartão padrão'),
             'Religar a renovacao sem cartao valido deveria falhar no backend Stripe.'
         );
 
@@ -294,8 +294,8 @@ function billingValidationRunRenewalScenarios(PDO $db, SubscriptionsService $ser
                 'payment_method=' . $initialPaymentMethodId,
             ],
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsBillingSupport.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsBillingSupport.php',
             ],
             'OK',
             'Persistir a checagem remota de payment method antes de liberar o toggle no frontend.',
@@ -311,8 +311,8 @@ function billingValidationRunRenewalScenarios(PDO $db, SubscriptionsService $ser
             'Cobrir renovacao real, reconciliacao e toggle remoto da Stripe.',
             'Stripe real em modo teste, backend oficial e banco local.',
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/repositories/SubscriptionsRepository.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/repositories/SubscriptionsRepository.php',
             ],
             $error
         );
@@ -403,8 +403,8 @@ function billingValidationRunWebhookScenarios(PDO $db, SubscriptionsService $ser
                 'transactions=' . $txCountAfterFirstRun,
             ],
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/repositories/SubscriptionsRepository.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/repositories/SubscriptionsRepository.php',
             ],
             'OK',
             'Manter provider + event_id como chave forte de idempotencia.'
@@ -463,8 +463,8 @@ function billingValidationRunWebhookScenarios(PDO $db, SubscriptionsService $ser
                 'webhook_status=' . (string) ($deletedWebhookRow['status'] ?? ''),
             ],
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/repositories/SubscriptionsRepository.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/repositories/SubscriptionsRepository.php',
             ],
             'OK',
             'Continuar auditando eventos ignored para detectar reorderings frequentes.'
@@ -525,8 +525,8 @@ function billingValidationRunWebhookScenarios(PDO $db, SubscriptionsService $ser
                 'delayed_result=' . json_encode($delayedResult, JSON_UNESCAPED_UNICODE),
             ],
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/repositories/SubscriptionsRepository.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/repositories/SubscriptionsRepository.php',
             ],
             'OK',
             'Executar reconciliacao periodica continua sendo obrigatorio para atrasos reais.'
@@ -538,8 +538,8 @@ function billingValidationRunWebhookScenarios(PDO $db, SubscriptionsService $ser
             'Cobrir duplicidade, atraso e fora de ordem com fixtures e service real.',
             'Fixtures Stripe + processStripeWebhookEventObject + Stripe real em modo teste.',
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/repositories/SubscriptionsRepository.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/repositories/SubscriptionsRepository.php',
             ],
             $error
         );
@@ -693,8 +693,8 @@ function billingValidationRunBillingStrategyScenarios(PDO $db, SubscriptionsServ
                 'local_credit_mode=' . (string) ($localCreditCreation['mode'] ?? ''),
             ],
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsBillingSupport.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsBillingSupport.php',
             ],
             'OK',
             'A estrategia oficial permanece como credito proporcional local. Nao usar prorata nativo Stripe sem migracao explicita.',
@@ -790,7 +790,7 @@ function billingValidationRunBillingStrategyScenarios(PDO $db, SubscriptionsServ
         }
 
         billingValidationAssert(
-            str_contains($doubleApprovalError, 'ja foi reembolsada'),
+            str_contains($doubleApprovalError, 'já foi reembolsada'),
             'A segunda aprovacao administrativa deveria ser bloqueada como duplicada.'
         );
 
@@ -837,8 +837,8 @@ function billingValidationRunBillingStrategyScenarios(PDO $db, SubscriptionsServ
                 'webhook=' . json_encode($refundWebhookResult, JSON_UNESCAPED_UNICODE),
             ],
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/transactions/services/TransactionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/transactions/services/TransactionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
             ],
             'OK',
             'Manter approveRefund idempotente e reprocessar webhooks apenas como confirmacao final.',
@@ -854,8 +854,8 @@ function billingValidationRunBillingStrategyScenarios(PDO $db, SubscriptionsServ
             'Cobrir estrategia canonica de credito proporcional local e concorrencia de refund.',
             'Services oficiais com Stripe real em modo teste e banco local.',
             [
-                'C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php',
-                'C:/xampp/htdocs/questao-pro-backend/modules/transactions/services/TransactionsService.php',
+                dirname(__DIR__) . '/modules/subscriptions/services/SubscriptionsService.php',
+                dirname(__DIR__) . '/modules/transactions/services/TransactionsService.php',
             ],
             $error
         );
@@ -961,8 +961,8 @@ try {
             'Inicializar dependencias da validacao operacional do billing Stripe.',
             'CLI PHP + bootstrap de banco, Stripe e services oficiais.',
             [
-                'C:/xampp/htdocs/questao-pro-backend/tests/BillingStripeOperationalValidationTest.php',
-                'C:/xampp/htdocs/questao-pro-backend/tests/support/BillingStripeValidationSupport.php',
+                dirname(__DIR__) . '/tests/BillingStripeOperationalValidationTest.php',
+                dirname(__DIR__) . '/tests/support/BillingStripeValidationSupport.php',
             ],
             $error
         ),

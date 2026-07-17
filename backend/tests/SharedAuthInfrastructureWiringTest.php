@@ -19,7 +19,7 @@ function assertContainsSharedBridge(string $path, string $needle, string $messag
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsSharedBridge($base . '/api/middleware/Auth.php', '/shared/middleware/AuthMiddleware.php', 'Legacy auth middleware must bridge to shared middleware');
 assertContainsSharedBridge($base . '/api/middleware/RateLimiter.php', '/shared/middleware/RateLimiter.php', 'Legacy rate limiter must bridge to shared middleware');

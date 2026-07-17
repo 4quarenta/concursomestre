@@ -27,7 +27,7 @@ function assertBridge(string $path, string $handler): void
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend/api/admin';
+$base = dirname(__DIR__) . '/api/admin';
 
 assertBridge($base . '/feedback.php', 'handleAdminFeedbackRoute($db);');
 assertBridge($base . '/list_tables.php', 'handleAdminDatabaseTablesRoute($db);');
@@ -38,6 +38,6 @@ assertBridge($base . '/stats.php', 'handleAdminStatsRoute($db);');
 assertBridge($base . '/user_actions.php', 'handleAdminUserActionsRoute($db);');
 assertBridge($base . '/user_details.php', 'handleAdminUserDetailsRoute($db);');
 assertBridge($base . '/cache.php', 'handleAdminCacheRoute($db);');
-assertBridge($base . '/logs.php', 'handleAdminSystemLogsRoute($db, \'C:\\xampp\\apache\\logs\\error.log\');');
+assertBridge($base . '/logs.php', 'handleAdminSystemLogsRoute($db);');
 
 fwrite(STDOUT, "Admin legacy bridge wiring assertions passed.\n");

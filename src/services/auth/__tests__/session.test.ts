@@ -10,13 +10,33 @@
 */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UserProfile } from '@types';
-
 const mockPost = vi.fn();
 const mockGet = vi.fn();
 
 const storageState = new Map<string, string>();
 let cookieJar = '';
+
+const createCanonicalSession = (overrides: Partial<{
+  id: string;
+  displayName: string;
+  email: string;
+  role: 'user' | 'staff' | 'partner' | 'admin';
+}> = {}) => ({
+  user: {
+    id: overrides.id || 'user-1',
+    displayName: overrides.displayName || 'Teste',
+    email: overrides.email || 'teste@teste.com',
+    avatarUrl: null,
+    status: 'active' as const,
+    emailVerified: true,
+    role: overrides.role || 'user',
+    permissions: [],
+  },
+  subscription: { status: 'inactive', plan: null },
+  gamification: { level: 1, xp: 0, reputation: 0 },
+  linkedProviders: [],
+  partnership: { status: 'inactive' },
+});
 type MockWindowEvent = Event | MessageEvent | StorageEvent | { type: string; [key: string]: unknown };
 type MockWindowWithStorageEmitter = Window & {
   __emitStorage: (event: MockWindowEvent) => void;
@@ -231,15 +251,11 @@ describe('auth session manager', () => {
         success: true,
         data: {
           token: refreshedToken,
-          user: {
+          ...createCanonicalSession({
             id: 'user-bootstrap',
-            name: 'Bootstrap',
+            displayName: 'Bootstrap',
             email: 'bootstrap@teste.com',
-          },
-          session: {
-            id: 'session-bootstrap',
-            accessExpiresIn: 900,
-          },
+          }),
         },
       },
     });
@@ -303,11 +319,11 @@ describe('auth session manager', () => {
         success: true,
         data: {
           token: refreshedToken,
-          user: {
+          ...createCanonicalSession({
             id: 'user-shared',
-            name: 'Outra Aba',
+            displayName: 'Outra Aba',
             email: 'shared@teste.com',
-          },
+          }),
         },
       },
     });
@@ -354,11 +370,7 @@ describe('auth session manager', () => {
     });
 
     const session = await importSessionModule();
-    await session.establishAuthenticatedSession(validToken, {
-      id: 'user-1',
-      name: 'Teste',
-      email: 'teste@teste.com',
-    } as UserProfile);
+    await session.establishAuthenticatedSession(validToken, createCanonicalSession());
 
     expect(mockGet).not.toHaveBeenCalled();
     expect(session.getAccessToken()).toBe(validToken);
@@ -366,5 +378,36 @@ describe('auth session manager', () => {
     await session.logoutAuthSession();
 
     expect(session.getAccessToken()).toBeNull();
+  });
+
+  it('materializa o login com DTO canônico sem chamar auth/me', async () => {
+    const futureExp = Math.floor(Date.now() / 1000) + 1800;
+    const token = `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64url')}.signature`;
+    const session = await importSessionModule();
+
+    await session.establishAuthenticatedSession(token, createCanonicalSession({ id: 'login-user' }));
+
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(session.getCurrentUserSnapshot()?.id).toBe('login-user');
+  });
+
+  it('cancela um bootstrap pendente quando o login conclui a sessão', async () => {
+    cookieJar = 'cm_csrf=test-csrf';
+    storageState.set('cm-auth-session-present', '1');
+    let resolveRefresh: ((value: unknown) => void) | null = null;
+    mockPost.mockReturnValue(new Promise((resolve) => {
+      resolveRefresh = resolve;
+    }));
+    const session = await importSessionModule();
+    const bootstrap = session.bootstrapAuthSession();
+    const futureExp = Math.floor(Date.now() / 1000) + 1800;
+    const token = `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64url')}.signature`;
+
+    await session.establishAuthenticatedSession(token, createCanonicalSession({ id: 'login-wins' }));
+    resolveRefresh?.({ data: { success: true, data: { token, ...createCanonicalSession({ id: 'stale-bootstrap' }) } } });
+    await bootstrap;
+
+    expect(session.getCurrentUserSnapshot()?.id).toBe('login-wins');
+    expect(mockGet).not.toHaveBeenCalled();
   });
 });

@@ -4,8 +4,94 @@ Data: 2026-07-12
 
 ## Status
 
-Concluida. As validacoes foram executadas no workspace e na VPS de producao,
-sem gravar credenciais ou dados pessoais nos relatorios.
+Concluida tecnicamente na revisao R2, aguardando somente a captura autenticada
+no navegador apos a publicacao desta revisao. Esta secao substitui os contratos
+de sessao descritos nas anotacoes anteriores deste mesmo documento.
+
+### Revisao R2 - login sem `/auth/me` e billing isolado
+
+**Causa raiz confirmada:** apos o login, `AuthProvider` executava um efeito de
+"hidratacao de foto" que chamava `fetchAuthenticatedUser()`. Como esse metodo
+faz `GET /api/auth/me.php`, ele duplicava o snapshot ja retornado por
+`POST /api/auth/login.php`.
+
+**Correcao aplicada:** o efeito foi removido. Login, cadastro, OAuth e 2FA
+passam o DTO canonico recebido no proprio endpoint para
+`establishAuthenticatedSession()`, que grava somente memoria local, aborta
+qualquer bootstrap em andamento e navega client-side. O bootstrap nao chama
+`/auth/me.php`: restaura a sessao exclusivamente por `auth/refresh.php` e
+cookie HttpOnly. `fetchAuthenticatedUser()` permanece apenas como
+sincronizacao manual explicita.
+
+O gerenciador em `src/services/auth/session.ts` possui estados `idle`,
+`bootstrapping`, `authenticated` e `anonymous`, uma unica promise de bootstrap,
+`AbortController` e contador de geracao. Assim, Strict Mode, dois providers ou
+um login concluido durante bootstrap nao criam uma segunda restauracao nem
+permitem que uma resposta anterior sobrescreva o login novo.
+
+O DTO retornado por login, refresh e `/auth/me.php` e agora:
+
+```json
+{
+  "success": true,
+  "message": "Session data retrieved",
+  "data": {
+    "user": {
+      "id": "uuid",
+      "displayName": "John",
+      "email": "john@example.test",
+      "avatarUrl": null,
+      "status": "active",
+      "emailVerified": true,
+      "role": "admin",
+      "permissions": ["admin.access"]
+    },
+    "subscription": {
+      "status": "active",
+      "plan": { "id": 134, "code": "elite", "displayName": "Elite", "tier": 4 }
+    },
+    "gamification": { "level": 1, "xp": 371, "reputation": 100 },
+    "linkedProviders": ["google"],
+    "partnership": { "status": "inactive" }
+  }
+}
+```
+
+Os aliases `name`, `photoUrl`, `isAdmin`, `isStaff`, `canAccessAdmin`, `plan`,
+`planDisplayName`, `hasActivePlan`, `hasGoogleLinked`, `hasFacebookLinked` e
+`isPartner` nao sao mais serializados por esses endpoints. Ha apenas um adapter
+local e isolado em `toSessionUserProfile()` para telas legadas; ele nunca e
+enviado ao backend, esta marcado para retirada na Fase 08 e os consumidores
+restantes estao inventariados na secao "Aliases temporarios" abaixo.
+
+Seletores novos usam `permissions.includes('admin.access')` para area
+administrativa e `partner.access`/`partnership.status` para parceria. O RBAC
+final continua exclusivamente no backend.
+
+### Status financeiro dedicado
+
+O aviso de pagamento nao depende mais de `user.hasSavedCard`. Foi criado
+`GET /api/v2/users/me/billing/payment-status.php`, que obtem o usuario somente
+do JWT autenticado e retorna apenas:
+
+```json
+{
+  "subscriptionStatus": "active",
+  "billingMode": "recurring_card",
+  "requiresPaymentMethod": true,
+  "hasValidPaymentMethod": true,
+  "actionRequired": null
+}
+```
+
+Sua fonte e a assinatura ativa canonica, modo de cobranca, renovacao,
+recorrencia e o cartao local vinculado a recorrencia ou definido como padrao,
+incluindo validade. Pix/boleto, cortesia/manual, trial sem obrigacao e plano
+gratuito retornam `requiresPaymentMethod: false`. Falha de HTTP, carregamento ou
+contrato incompleto mantem o aviso oculto; nao sao interpretados como falta de
+cartao. O request so ocorre em `/profile` e `/checkout`, possui deduplicacao de
+60 segundos, cancelamento no unmount e invalidacao apos sincronizar, remover ou
+definir cartao.
 
 ## Problemas confirmados e correcao aplicada
 
@@ -36,49 +122,13 @@ sem gravar credenciais ou dados pessoais nos relatorios.
 8. A troca de aba nao compartilha access token. `BroadcastChannel` e o fallback
    de `storage` carregam apenas tipo de evento, origem, motivo e instante.
 
-## Contratos atuais
-
-### DTO de sessao
-
-Exemplo sanitizado de `/api/auth/me.php`:
-
-```json
-{
-  "success": true,
-  "data": {
-    "user": {
-      "id": "uuid",
-      "name": "Usuario",
-      "email": "usuario@example.test",
-      "role": "user",
-      "plan": "Pro",
-      "level": 1,
-      "xp": 0,
-      "reputation": 0,
-      "emailVerified": true,
-      "isAdmin": false,
-      "isStaff": false,
-      "isPartner": false,
-      "canAccessAdmin": false,
-      "status": "active",
-      "photoUrl": null,
-      "hasGoogleLinked": true,
-      "hasFacebookLinked": false,
-      "hasActivePlan": true
-    }
-  }
-}
-```
+## Contratos de atividade
 
 O endpoint de perfil proprio (`/api/users/profile.php`) continua sendo a rota
 deliberada para CPF, endereco, conta bancaria, billing e dados de conexoes.
-Esses campos nao fazem parte do bootstrap global.
-
-Medicao HTTP sanitizada na VPS, com a mesma rota de perfil privada como
-referencia do contrato anterior: perfil privado com 31 chaves e 820 bytes;
-sessao global com 18 chaves e 451 bytes para a conta de teste. Em uma conta
-com assinatura, a sessao global medida caiu de 1.083 para 614 bytes apos a
-remocao de billing e IDs sociais.
+Esses campos nao fazem parte do bootstrap global. O contrato de sessao atual e
+o da revisao R2, acima; as medicoes antigas de aliases planos foram aposentadas
+porque nao representam mais o payload publicado.
 
 ### Atividade propria
 
@@ -258,12 +308,14 @@ do dashboard.
 | VPS: `find backend -name "*.php" ... php -l` | 1.242 arquivos sem erro |
 | VPS: tres testes da Fase 02 | PASS |
 | VPS: `AdminApiRbacWiringTest.php` | PASS |
-| Vitest focado da Fase 02 | 5 arquivos, 35 testes PASS |
+| `C:/xampp/php/php.exe backend/tests/Phase02CanonicalSessionAndBillingTest.php` | PASS |
+| Vitest focado de sessao, fluxo auth, permissoes e billing | 5 arquivos, 28 testes PASS |
 | `npm run typecheck` | PASS |
-| `npm run build` local e VPS | PASS |
+| `npm run build` local | PASS |
 | `npm run check:secrets` | PASS |
+| lint integral PHP local | 657 arquivos sem erro |
 
-`npx vitest run` completo: 402 passaram, 6 falharam. As falhas ja existiam
+`npx vitest run` completo: 410 passaram, 6 falharam. As falhas ja existiam
 antes desta mudanca e os arquivos modificados nesta fase nao pertencem a elas:
 
 | Arquivo / teste | Mensagem resumida | Risco | Fase responsavel |
@@ -281,6 +333,55 @@ de executar testes financeiros destrutivos na producao, foram executados lint
 integral e os testes PHP de contrato, RBAC e Fase 02 acima. A suite operacional
 completa permanece responsabilidade das fases financeira e de QA, com ambiente
 de homologacao dedicado.
+
+## Deploy R2 e evidencia de producao
+
+- Backup criado antes da copia:
+  `backups/phase02-r2-session-billing-20260712-180202.tar.gz`
+  (`sha256: 5d5a6df05dd3e30baa489021392eebda44f67b19397d46395be967d9c7f1d8b1`).
+- A VPS recebeu os arquivos de sessao, auth, billing e rota v2; foi executado
+  `npm run build` em `frontend`, seguido de restart apenas de
+  `concursomestre-frontend.service`.
+- Servico ativo, `http://127.0.0.1:3000/` retornou 200 e a URL publica retornou
+  HTTP/2 200. Os logs posteriores ao restart mostram apenas `Ready`, sem erro
+  novo de runtime.
+- `find backend -name "*.php" ... php -l` passou na VPS.
+- `Phase02SessionRequestsWiringTest.php`,
+  `Phase02CanonicalSessionAndBillingTest.php` e o diagnostico de producao
+  passaram na VPS. Este ultimo confirmou, sem imprimir PII, as chaves reais:
+
+```json
+{
+  "sessionRootKeys": ["user", "subscription", "gamification", "linkedProviders", "partnership"],
+  "sessionUserKeys": ["id", "displayName", "email", "avatarUrl", "status", "emailVerified", "role", "permissions"],
+  "forbiddenUserKeys": [],
+  "billingKeys": ["subscriptionStatus", "billingMode", "requiresPaymentMethod", "hasValidPaymentMethod", "actionRequired"]
+}
+```
+
+- Sem credenciais, `GET /api/auth/me.php` e
+  `GET /api/v2/users/me/billing/payment-status.php` retornaram 401. Isso
+  confirma que a nova rota nao aceita `user_id` por query e nao expos status de
+  pagamento a visitantes.
+- A verificacao autenticada visual foi tentada no Chrome com a aba existente do
+  dashboard, mas o claim da aba expirou duas vezes no conector antes de expor
+  Network/Initiator. Nenhum cookie, token, senha ou storage foi lido. A prova
+  automatizada do comportamento e o teste de sessao: login materializa o DTO
+  canonico com `mockGet` em zero e o bootstrap pendente e abortado quando o
+  login vence. A confirmacao manual residual no DevTools deve mostrar
+  `login.php = 1` e `me.php = 0` apos logout/login; reload usa apenas refresh.
+
+## Rollback R2
+
+```bash
+cd /home/concursomestre/htdocs/concursomestre.com
+tar -xzf backups/phase02-r2-session-billing-20260712-180202.tar.gz
+systemctl restart concursomestre-frontend.service
+```
+
+O arquivo `payment-status.php` e a camada `paymentStatus.ts` podem ser
+removidos somente junto com o rollback dos seus imports. Nenhum segredo, token
+ou dado pessoal foi incluido no commit ou no relatorio.
 
 ## Rollback de producao
 

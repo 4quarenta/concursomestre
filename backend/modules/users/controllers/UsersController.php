@@ -85,6 +85,14 @@ class UsersController
     }
 
     /**
+     * Retorna o diagnóstico financeiro estritamente da conta autenticada.
+     */
+    public function getCurrentUserPaymentStatus(string $userId): array
+    {
+        return $this->service->getCurrentUserPaymentStatus($userId);
+    }
+
+    /**
      * Atualiza os campos editaveis do perfil e estruturas relacionadas.
      * @since 1.0.0
      */

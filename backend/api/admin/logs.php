@@ -23,22 +23,4 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 $database = new Database();
 $db = $database->getConnection();
 
-$candidateLogPaths = [
-    '/var/log/nginx/concursomestre.error.log',
-    '/var/log/nginx/error.log',
-    '/var/log/apache2/error.log',
-    '/var/log/php8.3-fpm.log',
-    '/var/log/php8.2-fpm.log',
-    '/var/log/php-fpm/error.log',
-    'C:\\xampp\\apache\\logs\\error.log',
-];
-
-$logPath = $candidateLogPaths[0];
-foreach ($candidateLogPaths as $candidateLogPath) {
-    if (is_readable($candidateLogPath)) {
-        $logPath = $candidateLogPath;
-        break;
-    }
-}
-
-handleAdminSystemLogsRoute($db, $logPath);
+handleAdminSystemLogsRoute($db);

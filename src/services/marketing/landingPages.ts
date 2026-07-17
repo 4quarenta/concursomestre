@@ -691,7 +691,7 @@ export const mergeMarketingLandingPages = (
   }
 
   if (pages.length === 0) {
-    return [];
+    return [createDefaultPlansLandingPage(siteName), createDefaultEliteLandingPage(siteName)];
   }
 
   const normalized = pages.map((page) => normalizeMarketingLandingPage(page, siteName));

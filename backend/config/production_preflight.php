@@ -337,7 +337,10 @@ function runProductionPreflight(): array
     }
 
     $migrationsRoot = $scriptsRoot . '/migrations';
-    $allowedScriptMigrations = ['migrate_marketplace_schema_compatibility.php'];
+    $allowedScriptMigrations = [
+        'migrate_marketplace_schema_compatibility.php',
+        'run_schema_migrations.php',
+    ];
     if (is_dir($migrationsRoot)) {
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($migrationsRoot, FilesystemIterator::SKIP_DOTS)

@@ -21,7 +21,7 @@ function assertMarketplaceGamificationContains(string $path, string $needle, str
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $helper = $base . '/config/gamification_helper.php';
 $transactionsService = $base . '/modules/transactions/services/TransactionsService.php';
 $paymentsService = $base . '/modules/payments/services/PaymentsService.php';
@@ -121,9 +121,9 @@ assertMarketplaceGamificationContains(
 );
 
 assertMarketplaceGamificationContains(
-    $questionsRepository,
-    'ALTER TABLE user_badges MODIFY user_id VARCHAR(64) NOT NULL',
-    'Question gamification bootstrap must repair old badge user id width'
+    $base . '/database/migrations/20260711_010010_questions_exams_compatibility.php',
+    'user_id VARCHAR(64) NOT NULL',
+    'Question migration must provision the canonical badge user id width outside requests'
 );
 
 assertMarketplaceGamificationContains(

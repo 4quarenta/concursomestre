@@ -198,7 +198,7 @@ const extractAgency = (text: string) => {
     return { agency: direct, agencyName: direct };
   }
 
-  const match = text.match(/(?:banca|organizadora|executora|realizacao|realizaÃ§Ã£o)\s*:?\s*([A-ZÃÃ€Ã‚ÃƒÃ‰ÃŠÃÃ“Ã”Ã•ÃšÃ‡][^\n.]{2,90})/i);
+  const match = text.match(/(?:banca|organizadora|executora|realizacao|realização)\s*:?\s*([A-ZÁÀÃÉÊÍÓÔÕÚÇ][^\n.]{2,90})/i);
   const value = normalizeLine(match?.[1] || '');
 
   return value ? { agency: value, agencyName: value } : {};
@@ -291,8 +291,8 @@ const extractRoles = (lines: string[]) => {
   ], true);
   const vacancyText = vacancyLines.join('\n');
   const rolePatterns = [
-    /Soldado\s+PM\s*\n?\s*Combatentes\s*[-â€“]\s*QPC/gi,
-    /Soldado\s+BM\s*\n?\s*Combatentes\s*[-â€“]\s*QBMP\s*[-â€“]\s*0/gi,
+    /Soldado\s+PM\s*\n?\s*Combatentes\s*[-–]\s*QPC/gi,
+    /Soldado\s+BM\s*\n?\s*Combatentes\s*[-–]\s*QBMP\s*[-–]\s*0/gi,
   ];
 
   rolePatterns.forEach((pattern) => {
@@ -304,12 +304,12 @@ const extractRoles = (lines: string[]) => {
   lines.forEach((line, index) => {
     const searchableLine = normalizeForSearch(line);
     if (/\bCARGO(S)?\b|\bEMPREGO(S)?\b|\bFUNCAO(ES)?\b|\bESPECIALIDADE(S)?\b/.test(searchableLine)) {
-      values.push(...extractWindowValues(lines, index, /.*?(?:cargo(?:s)?|emprego(?:s)?|fun[cÃ§][aÃ£]o(?:es)?|especialidade(?:s)?)\s*:?\s*/i, 4));
+      values.push(...extractWindowValues(lines, index, /.*?(?:cargo(?:s)?|emprego(?:s)?|fun[cç][aã]o(?:es)?|especialidade(?:s)?)\s*:?\s*/i, 4));
     }
   });
 
   return dedupe(values)
-    .filter((value) => !/^(total|vagas|cadastro|remuneracao|remuneraÃ§Ã£o|requisito)$/i.test(value))
+    .filter((value) => !/^(total|vagas|cadastro|remuneracao|remuneração|requisito)$/i.test(value))
     .slice(0, 30);
 };
 
@@ -438,7 +438,7 @@ const extractRequirements = (lines: string[]) => {
   lines.forEach((line, index) => {
     const searchableLine = normalizeForSearch(line);
     if (/\bREQUISITO(S)?\b|\bESCOLARIDADE\b|\bEXIGENCIA(S)?\b|\bFORMACAO\b/.test(searchableLine)) {
-      values.push(...extractWindowValues(lines, index, /.*?(?:requisito(?:s)?|escolaridade|exig[eÃª]ncia(?:s)?|forma[cÃ§][aÃ£]o)\s*:?\s*/i, 3));
+      values.push(...extractWindowValues(lines, index, /.*?(?:requisito(?:s)?|escolaridade|exig[eê]ncia(?:s)?|forma[cç][aã]o)\s*:?\s*/i, 3));
     }
   });
 
@@ -468,7 +468,7 @@ const extractProgrammaticContent = (lines: string[]) => {
 };
 
 const extractRemunerations = (text: string) => (
-  dedupe(Array.from(text.matchAll(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}(?:\s*(?:a|ate|atÃ©|e)\s*R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})?/gi))
+  dedupe(Array.from(text.matchAll(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}(?:\s*(?:a|ate|até|e)\s*R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})?/gi))
     .map((match) => match[0]))
     .slice(0, 20)
 );
@@ -478,7 +478,6 @@ const MONTHS_BY_NAME: Record<string, string> = {
   'FEVEREIRO': '02',
   'MARCO': '03',
   'MARÇO': '03',
-  'MARÃ‡O': '03',
   'ABRIL': '04',
   'MAIO': '05',
   'JUNHO': '06',
@@ -523,7 +522,7 @@ const extractRegistrationWindow = (text: string) => {
   const singleLine = normalizeLine(text);
   const fallback: { registrationStart?: string; registrationEnd?: string } = {};
   const windows = Array.from(singleLine.matchAll(new RegExp(
-    String.raw`(?:inscri[cÃƒÂ§][aÃƒÂ£]o|inscri[cÃƒÂ§][oÃƒÂµ]es|periodo\s+de\s+inscri[cÃƒÂ§][aÃƒÂ£]o|per[iÃƒÂ­]odo\s+de\s+inscri[cÃƒÂ§][oÃƒÂµ]es)[^.;]{0,700}`,
+    String.raw`(?:inscri[cç][aã]o|inscri[cç][oõ]es|periodo\s+de\s+inscri[cç][aã]o|per[ií]odo\s+de\s+inscri[cç][oõ]es)[^.;]{0,700}`,
     'gi',
   ))).map((match) => ({ text: match[0], index: match.index ?? 0 }));
 
@@ -546,8 +545,8 @@ const extractRegistrationWindow = (text: string) => {
       const beforeDate = window.text.slice(Math.max(0, dateMatch.index - 90), dateMatch.index);
 
       return (
-        /\b(?:a|ate|at[eÃ©]|as|[Ã a]s|e)\b|[-â€“â€”]/i.test(betweenDates)
-        || /\b(?:fim|final|termino|t[eÃ©]rmino|encerramento|prazo|limite|ultimo|[Ãºu]ltimo)\b/i.test(beforeDate)
+        /\b(?:a|ate|at[eé]|as|[àa]s|e)\b|[-–—]/i.test(betweenDates)
+        || /\b(?:fim|final|termino|t[eé]rmino|encerramento|prazo|limite|ultimo|[úu]ltimo)\b/i.test(beforeDate)
       );
     });
 
@@ -560,13 +559,13 @@ const extractRegistrationWindow = (text: string) => {
     }
   }
 
-  const registrationAnchors = Array.from(singleLine.matchAll(/inscri[cÃƒÂ§][aÃƒÂ£]o|inscri[cÃƒÂ§][oÃƒÂµ]es/gi));
+  const registrationAnchors = Array.from(singleLine.matchAll(/inscri[cç][aã]o|inscri[cç][oõ]es/gi));
   for (const anchor of registrationAnchors) {
     const context = singleLine.slice(Math.max(0, (anchor.index ?? 0) - 140), (anchor.index ?? 0) + 900);
     const dates = collectDateMatches(context);
     const endDate = dates.find((dateMatch) => {
       const beforeDate = context.slice(Math.max(0, dateMatch.index - 120), dateMatch.index);
-      return /\b(?:ate|at[eÃ©]|fim|final|termino|t[eÃ©]rmino|encerramento|prazo|limite|ultimo|[Ãºu]ltimo)\b/i.test(beforeDate);
+      return /\b(?:ate|at[eé]|fim|final|termino|t[eé]rmino|encerramento|prazo|limite|ultimo|[úu]ltimo)\b/i.test(beforeDate);
     });
 
     if (endDate) {
@@ -579,12 +578,12 @@ const extractRegistrationWindow = (text: string) => {
 
   const lineBasedDates = text.split(/\n+/)
     .map(normalizeLine)
-    .filter((line) => /inscri[cÃƒÂ§][aÃƒÂ£]o|inscri[cÃƒÂ§][oÃƒÂµ]es|prazo|limite|encerramento|termino|t[eÃ©]rmino/i.test(line))
+    .filter((line) => /inscri[cç][aã]o|inscri[cç][oõ]es|prazo|limite|encerramento|termino|t[eé]rmino/i.test(line))
     .flatMap((line) => collectDateMatches(line).map((match) => ({ date: match.date, line })));
 
   if (lineBasedDates.length >= 2) {
     const endDate = lineBasedDates.find((item, index) => (
-      index > 0 && /\b(?:ate|at[eÃ©]|fim|final|termino|t[eÃ©]rmino|encerramento|prazo|limite|ultimo|[Ãºu]ltimo)\b/i.test(item.line)
+      index > 0 && /\b(?:ate|at[eé]|fim|final|termino|t[eé]rmino|encerramento|prazo|limite|ultimo|[úu]ltimo)\b/i.test(item.line)
     ));
     if (endDate) {
       return { registrationStart: fallback.registrationStart || lineBasedDates[0].date, registrationEnd: endDate.date };
@@ -596,7 +595,7 @@ const extractRegistrationWindow = (text: string) => {
 const extractExamDate = (text: string) => {
   const singleLine = normalizeLine(text);
   const windows = Array.from(singleLine.matchAll(new RegExp(
-    String.raw`(?:data\s+da\s+prova|prova\s+objetiva|aplica[cÃ§][aÃ£]o\s+da\s+prova)[^.;]{0,220}`,
+    String.raw`(?:data\s+da\s+prova|prova\s+objetiva|aplica[cç][aã]o\s+da\s+prova)[^.;]{0,220}`,
     'gi',
   ))).map((match) => match[0]);
 
@@ -613,7 +612,7 @@ const extractExamDate = (text: string) => {
 
 const extractRegistrationFee = (text: string) => {
   const singleLine = normalizeLine(text);
-  const windows = Array.from(singleLine.matchAll(/(?:taxa|valor)\s+de\s+inscri[cÃ§][aÃ£]o[^.;]{0,180}/gi))
+  const windows = Array.from(singleLine.matchAll(/(?:taxa|valor)\s+de\s+inscri[cç][aã]o[^.;]{0,180}/gi))
     .map((match) => match[0]);
 
   for (const window of windows) {
@@ -628,13 +627,13 @@ const extractRegistrationFee = (text: string) => {
 
 const extractTotalQuestions = (text: string, programmaticContent: string[]) => {
   const singleLine = normalizeLine(text);
-  const explicit = singleLine.match(/(?:total\s+de|prova\s+(?:objetiva\s+)?(?:sera\s+composta\s+por|contara\s+com)|composta\s+por)\s+(\d{1,3})\s+quest(?:oes|Ãµes)/i)?.[1];
+  const explicit = singleLine.match(/(?:total\s+de|prova\s+(?:objetiva\s+)?(?:sera\s+composta\s+por|contara\s+com)|composta\s+por)\s+(\d{1,3})\s+quest(?:oes|ões)/i)?.[1];
   if (explicit) {
     return explicit;
   }
 
   const total = programmaticContent
-    .map((line) => Number(line.match(/\b(\d{1,3})\s+quest(?:oes|Ãµes)\b/i)?.[1] || 0))
+    .map((line) => Number(line.match(/\b(\d{1,3})\s+quest(?:oes|ões)\b/i)?.[1] || 0))
     .reduce((sum, value) => sum + value, 0);
 
   return total > 0 ? String(total) : '';
@@ -648,7 +647,7 @@ const buildScopedItemsFromText = (values: string[], keyValue = false): Extracted
       const colon = item.match(/^([^:]{2,80}):\s*(.+)$/);
       const numberedBodyColon = numbered?.[2]?.match(/^([^:]{2,80}):\s*(.+)$/);
       const chave = keyValue
-        ? (numberedBodyColon?.[1] || colon?.[1] || numbered?.[1] || 'InformaÃ§Ã£o')
+        ? (numberedBodyColon?.[1] || colon?.[1] || numbered?.[1] || 'Informação')
         : (colon?.[1] || '');
       const texto = keyValue
         ? (numberedBodyColon?.[2] || colon?.[2] || numbered?.[2] || item)
@@ -819,8 +818,8 @@ const extractProgrammaticDetailed = (programmaticContent: string[]): ExtractedPr
       return;
     }
 
-    const questionCount = normalized.match(/\b(\d{1,3})\s+quest(?:oes|Ãµes)\b/i)?.[1] || '';
-    const cleaned = normalized.replace(/\b\d{1,3}\s+quest(?:oes|Ãµes)\b/gi, '').trim();
+    const questionCount = normalized.match(/\b(\d{1,3})\s+quest(?:oes|ões)\b/i)?.[1] || '';
+    const cleaned = normalized.replace(/\b\d{1,3}\s+quest(?:oes|ões)\b/gi, '').trim();
     const cleanedSearch = normalizeForSearch(cleaned);
     if (!cleaned || /^[\W_.-]+$/.test(cleaned) || /^\d+[\W_.-]*$/.test(cleaned) || /^(ANEXO|CONTEUDO PROGRAMATICO)\b/.test(cleanedSearch)) {
       return;
@@ -947,7 +946,7 @@ export const extractExamNoticeMetadataFromText = (rawText: string): ExtractedExa
     requirements,
     requirementsDetailed: buildScopedItemsFromText(requirements, true),
     remunerations,
-    remunerationsDetailed: buildScopedItemsWithDetectedScope(remunerations, roles, 'RemuneraÃ§Ã£o'),
+    remunerationsDetailed: buildScopedItemsWithDetectedScope(remunerations, roles, 'Remuneração'),
     vacancies,
     vacanciesDetailed: buildScopedItemsWithDetectedScope(vacancies, roles, 'Vagas'),
     programmaticContent,

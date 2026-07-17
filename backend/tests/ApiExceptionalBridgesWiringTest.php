@@ -29,7 +29,7 @@ function assertNotContainsBridgeText(string $path, string $needle, string $messa
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertContainsBridgeText(
     $base . '/api/settings.php',
@@ -62,8 +62,6 @@ assertContainsBridgeText(
 );
 
 $cronBridges = [
-    $base . '/api/subscriptions/cron_recurring.php' => 'handleSubscriptionsRecurringCronRoute($db);',
-    $base . '/api/subscriptions/cron_scheduled_payments.php' => 'handleSubscriptionsScheduledPaymentsCronRoute($db);',
     $base . '/api/subscriptions/cron_stripe_reconciliation.php' => 'handleSubscriptionsStripeReconciliationCronRoute($db);',
     $base . '/api/tasks/ProcessRewards.php' => 'handleUsersProcessReferralRewardsCronRoute($db);',
 ];
@@ -85,6 +83,22 @@ foreach ($cronBridges as $path => $handler) {
         $path,
         'config/cors.php',
         'Cron bridge must not depend on browser CORS bootstrap'
+    );
+}
+
+foreach ([
+    $base . '/api/subscriptions/cron_recurring.php',
+    $base . '/api/subscriptions/cron_scheduled_payments.php',
+] as $removedCronBridge) {
+    assertContainsBridgeText(
+        $removedCronBridge,
+        'respondRemovedMercadoPagoSubscriptionsRoute();',
+        'Cron HTTP legado deve permanecer como tombstone sem executar cobranca.'
+    );
+    assertNotContainsBridgeText(
+        $removedCronBridge,
+        'config/database.php',
+        'Tombstone de cron legado nao deve abrir conexao de banco.'
     );
 }
 

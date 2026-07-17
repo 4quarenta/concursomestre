@@ -290,6 +290,26 @@ function handleUsersAuthenticatedSessionRoute(PDO $db): void
 }
 
 /**
+ * Status financeiro mínimo da própria conta. Não aceita identificadores de usuário
+ * nem expõe cartão, conta bancária ou dados completos de cobrança.
+ */
+function handleCurrentUserPaymentStatusRoute(PDO $db): void
+{
+    try {
+        $payload = verifyAuthenticatedUserPayload();
+        $userId = trim((string) ($payload['user_id'] ?? ''));
+        $result = buildUsersController($db)->getCurrentUserPaymentStatus($userId);
+        Response::success($result, 'Payment status retrieved');
+    } catch (InvalidArgumentException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Failed to fetch payment status', $e);
+    }
+}
+
+/**
  * Ponto de entrada oficial para atualizacao do perfil do proprio usurio.
  * A rota aceita apenas campos previstos pelo dominio para evitar escalacao indevida.
  *

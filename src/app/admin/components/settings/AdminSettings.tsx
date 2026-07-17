@@ -23,6 +23,7 @@ import type { EmailTemplateModel, PlanBenefitKey, PlanUsageLimitKey, SeoSettings
 import apiClient from '@services/api/client';
 import { readApiErrorMessage } from '@services/api';
 import { adminService } from '@services/admin/adminService';
+import { clientLog } from '@services/monitoring/clientLog';
 import { validateAdsTxtContent } from '@services/ads/adsTxt';
 import { parseDailyMotivationMarkdown } from '@services/dashboard/dashboardInsightsService';
 import { normalizeEmailTemplates } from '@constants/email/defaultEmailTemplates';
@@ -450,7 +451,7 @@ const AdminSettings = ({
       setLocalSeoSettings(mergeSeoSettings(persistedSettings.seo));
       addToast('Configurações salvas com sucesso.', 'success');
     } catch (error: unknown) {
-      console.error('Erro ao salvar configurações administrativas:', error);
+      clientLog.error('Erro ao salvar configurações administrativas.', error);
     } finally {
       setIsSavingSettings(false);
     }
@@ -1675,7 +1676,13 @@ const AdminSettings = ({
       )}
 
       {activeTab === 'integrations' && <StripePaymentMethodsSettings value={localSettings.stripePaymentMethods} onChange={(stripePaymentMethods) => setField('stripePaymentMethods', stripePaymentMethods)} />}
-      {activeTab === 'seo' && <AdminSeoSettingsSection seoSettings={localSeoSettings} onChange={setLocalSeoSettings} />}
+      {activeTab === 'seo' && (
+        <AdminSeoSettingsSection
+          seoSettings={localSeoSettings}
+          onChange={setLocalSeoSettings}
+          onValidationError={(message) => addToast(message, 'error')}
+        />
+      )}
       {activeTab === 'performance' && <div className={ADMIN_PAGE_PANEL_CLASS}><AdminCacheManagement /></div>}
       {activeTab === 'logs' && <LogViewer isOpen embedded />}
     </div>

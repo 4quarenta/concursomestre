@@ -538,9 +538,15 @@ class LegalCommentaryService
         ], static fn($item) => $item !== null);
 
         $article['studyModules'] = $studyModules;
-        $article['comentarios'] = $teacherComments;
-        $article['jurisprudencia'] = $jurisprudence;
-        $article['macete'] = $examTip !== '' ? $examTip : null;
+        $article['comentarios'] = (($featureAccess['lei.comentario_basico']['mode'] ?? 'locked') === 'full')
+            ? $teacherComments
+            : [];
+        $article['jurisprudencia'] = (($featureAccess['lei.jurisprudencia']['mode'] ?? 'locked') === 'full')
+            ? $jurisprudence
+            : [];
+        $article['macete'] = (($featureAccess['lei.macete']['mode'] ?? 'locked') === 'full' && $examTip !== '')
+            ? $examTip
+            : null;
         $article['examTip'] = $article['macete'];
 
         return $article;

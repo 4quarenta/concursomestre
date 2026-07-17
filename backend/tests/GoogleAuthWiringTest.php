@@ -21,7 +21,7 @@ function assertContainsGoogleAuth(string $path, string $needle, string $message)
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 $service = $base . '/modules/auth/services/AuthService.php';
 
 assertContainsGoogleAuth(

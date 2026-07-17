@@ -1,0 +1,49 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - '4quarenta/**'
+  pull_request:
+    branches:
+      - main
+      - '4quarenta/**'
+
+jobs:
+  quality:
+    name: Backend quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, fileinfo, gd, intl, mbstring, openssl, pdo_mysql, zip
+          coverage: none
+
+      - name: Validate Composer metadata
+        run: composer validate --no-check-publish
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Run backend quality suite
+        run: php scripts/tasks/ci_wiring_checks.php --all-tests=true --report-file=storage/logs/ci-wiring-report.json
+
+      - name: Upload CI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-ci-wiring-report
+          path: backend/storage/logs/ci-wiring-report.json
+          if-no-files-found: ignore

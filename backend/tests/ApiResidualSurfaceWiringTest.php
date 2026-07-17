@@ -23,7 +23,7 @@ function assertContainsResidualSurface(string $path, string $needle, string $mes
 
 function assertApiRootFiles(array $expected): void
 {
-    $files = glob('C:/xampp/htdocs/questao-pro-backend/api/*');
+    $files = glob(dirname(__DIR__) . '/api/*');
     if ($files === false) {
         throw new RuntimeException('Não foi possível listar a raiz de api/.');
     }
@@ -69,7 +69,7 @@ function assertNoOperationalArtifactsInApi(string $base): void
     }
 }
 
-$base = 'C:/xampp/htdocs/questao-pro-backend';
+$base = dirname(__DIR__) . '';
 
 assertApiRootFiles([
     'settings.php',

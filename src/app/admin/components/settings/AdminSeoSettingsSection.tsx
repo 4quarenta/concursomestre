@@ -36,6 +36,7 @@ import {
 interface AdminSeoSettingsSectionProps {
   seoSettings: SeoSettings;
   onChange: (next: SeoSettings) => void;
+  onValidationError: (message: string) => void;
 }
 
 const inputClassName = `w-full ${ADMIN_FIELD_CLASS}`;
@@ -48,6 +49,7 @@ const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] 
 const AdminSeoSettingsSection = ({
   seoSettings,
   onChange,
+  onValidationError,
 }: AdminSeoSettingsSectionProps) => {
   const [activePage, setActivePage] = useState<keyof SeoSettings['pages']>('landing');
   const [sitemapStatus, setSitemapStatus] = useState<SitemapStatusPayload | null>(null);
@@ -102,7 +104,7 @@ const AdminSeoSettingsSection = ({
   const uploadDefaultOgImage = async (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
-      window.alert('Envie uma imagem de ate 5 MB.');
+      onValidationError('Envie uma imagem de ate 5 MB.');
       return;
     }
     const url = await adminService.uploadQuestionContextImage(file);

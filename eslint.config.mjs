@@ -35,6 +35,28 @@ const eslintConfig = defineConfig([
       "react-hooks/use-memo": "warn",
     },
   },
+  {
+    files: ["src/app/admin/components/import/useAdminImportWorkflow.ts"],
+    rules: {
+      // Este fluxo legado tem 13k+ linhas. As regras de analise global do React
+      // Compiler excedem o heap disponivel antes de emitir diagnosticos.
+      // Mantemos as regras fundamentais de hooks e todo o restante do ESLint.
+      "react-hooks/static-components": "off",
+      "react-hooks/use-memo": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+      "react-hooks/incompatible-library": "off",
+      "react-hooks/immutability": "off",
+      "react-hooks/globals": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/error-boundaries": "off",
+      "react-hooks/purity": "off",
+      "react-hooks/set-state-in-render": "off",
+      "react-hooks/unsupported-syntax": "off",
+      "react-hooks/config": "off",
+      "react-hooks/gating": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

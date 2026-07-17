@@ -25,6 +25,7 @@ import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { readApiErrorMessage } from '@services/api';
 import { Address, DiscountCode, Plan, PlanEntitlements, UserProfile } from '@types';
 import { authFlowService } from '@services/auth';
+import { isCanonicalSessionData } from '@services/auth/session';
 import { cardsService, type SavedCard } from '@services/billing';
 import { getEnabledStripePaymentMethods } from '@services/payments/stripePaymentMethodsConfig';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
@@ -36,6 +37,7 @@ import {
 import CheckoutHeader from './components/CheckoutHeader';
 import CheckoutPaymentStage from './components/CheckoutPaymentStage';
 import CheckoutStepTracker from './components/CheckoutStepTracker';
+import { getMaximumInstallmentsCoveredByCard } from './cardInstallmentExpiry';
 import { shouldHideCheckoutForExistingSubscription } from './checkoutVisibility';
 import useCheckoutSummaryAction from './hooks/useCheckoutSummaryAction';
 import type { CheckoutAuthMode, CheckoutStep } from './types';
@@ -903,21 +905,22 @@ const CheckoutPage: React.FC = () => {
                     referralCode
                 });
 
-                if (result.user) {
-                    const { user, token } = result;
+                const registrationToken = result.data.token;
+                if (isCanonicalSessionData(result.data)) {
+                    const session = result.data;
                     void analyticsTrackingService.trackLifecycleEvent({
                         eventName: 'signup_completed',
                         source: 'checkout',
                         sessionKey: getAnalyticsSessionKey(),
-                        userId: user?.id || null,
-                        email: user?.email || formData.email.trim(),
+                        userId: session.user.id,
+                        email: session.user.email || formData.email.trim(),
                         planId: plan?.id || null,
                         cycleLabel: analyticsCycleLabel,
                         metadata: {
                             authMode: 'register',
                         },
                     });
-                    await login(user, token);
+                    await login(session, registrationToken);
                     addToast('Conta criada com sucesso e login realizado!', 'success');
                     setStep('payment');
                 } else {
@@ -932,13 +935,13 @@ const CheckoutPage: React.FC = () => {
                     password: formData.password,
                     captchaToken
                 });
+                const loginToken = result.data.token;
 
                 if (result.require2FA) {
                     addToast('Esta conta exige 2FA. Entre pela tela de autenticação para concluir o login.', 'warning');
                     router.push('/auth?mode=login');
-                } else if (result.user) {
-                    const { user, token } = result;
-                    await login(user, token);
+                } else if (isCanonicalSessionData(result.data)) {
+                    await login(result.data, loginToken);
                     addToast('Login realizado com sucesso!', 'success');
                     setStep('payment');
                 } else {
@@ -1465,8 +1468,27 @@ const CheckoutPage: React.FC = () => {
         return 1;
     }, [plan]);
 
+    const selectedCardMaxInstallments = useMemo(() => {
+        if (!plan || !selectedStripeCard || checkoutNowMs <= 0) {
+            return maxInstallments;
+        }
+
+        return getMaximumInstallmentsCoveredByCard({
+            plan,
+            maxInstallments,
+            expMonth: selectedStripeCard.exp_month,
+            expYear: selectedStripeCard.exp_year,
+            firstChargeAt: new Date(checkoutNowMs),
+        });
+    }, [checkoutNowMs, maxInstallments, plan, selectedStripeCard]);
+
+    const effectiveMaxInstallments = selectedStripeCard
+        ? Math.min(maxInstallments, selectedCardMaxInstallments)
+        : maxInstallments;
+
     const supportsStripeBillingChoices = isStripeProvider
         && maxInstallments > 1
+        && isStripeInternalCheckout
         && (selectedCheckoutPaymentMethod?.id || 'card') === 'card';
     const selectedStripeInstallmentCount = (() => {
         if (!supportsStripeBillingChoices) return 1;
@@ -1475,7 +1497,7 @@ const CheckoutPage: React.FC = () => {
             return 1;
         }
 
-        return Math.min(maxInstallments, parsedInstallments);
+        return Math.min(effectiveMaxInstallments, parsedInstallments);
     })();
     const stripeBillingMode = selectedStripeInstallmentCount > 1 ? 'term_recurring' : 'single_installment';
 
@@ -1607,7 +1629,7 @@ const CheckoutPage: React.FC = () => {
             ];
         }
 
-        return Array.from({ length: maxInstallments }, (_, index) => {
+        return Array.from({ length: effectiveMaxInstallments }, (_, index) => {
             const installmentCount = index + 1;
             const installmentPreview = resolveStripeTermAmounts(checkoutFinalCycleAmount, installmentCount);
             return {
@@ -1617,7 +1639,11 @@ const CheckoutPage: React.FC = () => {
                     : `1x de ${formatCurrency(installmentPreview.first_charge_amount)} sem juros`,
             };
         });
-    }, [checkoutFinalCycleAmount, maxInstallments, supportsStripeBillingChoices]);
+    }, [checkoutFinalCycleAmount, effectiveMaxInstallments, supportsStripeBillingChoices]);
+
+    const installmentExpiryNotice = selectedStripeCard && selectedCardMaxInstallments < maxInstallments
+        ? `O cartão selecionado vence em ${String(selectedStripeCard.exp_month).padStart(2, '0')}/${String(selectedStripeCard.exp_year).slice(-2)} e permite no máximo ${selectedCardMaxInstallments} parcela(s) neste checkout.`
+        : null;
 
     const nextRenewalSummaryLabel = autoRenew && nextRenewalDate
       ? nextRenewalDate
@@ -2082,7 +2108,8 @@ const CheckoutPage: React.FC = () => {
                                         nextRenewalLabel={nextRenewalSummaryLabel}
                                         paymentProtectionLabel={checkoutPaymentProtectionLabel}
                                         installmentOptions={checkoutInstallmentOptions}
-                                        selectedInstallmentValue={paymentData.installments}
+                                        selectedInstallmentValue={String(selectedStripeInstallmentCount)}
+                                        installmentExpiryNotice={installmentExpiryNotice}
                                         processing={processing}
                                         legalNotice={checkoutLegalNotice}
                                         pixCapabilityStatus={stripePixCapability?.status}
