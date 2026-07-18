@@ -17,6 +17,8 @@ $files = [
     ],
 ];
 
+$files['/shared/health/SystemHealthService.php'][] = "payload_json IS NOT NULL AND payload_json <> ''";
+
 foreach ($files as $relative => $needles) {
     $content = file_get_contents($root . $relative);
     if (!is_string($content)) {

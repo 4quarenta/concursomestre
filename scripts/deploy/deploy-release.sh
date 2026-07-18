@@ -33,19 +33,19 @@ actual_sha256="$(cm_sha256 "$ARCHIVE_PATH")"
 
 work_dir="$(mktemp -d)"; release_dir=''; switched='false'; previous_frontend=''; previous_backend=''
 cleanup() { rm -rf "$work_dir"; }
-restore_on_error() {
+cleanup_on_exit() {
   local code=$?
-  if [[ "$switched" == 'true' ]] && ! cm_is_true "$CM_DEPLOY_DRY_RUN"; then
+  if [[ "$code" -ne 0 && "$switched" == 'true' ]] && ! cm_is_true "$CM_DEPLOY_DRY_RUN"; then
     cm_log 'Falha apos a troca; restaurando somente os symlinks de codigo.'
     [[ -z "$previous_frontend" ]] || cm_atomic_symlink "$previous_frontend" "$CM_FRONTEND_LINK" || true
     [[ -z "$previous_backend" ]] || cm_atomic_symlink "$previous_backend/backend" "$CM_BACKEND_LINK" || true
     systemctl restart "$CM_PHP_FPM_SERVICE" >/dev/null 2>&1 || true
     systemctl restart "$CM_FRONTEND_SERVICE" >/dev/null 2>&1 || true
   fi
-  cleanup; exit "$code"
+  cleanup
 }
-trap restore_on_error ERR INT TERM
-trap cleanup EXIT
+trap cleanup_on_exit EXIT
+trap 'exit 130' INT TERM
 
 unzip -q "$ARCHIVE_PATH" -d "$work_dir/extracted"
 package_root="$(cm_find_package_root "$work_dir/extracted")"
@@ -70,10 +70,16 @@ ln -s "$CM_SHARED_DIR/backend/storage" "$release_dir/backend/storage"
 ln -s "$CM_SHARED_DIR/backend/uploads" "$release_dir/backend/uploads"
 ln -s "$CM_FRONTEND_ENV_SOURCE" "$release_dir/.env.production"
 ln -s "$CM_BACKEND_ENV_SOURCE" "$release_dir/backend/.env"
+chown -R root:"$CM_APP_GROUP" "$release_dir"
+chmod -R go-w "$release_dir"
+find "$release_dir" -type d -exec chmod g+rx {} +
 
 cm_run composer install --working-dir="$release_dir/backend" --no-dev --prefer-dist --no-interaction --no-progress --classmap-authoritative
 cm_run_in "$release_dir" npm ci --no-audit --no-fund
 cm_run_in "$release_dir" npm run build
+chgrp -R "$CM_APP_GROUP" "$release_dir"
+chmod -R go-w "$release_dir"
+find "$release_dir" -type d -exec chmod g+rx {} +
 cm_run php "$release_dir/backend/scripts/migrations/run_schema_migrations.php" --dry-run
 
 if cm_is_true "$APPLY_MIGRATIONS"; then

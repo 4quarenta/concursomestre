@@ -122,6 +122,7 @@ final class SystemHealthService
             $stmt = $db->query(
                 "SELECT COUNT(*) FROM provider_webhook_events "
                 . "WHERE provider = 'stripe' "
+                . "AND payload_json IS NOT NULL AND payload_json <> '' "
                 . "AND status IN ('pending', 'queued', 'processing', 'failed') "
                 . "AND COALESCE(next_retry_at, queued_at, created_at) <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)"
             );
