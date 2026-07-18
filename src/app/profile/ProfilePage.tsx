@@ -88,6 +88,7 @@ import {
     parseSubscriptionDate,
     resolveProfileSubscriptionTimeline,
 } from './components/subscriptionDateUtils';
+import { buildPersonalProfileUpdate, validatePersonalProfileUpdate } from './components/personalProfileForm';
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
 import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
 import { normalizeGoogleClientId } from '@/config/googleAuth';
@@ -4609,59 +4610,13 @@ const Profile: React.FC = () => {
                            if (isUpdatingProfile) return;
                            
                            setIsUpdatingProfile(true);
-                           const formData = new FormData(e.currentTarget);
-                           
-                           const getValue = (name: string) => (formData.get(name) as string) || '';
-                           
-                           const updates = {
-                               name: getValue('name'),
-                               cpf: getValue('cpf').replace(/\D/g, ''),
-                               phone: getValue('phone').replace(/\D/g, ''),
-                               targetExam: getValue('targetExam'),
-                               address: {
-                                  zipCode: getValue('zipCode').replace(/\D/g, ''),
-                                  street: getValue('street'),
-                                  number: getValue('number'),
-                                  complement: getValue('complement'),
-                                  neighborhood: getValue('neighborhood'),
-                                  city: getValue('city'),
-                                  state: getValue('state')
-                               }
-                           };
-
-                           const isValidCpf = (value: string) => {
-                               if (value.length !== 11) return false;
-                               if (/^(\d)\1{10}$/.test(value)) return false;
-
-                               const calcDigit = (base: string, factor: number) => {
-                                   const total = base.split('').reduce((sum, digit) => sum + (Number(digit) * factor--), 0);
-                                   const result = 11 - (total % 11);
-                                   return result > 9 ? 0 : result;
-                               };
-
-                               const d1 = calcDigit(value.slice(0, 9), 10);
-                               const d2 = calcDigit(value.slice(0, 10), 11);
-                               return d1 === Number(value[9]) && d2 === Number(value[10]);
-                           };
-
-                           // Manual Validation for better feedback
-                           if (!updates.name) { addToast('Nome é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.cpf) { addToast('CPF é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!isValidCpf(updates.cpf)) { addToast('CPF inválido. Verifique e tente novamente.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.phone) { addToast('Telefone é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (![10, 11].includes(updates.phone.length)) { addToast('Telefone inválido. Informe DDD + número com 10 ou 11 dígitos.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.zipCode) { addToast('CEP é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (updates.address.zipCode.length !== 8) { addToast('CEP inválido. Informe um CEP com 8 dígitos.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.street) { addToast('Rua é obrigatória.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (updates.address.street.trim().length < 3) { addToast('Logradouro inválido. Informe um endereço válido.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.number) { addToast('Número é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!/[0-9a-zA-Z]/.test(updates.address.number)) { addToast('Número inválido. Informe um número de endereço válido.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.neighborhood) { addToast('Bairro é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (updates.address.neighborhood.trim().length < 2) { addToast('Bairro inválido. Informe um bairro válido.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.city) { addToast('Cidade é obrigatória.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (updates.address.city.trim().length < 2) { addToast('Cidade inválida. Informe uma cidade válida.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.state) { addToast('Estado (UF) é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!/^[A-Za-z]{2}$/.test(updates.address.state)) { addToast('UF inválida. Use a sigla com 2 letras (ex.: SP).', 'error'); setIsUpdatingProfile(false); return; }
+                           const updates = buildPersonalProfileUpdate(new FormData(e.currentTarget));
+                           const validationError = validatePersonalProfileUpdate(updates);
+                           if (validationError) {
+                               addToast(validationError, 'error');
+                               setIsUpdatingProfile(false);
+                               return;
+                           }
 
                            try {
                                const result = await profileService.updatePersonalProfile(updates);
