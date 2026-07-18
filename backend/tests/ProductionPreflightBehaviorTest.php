@@ -66,6 +66,9 @@ file_put_contents(
     "<?php\nreturn ['MercadoPago\\\\' => [__DIR__ . '/../mercadopago/dx-php/src/MercadoPago']];\n"
 );
 
+$publicBackupFixturePath = __DIR__ . '/fixtures/public-backups-' . bin2hex(random_bytes(6));
+mkdir($publicBackupFixturePath, 0775, true);
+
 function setPreflightEnv(array $values): void
 {
     foreach ($values as $key => $value) {
@@ -177,7 +180,7 @@ $legacyPaymentResult = runProductionPreflight();
 assertPreflightStatus($legacyPaymentResult, 'PAYMENT_LEGACY_MERCADOPAGO_SDK_REMOVED', 'fail');
 
 setPreflightEnv(array_merge($validEnv, [
-    'BACKUP_DIR' => dirname(__DIR__) . '/storage/backups',
+    'BACKUP_DIR' => $publicBackupFixturePath,
 ]));
 $publicBackupDirResult = runProductionPreflight();
 assertPreflightStatus($publicBackupDirResult, 'BACKUP_DIR_OUTSIDE_PUBLIC_ROOT', 'fail');
@@ -353,5 +356,6 @@ assertPreflightStatus($missingSharedRuntimeResult, 'SHARED_RUNTIME_STORE_READY',
 @rmdir($legacyPaymentFixtureRoot . '/vendor/mercadopago');
 @rmdir($legacyPaymentFixtureRoot . '/vendor');
 @rmdir($legacyPaymentFixtureRoot);
+@rmdir($publicBackupFixturePath);
 
 fwrite(STDOUT, "Production preflight behavior assertions passed.\n");
