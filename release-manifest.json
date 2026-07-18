@@ -3,9 +3,9 @@
   "product": "ConcursoMestre",
   "version": "1.0.0",
   "revision": "selective-r6.1",
-  "commit": "9d65caf002ad63042deca33b1d66349ee13ad430",
-  "gitDirty": true,
-  "generatedAt": "2026-07-18T12:58:02.848Z",
+  "commit": "36667d37bfad1a91ecb612fbf42aa993d0c04bf8",
+  "gitDirty": false,
+  "generatedAt": "2026-07-18T14:31:07.218Z",
   "runtime": {
     "node": "v20.12.2",
     "nodeMinimum": "20.19.0",
@@ -45,6 +45,8 @@
       "backend/database/migrations/20260716_020000_question_editorial_feedback.php": "534e5e12b739cb1c3e5de7a15f494c13b1b41e03e3d604aff29895a65e10c007",
       "backend/database/migrations/20260717_010000_question_scale_foundation.php": "d534d1df23e69ff806b11e1b47b1be3bbcb1471c7461cf11d7680c88d1d87020",
       "backend/database/migrations/20260717_020000_stripe_recovery_queue.php": "035b61e9f5266d67c593f083d1bccec927dfb86af2a72c1bf7a54b75f41ff279",
+      "backend/database/migrations/20260718_010000_user_profile_contract.php": "f728910756209e5db57c09e843e53e5c4b33c2856a3ca54a2e5b79c2518ce500",
+      "backend/database/migrations/20260718_020000_rankings_canonical_contract.php": "c5fe59ce88c4b72579fa74bf6ca08550b63dcb0686877b7ba0947ae9b8d5d5a0",
       "backend/database/migrations/create_user_material_notes.sql": "2187d9f0e855a41927f976748b8e31d3aca6125e2d24fdad325004d3ba074477",
       "backend/database/migrations/refactor_cleanup.sql": "9ecb430009af8090f669f37c6b56caff4590fb6cd6fe2a9e9b5b82bc42531759",
       "backend/database/migrations/refactor_user_notes.sql": "540eaab854648f6e84dd4c534920ac2af34de92db969ae6ebfd1aa60d18ad68b"
