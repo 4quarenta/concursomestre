@@ -3,9 +3,9 @@
   "product": "ConcursoMestre",
   "version": "1.0.0",
   "revision": "selective-r6.1",
-  "commit": "36667d37bfad1a91ecb612fbf42aa993d0c04bf8",
+  "commit": "2cfc026c1be9c70b48b155fc50fb2214a0d9c0dc",
   "gitDirty": false,
-  "generatedAt": "2026-07-18T14:31:07.218Z",
+  "generatedAt": "2026-07-18T14:36:30.597Z",
   "runtime": {
     "node": "v20.12.2",
     "nodeMinimum": "20.19.0",
