@@ -3,9 +3,9 @@
   "product": "ConcursoMestre",
   "version": "1.0.0",
   "revision": "selective-r6.1",
-  "commit": "88cea51",
+  "commit": "668f540",
   "gitDirty": false,
-  "generatedAt": "2026-07-18T16:46:44.700Z",
+  "generatedAt": "2026-07-18T16:55:51.949Z",
   "runtime": {
     "node": "v20.12.2",
     "nodeMinimum": "20.19.0",
@@ -83,7 +83,7 @@
     "scripts/release/verify-release-manifest.mjs": "8b4809a4202941e2baa323b9c4a0a8f23a640589e2430d1e72d75165eb898150",
     "scripts/deploy/lib.sh": "8626615e726289ea10b2167b49ccd35759bc638ff48d5b2f316dafdd33679729",
     "scripts/deploy/verify-host.sh": "1300bb04a9805603f8c5d1284a6000e3548672721d73fff1c7b7655c414970aa",
-    "scripts/deploy/deploy-release.sh": "e1b4bfdb64816a5b0d9d159b5fb6bbb13a463dec5716cdc006196dac1fc48570",
+    "scripts/deploy/deploy-release.sh": "98a6e510dc070ff0e49f11d1566b7d993739ba4117b509f89e3a451de93dce04",
     "scripts/deploy/rollback-release.sh": "1164d8f502df3d27aa2a32c559acc32971f8d017e0109275b9694ef609beb066",
     "docs/PRODUCTION_RELEASE_RUNBOOK.md": "15a80627f3a5eb305423277a91a17486980b531eb2e552bc70f3ad4d8d042bd7",
     "config/deploy/release-deploy.env.example": "1cffdfeceb3bef95474f95fa93c23f4e244107a513c48029f1ca2bdbe6da653b"
