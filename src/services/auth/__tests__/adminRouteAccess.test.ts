@@ -64,6 +64,28 @@ describe('admin route access guard', () => {
     );
   });
 
+  it('does not forge proxy-owned client IP headers in the server-to-server check', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(canAccessAdminRoute(new Request('https://concursomestre.com/admin', {
+      headers: {
+        cookie: 'cm_refresh=opaque-refresh-token',
+        'user-agent': 'admin-browser',
+        'x-forwarded-for': '198.51.100.20, 172.70.1.2',
+        'x-real-ip': '172.70.1.2',
+        'cf-connecting-ip': '198.51.100.20',
+      },
+    }))).resolves.toBe(true);
+
+    const requestOptions = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const forwardedHeaders = requestOptions.headers as Headers;
+    expect(forwardedHeaders.get('user-agent')).toBe('admin-browser');
+    expect(forwardedHeaders.has('x-forwarded-for')).toBe(false);
+    expect(forwardedHeaders.has('x-real-ip')).toBe(false);
+    expect(forwardedHeaders.has('cf-connecting-ip')).toBe(false);
+  });
+
   it('fails closed for a network failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network unavailable')));
     await expect(canAccessAdminRoute(requestWithCookie())).resolves.toBe(false);

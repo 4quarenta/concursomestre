@@ -19,11 +19,9 @@ export const canAccessAdminRoute = async (request: AdminRouteRequest): Promise<b
     Cookie: cookie,
     'X-ConcursoMestre-Admin-Route-Check': '1',
   });
-  for (const header of ['user-agent', 'x-forwarded-for', 'x-real-ip', 'cf-connecting-ip']) {
-    const value = request.headers.get(header);
-    if (value) {
-      headers.set(header, value);
-    }
+  const userAgent = request.headers.get('user-agent');
+  if (userAgent) {
+    headers.set('user-agent', userAgent);
   }
 
   try {
