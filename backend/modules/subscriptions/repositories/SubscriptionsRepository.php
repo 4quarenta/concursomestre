@@ -560,6 +560,8 @@ class SubscriptionsRepository
                 "SELECT id, event_id, payload_json, payload_hash, attempt_count
                  FROM provider_webhook_events
                  WHERE provider = 'stripe'
+                   AND payload_json IS NOT NULL
+                   AND payload_json <> ''
                    AND (status IN ('queued', 'failed')
                         OR (status = 'processing' AND updated_at <= DATE_SUB(NOW(), INTERVAL 5 MINUTE)))
                    AND attempt_count < :maximum_attempts

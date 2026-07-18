@@ -18,7 +18,13 @@ foreach (['constructEvent', 'enqueueStripeWebhookEvent', 'processNextQueuedStrip
         throw new RuntimeException('Fluxo assincrono Stripe incompleto: ' . $needle);
     }
 }
-foreach (['FOR UPDATE SKIP LOCKED', "status = 'processing'", 'payload_json = NULL'] as $needle) {
+foreach ([
+    'FOR UPDATE SKIP LOCKED',
+    "status = 'processing'",
+    'payload_json = NULL',
+    'payload_json IS NOT NULL',
+    "payload_json <> ''",
+] as $needle) {
     if (!str_contains($repository, $needle)) {
         throw new RuntimeException('Fila duravel Stripe incompleta: ' . $needle);
     }
