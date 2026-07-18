@@ -11,6 +11,21 @@ const adminNotFound = () => new NextResponse(null, {
 });
 
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/setup')) {
+    try {
+      const setupStatusUrl = new URL('/api/setup/status.php', request.url);
+      const setupStatusResponse = await fetch(setupStatusUrl, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (!setupStatusResponse.ok) {
+        return adminNotFound();
+      }
+    } catch {
+      return adminNotFound();
+    }
+  }
+
   if (request.nextUrl.pathname.startsWith('/admin')) {
     // This is a server-side role check against the active refresh session.
     // Presence of a cookie alone is insufficient because a normal member has
@@ -52,6 +67,7 @@ export const config = {
     '/recover',
     '/forgot-password',
     '/reset',
+    '/setup/:path*',
     '/admin/:path*',
   ],
 };

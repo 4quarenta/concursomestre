@@ -4,6 +4,7 @@ import { buildSiteUrl, getConfiguredSiteUrl } from '../../config/siteUrl';
 import { resolveAbsoluteApiBaseUrl } from '../api/baseUrl';
 import { isQuestionPubliclyVisible } from '../questions/questionPublication';
 import { buildMarketingLandingPath, mergeMarketingLandingPages, normalizeLandingSlug } from '../marketing/landingPages';
+import { adaptPublicSystemSettings } from '../admin/publicSettingsContract';
 
 type SitemapCategory = 'institutional' | 'questions' | 'rankings' | 'materials' | 'landings';
 type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
@@ -204,7 +205,9 @@ const fetchList = async <TItem,>(endpoint: string): Promise<TItem[]> => {
 
 const fetchMarketingLandingPages = async (): Promise<MarketingLandingPage[]> => {
   try {
-    const payload = readEnvelopeData<Record<string, unknown>>(await fetchJson('settings.php'), {});
+    const payload = adaptPublicSystemSettings(
+      readEnvelopeData<Record<string, unknown>>(await fetchJson('settings.php'), {}),
+    );
     const siteName = String(payload.siteName || 'ConcursoMestre').trim();
     const landingPages = Array.isArray(payload.landingPages) ? payload.landingPages : undefined;
     return mergeMarketingLandingPages(landingPages, siteName);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { buildGoogleAdsTxtFallback, validateAdsTxtContent } from '@services/ads/adsTxt';
+import { adaptPublicSystemSettings } from '@services/admin/publicSettingsContract';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -38,7 +39,7 @@ const fetchAdsTxtContent = async (): Promise<string> => {
       return '';
     }
 
-    const settings = readEnvelopeData(await response.json());
+    const settings = adaptPublicSystemSettings(readEnvelopeData(await response.json()));
     const configuredContent = validateAdsTxtContent(settings.adsTxtContent).content;
 
     return configuredContent || buildGoogleAdsTxtFallback(settings.adsenseClientId);

@@ -20,45 +20,13 @@ const publicSetupRequestConfig = (config: AxiosRequestConfig = {}): PublicSetupR
   _skipRefreshHandling: true,
 });
 
-export interface SetupStatusChecks {
-  envFileExists: boolean;
-  setupCompletedFlag: boolean;
-  dbConfigured: boolean;
-  dbReachable: boolean;
-  usersTableExists: boolean;
-  adminUserExists: boolean;
-  schemaFileExists: boolean;
-  envWritable: boolean;
-  dbError?: string;
-  setupTokenAvailable?: boolean;
-  existingConfigurationLocked?: boolean;
-  databaseReadiness?: {
-    status: 'ok' | 'warning' | string;
-    charset?: string | null;
-    collation?: string | null;
-    missingTables?: string[];
-    nonInnoDbTables?: string[];
-    missingUserColumns?: string[];
-    missingIndexes?: string[];
-    issues?: string[];
-    recommendations?: string[];
-  };
-}
-
 export interface SetupStatus {
-  installed: boolean;
+  installed?: false;
   needsSetup: boolean;
   canInstall: boolean;
-  database?: {
-    name?: string;
-    host?: string;
-  };
-  adminCount?: number;
-  checks: SetupStatusChecks;
   message?: string;
-  setupToken?: {
-    required: boolean;
-    path: string;
+  checks?: Record<string, unknown> & {
+    databaseReadiness?: Record<string, unknown>;
   };
 }
 
@@ -103,19 +71,8 @@ export const setupService = {
     );
 
     return unwrap<SetupStatus>(response, {
-      installed: false,
       needsSetup: true,
       canInstall: false,
-      checks: {
-        envFileExists: false,
-        setupCompletedFlag: false,
-        dbConfigured: false,
-        dbReachable: false,
-        usersTableExists: false,
-        adminUserExists: false,
-        schemaFileExists: false,
-        envWritable: false,
-      },
     });
   },
 

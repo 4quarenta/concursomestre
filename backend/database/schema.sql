@@ -15,6 +15,11 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255), -- Nullable for OAuth users
     email_verified BOOLEAN DEFAULT FALSE,
     cpf VARCHAR(14) UNIQUE,
+    phone VARCHAR(30) NULL,
+    auth_provider VARCHAR(50) NOT NULL DEFAULT 'email',
+    google_sub VARCHAR(255) NULL,
+    facebook_id VARCHAR(255) NULL,
+    apple_sub VARCHAR(255) NULL,
     
     -- Profile Stats
     level INT DEFAULT 1,
@@ -643,19 +648,39 @@ CREATE TABLE IF NOT EXISTS rankings (
     name VARCHAR(255) NOT NULL,
     institution VARCHAR(255),
     total_questions INT,
+    vacancies INT NOT NULL DEFAULT 10,
+    vacancies_ac INT NOT NULL DEFAULT 0,
+    vacancies_afro INT NOT NULL DEFAULT 0,
+    vacancies_pcd INT NOT NULL DEFAULT 0,
+    official_key_release_date DATETIME NULL,
+    key_status ENUM('pending', 'official') NOT NULL DEFAULT 'pending',
+    has_discursive TINYINT(1) NOT NULL DEFAULT 0,
+    exam_types JSON NULL,
+    correct_key TEXT NULL,
+    image_url VARCHAR(255) NULL,
+    reserve_limit INT NOT NULL DEFAULT 10,
     start_date DATETIME,
     end_date DATETIME,
-    status ENUM('active', 'archived', 'draft') DEFAULT 'active',
+    status ENUM('pending', 'approved', 'rejected', 'archived', 'draft', 'active') NOT NULL DEFAULT 'pending',
     created_by_user_id VARCHAR(64) NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_by_user_id VARCHAR(64) NULL,
+    published_by_user_id VARCHAR(64) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS ranking_entries (
     id VARCHAR(36) PRIMARY KEY,
     ranking_id VARCHAR(36) NOT NULL,
     user_id VARCHAR(36) NOT NULL,
-    
-    score DECIMAL(5, 2),
+    user_name VARCHAR(255) NULL,
+    registration_number VARCHAR(100) NULL,
+    exam_type VARCHAR(100) NULL,
+    category VARCHAR(50) NOT NULL DEFAULT 'AC',
+    user_answers TEXT NULL,
+    score DECIMAL(10, 2) DEFAULT 0,
+    discursive_score DECIMAL(5, 2) NULL,
+    status ENUM('active', 'disqualified') NOT NULL DEFAULT 'active',
     details_json JSON, -- Answers snapshot
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

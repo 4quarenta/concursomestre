@@ -57,8 +57,20 @@ assertNotContainsSettingsDelegate(
 
 assertContainsSettingsDelegate(
     $base . '/modules/admin/services/AdminSettingsService.php',
-    "'stripeKey',",
-    'Public settings sanitizer must hide legacy Stripe key storage and expose only stripePublishableKey'
+    'PublicSettingsProjection::project($settings)',
+    'Public settings sanitizer must delegate to the explicit allowlisted contract'
+);
+
+assertContainsSettingsDelegate(
+    $base . '/modules/settings/services/PublicSettingsProjection.php',
+    "public const CONTRACT_VERSION = 'public-settings.v1'",
+    'Public settings must expose a versioned contract'
+);
+
+assertNotContainsSettingsDelegate(
+    $base . '/modules/settings/services/PublicSettingsProjection.php',
+    "'adminUserId'",
+    'Public settings must never expose the setup administrator identifier'
 );
 
 fwrite(STDOUT, "Settings module wiring assertions passed.\n");

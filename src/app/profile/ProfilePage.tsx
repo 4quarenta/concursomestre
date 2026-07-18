@@ -17,7 +17,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
    User, Star, Book, Shield,
    CreditCard, StickyNote, Zap, TrendingUp,
@@ -596,6 +596,17 @@ const Profile: React.FC = () => {
         const legacyUserId = (currentUser as (UserProfile & { userId?: string }) | null)?.userId;
         return String(currentUser?.id || legacyUserId || currentUser?.email || '');
     }, [currentUser]);
+
+    const personalProfileQuery = useQuery({
+        queryKey: ['profile', 'personal', currentUserKey],
+        queryFn: () => profileService.getPersonalProfile(),
+        enabled: Boolean(currentUserKey) && activeTab === 'personal',
+        staleTime: 120_000,
+        refetchOnWindowFocus: false,
+    });
+    const personalProfile = personalProfileQuery.data;
+    const personalAddress = personalProfile?.personal.address;
+    const personalTargetExam = personalProfile?.personal.targetExam || currentUser?.targetExam || '';
 
     React.useEffect(() => {
         const updateNow = () => setProfileNowMs(Date.now());
@@ -4572,7 +4583,27 @@ const Profile: React.FC = () => {
                {activeTab === 'personal' && (
                   <div ref={personalDetailsSectionRef} className="scroll-mt-24 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                       <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-6 transition-colors">Dados Pessoais</h2>
+                      {personalProfileQuery.isPending && (
+                          <div className="flex min-h-40 items-center justify-center gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
+                              <Loader2 size={18} className="animate-spin" />
+                              Carregando seus dados pessoais...
+                          </div>
+                      )}
+                      {personalProfileQuery.isError && (
+                          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+                              <p>Nao foi possivel carregar seus dados pessoais.</p>
+                              <button
+                                  type="button"
+                                  onClick={() => personalProfileQuery.refetch()}
+                                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-rose-300 px-3 py-2 text-xs font-black uppercase"
+                              >
+                                  <RotateCcw size={14} /> Tentar novamente
+                              </button>
+                          </div>
+                      )}
+                      {personalProfile && (
                       <form
+                        key={personalProfileQuery.dataUpdatedAt}
                         onSubmit={async (e) => {
                            e.preventDefault();
                            if (isUpdatingProfile) return;
@@ -4633,8 +4664,10 @@ const Profile: React.FC = () => {
                            if (!/^[A-Za-z]{2}$/.test(updates.address.state)) { addToast('UF inválida. Use a sigla com 2 letras (ex.: SP).', 'error'); setIsUpdatingProfile(false); return; }
 
                            try {
-                               await updateUser(updates);
-                               // Notification is handled by AuthContext
+                               const result = await profileService.updatePersonalProfile(updates);
+                               addToast(result.message, 'success');
+                               await personalProfileQuery.refetch();
+                               await refreshUser();
                            } catch (err: unknown) {
                                clientLog.warn('Profile update error:', err);
                                const msg = readApiErrorMessage(err, 'Erro ao sincronizar. Verifique sua conexão.');
@@ -4648,12 +4681,12 @@ const Profile: React.FC = () => {
                      >
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Nome Completo <span className="text-rose-500">*</span></label>
-                            <input name="name" type="text" defaultValue={currentUser.name} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                            <input name="name" type="text" defaultValue={personalProfile.displayName} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                         </div>
                         <div className="space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2">
                                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">E-mail de Acesso</label>
-                                {currentUser.emailVerified ? (
+                                {personalProfile.emailVerified ? (
                                     <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
                                         <CheckCircle2 size={12} /> Confirmado
                                     </span>
@@ -4663,9 +4696,9 @@ const Profile: React.FC = () => {
                                     </span>
                                 )}
                             </div>
-                            <input name="email" type="email" defaultValue={currentUser.email} readOnly className="w-full h-11 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-500 dark:text-slate-400 outline-none cursor-not-allowed transition-all font-sans" title="Não é possível alterar o email" />
-                            <p className={`text-xs font-semibold leading-relaxed ${currentUser.emailVerified ? 'text-emerald-600 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
-                                {currentUser.emailVerified
+                            <input name="email" type="email" defaultValue={personalProfile.email} readOnly className="w-full h-11 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-500 dark:text-slate-400 outline-none cursor-not-allowed transition-all font-sans" title="Não é possível alterar o email" />
+                            <p className={`text-xs font-semibold leading-relaxed ${personalProfile.emailVerified ? 'text-emerald-600 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                                {personalProfile.emailVerified
                                     ? 'Seu e-mail foi confirmado e está apto para recuperar senha, receber avisos e liberar recursos da conta.'
                                     : 'Seu e-mail ainda não foi confirmado. Confirme para liberar todos os recursos e receber notificações importantes.'}
                             </p>
@@ -4673,7 +4706,7 @@ const Profile: React.FC = () => {
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                            <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">CPF <span className="text-rose-500">*</span></label>
-                               <input name="cpf" type="text" defaultValue={currentUser.cpf || ''} placeholder="000.000.000-00" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans" />
+                               <input name="cpf" type="text" defaultValue={personalProfile.personal.cpf || ''} placeholder="000.000.000-00" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans" />
                            </div>
                            <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Telefone / WhatsApp <span className="text-rose-500">*</span></label>
@@ -4682,7 +4715,7 @@ const Profile: React.FC = () => {
                                    type="tel"
                                    inputMode="tel"
                                    autoComplete="tel"
-                                   defaultValue={currentUser.phone || ''}
+                                   defaultValue={personalProfile.personal.phone || ''}
                                    placeholder="(11) 99999-9999"
                                    className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans"
                                />
@@ -4691,7 +4724,7 @@ const Profile: React.FC = () => {
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Foco de Estudo</label>
                             <div className="relative group/exam">
-                                 <input name="targetExam" type="text" readOnly onClick={() => setShowGoalModal(true)} value={currentUser.targetExam || ''} placeholder="Selecione seu foco" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-900 transition-colors font-sans" />
+                                 <input name="targetExam" type="text" readOnly onClick={() => setShowGoalModal(true)} value={personalTargetExam} placeholder="Selecione seu foco" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-900 transition-colors font-sans" />
                                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 group-hover/exam:text-indigo-500 transition-colors">
                                      <ChevronRight size={16} />
                                  </div>
@@ -4704,37 +4737,37 @@ const Profile: React.FC = () => {
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                <div className="col-span-1 space-y-1.5">
                                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">CEP <span className="text-rose-500">*</span></label>
-                                   <input name="zipCode" type="text" defaultValue={currentUser.address?.zipCode || ''} placeholder="00000-000" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                   <input name="zipCode" type="text" defaultValue={personalAddress?.zipCode || ''} placeholder="00000-000" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                                <div className="col-span-2 space-y-1.5">
                                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Logradouro / Rua <span className="text-rose-500">*</span></label>
-                                   <input name="street" type="text" defaultValue={currentUser.address?.street || ''} placeholder="Ex: Av. Paulista" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                   <input name="street" type="text" defaultValue={personalAddress?.street || ''} placeholder="Ex: Av. Paulista" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                                <div className="col-span-1 space-y-1.5">
                                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Número <span className="text-rose-500">*</span></label>
-                                   <input name="number" type="text" defaultValue={currentUser.address?.number || ''} placeholder="123" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                   <input name="number" type="text" defaultValue={personalAddress?.number || ''} placeholder="123" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                  <div className="space-y-1.5">
                                      <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Complemento (Opcional)</label>
-                                     <input name="complement" type="text" defaultValue={currentUser.address?.complement || ''} placeholder="Ex: Apto 101, Bloco A" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                     <input name="complement" type="text" defaultValue={personalAddress?.complement || ''} placeholder="Ex: Apto 101, Bloco A" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                  </div>
                                  <div className="space-y-1.5">
                                      <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Bairro <span className="text-rose-500">*</span></label>
-                                     <input name="neighborhood" type="text" defaultValue={currentUser.address?.neighborhood || ''} placeholder="Ex: Centro" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                     <input name="neighborhood" type="text" defaultValue={personalAddress?.neighborhood || ''} placeholder="Ex: Centro" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                  </div>
                             </div>
 
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                <div className="space-y-1.5 sm:col-span-2">
                                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Cidade <span className="text-rose-500">*</span></label>
-                                   <input name="city" type="text" defaultValue={currentUser.address?.city || ''} placeholder="Ex: São Paulo" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                   <input name="city" type="text" defaultValue={personalAddress?.city || ''} placeholder="Ex: São Paulo" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                                <div className="space-y-1.5 sm:col-span-1">
                                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Estado (UF) <span className="text-rose-500">*</span></label>
-                                   <input name="state" type="text" defaultValue={currentUser.address?.state || ''} placeholder="SP" maxLength={2} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans uppercase" />
+                                   <input name="state" type="text" defaultValue={personalAddress?.state || ''} placeholder="SP" maxLength={2} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans uppercase" />
                                </div>
                             </div>
                             <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
@@ -4757,6 +4790,7 @@ const Profile: React.FC = () => {
                             </button>
                          </div>
                      </form>
+                      )}
 
                      <div id="saved-cards-personal-section" className="mt-12 border-t border-slate-100 pt-8 dark:border-slate-800">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">

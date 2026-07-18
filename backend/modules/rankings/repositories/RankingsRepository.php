@@ -94,8 +94,6 @@ class RankingsRepository
      */
     public function insertRanking(array $payload): void
     {
-        $this->ensureRankingRuntimeColumns();
-
         $stmt = $this->db->prepare("
             INSERT INTO rankings
             (id, name, institution, total_questions, vacancies, vacancies_ac, vacancies_afro, vacancies_pcd, official_key_release_date, key_status, correct_key, has_discursive, exam_types, status, created_by_user_id, created_at)
@@ -551,151 +549,21 @@ class RankingsRepository
     }
 
     /**
-     * Cria a tabela de rankings caso nao exista.
-     *
-     * @since 1.0.0
+     * Verifica o contrato instalado sem executar DDL durante requisicoes.
      */
-    public function ensureRankingsTable(): void
+    public function assertCanonicalSchema(): void
     {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS rankings (
-                id VARCHAR(36) PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                institution VARCHAR(255) NOT NULL,
-                total_questions INT NOT NULL DEFAULT 60,
-                vacancies INT NOT NULL DEFAULT 10,
-                official_key_release_date DATETIME NULL,
-                key_status ENUM('pending', 'official') DEFAULT 'pending',
-                has_discursive BOOLEAN DEFAULT FALSE,
-                exam_types JSON,
-                correct_key TEXT,
-                image_url VARCHAR(255),
-                reserve_limit INT DEFAULT 10,
-                status VARCHAR(20) DEFAULT 'active',
-                created_by_user_id VARCHAR(64) NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ");
-    }
-
-    /**
-     * Cria a tabela de entradas de ranking caso nao exista.
-     *
-     * @since 1.0.0
-     */
-    public function ensureRankingEntriesTable(): void
-    {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS ranking_entries (
-                id VARCHAR(36) PRIMARY KEY,
-                ranking_id VARCHAR(36) NOT NULL,
-                user_id VARCHAR(36) NOT NULL,
-                user_name VARCHAR(255),
-                registration_number VARCHAR(100),
-                exam_type VARCHAR(100),
-                category VARCHAR(50) DEFAULT 'AC',
-                user_answers TEXT,
-                score DECIMAL(10,2) DEFAULT 0,
-                discursive_score DECIMAL(5,2) DEFAULT NULL,
-                status ENUM('active', 'disqualified') DEFAULT 'active',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                INDEX (ranking_id),
-                UNIQUE KEY unique_participation (ranking_id, registration_number)
-            )
-        ");
-    }
-
-    /**
-     * Garante que uma coluna exista na tabela de rankings.
-     *
-     * @since 1.0.0
-     */
-    public function ensureRankingColumn(string $column, string $sql): bool
-    {
-        $stmt = $this->db->query("SHOW TABLES LIKE 'rankings'");
-        if (!$stmt instanceof PDOStatement || $stmt->rowCount() === 0) {
-            return false;
-        }
-
-        $check = $this->db->query("SHOW COLUMNS FROM rankings LIKE " . $this->db->quote($column));
-        if ($check instanceof PDOStatement && $check->rowCount() > 0) {
-            return false;
-        }
-
-        $this->db->exec($sql);
-        return true;
-    }
-
-    /**
-     * Garante que uma coluna exista na tabela de entradas.
-     *
-     * @since 1.0.0
-     */
-    public function ensureRankingEntryColumn(string $column, string $sql): bool
-    {
-        $stmt = $this->db->query("SHOW TABLES LIKE 'ranking_entries'");
-        if (!$stmt instanceof PDOStatement || $stmt->rowCount() === 0) {
-            return false;
-        }
-
-        $check = $this->db->query("SHOW COLUMNS FROM ranking_entries LIKE " . $this->db->quote($column));
-        if ($check instanceof PDOStatement && $check->rowCount() > 0) {
-            return false;
-        }
-
-        $this->db->exec($sql);
-        return true;
-    }
-
-    /**
-     * Corrige o tipo da coluna score.
-     *
-     * @since 1.0.0
-     */
-    public function ensureRankingScoreColumnShape(): bool
-    {
-        $stmt = $this->db->query("SHOW TABLES LIKE 'ranking_entries'");
-        if (!$stmt instanceof PDOStatement || $stmt->rowCount() === 0) {
-            return false;
-        }
-
-        $this->db->exec("ALTER TABLE ranking_entries MODIFY COLUMN score DECIMAL(10,2) DEFAULT 0");
-        return true;
-    }
-
-    /**
-     * Verifica se o indice unico ja existe.
-     *
-     * @since 1.0.0
-     */
-    public function hasRankingEntriesUniqueParticipationIndex(): bool
-    {
-        $stmt = $this->db->query("SHOW INDEX FROM ranking_entries WHERE Key_name = 'unique_participation'");
-        return $stmt instanceof PDOStatement && $stmt->rowCount() > 0;
-    }
-
-    /**
-     * Garante o indice unico de participacao.
-     *
-     * @since 1.0.0
-     */
-    public function ensureRankingEntriesUniqueParticipationIndex(): bool
-    {
-        if ($this->hasRankingEntriesUniqueParticipationIndex()) {
-            return false;
-        }
-
-        $this->db->exec("ALTER TABLE ranking_entries ADD UNIQUE KEY unique_participation (ranking_id, registration_number)");
-        return true;
-    }
-
-    /**
-     * Garante colunas necessarias por fluxos atuais em tabelas antigas.
-     *
-     * @since 1.0.0
-     */
-    private function ensureRankingRuntimeColumns(): void
-    {
-        $this->ensureRankingColumn('created_by_user_id', "ALTER TABLE rankings ADD COLUMN created_by_user_id VARCHAR(64) NULL AFTER status");
+        $this->db->query(
+            'SELECT vacancies, vacancies_ac, vacancies_afro, vacancies_pcd,
+                    official_key_release_date, key_status, has_discursive,
+                    exam_types, correct_key, image_url, reserve_limit,
+                    updated_by_user_id, published_by_user_id, updated_at
+             FROM rankings LIMIT 0'
+        );
+        $this->db->query(
+            'SELECT user_name, registration_number, exam_type, category,
+                    user_answers, score, discursive_score, status
+             FROM ranking_entries LIMIT 0'
+        );
     }
 }

@@ -131,8 +131,16 @@ describe('adminService', () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: {
-        paymentProvider: 'stripe',
-        recaptchaEnabled: true,
+        contractVersion: 'public-settings.v1',
+        commerce: {
+          paymentProvider: 'stripe',
+        },
+        authentication: {
+          recaptcha: {
+            enabled: true,
+            siteKey: 'public-site-key',
+          },
+        },
       },
     });
 
@@ -145,6 +153,7 @@ describe('adminService', () => {
     });
     expect(settings.paymentProvider).toBe('stripe');
     expect(settings.recaptchaEnabled).toBe(true);
+    expect(settings.recaptchaSiteKey).toBe('public-site-key');
   });
 
   it('loads admin system settings through the protected admin endpoint', async () => {

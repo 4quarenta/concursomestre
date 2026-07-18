@@ -18,8 +18,6 @@
 class UsersRepository
 {
     private PDO $db;
-    private bool $userProfileColumnsEnsured = false;
-
     /**
      * Injeta a conexao compartilhada usada pelos services de perfil, cartoes e rewards.
      *
@@ -379,39 +377,6 @@ class UsersRepository
     }
 
     /**
-     * Garante colunas basicas de perfil usadas pelo fluxo autenticado em bases legadas.
-     *
-     * @since 1.0.0
-     */
-    public function ensureUserProfileColumns(): void
-    {
-        if ($this->userProfileColumnsEnsured) {
-            return;
-        }
-
-        $definitions = [
-            'phone' => 'VARCHAR(30) DEFAULT NULL',
-            'auth_provider' => "VARCHAR(50) NOT NULL DEFAULT 'email'",
-            'google_sub' => 'VARCHAR(255) NULL',
-            'facebook_id' => 'VARCHAR(255) NULL',
-            'apple_sub' => 'VARCHAR(255) NULL',
-        ];
-
-        foreach ($definitions as $column => $definition) {
-            $stmt = $this->db->query("SHOW COLUMNS FROM users LIKE '{$column}'");
-            $exists = $stmt !== false && $stmt->fetchColumn() !== false;
-
-            if ($exists) {
-                continue;
-            }
-
-            $this->db->exec("ALTER TABLE users ADD COLUMN `{$column}` {$definition}");
-        }
-
-        $this->userProfileColumnsEnsured = true;
-    }
-
-    /**
      * Detecta drift de schema entre bases antigas e a versao documentada de referrals.
       * @since 1.0.0
      */
@@ -435,8 +400,6 @@ class UsersRepository
      */
     public function findProfileRowById(string $userId): ?array
     {
-        $this->ensureUserProfileColumns();
-
         $stmt = $this->db->prepare(
             "SELECT
                 u.id,
@@ -495,8 +458,6 @@ class UsersRepository
      */
     public function findSessionRowById(string $userId): ?array
     {
-        $this->ensureUserProfileColumns();
-
         $stmt = $this->db->prepare(
             "SELECT
                 id,
@@ -1336,8 +1297,6 @@ class UsersRepository
         if ($fields === []) {
             return;
         }
-
-        $this->ensureUserProfileColumns();
 
         $set = [];
         $params = [':id' => $userId];

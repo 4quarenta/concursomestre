@@ -19,6 +19,7 @@ require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../subscriptions/services/SubscriptionsService.php';
 require_once __DIR__ . '/../../subscriptions/repositories/SubscriptionsRepository.php';
 require_once __DIR__ . '/../../subscriptions/validators/SubscriptionsValidator.php';
+require_once __DIR__ . '/../../settings/services/PublicSettingsProjection.php';
 
 /**
  * Service das configuracoes sistemicas.
@@ -1041,58 +1042,7 @@ class AdminSettingsService
      */
     private function sanitizeSettingsForPublic(array $settings): array
     {
-        $publiclyHiddenKeys = [
-            'mailHost',
-            'mailPort',
-            'mailUsername',
-            'mailPassword',
-            'mailEncryption',
-            'smtpHost',
-            'smtpPort',
-            'smtpUser',
-            'smtpPass',
-            'smtpSecure',
-            'mailFromAddress',
-            'mailFromName',
-            'geminiApiKey',
-            'openaiApiKey',
-            'recaptchaSecretKey',
-            'facebookAuthAppSecret',
-            'stripeKey',
-            'stripeSecretKey',
-            'stripeWebhookSecret',
-            'appMode',
-            'seo',
-            'emailTemplates',
-        ];
-
-        foreach ($publiclyHiddenKeys as $hiddenKey) {
-            unset($settings[$hiddenKey]);
-        }
-
-        unset(
-            $settings['hasStripeSecretConfigured'],
-            $settings['hasStripeWebhookConfigured'],
-            $settings['hasGeminiApiKeyConfigured'],
-            $settings['hasOpenAiApiKeyConfigured'],
-            $settings['hasRecaptchaSecretConfigured'],
-            $settings['hasFacebookAuthConfigured'],
-            $settings['hasAppleAuthConfigured'],
-            $settings['hasSmtpPasswordConfigured']
-        );
-
-        if (empty($settings['recaptchaEnabled'])) {
-            $settings['recaptchaSiteKey'] = '';
-        }
-
-        if (isset($settings['landingPages']) && is_array($settings['landingPages'])) {
-            $settings['landingPages'] = array_values(array_filter(
-                $settings['landingPages'],
-                static fn(array $landingPage): bool => (($landingPage['status'] ?? 'draft') === 'published')
-            ));
-        }
-
-        return $settings;
+        return PublicSettingsProjection::project($settings);
     }
 
     private function mergeLegalCommentaryFeatureConfigDefaults(array $featureConfig): array

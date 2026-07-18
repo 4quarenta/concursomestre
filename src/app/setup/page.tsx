@@ -68,12 +68,13 @@ const READINESS_LABELS: Record<string, string> = {
 const SetupStatusGrid: React.FC<{ status: SetupStatus | null }> = ({ status }) => {
   if (!status) return null;
 
-  const checkEntries = Object.entries(status.checks).filter(([key, value]) => (
+  const checks = status.checks || {};
+  const checkEntries = Object.entries(checks).filter(([key, value]) => (
     typeof value === 'boolean'
     && key in CHECK_LABELS
     && (key !== 'existingConfigurationLocked' || value)
   ));
-  const readiness = status.checks.databaseReadiness as {
+  const readiness = checks.databaseReadiness as {
     status?: string;
     issues?: string[];
     recommendations?: string[];
@@ -322,7 +323,7 @@ const SetupPage: React.FC = () => {
                         required
                       />
                       <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        Leia esta chave no servidor em {status?.setupToken?.path || 'storage/setup/install.key'}.
+                        Informe a chave de instalacao definida diretamente no servidor.
                       </span>
                     </label>
                   </div>

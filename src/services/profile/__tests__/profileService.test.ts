@@ -30,6 +30,8 @@ vi.mock('@services/api', () => ({
   },
   ENDPOINTS: {
     users: {
+      profile: 'users/profile.php',
+      update: 'users/update.php',
       referralStats: 'referrals/stats.php',
       uploadPhoto: 'users/upload_photo.php',
       removePhoto: 'users/remove_photo.php',
@@ -63,6 +65,68 @@ import { profileService } from '../profileService';
 describe('profileService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('loads the private personal profile through the self-scoped endpoint', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        profile: {
+          id: 'user-1',
+          displayName: 'Ana Silva',
+          email: 'ana@example.com',
+          avatarUrl: null,
+          status: 'active',
+          emailVerified: true,
+          personal: {
+            cpf: '***.***.***-**',
+            phone: '(11) 99999-9999',
+            targetExam: 'TJ-SP',
+            address: { city: 'Sao Paulo', state: 'SP' },
+            preferences: {},
+          },
+          account: {
+            referralCode: 'ANA123',
+            twoFactorEnabled: false,
+            deletion: { pending: false, requestedAt: null },
+          },
+          linkedProviders: ['google'],
+        },
+      },
+    });
+
+    const result = await profileService.getPersonalProfile();
+
+    expect(mockGet).toHaveBeenCalledWith('users/profile.php');
+    expect(result.personal.address?.city).toBe('Sao Paulo');
+    expect(result.linkedProviders).toEqual(['google']);
+  });
+
+  it('updates personal data through the self-scoped endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Perfil atualizado com sucesso!',
+    });
+
+    const input = {
+      name: 'Ana Souza',
+      cpf: '123.456.789-00',
+      phone: '(11) 98888-8888',
+      targetExam: 'TRF-3',
+      address: {
+        zipCode: '01001-000',
+        street: 'Praca da Se',
+        number: '1',
+        complement: '',
+        neighborhood: 'Se',
+        city: 'Sao Paulo',
+        state: 'SP',
+      },
+    };
+    const result = await profileService.updatePersonalProfile(input);
+
+    expect(mockPost).toHaveBeenCalledWith('users/update.php', input);
+    expect(result.message).toBe('Perfil atualizado com sucesso!');
   });
 
   it('loads referral stats through the official facade', async () => {

@@ -16,6 +16,7 @@ import { withQuestionPublicationAliases } from '@services/questions/questionPubl
 import { getSupportReasonLabel } from '@services/support/supportReasonLabels';
 import type { ErrorReport, Question, QuestionAsset, Ranking, SystemSettings, UserProfile } from '@types';
 import { normalizeAdminFeedbackThread, normalizeAdminQuestionListPayload } from './adminService.normalizers';
+import { adaptPublicSystemSettings, type PublicSystemSettingsContract } from './publicSettingsContract';
 import type {
   FeedbackStatus,
   ReportResolution,
@@ -153,12 +154,12 @@ export const adminService = {
    */
   async getPublicSystemSettings(): Promise<Partial<SystemSettings>> {
     return withRequestCoalescing('settings:public', async () => {
-      const response = await requestApi<Partial<SystemSettings>>(apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get, {
+      const response = await requestApi<PublicSystemSettingsContract>(apiClient.get<ApiResponse<PublicSystemSettingsContract>>(ENDPOINTS.settings.get, {
         params: {
           _: Date.now(),
         },
       }));
-      return readApiData(response, {});
+      return adaptPublicSystemSettings(readApiData<PublicSystemSettingsContract | Partial<SystemSettings>>(response, {}));
     }, 5000);
   },
 

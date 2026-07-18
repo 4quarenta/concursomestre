@@ -4,6 +4,7 @@ import { buildSiteUrl } from '../../config/siteUrl';
 import { websiteManifest } from '../../config/platform';
 import { resolveAbsoluteApiBaseUrl } from '../api/baseUrl';
 import { buildPromotionPath, isPromotionActiveForSlug } from './promotionCampaign';
+import { adaptPublicSystemSettings } from '../admin/publicSettingsContract';
 
 const FETCH_TIMEOUT_MS = 3500;
 
@@ -66,7 +67,7 @@ const fetchPublicSettingsForPromotionSeo = async (): Promise<Record<string, unkn
       return {};
     }
 
-    return readEnvelopeData(await response.json());
+    return adaptPublicSystemSettings(readEnvelopeData(await response.json())) as Record<string, unknown>;
   } catch {
     return {};
   } finally {

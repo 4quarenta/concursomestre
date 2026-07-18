@@ -33,7 +33,9 @@ function handleSetupStatusRoute(): void
 {
     try {
         $service = new SetupService();
-        Response::success($service->getStatus(), 'Status da configuracao inicial carregado.');
+        Response::success($service->getPublicStatus(), 'Setup disponivel.');
+    } catch (DomainException $e) {
+        Response::notFound();
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel verificar a configuracao inicial.', $e);
     }

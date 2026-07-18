@@ -16,6 +16,57 @@ const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => re
 
 export type ReferralStats = Record<string, unknown>;
 
+export type PersonalProfileAddress = {
+  zipCode: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
+};
+
+export type AuthenticatedPersonalProfile = {
+  id: string;
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+  status: string;
+  emailVerified: boolean;
+  personal: {
+    cpf: string | null;
+    phone: string | null;
+    targetExam: string | null;
+    address: PersonalProfileAddress | null;
+    preferences: Record<string, unknown>;
+  };
+  account: {
+    referralCode: string | null;
+    twoFactorEnabled: boolean;
+    deletion: {
+      pending: boolean;
+      requestedAt: string | null;
+    };
+  };
+  linkedProviders: string[];
+};
+
+export type UpdatePersonalProfileInput = {
+  name: string;
+  cpf: string;
+  phone: string;
+  targetExam: string;
+  address: {
+    zipCode: string;
+    street: string;
+    number: string;
+    complement: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+  };
+};
+
 type MessageMutationResult = {
   message: string;
   photoUrl?: string;
@@ -208,6 +259,36 @@ const normalizeXpLeaderboardEntry = (value: unknown, index: number): XpLeaderboa
  * nem ao dominio comercial do marketplace.
  */
 export const profileService = {
+  /**
+   * Carrega dados pessoais privados somente na pagina que precisa deles.
+   * CPF, telefone e endereco nao integram o DTO global de sessao.
+   */
+  async getPersonalProfile(): Promise<AuthenticatedPersonalProfile> {
+    const response = await requestApi<{ profile?: AuthenticatedPersonalProfile }>(
+      apiClient.get<ApiResponse<{ profile?: AuthenticatedPersonalProfile }>>(ENDPOINTS.users.profile),
+    );
+    assertApiSuccess(response, 'Nao foi possivel carregar os dados pessoais.');
+    const payload = readApiData<{ profile?: AuthenticatedPersonalProfile }>(response, {});
+    if (!payload.profile) {
+      throw new Error('O backend nao retornou o perfil pessoal esperado.');
+    }
+
+    return payload.profile;
+  },
+
+  /**
+   * Atualiza o perfil da sessao atual sem duplicar dados privados no AuthProvider.
+   */
+  async updatePersonalProfile(input: UpdatePersonalProfileInput): Promise<MessageMutationResult> {
+    const response = await requestApi<unknown>(
+      apiClient.post<ApiResponse>(ENDPOINTS.users.update, input),
+    );
+    const envelope = assertApiSuccess(response, 'Nao foi possivel atualizar os dados pessoais.');
+    return {
+      message: envelope.message || 'Perfil atualizado com sucesso!',
+    };
+  },
+
   /**
    * Carrega o resumo de indicações do usuário autenticado.
    */

@@ -4,6 +4,7 @@ import Script from 'next/script';
 import { websiteManifest } from '@/config/platform';
 import { getConfiguredSiteUrl } from '@/config/siteUrl';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
+import { adaptPublicSystemSettings } from '@services/admin/publicSettingsContract';
 import NextAppProviders from '@/providers/NextAppProviders';
 import 'katex/dist/katex.min.css';
 import './globals.css';
@@ -64,7 +65,7 @@ const fetchPublicMarketingSettings = async (): Promise<{ adsenseAccount: string;
       return { adsenseAccount: '', analyticsId: '' };
     }
 
-    const settings = readEnvelopeData(await response.json());
+    const settings = adaptPublicSystemSettings(readEnvelopeData(await response.json()));
     return {
       adsenseAccount: normalizeAdsenseAccountId(settings.adsenseClientId as string | undefined),
       analyticsId: normalizeGoogleAnalyticsId(settings.googleAnalyticsId as string | undefined),

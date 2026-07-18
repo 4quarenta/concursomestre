@@ -249,10 +249,6 @@ function handleUsersRemovePhotoRoute(PDO $db): void
 function handleUsersAuthenticatedProfileRoute(PDO $db): void
 {
     try {
-        if (function_exists('ensurePaymentProviderSchema')) {
-            ensurePaymentProviderSchema($db);
-        }
-
         $payload = verifyAuthenticatedUserPayload();
         $userId = trim((string) ($payload['user_id'] ?? ''));
 

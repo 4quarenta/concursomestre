@@ -277,18 +277,8 @@ class RankingsService
      */
     public function install(): array
     {
-        $steps = [];
-        $steps[] = 'Starting installation...';
-
-        $this->repository->ensureRankingsTable();
-        $steps[] = "Table 'rankings' checked/created.";
-
-        $this->repository->ensureRankingEntriesTable();
-        $steps[] = "Table 'ranking_entries' checked/created.";
-
-        return [
-            'steps' => $steps,
-        ];
+        $this->repository->assertCanonicalSchema();
+        return ['steps' => ['Schema de rankings validado. Nenhum DDL foi executado.']];
     }
 
     /**
@@ -298,57 +288,8 @@ class RankingsService
      */
     public function migrate(): array
     {
-        $steps = [];
-
-        $rankingColumns = [
-            'institution' => "ALTER TABLE rankings ADD COLUMN institution VARCHAR(255) NOT NULL AFTER name",
-            'total_questions' => "ALTER TABLE rankings ADD COLUMN total_questions INT NOT NULL DEFAULT 60 AFTER institution",
-            'vacancies' => "ALTER TABLE rankings ADD COLUMN vacancies INT NOT NULL DEFAULT 10 AFTER total_questions",
-            'official_key_release_date' => "ALTER TABLE rankings ADD COLUMN official_key_release_date DATETIME NULL AFTER vacancies",
-            'key_status' => "ALTER TABLE rankings ADD COLUMN key_status ENUM('pending', 'official') DEFAULT 'pending' AFTER official_key_release_date",
-            'has_discursive' => "ALTER TABLE rankings ADD COLUMN has_discursive BOOLEAN DEFAULT FALSE AFTER key_status",
-            'exam_types' => "ALTER TABLE rankings ADD COLUMN exam_types JSON AFTER has_discursive",
-            'correct_key' => "ALTER TABLE rankings ADD COLUMN correct_key TEXT AFTER exam_types",
-            'image_url' => "ALTER TABLE rankings ADD COLUMN image_url VARCHAR(255) AFTER correct_key",
-            'reserve_limit' => "ALTER TABLE rankings ADD COLUMN reserve_limit INT DEFAULT 10 AFTER image_url",
-            'status' => "ALTER TABLE rankings ADD COLUMN status VARCHAR(20) DEFAULT 'active' AFTER reserve_limit",
-            'created_by_user_id' => "ALTER TABLE rankings ADD COLUMN created_by_user_id VARCHAR(64) NULL AFTER status",
-        ];
-
-        foreach ($rankingColumns as $column => $sql) {
-            if ($this->repository->ensureRankingColumn($column, $sql)) {
-                $steps[] = "Added column '{$column}' to 'rankings'.";
-            }
-        }
-
-        $entryColumns = [
-            'user_name' => "ALTER TABLE ranking_entries ADD COLUMN user_name VARCHAR(255) AFTER user_id",
-            'registration_number' => "ALTER TABLE ranking_entries ADD COLUMN registration_number VARCHAR(100) AFTER user_name",
-            'exam_type' => "ALTER TABLE ranking_entries ADD COLUMN exam_type VARCHAR(100) AFTER registration_number",
-            'category' => "ALTER TABLE ranking_entries ADD COLUMN category VARCHAR(50) DEFAULT 'AC' AFTER exam_type",
-            'user_answers' => "ALTER TABLE ranking_entries ADD COLUMN user_answers TEXT AFTER category",
-            'score' => "ALTER TABLE ranking_entries ADD COLUMN score DECIMAL(10,2) DEFAULT 0 AFTER user_answers",
-            'discursive_score' => "ALTER TABLE ranking_entries ADD COLUMN discursive_score DECIMAL(5,2) DEFAULT NULL AFTER score",
-            'status' => "ALTER TABLE ranking_entries ADD COLUMN status ENUM('active', 'disqualified') DEFAULT 'active' AFTER discursive_score",
-        ];
-
-        foreach ($entryColumns as $column => $sql) {
-            if ($this->repository->ensureRankingEntryColumn($column, $sql)) {
-                $steps[] = "Added column '{$column}' to 'ranking_entries'.";
-            }
-        }
-
-        if ($this->repository->ensureRankingScoreColumnShape()) {
-            $steps[] = "Ensured 'score' column is DECIMAL(10,2).";
-        }
-
-        if ($this->repository->ensureRankingEntriesUniqueParticipationIndex()) {
-            $steps[] = "Added unique key 'unique_participation'.";
-        }
-
-        return [
-            'steps' => $steps,
-        ];
+        $this->repository->assertCanonicalSchema();
+        return ['steps' => ['Migration 20260718_020000 aplicada; schema validado sem DDL HTTP.']];
     }
 
     /**

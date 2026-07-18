@@ -162,9 +162,10 @@ class UsersService
     }
 
     /**
-     * Retorna o snapshot autenticado do Usuario com assinatura, endereco e conta bancaria.
-     * Este payload alimenta tanto o auth/me legado quanto a rota moderna de perfil.
-      * @since 1.0.0
+     * Retorna os dados privados da pagina de perfil, sem misturar sessao,
+     * assinatura, billing ou permissoes administrativas.
+     *
+     * @since 1.0.0
      */
     public function getAuthenticatedProfile(string $userId): array
     {
@@ -175,58 +176,36 @@ class UsersService
             throw new RuntimeException('Usuario Nao encontrado.');
         }
 
-        $referralCode = $this->ensureReferralCode($userId, $row['referral_code'] ?? null);
-        $preferences = !empty($row['preferences']) ? json_decode((string) $row['preferences']) : null;
-        $basePlan = canonicalUserPlanValue($row['plan'] ?? null);
-        $commentsCount = $this->repository->countCommentsByUserId($userId);
-        $role = (string) ($row['role'] ?? 'user');
-        $canAccessAdmin = in_array($role, ['admin', 'staff'], true);
-
-        $userResponse = [
-            'id' => $row['id'],
-            'name' => $row['name'],
-            'email' => $row['email'],
-            'role' => $role,
-            'plan' => $basePlan,
-            'level' => (int) ($row['level'] ?? 1),
-            'xp' => (int) ($row['xp'] ?? 0),
-            'reputation' => (int) ($row['reputation'] ?? 0),
-            'emailVerified' => (bool) ($row['email_verified'] ?? false),
-            'isAdmin' => $role === 'admin',
-            'isStaff' => $role === 'staff',
-            'isPartner' => in_array($role, ['partner', 'admin'], true),
-            'canAccessAdmin' => $canAccessAdmin,
-            'cpf' => $row['cpf'],
-            'phone' => $row['phone'] ?? null,
-            'targetExam' => $row['target_exam'],
-            'preferences' => $preferences,
-            'address' => $this->buildAddressPayload($row),
-            'bankAccount' => $this->buildBankAccountPayload($row),
-            'status' => $row['status'],
-            'hasSavedCard' => (bool) ($row['has_saved_card'] ?? false),
-            'photoUrl' => $row['photo_url'] ?? null,
-            'googleId' => $row['google_id'] ?? null,
-            'facebookId' => $row['facebook_id'] ?? null,
-            'referralCode' => $referralCode,
-            'isDeletionPending' => !empty($row['deletion_requested_at']),
-            'deletionRequestedAt' => $row['deletion_requested_at'] ?? null,
-            'twoFactorEnabled' => (bool) ($row['two_factor_enabled'] ?? false),
-            'commentsCount' => $commentsCount,
-            'billing' => [
-                'plan' => $basePlan,
-                'billingCycle' => 'monthly',
-                'nextBilling' => null,
-            ],
-            'hasActivePlan' => false,
-        ];
-
-        $subscription = $this->repository->findLatestSubscriptionSnapshot($userId);
-        if ($subscription) {
-            $this->attachSubscriptionPayload($userResponse, $subscription, $userId);
-        }
-
         return [
-            'user' => $userResponse,
+            'profile' => [
+                'id' => (string) $row['id'],
+                'displayName' => (string) $row['name'],
+                'email' => (string) $row['email'],
+                'avatarUrl' => $row['photo_url'] ?: null,
+                'status' => (string) ($row['status'] ?? 'active'),
+                'emailVerified' => (bool) ($row['email_verified'] ?? false),
+                'personal' => [
+                    'cpf' => $row['cpf'] ?: null,
+                    'phone' => $row['phone'] ?: null,
+                    'targetExam' => $row['target_exam'] ?: null,
+                    'address' => $this->buildAddressPayload($row),
+                    'preferences' => !empty($row['preferences'])
+                        ? (json_decode((string) $row['preferences'], true) ?: [])
+                        : [],
+                ],
+                'account' => [
+                    'referralCode' => $this->ensureReferralCode($userId, $row['referral_code'] ?? null),
+                    'twoFactorEnabled' => (bool) ($row['two_factor_enabled'] ?? false),
+                    'deletion' => [
+                        'pending' => !empty($row['deletion_requested_at']),
+                        'requestedAt' => $row['deletion_requested_at'] ?? null,
+                    ],
+                ],
+                'linkedProviders' => array_values(array_filter([
+                    !empty($row['google_id']) ? 'google' : null,
+                    !empty($row['facebook_id']) ? 'facebook' : null,
+                ])),
+            ],
         ];
     }
 

@@ -135,6 +135,23 @@ class SetupService
     }
 
     /**
+     * Retorna somente o minimo necessario para abrir o instalador.
+     * O diagnostico interno nunca e serializado pela API publica.
+     */
+    public function getPublicStatus(): array
+    {
+        $status = $this->getStatus();
+        if (!empty($status['installed'])) {
+            throw new DomainException('Setup indisponivel.');
+        }
+
+        return [
+            'needsSetup' => true,
+            'canInstall' => (bool) ($status['canInstall'] ?? false),
+        ];
+    }
+
+    /**
      * Executa a configuracao inicial: banco, schema, .env e primeiro admin.
      *
      * @since 1.0.0

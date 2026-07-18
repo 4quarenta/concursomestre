@@ -68,7 +68,19 @@ assertSetupContains(
 assertSetupContains(
     $base . '/modules/setup/services/SetupService.php',
     'inspectDatabaseReadiness',
-    'Setup status must include production database readiness diagnostics.'
+    'Internal setup validation must inspect production database readiness.'
+);
+
+assertSetupContains(
+    $base . '/modules/setup/services/SetupService.php',
+    'public function getPublicStatus(): array',
+    'Setup status must use a dedicated minimal public contract.'
+);
+
+assertSetupContains(
+    $base . '/modules/setup/routes.php',
+    'Response::notFound();',
+    'Installed setup status must fail closed with 404.'
 );
 
 assertSetupContains(

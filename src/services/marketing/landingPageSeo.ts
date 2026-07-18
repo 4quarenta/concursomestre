@@ -9,6 +9,7 @@ import {
   mergeMarketingLandingPages,
   normalizeLandingSlug,
 } from './landingPages';
+import { adaptPublicSystemSettings } from '../admin/publicSettingsContract';
 
 type LandingSeoResolution = {
   landing: MarketingLandingPage | null;
@@ -64,7 +65,7 @@ const fetchPublicSettingsForLandingSeo = async (): Promise<Record<string, unknow
       return {};
     }
 
-    return readEnvelopeData(await response.json());
+    return adaptPublicSystemSettings(readEnvelopeData(await response.json())) as Record<string, unknown>;
   } catch {
     return {};
   } finally {
