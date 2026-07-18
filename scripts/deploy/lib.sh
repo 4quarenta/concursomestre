@@ -98,16 +98,28 @@ cm_service_action() { [[ -n "${2:-}" ]] && cm_run systemctl "$1" "$2"; }
 cm_acquire_lock() { mkdir -p "$(dirname "$1")"; exec 9>"$1"; flock -n 9 || cm_die "Outro deploy esta em andamento: $1"; }
 
 cm_http_expect_success() {
-  local url="$1" timeout="${2:-10}" body_file status sample
+  local url="$1" timeout="${2:-10}" body_file status sample deadline request_timeout
   if cm_is_true "$CM_DEPLOY_DRY_RUN"; then cm_log "Testaria HTTP: $url"; return; fi
   body_file="$(mktemp)"
-  status="$(curl --silent --show-error --location --max-time "$timeout" --output "$body_file" --write-out '%{http_code}' "$url")" || {
-    rm -f "$body_file"; cm_die "Falha de conexao: $url";
-  }
-  if [[ ! "$status" =~ ^2 ]]; then
-    sample="$(head -c 300 "$body_file" | tr '\n' ' ')"; rm -f "$body_file"; cm_die "HTTP $status em $url: $sample"
-  fi
-  rm -f "$body_file"
+  deadline=$((SECONDS + timeout))
+  request_timeout="$timeout"
+  (( request_timeout > 5 )) && request_timeout=5
+
+  while true; do
+    : > "$body_file"
+    status="$(curl --silent --show-error --location --connect-timeout 2 --max-time "$request_timeout" --output "$body_file" --write-out '%{http_code}' "$url" 2>/dev/null || true)"
+    if [[ "$status" =~ ^2 ]]; then
+      rm -f "$body_file"
+      return
+    fi
+    if (( SECONDS >= deadline )); then
+      sample="$(head -c 300 "$body_file" | tr '\n' ' ')"
+      rm -f "$body_file"
+      [[ -n "$status" ]] || status='sem resposta'
+      cm_die "HTTP $status em $url apos ${timeout}s: $sample"
+    fi
+    sleep 1
+  done
 }
 
 cm_safe_release_path() {
