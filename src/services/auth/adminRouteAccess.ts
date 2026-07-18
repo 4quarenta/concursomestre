@@ -1,6 +1,8 @@
+import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
+
 const ADMIN_ROUTE_ACCESS_PATH = '/api/auth/admin-route-access.php';
 
-type AdminRouteRequest = Pick<Request, 'headers' | 'url'>;
+type AdminRouteRequest = Pick<Request, 'headers'>;
 
 /**
  * Confirma a autorização de uma rota administrativa no servidor antes que o
@@ -25,7 +27,14 @@ export const canAccessAdminRoute = async (request: AdminRouteRequest): Promise<b
   }
 
   try {
-    const response = await fetch(new URL(ADMIN_ROUTE_ACCESS_PATH, request.url).toString(), {
+    // A URL recebida pelo Next pode apontar para o upstream interno
+    // (127.0.0.1:3000) quando a aplicacao esta atras do Nginx. A API PHP nao
+    // existe nesse upstream; use sempre a origem publica configurada.
+    const adminRouteAccessUrl = new URL(
+      ADMIN_ROUTE_ACCESS_PATH.replace(/^\/api\//, ''),
+      resolveAbsoluteApiBaseUrl(),
+    ).toString();
+    const response = await fetch(adminRouteAccessUrl, {
       method: 'GET',
       headers,
       cache: 'no-store',

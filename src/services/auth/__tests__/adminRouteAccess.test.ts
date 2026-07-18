@@ -45,6 +45,25 @@ describe('admin route access guard', () => {
     );
   });
 
+  it('uses the configured public origin when Next receives an internal upstream URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const internalRequest = new Request('http://127.0.0.1:3000/admin', {
+      headers: {
+        cookie: 'cm_refresh=opaque-refresh-token',
+        host: 'concursomestre.com',
+        'x-forwarded-proto': 'https',
+      },
+    });
+
+    await expect(canAccessAdminRoute(internalRequest)).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://concursomestre.com/api/auth/admin-route-access.php',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
   it('fails closed for a network failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network unavailable')));
     await expect(canAccessAdminRoute(requestWithCookie())).resolves.toBe(false);
