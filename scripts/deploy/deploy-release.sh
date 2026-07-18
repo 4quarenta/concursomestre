@@ -29,7 +29,7 @@ if ! cm_is_true "$CM_DEPLOY_DRY_RUN"; then [[ "${EUID:-$(id -u)}" -eq 0 ]] || cm
 for command_name in node npm php composer unzip rsync curl flock systemctl nginx; do cm_require_command "$command_name"; done
 actual_sha256="$(cm_sha256 "$ARCHIVE_PATH")"
 [[ -z "$EXPECTED_SHA256" || "$actual_sha256" == "$EXPECTED_SHA256" ]] || cm_die 'Checksum divergente.'
-"$SCRIPT_DIR/verify-host.sh" --config="$CONFIG_PATH" --archive="$ARCHIVE_PATH" --sha256="$actual_sha256"
+bash "$SCRIPT_DIR/verify-host.sh" --config="$CONFIG_PATH" --archive="$ARCHIVE_PATH" --sha256="$actual_sha256"
 
 work_dir="$(mktemp -d)"; release_dir=''; switched='false'; previous_frontend=''; previous_backend=''
 cleanup() { rm -rf "$work_dir"; }
