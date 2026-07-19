@@ -53,6 +53,8 @@ describe('frontend security headers', () => {
     const csp = buildFrontendContentSecurityPolicy();
 
     expect(csp).toContain('connect-src');
+    expect(csp).toContain('https://viacep.com.br');
+    expect(csp).toContain('https://servicodados.ibge.gov.br');
     expect(csp).toContain('http://localhost');
     expect(csp).toContain('http://127.0.0.1');
   });

@@ -1,6 +1,24 @@
-import type { UpdatePersonalProfileInput } from '@services/profile';
+import type { AuthenticatedPersonalProfile, UpdatePersonalProfileInput } from '@services/profile';
 
 const formValue = (formData: FormData, name: string) => String(formData.get(name) || '').trim();
+
+const hasValue = (value: unknown) => String(value || '').trim() !== '';
+
+export const isPersonalProfileComplete = (profile?: AuthenticatedPersonalProfile | null): boolean => {
+  const address = profile?.personal.address;
+  return Boolean(
+    profile
+    && hasValue(profile.displayName)
+    && hasValue(profile.personal.cpf)
+    && hasValue(profile.personal.phone)
+    && hasValue(address?.zipCode)
+    && hasValue(address?.street)
+    && hasValue(address?.number)
+    && hasValue(address?.neighborhood)
+    && hasValue(address?.city)
+    && /^[A-Z]{2}$/i.test(String(address?.state || '').trim()),
+  );
+};
 
 export const buildPersonalProfileUpdate = (formData: FormData): UpdatePersonalProfileInput => ({
   name: formValue(formData, 'name'),

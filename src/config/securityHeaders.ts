@@ -88,6 +88,8 @@ export const buildFrontendContentSecurityPolicy = (apiBaseUrl?: string) => {
     'https://tpc.googlesyndication.com',
     'https://*.adtrafficquality.google',
     'https://cloudflareinsights.com',
+    'https://viacep.com.br',
+    'https://servicodados.ibge.gov.br',
   ];
 
   const assetSources = ["'self'", 'data:', 'blob:', 'https:'];

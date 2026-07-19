@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPersonalProfileUpdate, validatePersonalProfileUpdate } from '../personalProfileForm';
+import { buildPersonalProfileUpdate, isPersonalProfileComplete, validatePersonalProfileUpdate } from '../personalProfileForm';
 
 const validForm = () => {
   const form = new FormData();
@@ -18,6 +18,45 @@ const validForm = () => {
 };
 
 describe('personal profile form', () => {
+  const completeProfile = {
+    id: 'user-1',
+    displayName: 'John Teste',
+    email: 'john@example.com',
+    avatarUrl: null,
+    status: 'active',
+    emailVerified: true,
+    personal: {
+      cpf: '***.***.***-**',
+      phone: '(83) 99999-9999',
+      targetExam: 'Policial',
+      address: {
+        zipCode: '58000-000',
+        street: 'Rua Teste',
+        number: '10',
+        complement: null,
+        neighborhood: 'Centro',
+        city: 'João Pessoa',
+        state: 'PB',
+      },
+      preferences: {},
+    },
+    account: {
+      referralCode: null,
+      twoFactorEnabled: false,
+      deletion: { pending: false, requestedAt: null },
+    },
+    linkedProviders: [],
+  };
+
+  it('uses the private profile as the source of truth for completion', () => {
+    expect(isPersonalProfileComplete(completeProfile)).toBe(true);
+    expect(isPersonalProfileComplete({
+      ...completeProfile,
+      personal: { ...completeProfile.personal, address: { ...completeProfile.personal.address, city: '' } },
+    })).toBe(false);
+    expect(isPersonalProfileComplete(null)).toBe(false);
+  });
+
   it('normalizes the private profile contract before sending it', () => {
     const payload = buildPersonalProfileUpdate(validForm());
     expect(payload).toMatchObject({

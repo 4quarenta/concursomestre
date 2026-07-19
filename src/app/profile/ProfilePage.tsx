@@ -88,7 +88,8 @@ import {
     parseSubscriptionDate,
     resolveProfileSubscriptionTimeline,
 } from './components/subscriptionDateUtils';
-import { buildPersonalProfileUpdate, validatePersonalProfileUpdate } from './components/personalProfileForm';
+import { buildPersonalProfileUpdate, isPersonalProfileComplete, validatePersonalProfileUpdate } from './components/personalProfileForm';
+import BrazilianBillingAddressFields from './components/BrazilianBillingAddressFields';
 import BillingSubscriptionLoadState from './components/BillingSubscriptionLoadState';
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
 import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
@@ -592,7 +593,7 @@ const Profile: React.FC = () => {
     const personalProfileQuery = useQuery({
         queryKey: ['profile', 'personal', currentUserKey],
         queryFn: () => profileService.getPersonalProfile(),
-        enabled: Boolean(currentUserKey) && activeTab === 'personal',
+        enabled: Boolean(currentUserKey),
         staleTime: 120_000,
         refetchOnWindowFocus: false,
     });
@@ -619,6 +620,11 @@ const Profile: React.FC = () => {
     const personalProfile = personalProfileQuery.data;
     const personalAddress = personalProfile?.personal.address;
     const personalTargetExam = personalProfile?.personal.targetExam || currentUser?.targetExam || '';
+    const shouldShowProfileCompletionBanner = Boolean(
+        personalProfileQuery.isSuccess
+        && personalProfile
+        && !isPersonalProfileComplete(personalProfile),
+    );
 
     React.useEffect(() => {
         const updateNow = () => setProfileNowMs(Date.now());
@@ -3878,7 +3884,7 @@ const Profile: React.FC = () => {
             </header>
 
             {/* Banner: Conteúdo Incompleto */}
-            {currentUser && (!currentUser.cpf || !currentUser.address?.zipCode) && (
+            {shouldShowProfileCompletionBanner && (
                 <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 sm:px-6 py-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg border border-indigo-400/30">
                     <div className="flex items-center gap-4">
                         <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
@@ -4683,49 +4689,10 @@ const Profile: React.FC = () => {
                             </div>
                         </div>
 
-                         <div className="space-y-4 pt-2">
-                            <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-800 pb-2">Dados de Cobrança / Endereço</h3>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                               <div className="col-span-1 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">CEP <span className="text-rose-500">*</span></label>
-                                   <input name="zipCode" type="text" defaultValue={personalAddress?.zipCode || ''} placeholder="00000-000" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
-                               </div>
-                               <div className="col-span-2 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Logradouro / Rua <span className="text-rose-500">*</span></label>
-                                   <input name="street" type="text" defaultValue={personalAddress?.street || ''} placeholder="Ex: Av. Paulista" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
-                               </div>
-                               <div className="col-span-1 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Número <span className="text-rose-500">*</span></label>
-                                   <input name="number" type="text" defaultValue={personalAddress?.number || ''} placeholder="123" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
-                               </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                 <div className="space-y-1.5">
-                                     <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Complemento (Opcional)</label>
-                                     <input name="complement" type="text" defaultValue={personalAddress?.complement || ''} placeholder="Ex: Apto 101, Bloco A" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
-                                 </div>
-                                 <div className="space-y-1.5">
-                                     <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Bairro <span className="text-rose-500">*</span></label>
-                                     <input name="neighborhood" type="text" defaultValue={personalAddress?.neighborhood || ''} placeholder="Ex: Centro" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
-                                 </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                               <div className="space-y-1.5 sm:col-span-2">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Cidade <span className="text-rose-500">*</span></label>
-                                   <input name="city" type="text" defaultValue={personalAddress?.city || ''} placeholder="Ex: São Paulo" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
-                               </div>
-                               <div className="space-y-1.5 sm:col-span-1">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Estado (UF) <span className="text-rose-500">*</span></label>
-                                   <input name="state" type="text" defaultValue={personalAddress?.state || ''} placeholder="SP" maxLength={2} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans uppercase" />
-                               </div>
-                            </div>
-                            <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                                <span className="text-rose-500">*</span> Campos obrigatórios.
-                            </p>
-                         </div>
+                         <BrazilianBillingAddressFields
+                            key={personalProfileQuery.dataUpdatedAt || 'personal-address-loading'}
+                            initialAddress={personalAddress}
+                         />
 
                          <div className="pt-4 flex flex-wrap items-center gap-3 sm:gap-4">
                             <button 
