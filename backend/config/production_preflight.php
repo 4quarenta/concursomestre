@@ -410,7 +410,8 @@ function runProductionPreflight(): array
     $checks[] = buildStripeWebhookHealthPreflightCheck(
         $webhookHealthPath,
         $webhookHealthMaxAgeMinutes,
-        $appEnv === 'production'
+        $appEnv === 'production',
+        ($cronHealthCheck['status'] ?? 'fail') === 'pass'
     );
 
     $instanceCount = max(1, (int) getEnvString('APP_INSTANCE_COUNT', '1'));
@@ -702,7 +703,12 @@ function buildStripeCronHealthPreflightCheck(string $path, int $maxAgeMinutes, b
     ];
 }
 
-function buildStripeWebhookHealthPreflightCheck(string $path, int $maxAgeMinutes, bool $required): array
+function buildStripeWebhookHealthPreflightCheck(
+    string $path,
+    int $maxAgeMinutes,
+    bool $required,
+    bool $reconciliationHealthy = false
+): array
 {
     if (!$required) {
         return [
@@ -756,6 +762,16 @@ function buildStripeWebhookHealthPreflightCheck(string $path, int $maxAgeMinutes
     }
 
     if ($ageSeconds > ($maxAgeMinutes * 60)) {
+        if ($reconciliationHealthy) {
+            return [
+                'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
+                'status' => 'pass',
+                'message' => 'Webhook Stripe sem tráfego recente; última entrega válida há '
+                    . (int) floor($ageSeconds / 60)
+                    . ' minuto(s), com reconciliação Stripe recente e saudável.',
+            ];
+        }
+
         return [
             'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
             'status' => 'fail',

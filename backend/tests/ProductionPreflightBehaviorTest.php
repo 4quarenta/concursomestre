@@ -289,7 +289,17 @@ setPreflightEnv(array_merge($validEnv, [
     'STRIPE_WEBHOOK_HEALTH_MAX_AGE_MINUTES' => '1440',
 ]));
 $staleWebhookResult = runProductionPreflight();
-assertPreflightStatus($staleWebhookResult, 'STRIPE_WEBHOOK_HEALTH_RECENT', 'fail');
+assertPreflightStatus($staleWebhookResult, 'STRIPE_WEBHOOK_HEALTH_RECENT', 'pass');
+
+$staleWebhookWithoutReconciliation = buildStripeWebhookHealthPreflightCheck(
+    $staleWebhookHealthFixturePath,
+    1440,
+    true,
+    false
+);
+if (($staleWebhookWithoutReconciliation['status'] ?? null) !== 'fail') {
+    throw new RuntimeException('Webhook antigo sem reconciliação saudável deve reprovar o preflight.');
+}
 
 setPreflightEnv(array_merge($validEnv, [
     'SMTP_HOST' => '',
