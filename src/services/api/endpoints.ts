@@ -205,6 +205,7 @@ export const ENDPOINTS = {
         reportWorkbench: 'admin/report_workbench.php',
         stats: 'admin/stats.php',
         analyticsFinance: 'admin/analytics_finance.php',
+        referralPayouts: 'admin/referral_payouts.php',
         analyticsDashboard: 'admin/analytics_dashboard.php',
         analyticsFunnel: 'admin/analytics_funnel.php',
         analyticsFunnelExport: 'admin/analytics_funnel_export.php',

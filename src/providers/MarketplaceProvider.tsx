@@ -105,38 +105,6 @@ const isPrivilegedTransactionViewer = (
   user?: { role?: string; isAdmin?: boolean } | null,
 ): boolean => Boolean(user?.isAdmin || user?.role === 'admin' || user?.role === 'staff');
 
-type TransactionMergeFields = Transaction & {
-  internalId?: string | number;
-  providerTransactionId?: string | number;
-  providerInvoiceId?: string | number;
-  timestamp?: string | number;
-};
-
-/**
- * Mescla consultas complementares de transacoes sem duplicar registros.
- * @since 1.0.0
- */
-const mergeTransactionsById = (transactionGroups: Transaction[][]): Transaction[] => {
-  const merged = new Map<string, Transaction>();
-
-  transactionGroups.flat().forEach((transaction, index) => {
-    const transactionLike = transaction as TransactionMergeFields;
-    const key = String(
-      transactionLike.id
-      || transactionLike.internalId
-      || transactionLike.providerTransactionId
-      || transactionLike.providerInvoiceId
-      || `transaction-${index}`,
-    );
-
-    merged.set(key, transaction);
-  });
-
-  return Array.from(merged.values()).sort((left, right) => (
-    Number((right as TransactionMergeFields).timestamp || 0) - Number((left as TransactionMergeFields).timestamp || 0)
-  ));
-};
-
 /**
  * Provider oficial do dominio de marketplace.
  * Ele coordena estado, notificações e atualizacoes otimistas enquanto a
@@ -251,17 +219,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsLoadingTransactions(true);
 
         if (canViewAllTransactions) {
-          Promise.all([
-            marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
-            marketplaceService.listTransactions({
-              scope: 'all',
-              status: 'refund_requested',
-              limit: ADMIN_TRANSACTION_LIST_LIMIT,
-            }),
-          ])
-            .then(([latestTransactions, pendingRefundTransactions]) => {
+          marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT })
+            .then((latestTransactions) => {
               if (!isCancelled) {
-                setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
+                setTransactions(latestTransactions);
               }
             })
             .catch((error) => clientLog.warn('Failed to load all transactions:', error))
@@ -506,15 +467,11 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       if (canViewAllTransactions) {
-        const [latestTransactions, pendingRefundTransactions] = await Promise.all([
-          marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
-          marketplaceService.listTransactions({
-            scope: 'all',
-            status: 'refund_requested',
-            limit: ADMIN_TRANSACTION_LIST_LIMIT,
-          }),
-        ]);
-        setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
+        const latestTransactions = await marketplaceService.listTransactions({
+          scope: 'all',
+          limit: ADMIN_TRANSACTION_LIST_LIMIT,
+        });
+        setTransactions(latestTransactions);
       } else if (currentUserId) {
         const refreshedTransactions = await marketplaceService.getUserTransactions(currentUserId);
         setTransactions(refreshedTransactions);

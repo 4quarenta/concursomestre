@@ -328,6 +328,18 @@ export interface AdminAnalyticsRange {
 
 export interface AdminFinanceAnalyticsSummary {
   totalRevenue: number;
+  grossCapturedAmount?: number;
+  financeSource?: 'ledger' | 'transactions_legacy';
+  commercialPlatformRevenue?: number;
+  sellerPayable?: number;
+  referralPayable?: number;
+  referralPending?: number;
+  referralAvailable?: number;
+  referralScheduled?: number;
+  referralPaid?: number;
+  providerFees?: number | null;
+  platformNet?: number;
+  totalPayable?: number;
   mrr: number;
   arr: number;
   projectedConfirmedRevenue: number;
@@ -341,6 +353,53 @@ export interface AdminFinanceAnalyticsSummary {
   ltvOperational: number;
   refundRequestedAmount: number;
   refundedAmount: number;
+}
+
+export interface AdminReferralTransfer {
+  referrerId: string;
+  referrerName: string;
+  referrerEmail: string;
+  referredUsers: number;
+  pendingAmount: number;
+  availableAmount: number;
+}
+
+export interface AdminReferralPayoutItem {
+  id: number;
+  cycleId: number;
+  referrerId: string;
+  referrerName: string;
+  referrerEmail: string;
+  amount: number;
+  status: 'review' | 'approved' | 'paid' | string;
+  providerReference: string | null;
+  paidAt: string | null;
+}
+
+export interface AdminReferralPayoutOverview {
+  settings: {
+    commissionPercent: number;
+    refundGraceDays: number;
+    cycleDays: number;
+    payoutDay: number;
+    nextPayoutDate: string;
+  };
+  summary: {
+    pending: number;
+    availableToSchedule: number;
+  };
+  transfers: AdminReferralTransfer[];
+  cycles: Array<Record<string, unknown>>;
+  payoutItems: AdminReferralPayoutItem[];
+}
+
+export interface AdminReferralPayoutCycleResult {
+  created: boolean;
+  reason?: 'outside_payout_day' | 'no_available_balance' | string;
+  scheduledFor?: string;
+  cycleId?: number;
+  items?: number;
+  amount?: number;
 }
 
 export interface AdminAnalyticsFunnelStep {

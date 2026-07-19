@@ -145,7 +145,15 @@ class TransactionsService
             $platformFee = $revenueRecognized && $amount > 0
                 ? round(((float) $row['platform_fee']) * ($recognizedAmount / $amount), 2)
                 : 0.0;
-            $netAmount = $revenueRecognized ? ($recognizedAmount - $platformFee) : 0.0;
+            $commercialPlatformRevenue = $type === 'plan'
+                ? $recognizedAmount
+                : $platformFee;
+            $sellerPayable = $type === 'material'
+                ? round($recognizedAmount - $commercialPlatformRevenue, 2)
+                : 0.0;
+            $netAmount = $sellerPayable;
+            $referralPayable = $revenueRecognized ? round((float) ($row['referralPayable'] ?? 0), 2) : 0.0;
+            $platformNet = round($commercialPlatformRevenue - $referralPayable, 2);
             $buyerEmail = trim((string) ($row['payer_email'] ?? ''));
             if ($buyerEmail === '') {
                 $buyerEmail = trim((string) ($row['buyerEmail'] ?? ''));
@@ -187,8 +195,19 @@ class TransactionsService
                 'amount' => $amount,
                 'refundedAmount' => $refundedAmount,
                 'recognizedAmount' => $recognizedAmount,
-                'platformFee' => $platformFee,
+                'platformFee' => $commercialPlatformRevenue,
                 'netAmount' => $netAmount,
+                'financial' => [
+                    'currency' => 'BRL',
+                    'grossCaptured' => $revenueRecognized || in_array($effectiveStatus, ['refunded', 'partially_refunded'], true) ? $amount : 0.0,
+                    'refunded' => $refundedAmount,
+                    'recognizedGross' => $recognizedAmount,
+                    'commercialPlatformRevenue' => $commercialPlatformRevenue,
+                    'sellerPayable' => $sellerPayable,
+                    'providerFee' => null,
+                    'referralPayable' => $referralPayable,
+                    'platformNet' => $platformNet,
+                ],
                 'status' => $effectiveStatus ?: 'completed',
                 'type' => $type,
                 'externalId' => $row['external_id'],
@@ -250,9 +269,14 @@ class TransactionsService
                 'pages' => $totalPages,
             ],
             'stats' => [
-                'totalRevenue' => (float) ($totals['total_revenue'] ?? 0),
-                'totalFees' => (float) ($totals['total_fees'] ?? 0),
-                'netRevenue' => (float) ($totals['net_revenue'] ?? 0),
+                'grossCaptured' => (float) ($totals['gross_captured'] ?? 0),
+                'refundedAmount' => (float) ($totals['refunded_amount'] ?? 0),
+                'recognizedGross' => (float) ($totals['recognized_gross'] ?? 0),
+                'commercialPlatformRevenue' => (float) ($totals['platform_revenue'] ?? 0),
+                'sellerPayable' => (float) ($totals['seller_payable'] ?? 0),
+                'referralPayable' => (float) ($totals['referral_payable'] ?? 0),
+                'providerFees' => null,
+                'platformNet' => (float) ($totals['platform_net'] ?? 0),
                 'totalHeld' => (float) ($totals['total_held'] ?? 0),
                 'count' => $totalRecords,
             ],

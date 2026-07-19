@@ -1424,6 +1424,10 @@ export interface SystemSettings {
   siteName?: string;
   dailyMotivationMarkdown?: string;
   platformFeePercent?: number;
+  referralCommissionPercent?: number;
+  referralRefundGraceDays?: number;
+  referralPayoutCycleDays?: number;
+  referralPayoutDay?: number;
   appMode?: 'development' | 'production';
   smtpHost?: string;
   smtpPort?: number;

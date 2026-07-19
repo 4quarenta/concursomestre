@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/ReferralFinance.php';
 
 /**
  * Append-only financial view derived from operational transactions.
@@ -55,6 +56,8 @@ final class FinancialLedger
             self::appendCapture($db, $transaction, $source);
             self::appendRefund($db, $transaction, $source);
         }
+
+        ReferralFinance::syncTransaction($db, $transaction, $source);
     }
 
     /**

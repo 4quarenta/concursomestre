@@ -405,6 +405,10 @@ const AdminSettings = ({
       stripePaymentMethods: localSettings.stripePaymentMethods,
       siteName: localSettings.siteName || 'ConcursoMestre',
       platformFeePercent: Number(localSettings.platformFeePercent ?? 20),
+      referralCommissionPercent: Number(localSettings.referralCommissionPercent ?? 20),
+      referralRefundGraceDays: Number(localSettings.referralRefundGraceDays ?? 7),
+      referralPayoutCycleDays: Number(localSettings.referralPayoutCycleDays ?? 30),
+      referralPayoutDay: Number(localSettings.referralPayoutDay ?? 10),
       smtpPort: Number(localSettings.smtpPort || 587),
       features: resolvedFeatures,
       seo: localSeoSettings,
@@ -803,6 +807,22 @@ const AdminSettings = ({
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
                 <label className={labelClassName}>Taxa da plataforma (%)</label>
                 <input type="number" value={String(localSettings.platformFeePercent ?? 20)} onChange={(e) => setField('platformFeePercent', Number(e.target.value))} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>Comissão por indicação (%)</label>
+                <input type="number" min="0" max="100" step="0.1" value={String(localSettings.referralCommissionPercent ?? 20)} onChange={(e) => setField('referralCommissionPercent', Number(e.target.value))} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>Carência de reembolso (dias)</label>
+                <input type="number" min="0" max="180" value={String(localSettings.referralRefundGraceDays ?? 7)} onChange={(e) => setField('referralRefundGraceDays', Number(e.target.value))} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>Ciclo de repasse (dias)</label>
+                <input type="number" min="1" max="90" value={String(localSettings.referralPayoutCycleDays ?? 30)} onChange={(e) => setField('referralPayoutCycleDays', Number(e.target.value))} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>Dia mensal do repasse</label>
+                <input type="number" min="1" max="28" value={String(localSettings.referralPayoutDay ?? 10)} onChange={(e) => setField('referralPayoutDay', Number(e.target.value))} className={inputClassName} />
               </div>
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
                 <label className={labelClassName}>PIX global</label>

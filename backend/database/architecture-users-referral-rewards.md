@@ -1,67 +1,67 @@
-# Arquitetura de Recompensas de Indicacao
+# Arquitetura financeira de indicacoes
 
-## Objetivo
+## Regra contabil
 
-Mover o processamento periodico de recompensas de indicacao para a arquitetura oficial, evitando:
+O cadastro por `?ref=CODIGO` cria apenas o relacionamento em `referrals`. Nenhum
+saldo nasce do clique ou do cadastro. A obrigacao financeira surge somente
+quando uma transacao real de assinatura (`transactions.type = plan`) e
+sincronizada como capturada.
 
-- job procedural dentro de `api/tasks`
-- helper de dominio em `api/utils`
-- SQL e transacao misturados no script legado
-- endpoint cron aberto sem chave
+O percentual e a carencia vigentes ficam congelados no lancamento. Alterar as
+configuracoes afeta apenas novas capturas. A migration nao gera passivo
+retroativo.
 
-## Estrutura oficial
+## Livro auxiliar
 
-```text
-modules/users/
-  controllers/
-    UsersRewardsController.php
-  services/
-    UsersReferralRewardsService.php
-  repositories/
-    UsersRepository.php
-  routes.php
+- `referral_commission_entries`: accruals e estornos assinados, idempotentes por
+  `entry_key` e vinculados a uma transacao real.
+- `referral_payout_cycles`: fechamento operacional do dia mensal configurado.
+- `referral_payout_items`: valor por indicador, estado e comprovante do repasse.
 
-scripts/tasks/
-  process_referral_rewards.php
-```
+O saldo e a soma dos lancamentos. Um reembolso atualiza um unico lancamento
+negativo `refund-total`; chamadas repetidas nao duplicam o estorno. Se o
+reembolso chegar durante a formacao do ciclo, o item e recalculado a partir dos
+lancamentos efetivamente vinculados.
 
-## Tabelas tocadas
+## Estados e valores
 
-### `referrals`
+- `pending`: comissao reconhecida ainda dentro da carencia de reembolso.
+- `available`: saldo liquido maduro, ainda fora de um ciclo.
+- `scheduled`: item em revisao/aprovacao no ciclo.
+- `paid`: repasse confirmado por admin com referencia ou comprovante.
 
-Usada para:
-
-- listar indicacoes pendentes
-- marcar status como `rewarded`
-- registrar `rewarded_at`
-
-### `user_subscriptions`
-
-Usada para verificar se o indicado ja passou da carencia minima.
-
-### `users`
-
-Usada para:
-
-- ler plano atual e `subscription_end`
-- atualizar plano recompensado
-- somar XP do indicador
-
-### `notifications`
-
-Usada para registrar a confirmacao da recompensa concedida.
+Um saldo negativo decorrente de estorno posterior ao pagamento nao vira
+repasse negativo. Ele permanece como compensacao para capturas futuras do mesmo
+indicador.
 
 ## Fluxo oficial
 
-1. O scheduler chama `scripts/tasks/process_referral_rewards.php`
-2. O script instancia o modulo `users`
-3. O service busca indicacoes pendentes ja elegiveis
-4. Cada item e processado em transacao
-5. O usuario indicador recebe dias extras no plano
-6. O usuario indicador recebe 1000 XP
-7. A indicacao e marcada como `rewarded`
-8. Uma notificacao de sucesso e criada
+1. O usuario compartilha `/auth?ref=CODIGO`.
+2. O indicado cria a conta; `referrals` preserva a atribuicao.
+3. O ledger financeiro sincroniza uma captura de assinatura.
+4. `ReferralFinance` cria o accrual com percentual e carencia congelados.
+5. Estornos integrais ou parciais geram ajuste negativo idempotente.
+6. O cron legado preservado chama `UsersReferralRewardsService`, que agora cria
+   somente o ciclo monetario no dia configurado.
+7. O admin revisa o item e confirma o pagamento com comprovante.
+8. O usuario recebe notificacao com o valor efetivamente pago.
 
-## Bridge legado
+Nao existem mais concessoes automaticas de dias de plano ou XP por indicacao.
 
-`api/tasks/ProcessRewards.php` continua existindo apenas como bridge fino e agora exige `CRON_SECRET`.
+## Configuracoes
+
+- `referralCommissionPercent`
+- `referralRefundGraceDays`
+- `referralPayoutCycleDays`
+- `referralPayoutDay`
+
+## Seguranca operacional e rollback
+
+Antes da migration, executar `scripts/tasks/backup_mysql.php` e validar o
+checksum. O rollback de codigo pode manter as tabelas aditivas sem impacto. Nao
+remover tabelas enquanto houver lancamentos ou itens de repasse. Uma reversao
+de regra deve desabilitar a comissao para novas capturas (`0%`) e preservar o
+historico para conciliacao.
+
+`api/tasks/ProcessRewards.php` permanece apenas como bridge fino protegido por
+`CRON_SECRET`.

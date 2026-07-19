@@ -26,7 +26,7 @@ import {
    Package, ExternalLink, BookOpen, Download, Trash2,
    AlertTriangle, XCircle, ArrowRight, CheckCircle2, Gift,
    Share2, Copy, Camera, AlertCircle, RotateCcw, Send,
-   Loader2, ShieldAlert, MousePointer2, Wallet, MessageSquare,
+   Loader2, ShieldAlert, Wallet, MessageSquare, Clock,
    BookmarkCheck,
    type LucideIcon,
 } from 'lucide-react';
@@ -347,11 +347,7 @@ type MaterialNotebookNote = {
     timestamp: number;
 };
 
-type ProfileReferralStats = ReferralStats & {
-    clicks?: number;
-    conversions?: number;
-    balance?: number;
-};
+type ProfileReferralStats = ReferralStats;
 
 type ProfileMaterial = Material & {
     purchasedAt?: string;
@@ -5471,17 +5467,18 @@ const Profile: React.FC = () => {
                             </div>
                             <div className="max-w-md relative z-10 space-y-4">
                                 <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">Programa de Parceria</span>
-                                <h2 className="text-3xl font-black tracking-tight leading-tight">Indique amigos e ganhe 20% de comissão!</h2>
-                                <p className="text-sm font-medium text-indigo-100 leading-relaxed">Compartilhe seu link exclusivo. Cada nova assinatura em planos Elite através do seu link gera créditos automáticos para você.</p>
+                                <h2 className="text-3xl font-black tracking-tight leading-tight">Indique amigos e ganhe {referralStats?.commissionPercent ?? 0}% de comissão</h2>
+                                <p className="text-sm font-medium text-indigo-100 leading-relaxed">A comissão nasce após a assinatura confirmada, passa pela carência de reembolso e entra no próximo ciclo de repasse.</p>
                                 
                                 <div className="pt-4 flex items-center gap-3">
                                     <div className="flex-1 bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex items-center justify-between gap-4">
                                         <code className="text-xs font-black tracking-widest text-indigo-100 truncate">
-                                            https://concursomestre.com/r/{currentUser.id}
+                                            {referralStats?.referralLink || 'Link sendo preparado'}
                                         </code>
                                         <button 
                                             onClick={() => {
-                                                navigator.clipboard.writeText(`https://concursomestre.com/r/${currentUser.id}`);
+                                                if (!referralStats?.referralLink) return;
+                                                navigator.clipboard.writeText(referralStats.referralLink);
                                                 setIsCopying(true);
                                                 addToast('Link copiado para a área de transferência!', 'success');
                                                 setTimeout(() => setIsCopying(false), 2000);
@@ -5500,11 +5497,12 @@ const Profile: React.FC = () => {
                        </div>
 
                        {/* Stats das Indicações */}
-                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                            {[
-                               { label: 'Total de Cliques', value: referralStats?.clicks || 0, icon: MousePointer2, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-                               { label: 'Indicações Ativas', value: referralStats?.conversions || 0, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                               { label: 'Saldo a Receber', value: `R$ ${(referralStats?.balance || 0).toFixed(2)}`, icon: Wallet, color: 'text-amber-600', bg: 'bg-amber-50' }
+                               { label: 'Indicados cadastrados', value: referralStats?.totals.registered || 0, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+                               { label: 'Assinaturas convertidas', value: referralStats?.totals.converted || 0, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                               { label: 'Em carência', value: `R$ ${(referralStats?.balance.pending || 0).toFixed(2)}`, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+                               { label: 'Disponível para repasse', value: `R$ ${(referralStats?.balance.available || 0).toFixed(2)}`, icon: Wallet, color: 'text-sky-600', bg: 'bg-sky-50' }
                            ].map((stat, i) => (
                                <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                                    <div className="flex items-center gap-4">
@@ -5527,7 +5525,7 @@ const Profile: React.FC = () => {
                                 {[
                                     { step: '01', title: 'Compartilhe o Link', desc: 'Envie para amigos ou em grupos de estudo.' },
                                     { step: '02', title: 'Amigo Assina', desc: 'Sua indicação ganha acesso ao melhor conteúdo.' },
-                                    { step: '03', title: 'Você Ganha 20%', desc: 'Receba sua comissão sobre o valor da assinatura.' }
+                                    { step: '03', title: `Você ganha ${referralStats?.commissionPercent ?? 0}%`, desc: `O saldo elegível entra em ciclos de ${referralStats?.cycle.days ?? 30} dias. Próximo ciclo: ${referralStats?.cycle.nextPayoutDate || 'a definir'}.` }
                                 ].map((step, i) => (
                                     <div key={i} className="space-y-2">
                                         <div className="text-2xl font-black text-indigo-600/20 dark:text-indigo-500/10 italic leading-none">{step.step}</div>

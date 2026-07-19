@@ -61,7 +61,7 @@ import type {
   Transaction,
   UserProfile,
 } from '@types';
-import { adminService, type AdminPlanCatalogItem, type AdminRevenueProjectionItem, type AdminRevenueProjectionPayload } from '@services/admin/adminService';
+import { adminService, type AdminFinanceAnalyticsSummary, type AdminPlanCatalogItem, type AdminReferralPayoutOverview, type AdminRevenueProjectionItem, type AdminRevenueProjectionPayload } from '@services/admin/adminService';
 import { subscriptionsService } from '@services/subscriptions';
 import { readApiErrorMessage } from '@services/api';
 import { clientLog } from '@services/monitoring/clientLog';
@@ -182,6 +182,7 @@ type AdminFinanceTransaction = {
   invoicePdfUrl?: string;
   hostedInvoiceUrl?: string;
   netAmount?: number;
+  recognizedAmount?: number;
   seller_id?: string;
   material_id?: string;
   scheduleLabel?: string;
@@ -880,6 +881,11 @@ const AdminFinance = ({
   const [stripeTestingRunSaving, setStripeTestingRunSaving] = useState(false);
   const [stripeTestingRunScenario, setStripeTestingRunScenario] = useState<StripeTestingMatrixCase | null>(null);
   const [revenueProjection, setRevenueProjection] = useState<AdminRevenueProjectionPayload>(EMPTY_REVENUE_PROJECTION);
+  const [authoritativeFinanceSummary, setAuthoritativeFinanceSummary] = useState<AdminFinanceAnalyticsSummary | null>(null);
+  const [referralPayoutOverview, setReferralPayoutOverview] = useState<AdminReferralPayoutOverview | null>(null);
+  const [referralPayoutLoading, setReferralPayoutLoading] = useState(false);
+  const [referralPayoutActionLoading, setReferralPayoutActionLoading] = useState(false);
+  const [referralPayoutReferences, setReferralPayoutReferences] = useState<Record<number, string>>({});
   const [isRevenueProjectionLoading, setIsRevenueProjectionLoading] = useState(false);
   const [expandedProjectionMonthKey, setExpandedProjectionMonthKey] = useState<string | null>(null);
   const [stripeTestingRunForm, setStripeTestingRunForm] = useState({
@@ -1122,11 +1128,13 @@ const AdminFinance = ({
     try {
       const payload = await adminService.getFinanceAnalytics({ period: 'all' });
       if (!isCancelled()) {
+        setAuthoritativeFinanceSummary(payload.summary || null);
         setRevenueProjection(payload.revenueProjection || EMPTY_REVENUE_PROJECTION);
       }
     } catch (error) {
       clientLog.warn('Failed to load confirmed revenue projection:', error);
       if (!isCancelled()) {
+        setAuthoritativeFinanceSummary(null);
         setRevenueProjection(EMPTY_REVENUE_PROJECTION);
       }
     } finally {
@@ -1135,6 +1143,18 @@ const AdminFinance = ({
       }
     }
   }, []);
+
+  const loadReferralPayoutOverview = useCallback(async (silent = false) => {
+    if (!silent) setReferralPayoutLoading(true);
+    try {
+      setReferralPayoutOverview(await adminService.getReferralPayoutOverview());
+    } catch (error) {
+      clientLog.warn('Failed to load referral payout overview:', error);
+      if (!silent) addToast('Não foi possível carregar os repasses de indicação.', 'error');
+    } finally {
+      if (!silent) setReferralPayoutLoading(false);
+    }
+  }, [addToast]);
 
   useEffect(() => {
     if (activeSection !== 'transactions') {
@@ -1153,6 +1173,49 @@ const AdminFinance = ({
       window.cancelAnimationFrame(frameId);
     };
   }, [activeSection, loadRevenueProjection]);
+
+  useEffect(() => {
+    if (activeSection !== 'transactions') return;
+    void loadReferralPayoutOverview();
+  }, [activeSection, loadReferralPayoutOverview]);
+
+  const handleCreateReferralPayoutCycle = async () => {
+    if (referralPayoutActionLoading) return;
+    setReferralPayoutActionLoading(true);
+    try {
+      const result = await adminService.createReferralPayoutCycle(false);
+      await Promise.all([loadReferralPayoutOverview(true), loadRevenueProjection({ silent: true })]);
+      if (result.created) {
+        addToast(`Ciclo criado com ${result.items || 0} repasse(s), total ${formatAdminMoney(result.amount || 0)}.`, 'success');
+      } else if (result.reason === 'outside_payout_day') {
+        addToast(`O próximo ciclo está programado para ${result.scheduledFor || 'a data configurada'}.`, 'error');
+      } else {
+        addToast('Não há saldo maduro disponível para um novo ciclo.', 'success');
+      }
+    } catch (error) {
+      addToast(readApiErrorMessage(error, 'Não foi possível processar o ciclo de repasses.'), 'error');
+    } finally {
+      setReferralPayoutActionLoading(false);
+    }
+  };
+
+  const handleMarkReferralPayoutPaid = async (itemId: number) => {
+    const reference = String(referralPayoutReferences[itemId] || '').trim();
+    if (!reference) {
+      addToast('Informe a referência ou comprovante do repasse.', 'error');
+      return;
+    }
+    setReferralPayoutActionLoading(true);
+    try {
+      await adminService.markReferralPayoutPaid(itemId, reference);
+      await Promise.all([loadReferralPayoutOverview(true), loadRevenueProjection({ silent: true })]);
+      addToast('Repasse confirmado com evidência.', 'success');
+    } catch (error) {
+      addToast(readApiErrorMessage(error, 'Não foi possível confirmar o repasse.'), 'error');
+    } finally {
+      setReferralPayoutActionLoading(false);
+    }
+  };
 
   const changeSection = (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics') => {
     setActiveSection(section);
@@ -1514,18 +1577,72 @@ const AdminFinance = ({
       .sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0));
   }, [activeSection, financeFilters, financeTransactionRows]);
 
-  const financeStats = useMemo<{ grossTotal: number; feeTotal: number; netTotal: number }>(() => filteredTransactions.reduce((accumulator, transaction) => {
-    const amount = readTransactionAmount(transaction);
-    accumulator.grossTotal += amount;
-
-    if (isRevenueRecognizedTransaction(transaction)) {
-      const fee = isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount;
-      accumulator.feeTotal += fee;
-      accumulator.netTotal += readTransactionNetAmount(transaction, amount, fee);
+  const financeStats = useMemo(() => {
+    if (authoritativeFinanceSummary) {
+      const recognizedGross = Number(authoritativeFinanceSummary.totalRevenue || 0);
+      const commercialPlatformRevenue = Number(authoritativeFinanceSummary.commercialPlatformRevenue || 0);
+      const sellerPayable = Number(authoritativeFinanceSummary.sellerPayable || 0);
+      const referralPayable = Number(authoritativeFinanceSummary.referralPayable || 0);
+      return {
+        grossCaptured: Number(authoritativeFinanceSummary.grossCapturedAmount || recognizedGross),
+        refunded: Number(authoritativeFinanceSummary.refundedAmount || 0),
+        recognizedGross,
+        commercialPlatformRevenue,
+        sellerPayable,
+        referralPayable,
+        totalPayable: Number(authoritativeFinanceSummary.totalPayable ?? sellerPayable + referralPayable),
+        providerFees: authoritativeFinanceSummary.providerFees ?? null,
+        platformNet: Number(authoritativeFinanceSummary.platformNet ?? commercialPlatformRevenue - referralPayable),
+        source: authoritativeFinanceSummary.financeSource || 'transactions_legacy',
+      };
     }
 
+    const fallback = filteredTransactions.reduce((accumulator, transaction) => {
+      const amount = readTransactionAmount(transaction);
+      const status = resolveTransactionStatus(transaction);
+      if (isRevenueRecognizedTransaction(transaction)) {
+        const platformRevenue = readTransactionPlatformFee(transaction);
+        accumulator.grossCaptured += amount;
+        accumulator.recognizedGross += Number(transaction.recognizedAmount ?? amount);
+        accumulator.commercialPlatformRevenue += platformRevenue;
+        accumulator.sellerPayable += isMarketplaceTransaction(transaction)
+          ? readTransactionNetAmount(transaction, amount, platformRevenue)
+          : 0;
+      } else if (status === 'refunded') {
+        accumulator.grossCaptured += amount;
+        accumulator.refunded += amount;
+      }
+      return accumulator;
+    }, {
+      grossCaptured: 0,
+      refunded: 0,
+      recognizedGross: 0,
+      commercialPlatformRevenue: 0,
+      sellerPayable: 0,
+      referralPayable: 0,
+      totalPayable: 0,
+      providerFees: null as number | null,
+      platformNet: 0,
+      source: 'loaded_rows' as const,
+    });
+    return {
+      ...fallback,
+      totalPayable: fallback.sellerPayable,
+      platformNet: fallback.commercialPlatformRevenue,
+    };
+  }, [authoritativeFinanceSummary, filteredTransactions]);
+
+  const filteredFinanceStats = useMemo(() => filteredTransactions.reduce((accumulator, transaction) => {
+    if (!isRevenueRecognizedTransaction(transaction)) return accumulator;
+    const amount = Number(transaction.recognizedAmount ?? readTransactionAmount(transaction));
+    const platformRevenue = readTransactionPlatformFee(transaction);
+    accumulator.gross += amount;
+    accumulator.platform += platformRevenue;
+    accumulator.seller += isMarketplaceTransaction(transaction)
+      ? readTransactionNetAmount(transaction, amount, platformRevenue)
+      : 0;
     return accumulator;
-  }, { grossTotal: 0, feeTotal: 0, netTotal: 0 }), [filteredTransactions]);
+  }, { gross: 0, platform: 0, seller: 0 }), [filteredTransactions]);
 
   const ITEMS_PER_PAGE = 10;
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE));
@@ -2941,35 +3058,67 @@ const AdminFinance = ({
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Volume filtrado</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Bruto capturado</p>
               <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">
-                R$ {financeStats.grossTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {formatAdminMoney(financeStats.grossCaptured)}
               </p>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{filteredTransactions.length} registros no recorte atual.</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Capturas confirmadas antes dos reembolsos.</p>
             </div>
             <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Taxa da plataforma</p>
-              <p className="mt-3 text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                R$ {financeStats.feeTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Reembolsado</p>
+              <p className="mt-3 text-2xl font-black text-rose-600 dark:text-rose-400">
+                {formatAdminMoney(financeStats.refunded)}
               </p>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Usa o valor real retornado pelo backend.</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Valores devolvidos e baixados do resultado.</p>
             </div>
             <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Líquido consolidado</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Líquido reconhecido</p>
               <p className="mt-3 text-2xl font-black text-sky-700 dark:text-sky-300">
-                R$ {financeStats.netTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                {formatAdminMoney(financeStats.recognizedGross)}
               </p>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Inclui apenas transacoes pagas e aprovadas.</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Bruto capturado menos reembolsos.</p>
             </div>
             <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Receita projetada</p>
-              <p className="mt-3 text-2xl font-black text-violet-700 dark:text-violet-300">
-                {isRevenueProjectionLoading ? '...' : formatAdminMoney(futureProjectedAmount)}
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Receita comercial</p>
+              <p className="mt-3 text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                {formatAdminMoney(financeStats.commercialPlatformRevenue)}
               </p>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                {futureProjectedTransactionRows.length} parcela(s) futura(s) em {revenueProjection.activeContracts} contrato(s).
-              </p>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Assinaturas + participação nas vendas.</p>
             </div>
+            <div className={`${ADMIN_SURFACE_CLASS} p-5`}><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Taxas do provedor</p><p className="mt-3 text-2xl font-black">{financeStats.providerFees === null ? 'Não informadas' : formatAdminMoney(financeStats.providerFees)}</p><p className="mt-2 text-xs text-slate-500">Nunca estimadas pela taxa comercial.</p></div>
+            <div className={`${ADMIN_SURFACE_CLASS} p-5`}><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Valor a repassar</p><p className="mt-3 text-2xl font-black text-amber-700">{formatAdminMoney(financeStats.totalPayable)}</p><p className="mt-2 text-xs text-slate-500">Vendedores + indicações ainda em aberto.</p></div>
+            <div className={`${ADMIN_SURFACE_CLASS} p-5`}><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Resultado da plataforma</p><p className="mt-3 text-2xl font-black text-indigo-700">{formatAdminMoney(financeStats.platformNet)}</p><p className="mt-2 text-xs text-slate-500">Antes das taxas do provedor.</p></div>
+            <div className={`${ADMIN_SURFACE_CLASS} p-5`}><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Receita projetada</p><p className="mt-3 text-2xl font-black text-violet-700">{isRevenueProjectionLoading ? '...' : formatAdminMoney(futureProjectedAmount)}</p><p className="mt-2 text-xs text-slate-500">{futureProjectedTransactionRows.length} parcela(s) futura(s) em {revenueProjection.activeContracts} contrato(s).</p></div>
+          </div>
+
+          <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+            <div className="flex flex-col gap-3 border-b border-slate-200 p-5 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Repasses de indicação</h3>
+                <p className="mt-1 text-xs text-slate-500">Somente comissões após a carência entram no ciclo.</p>
+              </div>
+              <button type="button" onClick={handleCreateReferralPayoutCycle} disabled={referralPayoutActionLoading || referralPayoutLoading} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-xs`}>
+                {referralPayoutActionLoading ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />} Gerar ciclo
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 border-b border-slate-200 p-5 dark:border-slate-800 md:grid-cols-3">
+              <div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Em carência</p><p className="mt-1 text-lg font-black">{formatAdminMoney(referralPayoutOverview?.summary.pending || 0)}</p></div>
+              <div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Disponível</p><p className="mt-1 text-lg font-black text-emerald-600">{formatAdminMoney(referralPayoutOverview?.summary.availableToSchedule || 0)}</p></div>
+              <div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Próximo ciclo</p><p className="mt-1 text-lg font-black">{referralPayoutOverview?.settings.nextPayoutDate || '-'}</p></div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-900/60"><tr><th className="p-4">Indicação</th><th className="p-4 text-center">Indicados</th><th className="p-4 text-right">Em carência</th><th className="p-4 text-right">Repassar</th></tr></thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {(referralPayoutOverview?.transfers || []).map((transfer) => <tr key={transfer.referrerId}><td className="p-4"><div className="font-bold">{transfer.referrerName || 'Usuário'}</div><div className="text-xs text-slate-500">{transfer.referrerEmail}</div></td><td className="p-4 text-center font-bold">{transfer.referredUsers}</td><td className="p-4 text-right">{formatAdminMoney(transfer.pendingAmount)}</td><td className="p-4 text-right font-black text-emerald-600">{formatAdminMoney(transfer.availableAmount)}</td></tr>)}
+                  {!referralPayoutLoading && (referralPayoutOverview?.transfers || []).length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-sm text-slate-500">Nenhuma indicação financeira registrada.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+            {(referralPayoutOverview?.payoutItems || []).some((item) => ['review', 'approved'].includes(item.status)) ? <div className="space-y-3 border-t border-slate-200 p-5 dark:border-slate-800">
+              <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Repasses aguardando comprovante</h4>
+              {(referralPayoutOverview?.payoutItems || []).filter((item) => ['review', 'approved'].includes(item.status)).map((item) => <div key={item.id} className="grid gap-3 rounded-sm border border-slate-200 p-3 dark:border-slate-800 md:grid-cols-[minmax(0,1fr)_140px_minmax(220px,1fr)_auto] md:items-center"><div><div className="font-bold">{item.referrerName}</div><div className="text-xs text-slate-500">{item.referrerEmail}</div></div><div className="font-black">{formatAdminMoney(item.amount)}</div><input value={referralPayoutReferences[item.id] || ''} onChange={(event) => setReferralPayoutReferences((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="Referência/comprovante" className={ADMIN_FIELD_CLASS} /><button type="button" onClick={() => handleMarkReferralPayoutPaid(item.id)} disabled={referralPayoutActionLoading} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs`}>Confirmar pago</button></div>)}
+            </div> : null}
           </div>
 
           {overduePaymentRows.length > 0 ? (
@@ -3253,8 +3402,8 @@ const AdminFinance = ({
                     <th className="p-4">Comprador</th>
                     <th className="p-4">Vendedor</th>
                     <th className="p-4 text-right">Bruto</th>
-                    <th className="p-4 text-right">Taxa</th>
-                    <th className="p-4 text-right">Líquido</th>
+                    <th className="p-4 text-right">Receita plataforma</th>
+                    <th className="p-4 text-right">Repasse vendedor</th>
                     <th className="p-4 text-center">Status</th>
                     <th className="p-4 text-center">Fatura</th>
                   </tr>
@@ -3430,13 +3579,13 @@ const AdminFinance = ({
                       Totais do recorte
                     </td>
                     <td className="p-4 text-right text-sm font-black text-slate-900 dark:text-slate-100">
-                      R$ {financeStats.grossTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {filteredFinanceStats.gross.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="p-4 text-right text-sm font-black text-emerald-600 dark:text-emerald-400">
-                      R$ {financeStats.feeTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {filteredFinanceStats.platform.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="p-4 text-right text-sm font-black text-sky-700 dark:text-sky-300">
-                      R$ {financeStats.netTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {filteredFinanceStats.seller.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td colSpan={2} />
                   </tr>

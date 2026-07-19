@@ -278,6 +278,36 @@ class AdminSettingsValidator
             $payload['coupons'] = $this->validateCoupons($payload['coupons']);
         }
 
+        foreach ([
+            'platformFeePercent' => [0.0, 100.0, 'Taxa da plataforma'],
+            'referralCommissionPercent' => [0.0, 100.0, 'Comissao por indicacao'],
+        ] as $key => [$minimum, $maximum, $label]) {
+            if (array_key_exists($key, $payload)) {
+                if (!is_numeric($payload[$key])) {
+                    throw new InvalidArgumentException($label . ' invalida.');
+                }
+                $value = round((float) $payload[$key], 3);
+                if ($value < $minimum || $value > $maximum) {
+                    throw new InvalidArgumentException($label . ' deve ficar entre ' . $minimum . ' e ' . $maximum . '.');
+                }
+                $payload[$key] = $value;
+            }
+        }
+
+        foreach ([
+            'referralRefundGraceDays' => [0, 180, 'Carencia de reembolso'],
+            'referralPayoutCycleDays' => [1, 90, 'Ciclo de repasse'],
+            'referralPayoutDay' => [1, 28, 'Dia de repasse'],
+        ] as $key => [$minimum, $maximum, $label]) {
+            if (array_key_exists($key, $payload)) {
+                $value = filter_var($payload[$key], FILTER_VALIDATE_INT);
+                if ($value === false || $value < $minimum || $value > $maximum) {
+                    throw new InvalidArgumentException($label . ' invalido.');
+                }
+                $payload[$key] = $value;
+            }
+        }
+
         return $payload;
     }
 

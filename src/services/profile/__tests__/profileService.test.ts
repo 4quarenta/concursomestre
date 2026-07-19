@@ -133,16 +133,20 @@ describe('profileService', () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: {
-        clicks: 10,
-        conversions: 2,
-        balance: 15.5,
+        referralCode: 'ANA123',
+        referralLink: 'https://concursomestre.com/auth?ref=ANA123',
+        commissionPercent: 20,
+        totals: { registered: 10, converted: 2 },
+        balance: { pending: 10, available: 15.5, scheduled: 0, paid: 25 },
+        cycle: { days: 30, payoutDay: 10, nextPayoutDate: '2026-08-10' },
       },
     });
 
     const result = await profileService.getReferralStats();
 
     expect(mockGet).toHaveBeenCalledWith('referrals/stats.php');
-    expect(result.clicks).toBe(10);
+    expect(result.totals.registered).toBe(10);
+    expect(result.balance.available).toBe(15.5);
   });
 
   it('uploads the profile photo through the official facade', async () => {

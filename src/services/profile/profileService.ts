@@ -14,7 +14,26 @@ import type { ApiResponse } from '@services/api';
 
 const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
 
-export type ReferralStats = Record<string, unknown>;
+export type ReferralStats = {
+  referralCode: string;
+  referralLink: string | null;
+  commissionPercent: number;
+  totals: {
+    registered: number;
+    converted: number;
+  };
+  balance: {
+    pending: number;
+    available: number;
+    scheduled: number;
+    paid: number;
+  };
+  cycle: {
+    days: number;
+    payoutDay: number;
+    nextPayoutDate: string;
+  };
+};
 
 export type PersonalProfileAddress = {
   zipCode: string | null;
@@ -295,7 +314,14 @@ export const profileService = {
   async getReferralStats(): Promise<ReferralStats> {
     const response = await requestApi<ReferralStats>(apiClient.get<ApiResponse<ReferralStats>>(ENDPOINTS.users.referralStats));
     assertApiSuccess(response, 'Não foi possível carregar os dados de indicação.');
-    return readApiData<ReferralStats>(response, {});
+    return readApiData<ReferralStats>(response, {
+      referralCode: '',
+      referralLink: null,
+      commissionPercent: 0,
+      totals: { registered: 0, converted: 0 },
+      balance: { pending: 0, available: 0, scheduled: 0, paid: 0 },
+      cycle: { days: 30, payoutDay: 10, nextPayoutDate: '' },
+    });
   },
 
   /**

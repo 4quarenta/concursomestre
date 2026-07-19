@@ -18,6 +18,7 @@ require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSupport.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../finance/services/ReferralFinance.php';
 
 /**
  * Service do dominio de Usuarios.
@@ -55,15 +56,11 @@ class UsersService
             $this->repository->saveReferralCode($userId, $referralCode);
         }
 
-        $totalReferrals = $this->repository->countReferrals($userId);
-        $totalEarned = $this->repository->getTotalEarnedReferralRewards($userId);
-
-        return [
-            'referralCode' => $referralCode,
-            'totalReferrals' => $totalReferrals,
-            'totalEarned' => $totalEarned,
-            'referralLink' => rtrim($frontendBaseUrl, '/') . '/auth?ref=' . $referralCode,
-        ];
+        return ReferralFinance::userSummary(
+            $this->repository->getConnection(),
+            $userId,
+            $frontendBaseUrl
+        );
     }
 
     /**

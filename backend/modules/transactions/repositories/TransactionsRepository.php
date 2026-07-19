@@ -339,14 +339,14 @@ class TransactionsRepository
     {
         $recognizedRevenueAmount = "
             CASE
-                WHEN t.status IN ('approved', 'completed', 'partially_refunded')
+                WHEN t.status IN ('approved', 'completed', 'refund_requested', 'partially_refunded')
                     THEN GREATEST(0, COALESCE(t.amount, 0) - COALESCE(NULLIF(t.refunded_amount, 0), 0))
                 ELSE 0
             END
         ";
         $recognizedFeeAmount = "
             CASE
-                WHEN t.status IN ('approved', 'completed', 'partially_refunded')
+                WHEN t.status IN ('approved', 'completed', 'refund_requested', 'partially_refunded')
                      AND COALESCE(t.amount, 0) > 0
                     THEN ROUND(
                         COALESCE(t.platform_fee, 0)
@@ -358,15 +358,40 @@ class TransactionsRepository
             END
         ";
 
+        $recognizedSellerPayable = "
+            CASE
+                WHEN t.type = 'material'
+                    THEN GREATEST(0, ({$recognizedRevenueAmount}) - ({$recognizedFeeAmount}))
+                ELSE 0
+            END
+        ";
+
+        $recognizedPlatformRevenue = "
+            CASE
+                WHEN t.type = 'plan' THEN ({$recognizedRevenueAmount})
+                WHEN t.type = 'material' THEN ({$recognizedFeeAmount})
+                ELSE ({$recognizedFeeAmount})
+            END
+        ";
+
         $query = "SELECT
                     COUNT(*) as total_count,
-                    SUM({$recognizedRevenueAmount}) as total_revenue,
-                    SUM({$recognizedFeeAmount}) as total_fees,
-                    SUM(({$recognizedRevenueAmount}) - ({$recognizedFeeAmount})) as net_revenue,
+                    COALESCE(SUM(CASE WHEN t.status IN ('approved', 'completed', 'refund_requested', 'partially_refunded', 'refunded') THEN COALESCE(t.amount, 0) ELSE 0 END), 0) AS gross_captured,
+                    COALESCE(SUM(CASE WHEN t.status IN ('refunded', 'partially_refunded') THEN COALESCE(NULLIF(t.refunded_amount, 0), t.amount, 0) ELSE 0 END), 0) AS refunded_amount,
+                    COALESCE(SUM({$recognizedRevenueAmount}), 0) as recognized_gross,
+                    COALESCE(SUM({$recognizedPlatformRevenue}), 0) as platform_revenue,
+                    COALESCE(SUM({$recognizedSellerPayable}), 0) as seller_payable,
+                    COALESCE(SUM(rc.referral_payable), 0) as referral_payable,
+                    COALESCE(SUM({$recognizedPlatformRevenue}), 0) - COALESCE(SUM(rc.referral_payable), 0) as platform_net,
                     SUM(CASE WHEN t.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-                             THEN ({$recognizedRevenueAmount}) - ({$recognizedFeeAmount})
+                             THEN {$recognizedSellerPayable}
                              ELSE 0 END) as total_held
                   FROM transactions t
+                  LEFT JOIN (
+                      SELECT transaction_id, SUM(amount) AS referral_payable
+                      FROM referral_commission_entries
+                      GROUP BY transaction_id
+                  ) rc ON rc.transaction_id = t.id
                   {$whereClause}";
 
         $stmt = $this->db->prepare($query);
@@ -397,13 +422,19 @@ class TransactionsRepository
                     t.provider_customer_id,
                     t.provider_refund_details_json,
                     t.refund_reason,
-                    t.refund_requested_at
+                    t.refund_requested_at,
+                    COALESCE(rc.referralPayable, 0) AS referralPayable
                   FROM transactions t
                   LEFT JOIN materials m ON t.material_id = m.id
                   LEFT JOIN plans p ON t.plan_id = p.id
                   LEFT JOIN user_subscriptions us ON t.user_subscription_id = us.id
                   LEFT JOIN users s ON t.seller_id = s.id
                   LEFT JOIN users b ON t.user_id = b.id
+                  LEFT JOIN (
+                      SELECT transaction_id, SUM(amount) AS referralPayable
+                      FROM referral_commission_entries
+                      GROUP BY transaction_id
+                  ) rc ON rc.transaction_id = t.id
                   {$whereClause}
                   ORDER BY COALESCE(t.due_date, t.created_at) DESC, t.id DESC
                   LIMIT {$limit} OFFSET {$offset}";

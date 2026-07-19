@@ -34,6 +34,8 @@ import type {
   AdminStatsPayload,
   AdminAnalyticsRange,
   AdminFinanceAnalyticsPayload,
+  AdminReferralPayoutOverview,
+  AdminReferralPayoutCycleResult,
   AdminDashboardAnalyticsPayload,
   AdminLeadSegment,
   AdminAnalyticsExportParams,
@@ -771,6 +773,37 @@ export const adminService = {
         items: [],
       },
     });
+  },
+
+  async getReferralPayoutOverview(): Promise<AdminReferralPayoutOverview> {
+    const response = await requestApi<AdminReferralPayoutOverview>(
+      apiClient.get<ApiResponse<AdminReferralPayoutOverview>>(ENDPOINTS.admin.referralPayouts),
+    );
+    return readApiData(response, {
+      settings: { commissionPercent: 0, refundGraceDays: 0, cycleDays: 30, payoutDay: 10, nextPayoutDate: '' },
+      summary: { pending: 0, availableToSchedule: 0 },
+      transfers: [],
+      cycles: [],
+      payoutItems: [],
+    });
+  },
+
+  async createReferralPayoutCycle(force = false): Promise<AdminReferralPayoutCycleResult> {
+    const response = await requestApi<AdminReferralPayoutCycleResult>(apiClient.post<ApiResponse<AdminReferralPayoutCycleResult>>(ENDPOINTS.admin.referralPayouts, {
+      action: 'create_cycle',
+      force,
+    }));
+    assertApiSuccess(response, 'Não foi possível gerar o ciclo de repasses.');
+    return readApiData(response, { created: false });
+  },
+
+  async markReferralPayoutPaid(itemId: number, providerReference: string): Promise<void> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.referralPayouts, {
+      action: 'mark_paid',
+      itemId,
+      providerReference,
+    }));
+    assertApiSuccess(response, 'Não foi possível confirmar o repasse.');
   },
 
   /**

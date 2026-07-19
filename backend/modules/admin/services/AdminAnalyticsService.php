@@ -15,6 +15,7 @@ require_once __DIR__ . '/../repositories/AdminAnalyticsRepository.php';
 require_once __DIR__ . '/../validators/AdminAnalyticsValidator.php';
 require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSupport.php';
 require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
+require_once __DIR__ . '/../../finance/services/ReferralFinance.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
 
 /**
@@ -81,6 +82,32 @@ class AdminAnalyticsService
             $subscriptions,
             $projectionTransactions,
             $ledgerSummary
+        );
+        $referralLiability = ReferralFinance::liabilitySummary($this->repository->getConnection());
+        $ledgerByType = is_array($ledgerSummary['by_type'] ?? null) ? $ledgerSummary['by_type'] : [];
+        $planLedger = is_array($ledgerByType['plan'] ?? null) ? $ledgerByType['plan'] : [];
+        $materialLedger = is_array($ledgerByType['material'] ?? null) ? $ledgerByType['material'] : [];
+        $commercialPlatformRevenue = round(
+            (float) ($planLedger['recognized_gross'] ?? 0)
+            + (float) ($materialLedger['recognized_fee'] ?? 0),
+            2
+        );
+        $sellerPayable = round((float) ($materialLedger['recognized_net'] ?? 0), 2);
+        $summary['commercialPlatformRevenue'] = $commercialPlatformRevenue;
+        $summary['sellerPayable'] = $sellerPayable;
+        $summary['referralPayable'] = $referralLiability['recognized'];
+        $summary['referralPending'] = $referralLiability['pending'];
+        $summary['referralAvailable'] = $referralLiability['available'];
+        $summary['referralScheduled'] = $referralLiability['scheduled'];
+        $summary['referralPaid'] = $referralLiability['paid'];
+        $summary['providerFees'] = null;
+        $summary['platformNet'] = round($commercialPlatformRevenue - $referralLiability['recognized'], 2);
+        $summary['totalPayable'] = round(
+            $sellerPayable
+            + $referralLiability['pending']
+            + $referralLiability['available']
+            + $referralLiability['scheduled'],
+            2
         );
         $funnel = $this->buildFunnel($events);
         $funnelDetails = $this->buildFunnelDetails($journeys);
