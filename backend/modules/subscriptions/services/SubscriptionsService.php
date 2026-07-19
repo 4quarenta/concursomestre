@@ -3099,27 +3099,7 @@ class SubscriptionsService
             'latest_invoice_status' => $latestInvoiceStatus,
         ];
     }
-
-    /**
-     * Retorna o snapshot local e autoritativo da assinatura do usuario atual.
-     *
-     * Esta leitura nao consulta a Stripe e nao expõe dados pessoais ou IDs
-     * remotos. A reconciliacao continua sendo responsabilidade do fluxo de
-     * sincronizacao existente.
-     *
-     * @since 1.0.0
-     */
-    public function getCurrentUserBillingSnapshot(string $userId): array
-    {
-        $subscription = $this->repository->findLatestManagedSubscription($userId);
-
-        return [
-            'subscription' => $subscription
-                ? buildCurrentSubscriptionBillingSnapshot($subscription)
-                : null,
-        ];
-    }
-
+    public function getCurrentUserBillingSnapshot(string $userId): array { $subscription = $this->repository->findLatestManagedSubscription($userId); return ['subscription' => $subscription ? buildCurrentSubscriptionBillingSnapshot($subscription) : null]; }
     /**
      * Recalcula a projeção de renovação de todas as assinaturas Stripe ativas.
      * Usado após alteração administrativa de preços de planos.

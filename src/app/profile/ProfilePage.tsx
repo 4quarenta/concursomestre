@@ -89,6 +89,7 @@ import {
     resolveProfileSubscriptionTimeline,
 } from './components/subscriptionDateUtils';
 import { buildPersonalProfileUpdate, validatePersonalProfileUpdate } from './components/personalProfileForm';
+import BillingSubscriptionLoadState from './components/BillingSubscriptionLoadState';
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
 import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
 import { normalizeGoogleClientId } from '@/config/googleAuth';
@@ -2321,61 +2322,11 @@ const Profile: React.FC = () => {
 
     const renderBillingTab = () => {
         if (billingSubscriptionQuery.isError) {
-            return (
-                <div className="space-y-5">
-                    <section className={`${PLATFORM_SURFACE_CARD_CLASS} px-5 py-8 md:px-6`}>
-                        <div className="flex flex-col items-center justify-center gap-4 py-10 text-center">
-                            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-100 bg-rose-50 text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
-                                <AlertTriangle size={22} />
-                            </span>
-                            <div className="max-w-md space-y-2">
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                                    Assinatura
-                                </p>
-                                <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">
-                                    Não foi possível carregar sua assinatura
-                                </h2>
-                                <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                                    Os valores e a vigência não serão estimados. Tente novamente para consultar os dados financeiros oficiais.
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => void refetchBillingSubscription()}
-                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-[9px] font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
-                            >
-                                <RotateCcw size={14} />
-                                Tentar novamente
-                            </button>
-                        </div>
-                    </section>
-                </div>
-            );
+            return <BillingSubscriptionLoadState status="error" onRetry={() => void refetchBillingSubscription()} />;
         }
 
         if (shouldShowBillingSyncGate) {
-            return (
-                <div className="space-y-5">
-                    <section className={`${PLATFORM_SURFACE_CARD_CLASS} px-5 py-8 md:px-6`}>
-                        <div className="flex flex-col items-center justify-center gap-4 py-10 text-center">
-                            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50 text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
-                                <Loader2 size={22} className="animate-spin" />
-                            </span>
-                            <div className="max-w-md space-y-2">
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                                    Assinatura
-                                </p>
-                                <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">
-                                    Carregando assinatura
-                                </h2>
-                                <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                                    Consultando valor, vigência e renovação registrados no financeiro da plataforma.
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-            );
+            return <BillingSubscriptionLoadState status="loading" />;
         }
 
         return (
