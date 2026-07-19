@@ -261,7 +261,7 @@ final class ReferralFinance
                 SELECT referrer_id, COUNT(DISTINCT referred_user_id) AS referred_users
                 FROM referrals GROUP BY referrer_id
              ) r
-             INNER JOIN users u ON u.id = r.referrer_id
+             INNER JOIN users u ON u.id = r.referrer_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN (
                 SELECT referrer_id,
                        SUM(CASE WHEN payout_item_id IS NULL AND available_at > NOW() THEN amount ELSE 0 END) AS pending_amount,

@@ -663,7 +663,7 @@ class SetupService
                 UNIQUE KEY uq_referrals_referred_user (referred_user_id),
                 INDEX idx_referrals_referrer (referrer_id),
                 INDEX idx_referrals_status (status)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         );
     }
 
