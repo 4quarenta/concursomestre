@@ -41,6 +41,7 @@ assertReferralContains($collationMigration, 'COLLATE utf8mb4_unicode_ci', 'Refer
 
 assertReferralContains($service, "transactionType !== 'plan'", 'Only subscription captures may create referral commission');
 assertReferralContains($service, 'commission_percent', 'Commission percentage must be snapshotted');
+assertReferralContains($service, "getSystemSettingValue(\$db, 'referralCommissionPercent', 0)", 'Unconfigured referral commission must remain disabled');
 assertReferralContains($service, 'refund-total', 'Refund adjustments must be idempotent');
 assertReferralContains($service, "available_at <= NOW()", 'Only mature entries may enter payout cycles');
 assertReferralContains($service, "providerReference", 'Paid payouts must require evidence');

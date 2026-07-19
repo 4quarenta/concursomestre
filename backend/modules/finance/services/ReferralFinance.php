@@ -543,7 +543,7 @@ final class ReferralFinance
 
     private static function configuredPercent(PDO $db): float
     {
-        return min(100, max(0, (float) getSystemSettingValue($db, 'referralCommissionPercent', 20)));
+        return min(100, max(0, (float) getSystemSettingValue($db, 'referralCommissionPercent', 0)));
     }
 
     private static function configuredGraceDays(PDO $db): int

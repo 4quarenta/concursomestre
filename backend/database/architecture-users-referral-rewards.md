@@ -55,6 +55,9 @@ Nao existem mais concessoes automaticas de dias de plano ou XP por indicacao.
 - `referralPayoutCycleDays`
 - `referralPayoutDay`
 
+O percentual padrao e `0%`. O programa so cria novas obrigacoes depois que um
+admin configura explicitamente `referralCommissionPercent` acima de zero.
+
 ## Seguranca operacional e rollback
 
 Antes da migration, executar `scripts/tasks/backup_mysql.php` e validar o

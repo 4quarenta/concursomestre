@@ -405,7 +405,7 @@ const AdminSettings = ({
       stripePaymentMethods: localSettings.stripePaymentMethods,
       siteName: localSettings.siteName || 'ConcursoMestre',
       platformFeePercent: Number(localSettings.platformFeePercent ?? 20),
-      referralCommissionPercent: Number(localSettings.referralCommissionPercent ?? 20),
+      referralCommissionPercent: Number(localSettings.referralCommissionPercent ?? 0),
       referralRefundGraceDays: Number(localSettings.referralRefundGraceDays ?? 7),
       referralPayoutCycleDays: Number(localSettings.referralPayoutCycleDays ?? 30),
       referralPayoutDay: Number(localSettings.referralPayoutDay ?? 10),
@@ -810,7 +810,7 @@ const AdminSettings = ({
               </div>
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
                 <label className={labelClassName}>Comissão por indicação (%)</label>
-                <input type="number" min="0" max="100" step="0.1" value={String(localSettings.referralCommissionPercent ?? 20)} onChange={(e) => setField('referralCommissionPercent', Number(e.target.value))} className={inputClassName} />
+                <input type="number" min="0" max="100" step="0.1" value={String(localSettings.referralCommissionPercent ?? 0)} onChange={(e) => setField('referralCommissionPercent', Number(e.target.value))} className={inputClassName} />
               </div>
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
                 <label className={labelClassName}>Carência de reembolso (dias)</label>
