@@ -296,6 +296,7 @@ assertApiInventoryByDirectory($base, [
         'create_stripe_checkout.php',
         'create_stripe_portal.php',
         'create_stripe_subscription.php',
+        'current.php',
         'cron_recurring.php',
         'cron_scheduled_payments.php',
         'cron_stripe_reconciliation.php',

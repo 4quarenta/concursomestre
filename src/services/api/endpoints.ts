@@ -218,6 +218,7 @@ export const ENDPOINTS = {
     },
 
     subscriptions: {
+        current: 'subscriptions/current.php',
         automationHelper: 'subscriptions/automation_helper.php',
         stripeTestingMatrix: 'subscriptions/stripe_testing_matrix.php',
         stripeTestingRuns: 'subscriptions/stripe_testing_runs.php',

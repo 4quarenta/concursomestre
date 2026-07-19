@@ -30,6 +30,7 @@ vi.mock('@services/api', () => ({
   },
   ENDPOINTS: {
     subscriptions: {
+      current: 'subscriptions/current.php',
       automationHelper: 'subscriptions/automation_helper.php',
       stripeTestingMatrix: 'subscriptions/stripe_testing_matrix.php',
       stripeTestingRuns: 'subscriptions/stripe_testing_runs.php',
@@ -40,6 +41,7 @@ vi.mock('@services/api', () => ({
       validateCoupon: 'subscriptions/validate_coupon.php',
       createStripePortal: 'subscriptions/create_stripe_portal.php',
       updateRenewal: 'subscriptions/update_renewal.php',
+      syncCurrent: 'subscriptions/sync_current.php',
       cancel: 'subscriptions/cancel.php',
       cancelRefund: 'subscriptions/cancel_refund.php',
       undoCancel: 'subscriptions/undo_cancel.php',
@@ -103,6 +105,81 @@ describe('subscriptionsService', () => {
     expect(response.cli_command).toContain('reconcile_stripe_subscriptions.php');
     expect(response.cron_health).toMatchObject({ status: 'ok', checked: 2 });
     expect(response.webhook_health).toMatchObject({ status: 'processed', event_type: 'invoice.paid' });
+  });
+
+  it('maps the authenticated billing snapshot without relying on the session DTO', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        subscription: {
+          id: 104,
+          status: 'active',
+          paymentProvider: 'stripe',
+          autoRenew: true,
+          cancelAtPeriodEnd: false,
+          createdAt: '2026-06-28 08:15:29',
+          plan: {
+            id: 134,
+            displayName: 'Elite - Teste 2 dias',
+            price: 10,
+            intervalUnit: 'day',
+            intervalCount: 2,
+            tier: 4,
+          },
+          period: {
+            startAt: '2026-07-18 08:15:28',
+            endAt: '2026-07-20 08:15:28',
+            providerStartAt: '2026-07-18 08:15:28',
+            providerEndAt: '2026-07-20 08:15:28',
+          },
+          billing: {
+            isRecurring: true,
+            chargeAmount: 10,
+            totalInstallments: 1,
+            paidInstallments: 1,
+            renewalIteration: 1,
+            nextRenewal: {
+              amount: 10,
+              date: '2026-07-20 08:15:28',
+              priceSource: 'contracted_amount',
+              cycleLabel: '2 dias',
+            },
+          },
+          payment: {
+            blocking: false,
+            blockingReason: null,
+          },
+        },
+      },
+    });
+
+    const subscription = await subscriptionsService.getCurrentBillingSubscription();
+
+    expect(mockGet).toHaveBeenCalledWith('subscriptions/current.php');
+    expect(subscription).toMatchObject({
+      id: 104,
+      recurring_amount: 10,
+      next_renewal_amount: 10,
+      next_renewal_date: '2026-07-20 08:15:28',
+      current_period_start: '2026-07-18 08:15:28',
+      current_period_end: '2026-07-20 08:15:28',
+      auto_renew: true,
+      plan: {
+        name: 'Elite - Teste 2 dias',
+        price: 10,
+        interval_unit: 'day',
+        interval_count: 2,
+      },
+    });
+  });
+
+  it('returns null when the authenticated user has no managed subscription', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: { subscription: null },
+    });
+
+    await expect(subscriptionsService.getCurrentBillingSubscription()).resolves.toBeNull();
   });
 
   it('runs the automation routine through the official admin helper', async () => {

@@ -1678,6 +1678,110 @@ function getSubscriptionCycleLabel(string $intervalUnit, int $intervalCount): st
 }
 
 /**
+ * Normaliza datas opcionais do snapshot financeiro sem fabricar vigencia.
+ *
+ * @since 1.0.0
+ */
+function normalizeCurrentSubscriptionSnapshotDate($value): ?string
+{
+    $date = trim((string) ($value ?? ''));
+    return $date !== '' ? $date : null;
+}
+
+/**
+ * Monta o contrato financeiro minimo usado pela pagina de assinatura.
+ *
+ * O payload deliberadamente nao inclui identificadores remotos, dados pessoais
+ * ou meios de pagamento. Esses dados pertencem a endpoints financeiros
+ * especificos e nao ao snapshot de vigencia da assinatura.
+ *
+ * @since 1.0.0
+ */
+function buildCurrentSubscriptionBillingSnapshot(array $subscription): array
+{
+    $provider = normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe');
+    $isManualGrant = $provider === 'manual_admin';
+    $intervalUnit = strtolower(trim((string) ($subscription['interval_unit'] ?? 'month')));
+    if (!in_array($intervalUnit, ['day', 'week', 'month', 'year'], true)) {
+        $intervalUnit = 'month';
+    }
+    $intervalCount = max(1, (int) ($subscription['interval_count'] ?? 1));
+
+    $planPrice = round(max(0, (float) ($subscription['price'] ?? 0)), 2);
+    $recurringAmount = round(max(0, (float) ($subscription['recurring_amount'] ?? 0)), 2);
+    $chargeAmount = $isManualGrant ? 0.0 : ($recurringAmount > 0 ? $recurringAmount : $planPrice);
+    $projectedAmount = round(max(0, (float) ($subscription['next_renewal_amount'] ?? 0)), 2);
+    $nextRenewalAmount = $isManualGrant ? 0.0 : ($projectedAmount > 0 ? $projectedAmount : $chargeAmount);
+
+    $providerPeriodStart = normalizeCurrentSubscriptionSnapshotDate($subscription['provider_current_period_start'] ?? null);
+    $providerPeriodEnd = normalizeCurrentSubscriptionSnapshotDate($subscription['provider_current_period_end'] ?? null);
+    $periodStart = normalizeCurrentSubscriptionSnapshotDate($subscription['current_period_start'] ?? null)
+        ?? $providerPeriodStart
+        ?? normalizeCurrentSubscriptionSnapshotDate($subscription['created_at'] ?? null);
+    $periodEnd = normalizeCurrentSubscriptionSnapshotDate($subscription['current_period_end'] ?? null)
+        ?? $providerPeriodEnd;
+    $nextRenewalDate = normalizeCurrentSubscriptionSnapshotDate($subscription['next_renewal_date'] ?? null)
+        ?? $providerPeriodEnd
+        ?? $periodEnd;
+
+    $cancelAtPeriodEnd = (int) ($subscription['cancel_at_period_end'] ?? 0) === 1;
+    $autoRenew = array_key_exists('auto_renew', $subscription)
+        ? (int) $subscription['auto_renew'] === 1
+        : !$cancelAtPeriodEnd;
+    $status = strtolower(trim((string) ($subscription['status'] ?? '')));
+    $cycleLabel = trim((string) ($subscription['next_renewal_cycle_label'] ?? ''));
+    if ($cycleLabel === '') {
+        $cycleLabel = getSubscriptionCycleLabel($intervalUnit, $intervalCount);
+    }
+    $priceSource = trim((string) ($subscription['next_renewal_price_source'] ?? ''));
+    if ($priceSource === '') {
+        $priceSource = $recurringAmount > 0 ? 'contracted_amount' : 'plan_catalog';
+    }
+
+    return [
+        'id' => (int) ($subscription['id'] ?? 0),
+        'status' => $status,
+        'paymentProvider' => $provider,
+        'autoRenew' => $autoRenew,
+        'cancelAtPeriodEnd' => $cancelAtPeriodEnd,
+        'createdAt' => normalizeCurrentSubscriptionSnapshotDate($subscription['created_at'] ?? null),
+        'plan' => [
+            'id' => (int) ($subscription['plan_id'] ?? 0),
+            'displayName' => trim((string) ($subscription['plan_name'] ?? '')),
+            'price' => $planPrice,
+            'intervalUnit' => $intervalUnit,
+            'intervalCount' => $intervalCount,
+            'tier' => isset($subscription['tier']) ? (int) $subscription['tier'] : null,
+        ],
+        'period' => [
+            'startAt' => $periodStart,
+            'endAt' => $periodEnd,
+            'providerStartAt' => $providerPeriodStart,
+            'providerEndAt' => $providerPeriodEnd,
+        ],
+        'billing' => [
+            'isRecurring' => !$isManualGrant && (bool) ($subscription['is_recurring'] ?? $autoRenew),
+            'chargeAmount' => $chargeAmount,
+            'totalInstallments' => max(1, (int) ($subscription['total_installments'] ?? 1)),
+            'paidInstallments' => max(0, (int) ($subscription['paid_installments'] ?? 0)),
+            'renewalIteration' => max(1, (int) ($subscription['renewal_iteration'] ?? 1)),
+            'nextRenewal' => [
+                'amount' => $nextRenewalAmount,
+                'date' => $nextRenewalDate,
+                'priceSource' => $priceSource,
+                'cycleLabel' => $cycleLabel,
+            ],
+        ],
+        'payment' => [
+            'blocking' => $status === 'past_due' || (int) ($subscription['payment_blocking'] ?? 0) === 1,
+            'blockingReason' => $status === 'past_due'
+                ? 'past_due'
+                : normalizeCurrentSubscriptionSnapshotDate($subscription['payment_block_reason'] ?? null),
+        ],
+    ];
+}
+
+/**
  * Calcula a diferenca em dias de calendario ate a renovacao.
  *
  * A regra de lembretes deve olhar datas de calendario, nao horas exatas,

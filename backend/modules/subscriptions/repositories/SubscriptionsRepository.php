@@ -294,6 +294,7 @@ class SubscriptionsRepository
                 p.price,
                 p.interval_unit,
                 p.interval_count,
+                p.tier,
                 p.stripe_product_id
             FROM user_subscriptions us
             LEFT JOIN plans p ON p.id = us.plan_id

@@ -303,6 +303,30 @@ function handleSubscriptionsUpdateRenewalRoute(PDO $db): void
 }
 
 /**
+ * Consulta a assinatura financeira do usuario autenticado.
+ *
+ * @since 1.0.0
+ */
+function handleSubscriptionsCurrentRoute(PDO $db): void
+{
+    try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+
+        $payload = verifyAuthenticatedUserPayload(true);
+        $controller = buildSubscriptionsController($db);
+        $result = $controller->getCurrentUserBillingSnapshot((string) $payload['user_id']);
+
+        Response::success($result, 'Assinatura carregada com sucesso.');
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar a assinatura.', $e);
+    }
+}
+
+/**
  * Sincroniza a assinatura Stripe do usuario atual para recuperar renovacoes
  * materializadas no provedor que ainda nao refletiram localmente.
  *

@@ -474,12 +474,7 @@ const Profile: React.FC = () => {
         };
     }, [pathname, searchParams]);
     const params = useParams<{ tab?: string }>();
-    const activeBillingProvider = (currentUser?.subscription?.payment_provider || systemSettings?.paymentProvider || 'stripe') as 'stripe' | 'manual_admin';
-    const isStripeBilling = activeBillingProvider === 'stripe';
-    const billingProviderLabel = activeBillingProvider === 'manual_admin' ? 'Concessao manual' : 'Stripe';
-    const usesInternalStripeVault = isStripeBilling;
     const stripePublishableKey = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
-    const hasActiveSubscription = hasActivePlanAccess(currentUser);
     const effectivePlanDisplayName = getEffectivePlanDisplayName(currentUser);
     const isElitePlan = isPlanAtLeast(currentUser, 'Elite');
     const referralEnabled = parseFeatureFlag(systemSettings?.features?.referralEnabled);
@@ -583,7 +578,6 @@ const Profile: React.FC = () => {
     const pendingPersonalDetailsScrollRef = React.useRef(false);
     const googleProfileButtonRef = React.useRef<HTMLDivElement>(null);
     const [hasSyncedBillingSnapshot, setHasSyncedBillingSnapshot] = useState(false);
-    const [isSyncingBillingSnapshot, setIsSyncingBillingSnapshot] = useState(false);
     const [lawNotes, setLawNotes] = useState<LegalUserNote[]>([]);
     const [materialNotes, setMaterialNotes] = useState<MaterialNotebookNote[]>([]);
     const [favoriteLaws, setFavoriteLaws] = useState<LawSummary[]>([]);
@@ -605,6 +599,26 @@ const Profile: React.FC = () => {
         staleTime: 120_000,
         refetchOnWindowFocus: false,
     });
+    const isBillingSection = activeTab === 'billing' || activeTab === 'billing-history';
+    const billingSubscriptionQuery = useQuery({
+        queryKey: ['profile', 'billing-subscription', currentUserKey],
+        queryFn: () => subscriptionsService.getCurrentBillingSubscription(),
+        enabled: Boolean(currentUserKey) && isBillingSection,
+        staleTime: 60_000,
+        retry: 1,
+        refetchOnWindowFocus: false,
+    });
+    const refetchBillingSubscription = billingSubscriptionQuery.refetch;
+    const activeSubscription = isBillingSection
+        ? (billingSubscriptionQuery.data ?? null)
+        : (currentUser?.subscription || null);
+    const hasActiveSubscription = isBillingSection
+        ? Boolean(activeSubscription && ['active', 'trialing', 'past_due'].includes(String(activeSubscription.status || '').toLowerCase()))
+        : hasActivePlanAccess(currentUser);
+    const activeBillingProvider = (activeSubscription?.payment_provider || systemSettings?.paymentProvider || 'stripe') as 'stripe' | 'manual_admin';
+    const isStripeBilling = activeBillingProvider === 'stripe';
+    const billingProviderLabel = activeBillingProvider === 'manual_admin' ? 'Concessao manual' : 'Stripe';
+    const usesInternalStripeVault = isStripeBilling;
     const personalProfile = personalProfileQuery.data;
     const personalAddress = personalProfile?.personal.address;
     const personalTargetExam = personalProfile?.personal.targetExam || currentUser?.targetExam || '';
@@ -654,7 +668,6 @@ const Profile: React.FC = () => {
 
         const frameId = window.requestAnimationFrame(() => {
             setHasSyncedBillingSnapshot(false);
-            setIsSyncingBillingSnapshot(false);
         });
 
         return () => window.cancelAnimationFrame(frameId);
@@ -1461,7 +1474,7 @@ const Profile: React.FC = () => {
     }, [executeProfileRecaptcha, isProfileRecaptchaReady, profileRecaptchaLoadError, recaptchaEnabled]);
 
     const handleCancelSubscription = async () => {
-        if (!currentUser?.id || !currentUser.subscription || cancelRequestInFlightRef.current) return;
+        if (!currentUser?.id || !activeSubscription || cancelRequestInFlightRef.current) return;
 
         if (isProfileSecurityCheckLoading) {
             addToast('A verificação de segurança ainda está carregando. Aguarde alguns segundos.', 'warning');
@@ -1501,7 +1514,10 @@ const Profile: React.FC = () => {
                 setCancelReason('');
                 setCancelDetails('');
                 setConfirmOutstandingDebtCharge(false);
-                await refreshUser();
+                await Promise.all([
+                    refreshUser(),
+                    refetchBillingSubscription(),
+                ]);
                 setOptimisticAutoRenew(null);
             } else {
                 addToast(res.message || 'Erro ao cancelar assinatura.', 'error');
@@ -1806,7 +1822,10 @@ const Profile: React.FC = () => {
                             : 'Renovação automática desativada. A assinatura sera encerrada ao fim do período atual.'),
                     'success'
                 );
-                await refreshUser();
+                await Promise.all([
+                    refreshUser(),
+                    refetchBillingSubscription(),
+                ]);
             } else {
                 addToast(res.message || 'Erro ao atualizar renovação.', 'error');
                 setOptimisticAutoRenew(null);
@@ -1853,7 +1872,7 @@ const Profile: React.FC = () => {
         }
     }, [currentUser?.id, queryClient, replaceNotifications]);
 
-    const syncStripeSubscriptionState = React.useCallback(async (options?: { force?: boolean; showLoader?: boolean }) => {
+    const syncStripeSubscriptionState = React.useCallback(async (options?: { force?: boolean }) => {
         if (!currentUser?.id || !isStripeBilling || !hasActiveSubscription) {
             setHasSyncedBillingSnapshot(true);
             return;
@@ -1871,10 +1890,6 @@ const Profile: React.FC = () => {
 
         billingSyncRequestInFlightRef.current = true;
         lastBillingSyncAtRef.current = now;
-        if (options?.showLoader) {
-            setIsSyncingBillingSnapshot(true);
-        }
-
         try {
             const response = await subscriptionsService.syncCurrentStripeState();
             if (response?.materialized_invoice) {
@@ -1882,15 +1897,17 @@ const Profile: React.FC = () => {
                 void fetchUserTransactions();
                 void refreshNotificationsAfterBillingSync();
             }
-            await refreshUser();
+            await Promise.all([
+                refreshUser(),
+                refetchBillingSubscription(),
+            ]);
         } catch (syncError) {
             clientLog.warn('Failed to sync Stripe subscription state', syncError);
         } finally {
             billingSyncRequestInFlightRef.current = false;
             setHasSyncedBillingSnapshot(true);
-            setIsSyncingBillingSnapshot(false);
         }
-    }, [addToast, currentUser?.id, fetchUserTransactions, hasActiveSubscription, isStripeBilling, refreshNotificationsAfterBillingSync, refreshUser]);
+    }, [addToast, currentUser?.id, fetchUserTransactions, hasActiveSubscription, isStripeBilling, refetchBillingSubscription, refreshNotificationsAfterBillingSync, refreshUser]);
 
     const formatTransactionAmount = (amount: number | string) => {
         const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
@@ -2021,14 +2038,13 @@ const Profile: React.FC = () => {
             .replace(/\s*-\s*Anual$/i, '')
             .trim();
 
-    const activeSubscription = currentUser?.subscription || null;
     const serverAutoRenewState = activeSubscription
         ? (typeof activeSubscription.auto_renew === 'boolean'
             ? activeSubscription.auto_renew
             : !Boolean(activeSubscription.cancel_at_period_end))
         : false;
     const resolvedAutoRenew = optimisticAutoRenew ?? serverAutoRenewState;
-    const subscriptionPlanName = stripPlanCycleSuffix(currentUser?.planDisplayName || activeSubscription?.plan?.name || effectivePlanDisplayName) || 'Plano Gratuito';
+    const subscriptionPlanName = stripPlanCycleSuffix(activeSubscription?.plan?.name || currentUser?.planDisplayName || effectivePlanDisplayName) || 'Plano Gratuito';
     const subscriptionTimeline = resolveProfileSubscriptionTimeline({
         billing: currentUser?.billing || null,
         subscription: activeSubscription || null,
@@ -2187,8 +2203,9 @@ const Profile: React.FC = () => {
             ? 'Cobrança em dia'
             : 'Sem cobrança ativa';
     // A aba de assinatura não deve ficar bloqueada por uma consulta remota da Stripe.
-    // O snapshot local aparece primeiro e a sincronizacao ajusta dados em background.
-    const shouldShowBillingSyncGate = false;
+    // O snapshot local autoritativo carrega antes da renderizacao; a consulta
+    // remota da Stripe continua ocorrendo em background quando aplicavel.
+    const shouldShowBillingSyncGate = activeTab === 'billing' && billingSubscriptionQuery.isLoading;
 
     React.useEffect(() => {
         const frameId = window.requestAnimationFrame(() => {
@@ -2292,7 +2309,10 @@ const Profile: React.FC = () => {
         try {
             const res: ProfileServiceActionResponse = await planService.cancelRefundRequest();
             addToast(res.message || 'Solicitação cancelada com sucesso.', 'success');
-            await refreshUser();
+            await Promise.all([
+                refreshUser(),
+                refetchBillingSubscription(),
+            ]);
             await fetchUserTransactions();
         } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao cancelar solicitação.'), 'error');
@@ -2300,6 +2320,39 @@ const Profile: React.FC = () => {
     };
 
     const renderBillingTab = () => {
+        if (billingSubscriptionQuery.isError) {
+            return (
+                <div className="space-y-5">
+                    <section className={`${PLATFORM_SURFACE_CARD_CLASS} px-5 py-8 md:px-6`}>
+                        <div className="flex flex-col items-center justify-center gap-4 py-10 text-center">
+                            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-100 bg-rose-50 text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+                                <AlertTriangle size={22} />
+                            </span>
+                            <div className="max-w-md space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                                    Assinatura
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">
+                                    Não foi possível carregar sua assinatura
+                                </h2>
+                                <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+                                    Os valores e a vigência não serão estimados. Tente novamente para consultar os dados financeiros oficiais.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => void refetchBillingSubscription()}
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-[9px] font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
+                            >
+                                <RotateCcw size={14} />
+                                Tentar novamente
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            );
+        }
+
         if (shouldShowBillingSyncGate) {
             return (
                 <div className="space-y-5">
@@ -2313,12 +2366,10 @@ const Profile: React.FC = () => {
                                     Assinatura
                                 </p>
                                 <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">
-                                    Sincronizando cobrança
+                                    Carregando assinatura
                                 </h2>
                                 <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                                    {isSyncingBillingSnapshot
-                                        ? 'Estamos consultando a Stripe antes de exibir seu ciclo atual para evitar mostrar dados vencidos.'
-                                        : 'Preparando a sincronização do seu ciclo atual.'}
+                                    Consultando valor, vigência e renovação registrados no financeiro da plataforma.
                                 </p>
                             </div>
                         </div>
@@ -3643,7 +3694,6 @@ const Profile: React.FC = () => {
             if (activeTab === 'billing' || activeTab === 'billing-history') {
                 void syncStripeSubscriptionState({
                     force: activeTab === 'billing' && !hasSyncedBillingSnapshot,
-                    showLoader: false,
                 });
                 void fetchUserTransactions();
             }

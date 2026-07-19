@@ -11,6 +11,7 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import { clientLog } from '@services/monitoring/clientLog';
+import type { UserSubscription } from '@types';
 
 type SubscriptionApiPayload = Record<string, unknown>;
 type SubscriptionApiPayloadWithUrl = SubscriptionApiPayload & {
@@ -27,6 +28,92 @@ type CancelSubscriptionResponse = SubscriptionApiPayload & {
   debt_settlement_amount?: number;
   debt_transaction_id?: number | string | null;
 };
+
+type CurrentSubscriptionSnapshot = {
+  id: number;
+  status: UserSubscription['status'];
+  paymentProvider: 'stripe' | 'manual_admin';
+  autoRenew: boolean;
+  cancelAtPeriodEnd: boolean;
+  createdAt: string | null;
+  plan: {
+    id: number;
+    displayName: string;
+    price: number;
+    intervalUnit: 'day' | 'week' | 'month' | 'year';
+    intervalCount: number;
+    tier: number | null;
+  };
+  period: {
+    startAt: string | null;
+    endAt: string | null;
+    providerStartAt: string | null;
+    providerEndAt: string | null;
+  };
+  billing: {
+    isRecurring: boolean;
+    chargeAmount: number;
+    totalInstallments: number;
+    paidInstallments: number;
+    renewalIteration: number;
+    nextRenewal: {
+      amount: number;
+      date: string | null;
+      priceSource: string | null;
+      cycleLabel: string;
+    };
+  };
+  payment: {
+    blocking: boolean;
+    blockingReason: string | null;
+  };
+};
+
+type CurrentSubscriptionResponse = {
+  subscription: CurrentSubscriptionSnapshot | null;
+};
+
+/**
+ * Adapta o contrato financeiro canonico ao modelo de exibicao ja usado no
+ * perfil. O endpoint continua limpo e o restante da aplicacao nao recebe
+ * dados de billing pela sessao global.
+ * @since 1.0.0
+ */
+const mapCurrentSubscriptionSnapshot = (snapshot: CurrentSubscriptionSnapshot): UserSubscription => ({
+  id: Number(snapshot.id),
+  user_id: '',
+  plan_id: Number(snapshot.plan.id),
+  created_at: snapshot.createdAt,
+  status: snapshot.status,
+  auto_renew: Boolean(snapshot.autoRenew),
+  payment_provider: snapshot.paymentProvider,
+  cancel_at_period_end: Boolean(snapshot.cancelAtPeriodEnd),
+  current_period_start: snapshot.period.startAt || '',
+  current_period_end: snapshot.period.endAt || '',
+  provider_current_period_start: snapshot.period.providerStartAt,
+  provider_current_period_end: snapshot.period.providerEndAt,
+  plan: {
+    id: Number(snapshot.plan.id),
+    name: snapshot.plan.displayName,
+    description: '',
+    price: Number(snapshot.plan.price),
+    interval_count: Math.max(1, Number(snapshot.plan.intervalCount)),
+    interval_unit: snapshot.plan.intervalUnit,
+    tier: snapshot.plan.tier ?? undefined,
+    features: [],
+  },
+  is_recurring: Boolean(snapshot.billing.isRecurring),
+  total_installments: Math.max(1, Number(snapshot.billing.totalInstallments)),
+  paid_installments: Math.max(0, Number(snapshot.billing.paidInstallments)),
+  recurring_amount: Math.max(0, Number(snapshot.billing.chargeAmount)),
+  renewal_iteration: Math.max(1, Number(snapshot.billing.renewalIteration)),
+  next_renewal_amount: Math.max(0, Number(snapshot.billing.nextRenewal.amount)),
+  next_renewal_date: snapshot.billing.nextRenewal.date,
+  next_renewal_price_source: snapshot.billing.nextRenewal.priceSource,
+  next_renewal_cycle_label: snapshot.billing.nextRenewal.cycleLabel,
+  payment_blocking: Boolean(snapshot.payment.blocking),
+  payment_block_reason: snapshot.payment.blockingReason,
+});
 
 let automationHelperRequest: Promise<SubscriptionApiPayload> | null = null;
 let automationHelperCache: { payload: SubscriptionApiPayload; cachedAt: number } | null = null;
@@ -77,6 +164,22 @@ const mergeResponsePayloadWithUrl = <T extends Record<string, unknown>>(
  * @since 1.0.0
  */
 export const subscriptionsService = {
+  /**
+   * Busca a vigencia e os valores da assinatura do usuario autenticado.
+   * @since 1.0.0
+   */
+  async getCurrentBillingSubscription(): Promise<UserSubscription | null> {
+    const response = await apiClient.get<CurrentSubscriptionResponse>(ENDPOINTS.subscriptions.current);
+    assertApiSuccess(response, 'Nao foi possivel carregar sua assinatura.');
+
+    const payload = readApiData<CurrentSubscriptionResponse>(response, { subscription: null });
+    if (!payload || typeof payload !== 'object' || !('subscription' in payload)) {
+      throw new Error('O servidor retornou um contrato de assinatura invalido.');
+    }
+
+    return payload.subscription ? mapCurrentSubscriptionSnapshot(payload.subscription) : null;
+  },
+
   /**
    * Busca os dados de automacao financeira exibidos no painel admin.
    * @since 1.0.0

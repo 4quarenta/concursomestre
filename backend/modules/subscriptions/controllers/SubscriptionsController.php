@@ -30,6 +30,11 @@ class SubscriptionsController
         return $this->service->updateRenewal($userId, $data);
     }
 
+    public function getCurrentUserBillingSnapshot(string $userId): array
+    {
+        return $this->service->getCurrentUserBillingSnapshot($userId);
+    }
+
     public function createStripeCheckoutSession(string $userId, array $data): array
     {
         return $this->service->createStripeCheckoutSession($userId, $data);
