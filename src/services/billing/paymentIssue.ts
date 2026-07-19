@@ -131,8 +131,25 @@ export const resolveUserPaymentIssue = (user?: UserProfile | null): ResolvedPaym
 export const resolvePaymentStatusIssue = (status?: PaymentStatus | null): ResolvedPaymentIssue | null => {
   if (!status) return null;
 
+  if (status.actionRequired === 'authentication_required') {
+    return {
+      ...PAST_DUE_PAYMENT_ISSUE,
+      code: 'payment_authentication_required',
+      actionLabel: 'Autenticar pagamento',
+      actionTarget: status.recoveryUrl || status.invoice?.hostedInvoiceUrl || PAST_DUE_PAYMENT_ISSUE.actionTarget,
+      message: 'A cobrança precisa da sua autenticação. Continue no ambiente seguro da Stripe para concluir o pagamento.',
+    };
+  }
+
   if (status.subscriptionStatus === 'past_due' || status.actionRequired === 'payment_failed') {
-    return PAST_DUE_PAYMENT_ISSUE;
+    const amountRemaining = Number(status.invoice?.amountRemaining || 0);
+    return {
+      ...PAST_DUE_PAYMENT_ISSUE,
+      actionTarget: status.recoveryUrl || status.invoice?.hostedInvoiceUrl || PAST_DUE_PAYMENT_ISSUE.actionTarget,
+      message: amountRemaining > 0
+        ? `Existe uma fatura de ${amountRemaining.toLocaleString('pt-BR', { style: 'currency', currency: status.invoice?.currency || 'BRL' })} em aberto. Conclua o pagamento no ambiente seguro da Stripe para recuperar o acesso premium.`
+        : PAST_DUE_PAYMENT_ISSUE.message,
+    };
   }
 
   if (
@@ -148,7 +165,7 @@ export const resolvePaymentStatusIssue = (status?: PaymentStatus | null): Resolv
     return EXPIRED_CARD_PAYMENT_ISSUE;
   }
 
-  if (status.actionRequired === 'add_payment_method' || status.actionRequired === 'authentication_required') {
+  if (status.actionRequired === 'add_payment_method') {
     return DEFAULT_PAYMENT_ISSUE;
   }
 

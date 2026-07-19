@@ -58,6 +58,8 @@ import {
 } from '@services/api';
 import { readerService } from '@services/materials';
 import { cardsService, formatMaskedCardLabelAscii, type SavedCard } from '@services/billing';
+import { resolvePaymentStatusIssue } from '@services/billing/paymentIssue';
+import { paymentStatusService } from '@services/billing/paymentStatus';
 import { marketplaceService } from '@services/marketplace';
 import { profileService, type ReferralStats } from '@services/profile';
 import {
@@ -606,6 +608,15 @@ const Profile: React.FC = () => {
         retry: 1,
         refetchOnWindowFocus: false,
     });
+    const billingPaymentStatusQuery = useQuery({
+        queryKey: ['profile', 'billing-payment-status', currentUserKey],
+        queryFn: () => paymentStatusService.getCurrentUserStatus(),
+        enabled: Boolean(currentUserKey) && isBillingSection,
+        staleTime: 60_000,
+        retry: 1,
+        refetchOnWindowFocus: false,
+    });
+    const billingPaymentIssue = resolvePaymentStatusIssue(billingPaymentStatusQuery.data ?? null);
     const refetchBillingSubscription = billingSubscriptionQuery.refetch;
     const activeSubscription = isBillingSection
         ? (billingSubscriptionQuery.data ?? null)
@@ -1097,7 +1108,10 @@ const Profile: React.FC = () => {
         try {
             const res = await cardsService.removeSavedCard(cardId);
             addToast(res.message || 'Cartão removido com sucesso!', 'success');
-            fetchUserCards();
+            await Promise.all([
+                fetchUserCards(),
+                billingPaymentStatusQuery.refetch(),
+            ]);
         } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao remover cartão.'), 'error');
         }
@@ -1107,7 +1121,10 @@ const Profile: React.FC = () => {
         try {
             const res = await cardsService.setDefaultSavedCard(cardId);
             addToast(res.message || 'Cartão padrão atualizado!', 'success');
-            fetchUserCards();
+            await Promise.all([
+                fetchUserCards(),
+                billingPaymentStatusQuery.refetch(),
+            ]);
         } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao definir cartão padrão.'), 'error');
         }
@@ -1161,7 +1178,11 @@ const Profile: React.FC = () => {
             addToast(res.message || 'Cartão salvo com sucesso na Stripe!', 'success');
             setStripeSetupClientSecret(null);
             setIsAddingCard(false);
-            await fetchUserCards();
+            await Promise.all([
+                fetchUserCards(),
+                billingPaymentStatusQuery.refetch(),
+                refetchBillingSubscription(),
+            ]);
         } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao salvar o cartão Stripe.'), 'error');
         }
@@ -1172,6 +1193,29 @@ const Profile: React.FC = () => {
         window.setTimeout(() => {
             document.getElementById('saved-cards-personal-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 120);
+    };
+
+    const handleResolveBillingPaymentIssue = async () => {
+        const actionTarget = billingPaymentIssue?.actionTarget || '';
+        if (/^https:\/\//i.test(actionTarget)) {
+            window.location.assign(actionTarget);
+            return;
+        }
+
+        if (billingPaymentIssue?.code === 'payment_past_due' || billingPaymentIssue?.code === 'payment_authentication_required') {
+            try {
+                const portal = await subscriptionsService.createStripePortalSession();
+                if (portal.url && /^https:\/\//i.test(portal.url)) {
+                    window.location.assign(portal.url);
+                    return;
+                }
+            } catch (error: unknown) {
+                addToast(readApiErrorMessage(error, 'Não foi possível abrir a regularização da fatura.'), 'error');
+                return;
+            }
+        }
+
+        openSavedCardsManager();
     };
 
     const prepareTestimonialModal = React.useCallback(() => {
@@ -2089,6 +2133,11 @@ const Profile: React.FC = () => {
         progressPercent: subscriptionCycleProgress,
         nextChargeAt: subscriptionNextChargeAt,
     } = subscriptionTimeline;
+    const hasReliableSubscriptionTimeline = Boolean(
+        subscriptionStartDate
+        && subscriptionEndDate
+        && subscriptionTotalCycleDays > 0,
+    );
     const hasPendingRefundRequest = userTransactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested');
     const installmentCount = Math.max(1, Number(activeSubscription?.total_installments || 1));
     const paidInstallments = Math.max(0, Number(activeSubscription?.paid_installments || 0));
@@ -2333,26 +2382,26 @@ const Profile: React.FC = () => {
 
         return (
         <div className="space-y-5">
-            {currentUser?.paymentIssue && (
-                <div className={`rounded-[1.5rem] border px-4 py-4 ${currentUser.paymentIssue.type === 'expiring_card' ? 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10' : 'border-rose-200 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10'}`}>
+            {billingPaymentIssue && (
+                <div className={`rounded-[1.5rem] border px-4 py-4 ${billingPaymentIssue.type === 'expiring_card' ? 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10' : 'border-rose-200 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10'}`}>
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div className="flex items-start gap-3">
-                            <div className={`mt-0.5 rounded-2xl p-2.5 text-white shadow-lg ${currentUser.paymentIssue.type === 'expiring_card' ? 'bg-amber-500 shadow-amber-500/20' : 'bg-rose-500 shadow-rose-500/20'}`}>
+                            <div className={`mt-0.5 rounded-2xl p-2.5 text-white shadow-lg ${billingPaymentIssue.type === 'expiring_card' ? 'bg-amber-500 shadow-amber-500/20' : 'bg-rose-500 shadow-rose-500/20'}`}>
                                 <ShieldAlert size={16} />
                             </div>
                             <div className="space-y-1">
-                                <p className={`text-[9px] font-black uppercase tracking-[0.18em] ${currentUser.paymentIssue.type === 'expiring_card' ? 'text-amber-700 dark:text-amber-300' : 'text-rose-600 dark:text-rose-300'}`}>Atenção no pagamento</p>
+                                <p className={`text-[9px] font-black uppercase tracking-[0.18em] ${billingPaymentIssue.type === 'expiring_card' ? 'text-amber-700 dark:text-amber-300' : 'text-rose-600 dark:text-rose-300'}`}>Atenção no pagamento</p>
                                 <p className="text-xs font-semibold leading-5 text-slate-700 dark:text-slate-200">
-                                    {currentUser.paymentIssue.message || 'Atualize sua forma de pagamento para evitar interrupções no acesso.'}
+                                    {billingPaymentIssue.message || 'Atualize sua forma de pagamento para evitar interrupções no acesso.'}
                                 </p>
                             </div>
                         </div>
                         <button
                             type="button"
-                            onClick={openSavedCardsManager}
+                            onClick={() => void handleResolveBillingPaymentIssue()}
                             className="h-10 rounded-xl bg-slate-900 px-4 text-[9px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-slate-800 dark:bg-rose-500 dark:text-slate-950"
                         >
-                            Resolver
+                            {billingPaymentIssue.actionLabel || 'Resolver'}
                         </button>
                     </div>
                 </div>
@@ -2425,10 +2474,14 @@ const Profile: React.FC = () => {
                         <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Ciclo / vigencia</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
-                                {hasActiveSubscription ? formatDateTimeBR(subscriptionEndDate) : 'Indeterminado'}
+                                {hasActiveSubscription
+                                    ? (hasReliableSubscriptionTimeline ? formatDateTimeBR(subscriptionEndDate) : 'Em sincronização')
+                                    : 'Indeterminado'}
                             </p>
                             <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                                {hasActiveSubscription ? `${subscriptionRemainingDays} dias restantes no ciclo atual.` : 'Sem ciclo de cobrança em andamento.'}
+                                {hasActiveSubscription
+                                    ? (hasReliableSubscriptionTimeline ? `${subscriptionRemainingDays} dias restantes no ciclo atual.` : 'A vigência está sendo sincronizada com a Stripe.')
+                                    : 'Sem ciclo de cobrança em andamento.'}
                             </p>
                         </div>
 
@@ -2443,13 +2496,13 @@ const Profile: React.FC = () => {
                         </div>
                     </div>
 
-                    {!showFreeInactiveSubscriptionState && activeSubscription && (
+                    {!showFreeInactiveSubscriptionState && activeSubscription && hasReliableSubscriptionTimeline && (
                         <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40 md:px-5 md:py-5">
                             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                                 <div className="space-y-2">
                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Progresso do ciclo</p>
                                     <p className="text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
-                                        {subscriptionUsedDays} de {subscriptionTotalCycleDays || 30} dias utilizados
+                                        {subscriptionUsedDays} de {subscriptionTotalCycleDays} dias utilizados
                                     </p>
                                     <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                         Um resumo rapido do ciclo atual.
@@ -2477,6 +2530,12 @@ const Profile: React.FC = () => {
                                     <span>Fim: {formatDateTimeBR(subscriptionEndDate)}</span>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {!showFreeInactiveSubscriptionState && activeSubscription && !hasReliableSubscriptionTimeline && (
+                        <div className="border-t border-slate-100 px-5 py-4 text-sm font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400 md:px-6">
+                            A vigência ainda não foi confirmada pelo provedor. Nenhum prazo estimado será exibido até a sincronização terminar.
                         </div>
                     )}
                 </div>
@@ -2939,6 +2998,7 @@ const Profile: React.FC = () => {
                             })}
                         </div>
                     )}
+
                 </section>
             </div>
         );

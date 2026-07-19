@@ -220,6 +220,15 @@ class UsersCardsService
                         'default_payment_method' => (string) $card['stripe_payment_method_id'],
                     ],
                 ]);
+
+                // A escolha explicita do usuario tambem precisa prevalecer na
+                // assinatura. A Stripe da prioridade ao default da assinatura
+                // sobre o default global do customer ao cobrar uma invoice.
+                $this->assignPaymentMethodToActiveStripeSubscriptions(
+                    $targetUserId,
+                    (string) $card['stripe_payment_method_id'],
+                    $stripe
+                );
             }
 
             $this->repository->clearDefaultCards($targetUserId);
@@ -294,7 +303,6 @@ class UsersCardsService
 
         $customerData = getStripeCustomerForUser($this->db, $authenticatedUserId);
         $stripe = $customerData['stripe'];
-        $hadSavedCardsBeforeSync = $this->repository->countUserCards($authenticatedUserId) > 0;
         $paymentMethod = $stripe->paymentMethods->retrieve($paymentMethodId, []);
 
         if (($paymentMethod->customer ?? null) !== $customerData['customer_id']) {
@@ -307,7 +315,7 @@ class UsersCardsService
 
         $customer = $stripe->customers->retrieve($customerData['customer_id'], []);
         $defaultPaymentMethodId = (string) ($customer->invoice_settings->default_payment_method ?? '');
-        $shouldPromoteForFutureInvoices = !$hadSavedCardsBeforeSync && $this->hasActiveStripeSubscription($authenticatedUserId);
+        $shouldPromoteForFutureInvoices = $this->hasActiveStripeSubscription($authenticatedUserId);
         $isDefault = $defaultPaymentMethodId === '' || $defaultPaymentMethodId === $paymentMethodId || $shouldPromoteForFutureInvoices;
 
         if ($isDefault) {

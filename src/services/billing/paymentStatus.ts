@@ -15,10 +15,22 @@ export type PaymentStatus = {
   requiresPaymentMethod: boolean;
   hasValidPaymentMethod: boolean;
   actionRequired: PaymentActionRequired;
+  recoveryUrl?: string | null;
+  invoice?: {
+    status: string;
+    currency: string;
+    amountDue: number;
+    amountRemaining: number;
+    hostedInvoiceUrl: string | null;
+    nextPaymentAttemptAt: string | null;
+    dueAt: string | null;
+    requiresAuthentication: boolean;
+  } | null;
 };
 
 const PAYMENT_STATUS_CACHE_KEY = buildRequestCacheKey('billing:payment-status', { scope: 'self' });
 const PAYMENT_STATUS_STALE_TIME_MS = 60_000;
+export const PAYMENT_STATUS_INVALIDATED_EVENT = 'billing:payment-status-invalidated';
 
 export const shouldLoadPaymentStatusForPath = (pathname: string): boolean => (
   pathname === '/profile/billing'
@@ -58,10 +70,17 @@ export const paymentStatusService = {
         requiresPaymentMethod: data.requiresPaymentMethod,
         hasValidPaymentMethod: data.hasValidPaymentMethod,
         actionRequired: data.actionRequired ?? null,
+        recoveryUrl: typeof data.recoveryUrl === 'string' ? data.recoveryUrl : null,
+        invoice: data.invoice && typeof data.invoice === 'object'
+          ? data.invoice as PaymentStatus['invoice']
+          : null,
       };
     }, PAYMENT_STATUS_STALE_TIME_MS);
   },
   invalidate(): void {
     clearRequestCoalescing('billing:payment-status');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(PAYMENT_STATUS_INVALIDATED_EVENT));
+    }
   },
 };

@@ -19,10 +19,12 @@ import { buildProfilePath } from '../app/profile/profileNavigation';
 import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPageNavigationConfig';
 import { resolvePaymentStatusIssue } from '@/services/billing/paymentIssue';
 import {
+  PAYMENT_STATUS_INVALIDATED_EVENT,
   paymentStatusService,
   shouldLoadPaymentStatusForPath,
   type PaymentStatus,
 } from '@/services/billing/paymentStatus';
+import { subscriptionsService } from '@/services/subscriptions';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import type { PlanBenefitKey } from '@types';
 
@@ -273,13 +275,20 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   const hasInMemoryAccessToken = Boolean(getAccessToken());
   const restoredLegacyHashRouteRef = React.useRef(false);
   const [showLoginBypass, setShowLoginBypass] = React.useState(false);
-  const [paymentStatus, setPaymentStatus] = React.useState<PaymentStatus | null>(null);
+  const [paymentStatusState, setPaymentStatusState] = React.useState<{
+    userId: string;
+    status: PaymentStatus | null;
+  }>({ userId: '', status: null });
+  const currentUserId = String(currentUser?.id || '');
   const canAccessAdmin = canAccessAdminPanel(currentUser);
   const isMaintenance = resolveSystemFeatureFlag(systemSettings, 'maintenanceMode', false);
   const loginRequired = resolveSystemFeatureFlag(systemSettings, 'loginRequired', false);
   const featureGate = featureGateForPath(pathname);
   const planGate = planGateForPath(pathname);
   const isBillingRoute = shouldLoadPaymentStatusForPath(pathname);
+  const paymentStatus = isBillingRoute && currentUserId !== '' && paymentStatusState.userId === currentUserId
+    ? paymentStatusState.status
+    : null;
   const isPastDueSubscription = paymentStatus?.subscriptionStatus === 'past_due';
   const allowAuthLoadingPassThrough = (
     pathname.startsWith('/auth')
@@ -304,33 +313,62 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     || pathname.startsWith('/admin')
     || pathname === '/partner-dashboard';
   const paymentIssueFixPath = paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`;
-  const paymentIssueMessage = isPastDueSubscription
-    ? 'A renovação da sua assinatura falhou. Atualize ou troque o cartão salvo para regularizar as próximas cobranças.'
-    : (paymentIssue?.message || 'Atualize seu cartão para manter o acesso e as próximas cobranças em dia.');
+  const paymentIssueMessage = paymentIssue?.message || (isPastDueSubscription
+    ? 'Existe uma cobrança pendente. Abra a fatura para concluir o pagamento no ambiente seguro da Stripe.'
+    : 'Atualize seu cartão para manter o acesso e as próximas cobranças em dia.');
   const paymentIssueActionLabel = paymentIssue?.actionLabel || 'Cadastrar cartão';
 
+  const handlePaymentIssueAction = React.useCallback(async () => {
+    const target = paymentIssueFixPath;
+    if (/^https:\/\//i.test(target)) {
+      window.location.assign(target);
+      return;
+    }
+
+    if (isPastDueSubscription || paymentIssue?.code === 'payment_past_due' || paymentIssue?.code === 'payment_authentication_required') {
+      try {
+        const portal = await subscriptionsService.createStripePortalSession();
+        if (portal.url && /^https:\/\//i.test(portal.url)) {
+          window.location.assign(portal.url);
+          return;
+        }
+      } catch {
+        // O perfil de cobranca permanece disponivel se o portal hospedado falhar.
+      }
+    }
+
+    router.push(target);
+  }, [isPastDueSubscription, paymentIssue?.code, paymentIssueFixPath, router]);
+
   React.useEffect(() => {
-    if (!currentUser || !isBillingRoute) {
-      setPaymentStatus(null);
+    if (currentUserId === '' || !isBillingRoute) {
       return;
     }
 
     const controller = new AbortController();
-    void paymentStatusService.getCurrentUserStatus(controller.signal)
-      .then((status) => {
-        if (!controller.signal.aborted) {
-          setPaymentStatus(status);
-        }
-      })
-      .catch(() => {
-        // A falha de rede não pode ser exibida como cartão ausente.
-        if (!controller.signal.aborted) {
-          setPaymentStatus(null);
-        }
-      });
+    const loadPaymentStatus = () => {
+      void paymentStatusService.getCurrentUserStatus(controller.signal)
+        .then((status) => {
+          if (!controller.signal.aborted) {
+            setPaymentStatusState({ userId: currentUserId, status });
+          }
+        })
+        .catch(() => {
+          // A falha de rede não pode ser exibida como cartão ausente.
+          if (!controller.signal.aborted) {
+            setPaymentStatusState({ userId: currentUserId, status: null });
+          }
+        });
+    };
 
-    return () => controller.abort();
-  }, [currentUser?.id, isBillingRoute]);
+    loadPaymentStatus();
+    window.addEventListener(PAYMENT_STATUS_INVALIDATED_EVENT, loadPaymentStatus);
+
+    return () => {
+      window.removeEventListener(PAYMENT_STATUS_INVALIDATED_EVENT, loadPaymentStatus);
+      controller.abort();
+    };
+  }, [currentUserId, isBillingRoute]);
 
   React.useEffect(() => {
     if (isLoading || restoredLegacyHashRouteRef.current || typeof window === 'undefined') {
@@ -430,7 +468,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
               message={paymentIssueMessage}
               blocking
               actionLabel={paymentIssueActionLabel}
-              onAction={() => router.push(paymentIssueFixPath)}
+              onAction={() => void handlePaymentIssueAction()}
             />
           </div>
         </div>
@@ -445,13 +483,13 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
               {isPastDueSubscription
-                ? 'A renovação da sua assinatura falhou e seu acesso ficou pendente. Atualize ou troque o cartão salvo para regularizar a cobrança.'
+                ? 'Existe uma cobrança pendente. Use o botão abaixo para abrir a fatura no ambiente seguro da Stripe e concluir o pagamento.'
                 : 'Sua assinatura ativa precisa de um cartão salvo para sustentar as próximas faturas da Stripe. Cadastre o cartão antes de continuar usando a plataforma.'}
             </p>
           </div>
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => router.push(paymentIssueFixPath)}
+              onClick={() => void handlePaymentIssueAction()}
               className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20"
             >
               {paymentIssueActionLabel}
@@ -518,7 +556,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
         message={paymentIssueMessage}
         blocking={Boolean(paymentIssue?.interactionLock)}
         actionLabel={paymentIssueActionLabel}
-        onAction={() => router.push(paymentIssueFixPath)}
+        onAction={() => void handlePaymentIssueAction()}
       />
     </div>
   ) : null;

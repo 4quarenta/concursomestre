@@ -57,6 +57,33 @@ try {
     currentSubscriptionSnapshotAssert($snapshot['billing']['nextRenewal']['cycleLabel'] === '2 dias', 'Snapshot nao pode converter ciclo diario em mensal.');
     currentSubscriptionSnapshotAssert($snapshot['autoRenew'] === true, 'Snapshot deve preservar renovacao automatica ativa.');
 
+    $providerAuthoritativeSnapshot = buildCurrentSubscriptionBillingSnapshot([
+        'id' => 106,
+        'plan_id' => 134,
+        'status' => 'past_due',
+        'payment_provider' => 'stripe',
+        'current_period_start' => '2026-06-01 00:00:00',
+        'current_period_end' => '2026-07-01 00:00:00',
+        'provider_current_period_start' => '2026-07-18 08:15:28',
+        'provider_current_period_end' => '2026-07-20 08:15:28',
+        'next_renewal_date' => '2026-07-01 00:00:00',
+        'plan_name' => 'Elite - Teste 2 dias',
+        'interval_unit' => 'day',
+        'interval_count' => 2,
+    ]);
+    currentSubscriptionSnapshotAssert(
+        $providerAuthoritativeSnapshot['period']['startAt'] === '2026-07-18 08:15:28',
+        'Assinatura Stripe deve priorizar o inicio do periodo informado pelo provider.'
+    );
+    currentSubscriptionSnapshotAssert(
+        $providerAuthoritativeSnapshot['period']['endAt'] === '2026-07-20 08:15:28',
+        'Assinatura Stripe deve priorizar o fim do periodo informado pelo provider.'
+    );
+    currentSubscriptionSnapshotAssert(
+        $providerAuthoritativeSnapshot['billing']['nextRenewal']['date'] === '2026-07-20 08:15:28',
+        'Renovacao Stripe deve usar o fim do periodo remoto em vez de uma data local obsoleta.'
+    );
+
     $encodedSnapshot = json_encode($snapshot, JSON_UNESCAPED_UNICODE);
     currentSubscriptionSnapshotAssert(strpos((string) $encodedSnapshot, 'provider_subscription_id') === false, 'Snapshot publico nao pode expor ID remoto da assinatura.');
     currentSubscriptionSnapshotAssert(strpos((string) $encodedSnapshot, 'provider_customer_id') === false, 'Snapshot publico nao pode expor ID remoto do cliente.');

@@ -3099,7 +3099,54 @@ class SubscriptionsService
             'latest_invoice_status' => $latestInvoiceStatus,
         ];
     }
-    public function getCurrentUserBillingSnapshot(string $userId): array { $subscription = $this->repository->findLatestManagedSubscription($userId); return ['subscription' => $subscription ? buildCurrentSubscriptionBillingSnapshot($subscription) : null]; }
+    public function getCurrentUserBillingSnapshot(string $userId): array
+    {
+        $subscription = $this->repository->findLatestManagedSubscription($userId);
+        if (!$subscription) {
+            return ['subscription' => null];
+        }
+
+        $provider = normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe');
+        $providerSubscriptionId = trim((string) (
+            $subscription['provider_subscription_id']
+            ?? $subscription['external_subscription_id']
+            ?? ''
+        ));
+        $providerStartValue = trim((string) ($subscription['provider_current_period_start'] ?? ''));
+        $providerEndValue = trim((string) ($subscription['provider_current_period_end'] ?? ''));
+        // O GET nao altera valores nem efetua cobrancas. Quando o espelho local
+        // ainda nao possui a vigencia ou esta desatualizado, consulta a fonte
+        // autoritativa apenas para montar a resposta correta ao titular.
+        if (
+            $provider === 'stripe'
+            && $providerSubscriptionId !== ''
+            && stripeIsConfigured()
+        ) {
+            try {
+                $stripe = getStripeClient();
+                $remoteSubscription = $stripe->subscriptions->retrieve($providerSubscriptionId, [
+                    'expand' => ['items.data.price', 'latest_invoice.lines.data'],
+                ]);
+                $providerPeriod = getStripeSubscriptionPeriodTimestamps($remoteSubscription);
+
+                if ((int) ($providerPeriod['start'] ?? 0) > 0) {
+                    $subscription['provider_current_period_start'] = date('Y-m-d H:i:s', (int) $providerPeriod['start']);
+                }
+                if ((int) ($providerPeriod['end'] ?? 0) > 0) {
+                    $subscription['provider_current_period_end'] = date('Y-m-d H:i:s', (int) $providerPeriod['end']);
+                }
+
+                $remoteStatus = strtolower(trim((string) ($remoteSubscription->status ?? '')));
+                if ($remoteStatus !== '') {
+                    $subscription['status'] = $remoteStatus;
+                }
+            } catch (Throwable $e) {
+                error_log('[SubscriptionsService] Falha ao consultar vigencia Stripe: ' . $e->getMessage());
+            }
+        }
+
+        return ['subscription' => buildCurrentSubscriptionBillingSnapshot($subscription)];
+    }
     /**
      * Recalcula a projeção de renovação de todas as assinaturas Stripe ativas.
      * Usado após alteração administrativa de preços de planos.

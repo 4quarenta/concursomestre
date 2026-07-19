@@ -290,31 +290,23 @@ class UsersService
                 'requiresPaymentMethod' => false,
                 'hasValidPaymentMethod' => false,
                 'actionRequired' => null,
+                'recoveryUrl' => null,
+                'invoice' => null,
             ];
         }
 
         $subscriptionStatus = strtolower(trim((string) ($subscription['status'] ?? 'inactive')));
         $provider = normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe');
         $paymentMethod = strtolower(trim((string) ($subscription['payment_method'] ?? '')));
-        $isActive = in_array($subscriptionStatus, ['active', 'trialing'], true);
+        $isManaged = in_array($subscriptionStatus, ['active', 'trialing', 'past_due'], true);
         $isManual = $provider === 'manual_admin';
         $isOffline = in_array($paymentMethod, ['pix', 'boleto', 'bank_slip'], true);
-        $isRecurringCard = $isActive
+        $isRecurringCard = $isManaged
             && !$isManual
             && !$isOffline
             && !empty($subscription['auto_renew'])
             && empty($subscription['cancel_at_period_end'])
             && !empty($subscription['is_recurring']);
-
-        if ($subscriptionStatus === 'past_due') {
-            return [
-                'subscriptionStatus' => $subscriptionStatus,
-                'billingMode' => 'recurring_card',
-                'requiresPaymentMethod' => true,
-                'hasValidPaymentMethod' => false,
-                'actionRequired' => 'payment_failed',
-            ];
-        }
 
         if (!$isRecurringCard) {
             return [
@@ -323,20 +315,94 @@ class UsersService
                 'requiresPaymentMethod' => false,
                 'hasValidPaymentMethod' => false,
                 'actionRequired' => null,
+                'recoveryUrl' => null,
+                'invoice' => null,
             ];
         }
 
         $card = $this->repository->findPreferredCardExpiry($userId);
         $hasValidCard = $this->isValidPaymentCard($card);
+        $invoice = null;
+
+        if ($provider === 'stripe' && stripeIsConfigured()) {
+            $providerSubscriptionId = trim((string) (
+                $subscription['provider_subscription_id']
+                ?? $subscription['external_subscription_id']
+                ?? ''
+            ));
+
+            if ($providerSubscriptionId !== '') {
+                try {
+                    $stripe = getStripeClient();
+                    $remoteSubscription = $stripe->subscriptions->retrieve($providerSubscriptionId, [
+                        'expand' => [
+                            'default_payment_method',
+                            'latest_invoice.default_payment_method',
+                            'latest_invoice.payment_intent',
+                        ],
+                    ]);
+                    $remoteStatus = strtolower(trim((string) ($remoteSubscription->status ?? '')));
+                    if ($remoteStatus !== '') {
+                        $subscriptionStatus = $remoteStatus;
+                    }
+
+                    $remotePaymentMethod = $remoteSubscription->default_payment_method ?? null;
+                    $latestInvoice = is_object($remoteSubscription->latest_invoice ?? null)
+                        ? $remoteSubscription->latest_invoice
+                        : null;
+                    if (!$remotePaymentMethod && $latestInvoice) {
+                        $remotePaymentMethod = $latestInvoice->default_payment_method ?? null;
+                    }
+
+                    if (!$remotePaymentMethod) {
+                        $remoteCustomerId = getStripeObjectId($remoteSubscription->customer ?? null);
+                        if ($remoteCustomerId !== '') {
+                            $remoteCustomer = $stripe->customers->retrieve($remoteCustomerId, [
+                                'expand' => ['invoice_settings.default_payment_method'],
+                            ]);
+                            $remotePaymentMethod = $remoteCustomer->invoice_settings->default_payment_method ?? null;
+                        }
+                    }
+
+                    $remotePaymentMethodId = getStripeObjectId($remotePaymentMethod);
+                    if ($remotePaymentMethodId !== '') {
+                        $resolvedPaymentMethod = is_object($remotePaymentMethod) && isset($remotePaymentMethod->card)
+                            ? $remotePaymentMethod
+                            : $stripe->paymentMethods->retrieve($remotePaymentMethodId, []);
+                        $hasValidCard = $this->isValidPaymentCard([
+                            'exp_month' => (int) ($resolvedPaymentMethod->card->exp_month ?? 0),
+                            'exp_year' => (int) ($resolvedPaymentMethod->card->exp_year ?? 0),
+                        ]);
+                    }
+
+                    $invoice = buildStripeOpenInvoiceRecoverySnapshot($latestInvoice);
+                } catch (Throwable $e) {
+                    // Uma indisponibilidade do provider nao pode virar um falso
+                    // diagnostico de cartao ausente. Mantemos o espelho local.
+                    error_log('[UsersService] Falha ao consultar status financeiro Stripe: ' . $e->getMessage());
+                }
+            }
+        }
+
+        $actionRequired = null;
+        if ($invoice !== null) {
+            $actionRequired = !empty($invoice['requiresAuthentication'])
+                ? 'authentication_required'
+                : 'payment_failed';
+        } elseif (!$hasValidCard) {
+            $actionRequired = $card ? 'replace_expired_payment_method' : 'add_payment_method';
+        } elseif ($subscriptionStatus === 'past_due') {
+            $actionRequired = 'payment_failed';
+        }
 
         return [
             'subscriptionStatus' => $subscriptionStatus,
             'billingMode' => 'recurring_card',
             'requiresPaymentMethod' => true,
             'hasValidPaymentMethod' => $hasValidCard,
-            'actionRequired' => $hasValidCard
-                ? null
-                : ($card ? 'replace_expired_payment_method' : 'add_payment_method'),
+            'actionRequired' => $actionRequired,
+            'recoveryUrl' => $invoice['hostedInvoiceUrl'] ?? null,
+            'invoice' => $invoice,
         ];
     }
 

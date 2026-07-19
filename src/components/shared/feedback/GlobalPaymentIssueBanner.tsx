@@ -51,7 +51,7 @@ const GlobalPaymentIssueBanner: React.FC<GlobalPaymentIssueBannerProps> = ({
             </p>
             {blocking ? (
               <p className="mt-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                Para continuar usando a plataforma, cadastre um cartão válido para as próximas faturas.
+                Use a ação ao lado para concluir a regularização no ambiente seguro de pagamento.
               </p>
             ) : null}
           </div>

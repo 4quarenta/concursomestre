@@ -102,4 +102,43 @@ describe('resolveUserPaymentIssue', () => {
 
     expect(resolvePaymentStatusIssue(null)).toBeNull();
   });
+
+  it('separates a valid saved card from an open invoice and links the hosted recovery page', () => {
+    const issue = resolvePaymentStatusIssue({
+      subscriptionStatus: 'past_due',
+      billingMode: 'recurring_card',
+      requiresPaymentMethod: true,
+      hasValidPaymentMethod: true,
+      actionRequired: 'payment_failed',
+      recoveryUrl: 'https://invoice.stripe.com/i/test',
+      invoice: {
+        status: 'open',
+        currency: 'BRL',
+        amountDue: 54,
+        amountRemaining: 54,
+        hostedInvoiceUrl: 'https://invoice.stripe.com/i/test',
+        nextPaymentAttemptAt: null,
+        dueAt: null,
+        requiresAuthentication: false,
+      },
+    });
+
+    expect(issue?.actionTarget).toBe('https://invoice.stripe.com/i/test');
+    expect(issue?.actionLabel).toBe('Regularizar pagamento');
+    expect(issue?.message).toContain('R$\u00a054,00');
+  });
+
+  it('uses authentication copy when the open invoice requires 3DS', () => {
+    const issue = resolvePaymentStatusIssue({
+      subscriptionStatus: 'past_due',
+      billingMode: 'recurring_card',
+      requiresPaymentMethod: true,
+      hasValidPaymentMethod: true,
+      actionRequired: 'authentication_required',
+      recoveryUrl: 'https://invoice.stripe.com/i/auth',
+    });
+
+    expect(issue?.code).toBe('payment_authentication_required');
+    expect(issue?.actionLabel).toBe('Autenticar pagamento');
+  });
 });

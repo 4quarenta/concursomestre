@@ -1715,12 +1715,15 @@ function buildCurrentSubscriptionBillingSnapshot(array $subscription): array
 
     $providerPeriodStart = normalizeCurrentSubscriptionSnapshotDate($subscription['provider_current_period_start'] ?? null);
     $providerPeriodEnd = normalizeCurrentSubscriptionSnapshotDate($subscription['provider_current_period_end'] ?? null);
-    $periodStart = normalizeCurrentSubscriptionSnapshotDate($subscription['current_period_start'] ?? null)
+    $periodStart = ($provider === 'stripe' ? $providerPeriodStart : null)
+        ?? normalizeCurrentSubscriptionSnapshotDate($subscription['current_period_start'] ?? null)
         ?? $providerPeriodStart
         ?? normalizeCurrentSubscriptionSnapshotDate($subscription['created_at'] ?? null);
-    $periodEnd = normalizeCurrentSubscriptionSnapshotDate($subscription['current_period_end'] ?? null)
+    $periodEnd = ($provider === 'stripe' ? $providerPeriodEnd : null)
+        ?? normalizeCurrentSubscriptionSnapshotDate($subscription['current_period_end'] ?? null)
         ?? $providerPeriodEnd;
-    $nextRenewalDate = normalizeCurrentSubscriptionSnapshotDate($subscription['next_renewal_date'] ?? null)
+    $nextRenewalDate = ($provider === 'stripe' ? $providerPeriodEnd : null)
+        ?? normalizeCurrentSubscriptionSnapshotDate($subscription['next_renewal_date'] ?? null)
         ?? $providerPeriodEnd
         ?? $periodEnd;
 
@@ -3042,6 +3045,51 @@ function getStripeSubscriptionPeriodTimestamps($stripeSubscription): array
     return [
         'start' => $startTimestamp,
         'end' => $endTimestamp,
+    ];
+}
+
+/**
+ * Monta o contrato minimo de recuperacao de uma invoice aberta.
+ * Nao expoe IDs remotos nem dados do metodo de pagamento.
+ *
+ * @since 1.0.0
+ */
+function buildStripeOpenInvoiceRecoverySnapshot($invoice): ?array
+{
+    if (!is_object($invoice)) {
+        return null;
+    }
+
+    $status = strtolower(trim((string) ($invoice->status ?? '')));
+    $amountRemainingCents = max(0, (int) ($invoice->amount_remaining ?? 0));
+    if (!in_array($status, ['open', 'past_due'], true) || $amountRemainingCents <= 0) {
+        return null;
+    }
+
+    $hostedInvoiceUrl = trim((string) ($invoice->hosted_invoice_url ?? ''));
+    if (
+        $hostedInvoiceUrl === ''
+        || filter_var($hostedInvoiceUrl, FILTER_VALIDATE_URL) === false
+        || strtolower((string) parse_url($hostedInvoiceUrl, PHP_URL_SCHEME)) !== 'https'
+    ) {
+        $hostedInvoiceUrl = null;
+    }
+
+    $formatTimestamp = static function ($value): ?string {
+        $timestamp = is_numeric($value) ? (int) $value : 0;
+        return $timestamp > 0 ? date(DATE_ATOM, $timestamp) : null;
+    };
+    $paymentIntentStatus = strtolower(trim((string) ($invoice->payment_intent->status ?? '')));
+
+    return [
+        'status' => $status,
+        'currency' => strtoupper(trim((string) ($invoice->currency ?? 'BRL'))),
+        'amountDue' => round(max(0, (int) ($invoice->amount_due ?? 0)) / 100, 2),
+        'amountRemaining' => round($amountRemainingCents / 100, 2),
+        'hostedInvoiceUrl' => $hostedInvoiceUrl,
+        'nextPaymentAttemptAt' => $formatTimestamp($invoice->next_payment_attempt ?? null),
+        'dueAt' => $formatTimestamp($invoice->due_date ?? null),
+        'requiresAuthentication' => in_array($paymentIntentStatus, ['requires_action', 'requires_confirmation'], true),
     ];
 }
 

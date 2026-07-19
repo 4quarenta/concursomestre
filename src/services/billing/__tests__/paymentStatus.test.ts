@@ -39,6 +39,8 @@ describe('paymentStatusService', () => {
       requiresPaymentMethod: true,
       hasValidPaymentMethod: true,
       actionRequired: null,
+      recoveryUrl: null,
+      invoice: null,
     };
     mocks.get.mockResolvedValue({ success: true, data: payload });
     mocks.readApiData.mockReturnValue(payload);
@@ -46,6 +48,31 @@ describe('paymentStatusService', () => {
     await expect(paymentStatusService.getCurrentUserStatus()).resolves.toEqual(payload);
     expect(mocks.get).toHaveBeenCalledWith('v2/users/me/billing/payment-status.php', { signal: undefined });
     expect(shouldShowPaymentWarning(payload)).toBe(false);
+  });
+
+  it('preserves the safe invoice recovery contract', async () => {
+    const payload = {
+      subscriptionStatus: 'past_due',
+      billingMode: 'recurring_card',
+      requiresPaymentMethod: true,
+      hasValidPaymentMethod: true,
+      actionRequired: 'payment_failed' as const,
+      recoveryUrl: 'https://invoice.stripe.com/i/test',
+      invoice: {
+        status: 'open',
+        currency: 'BRL',
+        amountDue: 54,
+        amountRemaining: 54,
+        hostedInvoiceUrl: 'https://invoice.stripe.com/i/test',
+        nextPaymentAttemptAt: null,
+        dueAt: null,
+        requiresAuthentication: false,
+      },
+    };
+    mocks.get.mockResolvedValue({ success: true, data: payload });
+    mocks.readApiData.mockReturnValue(payload);
+
+    await expect(paymentStatusService.getCurrentUserStatus()).resolves.toEqual(payload);
   });
 
   it('does not treat loading, errors or incomplete contracts as no card', async () => {
