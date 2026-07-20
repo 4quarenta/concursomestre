@@ -12,7 +12,6 @@
 */
 
 import React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -60,6 +59,7 @@ import RichTextEditor from '@/components/shared/ui/RichTextEditor';
 import UpgradeModal from '@/components/shared/overlays/UpgradeModal';
 import CommentsSection from '@/components/shared/feedback/CommentsSection';
 import { getAssetUrl } from '@services/api';
+import UserAvatar from '@/components/shared/ui/UserAvatar';
 import {
   PLATFORM_PAGE_DESCRIPTION_CLASS,
   PLATFORM_PAGE_TITLE_CLASS,
@@ -1356,9 +1356,7 @@ const ReaderColorButton: React.FC<{
 
 const getLegalCommentAvatarUrl = (comment: LegalUserComment) => {
   const rawAvatar = String(comment.userAvatar || comment.userPhotoUrl || comment.photoUrl || comment.avatarUrl || '').trim();
-  return getAssetUrl(rawAvatar)
-    || rawAvatar
-    || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.userName || 'Aluno')}&background=615fff&color=fff&size=64`;
+  return getAssetUrl(rawAvatar) || rawAvatar;
 };
 
 const getLegalCommentParentId = (comment: LegalUserComment): string => String(
@@ -1659,13 +1657,12 @@ const LegalCommentsPanel: React.FC<{
       >
         <div className="flex items-start justify-between gap-3 text-[10px]">
           <div className="flex min-w-0 items-center gap-2">
-            <Image
+            <UserAvatar
+              name={comment.userName || 'Aluno'}
               src={getLegalCommentAvatarUrl(comment)}
-              alt={comment.userName || 'Aluno'}
-              width={28}
-              height={28}
-              unoptimized
-              className="h-7 w-7 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-700"
+              alt={`Foto de ${comment.userName || 'Aluno'}`}
+              className="h-7 w-7 shrink-0 rounded-full border border-slate-200 bg-indigo-600 text-[9px] font-black text-white dark:border-slate-700"
+              fallbackClassName="leading-none"
             />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">

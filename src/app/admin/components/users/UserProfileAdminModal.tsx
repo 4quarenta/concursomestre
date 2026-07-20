@@ -11,10 +11,10 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowUpCircle, Clock, Crown, DollarSign, Loader2, Mail, MessageCircle, MessageSquare, PlusCircle, RefreshCcw, Shield, User, X } from 'lucide-react';
+import { ArrowUpCircle, Clock, Crown, DollarSign, Loader2, Mail, MessageCircle, MessageSquare, PlusCircle, RefreshCcw, Shield, X } from 'lucide-react';
 import { getAssetUrl } from '@services/api';
+import UserAvatar from '@/components/shared/ui/UserAvatar';
 import type { AdminUserActionResult, AdminUserDetailsPayload } from '@services/admin/adminService';
 import { getSupportReasonLabel } from '@services/support/supportReasonLabels';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
@@ -603,18 +603,13 @@ const UserProfileAdminModal = ({
         <div className={`${ADMIN_MODAL_PANEL_CLASS} flex flex-1 flex-col overflow-hidden`}>
           <div className={`${ADMIN_MODAL_HEADER_CLASS} z-10`}>
             <div className="flex items-center gap-6">
-              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-sm bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-                {detailedUser?.profile?.photo_url ? (
-                  <Image
-                    src={getAssetUrl(detailedUser.profile.photo_url)}
-                    alt="Perfil"
-                    width={80}
-                    height={80}
-                    unoptimized
-                    className="h-full w-full object-cover"
-                  />
-                ) : <User size={40} />}
-              </div>
+              <UserAvatar
+                name={detailedUser?.profile?.name}
+                src={getAssetUrl(detailedUser?.profile?.photo_url || '')}
+                alt="Foto de perfil"
+                className="h-20 w-20 shrink-0 rounded-sm bg-sky-50 text-xl font-black text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                fallbackClassName="leading-none"
+              />
               <div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">{detailedUser?.profile?.name || 'Carregando...'}</h3>
                 <div className="mt-3 flex flex-wrap items-center gap-2">

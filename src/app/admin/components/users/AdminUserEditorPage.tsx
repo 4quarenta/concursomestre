@@ -9,11 +9,11 @@
 *
 */
 
-import Image from 'next/image';
 import React from 'react';
 import { ArrowLeft, ArrowUpCircle, Clock, Crown, DollarSign, Mail, MessageCircle, MessageSquare, PlusCircle, RefreshCcw, Save, Shield, ShoppingBag, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { getAssetUrl } from '@services/api';
+import UserAvatar from '@/components/shared/ui/UserAvatar';
 import type { AdminUserDetailsPayload } from '@services/admin/adminService';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 import {
@@ -281,13 +281,13 @@ const AdminUserEditorPage = ({
               <ArrowLeft size={16} />
             </button>
             {!isNew ? (
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-                {profile.photo_url ? (
-                  <Image src={getAssetUrl(profile.photo_url)} alt="Perfil" width={48} height={48} unoptimized className="h-full w-full object-cover" />
-                ) : (
-                  <UserRound size={24} />
-                )}
-              </div>
+              <UserAvatar
+                name={profile.name || form.name}
+                src={getAssetUrl(profile.photo_url || '')}
+                alt="Foto de perfil"
+                className="h-12 w-12 shrink-0 rounded-sm bg-sky-50 text-sm font-black text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                fallbackClassName="leading-none"
+              />
             ) : null}
             <div>
               <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{title}</h1>
