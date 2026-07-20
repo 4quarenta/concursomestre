@@ -1785,6 +1785,50 @@ function buildCurrentSubscriptionBillingSnapshot(array $subscription): array
 }
 
 /**
+ * Atualiza apenas a copia usada pelo snapshot com a fonte Stripe.
+ * Nao persiste dados e nao tenta cobrar nenhuma invoice.
+ *
+ * @since 1.0.0
+ */
+function hydrateCurrentSubscriptionSnapshotFromStripe(array $subscription): array
+{
+    $provider = normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe');
+    $providerSubscriptionId = trim((string) (
+        $subscription['provider_subscription_id']
+        ?? $subscription['external_subscription_id']
+        ?? ''
+    ));
+
+    if ($provider !== 'stripe' || $providerSubscriptionId === '' || !stripeIsConfigured()) {
+        return $subscription;
+    }
+
+    try {
+        $stripe = getStripeClient();
+        $remoteSubscription = $stripe->subscriptions->retrieve($providerSubscriptionId, [
+            'expand' => ['items.data.price', 'latest_invoice.lines.data'],
+        ]);
+        $providerPeriod = getStripeSubscriptionPeriodTimestamps($remoteSubscription);
+
+        if ((int) ($providerPeriod['start'] ?? 0) > 0) {
+            $subscription['provider_current_period_start'] = date('Y-m-d H:i:s', (int) $providerPeriod['start']);
+        }
+        if ((int) ($providerPeriod['end'] ?? 0) > 0) {
+            $subscription['provider_current_period_end'] = date('Y-m-d H:i:s', (int) $providerPeriod['end']);
+        }
+
+        $remoteStatus = strtolower(trim((string) ($remoteSubscription->status ?? '')));
+        if ($remoteStatus !== '') {
+            $subscription['status'] = $remoteStatus;
+        }
+    } catch (Throwable $e) {
+        error_log('[SubscriptionsBillingSupport] Falha ao consultar vigencia Stripe: ' . $e->getMessage());
+    }
+
+    return $subscription;
+}
+
+/**
  * Calcula a diferenca em dias de calendario ate a renovacao.
  *
  * A regra de lembretes deve olhar datas de calendario, nao horas exatas,
