@@ -83,6 +83,7 @@ describe('filtersService', () => {
         { id: 3, nome: 'Direito Constitucional', slug: 'direito-constitucional', materia: false, parent_id: 2 },
         { id: 4, nome: 'Controle de constitucionalidade', slug: 'controle-de-constitucionalidade', materia: false, parent_id: 3 },
       ],
+      carreiras: [{ id: 20, nome: 'Policial', slug: 'policial' }],
       anos: [2024],
     });
 
@@ -92,6 +93,9 @@ describe('filtersService', () => {
     expect(taxonomies.subjectTopics?.[0].taxonomyLevel).toBe('topico');
     expect(taxonomies.specificSubjects?.[0].name).toBe('Controle de constitucionalidade');
     expect(taxonomies.specificSubjects?.[0].rootSubjectId).toBe('2');
+    expect(taxonomies.careers).toEqual([
+      expect.objectContaining({ id: '20', name: 'Policial', slug: 'policial', type: 'career' }),
+    ]);
     expect(taxonomies.years).toEqual(['2024']);
   });
 
