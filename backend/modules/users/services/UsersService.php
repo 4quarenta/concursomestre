@@ -178,7 +178,7 @@ class UsersService
                 'id' => (string) $row['id'],
                 'displayName' => (string) $row['name'],
                 'email' => (string) $row['email'],
-                'avatarUrl' => $row['photo_url'] ?: null,
+                'avatarUrl' => $this->resolveAvailableProfilePhotoUrl($row['photo_url'] ?? null),
                 'status' => (string) ($row['status'] ?? 'active'),
                 'emailVerified' => (bool) ($row['email_verified'] ?? false),
                 'personal' => [
@@ -253,7 +253,7 @@ class UsersService
                 'id' => (string) $row['id'],
                 'displayName' => (string) $row['name'],
                 'email' => (string) $row['email'],
-                'avatarUrl' => $row['photo_url'] ?: null,
+                'avatarUrl' => $this->resolveAvailableProfilePhotoUrl($row['photo_url'] ?? null),
                 'status' => (string) ($row['status'] ?? 'active'),
                 'emailVerified' => (bool) ($row['email_verified'] ?? false),
                 'role' => $role,
@@ -1237,6 +1237,30 @@ class UsersService
         }
 
         @unlink($realFilePath);
+    }
+
+    /**
+     * Evita publicar caminhos locais de avatar cujo arquivo ja nao existe.
+     * URLs externas permanecem sob responsabilidade do fallback visual do cliente.
+     *
+     * @since 1.0.0
+     */
+    private function resolveAvailableProfilePhotoUrl(mixed $photoUrl): ?string
+    {
+        $normalizedUrl = trim((string) $photoUrl);
+        if ($normalizedUrl === '') {
+            return null;
+        }
+
+        $normalizedPath = ltrim(str_replace('\\', '/', $normalizedUrl), '/');
+        if (!str_starts_with($normalizedPath, 'uploads/profiles/')) {
+            return $normalizedUrl;
+        }
+
+        $backendRoot = dirname(__DIR__, 3);
+        $absolutePath = $backendRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $normalizedPath);
+
+        return is_file($absolutePath) ? $normalizedUrl : null;
     }
 
     /**

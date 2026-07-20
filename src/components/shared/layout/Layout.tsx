@@ -45,6 +45,7 @@ import { useNotificationsStore } from '@/state/notifications/notificationsStore'
 import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 import { clientLog } from '@services/monitoring/clientLog';
+import UserAvatar from '../ui/UserAvatar';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -479,12 +480,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     const normalized = String(userName).trim();
     return normalized.split(/\s+/)[0] || 'Visitante';
   }, [userName]);
-  const userInitials = userName.charAt(0);
   const userPhotoUrl = React.useMemo(
     () => getVersionedAssetUrl(user?.photoUrl || '', user?.photoUrl || user?.id || ''),
     [user?.id, user?.photoUrl],
   );
-  const canRenderUserPhoto = Boolean(userPhotoUrl);
   const userLevel = user?.level || 0;
 
   const profileQuickMenuItems = React.useMemo<ProfileQuickMenuItem[]>(() => {
@@ -775,18 +774,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
             <div className="mb-3 mt-4 shrink-0 px-4 md:hidden">
               <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                <div className="relative w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400 overflow-hidden">
-                  {canRenderUserPhoto ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={userPhotoUrl}
-                      alt={userName || 'Foto de perfil'}
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                  ) : (
-                    userInitials
-                  )}
-                </div>
+                <UserAvatar
+                  src={userPhotoUrl}
+                  name={userName}
+                  alt={userName || 'Foto de perfil'}
+                  className="h-10 w-10 shrink-0 rounded-full bg-indigo-100 font-bold text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400"
+                />
                 <div>
                   <p className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1">{userName}</p>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">{user ? `Nível ${userLevel}` : 'Acesse sua conta'}</p>
@@ -966,18 +959,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userFirstName}</p>
                     <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
                   </div>
-                  <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600 overflow-hidden">
-                    {canRenderUserPhoto ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={userPhotoUrl}
-                        alt={userName || 'Foto de perfil'}
-                        className="absolute inset-0 h-full w-full object-cover"
-                      />
-                    ) : (
-                      userInitials
-                    )}
-                  </div>
+                  <UserAvatar
+                    src={userPhotoUrl}
+                    name={userName}
+                    alt={userName || 'Foto de perfil'}
+                    className="h-9 w-9 rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600"
+                  />
                   <ChevronDown size={15} className={`text-slate-400 transition-transform dark:text-slate-500 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
 

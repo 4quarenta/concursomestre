@@ -34,6 +34,7 @@ import {
    AreaChart, Area, XAxis, YAxis,
 } from 'recharts';
 import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
+import UserAvatar from '@/components/shared/ui/UserAvatar';
 import { useAuth } from '@providers/AuthProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -3953,21 +3954,16 @@ const Profile: React.FC = () => {
                             className="relative group cursor-pointer"
                             onClick={openProfilePhotoPicker}
                         >
-                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 transition-colors overflow-hidden relative">
-                                {profilePhotoUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={profilePhotoUrl}
-                                        alt={currentUser.name || 'Foto de perfil'}
-                                        className="absolute inset-0 h-full w-full object-cover"
-                                    />
-                                ) : (
-                                    <span className="text-2xl font-black">{currentUser.name?.charAt(0) || 'U'}</span>
-                                )}
+                            <UserAvatar
+                                src={profilePhotoUrl}
+                                name={currentUser.name}
+                                alt={currentUser.name || 'Foto de perfil'}
+                                className="h-20 w-20 rounded-full border border-slate-200 bg-slate-100 text-2xl font-black text-slate-400 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
+                            >
                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     {isSavingProfilePhoto ? <Loader2 size={20} className="animate-spin text-white" /> : <Camera size={20} className="text-white" />}
                                 </div>
-                            </div>
+                            </UserAvatar>
                             {profilePhotoUrl ? (
                                 <button
                                     type="button"
