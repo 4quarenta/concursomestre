@@ -20,6 +20,7 @@ import { reputationService } from '@services/auth';
 import { commentService } from '@services/comments';
 import { notificationService } from '@services/notifications';
 import { clientLog } from '@services/monitoring/clientLog';
+import { shouldLoadMarketplaceTransactionsForPath } from './marketplaceRouting';
 import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 
@@ -83,16 +84,6 @@ const MATERIAL_ROUTE_PREFIXES = [
   '/admin/marketplace',
   '/admin/finance',
 ] as const;
-const TRANSACTION_ROUTE_PREFIXES = [
-  '/profile',
-  '/checkout',
-  '/marketplace',
-  '/partner-dashboard',
-  '/admin/finance',
-  '/admin/support/refunds',
-  '/admin/marketplace',
-] as const;
-
 const routeMatchesAnyPrefix = (pathname: string, prefixes: readonly string[]) => (
   prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 );
@@ -130,7 +121,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const users = useAdminDataStore((store) => store.users);
   const { updateUserStatus, ensureUsersLoaded } = useAdminDataActions();
   const shouldLoadMaterials = routeMatchesAnyPrefix(pathname, MATERIAL_ROUTE_PREFIXES);
-  const shouldLoadTransactions = routeMatchesAnyPrefix(pathname, TRANSACTION_ROUTE_PREFIXES);
+  const shouldLoadTransactions = shouldLoadMarketplaceTransactionsForPath(pathname);
 
   const sendNotification = useCallback((
     userId: string,

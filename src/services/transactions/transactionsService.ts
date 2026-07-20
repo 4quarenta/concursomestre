@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { Transaction } from '@types';
 
 type TransactionListParams = {
@@ -60,12 +61,18 @@ export const transactionsService = {
     if (params.status) queryParams.status = params.status;
     if (params.type) queryParams.type = params.type;
 
-    const response = await apiClient.get<PurchaseTransactionResponse>(ENDPOINTS.transactions.list, {
-      params: queryParams,
-    });
+    return withRequestCoalescing(
+      buildRequestCacheKey('transactions:list', queryParams),
+      async () => {
+        const response = await apiClient.get<PurchaseTransactionResponse>(ENDPOINTS.transactions.list, {
+          params: queryParams,
+        });
 
-    const payload = readApiData<{ rows?: Transaction[] }>(response, {});
-    return payload.rows || [];
+        const payload = readApiData<{ rows?: Transaction[] }>(response, {});
+        return payload.rows || [];
+      },
+      3000,
+    );
   },
 
   /**

@@ -494,8 +494,6 @@ const Profile: React.FC = () => {
     const [userCards, setUserCards] = useState<SavedCard[]>([]);
     const [isLoadingCards, setIsLoadingCards] = useState(false);
     const [cardsLoadError, setCardsLoadError] = useState<string | null>(null);
-    const [userTransactions, setUserTransactions] = useState<ProfileTransaction[]>([]);
-    const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
     const [referralStats, setReferralStats] = useState<ProfileReferralStats | null>(null);
     const [isCopying, setIsCopying] = useState(false);
     const [isAddingCard, setIsAddingCard] = useState(false);
@@ -576,6 +574,10 @@ const Profile: React.FC = () => {
         const legacyUserId = (currentUser as (UserProfile & { userId?: string }) | null)?.userId;
         return String(currentUser?.id || legacyUserId || currentUser?.email || '');
     }, [currentUser]);
+    const billingTransactionsQueryKey = React.useMemo(
+        () => ['profile', 'billing-transactions', currentUserKey] as const,
+        [currentUserKey],
+    );
 
     const personalProfileQuery = useQuery({
         queryKey: ['profile', 'personal', currentUserKey],
@@ -585,6 +587,20 @@ const Profile: React.FC = () => {
         refetchOnWindowFocus: false,
     });
     const isBillingSection = activeTab === 'billing' || activeTab === 'billing-history';
+    const billingTransactionsQuery = useQuery({
+        queryKey: billingTransactionsQueryKey,
+        queryFn: () => transactionsService.list({
+            userId: String(currentUser?.id || ''),
+            limit: 50,
+        }),
+        enabled: Boolean(currentUser?.id) && isBillingSection && hasSyncedBillingSnapshot,
+        staleTime: 60_000,
+        retry: 1,
+        refetchOnWindowFocus: false,
+    });
+    const userTransactions = (billingTransactionsQuery.data || []) as ProfileTransaction[];
+    const isLoadingTransactions = billingTransactionsQuery.isPending || billingTransactionsQuery.isFetching;
+    const refetchBillingTransactions = billingTransactionsQuery.refetch;
     const billingSubscriptionQuery = useQuery({
         queryKey: ['profile', 'billing-subscription', currentUserKey],
         queryFn: () => subscriptionsService.getCurrentBillingSubscription(),
@@ -1886,20 +1902,14 @@ const Profile: React.FC = () => {
 
     const fetchUserTransactions = React.useCallback(async () => {
         if (!currentUser?.id) return;
-        setIsLoadingTransactions(true);
         try {
-            const transactions = await transactionsService.list({
-                userId: currentUser.id,
-                limit: 50,
-            });
-            setUserTransactions(transactions);
+            const result = await refetchBillingTransactions();
+            if (result.error) throw result.error;
         } catch (err) {
             clientLog.warn('Failed to fetch transactions', err);
             addToast('Erro ao carregar histórico de pagamentos.', 'error');
-        } finally {
-            setIsLoadingTransactions(false);
         }
-    }, [addToast, currentUser]);
+    }, [addToast, currentUser?.id, refetchBillingTransactions]);
 
     const refreshNotificationsAfterBillingSync = React.useCallback(async () => {
         const userId = currentUser?.id;
@@ -1918,6 +1928,10 @@ const Profile: React.FC = () => {
     }, [currentUser?.id, queryClient, replaceNotifications]);
 
     const syncStripeSubscriptionState = React.useCallback(async (options?: { force?: boolean }) => {
+        if (isBillingSection && billingSubscriptionQuery.isPending) {
+            return;
+        }
+
         if (!currentUser?.id || !isStripeBilling || !hasActiveSubscription) {
             setHasSyncedBillingSnapshot(true);
             return;
@@ -1939,7 +1953,7 @@ const Profile: React.FC = () => {
             const response = await subscriptionsService.syncCurrentStripeState();
             if (response?.materialized_invoice) {
                 addToast('Renovação sincronizada com sucesso.', 'success');
-                void fetchUserTransactions();
+                await queryClient.invalidateQueries({ queryKey: billingTransactionsQueryKey });
                 void refreshNotificationsAfterBillingSync();
             }
             await Promise.all([
@@ -1952,7 +1966,7 @@ const Profile: React.FC = () => {
             billingSyncRequestInFlightRef.current = false;
             setHasSyncedBillingSnapshot(true);
         }
-    }, [addToast, currentUser?.id, fetchUserTransactions, hasActiveSubscription, isStripeBilling, refetchBillingSubscription, refreshNotificationsAfterBillingSync, refreshUser]);
+    }, [addToast, billingSubscriptionQuery.isPending, billingTransactionsQueryKey, currentUser?.id, hasActiveSubscription, isBillingSection, isStripeBilling, queryClient, refetchBillingSubscription, refreshNotificationsAfterBillingSync, refreshUser]);
 
     const formatTransactionAmount = (amount: number | string) => {
         const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
@@ -3668,7 +3682,6 @@ const Profile: React.FC = () => {
         if (!currentUser?.id) {
             const frameId = window.requestAnimationFrame(() => {
                 setUserCards([]);
-                setUserTransactions([]);
                 setUserMaterials([]);
                 setMaterialNotes([]);
                 setFavoriteLaws([]);
@@ -3688,7 +3701,6 @@ const Profile: React.FC = () => {
                 void syncStripeSubscriptionState({
                     force: activeTab === 'billing' && !hasSyncedBillingSnapshot,
                 });
-                void fetchUserTransactions();
             }
             if (activeTab === 'materials' && marketplaceEnabled) {
                 void fetchUserMaterials();
@@ -3717,7 +3729,6 @@ const Profile: React.FC = () => {
         fetchSupportHistory,
         fetchUserCards,
         fetchUserMaterials,
-        fetchUserTransactions,
         hasSyncedBillingSnapshot,
         syncStripeSubscriptionState,
         isStripeBilling,
