@@ -190,6 +190,10 @@ type QuestionV2Detail = {
     correctCount?: number;
     wrongCount?: number;
   };
+  userState?: {
+    answered?: boolean;
+    isSaved?: boolean;
+  };
   userAnswer?: unknown;
 };
 
@@ -220,7 +224,7 @@ type QuestionV2ListItem = {
 };
 
 type QuestionV2PageResponse = {
-  items?: QuestionV2ListItem[];
+  items?: Array<QuestionV2ListItem | QuestionV2Detail>;
   pageInfo?: {
     limit?: number;
     hasMore?: boolean;
@@ -785,6 +789,7 @@ const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
       correctCount: detail.stats?.correctCount || 0,
       wrongCount: detail.stats?.wrongCount || 0,
     },
+    isSaved: Boolean(detail.userState?.isSaved),
   } as unknown as Question;
 
   return withQuestionPublicationAliases(legacyQuestion);
@@ -896,7 +901,11 @@ export const questionService = {
         ? (payload as QuestionV2PageResponse).items || []
         : null;
       const rows = v2Items
-        ? v2Items.map(mapV2ListItemToQuestion)
+        ? v2Items.map((item) => (
+          'content' in item || Array.isArray((item as QuestionV2Detail).alternatives)
+            ? mapV2DetailToQuestion(item as QuestionV2Detail)
+            : mapV2ListItemToQuestion(item as QuestionV2ListItem)
+        ))
         : Array.isArray(payload)
         ? payload
         : 'rows' in payload && Array.isArray(payload.rows)

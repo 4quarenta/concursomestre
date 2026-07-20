@@ -139,6 +139,50 @@ describe('questionService', () => {
     });
   });
 
+  it('maps the public v2 practice batch without exposing the answer key', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        items: [
+          {
+            id: 8,
+            content: {
+              statement: '<p>Enunciado completo</p>',
+              statementClean: 'Enunciado completo',
+              supportText: 'Texto de apoio',
+              reference: '',
+            },
+            contexts: [],
+            assets: [],
+            filters: { subjects: [{ id: 4, label: 'Português' }] },
+            type: 'single_choice',
+            difficulty: 'medium',
+            alternatives: [
+              { id: 'alt_a', tempId: 'alt_a', order: 1, label: 'A', text: 'Alternativa A' },
+              { id: 'alt_b', tempId: 'alt_b', order: 2, label: 'B', text: 'Alternativa B' },
+            ],
+            publication: { status: 'published', visibility: 'public' },
+            stats: { totalAttempts: 2, correctCount: 1, wrongCount: 1 },
+            userState: { answered: false, isSaved: true },
+          },
+        ],
+        pageInfo: { limit: 20, hasMore: false, nextCursor: null },
+      },
+    });
+
+    const result = await questionService.getQuestionPage({ content_scope: 'practice' });
+
+    expect(result.rows[0]).toEqual(expect.objectContaining({
+      id: 8,
+      enunciado: '<p>Enunciado completo</p>',
+      introText: 'Texto de apoio',
+      isSaved: true,
+      resposta: -1,
+    }));
+    expect(result.rows[0].itens).toHaveLength(2);
+    expect(result.rows[0]).not.toHaveProperty('answer');
+  });
+
   it('submits an answer with the v2 alternative identifier contract', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,

@@ -449,6 +449,111 @@ final class QuestionCanonicalRepository
         ];
     }
 
+    /**
+     * Carrega alternativas, assets e contextos de varias questoes com consultas
+     * em lote. O gabarito permanece interno ao agregado e e removido pela
+     * politica de saida do DTO publico.
+     *
+     * @return array<int, array<string, mixed>>
+     * @since 1.0.0
+     */
+    public function loadQuestionAggregates(array $questionIds): array
+    {
+        $this->assertSchemaReady();
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $id): int => (int) $id,
+            $questionIds
+        ), static fn (int $id): bool => $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $optionsStmt = $this->db->prepare(
+            "SELECT id, question_id, external_key, display_order, label, body, body_clean, is_correct, metadata_json
+             FROM question_options
+             WHERE question_id IN ({$placeholders})
+             ORDER BY question_id, display_order, id"
+        );
+        $optionsStmt->execute($ids);
+        $optionRows = $optionsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $optionIds = array_map(static fn (array $row): int => (int) $row['id'], $optionRows);
+        $optionAssets = $this->loadAssets('option_id', $optionIds);
+
+        $contextsStmt = $this->db->prepare(
+            "SELECT cq.question_id, c.id, c.external_key, c.context_type, c.body, c.body_clean, c.reference_text, c.source_page
+             FROM question_context_questions cq
+             INNER JOIN question_contexts c ON c.id = cq.context_id
+             WHERE cq.question_id IN ({$placeholders})
+             ORDER BY cq.question_id, c.id"
+        );
+        $contextsStmt->execute($ids);
+        $contextRows = $contextsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $contextIds = array_values(array_unique(array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $contextRows
+        )));
+        $contextAssets = $this->loadAssets('context_id', $contextIds);
+        $questionAssets = $this->loadAssets('question_id', $ids);
+
+        $aggregates = [];
+        foreach ($ids as $questionId) {
+            $aggregates[$questionId] = [
+                'alternatives' => [],
+                'answer' => [
+                    'mode' => 'single',
+                    'raw' => '',
+                    'correctAlternativeTempIds' => [],
+                ],
+                'assets' => $questionAssets[$questionId] ?? [],
+                'editorial' => [],
+                'contexts' => [],
+            ];
+        }
+
+        foreach ($optionRows as $row) {
+            $questionId = (int) $row['question_id'];
+            $externalKey = trim((string) ($row['external_key'] ?? ''));
+            $optionKey = $externalKey !== '' ? $externalKey : 'option_' . (int) $row['id'];
+            $aggregates[$questionId]['alternatives'][] = [
+                'canonicalId' => (int) $row['id'],
+                'tempId' => $optionKey,
+                'order' => (int) $row['display_order'],
+                'label' => (string) $row['label'],
+                'text' => (string) $row['body'],
+                'textClean' => (string) ($row['body_clean'] ?? ''),
+                'assets' => $optionAssets[(int) $row['id']] ?? [],
+            ];
+            if ((int) $row['is_correct'] === 1) {
+                $aggregates[$questionId]['answer']['correctAlternativeTempIds'][] = $optionKey;
+            }
+        }
+
+        foreach ($aggregates as &$aggregate) {
+            if (count($aggregate['answer']['correctAlternativeTempIds']) > 1) {
+                $aggregate['answer']['mode'] = 'multiple';
+            }
+        }
+        unset($aggregate);
+
+        foreach ($contextRows as $row) {
+            $questionId = (int) $row['question_id'];
+            $contextId = (int) $row['id'];
+            $aggregates[$questionId]['contexts'][] = [
+                'id' => $contextId,
+                'tempId' => (string) ($row['external_key'] ?? ''),
+                'type' => (string) $row['context_type'],
+                'body' => (string) $row['body'],
+                'bodyClean' => (string) ($row['body_clean'] ?? ''),
+                'reference' => (string) ($row['reference_text'] ?? ''),
+                'sourcePage' => isset($row['source_page']) ? (int) $row['source_page'] : null,
+                'assets' => $contextAssets[$contextId] ?? [],
+            ];
+        }
+
+        return array_filter($aggregates, static fn (array $aggregate): bool => $aggregate['alternatives'] !== []);
+    }
+
     private function insertAssets(?int $questionId, ?int $contextId, ?int $optionId, mixed $assets): void
     {
         if (!is_array($assets)) {

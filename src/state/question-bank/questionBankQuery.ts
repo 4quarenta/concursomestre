@@ -9,6 +9,7 @@ export interface QuestionBankPageParams {
   limit?: number;
   publication_scope?: string;
   publish_status?: string;
+  content_scope?: 'list' | 'practice';
   includeUnpublished?: boolean;
   includeDrafts?: boolean;
   admin?: boolean;
@@ -34,7 +35,10 @@ export const buildQuestionBankQueryKey = (
 export const fetchQuestionBankPage = async (
   params: QuestionBankPageParams = {},
 ): Promise<QuestionBankPageResult> => {
-  const result = await questionService.getQuestionPage(params);
+  const result = await questionService.getQuestionPage({
+    content_scope: 'practice',
+    ...params,
+  });
   return {
     rows: Array.isArray(result.rows) ? result.rows : [],
     total: Number(result.total || 0),

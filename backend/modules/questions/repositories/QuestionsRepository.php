@@ -956,6 +956,59 @@ class QuestionsRepository
     }
 
     /**
+     * Carrega em lote os campos base do contrato v2 sem expor o gabarito.
+     *
+     * @return array<string, array<string, mixed>>
+     * @since 1.0.0
+     */
+    public function listQuestionContractRowsByIds(array $questionIds): array
+    {
+        if ($questionIds === []) {
+            return [];
+        }
+
+        $this->ensurePublicationColumns();
+        [$placeholders, $bindings] = $this->buildInClause('contract_question_id', $questionIds);
+        $stmt = $this->db->prepare(
+            "SELECT id,
+                    enunciado,
+                    enunciado_clean,
+                    intro_text,
+                    reference_text,
+                    tipo,
+                    dificuldade,
+                    resposta_correta_item_index,
+                    anulada,
+                    desatualizada,
+                    publish_status,
+                    visibility_status,
+                    scheduled_at,
+                    published_at,
+                    created_at,
+                    prova_id,
+                    grupo_questao_id,
+                    import_fingerprint,
+                    source_exam_key,
+                    source_question_number,
+                    source_page,
+                    data_json
+             FROM questions
+             WHERE id IN ({$placeholders})"
+        );
+        foreach ($bindings as $placeholder => $value) {
+            $stmt->bindValue($placeholder, $value);
+        }
+        $stmt->execute();
+
+        $mapped = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $mapped[(string) ($row['id'] ?? '')] = $row;
+        }
+
+        return $mapped;
+    }
+
+    /**
      * Monta o WHERE compartilhado entre pagina e total da pratica.
      * @since 1.0.0
      */

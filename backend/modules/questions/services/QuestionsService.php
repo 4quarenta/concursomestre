@@ -243,6 +243,12 @@ class QuestionsService
         $savedQuestionIds = $authenticatedUserId !== null && $authenticatedUserId !== ''
             ? $this->repository->listSavedQuestionIds($authenticatedUserId, $ids)
             : [];
+        $practiceRows = [];
+        $practiceAggregates = [];
+        if (($data['contentScope'] ?? 'list') === 'practice' && $ids !== []) {
+            $practiceRows = $this->repository->listQuestionContractRowsByIds($ids);
+            $practiceAggregates = $this->loadCanonicalAggregatesForRead($ids);
+        }
         $lastRow = $rows === [] ? null : $rows[array_key_last($rows)];
         $nextCursor = $hasMore && is_array($lastRow)
             ? SignedKeysetCursor::encodePayload([
@@ -251,18 +257,48 @@ class QuestionsService
             ], $scope)
             : null;
 
+        $items = array_map(function (array $row) use (
+            $data,
+            $filters,
+            $stats,
+            $answers,
+            $savedQuestionIds,
+            $practiceRows,
+            $practiceAggregates,
+            $authenticatedUserId
+        ): array {
+            $id = (string) ($row['id'] ?? '');
+            if (($data['contentScope'] ?? 'list') === 'practice' && isset($practiceRows[$id])) {
+                $detail = $this->buildQuestionDetailV2(
+                    $practiceRows[$id],
+                    $practiceAggregates[(int) $id] ?? null,
+                    $filters[$id] ?? [],
+                    $stats[$id] ?? null,
+                    $answers[$id] ?? null,
+                    false,
+                    false
+                );
+                if ($authenticatedUserId !== null && $authenticatedUserId !== '') {
+                    $detail['userState'] = [
+                        'answered' => isset($answers[$id]),
+                        'isSaved' => isset($savedQuestionIds[$id]),
+                    ];
+                }
+                return $detail;
+            }
+
+            return $this->buildQuestionListItemV2(
+                $row,
+                $filters[$id] ?? [],
+                $stats[$id] ?? null,
+                $answers[$id] ?? null,
+                isset($savedQuestionIds[$id]),
+                $authenticatedUserId !== null && $authenticatedUserId !== ''
+            );
+        }, $rows);
+
         return [
-            'items' => array_map(
-                fn (array $row): array => $this->buildQuestionListItemV2(
-                    $row,
-                    $filters[(string) ($row['id'] ?? '')] ?? [],
-                    $stats[(string) ($row['id'] ?? '')] ?? null,
-                    $answers[(string) ($row['id'] ?? '')] ?? null,
-                    isset($savedQuestionIds[(string) ($row['id'] ?? '')]),
-                    $authenticatedUserId !== null && $authenticatedUserId !== ''
-                ),
-                $rows
-            ),
+            'items' => $items,
             'pageInfo' => [
                 'limit' => $data['limit'],
                 'hasMore' => $hasMore,
@@ -1270,11 +1306,13 @@ class QuestionsService
         ];
 
         if ($userAnswer !== null) {
+            $selectedOptionIndex = $userAnswer['selectedOptionIndex'] ?? $userAnswer['selected_option_index'] ?? null;
+            $isCorrect = $userAnswer['isCorrect'] ?? $userAnswer['is_correct'] ?? null;
             $question['userAnswer'] = [
-                'selectedOptionIndex' => isset($userAnswer['selected_option_index']) ? (int) $userAnswer['selected_option_index'] : null,
-                'selectedAlternativeId' => $this->alternativeIdByIndex($alternatives, $userAnswer['selected_option_index'] ?? null),
-                'isCorrect' => isset($userAnswer['is_correct']) ? (bool) $userAnswer['is_correct'] : null,
-                'answeredAt' => $userAnswer['created_at'] ?? null,
+                'selectedOptionIndex' => $selectedOptionIndex !== null ? (int) $selectedOptionIndex : null,
+                'selectedAlternativeId' => $this->alternativeIdByIndex($alternatives, $selectedOptionIndex),
+                'isCorrect' => $isCorrect !== null ? (bool) $isCorrect : null,
+                'answeredAt' => $userAnswer['createdAt'] ?? $userAnswer['created_at'] ?? null,
             ];
         }
 
@@ -1310,6 +1348,20 @@ class QuestionsService
             return $this->canonicalRepository->loadQuestionAggregate($questionId);
         } catch (Throwable) {
             return null;
+        }
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function loadCanonicalAggregatesForRead(array $questionIds): array
+    {
+        if (!$this->canonicalRepository->isAvailable()) {
+            return [];
+        }
+
+        try {
+            return $this->canonicalRepository->loadQuestionAggregates($questionIds);
+        } catch (Throwable) {
+            return [];
         }
     }
 

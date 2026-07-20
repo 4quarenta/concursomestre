@@ -180,6 +180,10 @@ class QuestionsValidator
     public function validateListQueryV2(array $query): array
     {
         $limit = max(1, min(50, (int) ($query['limit'] ?? 20)));
+        $contentScope = strtolower(trim((string) ($query['content_scope'] ?? $query['contentScope'] ?? 'list')));
+        if (!in_array($contentScope, ['list', 'practice'], true)) {
+            throw new InvalidArgumentException('Escopo de conteudo de questoes invalido.');
+        }
         $legacy = $this->validateListQuery(array_merge($query, [
             'page' => 1,
             'limit' => $limit,
@@ -188,6 +192,7 @@ class QuestionsValidator
         return [
             'limit' => $limit,
             'cursor' => trim((string) ($query['cursor'] ?? '')) ?: null,
+            'contentScope' => $contentScope,
             'filters' => $legacy['filters'],
         ];
     }
