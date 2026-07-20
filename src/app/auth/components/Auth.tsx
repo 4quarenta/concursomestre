@@ -36,6 +36,7 @@ import { apiClient, ENDPOINTS, readApiErrorMessage } from '@services/api';
 import analyticsTrackingService from '@services/analytics/analyticsTrackingService';
 import { authFlowService } from '@services/auth';
 import { isCanonicalSessionData, type CanonicalSessionData } from '@services/auth/session';
+import { createSubmissionGate } from '@services/auth/submissionGate';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import { hasInvalidGoogleClientIdCandidate, normalizeGoogleClientId } from '@/config/googleAuth';
 import { useTheme } from '@providers/ThemeProvider';
@@ -281,6 +282,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const trackedAuthVisitRef = useRef(false);
   const trackedSignupStartRef = useRef(false);
   const trackedSignupEmailsRef = useRef<Set<string>>(new Set());
+  const loginSubmissionGateRef = useRef(createSubmissionGate());
 
   const isSignup = mode === 'signup';
   const isForgot = mode === 'forgot';
@@ -403,8 +405,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const isSecurityCheckLoading = recaptchaEnabled && isAuthForm && !isRecaptchaReady && !recaptchaLoadError;
 
   const handleLogin = async () => {
+    if (!loginSubmissionGateRef.current.tryStart()) {
+      return;
+    }
+
     if (!formData.email || !formData.password) {
       setError('Preencha e-mail e senha.');
+      loginSubmissionGateRef.current.finish();
       return;
     }
 
@@ -433,6 +440,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     } catch (err: unknown) {
       setError(readApiErrorMessage(err, 'Não foi possível realizar o login agora.'));
     } finally {
+      loginSubmissionGateRef.current.finish();
       setIsLoading(false);
     }
   };
