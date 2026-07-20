@@ -417,6 +417,14 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     router.replace('/');
   }, [currentUser, isLoading, pathname, router]);
 
+  React.useEffect(() => {
+    if (pathname !== '/' || isLoading || !currentUser) {
+      return;
+    }
+
+    router.replace('/dashboard');
+  }, [currentUser, isLoading, pathname, router]);
+
   if (isLoading && !allowAuthLoadingPassThrough && shouldGateDuringAuthBootstrap) {
     return <GlobalLoader forceVisible />;
   }
@@ -571,7 +579,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   if (pathname === '/') {
     return (
       <>
-        {currentUser ? <Layout>{framedChildren}</Layout> : <>{framedChildren}</>}
+        {currentUser ? <GlobalLoader forceVisible /> : <>{framedChildren}</>}
         {appOverlays}
       </>
     );

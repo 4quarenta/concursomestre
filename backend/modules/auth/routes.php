@@ -162,6 +162,51 @@ function handleAuthAdminRouteAccessRoute(PDO $db): void
 }
 
 /**
+ * Confirma se o refresh cookie atual pertence a uma sessao autenticada ativa.
+ * Usado pelo servidor Next para resolver a home antes de entregar qualquer HTML.
+ * A resposta nao expoe perfil, token ou papel: somente 204 ou 404.
+ */
+function handleAuthSessionRouteAccessRoute(PDO $db): void
+{
+    $notFound = static function (): never {
+        Response::notFound('Recurso nao encontrado.');
+    };
+
+    try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            $notFound();
+        }
+        if (trim((string) ($_SERVER['HTTP_X_CONCURSOMESTRE_SESSION_ROUTE_CHECK'] ?? '')) !== '1') {
+            $notFound();
+        }
+
+        $refreshToken = getRefreshTokenFromCookie();
+        if ($refreshToken === null) {
+            $notFound();
+        }
+
+        $record = findRefreshTokenRecord($db, $refreshToken);
+        if ($record === null
+            || !empty($record['revoked_at'])
+            || (string) ($record['status'] ?? '') !== 'active'
+            || (string) ($record['session_status'] ?? '') !== 'active'
+            || !empty($record['session_revoked_at'])
+            || (!empty($record['expires_at']) && strtotime((string) $record['expires_at']) < time())
+            || (!empty($record['session_expires_at']) && strtotime((string) $record['session_expires_at']) < time())
+            || trim((string) ($record['user_id'] ?? '')) === ''
+        ) {
+            $notFound();
+        }
+
+        header('Cache-Control: no-store, private');
+        http_response_code(204);
+        exit();
+    } catch (Throwable) {
+        $notFound();
+    }
+}
+
+/**
  * Ponto de entrada oficial para cadastro de nova conta.
  *
  * @since 1.0.0

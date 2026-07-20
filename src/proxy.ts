@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { resolveCanonicalAuthRedirectPath } from '@services/auth/canonicalAuthRedirect';
 import { canAccessAdminRoute } from '@services/auth/adminRouteAccess';
+import { hasAuthenticatedRouteSession } from '@services/auth/authenticatedRouteAccess';
 
 const adminNotFound = () => new NextResponse(null, {
   status: 404,
@@ -36,23 +37,30 @@ export async function proxy(request: NextRequest) {
   }
 
   const redirectPath = resolveCanonicalAuthRedirectPath(request.nextUrl.pathname, request.nextUrl.searchParams);
-  if (!redirectPath) {
-    return NextResponse.next();
+  if (redirectPath) {
+    const currentPathWithSearch = request.nextUrl.search
+      ? `${request.nextUrl.pathname}${request.nextUrl.search}`
+      : request.nextUrl.pathname;
+    if (currentPathWithSearch === redirectPath) {
+      return NextResponse.next();
+    }
+
+    const redirectUrl = request.nextUrl.clone();
+    const [pathname, search = ''] = redirectPath.split('?');
+    redirectUrl.pathname = pathname;
+    redirectUrl.search = search ? `?${search}` : '';
+
+    return NextResponse.redirect(redirectUrl);
   }
 
-  const currentPathWithSearch = request.nextUrl.search
-    ? `${request.nextUrl.pathname}${request.nextUrl.search}`
-    : request.nextUrl.pathname;
-  if (currentPathWithSearch === redirectPath) {
-    return NextResponse.next();
+  if (request.nextUrl.pathname === '/' && await hasAuthenticatedRouteSession(request)) {
+    const dashboardUrl = request.nextUrl.clone();
+    dashboardUrl.pathname = '/dashboard';
+    dashboardUrl.search = '';
+    return NextResponse.redirect(dashboardUrl);
   }
 
-  const redirectUrl = request.nextUrl.clone();
-  const [pathname, search = ''] = redirectPath.split('?');
-  redirectUrl.pathname = pathname;
-  redirectUrl.search = search ? `?${search}` : '';
-
-  return NextResponse.redirect(redirectUrl);
+  return NextResponse.next();
 }
 
 export const config = {
