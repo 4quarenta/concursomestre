@@ -62,13 +62,13 @@ cm_acquire_lock "$CM_DEPLOY_LOCK_FILE"
 [[ ! -e "$release_dir" ]] || cm_die 'Release ja existe.'
 install -d -m 0750 -o root -g "$CM_APP_GROUP" "$CM_RELEASES_DIR" "$CM_SHARED_DIR" "$CM_DEPLOY_STATE_DIR" "$release_dir"
 install -d -m 0770 -o root -g "$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
-# install preserva owner e mode de diretorios existentes. Reafirme o contrato
-# operacional para evitar que um legado root:root torne o storage indisponivel.
-chown root:"$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
-chmod 2770 "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
 rsync -a --delete "$package_root/" "$release_dir/"
 rsync -a --ignore-existing "$release_dir/backend/storage/" "$CM_SHARED_DIR/backend/storage/" || true
 rsync -a --ignore-existing "$release_dir/backend/uploads/" "$CM_SHARED_DIR/backend/uploads/" || true
+# install e rsync preservam metadados de diretorios existentes. Reafirme o
+# contrato operacional depois da copia para impedir um legado root:root.
+chown root:"$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
+chmod 2770 "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
 rm -rf "$release_dir/backend/storage" "$release_dir/backend/uploads"
 ln -s "$CM_SHARED_DIR/backend/storage" "$release_dir/backend/storage"
 ln -s "$CM_SHARED_DIR/backend/uploads" "$release_dir/backend/uploads"

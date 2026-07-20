@@ -20,5 +20,11 @@ assertDeployStorage(
     str_contains($script, 'chmod 2770 "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"'),
     'Deploy must keep shared directories writable and setgid for the application group.'
 );
+$uploadsSync = strpos($script, 'rsync -a --ignore-existing "$release_dir/backend/uploads/"');
+$permissions = strpos($script, 'chown root:"$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage"');
+assertDeployStorage(
+    is_int($uploadsSync) && is_int($permissions) && $permissions > $uploadsSync,
+    'Shared permissions must be restored after rsync copies directory metadata.'
+);
 
 fwrite(STDOUT, "Deploy shared storage permission wiring assertions passed.\n");
