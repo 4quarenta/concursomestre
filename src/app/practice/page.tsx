@@ -1334,7 +1334,7 @@ const Practice: React.FC = () => {
       setIsLoadingMore(true);
 
       try {
-        await ensureQuestionsLoaded(true, questionQueryParams);
+        await ensureQuestionsLoaded(false, questionQueryParams);
         if (active) {
           setLastFetchedPage(1);
           setVisibleCount(PAGE_SIZE);

@@ -59,10 +59,7 @@ export const useQuestionBankActions = () => {
       return;
     }
 
-    const params: QuestionBankPageParams = {
-      ...(currentUserId ? { user_id: currentUserId } : {}),
-      ...paramsOverride,
-    };
+    const params: QuestionBankPageParams = { ...paramsOverride };
 
     try {
       const result = await queryClient.fetchQuery({
@@ -92,7 +89,6 @@ export const useQuestionBankActions = () => {
     authIsLoading,
     currentAccountId,
     currentDataOwnerKey,
-    currentUserId,
     isQuestionsLoaded,
     loadedQuestionBankOwnerKey,
     queryClient,
@@ -106,7 +102,6 @@ export const useQuestionBankActions = () => {
     }
 
     const params: QuestionBankPageParams = {
-      ...(currentUserId ? { user_id: currentUserId } : {}),
       cursor: nextQuestionCursor,
       limit: 50,
       ...paramsOverride,
@@ -140,7 +135,6 @@ export const useQuestionBankActions = () => {
     authIsLoading,
     currentAccountId,
     currentDataOwnerKey,
-    currentUserId,
     hasMoreQuestions,
     nextQuestionCursor,
     queryClient,
