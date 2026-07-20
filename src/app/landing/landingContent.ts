@@ -47,12 +47,11 @@ const normalizeLegacyLabel = (value: string) => (
     .trim()
 );
 
-const buildId = (prefix: string) => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
+let draftIdSequence = 0;
 
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const buildId = (prefix: string) => {
+  draftIdSequence += 1;
+  return `${prefix}-draft-${draftIdSequence}`;
 };
 
 export const LANDING_FEATURE_ICON_OPTIONS: Array<IconOption<LandingFeatureIconKey>> = [
@@ -96,7 +95,7 @@ export const createLandingFeatureCard = (): LandingFeatureCard => ({
   description: 'Explique em uma frase curta por que esse recurso ajuda o aluno a estudar com mais clareza e chegar mais preparado na prova.',
   iconKey: 'performance',
   enabled: true,
-  order: Date.now(),
+  order: 999,
 });
 
 export const createLandingSocialLink = (): LandingSocialLink => ({

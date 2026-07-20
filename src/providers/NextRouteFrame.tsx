@@ -309,7 +309,6 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   const shouldRedirectToAuth = alwaysRequiresAuthenticatedUser(pathname)
     || (loginRequired && followsGlobalLoginRequirement(pathname));
   const shouldGateDuringAuthBootstrap = shouldRedirectToAuth
-    || pathname === '/'
     || pathname.startsWith('/admin')
     || pathname === '/partner-dashboard';
   const paymentIssueFixPath = paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`;
