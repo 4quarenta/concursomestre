@@ -26,6 +26,7 @@ import {
   getQuestionAssetMarkerIds,
   isQuestionTaxonomyRecord,
   insertQuestionImageMarker,
+  readQuestionImageFileAsDataUrl,
   removeQuestionImageMarker,
   type ManualQuestionItem,
   type ManualQuestionPatch,
@@ -633,10 +634,16 @@ const AdminQuestionEditorPage = ({
     });
   };
 
-  const handleImageSelected = (file: File | null, usage: 'statement' | 'support' = 'statement') => {
+  const handleImageSelected = async (file: File | null, usage: 'statement' | 'support' = 'statement') => {
     if (!file) return;
 
-    const url = URL.createObjectURL(file);
+    let url = '';
+    try {
+      url = await readQuestionImageFileAsDataUrl(file);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
+      return;
+    }
     setManualQ((prev) => {
       const asset = createQuestionImageAsset({
         assets: prev.assets,
@@ -686,10 +693,16 @@ const AdminQuestionEditorPage = ({
     });
   };
 
-  const handleOptionImageSelected = (index: number, file: File | null) => {
+  const handleOptionImageSelected = async (index: number, file: File | null) => {
     if (!file) return;
 
-    const url = URL.createObjectURL(file);
+    let url = '';
+    try {
+      url = await readQuestionImageFileAsDataUrl(file);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
+      return;
+    }
 
     setManualQ((prev) => {
       const nextItems = [...(prev.itens || [])];

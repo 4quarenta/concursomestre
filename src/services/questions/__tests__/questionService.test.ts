@@ -184,6 +184,10 @@ describe('questionService', () => {
             ],
             examSummary: [{ id: 44, name: 'IBFC - 2018 - PM-PB - Soldado', year: 2018 }],
             engagement: { commentsCount: 3 },
+            editorial: [
+              { type: 'teacher_comment', title: '', body: 'Comentario editorial', status: 'published' },
+              { type: 'detailed_analysis', title: '', body: 'Analise editorial', status: 'published' },
+            ],
             publication: { status: 'published', visibility: 'public' },
             stats: { totalAttempts: 2, correctCount: 1, wrongCount: 1 },
             userState: { answered: false, isSaved: true },
@@ -215,6 +219,11 @@ describe('questionService', () => {
     expect(result.rows[0].cargos?.[0]).toEqual(expect.objectContaining({ nome: 'Soldado', descricao: 'Soldado' }));
     expect(result.rows[0].anos).toEqual([2018]);
     expect(result.rows[0].provas?.[0]).toEqual(expect.objectContaining({ id: 44, nome: 'IBFC - 2018 - PM-PB - Soldado' }));
+    expect(result.rows[0].teacherComment).toBe('Comentario editorial');
+    expect(result.rows[0].detailedComment).toBe('Analise editorial');
+    expect(result.rows[0].hasTeacherComment).toBe(true);
+    expect(result.rows[0].hasDetailedComment).toBe(true);
+    expect(result.rows[0].comments).toBeNull();
     expect(result.rows[0]).not.toHaveProperty('answer');
   });
 

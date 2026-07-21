@@ -8,11 +8,14 @@ const escapeHtmlAttribute = (value: unknown): string => String(value ?? '')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;');
 
+const isTransientBlobUrl = (value: string): boolean => /^blob:/i.test(value.trim());
+
 const absolutizeEmbeddedImages = (html: string): string => html.replace(
   /<img[^>]+src=(['"])([^'"]+)\1[^>]*>/gi,
   (match, _quote, source) => {
     const src = String(source || '').trim();
-    if (/^(?:https?:|data:image\/|blob:)/i.test(src)) return match;
+    if (isTransientBlobUrl(src)) return '';
+    if (/^(?:https?:|data:image\/)/i.test(src)) return match;
     return match.replace(src, getAssetUrl(src));
   },
 );
@@ -21,8 +24,8 @@ const getAssetId = (asset: QuestionAsset): string => String(asset.tempId || asse
 
 const getAssetSource = (asset: QuestionAsset): string => {
   const source = String(asset.url || asset.base64 || '').trim();
-  if (!source || /^(?:javascript|vbscript):/i.test(source)) return '';
-  if (/^(?:https?:|data:image\/|blob:)/i.test(source)) return source;
+  if (!source || /^(?:javascript|vbscript):/i.test(source) || isTransientBlobUrl(source)) return '';
+  if (/^(?:https?:|data:image\/)/i.test(source)) return source;
   if (asset.base64 && source === asset.base64) {
     return `data:image/png;base64,${source.replace(/\s+/g, '')}`;
   }
@@ -66,4 +69,3 @@ export const renderQuestionContentWithAssets = (
 
   return `${withMarkers}${unreferencedAssets}`;
 };
-

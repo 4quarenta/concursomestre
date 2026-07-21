@@ -21,6 +21,7 @@ import {
   createQuestionImageAsset,
   isQuestionTaxonomyRecord,
   insertQuestionImageMarker,
+  readQuestionImageFileAsDataUrl,
   removeQuestionImageMarker,
   type ManualQuestionItem,
   type ManualQuestionPatch,
@@ -120,10 +121,16 @@ const ManualQuestionModal = ({
     });
   };
 
-  const handleImageSelected = (file: File | null, usage: 'statement' | 'support' = 'statement') => {
+  const handleImageSelected = async (file: File | null, usage: 'statement' | 'support' = 'statement') => {
     if (!file) return;
 
-    const url = URL.createObjectURL(file);
+    let url = '';
+    try {
+      url = await readQuestionImageFileAsDataUrl(file);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
+      return;
+    }
     setManualQ((prev) => {
       const asset = createQuestionImageAsset({
         assets: prev.assets,
@@ -146,10 +153,16 @@ const ManualQuestionModal = ({
     });
   };
 
-  const handleAlternativeImageSelected = (index: number, file: File | null) => {
+  const handleAlternativeImageSelected = async (index: number, file: File | null) => {
     if (!file) return;
 
-    const url = URL.createObjectURL(file);
+    let url = '';
+    try {
+      url = await readQuestionImageFileAsDataUrl(file);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
+      return;
+    }
     setManualQ((prev) => {
       const current = prev.itens?.[index];
       if (!current) {

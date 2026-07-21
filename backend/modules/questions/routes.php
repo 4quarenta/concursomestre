@@ -201,8 +201,13 @@ function handleQuestionsV2ListRoute(PDO $db): void
     try {
         $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
+        $role = (string) ($authenticatedUserPayload['role'] ?? '');
+        $canViewTeacherComments = userCanViewQuestionTeacherComment($db, $authenticatedUserId, $role);
+        $canViewDetailedAnalysis = userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId, $role);
         $result = buildQuestionsController($db)->listQuestionsV2(
             $authenticatedUserId !== '' ? $authenticatedUserId : null,
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis,
             $_GET
         );
 
@@ -253,8 +258,13 @@ function handleQuestionsV2ShowRoute(PDO $db): void
     try {
         $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
+        $role = (string) ($authenticatedUserPayload['role'] ?? '');
+        $canViewTeacherComments = userCanViewQuestionTeacherComment($db, $authenticatedUserId, $role);
+        $canViewDetailedAnalysis = userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId, $role);
         $result = buildQuestionsController($db)->getQuestionPracticeV2(
             $authenticatedUserId !== '' ? $authenticatedUserId : null,
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis,
             $_GET
         );
 

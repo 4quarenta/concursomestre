@@ -18,6 +18,7 @@ import type {
   QuestionAlternativePayload,
   QuestionAsset,
   QuestionContextPayload,
+  QuestionEditorialPayload,
   QuestionFilterValuePayload,
   QuestionFiltersPayload,
   QuestionPayload,
@@ -210,6 +211,7 @@ type QuestionV2Detail = {
   engagement?: {
     commentsCount?: number;
   };
+  editorial?: QuestionEditorialPayload[];
 };
 
 type QuestionV2ListItem = {
@@ -814,11 +816,22 @@ const mapV2FiltersToLegacy = (filters: QuestionV2Detail['filters']): QuestionFil
   examTypes: mapV2TaxonomyItems(filters?.examTypes),
 });
 
+const readV2EditorialBody = (
+  editorial: QuestionV2Detail['editorial'],
+  type: 'teacher_comment' | 'detailed_analysis',
+): string => {
+  if (!Array.isArray(editorial)) return '';
+  const item = editorial.find((entry) => entry?.type === type);
+  return readText(item?.body).trim();
+};
+
 const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
   const filters = mapV2FiltersToLegacy(detail.filters);
   const alternatives = Array.isArray(detail.alternatives) ? detail.alternatives : [];
   const contexts = mapV2Contexts(detail.contexts);
   const exams = mapV2ExamSummaryToLegacy(detail.examSummary);
+  const teacherComment = readV2EditorialBody(detail.editorial, 'teacher_comment');
+  const detailedComment = readV2EditorialBody(detail.editorial, 'detailed_analysis');
   const firstAssetUrl = Array.isArray(detail.assets)
     ? detail.assets.find((asset) => readText(asset.url).trim())?.url || ''
     : '';
@@ -828,6 +841,7 @@ const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
     content: detail.content,
     assets: detail.assets || [],
     contexts,
+    editorial: detail.editorial || [],
     enunciado: detail.content?.statement || '',
     enunciado_clean: detail.content?.statementClean || stripHtml(detail.content?.statement || ''),
     introText: detail.content?.supportText || '',
@@ -874,6 +888,11 @@ const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
       wrongCount: detail.stats?.wrongCount || 0,
     },
     commentsCount: Math.max(0, Number(detail.engagement?.commentsCount || 0)),
+    comments: null,
+    teacherComment,
+    detailedComment,
+    hasTeacherComment: teacherComment !== '',
+    hasDetailedComment: detailedComment !== '',
     isSaved: Boolean(detail.userState?.isSaved),
   } as unknown as Question;
 
@@ -916,6 +935,7 @@ const mapV2ListItemToQuestion = (item: QuestionV2ListItem): Question => {
       wrongCount: item.stats?.wrong || 0,
     },
     commentsCount: Math.max(0, Number(item.engagement?.commentsCount || 0)),
+    comments: null,
     isSaved: Boolean(item.userState?.isSaved),
     userAnswer: item.userState?.answered ? {
       selectedOptionId: item.userState.selectedOptionId ?? null,

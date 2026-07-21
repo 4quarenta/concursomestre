@@ -162,6 +162,37 @@ export const createQuestionImageAsset = ({
   };
 };
 
+const QUESTION_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+const QUESTION_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+
+export const readQuestionImageFileAsDataUrl = (file: File): Promise<string> => {
+  if (!QUESTION_IMAGE_MIME_TYPES.has(file.type.toLowerCase())) {
+    return Promise.reject(new Error('Use uma imagem JPG, PNG, WebP ou GIF.'));
+  }
+  if (file.size > QUESTION_IMAGE_MAX_BYTES) {
+    return Promise.reject(new Error('A imagem deve ter no maximo 6 MB.'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Nao foi possivel ler a imagem selecionada.'));
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!/^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(result)) {
+        reject(new Error('O arquivo selecionado nao e uma imagem valida.'));
+        return;
+      }
+      resolve(result);
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 export const isQuestionTaxonomyRecord = (value: QuestionTaxonomyOption): value is QuestionTaxonomyRecord =>
   Boolean(value) && typeof value === 'object';
 

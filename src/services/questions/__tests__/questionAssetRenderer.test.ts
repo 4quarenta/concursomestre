@@ -46,4 +46,20 @@ describe('question asset renderer', () => {
     expect(html).not.toContain('<img');
     expect(html).not.toContain('javascript:');
   });
+
+  it('does not render transient blob URLs from persisted question data', () => {
+    const html = renderQuestionContentWithAssets(
+      '<p>Texto</p><img src="blob:https://concursomestre.com/expired" alt="Expirada" />[image:blob_asset]',
+      [{
+        tempId: 'blob_asset',
+        type: 'image',
+        usage: 'statement',
+        url: 'blob:https://concursomestre.com/expired',
+      }],
+    );
+
+    expect(html).toContain('<p>Texto</p>');
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('blob:');
+  });
 });

@@ -193,7 +193,12 @@ class QuestionsService
      *
      * @since 1.0.0
      */
-    public function listQuestionsV2(?string $authenticatedUserId, array $query): array
+    public function listQuestionsV2(
+        ?string $authenticatedUserId,
+        bool $canViewTeacherComments,
+        bool $canViewDetailedAnalysis,
+        array $query
+    ): array
     {
         if (!$this->repository->hasQuestionsTable()) {
             return [
@@ -270,7 +275,9 @@ class QuestionsService
             $practiceRows,
             $practiceAggregates,
             $practiceExams,
-            $authenticatedUserId
+            $authenticatedUserId,
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis
         ): array {
             $id = (string) ($row['id'] ?? '');
             if (($data['contentScope'] ?? 'list') === 'practice' && isset($practiceRows[$id])) {
@@ -281,7 +288,8 @@ class QuestionsService
                     $stats[$id] ?? null,
                     $answers[$id] ?? null,
                     false,
-                    false,
+                    $canViewTeacherComments,
+                    $canViewDetailedAnalysis,
                     $practiceExams[$id] ?? [],
                     $commentCounts[$id] ?? 0
                 );
@@ -352,7 +360,12 @@ class QuestionsService
      *
      * @since 1.0.0
      */
-    public function getQuestionPracticeV2(?string $authenticatedUserId, array $query): array
+    public function getQuestionPracticeV2(
+        ?string $authenticatedUserId,
+        bool $canViewTeacherComments,
+        bool $canViewDetailedAnalysis,
+        array $query
+    ): array
     {
         $identity = $this->validator->validateQuestionIdentityQuery($query, 'ID da questao nao fornecido.');
         $row = $this->repository->findQuestionContractRowById($identity['questionId']);
@@ -375,7 +388,8 @@ class QuestionsService
             $statsMap[$id] ?? null,
             $answerMap[$id] ?? null,
             false,
-            false,
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis,
             $provasMap[$id] ?? [],
             $countsMap[$id] ?? 0
         );
@@ -409,6 +423,7 @@ class QuestionsService
             $filtersMap[$id] ?? [],
             $statsMap[$id] ?? null,
             null,
+            true,
             true,
             true,
             $provasMap[$id] ?? [],
@@ -1266,7 +1281,8 @@ class QuestionsService
         ?array $stats,
         ?array $userAnswer,
         bool $includeAnswer,
-        bool $includeEditorial,
+        bool $canViewTeacherComments,
+        bool $canViewDetailedAnalysis,
         array $exams = [],
         int $commentsCount = 0
     ): array {
@@ -1275,7 +1291,7 @@ class QuestionsService
         $alternatives = $this->resolveAlternativesForV2($row, $aggregate);
         $questionAssets = $this->normalizeAssetsV2(is_array($aggregate['assets'] ?? null) ? $aggregate['assets'] : []);
         $legacyImage = trim((string) ($legacy['imageUrl'] ?? $legacy['image_url'] ?? ''));
-        if ($questionAssets === [] && $legacyImage !== '') {
+        if ($questionAssets === [] && $legacyImage !== '' && !$this->isTransientQuestionAssetUrl($legacyImage)) {
             $questionAssets[] = [
                 'tempId' => 'legacy_statement_image',
                 'type' => 'image',
@@ -1363,15 +1379,15 @@ class QuestionsService
             ];
         }
 
-        if ($includeEditorial) {
+        if ($canViewTeacherComments || $canViewDetailedAnalysis) {
             $question['editorial'] = $this->resolveEditorialForV2($aggregate, $legacy);
         }
 
         return $this->outputPolicy->forRead(
             $question,
             $includeAnswer,
-            $includeEditorial,
-            $includeEditorial
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis
         );
     }
 
@@ -1507,6 +1523,9 @@ class QuestionsService
             }
             $url = trim((string) ($asset['url'] ?? $asset['publicUrl'] ?? $asset['public_url'] ?? ''));
             $base64 = trim((string) ($asset['base64'] ?? ''));
+            if ($this->isTransientQuestionAssetUrl($url)) {
+                $url = '';
+            }
             if ($url === '' && $base64 === '') {
                 continue;
             }
@@ -1795,7 +1814,10 @@ class QuestionsService
         $buckets = $this->partitionFilters($filters);
         $group = $this->resolveQuestionGroup($row);
         $assets = is_array($canonicalAggregate['assets'] ?? null) ? $canonicalAggregate['assets'] : [];
-        $imageUrl = (string) ($assets[0]['url'] ?? $data['imageUrl'] ?? $data['image_url'] ?? '');
+        $imageUrl = trim((string) ($assets[0]['url'] ?? $data['imageUrl'] ?? $data['image_url'] ?? ''));
+        if ($this->isTransientQuestionAssetUrl($imageUrl)) {
+            $imageUrl = '';
+        }
         $origin = (string) ($data['questionOrigin'] ?? $data['question_origin'] ?? '');
         if ($origin === '') {
             $origin = !empty($row['prova_id']) || $provas !== [] ? 'exam' : 'platform';
@@ -3002,12 +3024,22 @@ class QuestionsService
                 continue;
             }
             $base64 = trim((string) ($asset['base64'] ?? ''));
-            if ($base64 !== '' && trim((string) ($asset['url'] ?? '')) === '') {
-                if (preg_match('/^data:image\/([a-z0-9.+-]+);base64,(.+)$/is', $base64, $matches) === 1) {
-                    $asset['url'] = $this->storeBase64QuestionAssetImage((string) $matches[1], (string) $matches[2]);
+            $url = trim((string) ($asset['url'] ?? ''));
+            if ($this->isTransientQuestionAssetUrl($url)) {
+                if ($base64 === '') {
+                    throw new InvalidArgumentException('A imagem temporaria expirou. Selecione o arquivo novamente antes de salvar.');
                 }
+                $url = '';
+                $asset['url'] = '';
+            }
+            $dataUrl = $base64 !== '' ? $base64 : $url;
+            if (preg_match('/^data:image\/([a-z0-9.+-]+);base64,(.+)$/is', $dataUrl, $matches) === 1) {
+                $asset['url'] = $this->storeBase64QuestionAssetImage((string) $matches[1], (string) $matches[2]);
             }
             unset($asset['base64']);
+            if (trim((string) ($asset['url'] ?? '')) === '') {
+                continue;
+            }
             $persisted[] = $asset;
         }
         return $persisted;
@@ -3208,9 +3240,9 @@ class QuestionsService
         if ($text === '') {
             $text = trim((string) ($row['enunciado'] ?? ''));
         }
-        $assets = $this->decodeQuestionJson($row['assets_json'] ?? null);
+        $assets = $this->normalizeAssetsV2($this->decodeQuestionJson($row['assets_json'] ?? null));
         $legacyImageUrl = trim((string) ($row['image_url'] ?? ''));
-        if ($assets === [] && $legacyImageUrl !== '') {
+        if ($assets === [] && $legacyImageUrl !== '' && !$this->isTransientQuestionAssetUrl($legacyImageUrl)) {
             $assets[] = [
                 'id' => 'img_context_1',
                 'type' => 'image',
@@ -3252,6 +3284,11 @@ class QuestionsService
 
         $group = $this->repository->findQuestionGroupById((int) $groupId);
         return $group ? $this->normalizeQuestionGroup($group) : null;
+    }
+
+    private function isTransientQuestionAssetUrl(string $url): bool
+    {
+        return str_starts_with(strtolower(trim($url)), 'blob:');
     }
 
     private function decodeQuestionJson(mixed $value): array

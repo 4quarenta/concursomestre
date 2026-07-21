@@ -72,9 +72,19 @@ class QuestionsController
      *
      * @since 1.0.0
      */
-    public function listQuestionsV2(?string $authenticatedUserId, array $query): array
+    public function listQuestionsV2(
+        ?string $authenticatedUserId,
+        bool $canViewTeacherComments,
+        bool $canViewDetailedAnalysis,
+        array $query
+    ): array
     {
-        return $this->service->listQuestionsV2($authenticatedUserId, $query);
+        return $this->service->listQuestionsV2(
+            $authenticatedUserId,
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis,
+            $query
+        );
     }
 
     /**
@@ -101,9 +111,19 @@ class QuestionsController
      *
      * @since 1.0.0
      */
-    public function getQuestionPracticeV2(?string $authenticatedUserId, array $query): array
+    public function getQuestionPracticeV2(
+        ?string $authenticatedUserId,
+        bool $canViewTeacherComments,
+        bool $canViewDetailedAnalysis,
+        array $query
+    ): array
     {
-        return $this->service->getQuestionPracticeV2($authenticatedUserId, $query);
+        return $this->service->getQuestionPracticeV2(
+            $authenticatedUserId,
+            $canViewTeacherComments,
+            $canViewDetailedAnalysis,
+            $query
+        );
     }
 
     /**

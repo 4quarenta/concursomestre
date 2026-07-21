@@ -147,5 +147,14 @@ assertQuestionOutputPolicy(
     is_string($routesSource) && str_contains($routesSource, 'userCanViewQuestionTeacherComment($db, $authenticatedUserId, $role)'),
     'A serializacao publica deve receber a decisao editorial calculada a partir do papel autenticado.'
 );
+assertQuestionOutputPolicy(
+    is_string($routesSource) && str_contains($routesSource, 'userCanViewQuestionDetailedAnalysis($db, $authenticatedUserId, $role)'),
+    'A analise detalhada deve usar entitlement proprio no contrato v2.'
+);
+assertQuestionOutputPolicy(
+    is_string($serviceSource)
+    && str_contains($serviceSource, "false,\n                    \$canViewTeacherComments,\n                    \$canViewDetailedAnalysis"),
+    'A pratica v2 deve ocultar o gabarito sem suprimir editoriais autorizados.'
+);
 
 fwrite(STDOUT, "QuestionPublicOutputPolicyTest: PASS\n");

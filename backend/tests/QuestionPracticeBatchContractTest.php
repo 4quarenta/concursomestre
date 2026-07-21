@@ -53,8 +53,8 @@ try {
         'O DTO de pratica nao preserva prova e engajamento do card.'
     );
     practiceBatchAssert(
-        str_contains($service, "false,\n                    false"),
-        'O DTO de pratica pode expor gabarito ou editoriais.'
+        str_contains($service, "false,\n                    \$canViewTeacherComments,\n                    \$canViewDetailedAnalysis"),
+        'O DTO de pratica deve ocultar o gabarito e aplicar separadamente os entitlements editoriais.'
     );
     practiceBatchAssert(
         str_contains($repository, 'public function listQuestionContractRowsByIds'),

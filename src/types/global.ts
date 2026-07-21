@@ -547,7 +547,7 @@ export interface Question {
   resolvida?: boolean;
 
   stats?: QuestionStats;
-  comments?: QuestaoComentario[];
+  comments?: QuestaoComentario[] | null;
   timestamp?: string;
   slug?: string;
   index?: string;

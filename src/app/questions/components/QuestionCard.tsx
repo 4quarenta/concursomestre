@@ -911,8 +911,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   }, [existingNote, question.id]);
 
   useEffect(() => {
-    // Only fetch if comments are exactly null (means not yet loaded)
-    if (showComments && question.comments === null) {
+    // Null/undefined means the v2 card has not loaded its comments yet.
+    if (showComments && question.comments == null) {
       fetchComments(Number(question.id));
     }
   }, [showComments, question.id, question.comments, fetchComments]);
