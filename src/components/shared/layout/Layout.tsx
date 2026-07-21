@@ -906,29 +906,39 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className={`${isSimulationFullscreenPage ? 'hidden' : 'hidden md:flex'} z-20 items-center justify-end bg-slate-50/80 p-4 px-6 backdrop-blur transition-colors dark:bg-slate-950/80 lg:px-8`}>
             <div className="flex items-center gap-4">
               <button
+                type="button"
                 onClick={toggleTheme}
-                className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-white hover:text-indigo-600 hover:shadow-sm dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
                 title={theme === 'light' ? 'Ativar Modo Escuro' : 'Ativar Modo Claro'}
+                aria-label={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
               >
-                <span className="inline-flex" aria-hidden="true">
-                  <Moon size={20} className="dark:hidden" />
-                  <Sun size={20} className="hidden dark:block" />
+                <span className="flex h-5 w-5 items-center justify-center" aria-hidden="true">
+                  <Moon size={20} className="block shrink-0 dark:hidden" />
+                  <Sun size={20} className="hidden shrink-0 dark:block" />
                 </span>
               </button>
 
               <button
+                type="button"
                 onClick={() => router.push('/support')}
-                className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-white hover:text-indigo-600 hover:shadow-sm dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
                 title="Suporte e Feedback"
+                aria-label="Abrir suporte e feedback"
               >
-                <HelpCircle size={20} />
+                <HelpCircle size={20} className="block shrink-0" aria-hidden="true" />
               </button>
 
               {/* Sempre mostrar notificações se o usuário estiver logado, independente da feature flag global, se o usuário pediu para restaurar */}
               {user && (
-                <div className="relative">
-                  <button onClick={handleNotificationsToggle} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all relative">
-                    <Bell size={20} />
+                <div className="relative h-9 w-9 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleNotificationsToggle}
+                    className="relative inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-white hover:text-indigo-600 hover:shadow-sm dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+                    aria-label="Abrir notificações"
+                    aria-expanded={isNotifOpen}
+                  >
+                    <Bell size={20} className="block shrink-0" aria-hidden="true" />
                     {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-950" />}
                   </button>
                   {isNotifOpen && (
