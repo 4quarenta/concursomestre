@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "product": "ConcursoMestre",
   "version": "1.0.0",
-  "revision": "practice-card-contract",
-  "commit": "93d419fddcafa30d7bb77f62ac1bf38cc3c64902",
+  "revision": "topbar-alignment",
+  "commit": "9f0783f",
   "gitDirty": false,
-  "generatedAt": "2026-07-21T01:02:50.527Z",
+  "generatedAt": "2026-07-21T01:38:15.830Z",
   "runtime": {
     "node": "v20.12.2",
     "nodeMinimum": "20.19.0",
