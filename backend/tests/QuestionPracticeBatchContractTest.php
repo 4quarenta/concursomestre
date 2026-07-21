@@ -41,8 +41,16 @@ try {
     );
     practiceBatchAssert(
         str_contains($service, 'listQuestionContractRowsByIds($ids)')
-        && str_contains($service, 'loadCanonicalAggregatesForRead($ids)'),
+        && str_contains($service, 'loadCanonicalAggregatesForRead($ids)')
+        && str_contains($service, 'listQuestionProvasByIds($ids)')
+        && str_contains($service, 'listQuestionCommentCounts($ids)'),
         'O DTO de pratica nao carrega conteudo em lote.'
+    );
+    practiceBatchAssert(
+        str_contains($service, "'examSummary' => array_map")
+        && str_contains($service, "'engagement' => [")
+        && str_contains($service, "'commentsCount' => max(0, \$commentsCount)"),
+        'O DTO de pratica nao preserva prova e engajamento do card.'
     );
     practiceBatchAssert(
         str_contains($service, "false,\n                    false"),

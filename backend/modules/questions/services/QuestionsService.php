@@ -237,6 +237,7 @@ class QuestionsService
 
         $ids = $this->extractQuestionIds($rows);
         $stats = $this->repository->listQuestionStatsMap($ids);
+        $commentCounts = $this->repository->listQuestionCommentCounts($ids);
         $answers = $authenticatedUserId !== null && $authenticatedUserId !== ''
             ? $this->repository->listLatestUserAnswersMap($authenticatedUserId, $ids)
             : [];
@@ -245,9 +246,11 @@ class QuestionsService
             : [];
         $practiceRows = [];
         $practiceAggregates = [];
+        $practiceExams = [];
         if (($data['contentScope'] ?? 'list') === 'practice' && $ids !== []) {
             $practiceRows = $this->repository->listQuestionContractRowsByIds($ids);
             $practiceAggregates = $this->loadCanonicalAggregatesForRead($ids);
+            $practiceExams = $this->repository->listQuestionProvasByIds($ids);
         }
         $lastRow = $rows === [] ? null : $rows[array_key_last($rows)];
         $nextCursor = $hasMore && is_array($lastRow)
@@ -261,10 +264,12 @@ class QuestionsService
             $data,
             $filters,
             $stats,
+            $commentCounts,
             $answers,
             $savedQuestionIds,
             $practiceRows,
             $practiceAggregates,
+            $practiceExams,
             $authenticatedUserId
         ): array {
             $id = (string) ($row['id'] ?? '');
@@ -276,7 +281,9 @@ class QuestionsService
                     $stats[$id] ?? null,
                     $answers[$id] ?? null,
                     false,
-                    false
+                    false,
+                    $practiceExams[$id] ?? [],
+                    $commentCounts[$id] ?? 0
                 );
                 if ($authenticatedUserId !== null && $authenticatedUserId !== '') {
                     $detail['userState'] = [
@@ -293,7 +300,8 @@ class QuestionsService
                 $stats[$id] ?? null,
                 $answers[$id] ?? null,
                 isset($savedQuestionIds[$id]),
-                $authenticatedUserId !== null && $authenticatedUserId !== ''
+                $authenticatedUserId !== null && $authenticatedUserId !== '',
+                $commentCounts[$id] ?? 0
             );
         }, $rows);
 
@@ -354,7 +362,9 @@ class QuestionsService
 
         $id = (string) ($row['id'] ?? $identity['questionId']);
         $filtersMap = $this->repository->listQuestionFiltersByIds([$id]);
+        $provasMap = $this->repository->listQuestionProvasByIds([$id]);
         $statsMap = $this->repository->listQuestionStatsMap([$id]);
+        $countsMap = $this->repository->listQuestionCommentCounts([$id]);
         $answerMap = $authenticatedUserId ? $this->repository->listLatestUserAnswersMap($authenticatedUserId, [$id]) : [];
         $aggregate = $this->loadCanonicalAggregateForRead((int) $id);
 
@@ -365,7 +375,9 @@ class QuestionsService
             $statsMap[$id] ?? null,
             $answerMap[$id] ?? null,
             false,
-            false
+            false,
+            $provasMap[$id] ?? [],
+            $countsMap[$id] ?? 0
         );
     }
 
@@ -386,7 +398,9 @@ class QuestionsService
 
         $id = (string) ($row['id'] ?? $identity['questionId']);
         $filtersMap = $this->repository->listQuestionFiltersByIds([$id]);
+        $provasMap = $this->repository->listQuestionProvasByIds([$id]);
         $statsMap = $this->repository->listQuestionStatsMap([$id]);
+        $countsMap = $this->repository->listQuestionCommentCounts([$id]);
         $aggregate = $this->loadCanonicalAggregateForRead((int) $id);
 
         return $this->buildQuestionDetailV2(
@@ -396,7 +410,9 @@ class QuestionsService
             $statsMap[$id] ?? null,
             null,
             true,
-            true
+            true,
+            $provasMap[$id] ?? [],
+            $countsMap[$id] ?? 0
         );
     }
 
@@ -1152,7 +1168,8 @@ class QuestionsService
         ?array $stats,
         ?array $userAnswer,
         bool $isSaved,
-        bool $includeUserState
+        bool $includeUserState,
+        int $commentsCount = 0
     ): array
     {
         $buckets = $this->partitionFilters($filters);
@@ -1184,6 +1201,9 @@ class QuestionsService
             ],
             'publishedAt' => $row['published_sort_at'] ?? $row['published_at'] ?? null,
             'createdAt' => $row['created_at'] ?? null,
+            'engagement' => [
+                'commentsCount' => max(0, $commentsCount),
+            ],
         ];
 
         if ($includeUserState) {
@@ -1246,7 +1266,9 @@ class QuestionsService
         ?array $stats,
         ?array $userAnswer,
         bool $includeAnswer,
-        bool $includeEditorial
+        bool $includeEditorial,
+        array $exams = [],
+        int $commentsCount = 0
     ): array {
         $legacy = $this->decodeQuestionJson($row['data_json'] ?? null);
         $buckets = $this->partitionFilters($filters);
@@ -1302,6 +1324,21 @@ class QuestionsService
                 'correctCount' => $correct,
                 'wrongCount' => $wrong,
                 'accuracy' => $attempts > 0 ? round(($correct / $attempts) * 100, 2) : 0,
+            ],
+            'examSummary' => array_map(static fn (array $exam): array => [
+                'id' => (int) ($exam['id'] ?? 0),
+                'name' => (string) ($exam['nome'] ?? $exam['name'] ?? ''),
+                'slug' => (string) ($exam['slug'] ?? ''),
+                'year' => is_numeric($exam['ano'] ?? null) ? (int) $exam['ano'] : null,
+                'questionNumber' => is_numeric($exam['numeroNaProva'] ?? null)
+                    ? (int) $exam['numeroNaProva']
+                    : null,
+                'booklet' => $exam['caderno'] ?? null,
+                'bookletType' => $exam['tipoCaderno'] ?? null,
+                'bookletColor' => $exam['corCaderno'] ?? null,
+            ], array_values($exams)),
+            'engagement' => [
+                'commentsCount' => max(0, $commentsCount),
             ],
         ];
 

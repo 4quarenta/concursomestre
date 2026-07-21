@@ -152,15 +152,38 @@ describe('questionService', () => {
               supportText: 'Texto de apoio',
               reference: '',
             },
-            contexts: [],
-            assets: [],
-            filters: { subjects: [{ id: 4, label: 'Português' }] },
+            contexts: [{
+              id: 12,
+              type: 'shared',
+              body: 'Texto compartilhado',
+              reference: 'Fonte oficial',
+              assets: [{ tempId: 'ctx_img', type: 'image', usage: 'context', url: '/context.png' }],
+              questionNumbers: [8, 9],
+            }],
+            assets: [{ tempId: 'statement_img', type: 'image', usage: 'statement', url: '/statement.png' }],
+            filters: {
+              subjects: [{ id: 4, label: 'Português', slug: 'portugues' }],
+              topics: [{ id: 5, label: 'Interpretação', slug: 'interpretacao' }],
+              examBoards: [{ id: 6, label: 'IBFC', slug: 'ibfc' }],
+              organizations: [{ id: 7, label: 'PM-PB', slug: 'pm-pb' }],
+              roles: [{ id: 8, label: 'Soldado', slug: 'soldado' }],
+              years: [{ id: 9, label: '2018', slug: '2018' }],
+            },
             type: 'single_choice',
             difficulty: 'medium',
             alternatives: [
-              { id: 'alt_a', tempId: 'alt_a', order: 1, label: 'A', text: 'Alternativa A' },
+              {
+                id: 'alt_a',
+                tempId: 'alt_a',
+                order: 1,
+                label: 'A',
+                text: 'Alternativa A [image:alt_img]',
+                assets: [{ tempId: 'alt_img', type: 'image', usage: 'alternative', url: '/alt.png' }],
+              },
               { id: 'alt_b', tempId: 'alt_b', order: 2, label: 'B', text: 'Alternativa B' },
             ],
+            examSummary: [{ id: 44, name: 'IBFC - 2018 - PM-PB - Soldado', year: 2018 }],
+            engagement: { commentsCount: 3 },
             publication: { status: 'published', visibility: 'public' },
             stats: { totalAttempts: 2, correctCount: 1, wrongCount: 1 },
             userState: { answered: false, isSaved: true },
@@ -178,8 +201,20 @@ describe('questionService', () => {
       introText: 'Texto de apoio',
       isSaved: true,
       resposta: -1,
+      commentsCount: 3,
+      provaId: 44,
     }));
     expect(result.rows[0].itens).toHaveLength(2);
+    expect(result.rows[0].itens[0].assets).toHaveLength(1);
+    expect(result.rows[0].contexts).toEqual([
+      expect.objectContaining({ id: 12, body: 'Texto compartilhado', questionNumbers: [8, 9] }),
+    ]);
+    expect(result.rows[0].assuntos?.map((item) => item.nome)).toEqual(['Português', 'Interpretação']);
+    expect(result.rows[0].bancas?.[0]).toEqual(expect.objectContaining({ nome: 'IBFC', sigla: 'IBFC' }));
+    expect(result.rows[0].orgaos?.[0]).toEqual(expect.objectContaining({ nome: 'PM-PB', sigla: 'PM-PB' }));
+    expect(result.rows[0].cargos?.[0]).toEqual(expect.objectContaining({ nome: 'Soldado', descricao: 'Soldado' }));
+    expect(result.rows[0].anos).toEqual([2018]);
+    expect(result.rows[0].provas?.[0]).toEqual(expect.objectContaining({ id: 44, nome: 'IBFC - 2018 - PM-PB - Soldado' }));
     expect(result.rows[0]).not.toHaveProperty('answer');
   });
 

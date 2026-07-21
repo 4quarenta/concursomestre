@@ -36,8 +36,10 @@ export const fetchQuestionBankPage = async (
   params: QuestionBankPageParams = {},
 ): Promise<QuestionBankPageResult> => {
   const result = await questionService.getQuestionPage({
-    content_scope: 'practice',
     ...params,
+    // This store feeds full question cards. Never allow a caller override to
+    // downgrade the response to the lightweight catalogue DTO.
+    content_scope: 'practice',
   });
   return {
     rows: Array.isArray(result.rows) ? result.rows : [],

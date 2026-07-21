@@ -93,6 +93,7 @@ export interface QuestionItem {
   rotulo: string;
   corpo: string;
   corpo_clean?: string;
+  assets?: QuestionAsset[];
 }
 
 export type QuestionAssetUsage = 'statement' | 'support' | 'alternative' | 'context' | 'reference';
@@ -474,6 +475,7 @@ export interface Question {
   source?: QuestionSourcePayload;
   content?: QuestionContentPayload;
   assets?: QuestionAsset[];
+  contexts?: QuestionContextPayload[];
   filters?: QuestionFiltersPayload;
   questionType?: string;
   alternatives?: QuestionAlternativePayload[];

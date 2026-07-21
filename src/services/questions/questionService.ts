@@ -164,6 +164,17 @@ type QuestionV2Detail = {
     reference?: string;
   };
   assets?: QuestionV2Asset[];
+  contexts?: Array<{
+    id?: string | number | null;
+    tempId?: string;
+    type?: string;
+    body?: string;
+    bodyClean?: string;
+    reference?: string;
+    sourcePage?: string | number | null;
+    assets?: QuestionV2Asset[];
+    questionNumbers?: Array<string | number>;
+  }>;
   filters?: {
     subjects?: QuestionV2TaxonomyItem[];
     topics?: QuestionV2TaxonomyItem[];
@@ -195,6 +206,10 @@ type QuestionV2Detail = {
     isSaved?: boolean;
   };
   userAnswer?: unknown;
+  examSummary?: Array<Record<string, unknown>> | Record<string, unknown> | null;
+  engagement?: {
+    commentsCount?: number;
+  };
 };
 
 type QuestionV2ListItem = {
@@ -221,6 +236,9 @@ type QuestionV2ListItem = {
   };
   publishedAt?: string | null;
   createdAt?: string | null;
+  engagement?: {
+    commentsCount?: number;
+  };
 };
 
 type QuestionV2PageResponse = {
@@ -711,6 +729,67 @@ const mapV2TaxonomyItems = (items: QuestionV2TaxonomyItem[] | undefined): Questi
     : []
 );
 
+type LegacyTaxonomyKind = 'subject' | 'board' | 'organization' | 'role' | 'generic';
+
+const mapV2TaxonomyItemsToLegacy = (
+  items: QuestionFilterValuePayload[] | undefined,
+  kind: LegacyTaxonomyKind,
+) => (Array.isArray(items) ? items.map((item) => {
+  const label = readText(item.label).trim();
+  const base = {
+    ...(item.id !== undefined && item.id !== null ? { id: item.id } : {}),
+    nome: label,
+    name: label,
+    label,
+    slug: readText(item.slug).trim(),
+  };
+
+  if (kind === 'board' || kind === 'organization') {
+    return { ...base, sigla: label };
+  }
+  if (kind === 'role') {
+    return { ...base, descricao: label, descrição: label };
+  }
+  if (kind === 'subject') {
+    return { ...base, materia: true };
+  }
+  return base;
+}) : []);
+
+const mapV2YearsToLegacy = (items: QuestionFilterValuePayload[] | undefined): number[] => (
+  (Array.isArray(items) ? items : [])
+    .map((item) => Number(item.label))
+    .filter((year) => Number.isInteger(year) && year > 0)
+);
+
+const mapV2Contexts = (contexts: QuestionV2Detail['contexts']) => (
+  Array.isArray(contexts)
+    ? contexts.map((context) => ({
+      ...(context.id !== undefined && context.id !== null ? { id: context.id } : {}),
+      ...(context.tempId ? { tempId: context.tempId } : {}),
+      type: context.type || 'shared',
+      body: readText(context.body),
+      bodyClean: readText(context.bodyClean),
+      reference: readText(context.reference),
+      sourcePage: context.sourcePage ?? null,
+      assets: Array.isArray(context.assets) ? context.assets : [],
+      questionNumbers: Array.isArray(context.questionNumbers) ? context.questionNumbers : [],
+    }))
+    : []
+);
+
+const mapV2ExamSummaryToLegacy = (summary: QuestionV2Detail['examSummary']) => {
+  if (!summary) return [];
+  const rows = Array.isArray(summary) ? summary : [summary];
+  return rows.map((exam) => ({
+    ...exam,
+    id: exam.id,
+    nome: readText(exam.name ?? exam.nome).trim(),
+    name: readText(exam.name ?? exam.nome).trim(),
+    ano: Number(exam.year ?? exam.ano) || undefined,
+  }));
+};
+
 const mapV2DifficultyToLegacy = (difficulty: string | undefined): number => {
   const normalized = readText(difficulty).toLowerCase();
   if (normalized.includes('facil') || normalized.includes('fácil') || normalized === 'easy') return 1;
@@ -738,6 +817,8 @@ const mapV2FiltersToLegacy = (filters: QuestionV2Detail['filters']): QuestionFil
 const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
   const filters = mapV2FiltersToLegacy(detail.filters);
   const alternatives = Array.isArray(detail.alternatives) ? detail.alternatives : [];
+  const contexts = mapV2Contexts(detail.contexts);
+  const exams = mapV2ExamSummaryToLegacy(detail.examSummary);
   const firstAssetUrl = Array.isArray(detail.assets)
     ? detail.assets.find((asset) => readText(asset.url).trim())?.url || ''
     : '';
@@ -746,6 +827,7 @@ const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
     source: detail.source,
     content: detail.content,
     assets: detail.assets || [],
+    contexts,
     enunciado: detail.content?.statement || '',
     enunciado_clean: detail.content?.statementClean || stripHtml(detail.content?.statement || ''),
     introText: detail.content?.supportText || '',
@@ -767,17 +849,19 @@ const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
     alternatives,
     filters,
     assuntos: [
-      ...(filters.subjects || []),
-      ...(filters.topics || []),
-      ...(filters.subtopics || []),
+      ...mapV2TaxonomyItemsToLegacy(filters.subjects, 'subject'),
+      ...mapV2TaxonomyItemsToLegacy(filters.topics, 'generic'),
+      ...mapV2TaxonomyItemsToLegacy(filters.subtopics, 'generic'),
     ],
-    bancas: filters.examBoards || [],
-    orgaos: filters.organizations || [],
-    cargos: filters.roles || [],
-    carreiras: filters.careers || [],
-    anos: filters.years || [],
+    bancas: mapV2TaxonomyItemsToLegacy(filters.examBoards, 'board'),
+    orgaos: mapV2TaxonomyItemsToLegacy(filters.organizations, 'organization'),
+    cargos: mapV2TaxonomyItemsToLegacy(filters.roles, 'role'),
+    carreiras: mapV2TaxonomyItemsToLegacy(filters.careers, 'generic'),
+    anos: mapV2YearsToLegacy(filters.years),
     nivel: filters.levels?.[0]?.label,
     tiposProva: filters.examTypes || [],
+    provaId: detail.source?.examId ?? exams[0]?.id ?? undefined,
+    provas: exams,
     publishStatus: detail.publication?.status,
     publicationStatus: detail.publication?.status,
     publish_status: detail.publication?.status,
@@ -789,6 +873,7 @@ const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
       correctCount: detail.stats?.correctCount || 0,
       wrongCount: detail.stats?.wrongCount || 0,
     },
+    commentsCount: Math.max(0, Number(detail.engagement?.commentsCount || 0)),
     isSaved: Boolean(detail.userState?.isSaved),
   } as unknown as Question;
 
@@ -809,15 +894,15 @@ const mapV2ListItemToQuestion = (item: QuestionV2ListItem): Question => {
     imageUrl: item.hasImage ? '__has_image__' : '',
     filters,
     assuntos: [
-      ...(filters.subjects || []),
-      ...(filters.topics || []),
-      ...(filters.subtopics || []),
+      ...mapV2TaxonomyItemsToLegacy(filters.subjects, 'subject'),
+      ...mapV2TaxonomyItemsToLegacy(filters.topics, 'generic'),
+      ...mapV2TaxonomyItemsToLegacy(filters.subtopics, 'generic'),
     ],
-    bancas: filters.examBoards || [],
-    orgaos: filters.organizations || [],
-    cargos: filters.roles || [],
-    carreiras: filters.careers || [],
-    anos: filters.years || [],
+    bancas: mapV2TaxonomyItemsToLegacy(filters.examBoards, 'board'),
+    orgaos: mapV2TaxonomyItemsToLegacy(filters.organizations, 'organization'),
+    cargos: mapV2TaxonomyItemsToLegacy(filters.roles, 'role'),
+    carreiras: mapV2TaxonomyItemsToLegacy(filters.careers, 'generic'),
+    anos: mapV2YearsToLegacy(filters.years),
     nivel: filters.levels?.[0]?.label,
     publishStatus: item.publication?.status,
     publicationStatus: item.publication?.status,
@@ -830,6 +915,7 @@ const mapV2ListItemToQuestion = (item: QuestionV2ListItem): Question => {
       correctCount: item.stats?.correct || 0,
       wrongCount: item.stats?.wrong || 0,
     },
+    commentsCount: Math.max(0, Number(item.engagement?.commentsCount || 0)),
     isSaved: Boolean(item.userState?.isSaved),
     userAnswer: item.userState?.answered ? {
       selectedOptionId: item.userState.selectedOptionId ?? null,

@@ -20,6 +20,7 @@ import { getAssetUrl } from '@services/api';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import { isPlatformOriginalQuestion, isQuestionCanceled, questionService, type QuestionEditorialFeedbackKind, type QuestionEditorialFeedbackSnapshot, type QuestionEditorialFeedbackValue } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import { renderQuestionContentWithAssets } from '@services/questions/questionAssetRenderer';
 import { maybeShowQuestionAnswerInterstitial } from '@services/ads/adService';
 import MathRichText from '@/components/shared/math/MathRichText';
 import { commentService } from '@services/comments';
@@ -774,6 +775,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   // What about "box com histórico"?
 
+  const canonicalContexts = Array.isArray(question.contexts) ? question.contexts : [];
+  const statementAssets = (question.assets || []).filter((asset) => asset.usage === 'statement');
+  const supportAssets = (question.assets || []).filter((asset) => asset.usage === 'support');
+  const referenceAssets = (question.assets || []).filter((asset) => asset.usage === 'reference');
+  const hasCanonicalAssociatedContent = canonicalContexts.some((context) => (
+    Boolean(String(context.body || context.texto || '').trim())
+    || Boolean(String(context.reference || '').trim())
+    || (Array.isArray(context.assets) && context.assets.length > 0)
+  ));
+
   const accuracyRate = (question.stats && question.stats.totalAttempts > 0)
     ? Math.round((question.stats.correctCount / question.stats.totalAttempts) * 100)
     : 0;
@@ -1233,7 +1244,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               Q{question.id}
             </Link>
             <div className="flex gap-1.5">
-              <span className="inline-flex items-center justify-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[8px] font-bold rounded-md uppercase tracking-wide">{(question.assuntos && question.assuntos.length > 0) ? question.assuntos[0].nome : 'Geral'}</span>
+              <span className="inline-flex items-center justify-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[8px] font-bold rounded-md uppercase tracking-wide">{(question.assuntos && question.assuntos.length > 0) ? getQuestionCardTaxonomyLabel(question.assuntos[0]) || 'Geral' : 'Geral'}</span>
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-bold rounded border border-slate-200 dark:border-slate-600 uppercase">{['', 'Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'][Number(question.dificuldade)] || 'Dificuldade ' + question.dificuldade}</span>
               {isOriginalQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-violet-600 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Inédita</span>}
               {isCanceledQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-red-500 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Anulada</span>}
@@ -1294,7 +1305,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 animate-slide-down dark:border-slate-800 sm:grid-cols-3 xl:grid-cols-6">
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Banca</span>
-              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Building2 size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.bancas?.map(b => b.sigla).join(' / ') || '---'}</div>
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Building2 size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.bancas?.map(getQuestionCardTaxonomyLabel).filter(Boolean).join(' / ') || '---'}</div>
             </div>
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Ano</span>
@@ -1314,7 +1325,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Assunto</span>
-              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Tag size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.assuntos?.map(a => a.nome).join(', ') || 'Geral'}</div>
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Tag size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.assuntos?.map(getQuestionCardTaxonomyLabel).filter(Boolean).join(', ') || 'Geral'}</div>
             </div>
           </div>
         )}
@@ -1369,7 +1380,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
         )}
 
-        {(question.grupoQuestao || question.introText || question.referenceText || question.reference_text) && (
+        {(hasCanonicalAssociatedContent || supportAssets.length > 0 || referenceAssets.length > 0 || question.grupoQuestao || question.introText || question.referenceText || question.reference_text) && (
           <div className="mb-4">
             <button
               onClick={() => setIsContextExpanded(!isContextExpanded)}
@@ -1382,7 +1393,36 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
         {isContextExpanded && (
           <div className="animate-slide-down">
-            {question.grupoQuestao && (question.grupoQuestao.enunciado || question.grupoQuestao.texto || question.grupoQuestao.image_url) && (
+            {canonicalContexts.map((context, contextIndex) => {
+              const contextBody = String(context.body || context.texto || '').trim();
+              const contextReference = String(context.reference || '').trim();
+              if (!contextBody && !contextReference && !(context.assets || []).length) return null;
+
+              return (
+                <div key={String(context.id || context.tempId || contextIndex)} className="mb-6 space-y-3">
+                  {contextBody && (
+                    <div
+                      className="question-rich-html text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium prose prose-indigo dark:prose-invert max-w-none [&_img]:mx-auto [&_img]:my-3 [&_img]:max-h-[420px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-slate-200 [&_img]:bg-white [&_img]:p-1 dark:[&_img]:border-slate-700 dark:[&_img]:bg-slate-900"
+                      dangerouslySetInnerHTML={{ __html: renderQuestionContentWithAssets(contextBody, context.assets) }}
+                    />
+                  )}
+                  {!contextBody && (context.assets || []).length > 0 && (
+                    <div
+                      className="question-rich-html text-sm text-slate-600 dark:text-slate-300"
+                      dangerouslySetInnerHTML={{ __html: renderQuestionContentWithAssets('', context.assets) }}
+                    />
+                  )}
+                  {contextReference && (
+                    <div className="rounded-r-xl border-l-2 border-amber-300 bg-amber-50 p-4 text-xs font-semibold leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                      {contextReference}
+                    </div>
+                  )}
+                  <div className="h-px bg-slate-100 dark:bg-slate-800 w-full my-4" />
+                </div>
+              );
+            })}
+
+            {canonicalContexts.length === 0 && question.grupoQuestao && (question.grupoQuestao.enunciado || question.grupoQuestao.texto || question.grupoQuestao.image_url) && (
               <div className="mb-6 space-y-4">
                 {question.grupoQuestao.enunciado && (
                   <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium prose dark:prose-invert max-w-none">
@@ -1415,22 +1455,22 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               </div>
             )}
 
-            {question.introText && (
+            {(question.introText || supportAssets.length > 0) && (
               <div className="mb-6 space-y-3">
                 <div
                   className="question-rich-html text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium prose prose-indigo dark:prose-invert max-w-none [&_img]:mx-auto [&_img]:my-3 [&_img]:max-h-[420px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-slate-200 [&_img]:bg-white [&_img]:p-1 dark:[&_img]:border-slate-700 dark:[&_img]:bg-slate-900"
-                  dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.introText) }}
+                  dangerouslySetInnerHTML={{ __html: renderQuestionContentWithAssets(question.introText, supportAssets) }}
                 />
                 <div className="h-px bg-slate-100 dark:bg-slate-800 w-full my-4" />
               </div>
             )}
 
-            {(question.referenceText || question.reference_text) && (
+            {(question.referenceText || question.reference_text || referenceAssets.length > 0) && (
               <div className="mb-6 rounded-r-xl border-l-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
                 <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Referência</div>
                 <div
                   className="question-rich-html text-xs font-semibold leading-relaxed text-amber-900 dark:text-amber-100"
-                  dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.referenceText || question.reference_text || '') }}
+                  dangerouslySetInnerHTML={{ __html: renderQuestionContentWithAssets(question.referenceText || question.reference_text || '', referenceAssets) }}
                 />
               </div>
             )}
@@ -1439,9 +1479,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
         <div className="space-y-4">
           <div className="text-base text-slate-800 dark:text-slate-100 font-semibold leading-relaxed prose prose-indigo dark:prose-invert max-w-none">
-            <div className="question-rich-html" dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.enunciado) }} />
+            <div className="question-rich-html" dangerouslySetInnerHTML={{ __html: renderQuestionContentWithAssets(question.enunciado, statementAssets) }} />
           </div>
-          {question.imageUrl && (
+          {question.imageUrl && statementAssets.length === 0 && (
             <div className="my-4 rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800">
               <Image src={getAssetUrl(question.imageUrl)} alt="Anexo" width={900} height={420} unoptimized className="max-w-full h-auto mx-auto max-h-[400px]" />
             </div>
@@ -1523,7 +1563,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                       ) : (
                         <div
                           className={`question-rich-html text-sm font-medium leading-relaxed ${textClass}`}
-                          dangerouslySetInnerHTML={{ __html: fixHtmlImages(item.corpo || item.corpo_clean || '') }}
+                          dangerouslySetInnerHTML={{ __html: renderQuestionContentWithAssets(item.corpo || item.corpo_clean || '', item.assets) }}
                         />
                       )}
                       {showResult && isCorrect && <CheckCircle2 className="ml-auto text-emerald-500" size={20} />}
