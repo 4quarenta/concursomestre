@@ -12,9 +12,7 @@
 import { apiClient, ENDPOINTS, assertApiSuccess, downloadAuthenticatedFile, readApiData, resolveApiResourceUrl } from '@services/api';
 import type { ApiResponse } from '@services/api';
 import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
-import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
-import { getSupportReasonLabel } from '@services/support/supportReasonLabels';
-import type { ErrorReport, Question, QuestionAsset, Ranking, SystemSettings, UserProfile } from '@types';
+import type { ErrorReport, Ranking, SystemSettings, UserProfile } from '@types';
 import { normalizeAdminFeedbackThread, normalizeAdminQuestionListPayload } from './adminService.normalizers';
 import { adaptPublicSystemSettings, type PublicSystemSettingsContract } from './publicSettingsContract';
 import type {
@@ -323,9 +321,11 @@ export const adminService = {
     return withRequestCoalescing(
       buildRequestCacheKey('admin:reports'),
       async () => {
-        const response = await requestApi<ErrorReport[]>(apiClient.get<ApiResponse<ErrorReport[]>>(ENDPOINTS.reports.list));
-        const payload = readApiData(response, []);
-        return Array.isArray(payload) ? payload : [];
+        const response = await requestApi<ErrorReport[] | { items?: ErrorReport[] }>(
+          apiClient.get<ApiResponse<ErrorReport[] | { items?: ErrorReport[] }>>(ENDPOINTS.reports.list),
+        );
+        const payload = readApiData<ErrorReport[] | { items?: ErrorReport[] }>(response, []);
+        return Array.isArray(payload) ? payload : payload.items || [];
       },
       3_000,
     );

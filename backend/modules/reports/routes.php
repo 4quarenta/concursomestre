@@ -92,13 +92,19 @@ function handleReportsListRoute(PDO $db): void
     try {
         $adminContext = requireAdminSessionContext($db);
         $adminUserId = (string) ($adminContext['admin_user_id'] ?? '');
-        $result = buildReportsController($db)->listReports($adminUserId);
+        $result = buildReportsController($db)->listReports(
+            $adminUserId,
+            (int) ($_GET['limit'] ?? 50),
+            isset($_GET['cursor']) ? (string) $_GET['cursor'] : null
+        );
 
         logAdminAudit($db, $adminUserId, 'reports.list', 'report', null, [
-            'count' => count($result),
+            'count' => count($result['items'] ?? []),
         ]);
 
         Response::success($result, 'Denúncias carregadas.');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
     } catch (DomainException $e) {
         Response::forbidden($e->getMessage());
     } catch (RuntimeException $e) {

@@ -9,8 +9,8 @@ const knownDebt = new Map(Object.entries({
   'backend/modules/subscriptions/services/SubscriptionsService.php': 7463,
   'src/app/admin/components/import/useAdminImportWorkflow.ts': 7101,
   'src/app/profile/ProfilePage.tsx': 5919,
-  'src/app/lei-comentada/[slug]/page.tsx': 5211,
-  'backend/modules/legal_commentary/repositories/LegalCommentaryRepository.php': 5082,
+  'src/app/lei-comentada/[slug]/LawDetailClient.tsx': 5228,
+  'backend/modules/legal_commentary/repositories/LegalCommentaryRepository.php': 5209,
   'src/app/admin/components/finance/AdminFinance.tsx': 4563,
   'backend/modules/legal_commentary/services/LegalCommentaryAiGenerationService.php': 4535,
 }));

@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -35,9 +37,19 @@ class CommentsRepository
      *
      * @since 1.0.0
      */
-    public function listByTargetId(string $targetId, ?string $viewerUserId): array
+    public function listByTargetId(
+        string $targetId,
+        ?string $viewerUserId,
+        int $limit = 50,
+        ?string $cursor = null
+    ): array
     {
         $this->ensureSchema();
+        $safeLimit = max(1, min(100, $limit));
+        $cursorParts = SignedKeysetCursor::decode($cursor, 'comments.target') ?? [
+            'createdAt' => null,
+            'id' => '',
+        ];
 
         $query = "SELECT
                     c.id,
@@ -76,8 +88,16 @@ class CommentsRepository
                   FROM comments c
                   LEFT JOIN users u ON u.id = c.user_id
                   WHERE c.target_id = :target_id
-                    AND COALESCE(c.moderation_status, 'approved') = 'approved'
-                  ORDER BY c.created_at DESC";
+                    AND c.moderation_status = 'approved'";
+
+        if ($cursorParts['createdAt'] !== null) {
+            $query .= " AND (
+                c.created_at < :cursor_created_at
+                OR (c.created_at = :cursor_created_at AND c.id < :cursor_id)
+            )";
+        }
+
+        $query .= ' ORDER BY c.created_at DESC, c.id DESC LIMIT ' . ($safeLimit + 1);
 
         $stmt = $this->db->prepare($query);
         $stmt->bindValue(':target_id', $targetId);
@@ -85,6 +105,10 @@ class CommentsRepository
         $stmt->bindValue(':viewer_user_id_exists', $viewerUserId ?? '');
         $stmt->bindValue(':viewer_user_id_report', $viewerUserId ?? '');
         $stmt->bindValue(':viewer_user_id_report_exists', $viewerUserId ?? '');
+        if ($cursorParts['createdAt'] !== null) {
+            $stmt->bindValue(':cursor_created_at', $cursorParts['createdAt']);
+            $stmt->bindValue(':cursor_id', $cursorParts['id']);
+        }
         $stmt->execute();
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];

@@ -167,10 +167,14 @@ function handleMaterialsListRoute(PDO $db): void
         $viewer = resolveOptionalMaterialsViewer($db);
         $payload = buildMaterialsController($db)->list(
             $viewer['user_id'],
-            $viewer['is_admin']
+            $viewer['is_admin'],
+            (int) ($_GET['limit'] ?? 24),
+            isset($_GET['cursor']) ? (string) $_GET['cursor'] : null
         );
 
         Response::success($payload);
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel carregar os materiais.', $e);
     }

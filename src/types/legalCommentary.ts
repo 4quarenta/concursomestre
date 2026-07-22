@@ -441,6 +441,10 @@ export interface LawDetail extends LawSummary {
   examTips: ArticleExamTip[];
   sumulas?: LegalArticleSyllabus[];
   userComments: LegalUserComment[];
+  userCommentsPageInfo?: {
+    limit: number;
+    hasMore: boolean;
+  };
   updates: LawUpdate[];
   syncLogs?: LegalSyncLog[];
   progress?: LegalUserProgress;

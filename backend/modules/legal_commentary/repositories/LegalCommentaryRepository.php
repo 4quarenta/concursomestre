@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/LegalCommentaryCommunityReadRepository.php';
 
 /*
 * ----------------------------------------------------
@@ -24,10 +25,12 @@ class LegalCommentaryRepository
 {
     private PDO $db;
     private array $contentReactionSummaryCache = [];
+    private LegalCommentaryCommunityReadRepository $communityReads;
 
     public function __construct(PDO $db)
     {
         $this->db = $db;
+        $this->communityReads = new LegalCommentaryCommunityReadRepository($db);
     }
 
     public function getConnection(): PDO
@@ -1059,7 +1062,8 @@ class LegalCommentaryRepository
             "SELECT target_id, created_at
              FROM legal_user_favorites
              WHERE user_id = :user_id AND target_type = 'law'
-             ORDER BY created_at DESC, id DESC"
+             ORDER BY created_at DESC, id DESC
+             LIMIT 101"
         );
         $lawStmt->execute([':user_id' => $userId]);
         foreach ($lawStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
@@ -1095,7 +1099,8 @@ class LegalCommentaryRepository
              INNER JOIN law_sections s ON s.id = CAST(f.target_id AS UNSIGNED)
              INNER JOIN laws l ON l.id = s.law_id
              WHERE f.user_id = :user_id AND f.target_type = 'section'
-             ORDER BY f.created_at DESC, f.id DESC"
+             ORDER BY f.created_at DESC, f.id DESC
+             LIMIT 101"
         );
         $sectionStmt->execute([':user_id' => $userId]);
         foreach ($sectionStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
@@ -1139,7 +1144,8 @@ class LegalCommentaryRepository
              INNER JOIN law_articles a ON a.id = CAST(f.target_id AS UNSIGNED)
              INNER JOIN laws l ON l.id = a.law_id
              WHERE f.user_id = :user_id AND f.target_type = 'article'
-             ORDER BY f.created_at DESC, f.id DESC"
+             ORDER BY f.created_at DESC, f.id DESC
+             LIMIT 101"
         );
         $articleStmt->execute([':user_id' => $userId]);
         foreach ($articleStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
@@ -1250,7 +1256,7 @@ class LegalCommentaryRepository
 
         $stmt = $this->db->prepare(
             $this->lawStatsSql() . "
-             WHERE l.slug COLLATE utf8mb4_unicode_ci = CONVERT(:identifier USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             WHERE l.slug = :identifier
                 OR l.id = :numeric_id
              " . $this->lawStatsGroupBySql() . "
               LIMIT 1"
@@ -1317,6 +1323,12 @@ class LegalCommentaryRepository
             return $article;
         }, $articleRows);
 
+        $userCommentRows = $this->communityReads->fetchUserComments($articleIds, $userId, 200);
+        $hasMoreUserComments = count($userCommentRows) > 200;
+        if ($hasMoreUserComments) {
+            $userCommentRows = array_slice($userCommentRows, 0, 200);
+        }
+
         return array_merge($law, [
             'area' => $this->mapArea([
                 'id' => $row['legal_area_id'],
@@ -1338,7 +1350,11 @@ class LegalCommentaryRepository
             'jurisprudence' => $mappedJurisprudence,
             'examTips' => $mappedExamTips,
             'sumulas' => $mappedSumulas,
-            'userComments' => array_map([$this, 'mapUserComment'], $this->fetchUserComments($articleIds, $userId)),
+            'userComments' => array_map([$this, 'mapUserComment'], $userCommentRows),
+            'userCommentsPageInfo' => [
+                'limit' => 200,
+                'hasMore' => $hasMoreUserComments,
+            ],
             'updates' => array_map([$this, 'mapUpdate'], $this->fetchLawUpdates((int) $row['id'])),
             'progress' => $progress,
             'sectionEditorials' => array_map(
@@ -1355,7 +1371,7 @@ class LegalCommentaryRepository
         $stmt = $this->db->prepare(
             "SELECT l.id, l.slug, l.title, l.short_title, l.law_number, l.status, l.published_at
              FROM laws l
-             WHERE l.slug COLLATE utf8mb4_unicode_ci = CONVERT(:identifier USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             WHERE l.slug = :identifier
                 OR l.id = :numeric_id
              LIMIT 1"
         );
@@ -1572,53 +1588,6 @@ class LegalCommentaryRepository
         }
 
         return $groups;
-    }
-
-    private function fetchUserComments(array $articleIds, ?string $viewerUserId = null): array
-    {
-        if (empty($articleIds)) {
-            return [];
-        }
-
-        $placeholders = implode(',', array_fill(0, count($articleIds), '?'));
-        $stmt = $this->db->prepare(
-            "SELECT luc.*,
-                    u.plan AS user_plan,
-                    u.role AS user_role,
-                    u.photo_url AS user_avatar,
-                    COALESCE(reactions.likes, 0) AS likes,
-                    COALESCE(reactions.dislikes, 0) AS dislikes,
-                    viewer.reaction_value AS user_reaction,
-                    viewer_report.id AS viewer_report_id
-             FROM legal_user_comments luc
-             LEFT JOIN users u ON u.id COLLATE utf8mb4_unicode_ci = luc.user_id COLLATE utf8mb4_unicode_ci
-             LEFT JOIN (
-                SELECT target_key,
-                       SUM(CASE WHEN reaction_value COLLATE utf8mb4_unicode_ci = 'like' COLLATE utf8mb4_unicode_ci THEN 1 ELSE 0 END) AS likes,
-                       SUM(CASE WHEN reaction_value COLLATE utf8mb4_unicode_ci = 'dislike' COLLATE utf8mb4_unicode_ci THEN 1 ELSE 0 END) AS dislikes
-                FROM legal_content_reactions
-                GROUP BY target_key
-             ) reactions ON reactions.target_key COLLATE utf8mb4_unicode_ci = CONCAT('comment:', luc.id) COLLATE utf8mb4_unicode_ci
-             LEFT JOIN legal_content_reactions viewer
-                    ON viewer.target_key COLLATE utf8mb4_unicode_ci = CONCAT('comment:', luc.id) COLLATE utf8mb4_unicode_ci
-                   AND viewer.user_id COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
-             LEFT JOIN legal_comment_reports viewer_report
-                    ON viewer_report.comment_id = luc.id
-                   AND viewer_report.user_id COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
-             WHERE luc.law_article_id IN ($placeholders)
-               AND luc.status COLLATE utf8mb4_unicode_ci != 'deleted' COLLATE utf8mb4_unicode_ci
-               AND (
-                    COALESCE(luc.moderation_status, 'approved') COLLATE utf8mb4_unicode_ci = 'approved' COLLATE utf8mb4_unicode_ci
-                    OR (
-                        COALESCE(luc.moderation_status, '') COLLATE utf8mb4_unicode_ci = 'pending' COLLATE utf8mb4_unicode_ci
-                        AND luc.user_id COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                    )
-               )
-             ORDER BY luc.created_at DESC"
-        );
-        $viewerId = $viewerUserId ?? '';
-        $stmt->execute(array_merge([$viewerId, $viewerId], $articleIds, [$viewerId]));
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     private function fetchLawUpdates(int $lawId): array
@@ -2198,10 +2167,10 @@ class LegalCommentaryRepository
 
         $stmt = $this->db->prepare(
             "SELECT
-                SUM(CASE WHEN reaction_value COLLATE utf8mb4_unicode_ci = 'like' COLLATE utf8mb4_unicode_ci THEN 1 ELSE 0 END) AS likes,
-                SUM(CASE WHEN reaction_value COLLATE utf8mb4_unicode_ci = 'dislike' COLLATE utf8mb4_unicode_ci THEN 1 ELSE 0 END) AS dislikes
+                SUM(CASE WHEN reaction_value = 'like' THEN 1 ELSE 0 END) AS likes,
+                SUM(CASE WHEN reaction_value = 'dislike' THEN 1 ELSE 0 END) AS dislikes
              FROM legal_content_reactions
-             WHERE target_key COLLATE utf8mb4_unicode_ci = CONVERT(:target_key USING utf8mb4) COLLATE utf8mb4_unicode_ci"
+             WHERE target_key = :target_key"
         );
         $stmt->execute([':target_key' => $normalizedTargetKey]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -2211,8 +2180,8 @@ class LegalCommentaryRepository
             $viewerStmt = $this->db->prepare(
                 'SELECT reaction_value
                  FROM legal_content_reactions
-                 WHERE target_key COLLATE utf8mb4_unicode_ci = CONVERT(:target_key USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                   AND user_id COLLATE utf8mb4_unicode_ci = CONVERT(:user_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 WHERE target_key = :target_key
+                   AND user_id = :user_id
                  LIMIT 1'
             );
             $viewerStmt->execute([
@@ -2237,10 +2206,10 @@ class LegalCommentaryRepository
             'DELETE duplicate_reactions
              FROM legal_content_reactions duplicate_reactions
              INNER JOIN legal_content_reactions kept_reactions
-                ON kept_reactions.target_key COLLATE utf8mb4_unicode_ci = duplicate_reactions.target_key COLLATE utf8mb4_unicode_ci
-               AND kept_reactions.user_id COLLATE utf8mb4_unicode_ci = duplicate_reactions.user_id COLLATE utf8mb4_unicode_ci
+                ON kept_reactions.target_key = duplicate_reactions.target_key
+               AND kept_reactions.user_id = duplicate_reactions.user_id
                AND kept_reactions.id > duplicate_reactions.id
-             WHERE duplicate_reactions.target_key COLLATE utf8mb4_unicode_ci = CONVERT(:target_key USING utf8mb4) COLLATE utf8mb4_unicode_ci'
+             WHERE duplicate_reactions.target_key = :target_key'
         );
         $stmt->execute([':target_key' => $targetKey]);
     }
@@ -2276,7 +2245,7 @@ class LegalCommentaryRepository
                     u.role AS user_role,
                     u.photo_url AS user_avatar
              FROM legal_user_comments luc
-             LEFT JOIN users u ON u.id COLLATE utf8mb4_unicode_ci = luc.user_id COLLATE utf8mb4_unicode_ci
+             LEFT JOIN users u ON u.id = luc.user_id
              WHERE luc.id = :id
              LIMIT 1"
         );
@@ -3090,6 +3059,10 @@ class LegalCommentaryRepository
                     $changeType = 'created';
                 } elseif (!$isInitialImport && $previousHash !== $currentHash) {
                     $changeType = 'changed';
+                }
+
+                if (!$isInitialImport && $changeType === 'unchanged') {
+                    continue;
                 }
 
                 $this->recordArticleVersion(

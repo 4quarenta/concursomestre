@@ -662,7 +662,20 @@ class UsersRepository
     public function fetchUserAnswersById(string $userId, int $limit = 20, ?array $cursor = null, ?string $since = null): array
     {
         $safeLimit = max(1, min($limit, 50));
-        $cursorParts = $cursor ?? ['createdAt' => null, 'id' => ''];
+        $where = ['ua.user_id = :id'];
+        $params = [':id' => $userId];
+        if ($since !== null && trim($since) !== '') {
+            $where[] = 'ua.created_at >= :since';
+            $params[':since'] = $since;
+        }
+        if ($cursor !== null && !empty($cursor['createdAt']) && !empty($cursor['id'])) {
+            $where[] = '(
+                ua.created_at < :cursor_created_at
+                OR (ua.created_at = :cursor_created_at AND ua.id < :cursor_id)
+            )';
+            $params[':cursor_created_at'] = (string) $cursor['createdAt'];
+            $params[':cursor_id'] = (string) $cursor['id'];
+        }
         $stmt = $this->db->prepare(
             "SELECT
                 ua.id,
@@ -672,23 +685,12 @@ class UsersRepository
                 ua.created_at,
                 ua.time_taken_seconds,
                 ua.simulation_id
-            FROM user_answers ua
-            WHERE ua.user_id = :id
-              AND (:since IS NULL OR ua.created_at >= :since)
-              AND (
-                :cursor_created_at IS NULL
-                OR ua.created_at < :cursor_created_at
-                OR (ua.created_at = :cursor_created_at AND ua.id < :cursor_id)
-              )
+            FROM user_answers ua FORCE INDEX (idx_user_answers_history_keyset)
+            WHERE " . implode(' AND ', $where) . "
             ORDER BY ua.created_at DESC, ua.id DESC
             LIMIT " . ($safeLimit + 1)
         );
-        $stmt->execute([
-            ':id' => $userId,
-            ':since' => $since,
-            ':cursor_created_at' => $cursorParts['createdAt'],
-            ':cursor_id' => $cursorParts['id'],
-        ]);
+        $stmt->execute($params);
 
         $answers = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         return $this->hydrateUserAnswerSubjects($answers);

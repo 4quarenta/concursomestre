@@ -89,6 +89,7 @@ const ManualQuestionModal = ({
 
   const [provaSearch, setProvaSearch] = React.useState('');
   const [isProvaSearchOpen, setIsProvaSearchOpen] = React.useState(false);
+  const [imageUploadError, setImageUploadError] = React.useState('');
 
   const MULTIPLE_CHOICE_LABEL = 'Múltipla Escolha';
   const MID_LEVEL_LABEL = 'Médio';
@@ -127,8 +128,9 @@ const ManualQuestionModal = ({
     let url = '';
     try {
       url = await readQuestionImageFileAsDataUrl(file);
+      setImageUploadError('');
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
+      setImageUploadError(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
       return;
     }
     setManualQ((prev) => {
@@ -159,8 +161,9 @@ const ManualQuestionModal = ({
     let url = '';
     try {
       url = await readQuestionImageFileAsDataUrl(file);
+      setImageUploadError('');
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
+      setImageUploadError(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
       return;
     }
     setManualQ((prev) => {
@@ -316,6 +319,12 @@ const ManualQuestionModal = ({
       : 'fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950'}
     >
       <div className={`${presentation === 'page' ? '' : 'm-4'} ${ADMIN_MODAL_PANEL_CLASS} flex flex-1 flex-col overflow-hidden`}>
+        {imageUploadError ? (
+          <div role="alert" className="mx-5 mt-4 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            <AlertCircle size={18} />
+            <span>{imageUploadError}</span>
+          </div>
+        ) : null}
         <div className={ADMIN_MODAL_HEADER_CLASS}>
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{manualTitle}</h3>

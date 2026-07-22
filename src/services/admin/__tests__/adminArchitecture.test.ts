@@ -113,7 +113,9 @@ const findUnsafeDangerouslySetInnerHtml = () => (
         const usesKnownSafeRenderer =
           context.includes('normalizeQuestionRichHtml(') ||
           context.includes('fixHtmlImages(') ||
+          context.includes('renderQuestionContentWithAssets(') ||
           context.includes('sanitizedHtml') ||
+          context.includes('serializeStructuredData(') ||
           context.includes('serializeJsonLd(');
 
         return usesKnownSafeRenderer ? [] : [`${relativePath}:${index + 1}:${line.trim()}`];
@@ -172,7 +174,7 @@ describe('admin architecture', () => {
   it('keeps route suspense handling extracted and free of loading copy', () => {
     expect(fs.existsSync(path.resolve(root, 'src/providers/NextAppProviders.tsx'))).toBe(true);
     expect(fs.existsSync(path.resolve(root, 'src/providers/NavigationProgressProvider.tsx'))).toBe(true);
-    expect(readFile('src/providers/NextAppProviders.tsx')).toContain('AppShellFallback');
+    expect(readFile('src/providers/NextAppProviders.tsx')).not.toContain('AppShellFallback');
     expect(readFile('src/providers/NextAppProviders.tsx')).not.toContain('Carregando rota');
   });
 

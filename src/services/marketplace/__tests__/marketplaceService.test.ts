@@ -86,14 +86,15 @@ describe('marketplaceService', () => {
   it('loads materials from the official endpoint', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
-      data: [
-        { id: 'mat-1', title: 'Material teste' },
-      ],
+      data: {
+        items: [{ id: 'mat-1', title: 'Material teste' }],
+        pageInfo: { limit: 24, hasMore: false, nextCursor: null },
+      },
     });
 
     const materials = await marketplaceService.listMaterials();
 
-    expect(mockGet).toHaveBeenCalledWith('materialsList', { params: undefined });
+    expect(mockGet).toHaveBeenCalledWith('materialsList', { params: { limit: 24 } });
     expect(materials[0].id).toBe('mat-1');
   });
 

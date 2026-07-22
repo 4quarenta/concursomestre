@@ -1,4 +1,5 @@
 import { fetchChangelogForServer } from '../../changelog/changelogServerData';
+import { serializeStructuredData } from '@services/seo/structuredData';
 
 export const revalidate = 300;
 
@@ -10,7 +11,7 @@ export default async function ChangelogSeoSnapshot() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeStructuredData({
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: 'Changelog do ConcursoMestre',
@@ -21,7 +22,7 @@ export default async function ChangelogSeoSnapshot() {
               datePublished: version.release_date,
               description: version.description,
             })),
-          }).replace(/</g, '\\u003c'),
+          }),
         }}
       />
       <div className="mx-auto max-w-5xl space-y-10">

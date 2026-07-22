@@ -16,6 +16,7 @@ require_once __DIR__ . '/../validators/MaterialsValidator.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../../vendor/autoload.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 use setasign\Fpdi\Tcpdf\Fpdi;
 
@@ -52,14 +53,48 @@ class MaterialsService
      *
      * @since 1.0.0
      */
-    public function list(?string $viewerUserId, bool $isAdmin): array
+    public function list(
+        ?string $viewerUserId,
+        bool $isAdmin,
+        int $limit = 24,
+        ?string $cursor = null
+    ): array
     {
+        $safeLimit = max(1, min(50, $limit));
+        $rows = $this->repository->fetchMaterials($viewerUserId, $isAdmin, $safeLimit, $cursor);
+        $hasMore = count($rows) > $safeLimit;
+        if ($hasMore) {
+            $rows = array_slice($rows, 0, $safeLimit);
+        }
+
+        $materialIds = array_map(static fn (array $row): string => (string) $row['id'], $rows);
+        $salesCounts = $this->repository->fetchSalesCountsForMaterials($materialIds);
         $materials = array_map(
-            fn (array $row): array => $this->normalizeMaterialRow($row),
-            $this->repository->fetchMaterials($viewerUserId, $isAdmin)
+            function (array $row) use ($salesCounts): array {
+                $row['salesCount'] = $salesCounts[(string) ($row['id'] ?? '')] ?? 0;
+                return $this->normalizeMaterialRow($row);
+            },
+            $rows
         );
 
-        return $this->attachCommentsToMaterials($materials);
+        $items = $this->attachCommentsToMaterials($materials);
+        $lastRow = $rows !== [] ? $rows[count($rows) - 1] : null;
+        $nextCursor = $hasMore && is_array($lastRow)
+            ? SignedKeysetCursor::encode(
+                'materials.list',
+                (string) ($lastRow['createdAt'] ?? ''),
+                (string) ($lastRow['id'] ?? '')
+            )
+            : null;
+
+        return [
+            'items' => $items,
+            'pageInfo' => [
+                'limit' => $safeLimit,
+                'hasMore' => $hasMore,
+                'nextCursor' => $nextCursor,
+            ],
+        ];
     }
 
     /**

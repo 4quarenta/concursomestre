@@ -22,10 +22,20 @@ foreach ([
     'question-import.v2',
     'private_ingestion_jobs',
     'private_ingestion_nonces',
+    'QUESTION_INGESTION_MAX_QUESTIONS_PER_JOB',
+    'FOR UPDATE SKIP LOCKED',
+    'available_at',
+    'locked_by',
+    'dead_lettered_at',
+    'isRetryableFailure',
 ] as $needle) {
     assertPrivateIngestion(str_contains($service, $needle), 'Servico de ingestao privado sem protecao esperada: ' . $needle);
 }
 assertPrivateIngestion(!str_contains($service, 'HTTP_COOKIE'), 'Servico de ingestao nao deve aceitar cookies de crawler.');
+assertPrivateIngestion(
+    str_contains($service, "count(\$questions) > \$maxQuestions"),
+    'Servico deve limitar o tamanho transacional do lote por quantidade de questoes.'
+);
 assertPrivateIngestion(str_contains($client, 'X-Question-Ingest-Signature'), 'Cliente local deve assinar a requisicao.');
 assertPrivateIngestion(!str_contains($client, 'Cookie'), 'Cliente local nao deve enviar cookies.');
 

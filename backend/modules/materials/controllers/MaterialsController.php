@@ -38,9 +38,14 @@ class MaterialsController
      *
      * @since 1.0.0
      */
-    public function list(?string $viewerUserId, bool $isAdmin): array
+    public function list(
+        ?string $viewerUserId,
+        bool $isAdmin,
+        int $limit = 24,
+        ?string $cursor = null
+    ): array
     {
-        return $this->service->list($viewerUserId, $isAdmin);
+        return $this->service->list($viewerUserId, $isAdmin, $limit, $cursor);
     }
 
     /**

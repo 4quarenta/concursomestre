@@ -98,8 +98,8 @@ export const reportsService = {
    */
   async listReports(): Promise<ErrorReport[]> {
     const response = await apiClient.get(ENDPOINTS.reports.list) as unknown;
-    const payload = readApiData<ErrorReport[]>(response, []);
-    return Array.isArray(payload) ? payload : [];
+    const payload = readApiData<ErrorReport[] | { items?: ErrorReport[] }>(response, []);
+    return Array.isArray(payload) ? payload : payload.items || [];
   },
 };
 

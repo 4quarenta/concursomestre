@@ -197,7 +197,12 @@ const fetchJson = async (endpoint: string): Promise<unknown> => {
 const fetchList = async <TItem,>(endpoint: string): Promise<TItem[]> => {
   try {
     const payload = readEnvelopeData<unknown>(await fetchJson(endpoint), []);
-    return Array.isArray(payload) ? payload as TItem[] : [];
+    if (Array.isArray(payload)) return payload as TItem[];
+    if (payload && typeof payload === 'object') {
+      const record = payload as { items?: TItem[]; rows?: TItem[] };
+      return record.items || record.rows || [];
+    }
+    return [];
   } catch {
     return [];
   }

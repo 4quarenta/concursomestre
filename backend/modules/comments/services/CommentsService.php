@@ -12,6 +12,7 @@
 */
 
 require_once __DIR__ . '/../../../config/payment_provider.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 /**
  * Service oficial do dominio de comentarios.
@@ -50,7 +51,17 @@ class CommentsService
             $viewerUserId = (string) ($filters['fallbackUserId'] ?? '');
         }
 
-        $rows = $this->repository->listByTargetId($filters['targetId'], $viewerUserId !== '' ? $viewerUserId : null);
+        $limit = (int) ($filters['limit'] ?? 50);
+        $rows = $this->repository->listByTargetId(
+            $filters['targetId'],
+            $viewerUserId !== '' ? $viewerUserId : null,
+            $limit,
+            $filters['cursor'] ?? null
+        );
+        $hasMore = count($rows) > $limit;
+        if ($hasMore) {
+            $rows = array_slice($rows, 0, $limit);
+        }
         $lookup = [];
 
         foreach ($rows as $row) {
@@ -70,7 +81,23 @@ class CommentsService
             $roots[] = &$lookup[$commentId];
         }
 
-        return $roots;
+        $lastRow = $rows !== [] ? $rows[count($rows) - 1] : null;
+        $nextCursor = $hasMore && is_array($lastRow)
+            ? SignedKeysetCursor::encode(
+                'comments.target',
+                (string) ($lastRow['created_at'] ?? ''),
+                (string) ($lastRow['id'] ?? '')
+            )
+            : null;
+
+        return [
+            'items' => $roots,
+            'pageInfo' => [
+                'limit' => $limit,
+                'hasMore' => $hasMore,
+                'nextCursor' => $nextCursor,
+            ],
+        ];
     }
 
     /**

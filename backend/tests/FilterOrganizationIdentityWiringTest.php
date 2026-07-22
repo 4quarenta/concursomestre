@@ -30,7 +30,7 @@ foreach (['normalizeAcronym', "'sigla' => \$row['acronym']", 'Taxonomia existent
 $assertContains($validator, 'A sigla deve ter no maximo 40 caracteres.', 'Validator nao limita sigla.');
 $assertContains($validator, '/uploads/admin-assets/taxonomy-logo/', 'Validator nao aceita o upload protegido da taxonomia.');
 $assertContains($adminAssetService, 'taxonomy-logo', 'Upload protegido nao aceita logo de taxonomia.');
-foreach (['Sigla do orgao', 'Enviar imagem', 'taxonomy-logo'] as $needle) {
+foreach (['Sigla do órgão', 'Selecionar imagem', 'taxonomy-logo'] as $needle) {
     $assertContains($modal . $workflow, $needle, "UI de orgaos nao contem {$needle}.");
 }
 

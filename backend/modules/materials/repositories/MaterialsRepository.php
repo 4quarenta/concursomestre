@@ -12,6 +12,7 @@
 */
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 /**
  * Repositorio do dominio de materiais.
@@ -77,11 +78,22 @@ class MaterialsRepository
      *
      * @since 1.0.0
      */
-    public function fetchMaterials(?string $viewerUserId, bool $isAdmin): array
+    public function fetchMaterials(
+        ?string $viewerUserId,
+        bool $isAdmin,
+        int $limit = 24,
+        ?string $cursor = null
+    ): array
     {
         if (!$this->materialsTableExists()) {
             return [];
         }
+
+        $safeLimit = max(1, min(50, $limit));
+        $cursorParts = SignedKeysetCursor::decode($cursor, 'materials.list') ?? [
+            'createdAt' => null,
+            'id' => '',
+        ];
 
         $query = "
             SELECT
@@ -103,12 +115,6 @@ class MaterialsRepository
                 m.cover_url AS coverUrl,
                 m.exam_target AS examTarget,
                 m.rejection_reason AS rejectionReason,
-                (
-                    SELECT COUNT(*)
-                    FROM transactions t
-                    WHERE t.material_id = m.id
-                      AND t.status IN ('completed', 'approved')
-                ) AS salesCount,
                 m.rating,
                 m.files_json AS filesJson,
                 m.created_at AS createdAt
@@ -126,12 +132,49 @@ class MaterialsRepository
             }
         }
 
-        $query .= ' ORDER BY m.created_at DESC';
+        if ($cursorParts['createdAt'] !== null) {
+            $query .= $params === [] ? ' WHERE ' : ' AND ';
+            $query .= '(
+                m.created_at < :cursor_created_at
+                OR (m.created_at = :cursor_created_at AND m.id < :cursor_id)
+            )';
+            $params[':cursor_created_at'] = $cursorParts['createdAt'];
+            $params[':cursor_id'] = $cursorParts['id'];
+        }
+
+        $query .= ' ORDER BY m.created_at DESC, m.id DESC LIMIT ' . ($safeLimit + 1);
 
         $stmt = $this->db->prepare($query);
         $stmt->execute($params);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Agrega vendas para somente os materiais da pagina corrente.
+     */
+    public function fetchSalesCountsForMaterials(array $materialIds): array
+    {
+        if ($materialIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($materialIds), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT material_id, COUNT(*) AS sales_count
+             FROM transactions
+             WHERE material_id IN ({$placeholders})
+               AND status IN ('completed', 'approved')
+             GROUP BY material_id"
+        );
+        $stmt->execute(array_values($materialIds));
+
+        $counts = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $counts[(string) $row['material_id']] = (int) $row['sales_count'];
+        }
+
+        return $counts;
     }
 
     /**
@@ -255,23 +298,36 @@ class MaterialsRepository
         $stmt = $this->db->prepare(
             "
             SELECT
-                c.*,
+                ranked.*,
                 u.name AS userName,
                 u.plan AS userPlan,
                 u.photo_url AS userAvatar,
-                (
-                    SELECT COUNT(*)
-                    FROM comment_likes cl
-                    WHERE cl.comment_id = c.id
-                ) AS likes
-            FROM comments c
-            LEFT JOIN users u ON u.id = c.user_id
-            WHERE c.target_type = 'material'
-              AND c.target_id IN ({$placeholders})
-            ORDER BY c.created_at DESC
+                COALESCE(likes.likes_count, 0) AS likes
+            FROM (
+                SELECT c.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY c.target_id
+                           ORDER BY c.created_at DESC, c.id DESC
+                       ) AS material_row_number
+                FROM comments c
+                WHERE c.target_type = 'material'
+                  AND c.target_id IN ({$placeholders})
+                  AND c.moderation_status = 'approved'
+            ) ranked
+            LEFT JOIN users u ON u.id = ranked.user_id
+            LEFT JOIN (
+                SELECT cl.comment_id, COUNT(*) AS likes_count
+                FROM comment_likes cl
+                INNER JOIN comments liked_comment ON liked_comment.id = cl.comment_id
+                WHERE liked_comment.target_type = 'material'
+                  AND liked_comment.target_id IN ({$placeholders})
+                GROUP BY cl.comment_id
+            ) likes ON likes.comment_id = ranked.id
+            WHERE ranked.material_row_number <= 20
+            ORDER BY ranked.target_id, ranked.created_at DESC, ranked.id DESC
             "
         );
-        $stmt->execute($materialIds);
+        $stmt->execute(array_merge(array_values($materialIds), array_values($materialIds)));
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }

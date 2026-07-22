@@ -178,7 +178,14 @@ class SimulationsService
         }
 
         $rows = $this->repository->listSimulationsByUserId($authenticatedUserId);
-        $answersBySimulation = $this->repository->listSimulationAnswersByUserId($authenticatedUserId);
+        $simulationIds = array_map(
+            static fn (array $row): string => (string) ($row['id'] ?? ''),
+            $rows
+        );
+        $answersBySimulation = $this->repository->listSimulationAnswersByUserId(
+            $authenticatedUserId,
+            $simulationIds
+        );
 
         $simulations = array_map(
             static function (array $row) use ($answersBySimulation): array {

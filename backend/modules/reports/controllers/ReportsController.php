@@ -43,8 +43,8 @@ class ReportsController
      *
      * @since 1.0.0
      */
-    public function listReports(string $adminUserId): array
+    public function listReports(string $adminUserId, int $limit = 50, ?string $cursor = null): array
     {
-        return $this->service->listReports($adminUserId);
+        return $this->service->listReports($adminUserId, $limit, $cursor);
     }
 }

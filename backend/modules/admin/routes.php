@@ -72,6 +72,7 @@ require_once __DIR__ . '/validators/AdminPlanCatalogValidator.php';
 require_once __DIR__ . '/../../shared/security/AdminSecurity.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
 require_once __DIR__ . '/../../config/payment_provider.php';
+require_once __DIR__ . '/../finance/services/ReferralFinance.php';
 
 /**
  * Ponto de entrada do modulo administrativo para logs do sistema.
@@ -1289,5 +1290,73 @@ function handleAdminCommentsModerationExportRoute(PDO $db): void
     } catch (Throwable $e) {
         error_log('[admin_comments_moderation_export_route] ' . $e->getMessage());
         Response::serverError('Nao foi possivel exportar os comentarios moderados.', $e);
+    }
+}
+
+/**
+ * Consulta e processa ciclos de repasses por indicacao.
+ *
+ * @since 1.0.0
+ */
+function handleAdminReferralPayoutsRoute(PDO $db): void
+{
+    try {
+        $context = requirePlatformAdminSessionContext($db);
+        $adminUserId = (string) ($context['admin_user_id'] ?? '');
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+
+        if ($method === 'GET') {
+            Response::success(ReferralFinance::adminOverview($db), 'Referral payout overview retrieved');
+        }
+
+        if ($method !== 'POST') {
+            Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
+        }
+
+        $payload = json_decode((string) file_get_contents('php://input'), true);
+        if (!is_array($payload)) {
+            Response::badRequest('Payload invalido.');
+        }
+
+        $action = strtolower(trim((string) ($payload['action'] ?? '')));
+        if ($action === 'create_cycle') {
+            $result = ReferralFinance::createCycle($db, $adminUserId, !empty($payload['force']));
+            logAdminAudit(
+                $db,
+                $adminUserId,
+                'referral_payout.create_cycle',
+                'referral_payout_cycle',
+                (string) ($result['cycleId'] ?? ''),
+                $result
+            );
+            Response::success($result, 'Ciclo de repasses processado.');
+        }
+
+        if ($action === 'mark_paid') {
+            $result = ReferralFinance::markPayoutPaid(
+                $db,
+                (int) ($payload['itemId'] ?? 0),
+                $adminUserId,
+                (string) ($payload['providerReference'] ?? '')
+            );
+            logAdminAudit(
+                $db,
+                $adminUserId,
+                'referral_payout.mark_paid',
+                'referral_payout_item',
+                (string) ($payload['itemId'] ?? ''),
+                $result
+            );
+            Response::success($result, 'Repasse marcado como pago.');
+        }
+
+        Response::badRequest('Acao financeira invalida.');
+    } catch (InvalidArgumentException $e) {
+        Response::validationError($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::validationError($e->getMessage());
+    } catch (Throwable $e) {
+        error_log('[admin_referral_payouts_route] ' . $e->getMessage());
+        Response::serverError('Nao foi possivel processar os repasses de indicacao.', $e);
     }
 }

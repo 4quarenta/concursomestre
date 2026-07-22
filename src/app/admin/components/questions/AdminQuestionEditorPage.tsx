@@ -391,6 +391,7 @@ const AdminQuestionEditorPage = ({
   const [groupSearch, setGroupSearch] = React.useState('');
   const [isGroupSearchOpen, setIsGroupSearchOpen] = React.useState(false);
   const [isLoadingGroups, setIsLoadingGroups] = React.useState(false);
+  const [imageUploadError, setImageUploadError] = React.useState('');
   const isMountedRef = React.useRef(true);
   const hasLoadedGroupsRef = React.useRef(false);
   const groupsRequestRef = React.useRef<Promise<void> | null>(null);
@@ -640,8 +641,9 @@ const AdminQuestionEditorPage = ({
     let url = '';
     try {
       url = await readQuestionImageFileAsDataUrl(file);
+      setImageUploadError('');
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
+      setImageUploadError(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
       return;
     }
     setManualQ((prev) => {
@@ -699,8 +701,9 @@ const AdminQuestionEditorPage = ({
     let url = '';
     try {
       url = await readQuestionImageFileAsDataUrl(file);
+      setImageUploadError('');
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
+      setImageUploadError(error instanceof Error ? error.message : 'Nao foi possivel carregar a imagem.');
       return;
     }
 
@@ -890,6 +893,12 @@ const AdminQuestionEditorPage = ({
   return (
     <div className="flex w-full flex-col gap-6 xl:flex-row xl:items-start">
         <div className="min-w-0 flex-1 space-y-6">
+          {imageUploadError ? (
+            <div role="alert" className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              <AlertCircle size={18} />
+              <span>{imageUploadError}</span>
+            </div>
+          ) : null}
           <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
             <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
               <div>

@@ -91,9 +91,13 @@ $questionId = 0;
 $answerId = 0;
 $optionId = 0;
 $userId = '00000000-0000-4000-8000-000000000001';
+$exitCode = 0;
 putenv('MIGRATIONS_ALLOW_APPLY=true');
 
 try {
+    $deleteExistingUser = $db->prepare('DELETE FROM users WHERE id = :user_id');
+    $deleteExistingUser->execute([':user_id' => $userId]);
+
     $questionId = backfillInsertMinimal($db, 'questions', [
         'enunciado' => '<p>Questao sintetica com imagem <img src="test.png"></p>',
         'enunciado_clean' => 'Questao sintetica com imagem',
@@ -168,7 +172,7 @@ try {
         'status' => 'FAIL',
         'message' => $error->getMessage(),
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
-    exit(1);
+    $exitCode = 1;
 } finally {
     if ($answerId > 0) {
         $db->exec('DELETE FROM user_answers WHERE id = ' . $answerId);
@@ -181,3 +185,5 @@ try {
     $deleteUser = $db->prepare('DELETE FROM users WHERE id = :user_id');
     $deleteUser->execute([':user_id' => $userId]);
 }
+
+exit($exitCode);

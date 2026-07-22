@@ -12,6 +12,7 @@ BACKUP_DIR=/var/backups/concursomestre/mysql
 
 */10 * * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/reconcile_stripe_subscriptions.php" >> "$LOG_DIR/stripe-cron.log" 2>&1
 * * * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/process_stripe_webhook_jobs.php" --limit=100 >> "$LOG_DIR/stripe-webhook-worker.log" 2>&1
+* * * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/workers/process_question_ingestion_jobs.php" 10 >> "$LOG_DIR/question-ingestion-worker.log" 2>&1
 */15 * * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/process_marketing_automations.php" --execute=PROCESS_MARKETING_AUTOMATIONS --limit=100 >> "$LOG_DIR/marketing-automations.log" 2>&1
 0 * * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/process_referral_rewards.php" >> "$LOG_DIR/referral-rewards.log" 2>&1
 10 8 * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/check_subscription_card_expiry.php" >> "$LOG_DIR/card-expiry.log" 2>&1

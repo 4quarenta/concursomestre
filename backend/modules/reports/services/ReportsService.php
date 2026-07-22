@@ -15,6 +15,7 @@ require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 /**
  * Service oficial do domínio de denúncias.
@@ -101,12 +102,21 @@ class ReportsService
         ];
     }
 
-    public function listReports(string $adminUserId): array
+    public function listReports(
+        string $adminUserId,
+        int $limit = 50,
+        ?string $cursor = null
+    ): array
     {
         $this->validator->validateAdminUserId($adminUserId);
-        $rows = $this->repository->listReports();
+        $safeLimit = max(1, min(100, $limit));
+        $rows = $this->repository->listReports($safeLimit, $cursor);
+        $hasMore = count($rows) > $safeLimit;
+        if ($hasMore) {
+            $rows = array_slice($rows, 0, $safeLimit);
+        }
 
-        return array_map(function (array $row): array {
+        $items = array_map(function (array $row): array {
             $targetType = (string) ($row['targetType'] ?? '');
             $targetId = (string) ($row['target_id'] ?? '');
 
@@ -135,6 +145,22 @@ class ReportsService
                 'resolvedAt' => $this->normalizeTimestampToMs($row['resolvedAt'] ?? null),
             ];
         }, $rows);
+        $lastRow = $rows !== [] ? $rows[count($rows) - 1] : null;
+
+        return [
+            'items' => $items,
+            'pageInfo' => [
+                'limit' => $safeLimit,
+                'hasMore' => $hasMore,
+                'nextCursor' => $hasMore && is_array($lastRow)
+                    ? SignedKeysetCursor::encode(
+                        'reports.admin',
+                        (string) ($lastRow['timestamp'] ?? ''),
+                        (string) ($lastRow['id'] ?? '')
+                    )
+                    : null,
+            ],
+        ];
     }
 
     private function notifyAdminByEmail(string $reportId, array $reporter, array $normalized): void

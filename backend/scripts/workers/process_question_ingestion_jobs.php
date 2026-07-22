@@ -21,9 +21,10 @@ $maxJobs = max(1, min(100, (int) ($argv[1] ?? 10)));
 $db = (new Database())->getConnection();
 $ingestion = new PrivateQuestionIngestionService($db);
 $processed = [];
+$workerId = sprintf('%s:%d:%s', gethostname() ?: 'worker', getmypid(), bin2hex(random_bytes(4)));
 
 for ($index = 0; $index < $maxJobs; $index++) {
-    $job = $ingestion->reserveNextJob();
+    $job = $ingestion->reserveNextJob($workerId);
     if ($job === null) {
         break;
     }
@@ -33,11 +34,11 @@ for ($index = 0; $index < $maxJobs; $index++) {
             throw new InvalidArgumentException('Payload de job invalido.');
         }
         $result = buildQuestionsController($db)->bulkImportQuestions($actorUserId, true, $payload, null);
-        $ingestion->completeJob((int) $job['id'], (int) $job['request_id'], $result);
+        $ingestion->completeJob((int) $job['id'], (int) $job['request_id'], $result, $workerId);
         $processed[] = ['jobId' => (int) $job['id'], 'status' => 'done'];
     } catch (Throwable $exception) {
-        $ingestion->failJob((int) $job['id'], (int) $job['request_id'], $exception);
-        $processed[] = ['jobId' => (int) $job['id'], 'status' => 'failed'];
+        $status = $ingestion->failJob((int) $job['id'], (int) $job['request_id'], $exception, $workerId);
+        $processed[] = ['jobId' => (int) $job['id'], 'status' => $status];
     }
 }
 

@@ -194,7 +194,7 @@ class SimulationsRepository
             "SELECT id, name, status, score, start_time, end_time, config_json
              FROM simulations
              WHERE user_id = :user_id
-             ORDER BY COALESCE(end_time, start_time) DESC
+             ORDER BY start_time DESC, id DESC
              LIMIT :limit"
         );
 
@@ -210,17 +210,26 @@ class SimulationsRepository
      *
      * @since 1.0.0
      */
-    public function listSimulationAnswersByUserId(string $userId): array
+    public function listSimulationAnswersByUserId(string $userId, array $simulationIds): array
     {
+        $simulationIds = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $id): string => trim((string) $id),
+            $simulationIds
+        ))));
+        if ($simulationIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($simulationIds), '?'));
         $stmt = $this->db->prepare(
             "SELECT simulation_id, question_id, selected_option_index, is_correct, time_taken_seconds
              FROM user_answers
-             WHERE user_id = :user_id
-               AND simulation_id IS NOT NULL
-             ORDER BY created_at ASC"
+             WHERE user_id = ?
+               AND simulation_id IN ({$placeholders})
+             ORDER BY simulation_id, created_at ASC, id ASC"
         );
 
-        $stmt->execute([':user_id' => $userId]);
+        $stmt->execute(array_merge([$userId], $simulationIds));
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $grouped = [];
 

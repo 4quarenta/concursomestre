@@ -53,7 +53,13 @@ type MaterialRatingResponse = {
 };
 
 type MaterialsListResponse = {
+  items?: Material[];
   rows?: Material[];
+  pageInfo?: {
+    limit?: number;
+    hasMore?: boolean;
+    nextCursor?: string | null;
+  };
 };
 
 type UploadMaterialResponse = {
@@ -77,12 +83,13 @@ export const marketplaceService = {
     return withRequestCoalescing(
       buildRequestCacheKey('marketplace:materials:list', filters || {}),
       async () => {
+        const params = filters ? { ...filters, limit: 24 } : { limit: 24 };
         const response = await apiClient.get<Material[] | MaterialsListResponse>(ENDPOINTS.materials.list, {
-          params: filters,
+          params,
         });
 
-        const payload = readApiData<Material[] | { rows?: Material[] }>(response, []);
-        return Array.isArray(payload) ? payload : payload.rows || [];
+        const payload = readApiData<Material[] | MaterialsListResponse>(response, []);
+        return Array.isArray(payload) ? payload : payload.items || payload.rows || [];
       },
       4000,
     );

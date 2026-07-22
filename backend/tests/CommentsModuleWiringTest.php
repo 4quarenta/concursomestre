@@ -48,6 +48,18 @@ assertContainsCommentsDelegate(
 );
 
 assertContainsCommentsDelegate(
+    $base . '/modules/comments/repositories/CommentsRepository.php',
+    "SignedKeysetCursor::decode(\$cursor, 'comments.target')",
+    'Public comment listing must use a signed keyset cursor'
+);
+
+assertContainsCommentsDelegate(
+    $base . '/modules/comments/repositories/CommentsRepository.php',
+    'LIMIT \' . ($safeLimit + 1)',
+    'Public comment listing must be bounded'
+);
+
+assertContainsCommentsDelegate(
     $base . '/modules/comments/routes.php',
     'function handleCommentsMutationRoute',
     'Comments routes must expose the mutation handler'

@@ -1,0 +1,12 @@
+-- Rollback policy for 20260722_040000_scale_schema_contract_repair
+--
+-- This migration only reconciles additive canonical structures whose source
+-- migrations are already part of the official history. Dropping them would
+-- remove data written after deployment and recreate the original drift.
+--
+-- Application rollback:
+--   1. point the release symlink to the previous application release;
+--   2. keep the additive columns, tables and indexes in place;
+--   3. restore the pre-deploy database backup only for a verified data issue.
+--
+-- No destructive SQL is intentionally provided.

@@ -28,6 +28,8 @@ class CommentsValidator
     {
         $targetId = trim((string) ($query['target_id'] ?? $query['targetId'] ?? ''));
         $fallbackUserId = trim((string) ($query['user_id'] ?? $query['userId'] ?? ''));
+        $limit = filter_var($query['limit'] ?? 50, FILTER_VALIDATE_INT);
+        $cursor = trim((string) ($query['cursor'] ?? ''));
 
         if ($targetId === '') {
             throw new InvalidArgumentException('target_id e obrigatorio.');
@@ -36,6 +38,8 @@ class CommentsValidator
         return [
             'targetId' => $targetId,
             'fallbackUserId' => $fallbackUserId !== '' ? $fallbackUserId : null,
+            'limit' => $limit === false ? 50 : max(1, min(100, (int) $limit)),
+            'cursor' => $cursor !== '' ? $cursor : null,
         ];
     }
 

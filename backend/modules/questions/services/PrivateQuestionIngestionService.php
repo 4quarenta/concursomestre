@@ -11,7 +11,12 @@ require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
  */
 final class PrivateQuestionIngestionService
 {
-    private const MAX_BODY_BYTES = 5_242_880;
+    private const DEFAULT_MAX_BODY_BYTES = 15_000_000;
+    private const HARD_MAX_BODY_BYTES = 15_500_000;
+    private const DEFAULT_MAX_QUESTIONS_PER_JOB = 250;
+    private const HARD_MAX_QUESTIONS_PER_JOB = 1000;
+    private const DEFAULT_MAX_ATTEMPTS = 5;
+    private const DEFAULT_STALE_LOCK_MINUTES = 15;
     private const MAX_CLOCK_SKEW_SECONDS = 300;
 
     public function __construct(private readonly PDO $db)
@@ -22,8 +27,12 @@ final class PrivateQuestionIngestionService
     {
         $this->assertSchemaReady();
         $this->assertHttps($server);
-        if ($rawBody === '' || strlen($rawBody) > self::MAX_BODY_BYTES) {
-            throw new InvalidArgumentException('Payload de ingestao invalido ou maior que 5 MB.');
+        $maxBodyBytes = $this->maxBodyBytes();
+        if ($rawBody === '' || strlen($rawBody) > $maxBodyBytes) {
+            throw new InvalidArgumentException(sprintf(
+                'Payload de ingestao invalido ou maior que %.1f MB.',
+                $maxBodyBytes / 1_000_000
+            ));
         }
 
         $clientKey = trim((string) ($server['HTTP_X_QUESTION_INGEST_KEY'] ?? ''));
@@ -54,6 +63,18 @@ final class PrivateQuestionIngestionService
         $payload = json_decode($rawBody, true);
         if (!is_array($payload) || ($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
             throw new InvalidArgumentException('A ingestao exige o contrato question-import.v2.');
+        }
+        $questions = $payload['questions'] ?? [];
+        if (!is_array($questions)) {
+            throw new InvalidArgumentException('O campo questions deve ser uma lista.');
+        }
+        $maxQuestions = $this->maxQuestionsPerJob();
+        if (count($questions) > $maxQuestions) {
+            throw new InvalidArgumentException(sprintf(
+                'O lote possui %d questoes. Divida-o em lotes de no maximo %d para limitar locks e memoria.',
+                count($questions),
+                $maxQuestions
+            ));
         }
 
         $payloadHash = hash('sha256', $rawBody);
@@ -113,8 +134,8 @@ final class PrivateQuestionIngestionService
             ]);
             $requestId = (int) $this->db->lastInsertId();
             $insertJob = $this->db->prepare(
-                'INSERT INTO private_ingestion_jobs (request_id, actor_user_id, payload_json, status)
-                 VALUES (:request_id, :actor_user_id, :payload_json, :status)'
+                'INSERT INTO private_ingestion_jobs (request_id, actor_user_id, payload_json, status, available_at)
+                 VALUES (:request_id, :actor_user_id, :payload_json, :status, UTC_TIMESTAMP())'
             );
             $insertJob->execute([
                 ':request_id' => $requestId,
@@ -142,16 +163,47 @@ final class PrivateQuestionIngestionService
         }
     }
 
-    public function reserveNextJob(): ?array
+    public function reserveNextJob(?string $workerId = null): ?array
     {
         $this->assertSchemaReady();
+        $workerId = $this->normalizeWorkerId($workerId);
+        $staleMinutes = $this->staleLockMinutes();
         $this->db->beginTransaction();
         try {
+            $maxAttempts = $this->maxAttempts();
+            $this->db->exec(
+                "UPDATE private_ingestion_jobs jobs
+                 INNER JOIN private_ingestion_requests requests ON requests.id = jobs.request_id
+                 SET jobs.status = 'failed',
+                     jobs.error_message = COALESCE(jobs.error_message, 'Worker interrompido apos o limite de tentativas.'),
+                     jobs.last_error_at = UTC_TIMESTAMP(),
+                     jobs.completed_at = UTC_TIMESTAMP(),
+                     jobs.dead_lettered_at = UTC_TIMESTAMP(),
+                     jobs.locked_at = NULL,
+                     jobs.locked_by = NULL,
+                     requests.status = 'failed'
+                 WHERE jobs.status = 'processing'
+                   AND jobs.attempts >= {$maxAttempts}
+                   AND jobs.locked_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL {$staleMinutes} MINUTE)"
+            );
+            $this->db->exec(
+                "UPDATE private_ingestion_jobs jobs
+                 INNER JOIN private_ingestion_requests requests ON requests.id = jobs.request_id
+                 SET jobs.status = 'pending',
+                     jobs.available_at = UTC_TIMESTAMP(),
+                     jobs.locked_at = NULL,
+                     jobs.locked_by = NULL,
+                     requests.status = 'pending'
+                 WHERE jobs.status = 'processing'
+                   AND jobs.attempts < {$maxAttempts}
+                   AND jobs.locked_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL {$staleMinutes} MINUTE)"
+            );
             $stmt = $this->db->query(
                 "SELECT * FROM private_ingestion_jobs
                  WHERE status = 'pending'
-                 ORDER BY id ASC
-                 LIMIT 1 FOR UPDATE"
+                   AND (available_at IS NULL OR available_at <= UTC_TIMESTAMP())
+                 ORDER BY available_at ASC, id ASC
+                 LIMIT 1 FOR UPDATE SKIP LOCKED"
             );
             $job = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!is_array($job)) {
@@ -160,12 +212,14 @@ final class PrivateQuestionIngestionService
             }
             $this->db->prepare(
                 "UPDATE private_ingestion_jobs
-                 SET status = 'processing', attempts = attempts + 1, locked_at = UTC_TIMESTAMP()
+                 SET status = 'processing', attempts = attempts + 1, locked_at = UTC_TIMESTAMP(), locked_by = :locked_by
                  WHERE id = :id"
-            )->execute([':id' => (int) $job['id']]);
+            )->execute([':locked_by' => $workerId, ':id' => (int) $job['id']]);
             $this->db->prepare("UPDATE private_ingestion_requests SET status = 'processing' WHERE id = :id")
                 ->execute([':id' => (int) $job['request_id']]);
             $this->db->commit();
+            $job['attempts'] = (int) ($job['attempts'] ?? 0) + 1;
+            $job['locked_by'] = $workerId;
             return $job;
         } catch (Throwable $exception) {
             if ($this->db->inTransaction()) {
@@ -175,29 +229,124 @@ final class PrivateQuestionIngestionService
         }
     }
 
-    public function completeJob(int $jobId, int $requestId, array $result): void
+    public function completeJob(int $jobId, int $requestId, array $result, ?string $workerId = null): void
     {
         $json = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        $this->db->prepare(
-            "UPDATE private_ingestion_jobs SET status = 'done', result_json = :result_json, completed_at = UTC_TIMESTAMP() WHERE id = :id"
-        )->execute([':result_json' => $json, ':id' => $jobId]);
-        $this->db->prepare(
-            "UPDATE private_ingestion_requests SET status = 'done', response_json = :response_json WHERE id = :id"
-        )->execute([':response_json' => $json, ':id' => $requestId]);
+        $this->db->beginTransaction();
+        try {
+            $sql = "UPDATE private_ingestion_jobs
+                    SET status = 'done', result_json = :result_json, completed_at = UTC_TIMESTAMP(),
+                        locked_at = NULL, locked_by = NULL
+                    WHERE id = :id AND request_id = :request_id AND status = 'processing'";
+            $params = [
+                ':result_json' => $json,
+                ':id' => $jobId,
+                ':request_id' => $requestId,
+            ];
+            if ($workerId !== null && trim($workerId) !== '') {
+                $sql .= ' AND locked_by = :locked_by';
+                $params[':locked_by'] = $this->normalizeWorkerId($workerId);
+            }
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            if ($stmt->rowCount() !== 1) {
+                throw new RuntimeException('O job nao pertence mais a este worker ou ja foi finalizado.');
+            }
+            $requestStmt = $this->db->prepare(
+                "UPDATE private_ingestion_requests
+                 SET status = 'done', response_json = :response_json
+                 WHERE id = :id AND job_id = :job_id"
+            );
+            $requestStmt->execute([
+                ':response_json' => $json,
+                ':id' => $requestId,
+                ':job_id' => $jobId,
+            ]);
+            if ($requestStmt->rowCount() !== 1) {
+                throw new RuntimeException('A requisicao da ingestao nao corresponde ao job concluido.');
+            }
+            $this->db->commit();
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
     }
 
-    public function failJob(int $jobId, int $requestId, Throwable $exception): void
+    public function failJob(int $jobId, int $requestId, Throwable $exception, ?string $workerId = null): string
     {
         $message = substr($exception->getMessage(), 0, 3000);
-        $this->db->prepare(
-            "UPDATE private_ingestion_jobs SET status = 'failed', error_message = :message, completed_at = UTC_TIMESTAMP() WHERE id = :id"
-        )->execute([':message' => $message, ':id' => $jobId]);
-        $this->db->prepare(
-            "UPDATE private_ingestion_requests SET status = 'failed', response_json = :response_json WHERE id = :id"
-        )->execute([
-            ':response_json' => json_encode(['error' => $message], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ':id' => $requestId,
-        ]);
+        $this->db->beginTransaction();
+        try {
+            $select = $this->db->prepare(
+                'SELECT attempts, locked_by FROM private_ingestion_jobs WHERE id = :id LIMIT 1 FOR UPDATE'
+            );
+            $select->execute([':id' => $jobId]);
+            $job = $select->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($job)) {
+                throw new RuntimeException('Job de ingestao nao encontrado ao registrar falha.');
+            }
+            $normalizedWorkerId = $workerId !== null && trim($workerId) !== ''
+                ? $this->normalizeWorkerId($workerId)
+                : null;
+            if ($normalizedWorkerId !== null
+                && (string) ($job['locked_by'] ?? '') !== $normalizedWorkerId) {
+                throw new RuntimeException('O job nao pertence mais a este worker.');
+            }
+
+            $attempts = max(1, (int) ($job['attempts'] ?? 1));
+            $willRetry = $this->isRetryableFailure($exception) && $attempts < $this->maxAttempts();
+            if ($willRetry) {
+                $delaySeconds = min(900, 15 * (2 ** max(0, $attempts - 1)));
+                $availableAt = gmdate('Y-m-d H:i:s', time() + $delaySeconds);
+                $this->db->prepare(
+                    "UPDATE private_ingestion_jobs
+                     SET status = 'pending', available_at = :available_at, error_message = :message,
+                         last_error_at = UTC_TIMESTAMP(), locked_at = NULL, locked_by = NULL
+                     WHERE id = :id"
+                )->execute([
+                    ':available_at' => $availableAt,
+                    ':message' => $message,
+                    ':id' => $jobId,
+                ]);
+                $response = json_encode([
+                    'error' => $message,
+                    'retryScheduledAt' => $availableAt,
+                    'attempts' => $attempts,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $this->db->prepare(
+                    "UPDATE private_ingestion_requests SET status = 'pending', response_json = :response_json WHERE id = :id"
+                )->execute([':response_json' => $response, ':id' => $requestId]);
+                $this->db->commit();
+                return 'pending';
+            }
+
+            $this->db->prepare(
+                "UPDATE private_ingestion_jobs
+                 SET status = 'failed', error_message = :message, last_error_at = UTC_TIMESTAMP(),
+                     completed_at = UTC_TIMESTAMP(), dead_lettered_at = UTC_TIMESTAMP(),
+                     locked_at = NULL, locked_by = NULL
+                 WHERE id = :id"
+            )->execute([':message' => $message, ':id' => $jobId]);
+            $this->db->prepare(
+                "UPDATE private_ingestion_requests SET status = 'failed', response_json = :response_json WHERE id = :id"
+            )->execute([
+                ':response_json' => json_encode([
+                    'error' => $message,
+                    'attempts' => $attempts,
+                    'deadLettered' => true,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ':id' => $requestId,
+            ]);
+            $this->db->commit();
+            return 'failed';
+        } catch (Throwable $failure) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $failure;
+        }
     }
 
     private function assertSchemaReady(): void
@@ -205,8 +354,60 @@ final class PrivateQuestionIngestionService
         SchemaReadiness::assertTablesAndColumns($this->db, 'ingestao privada de questoes', [
             'private_ingestion_nonces' => ['nonce_hash', 'request_timestamp', 'expires_at'],
             'private_ingestion_requests' => ['client_key', 'idempotency_key', 'payload_hash', 'status', 'job_id'],
-            'private_ingestion_jobs' => ['request_id', 'payload_json', 'status', 'attempts'],
+            'private_ingestion_jobs' => [
+                'request_id', 'payload_json', 'status', 'available_at', 'attempts',
+                'locked_at', 'locked_by', 'last_error_at', 'dead_lettered_at',
+            ],
         ]);
+    }
+
+    private function maxBodyBytes(): int
+    {
+        $configured = (int) (getenv('QUESTION_INGESTION_MAX_BODY_BYTES') ?: self::DEFAULT_MAX_BODY_BYTES);
+        return max(1_000_000, min(self::HARD_MAX_BODY_BYTES, $configured));
+    }
+
+    private function maxQuestionsPerJob(): int
+    {
+        $configured = (int) (getenv('QUESTION_INGESTION_MAX_QUESTIONS_PER_JOB')
+            ?: self::DEFAULT_MAX_QUESTIONS_PER_JOB);
+        return max(1, min(self::HARD_MAX_QUESTIONS_PER_JOB, $configured));
+    }
+
+    private function maxAttempts(): int
+    {
+        return max(1, min(10, (int) (getenv('QUESTION_INGESTION_MAX_ATTEMPTS') ?: self::DEFAULT_MAX_ATTEMPTS)));
+    }
+
+    private function staleLockMinutes(): int
+    {
+        return max(5, min(120, (int) (getenv('QUESTION_INGESTION_STALE_LOCK_MINUTES')
+            ?: self::DEFAULT_STALE_LOCK_MINUTES)));
+    }
+
+    private function normalizeWorkerId(?string $workerId): string
+    {
+        $value = trim((string) $workerId);
+        if ($value === '') {
+            $value = (gethostname() ?: 'worker') . ':' . getmypid();
+        }
+        return substr((string) preg_replace('/[^A-Za-z0-9_.:-]+/', '-', $value), 0, 120);
+    }
+
+    private function isRetryableFailure(Throwable $exception): bool
+    {
+        if ($exception instanceof InvalidArgumentException || $exception instanceof DomainException) {
+            return false;
+        }
+        if (!$exception instanceof PDOException) {
+            return true;
+        }
+
+        $sqlState = strtoupper((string) $exception->getCode());
+        $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+        return str_starts_with($sqlState, '08')
+            || $sqlState === '40001'
+            || in_array($driverCode, [1205, 1213, 2006, 2013], true);
     }
 
     private function assertHttps(array $server): void

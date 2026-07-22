@@ -1,5 +1,8 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -141,11 +144,17 @@ class ReportsRepository
      * Lista as denuncias para o painel admin com os dados do reporter.
       * @since 1.0.0
      */
-    public function listReports(): array
+    public function listReports(int $limit = 50, ?string $cursor = null): array
     {
         $this->ensureReportsSchema();
 
-        $stmt = $this->db->prepare('
+        $safeLimit = max(1, min(100, $limit));
+        $cursorParts = SignedKeysetCursor::decode($cursor, 'reports.admin') ?? [
+            'createdAt' => null,
+            'id' => '',
+        ];
+
+        $query = '
             SELECT
                 r.id,
                 r.reporter_id AS userId,
@@ -163,20 +172,24 @@ class ReportsRepository
                 u.level AS level
             FROM reports r
             LEFT JOIN users u ON u.id = r.reporter_id
-            ORDER BY r.created_at DESC
-        ');
+            WHERE 1 = 1';
+        if ($cursorParts['createdAt'] !== null) {
+            $query .= ' AND (
+                r.created_at < :cursor_created_at
+                OR (r.created_at = :cursor_created_at AND r.id < :cursor_id)
+            )';
+        }
+        $query .= ' ORDER BY r.created_at DESC, r.id DESC LIMIT ' . ($safeLimit + 1);
+
+        $stmt = $this->db->prepare($query);
+        if ($cursorParts['createdAt'] !== null) {
+            $stmt->bindValue(':cursor_created_at', $cursorParts['createdAt']);
+            $stmt->bindValue(':cursor_id', $cursorParts['id']);
+        }
         $stmt->execute();
 
         $reports = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        return array_map(function (array $report): array {
-            $preview = $this->findReportTargetPreview(
-                (string) ($report['targetType'] ?? ''),
-                (string) ($report['target_id'] ?? '')
-            );
-
-            return array_merge($report, $preview);
-        }, $reports);
+        return $this->hydrateReportTargetPreviews($reports);
     }
 
     /**
@@ -197,17 +210,101 @@ class ReportsRepository
             return;
         }
 
-        $this->ensureColumnType('id', 'varchar(64)', "ALTER TABLE reports MODIFY COLUMN id VARCHAR(64) NOT NULL");
-        $this->ensureColumnType(
-            'target_type',
-            "enum('question','material','comment','law_section')",
-            "ALTER TABLE reports MODIFY COLUMN target_type ENUM('question', 'material', 'comment', 'law_section') NOT NULL"
-        );
-        $this->ensureColumn('evidence_url', "ALTER TABLE reports ADD COLUMN evidence_url VARCHAR(2048) NULL AFTER status");
-        $this->ensureColumnType('evidence_url', 'varchar(2048)', "ALTER TABLE reports MODIFY COLUMN evidence_url VARCHAR(2048) NULL");
-        $this->ensureColumn('resolved_at', "ALTER TABLE reports ADD COLUMN resolved_at DATETIME NULL AFTER evidence_url");
+        SchemaReadiness::assertTablesAndColumns($this->db, 'denuncias', [
+            'reports' => [
+                'id', 'reporter_id', 'target_type', 'target_id', 'reason', 'details',
+                'status', 'evidence_url', 'resolved_at', 'created_at',
+            ],
+        ]);
 
         $this->schemaEnsured = true;
+    }
+
+    /**
+     * Resolve conteudo de comentarios comuns e da Lei Comentada em lote.
+     */
+    private function hydrateReportTargetPreviews(array $reports): array
+    {
+        $commentTargetIds = array_values(array_unique(array_filter(array_map(
+            static fn (array $report): string => ($report['targetType'] ?? '') === 'comment'
+                ? trim((string) ($report['target_id'] ?? ''))
+                : '',
+            $reports
+        ))));
+        if ($commentTargetIds === []) {
+            return array_map(
+                fn (array $report): array => array_merge($report, $this->emptyTargetPreview()),
+                $reports
+            );
+        }
+
+        $placeholders = implode(',', array_fill(0, count($commentTargetIds), '?'));
+        $previewById = [];
+        $genericStmt = $this->db->prepare(
+            "SELECT id, content, target_type, target_id
+             FROM comments
+             WHERE id IN ({$placeholders})"
+        );
+        $genericStmt->execute($commentTargetIds);
+        foreach ($genericStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $comment) {
+            $previewById[(string) $comment['id']] = [
+                'targetContent' => trim((string) ($comment['content'] ?? '')),
+                'targetLabel' => 'Comentario',
+                'targetContext' => trim((string) ($comment['target_type'] ?? ''))
+                    . ' #' . trim((string) ($comment['target_id'] ?? '')),
+                'targetUrl' => null,
+            ];
+        }
+
+        $unresolvedIds = array_values(array_filter(
+            $commentTargetIds,
+            static fn (string $id): bool => !isset($previewById[$id])
+        ));
+        if ($unresolvedIds !== []) {
+            $legalPlaceholders = implode(',', array_fill(0, count($unresolvedIds), '?'));
+            $legalStmt = $this->db->prepare(
+                "SELECT c.id, c.body, c.law_article_id, a.article_number, l.slug AS law_slug, l.title AS law_title
+                 FROM legal_user_comments c
+                 LEFT JOIN law_articles a ON a.id = c.law_article_id
+                 LEFT JOIN laws l ON l.id = a.law_id
+                 WHERE c.id IN ({$legalPlaceholders})"
+            );
+            $legalStmt->execute($unresolvedIds);
+            foreach ($legalStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $comment) {
+                $lawSlug = trim((string) ($comment['law_slug'] ?? ''));
+                $articleNumber = trim((string) ($comment['article_number'] ?? ''));
+                $previewById[(string) $comment['id']] = [
+                    'targetContent' => trim((string) ($comment['body'] ?? '')),
+                    'targetLabel' => 'Comentario da Lei Comentada',
+                    'targetContext' => trim((string) ($comment['law_title'] ?? 'Lei Comentada'))
+                        . ($articleNumber !== '' ? ' - Art. ' . $articleNumber : ''),
+                    'targetUrl' => $lawSlug !== '' ? '/lei-comentada/' . rawurlencode($lawSlug) : null,
+                ];
+            }
+        }
+
+        return array_map(function (array $report) use ($previewById): array {
+            if (($report['targetType'] ?? '') !== 'comment') {
+                return array_merge($report, $this->emptyTargetPreview());
+            }
+            $targetId = trim((string) ($report['target_id'] ?? ''));
+            return array_merge($report, $previewById[$targetId] ?? [
+                'targetContent' => null,
+                'targetLabel' => 'Comentario nao encontrado',
+                'targetContext' => 'O comentario pode ter sido removido ou pertencer a uma origem antiga.',
+                'targetUrl' => null,
+            ]);
+        }, $reports);
+    }
+
+    private function emptyTargetPreview(): array
+    {
+        return [
+            'targetContent' => null,
+            'targetLabel' => null,
+            'targetContext' => null,
+            'targetUrl' => null,
+        ];
     }
 
     private function findReportTargetPreview(string $targetType, string $targetId): array
@@ -311,37 +408,4 @@ class ReportsRepository
         return (int) $stmt->fetchColumn() > 0;
     }
 
-    private function ensureColumn(string $column, string $alterSql): void
-    {
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'reports'
-              AND COLUMN_NAME = :column
-        ");
-        $stmt->execute([':column' => $column]);
-
-        if ((int) $stmt->fetchColumn() === 0) {
-            $this->db->exec($alterSql);
-        }
-    }
-
-    private function ensureColumnType(string $column, string $expectedType, string $alterSql): void
-    {
-        $stmt = $this->db->prepare("
-            SELECT COLUMN_TYPE
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'reports'
-              AND COLUMN_NAME = :column
-            LIMIT 1
-        ");
-        $stmt->execute([':column' => $column]);
-
-        $currentType = strtolower((string) $stmt->fetchColumn());
-        if ($currentType !== strtolower($expectedType)) {
-            $this->db->exec($alterSql);
-        }
-    }
 }

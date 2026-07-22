@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { serializeStructuredData } from '@services/seo/structuredData';
 import { FAQ_DATA } from '../../faq/faqContent';
 
 const faqEntries = FAQ_DATA.flatMap((category) => category.questions);
@@ -21,7 +22,7 @@ export default function FaqSeoSnapshot() {
     <main className="min-h-screen bg-slate-50 px-5 py-10 text-slate-900">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData).replace(/</g, '\\u003c') }}
+        dangerouslySetInnerHTML={{ __html: serializeStructuredData(faqStructuredData) }}
       />
       <div className="mx-auto max-w-5xl space-y-10">
         <header className="space-y-3">
