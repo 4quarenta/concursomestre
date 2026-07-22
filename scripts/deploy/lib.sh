@@ -128,3 +128,43 @@ cm_safe_release_path() {
   [[ -n "$candidate" && -n "$root" && "$candidate" == "$root"/* ]] || cm_die "Caminho fora da raiz de releases: $1"
   printf '%s\n' "$candidate"
 }
+
+cm_prune_releases() {
+  local releases_root="$1" keep_count="$2" candidate resolved protected_path protected_count
+  shift 2
+
+  [[ "$keep_count" =~ ^[0-9]+$ ]] || cm_die "CM_KEEP_RELEASES invalido: $keep_count"
+  (( keep_count >= 3 )) || keep_count=3
+  releases_root="$(readlink -f "$releases_root" 2>/dev/null || true)"
+  [[ -n "$releases_root" && -d "$releases_root" ]] || cm_die 'Raiz de releases invalida para retencao.'
+
+  declare -A protected=()
+  for protected_path in "$@"; do
+    [[ -n "$protected_path" && -d "$protected_path" ]] || continue
+    resolved="$(cm_safe_release_path "$protected_path" "$releases_root")"
+    protected["$resolved"]=1
+  done
+
+  protected_count="${#protected[@]}"
+  (( keep_count >= protected_count )) || keep_count="$protected_count"
+
+  mapfile -t candidates < <(
+    find "$releases_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+      | sort -rn \
+      | cut -d' ' -f2-
+  )
+
+  for candidate in "${candidates[@]}"; do
+    resolved="$(cm_safe_release_path "$candidate" "$releases_root")"
+    if [[ -n "${protected[$resolved]:-}" ]]; then
+      continue
+    fi
+    if (( protected_count < keep_count )); then
+      protected["$resolved"]=1
+      protected_count=$((protected_count + 1))
+      continue
+    fi
+    cm_log "Removendo release antigo fora da retencao: $resolved"
+    rm -rf --one-file-system -- "$resolved"
+  done
+}

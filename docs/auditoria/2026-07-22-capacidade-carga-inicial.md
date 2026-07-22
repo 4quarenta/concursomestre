@@ -60,6 +60,17 @@ Foram auditados schema, indices e caminhos de leitura dos seguintes dominios:
 - Otimizacao de imagem com Sharp 0.35.3: HTTP 200.
 - Readiness da API: banco, migrations, storage, runtime store e worker Stripe
   prontos.
+- Release implantado em producao:
+  `1.0.0-scale-readiness-79f62fc7261f-20260722204240`.
+- Worker de ingestao executado manualmente e pelo cron sem erro; fila vazia no
+  momento da verificacao.
+- Ensaio isolado: 50.000 questoes e 250.000 alternativas inseridas em 16,389
+  segundos, sem tocar na base de producao.
+- Piloto HTTP com concorrencia 5: questoes 45,92 req/s (p95 148 ms),
+  comentarios 45,23 req/s (p95 98 ms) e leis 13,28 req/s (p95 271 ms), todos
+  sem falhas.
+- Retencao de releases corrigida: cinco versoes preservadas e disco passou de
+  31% para 57% livre, sem remover uploads, banco ou backups.
 
 ## Divida controlada
 
@@ -72,6 +83,11 @@ Foram auditados schema, indices e caminhos de leitura dos seguintes dominios:
   mantido no banco depois da importacao.
 - A VPS atual precisa de banco/volume maior e mais CPU antes da carga em escala
   de milhoes.
+- No ensaio de 50 mil, filtros taxonomicos muito seletivos foram resolvidos
+  pelo indice reverso, mas o MySQL aplicou filesort ao pequeno conjunto
+  resultante. Isso nao bloqueia os lotes iniciais; antes de filtros com centenas
+  de milhares de vinculos, adotar feed materializado por filtro ou mecanismo
+  dedicado de busca/facetas.
 
 ## Plano de carga
 

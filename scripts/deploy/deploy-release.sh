@@ -19,7 +19,7 @@ done
 cm_load_config "$CONFIG_PATH"
 cm_require_config_values CM_ENVIRONMENT CM_RELEASES_DIR CM_FRONTEND_LINK CM_BACKEND_LINK CM_SHARED_DIR \
   CM_FRONTEND_ENV_SOURCE CM_BACKEND_ENV_SOURCE CM_FRONTEND_SERVICE CM_PHP_FPM_SERVICE CM_NGINX_SERVICE \
-  CM_APP_GROUP CM_DEPLOY_LOCK_FILE CM_DEPLOY_STATE_DIR CM_WEB_BASE_URL CM_API_BASE_URL
+  CM_APP_GROUP CM_DEPLOY_LOCK_FILE CM_DEPLOY_STATE_DIR CM_WEB_BASE_URL CM_API_BASE_URL CM_KEEP_RELEASES
 
 case "$CM_ENVIRONMENT" in staging) expected_token='DEPLOY_STAGING';; production) expected_token='DEPLOY_PRODUCTION';; *) cm_die 'Ambiente invalido.';; esac
 if [[ -n "$EXECUTE_TOKEN" ]]; then [[ "$EXECUTE_TOKEN" == "$expected_token" ]] || cm_die "Use --execute=$expected_token"; CM_DEPLOY_DRY_RUN='false'; else CM_DEPLOY_DRY_RUN='true'; fi
@@ -112,4 +112,8 @@ const fs = require('node:fs');
 const [file, releaseId, releaseDir, previousFrontend, previousBackend, sha256] = process.argv.slice(2);
 fs.writeFileSync(file, `${JSON.stringify({ releaseId, releaseDir, previousFrontend: previousFrontend || null, previousBackend: previousBackend || null, artifactSha256: sha256, deployedAt: new Date().toISOString() }, null, 2)}\n`, { mode: 0o640 });
 NODE
-switched='false'; cm_log "DEPLOY PASS: $release_id"
+switched='false'
+if ! (cm_prune_releases "$CM_RELEASES_DIR" "$CM_KEEP_RELEASES" "$release_dir" "$previous_frontend" "$previous_backend"); then
+  cm_log 'AVISO: deploy concluido, mas a retencao automatica de releases falhou.'
+fi
+cm_log "DEPLOY PASS: $release_id"
