@@ -41,5 +41,9 @@ assertReleaseRetention(
     str_contains($deploy, 'if [[ -d "$release_dir/backend/uploads" ]]'),
     'Uploads opcionais devem ser copiados apenas quando presentes no pacote.'
 );
+assertReleaseRetention(
+    str_contains($deploy, 'find "$release_dir/scripts" -type f -name \'*.sh\' -exec chmod 0750 {} +'),
+    'O release deve materializar scripts shell executaveis mesmo quando o ZIP vier do Windows.'
+);
 
 fwrite(STDOUT, "DeployReleaseRetentionWiringTest: PASS\n");
