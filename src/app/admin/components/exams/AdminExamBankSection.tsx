@@ -14,7 +14,14 @@ import Link from 'next/link';
 import { FileText, Link2 } from 'lucide-react';
 import type { Prova } from '@types';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
-import { ADMIN_PAGE_PANEL_CLASS, ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import {
+  ADMIN_COLLECTION_TABLE_CLASS,
+  ADMIN_COLLECTION_TABLE_HEAD_CLASS,
+  ADMIN_COLLECTION_TABLE_ROW_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+} from '../shared/adminPanelStyles';
+import AdminCollectionPagination from '../shared/AdminCollectionPagination';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 import { buildAdminExamEditPath } from '../../config/adminPageNavigationConfig';
@@ -31,6 +38,8 @@ interface AdminExamBankSectionProps {
   onConfirmDelete: () => void;
   actionLoading: 'save' | 'delete' | null;
 }
+
+const COLLECTION_PAGE_SIZE = 20;
 
 /**
  * Lista e edita o banco de provas da operação.
@@ -50,59 +59,51 @@ const AdminExamBankSection = ({
   onConfirmDelete,
   actionLoading,
 }: AdminExamBankSectionProps) => {
-  const totalLinkedQuestions = Array.from(linkedCountByExamId.values()).reduce((sum, current) => sum + current, 0);
+  const [page, setPage] = React.useState(1);
+  const totalPages = Math.max(1, Math.ceil(exams.length / COLLECTION_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const visibleExams = React.useMemo(
+    () => exams.slice((currentPage - 1) * COLLECTION_PAGE_SIZE, currentPage * COLLECTION_PAGE_SIZE),
+    [currentPage, exams],
+  );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <AdminCollectionToolbar
         title="Banco de provas"
         description="Cadastro canônico de provas salvo no banco de dados, com vínculos, arquivos e metadados editoriais."
         itemCount={totalExams}
         itemCountLabel="provas"
         searchValue={filter}
-        onSearchChange={onFilterChange}
+        onSearchChange={(value) => {
+          setPage(1);
+          onFilterChange(value);
+        }}
         searchPlaceholder="Buscar provas..."
         primaryActionLabel="Adicionar nova"
         primaryActionHref={buildAdminExamEditPath('new')}
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Banco de provas</p>
-          <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{totalExams}</p>
-        </div>
-        <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Questões vinculadas</p>
-          <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{totalLinkedQuestions}</p>
-        </div>
-        <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Uso principal</p>
-          <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Vínculo rápido no editor de questões</p>
-          <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">A busca de prova usa este mesmo cadastro.</p>
-        </div>
-      </div>
-
       <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
-          <p className="text-sm font-black text-slate-900 dark:text-slate-100">Lista de provas cadastradas</p>
-          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Use editar para ajustar o cadastro. Arquivar remove a prova da listagem sem apagar o histórico.</p>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Banco principal de provas</p>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/50">
+          <table className={ADMIN_COLLECTION_TABLE_CLASS}>
+            <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
               <tr>
-                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Prova</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Banca</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Órgão</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Cargo</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Vinculos</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Visibilidade</th>
+                <th className="p-4">Prova</th>
+                <th className="p-4">Banca</th>
+                <th className="p-4">Órgão</th>
+                <th className="p-4">Cargo</th>
+                <th className="p-4">Vínculos</th>
+                <th className="p-4">Publicação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {exams.map((exam) => (
-                <tr key={exam.id}>
+              {visibleExams.map((exam) => (
+                <tr key={exam.id} className={ADMIN_COLLECTION_TABLE_ROW_CLASS}>
                   <td className="p-4">
                     <div className="flex flex-col gap-1">
                       <span className="text-sm font-black text-slate-900 dark:text-slate-100">{exam.nome}</span>
@@ -162,6 +163,15 @@ const AdminExamBankSection = ({
           </table>
         </div>
       </div>
+
+      <AdminCollectionPagination
+        visibleCount={visibleExams.length}
+        totalCount={exams.length}
+        itemLabel="provas"
+        page={currentPage}
+        totalPages={totalPages}
+        onPageChange={setPage}
+      />
 
       <AdminConfirmDialog
         isOpen={Boolean(deletingExam)}

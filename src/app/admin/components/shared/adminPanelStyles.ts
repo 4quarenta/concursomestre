@@ -1,6 +1,9 @@
 export const ADMIN_SURFACE_CLASS = 'rounded-sm border border-slate-300 bg-white shadow-sm shadow-slate-200/60 dark:border-slate-700 dark:bg-slate-900 dark:shadow-none';
 export const ADMIN_SURFACE_HEADER_CLASS = 'border-b border-slate-300 bg-slate-100 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/50';
 export const ADMIN_PAGE_PANEL_CLASS = `${ADMIN_SURFACE_CLASS} p-5`;
+export const ADMIN_COLLECTION_TABLE_CLASS = 'w-full min-w-[1180px] text-left text-xs';
+export const ADMIN_COLLECTION_TABLE_HEAD_CLASS = 'border-b border-slate-100 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500';
+export const ADMIN_COLLECTION_TABLE_ROW_CLASS = 'transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50';
 export const ADMIN_MUTED_SURFACE_CLASS = 'rounded-sm border border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/40';
 export const ADMIN_SEGMENTED_TABS_CLASS = `${ADMIN_SURFACE_CLASS} flex flex-wrap gap-2 p-2`;
 export const ADMIN_MODAL_PANEL_CLASS = `${ADMIN_SURFACE_CLASS} overflow-hidden`;

@@ -35,12 +35,16 @@ import {
   ADMIN_MODAL_HEADER_CLASS,
   ADMIN_MODAL_PANEL_CLASS,
   ADMIN_MUTED_SURFACE_CLASS,
-  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_COLLECTION_TABLE_CLASS,
+  ADMIN_COLLECTION_TABLE_HEAD_CLASS,
+  ADMIN_COLLECTION_TABLE_ROW_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
   ADMIN_SURFACE_CLASS,
   ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
+import AdminCollectionActionBar from '../shared/AdminCollectionActionBar';
+import AdminCollectionPagination from '../shared/AdminCollectionPagination';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import { buildAdminLawEditPath } from '../../config/adminPageNavigationConfig';
 
@@ -92,11 +96,14 @@ const LAW_UPDATE_CHANGE_LABEL: Record<string, string> = {
   renumbered: 'Renumerado',
 };
 
+const COLLECTION_PAGE_SIZE = 20;
+
 const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectionProps) => {
   const { addToast } = useToast();
   const confirm = useConfirm();
   const [query, setQuery] = React.useState(filter);
   const [laws, setLaws] = React.useState<LawSummary[]>([]);
+  const [page, setPage] = React.useState(1);
   const [selectedLawIds, setSelectedLawIds] = React.useState<Set<string>>(() => new Set());
   const [home, setHome] = React.useState<LegalHomeSnapshot>(EMPTY_HOME);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -134,7 +141,13 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
     return new Map<string, string>(entries);
   }, [home.areas]);
   const selectedSourceLookup = React.useMemo(() => new Set(selectedSourceIds), [selectedSourceIds]);
-  const visibleLawIds = React.useMemo(() => laws.map((law) => law.id), [laws]);
+  const totalPages = Math.max(1, Math.ceil(laws.length / COLLECTION_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const visibleLaws = React.useMemo(
+    () => laws.slice((currentPage - 1) * COLLECTION_PAGE_SIZE, currentPage * COLLECTION_PAGE_SIZE),
+    [currentPage, laws],
+  );
+  const visibleLawIds = React.useMemo(() => visibleLaws.map((law) => law.id), [visibleLaws]);
   const allVisibleSelected = visibleLawIds.length > 0 && visibleLawIds.every((lawId) => selectedLawIds.has(lawId));
 
   const loadLaws = React.useCallback(async (nextQuery = query) => {
@@ -589,31 +602,15 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
   };
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-4">
-        <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Leis</p>
-          <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{home.totals.laws}</p>
-        </div>
-        <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Artigos</p>
-          <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{home.totals.articles}</p>
-        </div>
-        <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Comentados</p>
-          <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{home.totals.commentedArticles}</p>
-        </div>
-        <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Atualizadas</p>
-          <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{home.totals.updatedRecently}</p>
-        </div>
-      </div>
-
+    <div className="space-y-4">
       <AdminCollectionToolbar
         title="Lei Comentada"
         description="Gerencie leis, artigos, comentários editoriais, jurisprudencia, sumulas e vinculos com materias."
         searchValue={query}
-        onSearchChange={setQuery}
+        onSearchChange={(value) => {
+          setPage(1);
+          setQuery(value);
+        }}
         searchPlaceholder="Buscar por nome, numero, apelido, área ou ementa"
         primaryActionLabel="Adicionar nova"
         primaryActionHref={getLawEditPath('new')}
@@ -650,29 +647,27 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         )}
       />
 
+      <AdminCollectionActionBar
+        summary={selectedLawIds.size > 0 ? `${selectedLawIds.size} lei(s) selecionada(s)` : 'Selecione uma ou mais leis para aplicar a ação.'}
+      >
+        <button
+          type="button"
+          onClick={() => void handleBulkDelete()}
+          disabled={selectedLawIds.size === 0 || isBulkDeleting}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          {isBulkDeleting ? <Loader2 size={14} className="animate-spin" /> : null}
+          Mover para lixeira
+        </button>
+      </AdminCollectionActionBar>
+
       <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Leis cadastradas</p>
         </div>
-        <div className="flex flex-col gap-3 border-b border-slate-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleBulkDelete()}
-              disabled={selectedLawIds.size === 0 || isBulkDeleting}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              {isBulkDeleting ? <Loader2 size={14} className="animate-spin" /> : null}
-              Mover para lixeira
-            </button>
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              {selectedLawIds.size > 0 ? `${selectedLawIds.size} lei(s) selecionada(s)` : 'Selecione leis para aplicar a ação em massa.'}
-            </span>
-          </div>
-        </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-xs">
-            <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:border-slate-800 dark:bg-slate-800/50">
+          <table className={ADMIN_COLLECTION_TABLE_CLASS}>
+            <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
               <tr>
                 <th className="w-12 p-4">
                   <input
@@ -697,8 +692,8 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                 <tr>
                   <td colSpan={8} className="p-10 text-center text-sm font-bold text-slate-500">Carregando leis...</td>
                 </tr>
-              ) : laws.length > 0 ? laws.map((law) => (
-                <tr key={law.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+              ) : visibleLaws.length > 0 ? visibleLaws.map((law) => (
+                <tr key={law.id} className={ADMIN_COLLECTION_TABLE_ROW_CLASS}>
                   <td className="p-4 align-top">
                     <input
                       type="checkbox"
@@ -812,6 +807,15 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
           </table>
         </div>
       </div>
+
+      <AdminCollectionPagination
+        visibleCount={visibleLaws.length}
+        totalCount={laws.length}
+        itemLabel="leis"
+        page={currentPage}
+        totalPages={totalPages}
+        onPageChange={setPage}
+      />
 
       {updatesModalLaw ? (
         <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-950/65 px-4 py-8 backdrop-blur-sm">

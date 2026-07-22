@@ -18,10 +18,14 @@ import { readApiErrorMessage } from '@services/api';
 import { buildQuestionPath } from '@services/seo';
 import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
 import {
-  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_COLLECTION_TABLE_CLASS,
+  ADMIN_COLLECTION_TABLE_HEAD_CLASS,
+  ADMIN_COLLECTION_TABLE_ROW_CLASS,
   ADMIN_SURFACE_CLASS,
   ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
+import AdminCollectionActionBar from '../shared/AdminCollectionActionBar';
+import AdminCollectionPagination from '../shared/AdminCollectionPagination';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
@@ -1229,11 +1233,9 @@ const AdminQuestionsSection = ({
         )}
       />
 
-      <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col gap-3 transition-colors duration-300 lg:flex-row lg:items-center lg:justify-between`}>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Ações em massa
-          </span>
+      <AdminCollectionActionBar
+        summary={selectedQuestions.length > 0 ? `${selectedQuestions.length} questão(ões) selecionada(s)` : 'Selecione uma ou mais questões para aplicar a ação.'}
+      >
           <button
             type="button"
             disabled={selectedQuestions.length === 0 || generationIsBusy}
@@ -1252,19 +1254,15 @@ const AdminQuestionsSection = ({
             <FileText size={14} />
             Gerar análise
           </button>
-        </div>
-        <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          {selectedQuestions.length > 0 ? `${selectedQuestions.length} questão(ões) selecionada(s)` : 'Selecione uma ou mais questões para aplicar a ação.'}
-        </span>
-      </div>
+      </AdminCollectionActionBar>
 
       <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden transition-colors duration-300`}>
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Banco principal de questões</p>
         </div>
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[1180px] text-left text-xs">
-          <thead className="border-b border-slate-100 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
+        <table className={ADMIN_COLLECTION_TABLE_CLASS}>
+          <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
             <tr>
               <th className="w-12 p-4">
                 <input
@@ -1316,7 +1314,7 @@ const AdminQuestionsSection = ({
                   : null);
 
               return (
-                <tr key={questionId || `question-${questionRecord.id ?? 'sem-id'}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                <tr key={questionId || `question-${questionRecord.id ?? 'sem-id'}`} className={ADMIN_COLLECTION_TABLE_ROW_CLASS}>
                   <td className="p-4">
                     <input
                       type="checkbox"
@@ -1454,30 +1452,14 @@ const AdminQuestionsSection = ({
         </div>
       </div>
 
-      <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`}>
-        <span className="text-sm text-slate-500 dark:text-slate-400">Mostrando {questions.length} de {pagination.total} questões</span>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={pagination.page <= 1}
-            onClick={() => onPageChange(pagination.page - 1)}
-            className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-30 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            Anterior
-          </button>
-          <span className="flex items-center px-4 text-sm font-semibold text-blue-600 dark:text-blue-300">
-            Página {pagination.page} de {pagination.pages}
-          </span>
-          <button
-            type="button"
-            disabled={pagination.page >= pagination.pages}
-            onClick={() => onPageChange(pagination.page + 1)}
-            className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-30 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            Próxima
-          </button>
-        </div>
-      </div>
+      <AdminCollectionPagination
+        visibleCount={questions.length}
+        totalCount={pagination.total}
+        itemLabel="questões"
+        page={pagination.page}
+        totalPages={pagination.pages}
+        onPageChange={onPageChange}
+      />
 
       <AdminConfirmDialog
         isOpen={Boolean(pendingDeleteQuestion)}
