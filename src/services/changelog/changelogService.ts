@@ -32,7 +32,7 @@ type ChangelogListPayload = {
 
 const CHANGELOG_DEV_MARKER_PATTERN = /(?:\[\s*dev\s*\]|\(\s*dev\s*\)|\bdev\b)/i;
 
-const BASELINE_1_0_0_CHANGELOG: ChangelogVersion = {
+export const BASELINE_1_0_0_CHANGELOG: ChangelogVersion = {
   id: 100000,
   version: '1.0.0',
   release_date: '2026-06-05',
@@ -113,7 +113,7 @@ const sanitizePublicChangelogVersion = (version: ChangelogVersion): ChangelogVer
   };
 };
 
-const withBaselineChangelog = (versions: ChangelogVersion[]) => {
+export const normalizePublicChangelogVersions = (versions: ChangelogVersion[]) => {
   const publicVersions = versions
     .map(sanitizePublicChangelogVersion)
     .filter((version): version is ChangelogVersion => Boolean(version));
@@ -136,11 +136,11 @@ export const changelogService = {
     const payload = readApiData<ChangelogVersion[] | ChangelogListPayload>(response, []);
 
     if (Array.isArray(payload)) {
-      return withBaselineChangelog(payload);
+      return normalizePublicChangelogVersions(payload);
     }
 
     if (Array.isArray(payload?.versions)) {
-      return withBaselineChangelog(payload.versions);
+      return normalizePublicChangelogVersions(payload.versions);
     }
 
     return [BASELINE_1_0_0_CHANGELOG];

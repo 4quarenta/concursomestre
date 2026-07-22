@@ -9,6 +9,8 @@
 *
 */
 
+'use client';
+
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark';

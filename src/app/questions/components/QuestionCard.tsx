@@ -534,6 +534,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     teacher: false,
     detailed: false,
   });
+  const [editorialFeedbackLoaded, setEditorialFeedbackLoaded] = useState(false);
+  const editorialFeedbackRequestRef = useRef<Promise<void> | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isPreparingNoteModal, setIsPreparingNoteModal] = useState(false);
@@ -589,6 +591,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       const resetFrame = window.requestAnimationFrame(() => {
         setEditorialFeedback(createEmptyEditorialFeedback());
         setEditorialFeedbackCounts(createEmptyEditorialFeedbackCounts());
+        setEditorialFeedbackLoaded(false);
       });
 
       return () => window.cancelAnimationFrame(resetFrame);
@@ -598,35 +601,45 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const initialFrame = window.requestAnimationFrame(() => {
       setEditorialFeedback(storedFeedback || createEmptyEditorialFeedback());
       setEditorialFeedbackCounts(createEmptyEditorialFeedbackCounts());
+      setEditorialFeedbackLoaded(false);
+      editorialFeedbackRequestRef.current = null;
     });
 
-    let isMounted = true;
-    questionService.getEditorialFeedback(editorialFeedbackQuestionId)
+    return () => {
+      window.cancelAnimationFrame(initialFrame);
+    };
+  }, [authenticatedUserId, editorialFeedbackQuestionId]);
+
+  const loadEditorialFeedback = React.useCallback((): Promise<void> => {
+    if (!editorialFeedbackQuestionId || editorialFeedbackLoaded) {
+      return Promise.resolve();
+    }
+    if (editorialFeedbackRequestRef.current) {
+      return editorialFeedbackRequestRef.current;
+    }
+
+    const storedFeedback = readStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId)
+      || createEmptyEditorialFeedback();
+    const request = questionService.getEditorialFeedback(editorialFeedbackQuestionId)
       .then((snapshot) => {
-        if (!isMounted) {
-          return;
-        }
-
-        const mergedSnapshot = mergeEditorialFeedbackSnapshotWithFallback(
-          snapshot,
-          storedFeedback || createEmptyEditorialFeedback(),
-        );
-
+        const mergedSnapshot = mergeEditorialFeedbackSnapshotWithFallback(snapshot, storedFeedback);
         setEditorialFeedback(mergedSnapshot.feedback);
         setEditorialFeedbackCounts(mergedSnapshot.counts);
+        setEditorialFeedbackLoaded(true);
         if (authenticatedUserId) {
           persistStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId, mergedSnapshot.feedback);
         }
       })
       .catch((error) => {
         clientLog.warn('[QuestionCard] Failed to load editorial feedback:', error);
+      })
+      .finally(() => {
+        editorialFeedbackRequestRef.current = null;
       });
 
-    return () => {
-      isMounted = false;
-      window.cancelAnimationFrame(initialFrame);
-    };
-  }, [authenticatedUserId, editorialFeedbackQuestionId]);
+    editorialFeedbackRequestRef.current = request;
+    return request;
+  }, [authenticatedUserId, editorialFeedbackLoaded, editorialFeedbackQuestionId]);
 
   // Auto-expand comments when question is highlighted OR when there's a comment hash
   useEffect(() => {
@@ -718,11 +731,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   }, [addToast, authenticatedUserId, deleteQuestionComment, fetchComments]);
 
   const startTime = useRef<number>(0);
+  const answerSubmissionKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Reset timer when question ID changes
     const frame = window.requestAnimationFrame(() => {
       startTime.current = readCurrentTimeMs();
+      answerSubmissionKeyRef.current = null;
       setSelectedOptionId(null); // Ensure unselected
     });
 
@@ -732,6 +747,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   // New state to track if the user submitted an answer in THIS session
   const [sessionAnswer, setSessionAnswer] = useState<UserAnswer | null>(null);
   const [showAnswerFeedback, setShowAnswerFeedback] = useState(false);
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
 
   const teacherRequiredPlan = getBenefitRequiredPlan('teacher_comments', systemSettings.planEntitlements);
   const detailedRequiredPlan = getBenefitRequiredPlan('question.detailed_analysis', systemSettings.planEntitlements);
@@ -960,7 +976,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       openPlanUpgrade('Resolver questao', 'question.resolve');
       return;
     }
-    if (selectedOptionId === null || isSubmitted) return;
+    if (selectedOptionId === null || isSubmitted || isSubmittingAnswer) return;
     if (hasReachedDailyQuestionLimit()) {
       openUsageLimitUpgrade('Limite diário de questões', 'questions_per_day');
       return;
@@ -969,12 +985,20 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const selectedItemIndex = question.itens?.findIndex(item => item.id === selectedOptionId) ?? -1;
     const submittedAt = readCurrentTimeMs();
     const startedAt = startTime.current || submittedAt;
+    const idempotencyKey = answerSubmissionKeyRef.current
+      || (typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : `answer-${question.id}-${submittedAt}`);
+    answerSubmissionKeyRef.current = idempotencyKey;
     const pendingAnswer = {
       questionId: Number(question.id),
       selectedOptionIndex: selectedItemIndex >= 0 ? selectedItemIndex : Number(selectedOptionId),
+      selectedAlternativeId: selectedOptionId,
+      idempotencyKey,
       timestamp: submittedAt,
       timeTaken: Math.round((submittedAt - startedAt) / 1000)
     };
+    setIsSubmittingAnswer(true);
     try {
       const canonicalAnswer = await onAnswerSubmit(pendingAnswer);
       if (!canonicalAnswer) {
@@ -982,11 +1006,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       }
       setSessionAnswer(canonicalAnswer);
       setShowAnswerFeedback(true);
+      answerSubmissionKeyRef.current = null;
       incrementDailyUsageCount(authenticatedUserId, 'questions_per_day');
     } catch (error) {
       clientLog.warn('[QuestionCard] Failed to submit answer:', error);
       addToast('Não foi possível salvar sua resposta. Tente novamente.', 'error');
       return;
+    } finally {
+      setIsSubmittingAnswer(false);
     }
     if (!canSeeAnswerKey) {
       openPlanUpgrade('Ver gabarito', 'question.answer_key');
@@ -1021,6 +1048,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const answerPayload = {
       questionId: Number(question.id),
       selectedOptionIndex,
+      selectedAlternativeId: id,
       timestamp: submittedAt,
       timeTaken: Math.round((submittedAt - startedAt) / 1000)
     };
@@ -1585,9 +1613,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                     setPlanUpgradeModal({ featureName: 'Gabarito Comentado', requiredPlan: teacherRequiredPlan, planLabel: teacherPlanLabel });
                     return;
                   }
-                  setShowTeacherComment(!showTeacherComment);
+                  const shouldOpen = !showTeacherComment;
+                  setShowTeacherComment(shouldOpen);
                   setShowDetailedComment(false);
                   setShowAnnotatedLaws(false);
+                  if (shouldOpen) {
+                    void loadEditorialFeedback();
+                  }
                 }}
                 title={isTeacherCommentUnavailable ? 'Comentario do professor ainda nao disponivel para esta questao.' : undefined}
                 className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment && canOpenTeacherComment ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : canOpenTeacherComment ? 'text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-200 dark:hover:border-amber-900/50'}`}
@@ -1597,23 +1629,26 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               </button>
 
             {/* Análise Detalhada - sempre visível, bloqueado por plano */}
-            {(question.hasDetailedComment || question.detailedComment) && (
               <button
                 onClick={() => {
                   if (!canSeeDetailed) {
                     setPlanUpgradeModal({ featureName: 'Análise Detalhada', requiredPlan: detailedRequiredPlan, planLabel: detailedPlanLabel });
                     return;
                   }
-                  setShowDetailedComment(!showDetailedComment);
+                  const shouldOpen = !showDetailedComment;
+                  setShowDetailedComment(shouldOpen);
                   setShowTeacherComment(false);
                   setShowAnnotatedLaws(false);
+                  if (shouldOpen) {
+                    void loadEditorialFeedback();
+                  }
                 }}
-                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
+                title={!question.detailedComment ? 'Analise detalhada ainda nao disponivel para esta questao.' : undefined}
+                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment && canSeeDetailed ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed && question.detailedComment ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
               >
-                {canSeeDetailed ? <BookOpen size={14} /> : <Lock size={12} />}
+                {canSeeDetailed && question.detailedComment ? <BookOpen size={14} /> : <Lock size={12} />}
                 Análise Detalhada
               </button>
-            )}
 
             {canShowAnnotatedLawsButton && (
               <button
@@ -1666,11 +1701,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
           {!isSubmitted && mode === 'practice' ? (
             <button
-              disabled={isCanceledQuestion || selectedOptionId === null}
+              disabled={isCanceledQuestion || selectedOptionId === null || isSubmittingAnswer}
               onClick={handleSubmit}
               className="inline-flex items-center gap-2 px-8 py-3 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest rounded-xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all disabled:opacity-30 text-[10px] shadow-lg shadow-slate-200 dark:shadow-none"
             >
-              {isCanceledQuestion ? 'Questão anulada' : 'Responder'}
+              {isCanceledQuestion ? 'Questão anulada' : isSubmittingAnswer ? 'Salvando...' : 'Responder'}
             </button>
           ) : null}
         </div>

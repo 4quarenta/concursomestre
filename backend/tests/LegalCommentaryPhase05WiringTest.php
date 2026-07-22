@@ -30,6 +30,9 @@ phase05Assert(str_contains($repository, 'legal_user_notes'), 'Anotacoes do usuar
 phase05Assert(str_contains($repository, 'legal_user_reader_annotations'), 'Marcacoes ricas do leitor devem possuir persistencia dedicada.');
 phase05Assert(str_contains($repository, 'function fetchUserNotes') && str_contains($repository, 'function saveUserNote'), 'Repositorio deve expor leitura e escrita de anotacoes.');
 phase05Assert(str_contains($repository, 'function fetchReaderAnnotation') && str_contains($repository, 'function saveReaderAnnotation'), 'Repositorio deve expor leitura e escrita de marcacoes ricas.');
+phase05Assert(str_contains($repository, 'function fetchFavoriteItems'), 'Repositorio deve devolver leis, secoes e artigos salvos ao perfil.');
+phase05Assert(str_contains($repository, "f.target_type = 'law'") && str_contains($repository, "f.target_type = 'section'") && str_contains($repository, "f.target_type = 'article'"), 'Itens salvos devem preservar o tipo canonico do alvo.');
+phase05Assert(str_contains($repository, "'favoriteItems' => \$favoriteItems"), 'Home da Lei Comentada deve expor a lista canonica de itens salvos.');
 phase05Assert(str_contains($repository, "':official_status' => 'active'") && str_contains($repository, "'needs_review'"), 'Sincronizacao deve manter artigos ausentes para revisao, sem apaga-los.');
 phase05Assert(!str_contains($repository, 'DROP COLUMN') && !str_contains($repository, 'DROP INDEX'), 'Migracao canonica nao pode conter remocoes destrutivas.');
 phase05Assert(str_contains($service, 'function listUserNotes') && str_contains($service, 'function deleteUserNote'), 'Servico deve controlar o ciclo completo das anotacoes.');

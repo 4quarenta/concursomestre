@@ -9,6 +9,8 @@
 *
 */
 
+'use client';
+
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import type { Material, QuestaoComentario, Transaction } from '@types';

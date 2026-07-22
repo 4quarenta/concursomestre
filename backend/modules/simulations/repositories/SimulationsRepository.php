@@ -29,6 +29,53 @@ class SimulationsRepository
     }
 
     /**
+     * Executa a persistencia principal do simulado como uma unica unidade atomica.
+     *
+     * @template T
+     * @param callable(): T $callback
+     * @return T
+     */
+    public function transactional(callable $callback): mixed
+    {
+        $ownsTransaction = !$this->db->inTransaction();
+        if ($ownsTransaction) {
+            $this->db->beginTransaction();
+        }
+
+        try {
+            $result = $callback();
+            if ($ownsTransaction && $this->db->inTransaction()) {
+                $this->db->commit();
+            }
+
+            return $result;
+        } catch (Throwable $e) {
+            if ($ownsTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Bloqueia uma sessao existente durante o upsert e devolve seu proprietario.
+     */
+    public function findSimulationOwnerIdForUpdate(string $simulationId): ?string
+    {
+        $stmt = $this->db->prepare(
+            "SELECT user_id
+             FROM simulations
+             WHERE id = :id
+             LIMIT 1
+             FOR UPDATE"
+        );
+        $stmt->execute([':id' => $simulationId]);
+        $ownerId = $stmt->fetchColumn();
+
+        return is_string($ownerId) && trim($ownerId) !== '' ? trim($ownerId) : null;
+    }
+
+    /**
      * Salva ou atualiza a sessao principal de simulado.
      *
      * @since 1.0.0

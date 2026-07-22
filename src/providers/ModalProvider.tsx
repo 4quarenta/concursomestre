@@ -9,6 +9,8 @@
 *
 */
 
+'use client';
+
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import ConfirmModal from '../components/shared/overlays/ConfirmModal';
 

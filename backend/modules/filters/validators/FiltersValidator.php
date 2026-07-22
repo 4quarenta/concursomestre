@@ -38,11 +38,27 @@ class FiltersValidator
             }
         }
 
-        foreach (['website', 'assetUrl', 'asset_url'] as $field) {
+        $website = trim((string) ($data['website'] ?? ''));
+        if ($website !== '' && filter_var($website, FILTER_VALIDATE_URL) === false) {
+            throw new InvalidArgumentException('website deve conter uma URL valida.');
+        }
+
+        foreach (['assetUrl', 'asset_url'] as $field) {
             $url = trim((string) ($data[$field] ?? ''));
-            if ($url !== '' && filter_var($url, FILTER_VALIDATE_URL) === false) {
+            $isProtectedUpload = str_starts_with($url, '/uploads/admin-assets/taxonomy-logo/')
+                && !str_contains($url, '..');
+            if ($url !== '' && !$isProtectedUpload && filter_var($url, FILTER_VALIDATE_URL) === false) {
                 throw new InvalidArgumentException("{$field} deve conter uma URL valida.");
             }
+        }
+
+        $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+        $acronym = trim((string) ($data['sigla'] ?? $data['acronym'] ?? $metadata['sigla'] ?? ''));
+        if (mb_strlen($acronym, 'UTF-8') > 40) {
+            throw new InvalidArgumentException('A sigla deve ter no maximo 40 caracteres.');
+        }
+        if ($acronym !== '' && preg_match('/^[\p{L}\p{N}][\p{L}\p{N}.\-\/ ]*$/u', $acronym) !== 1) {
+            throw new InvalidArgumentException('A sigla contem caracteres invalidos.');
         }
     }
 

@@ -121,6 +121,7 @@ const FiltersManagementSection = ({
 }: FiltersManagementSectionProps) => {
   const visibleItems = getUnifiedTaxonomyList(systemSettings, activeFilterType).filter((item) => (
     (item.name || '').toLowerCase().includes(filterSearch.toLowerCase())
+    || (item.sigla || '').toLowerCase().includes(filterSearch.toLowerCase())
     || (item.slug || '').toLowerCase().includes(filterSearch.toLowerCase())
     || (item.aliases || []).some((alias) => alias.toLowerCase().includes(filterSearch.toLowerCase()))
     || (item.keywords || []).some((keyword) => keyword.toLowerCase().includes(filterSearch.toLowerCase()))
@@ -195,6 +196,11 @@ const FiltersManagementSection = ({
                         <img src={item.assetUrl} alt="" className="h-7 w-7 rounded object-contain" loading="lazy" />
                       )}
                       <span>{item.name}</span>
+                      {item.sigla && item.sigla.toLowerCase() !== item.name.toLowerCase() && (
+                        <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300">
+                          {item.sigla}
+                        </span>
+                      )}
                     </div>
                     {(item.parentId || item.parent_id) && (
                       <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">

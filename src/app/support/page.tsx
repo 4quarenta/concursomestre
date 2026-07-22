@@ -11,7 +11,7 @@
 *
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Bug,
@@ -168,7 +168,7 @@ const applyPublicSuggestionVote = (
  *
  * @since 1.0.0
  */
-const Support: React.FC = () => {
+const SupportContent: React.FC = () => {
   const { currentUser, isLoading, updateUser } = useAuth();
   const { addToast } = useToast();
   const searchParams = useSearchParams();
@@ -793,5 +793,11 @@ const Support: React.FC = () => {
     </div>
   );
 };
+
+const Support: React.FC = () => (
+  <Suspense fallback={null}>
+    <SupportContent />
+  </Suspense>
+);
 
 export default Support;

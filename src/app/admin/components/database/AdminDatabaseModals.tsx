@@ -51,9 +51,11 @@ interface AdminDatabaseModalsProps {
   filterTypes: React.ComponentProps<typeof TaxonomyModal>['filterTypes'];
   filterInput: string;
   filterSlug: string;
+  filterAcronym: string;
   filterDescription: string;
   filterWebsite: string;
   filterAssetUrl: string;
+  isUploadingFilterAsset: boolean;
   filterAliases: string;
   filterKeywords: string;
   selectedParentId: number | string | null;
@@ -61,9 +63,11 @@ interface AdminDatabaseModalsProps {
   onActiveFilterTypeChange: (value: string) => void;
   onFilterInputChange: (value: string) => void;
   onFilterSlugChange: (value: string) => void;
+  onFilterAcronymChange: (value: string) => void;
   onFilterDescriptionChange: (value: string) => void;
   onFilterWebsiteChange: (value: string) => void;
   onFilterAssetUrlChange: (value: string) => void;
+  onFilterAssetUpload: (file: File) => Promise<void>;
   onFilterAliasesChange: (value: string) => void;
   onFilterKeywordsChange: (value: string) => void;
   onSelectedParentIdChange: (value: number | string | null) => void;
@@ -103,9 +107,11 @@ const AdminDatabaseModals = ({
   filterTypes,
   filterInput,
   filterSlug,
+  filterAcronym,
   filterDescription,
   filterWebsite,
   filterAssetUrl,
+  isUploadingFilterAsset,
   filterAliases,
   filterKeywords,
   selectedParentId,
@@ -113,9 +119,11 @@ const AdminDatabaseModals = ({
   onActiveFilterTypeChange,
   onFilterInputChange,
   onFilterSlugChange,
+  onFilterAcronymChange,
   onFilterDescriptionChange,
   onFilterWebsiteChange,
   onFilterAssetUrlChange,
+  onFilterAssetUpload,
   onFilterAliasesChange,
   onFilterKeywordsChange,
   onSelectedParentIdChange,
@@ -165,9 +173,11 @@ const AdminDatabaseModals = ({
         filterTypes={filterTypes}
         filterInput={filterInput}
         filterSlug={filterSlug}
+        filterAcronym={filterAcronym}
         filterDescription={filterDescription}
         filterWebsite={filterWebsite}
         filterAssetUrl={filterAssetUrl}
+        isUploadingFilterAsset={isUploadingFilterAsset}
         filterAliases={filterAliases}
         filterKeywords={filterKeywords}
         selectedParentId={selectedParentId}
@@ -175,9 +185,11 @@ const AdminDatabaseModals = ({
         onActiveFilterTypeChange={onActiveFilterTypeChange}
         onFilterInputChange={onFilterInputChange}
         onFilterSlugChange={onFilterSlugChange}
+        onFilterAcronymChange={onFilterAcronymChange}
         onFilterDescriptionChange={onFilterDescriptionChange}
         onFilterWebsiteChange={onFilterWebsiteChange}
         onFilterAssetUrlChange={onFilterAssetUrlChange}
+        onFilterAssetUpload={onFilterAssetUpload}
         onFilterAliasesChange={onFilterAliasesChange}
         onFilterKeywordsChange={onFilterKeywordsChange}
         onSelectedParentIdChange={onSelectedParentIdChange}

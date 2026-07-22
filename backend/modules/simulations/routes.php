@@ -71,8 +71,12 @@ function handleSimulationsCreateRoute(PDO $db): void
         Response::success($payload, 'Simulation saved');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::validationError($e->getMessage());
     } catch (DomainException $e) {
         Response::forbidden($e->getMessage());
+    } catch (PDOException $e) {
+        Response::serverError('Nao foi possivel salvar o simulado.', $e);
     } catch (RuntimeException $e) {
         Response::unauthorized($e->getMessage());
     } catch (Throwable $e) {

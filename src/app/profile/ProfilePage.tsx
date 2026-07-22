@@ -45,7 +45,7 @@ import { useNotificationsStore } from '@/state/notifications/notificationsStore'
 import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
 import { useUserProgressActions } from '@/state/user-progress/useUserProgressActions';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
-import { type LawSummary, type Material, type Question, type Transaction, type UserProfile } from '../../types';
+import { type LawSummary, type LegalFavoriteSavedItem, type Material, type Question, type Transaction, type UserProfile } from '../../types';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import {
     apiClient,
@@ -119,6 +119,24 @@ const parseFeatureFlag = (value: unknown): boolean => {
     }
     return false;
 };
+
+type ProfileLegalFavoriteItem = LegalFavoriteSavedItem & Partial<LawSummary>;
+
+const buildLegalFavoriteItemFromLaw = (law: LawSummary): ProfileLegalFavoriteItem => ({
+    ...law,
+    id: `law:${law.id}`,
+    type: 'law',
+    targetId: String(law.id),
+    lawId: String(law.id),
+    lawSlug: law.slug,
+    lawTitle: law.shortTitle || law.title,
+    title: law.shortTitle || law.title,
+    subtitle: 'Lei completa',
+    description: law.description || law.summary || law.ementa || '',
+    href: `/lei-comentada/${law.slug}`,
+    articleCount: law.articleCount,
+    progressPercent: law.progressPercent,
+});
 
 const stripHtml = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -563,7 +581,7 @@ const Profile: React.FC = () => {
     const [hasSyncedBillingSnapshot, setHasSyncedBillingSnapshot] = useState(false);
     const [lawNotes, setLawNotes] = useState<LegalUserNote[]>([]);
     const [materialNotes, setMaterialNotes] = useState<MaterialNotebookNote[]>([]);
-    const [favoriteLaws, setFavoriteLaws] = useState<LawSummary[]>([]);
+    const [favoriteLaws, setFavoriteLaws] = useState<ProfileLegalFavoriteItem[]>([]);
     const [isLoadingFavoriteLaws, setIsLoadingFavoriteLaws] = useState(false);
     const [savedQuestionDetails, setSavedQuestionDetails] = useState<Question[]>([]);
     const [isLoadingSavedQuestions, setIsLoadingSavedQuestions] = useState(false);
@@ -932,36 +950,44 @@ const Profile: React.FC = () => {
         setIsLoadingFavoriteLaws(true);
         try {
             const snapshot = await legalCommentaryApiService.getHomeSnapshot({ force: true });
-            const nextFavoriteLawsById = new Map<string, LawSummary>();
+            const nextFavoriteLawsById = new Map<string, ProfileLegalFavoriteItem>();
+
+            if (Array.isArray(snapshot.favoriteItems) && snapshot.favoriteItems.length > 0) {
+                snapshot.favoriteItems.forEach((item) => {
+                    nextFavoriteLawsById.set(String(item.id || `${item.type}:${item.targetId}`), item);
+                });
+                setFavoriteLaws(Array.from(nextFavoriteLawsById.values()));
+                return;
+            }
 
             snapshot.favoriteLaws.forEach((law) => {
-                nextFavoriteLawsById.set(String(law.id), law);
+                nextFavoriteLawsById.set(`law:${law.id}`, buildLegalFavoriteItemFromLaw(law));
             });
 
             snapshot.lawsByArea
                 .flatMap((group) => group.laws)
                 .filter((law) => law.isFavorite)
                 .forEach((law) => {
-                    nextFavoriteLawsById.set(String(law.id), law);
+                    nextFavoriteLawsById.set(`law:${law.id}`, buildLegalFavoriteItemFromLaw(law));
                 });
 
             const nextFavoriteLaws = Array.from(nextFavoriteLawsById.values());
             setFavoriteLaws(nextFavoriteLaws);
         } catch {
-            addToast('Não foi possível carregar suas leis favoritas.', 'error');
+                addToast('Não foi possível carregar seus itens salvos da Lei Comentada.', 'error');
         } finally {
             setIsLoadingFavoriteLaws(false);
         }
     }, [addToast, currentUserKey]);
 
-    const handleRemoveFavoriteLaw = React.useCallback(async (law: LawSummary) => {
+    const handleRemoveFavoriteLaw = React.useCallback(async (law: ProfileLegalFavoriteItem) => {
         if (!currentUserKey) return;
 
         try {
-            const result = await legalCommentaryApiService.toggleFavorite('law', law.id);
+            const result = await legalCommentaryApiService.toggleFavorite(law.type || 'law', law.targetId || law.lawId || law.id);
             if (!result.isFavorite) {
                 setFavoriteLaws((currentLaws) => currentLaws.filter((item) => item.id !== law.id));
-                addToast('Lei removida dos favoritos.', 'success');
+                addToast('Item removido dos favoritos.', 'success');
                 return;
             }
 
@@ -3996,7 +4022,7 @@ const Profile: React.FC = () => {
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Menu</div>
                         {renderSidebarItem({ id: 'notebook', label: 'Minhas Anotações', icon: StickyNote })}
                         {renderSidebarItem({ id: 'saved-questions', label: 'Questões salvas', icon: BookmarkCheck })}
-                        {renderSidebarItem({ id: 'favorite-laws', label: 'Leis Favoritas', icon: BookOpen })}
+                        {renderSidebarItem({ id: 'favorite-laws', label: 'Lei Comentada salva', icon: BookOpen })}
                         {marketplaceEnabled && renderSidebarItem({ id: 'materials', label: 'Meus Materiais', icon: Package })}
                         
                         <div className="h-px bg-slate-50 dark:bg-slate-800 my-2 transition-colors" />
@@ -4433,19 +4459,19 @@ const Profile: React.FC = () => {
                {activeTab === 'favorite-laws' && (
                   <div className="space-y-6">
                      <div className="flex justify-between items-center">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Leis Favoritas</h2>
-                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{favoriteLaws.length} leis</span>
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Itens salvos da Lei Comentada</h2>
+                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{favoriteLaws.length} itens</span>
                      </div>
 
                      {isLoadingFavoriteLaws ? (
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
                            <Loader2 size={36} className="mx-auto mb-3 animate-spin text-slate-300 dark:text-slate-700" />
-                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Carregando leis favoritas...</p>
+                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Carregando itens salvos...</p>
                         </div>
                      ) : favoriteLaws.length > 0 ? (
                         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
-                              <span>Lei</span>
+                              <span>Conteúdo salvo</span>
                               <span>Ação</span>
                            </div>
 
@@ -4456,41 +4482,45 @@ const Profile: React.FC = () => {
                                        <div className="flex flex-wrap items-center gap-2">
                                           <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:ring-indigo-800/60">
                                              <BookOpen size={12} />
-                                             Lei comentada
+                                             {law.subtitle || 'Lei comentada'}
                                           </span>
-                                          {(law.acronym || law.year) && (
+                                          {(law.acronym || law.year || law.lawTitle) && (
                                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                                {[law.acronym, law.year].filter(Boolean).join(' • ')}
+                                                {[law.acronym || law.lawTitle, law.year].filter(Boolean).join(' • ')}
                                              </span>
                                           )}
                                        </div>
 
                                        <button
                                           type="button"
-                                          onClick={() => router.push(`/lei-comentada/${law.slug}`)}
+                                          onClick={() => router.push(law.href || `/lei-comentada/${law.lawSlug || law.slug}`)}
                                           className="mt-2 block max-w-full text-left text-sm font-black text-slate-900 transition-colors hover:text-indigo-600 dark:text-slate-100 dark:hover:text-indigo-300"
                                        >
-                                          {law.shortTitle || law.title}
+                                          {law.title || law.shortTitle || law.lawTitle}
                                        </button>
 
                                        <p className="mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">
-                                          {law.description || law.summary || law.ementa || 'Lei salva para consulta rápida.'}
+                                          {law.description || law.summary || law.ementa || law.lawTitle || 'Item salvo para consulta rápida.'}
                                        </p>
 
                                        <div className="mt-3 flex flex-wrap gap-2">
-                                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                             {law.articleCount} artigos
-                                          </span>
-                                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                             {law.progressPercent || 0}% lido
-                                          </span>
+                                          {typeof law.articleCount === 'number' && law.articleCount > 0 && (
+                                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                                {law.articleCount} artigos
+                                             </span>
+                                          )}
+                                          {law.type === 'law' && (
+                                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                                {law.progressPercent || 0}% lido
+                                             </span>
+                                          )}
                                        </div>
                                     </div>
 
                                     <div className="flex items-center justify-end gap-2">
                                        <button
                                           type="button"
-                                          onClick={() => router.push(`/lei-comentada/${law.slug}`)}
+                                          onClick={() => router.push(law.href || `/lei-comentada/${law.lawSlug || law.slug}`)}
                                           className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
                                        >
                                           <ExternalLink size={13} />
@@ -4514,8 +4544,8 @@ const Profile: React.FC = () => {
                      ) : (
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
                            <BookOpen size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
-                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma lei favorita ainda.</p>
-                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Use o botão de favorito na Lei Comentada para montar sua lista.</p>
+                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhum item da Lei Comentada salvo ainda.</p>
+                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Use o botão de favorito em uma lei, seção ou artigo para montar sua lista.</p>
                         </div>
                      )}
                   </div>

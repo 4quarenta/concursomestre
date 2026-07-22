@@ -149,6 +149,23 @@ const nextConfig: NextConfig = {
         source: '/:path*',
         headers: buildFrontendSecurityHeaders(process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_FRONTEND_API_BASE_URL),
       },
+      {
+        source: '/admin/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'private, no-store, no-cache, must-revalidate, max-age=0',
+          },
+          {
+            key: 'Pragma',
+            value: 'no-cache',
+          },
+          {
+            key: 'Expires',
+            value: '0',
+          },
+        ],
+      },
     ];
   },
   async redirects() {

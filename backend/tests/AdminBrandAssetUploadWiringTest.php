@@ -19,6 +19,9 @@ foreach (['UploadSecurity::validate', 'image/png', 'image/jpeg', 'image/webp', '
         throw new RuntimeException("Admin asset upload must enforce {$needle}.");
     }
 }
+if (!str_contains($service, 'taxonomy-logo')) {
+    throw new RuntimeException('Admin asset upload must support protected taxonomy logos.');
+}
 
 if (!str_contains($bridge, 'handleAdminBrandAssetUploadRoute($db);')) {
     throw new RuntimeException('Admin asset bridge must delegate to the protected module route.');

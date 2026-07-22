@@ -72,6 +72,7 @@ class SimulationsService
         $answeredCount = 0;
         $correctCount = 0;
         $canonicalAnswers = [];
+        $answerRows = [];
         foreach ($normalized['answers'] as $questionId => $answerPayload) {
             $normalizedAnswer = $this->normalizeAnswerPayload($answerPayload);
             $questionId = (int) $questionId;
@@ -92,28 +93,52 @@ class SimulationsService
                 'time_taken' => $normalizedAnswer['time_taken_seconds'],
             ];
 
-            $this->repository->upsertSimulationAnswer([
+            $answerRows[] = [
                 'user_id' => $authenticatedUserId,
                 'question_id' => (string) $questionId,
                 'simulation_id' => $normalized['id'],
                 'selected_option_index' => $evaluation['selectedOptionIndex'],
                 'is_correct' => $evaluation['isCorrect'] ? 1 : 0,
                 'time_taken_seconds' => $normalizedAnswer['time_taken_seconds'],
-            ]);
+            ];
         }
 
-        $this->repository->upsertSimulation([
-            'id' => $normalized['id'],
-            'user_id' => $authenticatedUserId,
-            'name' => $simulationName,
-            'status' => $normalized['status'],
-            'score' => $correctCount,
-            'startTime' => $normalized['startTime'],
-            'endTime' => $normalized['endTime'],
-            'configJson' => $configJson,
-        ]);
+        $this->repository->transactional(function () use (
+            $normalized,
+            $authenticatedUserId,
+            $simulationName,
+            $correctCount,
+            $configJson,
+            $answerRows,
+            $canonicalAnswers
+        ): void {
+            $existingOwnerId = $this->repository->findSimulationOwnerIdForUpdate($normalized['id']);
+            if ($existingOwnerId !== null && $existingOwnerId !== $authenticatedUserId) {
+                throw new DomainException('Nao e permitido alterar o simulado de outro usuario.');
+            }
 
-        $this->repository->deleteStaleSimulationAnswers($authenticatedUserId, $normalized['id'], array_keys($canonicalAnswers));
+            // A sessao pai precisa existir antes das respostas por causa da FK.
+            $this->repository->upsertSimulation([
+                'id' => $normalized['id'],
+                'user_id' => $authenticatedUserId,
+                'name' => $simulationName,
+                'status' => $normalized['status'],
+                'score' => $correctCount,
+                'startTime' => $normalized['startTime'],
+                'endTime' => $normalized['endTime'],
+                'configJson' => $configJson,
+            ]);
+
+            foreach ($answerRows as $answerRow) {
+                $this->repository->upsertSimulationAnswer($answerRow);
+            }
+
+            $this->repository->deleteStaleSimulationAnswers(
+                $authenticatedUserId,
+                $normalized['id'],
+                array_keys($canonicalAnswers)
+            );
+        });
 
         $gamification = ['applied' => false, 'badge_awarded' => false, 'xp' => 0];
         if ($normalized['status'] === 'completed' && $answeredCount > 0) {

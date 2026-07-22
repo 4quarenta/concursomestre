@@ -149,7 +149,7 @@ type QuestionV2Alternative = {
   assets?: QuestionV2Asset[];
 };
 
-type QuestionV2Detail = {
+export type QuestionV2Detail = {
   id?: string | number;
   source?: {
     origin?: string;
@@ -214,7 +214,7 @@ type QuestionV2Detail = {
   editorial?: QuestionEditorialPayload[];
 };
 
-type QuestionV2ListItem = {
+export type QuestionV2ListItem = {
   id?: string | number;
   statementPreview?: string;
   type?: string;
@@ -243,7 +243,7 @@ type QuestionV2ListItem = {
   };
 };
 
-type QuestionV2PageResponse = {
+export type QuestionV2PageResponse = {
   items?: Array<QuestionV2ListItem | QuestionV2Detail>;
   pageInfo?: {
     limit?: number;
@@ -825,7 +825,7 @@ const readV2EditorialBody = (
   return readText(item?.body).trim();
 };
 
-const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
+export const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
   const filters = mapV2FiltersToLegacy(detail.filters);
   const alternatives = Array.isArray(detail.alternatives) ? detail.alternatives : [];
   const contexts = mapV2Contexts(detail.contexts);
@@ -899,7 +899,7 @@ const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
   return withQuestionPublicationAliases(legacyQuestion);
 };
 
-const mapV2ListItemToQuestion = (item: QuestionV2ListItem): Question => {
+export const mapV2ListItemToQuestion = (item: QuestionV2ListItem): Question => {
   const filters = mapV2FiltersToLegacy(item.taxonomySummary);
   return withQuestionPublicationAliases({
     id: item.id as Question['id'],
@@ -1098,9 +1098,14 @@ export const questionService = {
    * @since v1.0.0
    */
   async submitUserAnswer(answer: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>): Promise<SubmitAnswerResult> {
-    const idempotencyKey = typeof globalThis.crypto?.randomUUID === 'function'
-      ? globalThis.crypto.randomUUID()
-      : `answer-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+    const answerRecord = toRecord(answer);
+    const suppliedIdempotencyKey = readText(
+      answerRecord?.idempotencyKey ?? answerRecord?.idempotency_key,
+    ).trim();
+    const idempotencyKey = suppliedIdempotencyKey
+      || (typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : `answer-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`);
     const response = await apiClient.post<SubmitAnswerApiResponse>(
       ENDPOINTS.questions.v2Answer,
       {

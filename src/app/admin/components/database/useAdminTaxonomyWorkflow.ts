@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { filtersService } from '@services/filters';
+import { adminService } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
 import { clientLog } from '@services/monitoring/clientLog';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
@@ -38,6 +39,7 @@ type TaxonomyItem = {
   id?: number;
   name?: string;
   slug?: string;
+  sigla?: string;
   type?: string;
   description?: string;
   website?: string;
@@ -83,9 +85,11 @@ export const useAdminTaxonomyWorkflow = ({
   const [activeFilterType, setActiveFilterType] = useState<string>('all');
   const [filterInput, setFilterInput] = useState('');
   const [filterSlug, setFilterSlug] = useState('');
+  const [filterAcronym, setFilterAcronym] = useState('');
   const [filterDescription, setFilterDescription] = useState('');
   const [filterWebsite, setFilterWebsite] = useState('');
   const [filterAssetUrl, setFilterAssetUrl] = useState('');
+  const [isUploadingFilterAsset, setIsUploadingFilterAsset] = useState(false);
   const [filterAliases, setFilterAliases] = useState('');
   const [filterKeywords, setFilterKeywords] = useState('');
   const [filterSearch, setFilterSearch] = useState('');
@@ -106,6 +110,7 @@ export const useAdminTaxonomyWorkflow = ({
   const resetTaxonomyForm = () => {
     setFilterInput('');
     setFilterSlug('');
+    setFilterAcronym('');
     setFilterDescription('');
     setFilterWebsite('');
     setFilterAssetUrl('');
@@ -148,6 +153,7 @@ export const useAdminTaxonomyWorkflow = ({
         type: typeToSave,
         name: filterInput.trim(),
         slug: filterSlug,
+        sigla: filterAcronym.trim() || undefined,
         materia: uiTypeToSave === 'materia',
         taxonomy_level: KNOWLEDGE_TAXONOMY_TYPES.includes(uiTypeToSave) ? uiTypeToSave : undefined,
         description: filterDescription,
@@ -208,6 +214,7 @@ export const useAdminTaxonomyWorkflow = ({
     const itemName = item.name || '';
     setFilterInput(itemName);
     setFilterSlug(item.slug || slugify(itemName));
+    setFilterAcronym(item.sigla || '');
     setFilterDescription(item.description || '');
     setFilterWebsite(item.website || '');
     setFilterAssetUrl(item.assetUrl || '');
@@ -224,6 +231,20 @@ export const useAdminTaxonomyWorkflow = ({
       setFilterSlug(slugify(nextValue));
     }
   }, [editingFilterItem, showTaxonomyModal]);
+
+  const uploadFilterAsset = async (file: File) => {
+    if (isUploadingFilterAsset) return;
+    setIsUploadingFilterAsset(true);
+    try {
+      const asset = await adminService.uploadBrandAsset(file, 'taxonomy-logo');
+      setFilterAssetUrl(asset.url);
+      addToast('Imagem da taxonomia enviada com sucesso.', 'success');
+    } catch (error) {
+      addToast(readApiErrorMessage(error, 'Nao foi possivel enviar a imagem.'), 'error');
+    } finally {
+      setIsUploadingFilterAsset(false);
+    }
+  };
 
   const cancelEditingFilter = () => {
     resetTaxonomyForm();
@@ -257,12 +278,16 @@ export const useAdminTaxonomyWorkflow = ({
     setFilterInput: handleFilterInputChange,
     filterSlug,
     setFilterSlug,
+    filterAcronym,
+    setFilterAcronym,
     filterDescription,
     setFilterDescription,
     filterWebsite,
     setFilterWebsite,
     filterAssetUrl,
     setFilterAssetUrl,
+    isUploadingFilterAsset,
+    uploadFilterAsset,
     filterAliases,
     setFilterAliases,
     filterKeywords,

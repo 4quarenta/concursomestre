@@ -78,6 +78,13 @@ describe('filtersService', () => {
   it('normalizes taxonomy payload into app structure', () => {
     const taxonomies = normalizeFiltersToTaxonomies({
       bancas: [{ id: 1, nome: 'FGV', sigla: 'FGV', slug: 'fgv' }],
+      orgaos: [{
+        id: 10,
+        nome: 'Corpo de Bombeiros Militar da Paraiba',
+        sigla: 'CBM-PB',
+        slug: 'corpo-de-bombeiros-militar-da-paraiba',
+        assetUrl: '/uploads/admin-assets/taxonomy-logo/cbm-pb.webp',
+      }],
       assuntos: [
         { id: 2, nome: 'Direito', slug: 'direito', materia: true },
         { id: 3, nome: 'Direito Constitucional', slug: 'direito-constitucional', materia: false, parent_id: 2 },
@@ -88,6 +95,11 @@ describe('filtersService', () => {
     });
 
     expect(taxonomies.agencies[0].name).toBe('FGV');
+    expect(taxonomies.organizations[0]).toEqual(expect.objectContaining({
+      name: 'Corpo de Bombeiros Militar da Paraiba',
+      sigla: 'CBM-PB',
+      assetUrl: '/uploads/admin-assets/taxonomy-logo/cbm-pb.webp',
+    }));
     expect(taxonomies.subjects[0].name).toBe('Direito');
     expect(taxonomies.subjectTopics?.[0].name).toBe('Direito Constitucional');
     expect(taxonomies.subjectTopics?.[0].taxonomyLevel).toBe('topico');

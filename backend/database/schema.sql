@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS filters (
     type ENUM('banca', 'orgao', 'cargo', 'assunto', 'ano', 'carreira', 'area', 'nivel', 'tipo_prova', 'modalidade') NOT NULL,
     name VARCHAR(255) NOT NULL,
     slug VARCHAR(255) NOT NULL,
+    acronym VARCHAR(40) DEFAULT NULL,
     parent_id INT DEFAULT NULL,
     
     -- Metadata fields specific to certain types (e.g., UF for Orgao, OAB for Banca)
@@ -195,6 +196,7 @@ CREATE TABLE IF NOT EXISTS filters (
     meta_materia BOOLEAN DEFAULT FALSE, -- For Subject roots
     
     UNIQUE KEY unique_type_slug (type, slug),
+    UNIQUE KEY uq_filters_type_acronym (type, acronym),
     FOREIGN KEY (parent_id) REFERENCES filters(id) ON DELETE SET NULL,
     INDEX idx_type (type)
 );

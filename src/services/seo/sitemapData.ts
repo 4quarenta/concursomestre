@@ -59,6 +59,7 @@ let sitemapBuildInFlight: Promise<SeoSitemapBuildResult> | null = null;
 export const SEO_PUBLIC_ROUTES = [
   { path: '/', changeFrequency: 'daily', priority: 1 },
   { path: '/planos', changeFrequency: 'weekly', priority: 0.9 },
+  { path: '/practice', changeFrequency: 'daily', priority: 0.9 },
   { path: '/concursos', changeFrequency: 'weekly', priority: 0.85 },
   { path: '/faq', changeFrequency: 'monthly', priority: 0.75 },
   { path: '/lei-comentada', changeFrequency: 'weekly', priority: 0.75 },
@@ -82,7 +83,6 @@ export const SEO_ROBOT_DISALLOW_PATHS = [
   '/partner-dashboard',
   '/performance/',
   '/plans',
-  '/practice',
   '/profile',
   '/read/',
   '/reset-password',

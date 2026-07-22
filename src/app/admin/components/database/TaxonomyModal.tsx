@@ -11,8 +11,9 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Filter, Globe, Link as LinkIcon, Save, X } from 'lucide-react';
+import { Filter, Globe, Image as ImageIcon, Link as LinkIcon, Save, Upload, X } from 'lucide-react';
 import type { GlobalTaxonomies, TaxonomyItem } from '@types';
+import { resolveApiResourceUrl } from '@services/api';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_FOOTER_CLASS,
@@ -40,9 +41,11 @@ interface TaxonomyModalProps {
   filterTypes: FilterTypeOption[];
   filterInput: string;
   filterSlug: string;
+  filterAcronym: string;
   filterDescription: string;
   filterWebsite: string;
   filterAssetUrl: string;
+  isUploadingFilterAsset: boolean;
   filterAliases: string;
   filterKeywords: string;
   selectedParentId: number | string | null;
@@ -50,9 +53,11 @@ interface TaxonomyModalProps {
   onActiveFilterTypeChange: (value: string) => void;
   onFilterInputChange: (value: string) => void;
   onFilterSlugChange: (value: string) => void;
+  onFilterAcronymChange: (value: string) => void;
   onFilterDescriptionChange: (value: string) => void;
   onFilterWebsiteChange: (value: string) => void;
   onFilterAssetUrlChange: (value: string) => void;
+  onFilterAssetUpload: (file: File) => Promise<void>;
   onFilterAliasesChange: (value: string) => void;
   onFilterKeywordsChange: (value: string) => void;
   onSelectedParentIdChange: (value: number | string | null) => void;
@@ -66,9 +71,11 @@ const TaxonomyModal = ({
   filterTypes,
   filterInput,
   filterSlug,
+  filterAcronym,
   filterDescription,
   filterWebsite,
   filterAssetUrl,
+  isUploadingFilterAsset,
   filterAliases,
   filterKeywords,
   selectedParentId,
@@ -76,9 +83,11 @@ const TaxonomyModal = ({
   onActiveFilterTypeChange,
   onFilterInputChange,
   onFilterSlugChange,
+  onFilterAcronymChange,
   onFilterDescriptionChange,
   onFilterWebsiteChange,
   onFilterAssetUrlChange,
+  onFilterAssetUpload,
   onFilterAliasesChange,
   onFilterKeywordsChange,
   onSelectedParentIdChange,
@@ -88,6 +97,19 @@ const TaxonomyModal = ({
   const currentType = editingFilterItem?.type || activeFilterType;
   const isKnowledgeTaxonomy = currentType === 'materia' || currentType === 'topico' || currentType === 'assunto';
   const requiresParent = currentType === 'topico' || currentType === 'assunto' || currentType === 'cargo';
+  const taxonomyNameLabel = currentType === 'orgao'
+    ? 'Nome completo do órgão'
+    : currentType === 'banca'
+      ? 'Nome completo da banca'
+      : 'Nome / título';
+  const taxonomyNamePlaceholder = currentType === 'orgao'
+    ? 'Ex.: Polícia Militar da Paraíba'
+    : currentType === 'banca'
+      ? 'Ex.: Fundação Getulio Vargas'
+      : 'Ex.: Direito Administrativo';
+  const taxonomyAssetLabel = currentType === 'orgao'
+    ? 'Ícone ou logo do órgão'
+    : 'Ícone ou logo da banca';
 
   const getParentOptions = () => {
     if (!taxonomies) return [];
@@ -198,16 +220,35 @@ const TaxonomyModal = ({
             )}
 
             <div className="space-y-2">
-              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Nome / título</label>
+              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{taxonomyNameLabel}</label>
               <input
                 type="text"
                 autoFocus
                 value={filterInput}
                 onChange={(event) => onFilterInputChange(event.target.value)}
-                placeholder="Ex: Direito Administrativo, FGV..."
+                placeholder={taxonomyNamePlaceholder}
                 className={`${ADMIN_FIELD_CLASS} w-full font-semibold`}
               />
             </div>
+
+            {(currentType === 'banca' || currentType === 'orgao') && (
+              <div className="space-y-2">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  {currentType === 'orgao' ? 'Sigla do órgão' : 'Sigla da banca'}
+                </label>
+                <input
+                  type="text"
+                  value={filterAcronym}
+                  onChange={(event) => onFilterAcronymChange(event.target.value.toUpperCase())}
+                  placeholder={currentType === 'orgao' ? 'Ex.: CBM-PB' : 'Ex.: FGV'}
+                  maxLength={40}
+                  className={`${ADMIN_FIELD_CLASS} w-full font-semibold uppercase`}
+                />
+                <p className="px-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  A sigla identifica o mesmo registro do nome completo e tambem sera usada nas buscas.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between px-1">
@@ -253,15 +294,57 @@ const TaxonomyModal = ({
             )}
 
             {(currentType === 'banca' || currentType === 'orgao') && (
-              <div className="space-y-2">
-                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Logo ou icone (URL)</label>
-                <input
-                  type="url"
-                  value={filterAssetUrl}
-                  onChange={(event) => onFilterAssetUrlChange(event.target.value)}
-                  placeholder="https://cdn.exemplo.com.br/taxonomias/logo.webp"
-                  className={`${ADMIN_FIELD_CLASS} w-full font-medium`}
-                />
+              <div className="space-y-3">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{taxonomyAssetLabel}</label>
+                <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/50 sm:flex-row sm:items-center">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+                    {filterAssetUrl ? (
+                      <img
+                        src={resolveApiResourceUrl(filterAssetUrl)}
+                        alt="Previa do logo da taxonomia"
+                        className="h-full w-full object-contain p-1"
+                      />
+                    ) : (
+                      <ImageIcon size={24} className="text-slate-300 dark:text-slate-600" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <input
+                      type="url"
+                      value={filterAssetUrl}
+                      onChange={(event) => onFilterAssetUrlChange(event.target.value)}
+                      placeholder="URL da imagem (opcional)"
+                      aria-label={`URL de ${taxonomyAssetLabel.toLocaleLowerCase('pt-BR')}`}
+                      className={`${ADMIN_FIELD_CLASS} w-full font-medium`}
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        <Upload size={14} />
+                        {isUploadingFilterAsset ? 'Enviando...' : 'Selecionar imagem'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          disabled={isUploadingFilterAsset}
+                          className="sr-only"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void onFilterAssetUpload(file);
+                            event.target.value = '';
+                          }}
+                        />
+                      </label>
+                      {filterAssetUrl && (
+                        <button
+                          type="button"
+                          onClick={() => onFilterAssetUrlChange('')}
+                          className="h-9 rounded-md px-3 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
+                        >
+                          Remover imagem
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 

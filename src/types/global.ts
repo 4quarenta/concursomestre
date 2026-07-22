@@ -576,6 +576,8 @@ export interface FilterResponse {
 export interface UserAnswer {
   questionId: number;
   selectedOptionIndex: number;
+  selectedAlternativeId?: number | string;
+  idempotencyKey?: string;
   isCorrect: boolean;
   /** Gabarito devolvido somente apos a correcao canonica no servidor. */
   correctOptionIndex?: number;
@@ -1224,6 +1226,7 @@ export type AppPromotionTheme = 'default' | 'black-friday' | 'black-november' | 
 export interface TaxonomyItem {
   id: string;
   name: string;
+  sigla?: string;
   slug?: string;
   parentId?: string;
   rootSubjectId?: string;

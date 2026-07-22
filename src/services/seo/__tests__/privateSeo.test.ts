@@ -130,7 +130,6 @@ describe('private SEO surfaces', () => {
       '/auth',
       '/cronograma',
       '/dashboard',
-      '/practice',
       '/profile',
       '/simulation',
       '/x-ray',
@@ -145,7 +144,7 @@ describe('private SEO surfaces', () => {
     expect(publicPaths).not.toContain('/profile');
     expect(publicPaths).not.toContain('/auth');
     expect(publicPaths).not.toContain('/admin');
-    expect(publicPaths).not.toContain('/practice');
+    expect(publicPaths).toContain('/practice');
     expect(publicPaths).not.toContain('/plans');
     expect(publicPaths).not.toContain('/questions');
     expect(publicPaths).not.toContain('/read');

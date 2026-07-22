@@ -38,7 +38,7 @@ class FiltersRepository
     public function fetchAll(): array
     {
         $stmt = $this->db->prepare("
-            SELECT id, type, name, slug, parent_id, description, website,
+            SELECT id, type, name, slug, acronym, parent_id, description, website,
                    asset_url, icon_key, keywords_json,
                    meta_materia, taxonomy_level, meta_carreira
             FROM filters
@@ -83,7 +83,7 @@ class FiltersRepository
     public function fetchById(int $id): ?array
     {
         $stmt = $this->db->prepare("
-            SELECT id, type, name, slug, parent_id, description, website,
+            SELECT id, type, name, slug, acronym, parent_id, description, website,
                    asset_url, icon_key, keywords_json,
                    meta_materia, taxonomy_level, meta_carreira
             FROM filters
@@ -99,6 +99,67 @@ class FiltersRepository
         $aliases = $this->fetchAliasesByFilterIds([$id]);
         $row['aliases'] = $aliases[$id] ?? [];
         return $row;
+    }
+
+    /**
+     * Localiza uma banca ou orgao pelo conjunto canonico nome/sigla/slug/alias.
+     */
+    public function findCanonicalMatch(string $type, string $name, string $slug, string $acronym): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT id, type, name, slug, acronym, parent_id, description, website,
+                   asset_url, icon_key, keywords_json,
+                   meta_materia, taxonomy_level, meta_carreira
+            FROM filters
+            WHERE type = :type
+            ORDER BY id
+        ");
+        $stmt->execute([':type' => $type]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $aliasesByFilterId = $this->fetchAliasesByFilterIds(array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $rows
+        ));
+        $requested = array_filter(array_unique([
+            $this->normalizeLookupText($name),
+            $this->normalizeLookupText($slug),
+            $this->normalizeLookupText($acronym),
+        ]));
+
+        foreach ($rows as $row) {
+            $aliases = $aliasesByFilterId[(int) $row['id']] ?? [];
+            $candidate = array_filter(array_unique([
+                $this->normalizeLookupText((string) ($row['name'] ?? '')),
+                $this->normalizeLookupText((string) ($row['slug'] ?? '')),
+                $this->normalizeLookupText((string) ($row['acronym'] ?? '')),
+                ...array_map(fn (string $alias): string => $this->normalizeLookupText($alias), $aliases),
+            ]));
+            if (array_intersect($requested, $candidate) !== []) {
+                $row['aliases'] = $aliases;
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    public function acronymExists(string $type, string $acronym, ?int $exceptId = null): bool
+    {
+        if ($acronym === '') {
+            return false;
+        }
+        $query = 'SELECT id FROM filters WHERE type = :type AND acronym = :acronym';
+        if ($exceptId !== null) {
+            $query .= ' AND id != :id';
+        }
+        $stmt = $this->db->prepare($query);
+        $stmt->bindValue(':type', $type);
+        $stmt->bindValue(':acronym', $acronym);
+        if ($exceptId !== null) {
+            $stmt->bindValue(':id', $exceptId, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        return (bool) $stmt->fetch();
     }
 
     /**
@@ -118,6 +179,7 @@ class FiltersRepository
             SET type = :type,
                 name = :name,
                 slug = :slug,
+                acronym = :acronym,
                 parent_id = :parent_id,
                 description = :description,
                 website = :website,
@@ -133,6 +195,7 @@ class FiltersRepository
             ':type' => $payload['type'],
             ':name' => $payload['name'],
             ':slug' => $payload['slug'],
+            ':acronym' => $payload['acronym'],
             ':parent_id' => $payload['parent_id'],
             ':description' => $payload['description'],
             ':website' => $payload['website'],
@@ -170,11 +233,11 @@ class FiltersRepository
         try {
             $stmt = $this->db->prepare("
                 INSERT INTO filters (
-                    type, name, slug, parent_id, description, website,
+                    type, name, slug, acronym, parent_id, description, website,
                     asset_url, icon_key, keywords_json,
                     meta_materia, taxonomy_level, meta_carreira
                 ) VALUES (
-                    :type, :name, :slug, :parent_id, :description, :website,
+                    :type, :name, :slug, :acronym, :parent_id, :description, :website,
                     :asset_url, :icon_key, :keywords_json,
                     :meta_materia, :taxonomy_level, :meta_carreira
                 )
@@ -183,6 +246,7 @@ class FiltersRepository
             ':type' => $payload['type'],
             ':name' => $payload['name'],
             ':slug' => $payload['slug'],
+            ':acronym' => $payload['acronym'],
             ':parent_id' => $payload['parent_id'],
             ':description' => $payload['description'],
             ':website' => $payload['website'],

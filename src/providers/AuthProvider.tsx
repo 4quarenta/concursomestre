@@ -9,6 +9,8 @@
 *
 */
 
+'use client';
+
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { UserProfile, SimulationSession } from '@types';
 import { accountService } from '@services/auth';

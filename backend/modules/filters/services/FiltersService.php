@@ -65,6 +65,7 @@ class FiltersService
                 'id' => $row['id'],
                 'nome' => $row['name'],
                 'slug' => $row['slug'],
+                'sigla' => $row['acronym'] ?: null,
                 'description' => $row['description'],
                 'website' => $row['website'],
                 'assetUrl' => $row['asset_url'],
@@ -75,12 +76,10 @@ class FiltersService
 
             switch ($row['type']) {
                 case 'banca':
-                    $item['sigla'] = strtoupper((string) $row['slug']);
                     $result['bancas'][] = $item;
                     break;
 
                 case 'orgao':
-                    $item['sigla'] = strtoupper((string) $row['slug']);
                     $result['orgaos'][] = $item;
                     break;
 
@@ -141,6 +140,8 @@ class FiltersService
         $type = trim((string) ($data['type'] ?? ''));
         $name = trim((string) ($data['name'] ?? ''));
         $slug = trim((string) ($data['slug'] ?? strtolower(trim((string) preg_replace('/[^A-Za-z0-9-]+/', '-', $name)))));
+        $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+        $acronym = $this->normalizeAcronym((string) ($data['sigla'] ?? $data['acronym'] ?? $metadata['sigla'] ?? ''));
         $parentId = isset($data['parent_id']) && $data['parent_id'] !== '' ? (int) $data['parent_id'] : null;
         $description = trim((string) ($data['description'] ?? ''));
         $website = trim((string) ($data['website'] ?? ''));
@@ -182,6 +183,42 @@ class FiltersService
             $metaCarreira = $parentId ? 0 : 1;
         }
 
+        $canonicalMatch = null;
+        if (($type === 'banca' || $type === 'orgao') && ($id === null || $id <= 0)) {
+            $canonicalMatch = $this->repository->findCanonicalMatch($type, $name, $slug, $acronym);
+            if (is_array($canonicalMatch)) {
+                $id = (int) $canonicalMatch['id'];
+                $existingName = trim((string) ($canonicalMatch['name'] ?? ''));
+                $existingAcronym = $this->normalizeAcronym((string) ($canonicalMatch['acronym'] ?? ''));
+                $existingNameIsAcronym = $this->normalizeLookupText($existingName) !== ''
+                    && $this->normalizeLookupText($existingName) === $this->normalizeLookupText($existingAcronym ?: $acronym);
+                $incomingNameIsAcronym = $this->normalizeLookupText($name) === $this->normalizeLookupText($acronym);
+                if (!$existingNameIsAcronym || $name === '' || $incomingNameIsAcronym) {
+                    $name = $existingName ?: $name;
+                }
+                $acronym = $acronym ?: $existingAcronym;
+                if (!$existingNameIsAcronym || $incomingNameIsAcronym) {
+                    $slug = trim((string) ($canonicalMatch['slug'] ?? '')) ?: $slug;
+                }
+                $aliases = $this->normalizeStringList([
+                    ...($canonicalMatch['aliases'] ?? []),
+                    ...$aliases,
+                    $existingName,
+                    (string) ($canonicalMatch['acronym'] ?? ''),
+                    $name,
+                    $acronym,
+                ]);
+                $description = $description ?: trim((string) ($canonicalMatch['description'] ?? ''));
+                $website = $website ?: trim((string) ($canonicalMatch['website'] ?? ''));
+                $assetUrl = $assetUrl ?: trim((string) ($canonicalMatch['asset_url'] ?? ''));
+                $iconKey = $iconKey ?: trim((string) ($canonicalMatch['icon_key'] ?? ''));
+            }
+        }
+
+        if ($this->repository->acronymExists($type, $acronym, $id)) {
+            throw new RuntimeException("A sigla '{$acronym}' ja pertence a outra taxonomia deste tipo.", 409);
+        }
+
         if ($this->repository->slugExists($type, $slug, $id)) {
             throw new RuntimeException("O slug '{$slug}' ja esta em uso neste tipo de taxonomia.", 409);
         }
@@ -191,6 +228,7 @@ class FiltersService
             'type' => $type,
             'name' => $name,
             'slug' => $slug,
+            'acronym' => $acronym !== '' ? $acronym : null,
             'parent_id' => $parentId,
             'description' => $description !== '' ? $description : null,
             'website' => $website !== '' ? $website : null,
@@ -208,7 +246,7 @@ class FiltersService
 
             return [
                 'id' => $id,
-                'message' => 'Filtro atualizado com sucesso',
+                'message' => $canonicalMatch ? 'Taxonomia existente reutilizada e atualizada com sucesso' : 'Filtro atualizado com sucesso',
                 'audit_action' => 'filter.update',
                 'audit_entity_id' => (string) $id,
                 'audit_metadata' => ['type' => $type, 'name' => $name, 'slug' => $slug],
@@ -271,5 +309,19 @@ class FiltersService
         }
         $decoded = json_decode($value, true);
         return $this->normalizeStringList(is_array($decoded) ? $decoded : []);
+    }
+
+    private function normalizeAcronym(string $value): string
+    {
+        $value = trim((string) preg_replace('/\s+/', ' ', $value));
+        return mb_substr(mb_strtoupper($value, 'UTF-8'), 0, 40, 'UTF-8');
+    }
+
+    private function normalizeLookupText(string $value): string
+    {
+        $value = trim(mb_strtolower($value, 'UTF-8'));
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        $value = $transliterated !== false ? $transliterated : $value;
+        return trim((string) preg_replace('/[^a-z0-9]+/', ' ', $value));
     }
 }

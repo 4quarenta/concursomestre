@@ -1023,12 +1023,14 @@ class LegalCommentaryRepository
 
         $recentlyStudied = array_filter($laws, fn ($law) => ($law['progressPercent'] ?? 0) > 0);
         $recentlyStudied = array_values($recentlyStudied);
+        $favoriteItems = $this->fetchFavoriteItems($userId, $laws);
 
         return [
             'areas' => $areas,
             'lawsByArea' => $lawsByArea,
             'mostAccessed' => array_slice($mostAccessed, 0, 6),
             'favoriteLaws' => array_values(array_slice(array_filter($laws, fn ($law) => !empty($law['isFavorite'])), 0, 6)),
+            'favoriteItems' => $favoriteItems,
             'recentlyStudied' => array_slice($recentlyStudied, 0, 6),
             'recentlyUpdated' => array_values(array_slice(array_filter($laws, fn ($law) => !empty($law['isRecentlyUpdated'])), 0, 8)),
             'totals' => [
@@ -1038,6 +1040,132 @@ class LegalCommentaryRepository
                 'updatedRecently' => count(array_filter($laws, fn ($law) => !empty($law['isRecentlyUpdated']))),
             ],
         ];
+    }
+
+    private function fetchFavoriteItems(?string $userId, array $mappedLaws): array
+    {
+        if (!$userId) {
+            return [];
+        }
+
+        $lawsById = [];
+        foreach ($mappedLaws as $law) {
+            $lawsById[(string) ($law['id'] ?? '')] = $law;
+        }
+
+        $items = [];
+
+        $lawStmt = $this->db->prepare(
+            "SELECT target_id, created_at
+             FROM legal_user_favorites
+             WHERE user_id = :user_id AND target_type = 'law'
+             ORDER BY created_at DESC, id DESC"
+        );
+        $lawStmt->execute([':user_id' => $userId]);
+        foreach ($lawStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $law = $lawsById[(string) $row['target_id']] ?? null;
+            if (!$law) {
+                continue;
+            }
+
+            $items[] = [
+                'id' => 'law:' . (string) $law['id'],
+                'type' => 'law',
+                'targetId' => (string) $law['id'],
+                'lawId' => (string) $law['id'],
+                'lawSlug' => (string) $law['slug'],
+                'lawTitle' => (string) ($law['shortTitle'] ?? $law['title'] ?? 'Lei Comentada'),
+                'title' => (string) ($law['shortTitle'] ?? $law['title'] ?? 'Lei Comentada'),
+                'subtitle' => 'Lei completa',
+                'description' => (string) ($law['description'] ?? $law['summary'] ?? $law['ementa'] ?? ''),
+                'href' => '/lei-comentada/' . rawurlencode((string) $law['slug']),
+                'articleCount' => (int) ($law['articleCount'] ?? 0),
+                'progressPercent' => (int) ($law['progressPercent'] ?? 0),
+                'createdAt' => $this->normalizeDateTime($row['created_at'] ?? null) ?? '',
+            ];
+        }
+
+        $sectionStmt = $this->db->prepare(
+            "SELECT f.target_id, f.created_at,
+                    s.id AS section_id, s.display_title, s.title_label, s.title_name,
+                    s.chapter_label, s.chapter_name, s.from_article, s.to_article,
+                    l.id AS law_id, l.slug AS law_slug, l.title AS law_title,
+                    l.short_title AS law_short_title
+             FROM legal_user_favorites f
+             INNER JOIN law_sections s ON s.id = CAST(f.target_id AS UNSIGNED)
+             INNER JOIN laws l ON l.id = s.law_id
+             WHERE f.user_id = :user_id AND f.target_type = 'section'
+             ORDER BY f.created_at DESC, f.id DESC"
+        );
+        $sectionStmt->execute([':user_id' => $userId]);
+        foreach ($sectionStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $sectionTitle = trim((string) ($row['display_title'] ?? ''));
+            if ($sectionTitle === '') {
+                $sectionTitle = implode(' - ', array_values(array_filter([
+                    trim((string) ($row['chapter_label'] ?? '')),
+                    trim((string) ($row['chapter_name'] ?? '')),
+                    trim((string) ($row['title_label'] ?? '')),
+                    trim((string) ($row['title_name'] ?? '')),
+                ]))) ?: 'Secao da lei';
+            }
+
+            $items[] = [
+                'id' => 'section:' . (string) $row['section_id'],
+                'type' => 'section',
+                'targetId' => (string) $row['section_id'],
+                'lawId' => (string) $row['law_id'],
+                'lawSlug' => (string) $row['law_slug'],
+                'lawTitle' => (string) ($row['law_short_title'] ?: $row['law_title']),
+                'title' => $sectionTitle,
+                'subtitle' => 'Secao salva',
+                'description' => trim(implode(' a ', array_values(array_filter([
+                    (string) ($row['from_article'] ?? ''),
+                    (string) ($row['to_article'] ?? ''),
+                ])))),
+                'href' => '/lei-comentada/' . rawurlencode((string) $row['law_slug'])
+                    . '?lawId=' . rawurlencode((string) $row['law_id'])
+                    . '&sectionId=' . rawurlencode((string) $row['section_id'])
+                    . '&view=pdf',
+                'createdAt' => $this->normalizeDateTime($row['created_at'] ?? null) ?? '',
+            ];
+        }
+
+        $articleStmt = $this->db->prepare(
+            "SELECT f.target_id, f.created_at,
+                    a.id AS article_id, a.article_number, a.title AS article_title,
+                    a.section_id, l.id AS law_id, l.slug AS law_slug,
+                    l.title AS law_title, l.short_title AS law_short_title
+             FROM legal_user_favorites f
+             INNER JOIN law_articles a ON a.id = CAST(f.target_id AS UNSIGNED)
+             INNER JOIN laws l ON l.id = a.law_id
+             WHERE f.user_id = :user_id AND f.target_type = 'article'
+             ORDER BY f.created_at DESC, f.id DESC"
+        );
+        $articleStmt->execute([':user_id' => $userId]);
+        foreach ($articleStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $articleNumber = (string) ($row['article_number'] ?? '');
+            $items[] = [
+                'id' => 'article:' . (string) $row['article_id'],
+                'type' => 'article',
+                'targetId' => (string) $row['article_id'],
+                'lawId' => (string) $row['law_id'],
+                'lawSlug' => (string) $row['law_slug'],
+                'lawTitle' => (string) ($row['law_short_title'] ?: $row['law_title']),
+                'title' => trim('Art. ' . $articleNumber . ' ' . (string) ($row['article_title'] ?? '')),
+                'subtitle' => 'Artigo salvo',
+                'description' => (string) ($row['law_short_title'] ?: $row['law_title']),
+                'href' => '/lei-comentada/' . rawurlencode((string) $row['law_slug'])
+                    . '?lawId=' . rawurlencode((string) $row['law_id'])
+                    . '&sectionId=' . rawurlencode((string) ($row['section_id'] ?? ''))
+                    . '&articleId=' . rawurlencode((string) $row['article_id'])
+                    . '&view=pdf',
+                'createdAt' => $this->normalizeDateTime($row['created_at'] ?? null) ?? '',
+            ];
+        }
+
+        usort($items, static fn ($left, $right) => strcmp((string) ($right['createdAt'] ?? ''), (string) ($left['createdAt'] ?? '')));
+
+        return array_slice($items, 0, 100);
     }
 
     public function search(string $query, ?string $userId = null): array

@@ -315,6 +315,22 @@ export interface LegalUserFavorite {
   createdAt: string;
 }
 
+export interface LegalFavoriteSavedItem {
+  id: string;
+  type: 'law' | 'section' | 'article';
+  targetId: string;
+  lawId: string;
+  lawSlug: string;
+  lawTitle: string;
+  title: string;
+  subtitle: string;
+  description?: string;
+  href: string;
+  articleCount?: number;
+  progressPercent?: number;
+  createdAt?: string;
+}
+
 export interface LegalUserComment {
   id: string;
   articleId: string;
@@ -536,6 +552,7 @@ export interface LegalHomeSnapshot {
   }>;
   mostAccessed: LawSummary[];
   favoriteLaws: LawSummary[];
+  favoriteItems?: LegalFavoriteSavedItem[];
   recentlyStudied: LawSummary[];
   recentlyUpdated: LawSummary[];
   totals: {

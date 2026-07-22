@@ -9,6 +9,8 @@
 *
 */
 
+'use client';
+
 import React from 'react';
 import { applyWebsiteMetadata, websiteManifest } from '../config/platform';
 

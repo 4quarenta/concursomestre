@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
 import { buildNoIndexMetadata } from '../seoMetadata';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const metadata = buildNoIndexMetadata({
   title: 'Painel admin',
 });

@@ -14,7 +14,7 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import PromoBanner from '../feedback/PromoBanner';
@@ -245,17 +245,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [resendTimer, setResendTimer] = useState(0);
   const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
   const [locationHash, setLocationHash] = useState('');
+  const [locationSearch, setLocationSearch] = useState('');
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const location = React.useMemo(() => {
-    const search = searchParams?.toString();
     return {
       pathname,
-      search: search ? `?${search}` : '',
+      search: locationSearch,
       hash: locationHash,
     };
-  }, [locationHash, pathname, searchParams]);
+  }, [locationHash, locationSearch, pathname]);
   const canOpenAdminPanel = canAccessAdminPanel(user);
   const simulationSearchParams = React.useMemo(
     () => new URLSearchParams(location.search),
@@ -281,17 +280,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       return undefined;
     }
 
-    const syncHash = () => {
+    const syncLocation = () => {
       setLocationHash(window.location.hash || '');
+      setLocationSearch(window.location.search || '');
     };
 
-    syncHash();
-    window.addEventListener('hashchange', syncHash);
+    syncLocation();
+    window.addEventListener('hashchange', syncLocation);
+    window.addEventListener('popstate', syncLocation);
 
     return () => {
-      window.removeEventListener('hashchange', syncHash);
+      window.removeEventListener('hashchange', syncLocation);
+      window.removeEventListener('popstate', syncLocation);
     };
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {

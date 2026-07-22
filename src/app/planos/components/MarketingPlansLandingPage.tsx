@@ -9,6 +9,8 @@
 *
 */
 
+'use client';
+
 import React, { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';

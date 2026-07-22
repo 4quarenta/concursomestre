@@ -53,4 +53,16 @@ assertContainsSimulationsDelegate(
     'Simulations routes must expose the list handler'
 );
 
+assertContainsSimulationsDelegate(
+    $base . '/modules/simulations/services/SimulationsService.php',
+    '$this->repository->transactional(',
+    'Simulation and answers must be persisted atomically'
+);
+
+assertContainsSimulationsDelegate(
+    $base . '/modules/simulations/repositories/SimulationsRepository.php',
+    'FOR UPDATE',
+    'Existing simulations must be locked while validating ownership'
+);
+
 fwrite(STDOUT, "Simulations module wiring assertions passed.\n");

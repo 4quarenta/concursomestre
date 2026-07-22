@@ -1,5 +1,3 @@
-'use client';
-
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -11,7 +9,7 @@
 *
 */
 
-import React from 'react';
+import { Suspense } from 'react';
 import MarketingPlansLandingPage from './components/MarketingPlansLandingPage';
 
 /**
@@ -20,8 +18,10 @@ import MarketingPlansLandingPage from './components/MarketingPlansLandingPage';
  *
  * @since v1.0.0
  */
-const PlanosPage: React.FC = () => {
-  return <MarketingPlansLandingPage slug="planos" />;
-};
-
-export default PlanosPage;
+export default function PlanosPage() {
+  return (
+    <Suspense fallback={<main aria-busy="true" className="min-h-screen bg-white dark:bg-slate-950" />}>
+      <MarketingPlansLandingPage slug="planos" />
+    </Suspense>
+  );
+}

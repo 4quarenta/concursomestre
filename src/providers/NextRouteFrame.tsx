@@ -64,8 +64,13 @@ const alwaysRequiresAuthenticatedUser = (pathname: string) => (
   || pathname.startsWith('/profile')
   || pathname.startsWith('/performance')
   || pathname.startsWith('/notifications')
-  || pathname.startsWith('/support')
   || pathname.startsWith('/read')
+);
+
+const allowsPublicServerRender = (pathname: string) => (
+  pathname.startsWith('/practice')
+  || pathname.startsWith('/lei-comentada')
+  || pathname.startsWith('/support')
 );
 
 const featureGateForPath = (pathname: string): { key: Parameters<typeof resolveSystemFeatureFlag>[1]; label: string } | null => {
@@ -308,9 +313,12 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     || pathname.startsWith('/support');
   const shouldRedirectToAuth = alwaysRequiresAuthenticatedUser(pathname)
     || (loginRequired && followsGlobalLoginRequirement(pathname));
-  const shouldGateDuringAuthBootstrap = shouldRedirectToAuth
+  const isPublicServerRenderRoute = allowsPublicServerRender(pathname);
+  const shouldGateDuringAuthBootstrap = !isPublicServerRenderRoute && (
+    shouldRedirectToAuth
     || pathname.startsWith('/admin')
-    || pathname === '/partner-dashboard';
+    || pathname === '/partner-dashboard'
+  );
   const paymentIssueFixPath = paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`;
   const paymentIssueMessage = paymentIssue?.message || (isPastDueSubscription
     ? 'Existe uma cobrança pendente. Abra a fatura para concluir o pagamento no ambiente seguro da Stripe.'
@@ -536,6 +544,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   if (
     planGate
     && !canAccessAdmin
+    && !(isLoading && isPublicServerRenderRoute)
     && !planGate.keys.some((benefitKey) => hasPlanBenefit(currentUser, benefitKey, systemSettings.planEntitlements))
   ) {
     const requiredPlan = getRouteRequiredPlan(planGate.keys, systemSettings.planEntitlements);

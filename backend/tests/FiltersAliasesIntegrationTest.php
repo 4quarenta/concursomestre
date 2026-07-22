@@ -22,6 +22,7 @@ try {
         'type' => 'banca',
         'name' => 'Banca de integracao',
         'slug' => 'banca-integracao-' . bin2hex(random_bytes(4)),
+        'acronym' => 'BIT',
         'parent_id' => null,
         'description' => 'Filtro criado apenas no banco isolado.',
         'website' => 'https://example.test',
@@ -37,6 +38,7 @@ try {
     $created = $repository->fetchById($filterId);
     filterAliasAssert(is_array($created), 'Filtro nao foi encontrado dentro da transacao.');
     filterAliasAssert(($created['asset_url'] ?? null) === 'https://example.test/logo.png', 'asset_url nao foi persistido.');
+    filterAliasAssert(($created['acronym'] ?? null) === 'BIT', 'acronym nao foi persistido.');
     filterAliasAssert(($created['icon_key'] ?? null) === 'building-2', 'icon_key nao foi persistido.');
     filterAliasAssert(count($created['aliases'] ?? []) === 2, 'Aliases equivalentes nao foram deduplicados pela forma normalizada.');
 

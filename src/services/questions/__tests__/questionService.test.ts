@@ -266,6 +266,36 @@ describe('questionService', () => {
     });
   });
 
+  it('preserves the card alternative id and idempotency key across a retry', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        answer: {
+          selectedOptionIndex: 1,
+          correctOptionIndex: 0,
+          isCorrect: false,
+        },
+      },
+    });
+
+    await questionService.submitUserAnswer({
+      questionId: 8,
+      selectedOptionIndex: 1,
+      selectedAlternativeId: 'legacy_q8_alt_b',
+      idempotencyKey: 'answer-retry-q8-0001',
+      timestamp: Date.now(),
+      timeTaken: 7,
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('v2/questions/answer.php', {
+      questionId: 8,
+      selectedAlternativeId: 'legacy_q8_alt_b',
+      idempotencyKey: 'answer-retry-q8-0001',
+      timeTaken: 7,
+      simulationId: null,
+    });
+  });
+
   it('loads question history through the official endpoint', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,

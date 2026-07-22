@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { buildNoIndexMetadata } from '../seoMetadata';
 
 export const metadata = buildNoIndexMetadata({
@@ -6,5 +6,5 @@ export const metadata = buildNoIndexMetadata({
 });
 
 export default function ConfirmEmailLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return children;
+  return <Suspense fallback={null}>{children}</Suspense>;
 }

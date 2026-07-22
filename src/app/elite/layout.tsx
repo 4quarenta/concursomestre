@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
 
 export const metadata = buildPublicPageMetadata({
@@ -8,5 +8,5 @@ export const metadata = buildPublicPageMetadata({
 });
 
 export default function EliteLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return children;
+  return <Suspense fallback={null}>{children}</Suspense>;
 }

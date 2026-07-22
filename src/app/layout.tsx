@@ -6,6 +6,7 @@ import { getConfiguredSiteUrl } from '@/config/siteUrl';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { adaptPublicSystemSettings } from '@services/admin/publicSettingsContract';
 import NextAppProviders from '@/providers/NextAppProviders';
+import ClientHydrationMarker from '@/providers/ClientHydrationMarker';
 import 'katex/dist/katex.min.css';
 import './globals.css';
 
@@ -13,6 +14,7 @@ const siteUrl = getConfiguredSiteUrl();
 const googleAdsenseAccount = process.env.NEXT_PUBLIC_GOOGLE_ADSENSE_ACCOUNT?.trim() || '';
 const googleAnalyticsId = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID?.trim() || '';
 const PUBLIC_SETTINGS_FETCH_TIMEOUT_MS = 1800;
+const PUBLIC_SETTINGS_REVALIDATE_SECONDS = 300;
 const inter = Inter({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700'],
@@ -54,9 +56,11 @@ const fetchPublicMarketingSettings = async (): Promise<{ adsenseAccount: string;
   try {
     const apiBaseUrl = resolveAbsoluteApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || undefined);
     const response = await fetch(new URL('settings.php', apiBaseUrl).toString(), {
-      cache: 'no-store',
       headers: {
         Accept: 'application/json',
+      },
+      next: {
+        revalidate: PUBLIC_SETTINGS_REVALIDATE_SECONDS,
       },
       signal: controller.signal,
     });
@@ -143,11 +147,13 @@ export const generateMetadata = async (): Promise<Metadata> => {
   return buildBaseMetadata(adsenseAccount);
 };
 
-export default async function RootLayout({
-  children,
-}: Readonly<{
+type RootLayoutProps = Readonly<{
   children: React.ReactNode;
-}>) {
+}>;
+
+export default async function RootLayout(props: RootLayoutProps) {
+  const { children } = props;
+  const seo = (props as RootLayoutProps & { seo?: React.ReactNode }).seo ?? null;
   const publicMarketingSettings = await fetchPublicMarketingSettings();
   const resolvedGoogleAnalyticsId = normalizeGoogleAnalyticsId(googleAnalyticsId)
     || publicMarketingSettings.analyticsId;
@@ -158,6 +164,10 @@ export default async function RootLayout({
         className={`${inter.variable} min-h-full flex flex-col font-sans no-scrollbar bg-slate-50 text-slate-900 transition-colors dark:bg-slate-900 dark:text-slate-100`}
         suppressHydrationWarning
       >
+        <style>{`
+          [data-server-seo-shell]:empty { display: none; }
+          html[data-client-ready="true"] [data-server-seo-shell] { display: none; }
+        `}</style>
         {resolvedGoogleAnalyticsId ? (
           <>
             <Script
@@ -174,6 +184,8 @@ export default async function RootLayout({
             </Script>
           </>
         ) : null}
+        <div data-server-seo-shell>{seo}</div>
+        <ClientHydrationMarker />
         <NextAppProviders>{children}</NextAppProviders>
       </body>
     </html>
