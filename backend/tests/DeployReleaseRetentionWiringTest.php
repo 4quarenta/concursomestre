@@ -33,5 +33,13 @@ assertReleaseRetention(
     str_contains($library, 'rm -rf --one-file-system -- "$resolved"'),
     'A remocao deve permanecer no filesystem e usar caminho resolvido.'
 );
+assertReleaseRetention(
+    str_contains($deploy, 'if [[ -d "$release_dir/backend/storage" ]]'),
+    'Storage opcional ausente no pacote nao deve produzir erro de rsync.'
+);
+assertReleaseRetention(
+    str_contains($deploy, 'if [[ -d "$release_dir/backend/uploads" ]]'),
+    'Uploads opcionais devem ser copiados apenas quando presentes no pacote.'
+);
 
 fwrite(STDOUT, "DeployReleaseRetentionWiringTest: PASS\n");

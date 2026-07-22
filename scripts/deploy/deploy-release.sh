@@ -63,8 +63,12 @@ cm_acquire_lock "$CM_DEPLOY_LOCK_FILE"
 install -d -m 0750 -o root -g "$CM_APP_GROUP" "$CM_RELEASES_DIR" "$CM_SHARED_DIR" "$CM_DEPLOY_STATE_DIR" "$release_dir"
 install -d -m 0770 -o root -g "$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
 rsync -a --delete "$package_root/" "$release_dir/"
-rsync -a --ignore-existing "$release_dir/backend/storage/" "$CM_SHARED_DIR/backend/storage/" || true
-rsync -a --ignore-existing "$release_dir/backend/uploads/" "$CM_SHARED_DIR/backend/uploads/" || true
+if [[ -d "$release_dir/backend/storage" ]]; then
+  rsync -a --ignore-existing "$release_dir/backend/storage/" "$CM_SHARED_DIR/backend/storage/"
+fi
+if [[ -d "$release_dir/backend/uploads" ]]; then
+  rsync -a --ignore-existing "$release_dir/backend/uploads/" "$CM_SHARED_DIR/backend/uploads/"
+fi
 # install e rsync preservam metadados de diretorios existentes. Reafirme o
 # contrato operacional depois da copia para impedir um legado root:root.
 chown root:"$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
