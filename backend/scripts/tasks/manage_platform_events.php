@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+// Reviewed production task: inspects and requeues platform event deliveries.
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
     exit("Esta ferramenta so pode ser executada via CLI.\n");

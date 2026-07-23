@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+// Reviewed production task: performs the allowlisted content reset after backup.
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
     exit("Este reset so pode ser executado via CLI.\n");

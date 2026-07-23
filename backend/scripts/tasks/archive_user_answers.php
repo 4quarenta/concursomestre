@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+// Reviewed production task: archives old answer attempts in bounded batches.
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
     exit("Este arquivador so pode ser executado via CLI.\n");

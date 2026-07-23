@@ -14,12 +14,12 @@ $database = (string) file_get_contents($backend . '/config/database.php');
 $exams = (string) file_get_contents($backend . '/modules/exams/services/ExamsService.php');
 $legal = (string) file_get_contents($backend . '/modules/legal_commentary/services/LegalCommentaryService.php');
 $storage = (string) file_get_contents($backend . '/shared/storage/ObjectStorage.php');
-$archive = (string) file_get_contents($backend . '/scripts/maintenance/archive_user_answers.php');
+$archive = (string) file_get_contents($backend . '/scripts/tasks/archive_user_answers.php');
 $sitemap = (string) file_get_contents($backend . '/scripts/seo/generate_static_sitemaps.php');
 $outbox = (string) file_get_contents($backend . '/shared/events/TransactionalOutbox.php');
 $questionWorker = (string) file_get_contents($backend . '/ops/systemd/concursomestre-question-ingestion@.service');
 $eventWorker = (string) file_get_contents($backend . '/ops/systemd/concursomestre-platform-events@.service');
-$eventOperations = (string) file_get_contents($backend . '/scripts/maintenance/manage_platform_events.php');
+$eventOperations = (string) file_get_contents($backend . '/scripts/tasks/manage_platform_events.php');
 $readRoutes = implode("\n", array_map(
     static fn (string $path): string => (string) file_get_contents($backend . $path),
     [

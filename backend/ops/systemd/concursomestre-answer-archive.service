@@ -8,6 +8,6 @@ User=concursomestre
 Group=concursomestre
 WorkingDirectory=/home/concursomestre/htdocs/concursomestre.com
 EnvironmentFile=/etc/concursomestre/backend.env.production
-ExecStart=/usr/bin/php backend/scripts/maintenance/archive_user_answers.php --apply --days=730 --batch-size=1000 --max-batches=25
+ExecStart=/usr/bin/php backend/scripts/tasks/archive_user_answers.php --apply --days=730 --batch-size=1000 --max-batches=25
 NoNewPrivileges=true
 PrivateTmp=true

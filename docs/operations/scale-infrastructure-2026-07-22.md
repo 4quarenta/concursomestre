@@ -100,9 +100,9 @@ RAM, novos slots podem ser ligados com `@2`, `@3` etc. O claim usa
 Operacao de dead-letter:
 
 ```bash
-php backend/scripts/maintenance/manage_platform_events.php --status
-php backend/scripts/maintenance/manage_platform_events.php --dead-letters --limit=25
-php backend/scripts/maintenance/manage_platform_events.php --requeue=123
+php backend/scripts/tasks/manage_platform_events.php --status
+php backend/scripts/tasks/manage_platform_events.php --dead-letters --limit=25
+php backend/scripts/tasks/manage_platform_events.php --requeue=123
 ```
 
 ## Sitemaps estaticos
@@ -124,13 +124,13 @@ ultimo conjunto valido continua servido.
 Primeiro execute:
 
 ```bash
-php backend/scripts/maintenance/archive_user_answers.php --dry-run --days=730
+php backend/scripts/tasks/archive_user_answers.php --dry-run --days=730
 ```
 
 Para aplicar um lote controlado:
 
 ```bash
-php backend/scripts/maintenance/archive_user_answers.php \
+php backend/scripts/tasks/archive_user_answers.php \
   --apply --days=730 --batch-size=1000 --max-batches=1
 ```
 

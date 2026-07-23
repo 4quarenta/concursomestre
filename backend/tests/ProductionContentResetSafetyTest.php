@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 $script = (string) file_get_contents(
-    __DIR__ . '/../scripts/maintenance/reset_production_content.php'
+    __DIR__ . '/../scripts/tasks/reset_production_content.php'
 );
 
 function resetSafetyAssert(bool $condition, string $message): void
