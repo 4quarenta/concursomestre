@@ -12,6 +12,7 @@
 */
 
 require_once __DIR__ . '/notification_helper.php';
+require_once __DIR__ . '/../shared/database/SchemaReadiness.php';
 
 /**
  * Helper transversal para recompensas idempotentes de XP, reputacao e badges.
@@ -21,73 +22,14 @@ require_once __DIR__ . '/notification_helper.php';
  */
 function ensureGamificationSupportSchema(PDO $db): void
 {
-    ensureGamificationUserColumn($db, 'xp', "ALTER TABLE users ADD COLUMN xp INT DEFAULT 0");
-    ensureGamificationUserColumn($db, 'level', "ALTER TABLE users ADD COLUMN level INT DEFAULT 1");
-    ensureGamificationUserColumn($db, 'reputation', "ALTER TABLE users ADD COLUMN reputation INT DEFAULT 0");
-
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS user_badges (
-            user_id VARCHAR(64) NOT NULL,
-            badge_key VARCHAR(80) NOT NULL,
-            title VARCHAR(160) NOT NULL,
-            description VARCHAR(255) NULL,
-            awarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (user_id, badge_key),
-            INDEX idx_user_badges_awarded_at (awarded_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
-
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS user_gamification_events (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            event_key VARCHAR(180) NOT NULL,
-            user_id VARCHAR(64) NOT NULL,
-            event_name VARCHAR(80) NOT NULL,
-            xp_delta INT NOT NULL DEFAULT 0,
-            reputation_delta INT NOT NULL DEFAULT 0,
-            badge_key VARCHAR(80) NULL,
-            metadata_json TEXT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_user_gamification_event_key (event_key),
-            INDEX idx_user_gamification_user_created (user_id, created_at),
-            INDEX idx_user_gamification_event_name (event_name)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
-
-    ensureGamificationEventColumn($db, 'badge_key', "ALTER TABLE user_gamification_events ADD COLUMN badge_key VARCHAR(80) NULL AFTER reputation_delta");
-    ensureGamificationEventColumn($db, 'metadata_json', "ALTER TABLE user_gamification_events ADD COLUMN metadata_json TEXT NULL AFTER badge_key");
-}
-
-function ensureGamificationUserColumn(PDO $db, string $column, string $alterSql): void
-{
-    $stmt = $db->prepare("
-        SELECT COUNT(*)
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'users'
-          AND COLUMN_NAME = :column
-    ");
-    $stmt->execute([':column' => $column]);
-
-    if ((int) $stmt->fetchColumn() === 0) {
-        $db->exec($alterSql);
-    }
-}
-
-function ensureGamificationEventColumn(PDO $db, string $column, string $alterSql): void
-{
-    $stmt = $db->prepare("
-        SELECT COUNT(*)
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'user_gamification_events'
-          AND COLUMN_NAME = :column
-    ");
-    $stmt->execute([':column' => $column]);
-
-    if ((int) $stmt->fetchColumn() === 0) {
-        $db->exec($alterSql);
-    }
+    SchemaReadiness::assertTablesAndColumns($db, 'gamificacao', [
+        'users' => ['id', 'xp', 'level', 'reputation'],
+        'user_badges' => ['user_id', 'badge_key', 'title', 'awarded_at'],
+        'user_gamification_events' => [
+            'event_key', 'user_id', 'event_name', 'xp_delta',
+            'reputation_delta', 'badge_key', 'metadata_json',
+        ],
+    ]);
 }
 
 function gamificationHelperReadSystemSetting(PDO $db, string $key, $fallback = null)

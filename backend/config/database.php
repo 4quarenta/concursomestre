@@ -23,9 +23,12 @@ class Database {
     private $password = "";
     private int $timeoutSeconds = 5;
     private bool $persistent = false;
+    private string $role = 'write';
+    private bool $usingReplica = false;
     public $conn;
 
-    public function __construct() {
+    public function __construct(string $role = 'write') {
+        $this->role = strtolower(trim($role)) === 'read' ? 'read' : 'write';
         $this->host = $this->readEnv('DB_HOST', $this->host);
         $this->port = $this->readEnv('DB_PORT', $this->port);
         $this->db_name = $this->readEnv('DB_NAME', $this->db_name);
@@ -36,6 +39,36 @@ class Database {
             $this->readEnv('DB_PERSISTENT', $this->persistent ? 'true' : 'false'),
             FILTER_VALIDATE_BOOLEAN
         );
+
+        // Read-heavy endpoints may opt into the replica without changing the
+        // write connection used by transactions. When no replica is configured,
+        // the primary remains the explicit and observable fallback.
+        if ($this->role === 'read') {
+            $readHost = $this->readEnv('DB_READ_HOST', '');
+            if ($readHost !== '') {
+                $this->host = $readHost;
+                $this->port = $this->readEnv('DB_READ_PORT', $this->port);
+                $this->db_name = $this->readEnv('DB_READ_NAME', $this->db_name);
+                $this->username = $this->readEnv('DB_READ_USER', $this->username);
+                $this->password = $this->readEnv(
+                    'DB_READ_PASSWORD',
+                    $this->readEnv('DB_READ_PASS', $this->password)
+                );
+                $this->timeoutSeconds = max(
+                    1,
+                    (int) $this->readEnv('DB_READ_TIMEOUT_SECONDS', (string) $this->timeoutSeconds)
+                );
+                $this->persistent = filter_var(
+                    $this->readEnv('DB_READ_PERSISTENT', $this->persistent ? 'true' : 'false'),
+                    FILTER_VALIDATE_BOOLEAN
+                );
+                $this->usingReplica = true;
+            }
+        }
+    }
+
+    public function isUsingReplica(): bool {
+        return $this->usingReplica;
     }
 
     public function getConnection() {

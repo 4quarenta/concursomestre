@@ -33,6 +33,20 @@ class QuestionsRewardService
             return;
         }
 
+        $level = max(1, (int) ($userSnapshot['level'] ?? 1));
+        $grant = $this->repository->grantGamificationEvent(
+            $userId,
+            'level_up_reward',
+            'level_up_reward:' . $userId . ':' . $level,
+            0,
+            0,
+            null,
+            ['level' => $level]
+        );
+        if (empty($grant['applied'])) {
+            return;
+        }
+
         $currentPlan = (string) ($userSnapshot['plan'] ?? 'Gratuito');
         $rewardDays = $currentPlan === 'Elite' ? 7 : 5;
         $currentEnd = trim((string) ($userSnapshot['subscription_end'] ?? ''));

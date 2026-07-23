@@ -2259,15 +2259,41 @@ class LegalCommentaryRepository
         return $mapped ? $this->mapUserComment($row) : $row;
     }
 
-    public function fetchAdminList(?string $query = null): array
+    public function fetchAdminAreas(): array
     {
         $this->assertSchemaReady();
-        $favorites = [];
-        $progress = [];
+        return $this->fetchAreas();
+    }
 
+    public function fetchAdminList(?string $query = null, int $limit = 31, ?int $cursorId = null): array
+    {
+        $this->assertSchemaReady();
+        $favorites = []; $progress = [];
+        $safeLimit = max(1, min(101, $limit)); $params = []; $whereParts = [];
+        if ($query !== null && trim($query) !== '') {
+            $whereParts[] = "(
+                l.title LIKE :query OR l.short_title LIKE :query OR l.law_number LIKE :query OR
+                l.acronym LIKE :query OR l.description LIKE :query OR l.summary LIKE :query OR
+                l.ementa LIKE :query OR law_topic.name LIKE :query OR law_subject.name LIKE :query OR
+                a.name LIKE :query
+            )";
+            $params[':query'] = '%' . trim($query) . '%';
+        }
+        if ($cursorId !== null && $cursorId > 0) {
+            $whereParts[] = 'l.id < :cursor_id'; $params[':cursor_id'] = $cursorId;
+        }
+        $where = $whereParts === [] ? '' : 'WHERE ' . implode(' AND ', $whereParts);
+        $stmt = $this->db->prepare($this->lawStatsSql() . "
+            {$where}
+            " . $this->lawStatsGroupBySql() . "
+            ORDER BY l.id DESC
+            LIMIT {$safeLimit}"
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         return array_map(function ($row) use ($favorites, $progress) {
             return $this->mapLawSummary($row, $favorites, $progress);
-        }, $this->fetchLawRows($query, false));
+        }, $rows);
     }
 
     public function saveAdminPayload(array $payload, bool $preserveUnmatched = false): array

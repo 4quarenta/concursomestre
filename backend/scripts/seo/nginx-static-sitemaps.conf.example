@@ -1,0 +1,12 @@
+# Ajuste o caminho para o release ativo do site no CloudPanel.
+location = /sitemap.xml {
+    alias /home/concursomestre/htdocs/concursomestre.com/backend/storage/sitemaps/sitemap.xml;
+    default_type application/xml;
+    add_header Cache-Control "public, max-age=300, s-maxage=3600";
+}
+
+location ^~ /sitemaps/ {
+    alias /home/concursomestre/htdocs/concursomestre.com/backend/storage/sitemaps/;
+    default_type application/xml;
+    add_header Cache-Control "public, max-age=86400, immutable";
+}

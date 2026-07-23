@@ -258,6 +258,9 @@ export const useAdminExamBankWorkflow = ({
   const [canonicalExamBank, setCanonicalExamBank] = useState<Prova[]>([]);
   const [hasLoadedCanonicalExamBank, setHasLoadedCanonicalExamBank] = useState(false);
   const [canonicalExamBankLoadFailed, setCanonicalExamBankLoadFailed] = useState(false);
+  const [nextExamCursor, setNextExamCursor] = useState<string | null>(null);
+  const [hasMoreExams, setHasMoreExams] = useState(false);
+  const [isLoadingMoreExams, setIsLoadingMoreExams] = useState(false);
 
   useEffect(() => {
     if (!enabled) {
@@ -268,9 +271,11 @@ export const useAdminExamBankWorkflow = ({
 
     const loadExamBank = async () => {
       try {
-        const exams = await examService.list();
+        const page = await examService.listPage({ limit: 30, ...(filter ? { search: filter } : {}) });
         if (active) {
-          setCanonicalExamBank(exams);
+          setCanonicalExamBank(page.items);
+          setNextExamCursor(page.pageInfo.nextCursor);
+          setHasMoreExams(page.pageInfo.hasMore);
           setHasLoadedCanonicalExamBank(true);
           setCanonicalExamBankLoadFailed(false);
         }
@@ -290,7 +295,30 @@ export const useAdminExamBankWorkflow = ({
     return () => {
       active = false;
     };
-  }, [addToast, enabled]);
+  }, [addToast, enabled, filter]);
+
+  const loadMoreExams = async () => {
+    if (!nextExamCursor || isLoadingMoreExams) return;
+    setIsLoadingMoreExams(true);
+    try {
+      const page = await examService.listPage({
+        limit: 30,
+        cursor: nextExamCursor,
+        ...(filter ? { search: filter } : {}),
+      });
+      setCanonicalExamBank((current) => [
+        ...current,
+        ...page.items.filter((exam) => !current.some((existing) => String(existing.id) === String(exam.id))),
+      ]);
+      setNextExamCursor(page.pageInfo.nextCursor);
+      setHasMoreExams(page.pageInfo.hasMore);
+    } catch (error) {
+      clientLog.warn('Error loading more canonical exams:', error);
+      addToast('Não foi possível carregar mais provas.', 'error');
+    } finally {
+      setIsLoadingMoreExams(false);
+    }
+  };
 
   const legacyExamBank = useMemo(
     () => mergeExamBankSources(systemSettings, questions),
@@ -572,5 +600,8 @@ export const useAdminExamBankWorkflow = ({
     cancelDeleteExam,
     handleDeleteExam,
     actionLoading,
+    hasMoreExams,
+    isLoadingMoreExams,
+    loadMoreExams,
   };
 };

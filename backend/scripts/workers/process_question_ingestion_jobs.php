@@ -21,7 +21,8 @@ $maxJobs = max(1, min(100, (int) ($argv[1] ?? 10)));
 $db = (new Database())->getConnection();
 $ingestion = new PrivateQuestionIngestionService($db);
 $processed = [];
-$workerId = sprintf('%s:%d:%s', gethostname() ?: 'worker', getmypid(), bin2hex(random_bytes(4)));
+$workerSlot = preg_replace('/[^a-zA-Z0-9_-]/', '-', trim((string) (getenv('WORKER_SLOT') ?: 'manual'))) ?: 'manual';
+$workerId = sprintf('%s:%s:%d', gethostname() ?: 'worker', $workerSlot, getmypid());
 
 for ($index = 0; $index < $maxJobs; $index++) {
     $job = $ingestion->reserveNextJob($workerId);
@@ -42,4 +43,13 @@ for ($index = 0; $index < $maxJobs; $index++) {
     }
 }
 
-fwrite(STDOUT, json_encode(['processed' => $processed], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+$result = ['worker' => $workerId, 'slot' => $workerSlot, 'processed' => $processed, 'finishedAt' => gmdate('c')];
+$healthDir = dirname(__DIR__, 2) . '/storage/health/workers';
+if ((is_dir($healthDir) || @mkdir($healthDir, 0775, true)) && is_dir($healthDir)) {
+    @file_put_contents(
+        $healthDir . '/question-ingestion-' . $workerSlot . '.json',
+        json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL,
+        LOCK_EX
+    );
+}
+fwrite(STDOUT, json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);

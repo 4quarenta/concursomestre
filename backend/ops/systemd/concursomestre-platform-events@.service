@@ -1,0 +1,19 @@
+[Unit]
+Description=ConcursoMestre platform event worker slot %i
+After=network-online.target mysql.service
+
+[Service]
+Type=simple
+User=concursomestre
+Group=concursomestre
+WorkingDirectory=/home/concursomestre/htdocs/concursomestre.com
+EnvironmentFile=/etc/concursomestre/backend.env.production
+Environment=WORKER_SLOT=%i
+ExecStart=/bin/sh -c 'while true; do /usr/bin/php backend/scripts/workers/process_platform_events.php 50; sleep 2; done'
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

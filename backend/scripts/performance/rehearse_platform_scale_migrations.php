@@ -37,6 +37,7 @@ try {
     $migrationFiles = [
         __DIR__ . '/../../database/migrations/20260722_020000_platform_scale_readiness.php',
         __DIR__ . '/../../database/migrations/20260722_030000_user_identity_hot_paths.php',
+        __DIR__ . '/../../database/migrations/20260722_050000_async_events_and_answer_archive.php',
     ];
     $timings = [];
     foreach ([1, 2] as $pass) {
@@ -67,6 +68,12 @@ try {
         'reports.idx_reports_moderation_queue',
         'simulations.idx_simulations_user_latest',
         'transactions.idx_transactions_user_keyset',
+        'platform_event_outbox.idx_platform_event_outbox_claim',
+        'user_answer_counters.idx_user_answer_counters_ranking',
+        'user_answers_archive.idx_user_answers_archive_history',
+        'user_answers.idx_user_answers_archive_candidates',
+        'provas.idx_provas_admin_keyset',
+        'laws.idx_laws_admin_keyset',
     ];
     $missingIndexes = [];
     foreach ($requiredIndexes as $qualifiedIndex) {

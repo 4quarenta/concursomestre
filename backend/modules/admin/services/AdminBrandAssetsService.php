@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 3) . '/shared/security/UploadSecurity.php';
+require_once dirname(__DIR__, 3) . '/shared/storage/ObjectStorage.php';
 
 final class AdminBrandAssetsService
 {
@@ -35,28 +36,20 @@ final class AdminBrandAssetsService
             throw new InvalidArgumentException('A imagem deve ter dimensoes entre 1 e 4096 pixels.');
         }
 
-        $directory = rtrim($backendRoot, DIRECTORY_SEPARATOR)
-            . DIRECTORY_SEPARATOR . 'uploads'
-            . DIRECTORY_SEPARATOR . 'admin-assets'
-            . DIRECTORY_SEPARATOR . $purpose;
-        if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
-            throw new RuntimeException('Nao foi possivel preparar o diretorio de imagens administrativas.');
-        }
-
         $filename = $purpose . '-' . gmdate('YmdHis') . '-' . bin2hex(random_bytes(12)) . '.' . $upload['extension'];
-        $targetPath = $directory . DIRECTORY_SEPARATOR . $filename;
-        if (!move_uploaded_file((string) ($file['tmp_name'] ?? ''), $targetPath)) {
-            throw new RuntimeException('Nao foi possivel armazenar a imagem enviada.');
-        }
-        @chmod($targetPath, 0644);
+        $stored = (new ObjectStorage())->storeUploadedFile(
+            (string) ($file['tmp_name'] ?? ''),
+            'admin-assets/' . $purpose . '/' . $filename,
+            (string) $upload['mimeType']
+        );
 
         return [
-            'url' => '/uploads/admin-assets/' . rawurlencode($purpose) . '/' . rawurlencode($filename),
+            'url' => $stored['url'],
             'mimeType' => (string) $upload['mimeType'],
             'size' => (int) $upload['size'],
             'width' => $width,
             'height' => $height,
-            'storageKey' => 'admin-assets/' . $purpose . '/' . $filename,
+            'storageKey' => $stored['storageKey'],
         ];
     }
 }

@@ -37,6 +37,9 @@ interface AdminExamBankSectionProps {
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
   actionLoading: 'save' | 'delete' | null;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
 }
 
 const COLLECTION_PAGE_SIZE = 20;
@@ -58,6 +61,9 @@ const AdminExamBankSection = ({
   onCancelDelete,
   onConfirmDelete,
   actionLoading,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
 }: AdminExamBankSectionProps) => {
   const [page, setPage] = React.useState(1);
   const totalPages = Math.max(1, Math.ceil(exams.length / COLLECTION_PAGE_SIZE));
@@ -172,6 +178,18 @@ const AdminExamBankSection = ({
         totalPages={totalPages}
         onPageChange={setPage}
       />
+      {hasMore && currentPage >= totalPages ? (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          >
+            {isLoadingMore ? 'Carregando...' : 'Carregar mais provas'}
+          </button>
+        </div>
+      ) : null}
 
       <AdminConfirmDialog
         isOpen={Boolean(deletingExam)}

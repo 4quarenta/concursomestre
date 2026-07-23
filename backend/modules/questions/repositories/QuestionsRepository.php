@@ -92,21 +92,8 @@ class QuestionsRepository
      */
     public function ensureQuestionStatsRow(string|int $questionId): void
     {
-        $checkStmt = $this->db->prepare(
-            "SELECT question_id
-             FROM question_stats
-             WHERE question_id = :question_id
-             LIMIT 1"
-        );
-        $checkStmt->bindValue(':question_id', $questionId);
-        $checkStmt->execute();
-
-        if ($checkStmt->fetch(PDO::FETCH_ASSOC)) {
-            return;
-        }
-
         $insertStmt = $this->db->prepare(
-            "INSERT INTO question_stats (question_id, total_attempts, correct_count, wrong_count)
+            "INSERT IGNORE INTO question_stats (question_id, total_attempts, correct_count, wrong_count)
              VALUES (:question_id, 0, 0, 0)"
         );
         $insertStmt->bindValue(':question_id', $questionId);
@@ -120,11 +107,12 @@ class QuestionsRepository
     public function incrementQuestionStats(string|int $questionId, bool $isCorrect): void
     {
         $stmt = $this->db->prepare(
-            "UPDATE question_stats
-             SET total_attempts = total_attempts + 1,
-                 correct_count = correct_count + :correct_increment,
-                 wrong_count = wrong_count + :wrong_increment
-             WHERE question_id = :question_id"
+            "INSERT INTO question_stats (question_id, total_attempts, correct_count, wrong_count)
+             VALUES (:question_id, 1, :correct_increment, :wrong_increment)
+             ON DUPLICATE KEY UPDATE
+                 total_attempts = total_attempts + 1,
+                 correct_count = correct_count + VALUES(correct_count),
+                 wrong_count = wrong_count + VALUES(wrong_count)"
         );
         $stmt->bindValue(':correct_increment', $isCorrect ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':wrong_increment', $isCorrect ? 0 : 1, PDO::PARAM_INT);
@@ -177,14 +165,25 @@ class QuestionsRepository
     {
         $stmt = $this->db->prepare(
             "SELECT selected_option_index, is_correct, created_at
-             FROM user_answers
-             WHERE user_id = :user_id
-               AND question_id = :question_id
-             ORDER BY created_at DESC"
+             FROM (
+                SELECT selected_option_index, is_correct, created_at, id
+                FROM user_answers
+                WHERE user_id = :active_user_id
+                  AND question_id = :active_question_id
+                UNION ALL
+                SELECT selected_option_index, is_correct, created_at, id
+                FROM user_answers_archive
+                WHERE user_id = :archive_user_id
+                  AND question_id = :archive_question_id
+             ) answer_history
+             ORDER BY created_at DESC, id DESC"
         );
-        $stmt->bindValue(':user_id', $userId);
-        $stmt->bindValue(':question_id', $questionId);
-        $stmt->execute();
+        $stmt->execute([
+            ':active_user_id' => $userId,
+            ':active_question_id' => $questionId,
+            ':archive_user_id' => $userId,
+            ':archive_question_id' => $questionId,
+        ]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
@@ -195,11 +194,16 @@ class QuestionsRepository
      */
     public function resetUserAnswers(string $userId): int
     {
-        $stmt = $this->db->prepare("DELETE FROM user_answers WHERE user_id = :user_id");
-        $stmt->bindValue(':user_id', $userId);
-        $stmt->execute();
+        $deleted = 0;
+        foreach (['user_answers', 'user_answers_archive'] as $table) {
+            $stmt = $this->db->prepare("DELETE FROM {$table} WHERE user_id = :user_id");
+            $stmt->execute([':user_id' => $userId]);
+            $deleted += $stmt->rowCount();
+        }
+        $counter = $this->db->prepare('DELETE FROM user_answer_counters WHERE user_id = :user_id');
+        $counter->execute([':user_id' => $userId]);
 
-        return $stmt->rowCount();
+        return $deleted;
     }
 
     /**
@@ -300,6 +304,75 @@ class QuestionsRepository
         $stmt->bindValue(':type', $notification['type']);
         $stmt->bindValue(':link', $notification['link']);
         $stmt->execute();
+    }
+
+    /**
+     * Materializa os totais do usuario. O caminho normal executa apenas um
+     * INSERT IGNORE e um UPDATE O(1). Se o contador ainda nao existir, ele e
+     * reconstruido uma unica vez a partir do historico canonico.
+     */
+    public function recordUserAnswerCounter(string $userId, bool $isCorrect): void
+    {
+        $insert = $this->db->prepare(
+            "INSERT IGNORE INTO user_answer_counters (
+                user_id, total_answers, correct_answers, wrong_answers,
+                first_answer_at, last_answer_at
+             ) VALUES (
+                :user_id, 1, :correct_increment, :wrong_increment, NOW(), NOW()
+             )"
+        );
+        $insert->execute([
+            ':user_id' => $userId,
+            ':correct_increment' => $isCorrect ? 1 : 0,
+            ':wrong_increment' => $isCorrect ? 0 : 1,
+        ]);
+
+        if ($insert->rowCount() > 0) {
+            $rebuild = $this->db->prepare(
+                "UPDATE user_answer_counters counters
+                 JOIN (
+                    SELECT user_id,
+                           COUNT(*) AS total_answers,
+                           SUM(is_correct = 1) AS correct_answers,
+                           SUM(is_correct = 0) AS wrong_answers,
+                           MIN(created_at) AS first_answer_at,
+                           MAX(created_at) AS last_answer_at
+                    FROM (
+                        SELECT user_id, is_correct, created_at FROM user_answers WHERE user_id = :active_source_user_id
+                        UNION ALL
+                        SELECT user_id, is_correct, created_at FROM user_answers_archive WHERE user_id = :archive_source_user_id
+                    ) answer_history
+                    GROUP BY user_id
+                 ) totals ON totals.user_id = counters.user_id
+                 SET counters.total_answers = totals.total_answers,
+                     counters.correct_answers = totals.correct_answers,
+                     counters.wrong_answers = totals.wrong_answers,
+                     counters.first_answer_at = totals.first_answer_at,
+                     counters.last_answer_at = totals.last_answer_at
+                 WHERE counters.user_id = :target_user_id"
+            );
+            $rebuild->execute([
+                ':active_source_user_id' => $userId,
+                ':archive_source_user_id' => $userId,
+                ':target_user_id' => $userId,
+            ]);
+            return;
+        }
+
+        $update = $this->db->prepare(
+            "UPDATE user_answer_counters
+             SET total_answers = total_answers + 1,
+                 correct_answers = correct_answers + :correct_increment,
+                 wrong_answers = wrong_answers + :wrong_increment,
+                 first_answer_at = COALESCE(first_answer_at, NOW()),
+                 last_answer_at = NOW()
+             WHERE user_id = :user_id"
+        );
+        $update->execute([
+            ':user_id' => $userId,
+            ':correct_increment' => $isCorrect ? 1 : 0,
+            ':wrong_increment' => $isCorrect ? 0 : 1,
+        ]);
     }
 
     public function createSavepoint(string $name): void
@@ -654,10 +727,10 @@ class QuestionsRepository
     public function getUserAnswerTotals(string $userId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT COUNT(*) AS total_answers,
-                    SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct_answers
-             FROM user_answers
-             WHERE user_id = :user_id"
+            "SELECT total_answers, correct_answers
+             FROM user_answer_counters
+             WHERE user_id = :user_id
+             LIMIT 1"
         );
         $stmt->execute([':user_id' => $userId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -1112,8 +1185,15 @@ class QuestionsRepository
             $params[':saved_user_id'] = $userId;
         }
         if (!empty($filters['excludeAnswered']) && $userId !== null && $userId !== '') {
-            $clauses[] = 'NOT EXISTS (SELECT 1 FROM user_answers ua WHERE ua.question_id = q.id AND ua.user_id = :answered_user_id)';
-            $params[':answered_user_id'] = $userId;
+            $clauses[] = 'NOT EXISTS (
+                SELECT 1 FROM user_answers ua
+                WHERE ua.question_id = q.id AND ua.user_id = :active_answered_user_id
+            ) AND NOT EXISTS (
+                SELECT 1 FROM user_answers_archive archived
+                WHERE archived.question_id = q.id AND archived.user_id = :archive_answered_user_id
+            )';
+            $params[':active_answered_user_id'] = $userId;
+            $params[':archive_answered_user_id'] = $userId;
         }
 
         $this->appendFilterExistsClause($clauses, $params, 'banca', 'agency', $filters['agency'] ?? []);
@@ -1632,17 +1712,28 @@ class QuestionsRepository
         }
 
         [$placeholders, $bindings] = $this->buildInClause('answer_question_id', $questionIds);
+        [$archivePlaceholders, $archiveBindings] = $this->buildInClause('archive_answer_question_id', $questionIds);
         $selectedOptionColumn = $this->questionScaleColumnsReady()
             ? 'selected_option_id'
             : 'NULL AS selected_option_id';
+        $archiveSelectedOptionColumn = $this->questionScaleColumnsReady()
+            ? 'selected_option_id'
+            : 'NULL AS selected_option_id';
         $stmt = $this->db->prepare(
-            "SELECT question_id, is_correct, selected_option_index, {$selectedOptionColumn}, created_at
-             FROM user_answers
-             WHERE user_id = :user_id
-               AND question_id IN ({$placeholders})
+            "SELECT question_id, is_correct, selected_option_index, selected_option_id, created_at
+             FROM (
+                SELECT question_id, is_correct, selected_option_index, {$selectedOptionColumn}, created_at, id
+                FROM user_answers
+                WHERE user_id = :active_user_id AND question_id IN ({$placeholders})
+                UNION ALL
+                SELECT question_id, is_correct, selected_option_index, {$archiveSelectedOptionColumn}, created_at, id
+                FROM user_answers_archive
+                WHERE user_id = :archive_user_id AND question_id IN ({$archivePlaceholders})
+             ) answer_history
              ORDER BY created_at DESC, id DESC"
         );
-        $stmt->bindValue(':user_id', $userId);
+        $stmt->bindValue(':active_user_id', $userId);
+        $stmt->bindValue(':archive_user_id', $userId);
 
         foreach ($bindings as $placeholder => $value) {
             $stmt->bindValue($placeholder, $value);
@@ -1739,12 +1830,21 @@ class QuestionsRepository
     {
         $stmt = $this->db->prepare(
             "SELECT selected_option_index, COUNT(*) AS count
-             FROM user_answers
-             WHERE question_id = :question_id
+             FROM (
+                SELECT selected_option_index
+                FROM user_answers
+                WHERE question_id = :active_question_id
+                UNION ALL
+                SELECT selected_option_index
+                FROM user_answers_archive
+                WHERE question_id = :archive_question_id
+             ) answer_history
              GROUP BY selected_option_index"
         );
-        $stmt->bindValue(':question_id', $questionId);
-        $stmt->execute();
+        $stmt->execute([
+            ':active_question_id' => $questionId,
+            ':archive_question_id' => $questionId,
+        ]);
 
         $distribution = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
@@ -1761,30 +1861,21 @@ class QuestionsRepository
     public function getQuestionOutcomeCounts(string|int $questionId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT is_correct, COUNT(*) AS count
-             FROM user_answers
+            "SELECT correct_count, wrong_count, total_attempts
+             FROM question_stats
              WHERE question_id = :question_id
-             GROUP BY is_correct"
+             LIMIT 1"
         );
         $stmt->bindValue(':question_id', $questionId);
         $stmt->execute();
-
-        $correct = 0;
-        $wrong = 0;
-
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-            if ((int) ($row['is_correct'] ?? 0) === 1) {
-                $correct = (int) ($row['count'] ?? 0);
-                continue;
-            }
-
-            $wrong += (int) ($row['count'] ?? 0);
-        }
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $correct = (int) ($row['correct_count'] ?? 0);
+        $wrong = (int) ($row['wrong_count'] ?? 0);
 
         return [
             'correctCount' => $correct,
             'wrongCount' => $wrong,
-            'totalAttempts' => $correct + $wrong,
+            'totalAttempts' => (int) ($row['total_attempts'] ?? ($correct + $wrong)),
         ];
     }
 
@@ -1861,6 +1952,9 @@ class QuestionsRepository
         );
         $stmt->bindValue(':user_id', $userId);
         foreach ($bindings as $placeholder => $value) {
+            $stmt->bindValue($placeholder, $value);
+        }
+        foreach ($archiveBindings as $placeholder => $value) {
             $stmt->bindValue($placeholder, $value);
         }
         $stmt->execute();

@@ -48,7 +48,12 @@ interface LegalSearchPayload {
 
 interface LegalAdminListPayload {
   laws: LawSummary[];
-  home: LegalHomeSnapshot;
+  home: Partial<LegalHomeSnapshot> & Pick<LegalHomeSnapshot, 'areas'>;
+  pageInfo: {
+    limit: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
 }
 
 interface LegalAdminDetailPayload {
@@ -1036,9 +1041,13 @@ export const legalCommentaryApiService = {
     });
   },
 
-  async getAdminList(query = ''): Promise<LegalAdminListPayload> {
+  async getAdminList(query = '', cursor: string | null = null): Promise<LegalAdminListPayload> {
     const response = await apiClient.get(ENDPOINTS.legalCommentary.adminList, {
-      params: query ? { q: query } : undefined,
+      params: {
+        ...(query ? { q: query } : {}),
+        ...(cursor ? { cursor } : {}),
+        limit: 30,
+      },
     });
     return unwrap<LegalAdminListPayload>(response, {
       laws: [],
@@ -1052,6 +1061,7 @@ export const legalCommentaryApiService = {
         recentlyUpdated: [],
         totals: { laws: 0, articles: 0, commentedArticles: 0, updatedRecently: 0 },
       },
+      pageInfo: { limit: 30, hasMore: false, nextCursor: null },
     });
   },
 

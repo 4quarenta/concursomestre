@@ -33,6 +33,11 @@ export interface ExamExtractionRecord {
     updatedAt?: string | null;
 }
 
+export interface ExamListPage {
+    items: Prova[];
+    pageInfo: { limit: number; hasMore: boolean; nextCursor: string | null };
+}
+
 const readApiData = <T>(payload: ApiEnvelope<T> | T): T => {
     if (payload && typeof payload === 'object' && 'data' in payload) {
         return (payload as ApiEnvelope<T>).data as T;
@@ -51,12 +56,21 @@ const readErrorMessage = (error: unknown, fallback: string): string => {
 };
 
 export const examService = {
-    async list(params: Record<string, unknown> = {}): Promise<Prova[]> {
-        const response = await apiClient.get<ApiEnvelope<{ items?: Prova[] }>>(ENDPOINTS.exams.list, {
-            params,
-        });
+    async listPage(params: Record<string, unknown> = {}): Promise<ExamListPage> {
+        const response = await apiClient.get<ApiEnvelope<ExamListPage>>(ENDPOINTS.exams.list, { params });
         const data = readApiData(response.data);
-        return Array.isArray(data?.items) ? data.items : [];
+        return {
+            items: Array.isArray(data?.items) ? data.items : [],
+            pageInfo: {
+                limit: Number(data?.pageInfo?.limit || params.limit || 30),
+                hasMore: Boolean(data?.pageInfo?.hasMore),
+                nextCursor: data?.pageInfo?.nextCursor || null,
+            },
+        };
+    },
+
+    async list(params: Record<string, unknown> = {}): Promise<Prova[]> {
+        return (await this.listPage(params)).items;
     },
 
     async show(id: string | number): Promise<Prova | null> {

@@ -70,6 +70,9 @@ interface AdminDatabaseSectionsProps {
   onCancelDeleteExam: () => void;
   onConfirmDeleteExam: () => void;
   examActionLoading: 'save' | 'delete' | null;
+  hasMoreExams: boolean;
+  isLoadingMoreExams: boolean;
+  onLoadMoreExams: () => void;
   onOpenUserProfile: (userId: string) => void;
   onDeleteUser: AdminUsersSectionProps['onDeleteUser'];
   onModerateMaterial: AdminMaterialsSectionProps['onModerate'];
@@ -122,6 +125,9 @@ const AdminDatabaseSections = ({
   onCancelDeleteExam,
   onConfirmDeleteExam,
   examActionLoading,
+  hasMoreExams,
+  isLoadingMoreExams,
+  onLoadMoreExams,
   onOpenUserProfile,
   onDeleteUser,
   onModerateMaterial,
@@ -177,6 +183,9 @@ const AdminDatabaseSections = ({
         onCancelDelete={onCancelDeleteExam}
         onConfirmDelete={onConfirmDeleteExam}
         actionLoading={examActionLoading}
+        hasMore={hasMoreExams}
+        isLoadingMore={isLoadingMoreExams}
+        onLoadMore={onLoadMoreExams}
       />
     );
   }

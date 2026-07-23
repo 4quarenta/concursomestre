@@ -69,6 +69,7 @@ class ExamsRepository
         $includeArchived = filter_var($filters['include_archived'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $params = [];
         $where = [];
+        $limit = max(1, min(101, (int) ($filters['limit'] ?? 31)));
 
         if (!$includeArchived) {
             $where[] = 'p.archived_at IS NULL';
@@ -79,13 +80,25 @@ class ExamsRepository
             $params[':search'] = '%' . $search . '%';
         }
 
+        $cursor = is_array($filters['cursor_data'] ?? null) ? $filters['cursor_data'] : null;
+        if ($cursor !== null) {
+            $where[] = '(
+                COALESCE(p.ano, 0) < :cursor_year
+                OR (COALESCE(p.ano, 0) = :cursor_year AND p.nome > :cursor_name)
+                OR (COALESCE(p.ano, 0) = :cursor_year AND p.nome = :cursor_name AND p.id < :cursor_id)
+            )';
+            $params[':cursor_year'] = (int) ($cursor['year'] ?? 0);
+            $params[':cursor_name'] = (string) ($cursor['name'] ?? '');
+            $params[':cursor_id'] = (int) ($cursor['id'] ?? 0);
+        }
+
         $query = "SELECT p.*, COUNT(DISTINCT qp.question_id) AS question_count
             FROM provas p
             LEFT JOIN question_provas qp ON qp.prova_id = p.id";
         if ($where) {
             $query .= ' WHERE ' . implode(' AND ', $where);
         }
-        $query .= ' GROUP BY p.id ORDER BY COALESCE(p.ano, 0) DESC, p.nome ASC';
+        $query .= ' GROUP BY p.id ORDER BY COALESCE(p.ano, 0) DESC, p.nome ASC, p.id DESC LIMIT ' . $limit;
 
         $stmt = $this->db->prepare($query);
         $stmt->execute($params);

@@ -35,7 +35,10 @@
     "release:verify": "node scripts/release/verify-release-manifest.mjs",
     "check:release-package": "node scripts/checks/check-release-package.mjs",
     "check:production-local": "node scripts/checks/production-readiness-local.mjs",
-    "check:release-local": "npm run check:release-repos -- --report-file=.tmp/release-repos-status-latest.json && node scripts/checks/production-readiness-local.mjs --with-build --with-backend-readiness --web-base-url= --backend-readiness-report=.tmp/backend-readiness-suite-latest.json"
+    "check:release-local": "npm run check:release-repos -- --report-file=.tmp/release-repos-status-latest.json && node scripts/checks/production-readiness-local.mjs --with-build --with-backend-readiness --web-base-url= --backend-readiness-report=.tmp/backend-readiness-suite-latest.json",
+    "crawler:gran": "node tools/local-question-crawler/gran_capture.mjs",
+    "test:crawler:gran": "node --test tools/local-question-crawler/__tests__/gran_mapper.node.mjs",
+    "seo:generate-static": "php backend/scripts/seo/generate_static_sitemaps.php"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

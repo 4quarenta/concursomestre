@@ -19,6 +19,7 @@ require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSupport.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../finance/services/ReferralFinance.php';
+require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
 
 /**
  * Service do dominio de Usuarios.
@@ -96,26 +97,19 @@ class UsersService
         $this->validator->validateAuthenticatedUserId($userId);
         $upload = $this->validator->validateProfilePhotoUpload($file);
         $extension = $upload['extension'] ?? 'jpg';
-        $uploadsDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'profiles';
-
-        if (!is_dir($uploadsDir) && !mkdir($uploadsDir, 0777, true) && !is_dir($uploadsDir)) {
-            throw new RuntimeException('Nao foi possivel preparar o diretorio de upload.');
-        }
-
         $safeName = $userId . '_' . time() . '_' . bin2hex(random_bytes(6)) . '.' . $extension;
-        $absolutePath = $uploadsDir . DIRECTORY_SEPARATOR . $safeName;
-        $relativePath = 'uploads/profiles/' . $safeName;
-
-        if (!move_uploaded_file($file['tmp_name'], $absolutePath)) {
-            throw new RuntimeException('Nao foi possivel salvar a imagem enviada.');
-        }
+        $storage = new ObjectStorage();
+        $stored = $storage->storeUploadedFile(
+            (string) $file['tmp_name'],
+            'profiles/' . $safeName,
+            (string) ($upload['mimeType'] ?? $file['type'] ?? 'application/octet-stream')
+        );
+        $photoUrl = $stored['url'];
 
         try {
-            $this->repository->updatePhotoUrl($userId, $relativePath);
+            $this->repository->updatePhotoUrl($userId, $photoUrl);
         } catch (Throwable $e) {
-            if (file_exists($absolutePath)) {
-                @unlink($absolutePath);
-            }
+            $storage->delete($stored['storageKey']);
             throw $e;
         }
 
@@ -130,7 +124,7 @@ class UsersService
         }
 
         return [
-            'photoUrl' => $relativePath,
+            'photoUrl' => $photoUrl,
             'message' => 'Foto de perfil atualizada com sucesso.',
         ];
     }
@@ -1213,6 +1207,13 @@ class UsersService
      */
     private function cleanupProfilePhotoFile(string $photoUrl, string $projectRoot): void
     {
+        $storage = new ObjectStorage();
+        $storageKey = $storage->storageKeyFromPublicUrl($photoUrl);
+        if ($storageKey !== null && str_starts_with($storageKey, 'profiles/')) {
+            $storage->delete($storageKey);
+            return;
+        }
+
         $normalizedPath = ltrim(str_replace('\\', '/', $photoUrl), '/');
         if (!str_starts_with($normalizedPath, 'uploads/profiles/')) {
             return;

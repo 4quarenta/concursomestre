@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../repositories/LegalCommentaryRepository.php';
 require_once __DIR__ . '/LegalCommentaryAiGenerationService.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../config/gamification_helper.php';
 
@@ -289,11 +290,44 @@ class LegalCommentaryService
         );
     }
 
-    public function adminList(?string $query = null): array
+    public function adminList(array $query = []): array
     {
+        $search = trim((string) ($query['q'] ?? ''));
+        $limit = max(1, min(100, (int) ($query['limit'] ?? 30)));
+        $fingerprint = hash('sha256', mb_strtolower($search, 'UTF-8'));
+        $cursor = SignedKeysetCursor::decodePayload(
+            isset($query['cursor']) ? (string) $query['cursor'] : null,
+            'legal-commentary.admin'
+        );
+        if ($cursor !== null && !hash_equals($fingerprint, (string) ($cursor['fingerprint'] ?? ''))) {
+            throw new InvalidArgumentException('Cursor de paginacao invalido para esta busca.');
+        }
+        $rows = $this->repository->fetchAdminList(
+            $search !== '' ? $search : null,
+            $limit + 1,
+            isset($cursor['id']) ? (int) $cursor['id'] : null
+        );
+        $hasMore = count($rows) > $limit;
+        if ($hasMore) {
+            $rows = array_slice($rows, 0, $limit);
+        }
+        $last = $rows === [] ? null : $rows[array_key_last($rows)];
+
         return [
-            'laws' => $this->repository->fetchAdminList($query),
-            'home' => $this->repository->fetchHome(null),
+            'laws' => $rows,
+            'home' => [
+                'areas' => $this->repository->fetchAdminAreas(),
+            ],
+            'pageInfo' => [
+                'limit' => $limit,
+                'hasMore' => $hasMore,
+                'nextCursor' => $hasMore && is_array($last)
+                    ? SignedKeysetCursor::encodePayload([
+                        'id' => (int) ($last['id'] ?? 0),
+                        'fingerprint' => $fingerprint,
+                    ], 'legal-commentary.admin')
+                    : null,
+            ],
         ];
     }
 

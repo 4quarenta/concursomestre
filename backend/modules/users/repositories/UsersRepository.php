@@ -662,20 +662,27 @@ class UsersRepository
     public function fetchUserAnswersById(string $userId, int $limit = 20, ?array $cursor = null, ?string $since = null): array
     {
         $safeLimit = max(1, min($limit, 50));
-        $where = ['ua.user_id = :id'];
-        $params = [':id' => $userId];
-        if ($since !== null && trim($since) !== '') {
-            $where[] = 'ua.created_at >= :since';
-            $params[':since'] = $since;
-        }
-        if ($cursor !== null && !empty($cursor['createdAt']) && !empty($cursor['id'])) {
-            $where[] = '(
-                ua.created_at < :cursor_created_at
-                OR (ua.created_at = :cursor_created_at AND ua.id < :cursor_id)
-            )';
-            $params[':cursor_created_at'] = (string) $cursor['createdAt'];
-            $params[':cursor_id'] = (string) $cursor['id'];
-        }
+        $buildWhere = static function (string $suffix) use ($userId, $since, $cursor): array {
+            $where = ['user_id = :id_' . $suffix];
+            $params = [':id_' . $suffix => $userId];
+            if ($since !== null && trim($since) !== '') {
+                $where[] = 'created_at >= :since_' . $suffix;
+                $params[':since_' . $suffix] = $since;
+            }
+            if ($cursor !== null && !empty($cursor['createdAt']) && !empty($cursor['id'])) {
+                $where[] = '(
+                    created_at < :cursor_created_at_' . $suffix . '
+                    OR (created_at = :cursor_created_at_equal_' . $suffix . ' AND id < :cursor_id_' . $suffix . ')
+                )';
+                $params[':cursor_created_at_' . $suffix] = (string) $cursor['createdAt'];
+                $params[':cursor_created_at_equal_' . $suffix] = (string) $cursor['createdAt'];
+                $params[':cursor_id_' . $suffix] = (string) $cursor['id'];
+            }
+            return [$where, $params];
+        };
+        [$activeWhere, $activeParams] = $buildWhere('active');
+        [$archiveWhere, $archiveParams] = $buildWhere('archive');
+        $params = array_merge($activeParams, $archiveParams);
         $stmt = $this->db->prepare(
             "SELECT
                 ua.id,
@@ -685,8 +692,17 @@ class UsersRepository
                 ua.created_at,
                 ua.time_taken_seconds,
                 ua.simulation_id
-            FROM user_answers ua FORCE INDEX (idx_user_answers_history_keyset)
-            WHERE " . implode(' AND ', $where) . "
+            FROM (
+                SELECT id, question_id, is_correct, selected_option_index,
+                       created_at, time_taken_seconds, simulation_id
+                FROM user_answers FORCE INDEX (idx_user_answers_history_keyset)
+                WHERE " . implode(' AND ', $activeWhere) . "
+                UNION ALL
+                SELECT id, question_id, is_correct, selected_option_index,
+                       created_at, time_taken_seconds, simulation_id
+                FROM user_answers_archive FORCE INDEX (idx_user_answers_archive_history)
+                WHERE " . implode(' AND ', $archiveWhere) . "
+            ) ua
             ORDER BY ua.created_at DESC, ua.id DESC
             LIMIT " . ($safeLimit + 1)
         );
@@ -788,6 +804,24 @@ class UsersRepository
      */
     public function fetchUserAnswerSummary(string $userId, ?string $since = null): array
     {
+        if ($since === null || trim($since) === '') {
+            $counter = $this->db->prepare(
+                "SELECT total_answers AS total_attempts,
+                        correct_answers AS correct_count,
+                        wrong_answers AS wrong_count,
+                        first_answer_at AS first_activity_at,
+                        last_answer_at AS last_activity_at
+                 FROM user_answer_counters
+                 WHERE user_id = :id
+                 LIMIT 1"
+            );
+            $counter->execute([':id' => $userId]);
+            $row = $counter->fetch(PDO::FETCH_ASSOC);
+            if (is_array($row)) {
+                return $row;
+            }
+        }
+
         $stmt = $this->db->prepare(
             "SELECT
                 COUNT(*) AS total_attempts,
@@ -795,11 +829,26 @@ class UsersRepository
                 SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END) AS wrong_count,
                 MIN(created_at) AS first_activity_at,
                 MAX(created_at) AS last_activity_at
-             FROM user_answers
-             WHERE user_id = :id
-               AND (:since IS NULL OR created_at >= :since)"
+             FROM (
+                SELECT is_correct, created_at
+                FROM user_answers
+                WHERE user_id = :active_id
+                  AND (:active_since IS NULL OR created_at >= :active_since_equal)
+                UNION ALL
+                SELECT is_correct, created_at
+                FROM user_answers_archive
+                WHERE user_id = :archive_id
+                  AND (:archive_since IS NULL OR created_at >= :archive_since_equal)
+             ) answer_history"
         );
-        $stmt->execute([':id' => $userId, ':since' => $since]);
+        $stmt->execute([
+            ':active_id' => $userId,
+            ':active_since' => $since,
+            ':active_since_equal' => $since,
+            ':archive_id' => $userId,
+            ':archive_since' => $since,
+            ':archive_since_equal' => $since,
+        ]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return is_array($row) ? $row : [];
@@ -863,8 +912,8 @@ class UsersRepository
                 u.target_exam,
                 u.preferences,
                 COALESCE(us.current_streak, 0) AS streak_days,
-                COALESCE(ua.answered_questions, 0) AS answered_questions,
-                COALESCE(ua.correct_answers, 0) AS correct_answers,
+                COALESCE(uac.total_answers, 0) AS answered_questions,
+                COALESCE(uac.correct_answers, 0) AS correct_answers,
                 (
                     SELECT GROUP_CONCAT(CONCAT_WS('::', ub.badge_key, ub.title) ORDER BY ub.awarded_at DESC SEPARATOR '||')
                     FROM user_badges ub
@@ -872,14 +921,7 @@ class UsersRepository
                 ) AS badges_summary
              FROM users u
              LEFT JOIN user_streaks us ON us.user_id = u.id
-             LEFT JOIN (
-                SELECT
-                    user_id,
-                    COUNT(*) AS answered_questions,
-                    SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct_answers
-                FROM user_answers
-                GROUP BY user_id
-             ) ua ON ua.user_id = u.id
+             LEFT JOIN user_answer_counters uac ON uac.user_id = u.id
              WHERE COALESCE(u.status, 'active') = 'active'
              ORDER BY COALESCE(u.xp, 0) DESC, COALESCE(u.level, 1) DESC, u.name ASC
              LIMIT :limit"

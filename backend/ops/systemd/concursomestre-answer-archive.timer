@@ -1,0 +1,10 @@
+[Unit]
+Description=Archive old ConcursoMestre answers every week
+
+[Timer]
+OnCalendar=Sun *-*-* 04:20:00
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

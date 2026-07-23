@@ -106,6 +106,9 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
   const [page, setPage] = React.useState(1);
   const [selectedLawIds, setSelectedLawIds] = React.useState<Set<string>>(() => new Set());
   const [home, setHome] = React.useState<LegalHomeSnapshot>(EMPTY_HOME);
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isBulkDeleting, setIsBulkDeleting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
@@ -150,14 +153,21 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
   const visibleLawIds = React.useMemo(() => visibleLaws.map((law) => law.id), [visibleLaws]);
   const allVisibleSelected = visibleLawIds.length > 0 && visibleLawIds.every((lawId) => selectedLawIds.has(lawId));
 
-  const loadLaws = React.useCallback(async (nextQuery = query) => {
-    setIsLoading(true);
+  const loadLaws = React.useCallback(async (nextQuery = query, cursor: string | null = null) => {
+    const appending = cursor !== null;
+    if (appending) setIsLoadingMore(true);
+    else setIsLoading(true);
     try {
-      const payload = await legalCommentaryApiService.getAdminList(nextQuery);
-      setLaws(payload.laws || []);
-      setHome(payload.home || EMPTY_HOME);
+      const payload = await legalCommentaryApiService.getAdminList(nextQuery, cursor);
+      setLaws((current) => appending
+        ? [...current, ...(payload.laws || [])].filter((law, index, rows) => rows.findIndex((entry) => entry.id === law.id) === index)
+        : (payload.laws || []));
+      setHome((current) => ({ ...current, ...(payload.home || {}), areas: payload.home?.areas || current.areas }));
+      setNextCursor(payload.pageInfo?.nextCursor || null);
+      setHasMore(Boolean(payload.pageInfo?.hasMore));
       setSelectedLawIds((current) => {
         if (current.size === 0) return current;
+        if (appending) return current;
         const allowedIds = new Set((payload.laws || []).map((law) => law.id));
         const next = new Set([...current].filter((lawId) => allowedIds.has(lawId)));
         return next.size === current.size ? current : next;
@@ -166,6 +176,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
       addToast('Não foi possível carregar as leis comentadas.', 'error');
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
   }, [addToast, query]);
 
@@ -816,6 +827,19 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         totalPages={totalPages}
         onPageChange={setPage}
       />
+      {hasMore && currentPage >= totalPages ? (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            disabled={isLoadingMore || !nextCursor}
+            onClick={() => void loadLaws(query, nextCursor)}
+            className={ADMIN_SECONDARY_BUTTON_CLASS}
+          >
+            {isLoadingMore ? <Loader2 size={16} className="animate-spin" /> : null}
+            Carregar mais leis
+          </button>
+        </div>
+      ) : null}
 
       {updatesModalLaw ? (
         <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-950/65 px-4 py-8 backdrop-blur-sm">

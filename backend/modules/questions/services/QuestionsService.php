@@ -18,6 +18,8 @@ require_once __DIR__ . '/QuestionOwnershipPolicy.php';
 require_once __DIR__ . '/QuestionPublicPageCache.php';
 require_once __DIR__ . '/../repositories/QuestionCanonicalRepository.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../../shared/events/TransactionalOutbox.php';
+require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
 
 class QuestionsService
 {
@@ -30,13 +32,15 @@ class QuestionsService
         ?QuestionCanonicalRepository $canonicalRepository = null,
         ?QuestionOutputPolicy $outputPolicy = null,
         ?QuestionOwnershipPolicy $ownershipPolicy = null,
-        ?QuestionPublicPageCache $publicPageCache = null
+        ?QuestionPublicPageCache $publicPageCache = null,
+        ?TransactionalOutbox $outbox = null
     ) {
         $this->answerEvaluator = $answerEvaluator ?? new QuestionAnswerEvaluator();
         $this->canonicalRepository = $canonicalRepository ?? new QuestionCanonicalRepository($db);
         $this->outputPolicy = $outputPolicy ?? new QuestionOutputPolicy();
         $this->ownershipPolicy = $ownershipPolicy ?? new QuestionOwnershipPolicy();
         $this->publicPageCache = $publicPageCache ?? QuestionPublicPageCache::fromEnvironment();
+        $this->outbox = $outbox ?? new TransactionalOutbox($db);
     }
 
     private readonly QuestionAnswerEvaluator $answerEvaluator;
@@ -44,6 +48,7 @@ class QuestionsService
     private readonly QuestionOutputPolicy $outputPolicy;
     private readonly QuestionOwnershipPolicy $ownershipPolicy;
     private readonly QuestionPublicPageCache $publicPageCache;
+    private readonly TransactionalOutbox $outbox;
 
     public function submitAnswer(
         string $authenticatedUserId,
@@ -115,14 +120,24 @@ class QuestionsService
                 'is_correct' => $isCorrect ? 1 : 0,
                 'time_taken_seconds' => $data['timeTaken'],
             ]);
-            $this->repository->refreshQuestionStatsFromLatestAnswers($data['questionId']);
+            $this->repository->incrementQuestionStats($data['questionId'], $isCorrect);
+            $this->repository->recordUserAnswerCounter($userId, $isCorrect);
             $this->repository->incrementUserXp($userId, $xpGain);
 
-            $gamification = $this->rewardService->applyAnswerProgressRewards($userId, $isCorrect);
             $after = $this->repository->findUserProgressSnapshot($userId) ?? $before;
-            if ((int) ($after['level'] ?? 1) > $levelBefore) {
-                $this->rewardService->applyLevelUpReward($after);
-            }
+            $this->outbox->enqueue(
+                'user_answer',
+                (string) $userAnswerId,
+                'question.answer.recorded',
+                'question-answer:' . $userAnswerId,
+                [
+                    'userAnswerId' => $userAnswerId,
+                    'userId' => $userId,
+                    'questionId' => (int) $data['questionId'],
+                    'isCorrect' => $isCorrect,
+                    'levelBefore' => $levelBefore,
+                ]
+            );
 
             $result = [
                 'success' => true,
@@ -133,7 +148,10 @@ class QuestionsService
                 'newLevel' => (int) ($after['level'] ?? 1),
                 'xpGain' => $xpGain,
                 'levelUp' => (int) ($after['level'] ?? 1) > $levelBefore,
-                'gamification' => $gamification,
+                'gamification' => [
+                    'status' => 'queued',
+                    'eventId' => 'question-answer:' . $userAnswerId,
+                ],
                 'answer' => $answerEvaluation,
             ];
             if (is_array($idempotency)) {
@@ -1019,20 +1037,15 @@ class QuestionsService
         }
 
         $upload = $this->validator->validateExamAttachmentUpload($file);
-        $uploadDir = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'exams';
-        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
-            throw new RuntimeException('Nao foi possivel criar a pasta de provas.');
-        }
-
         $extension = (string) ($upload['extension'] ?? 'bin');
         $filename = $normalizedKind . '-' . date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
-        $targetPath = $uploadDir . DIRECTORY_SEPARATOR . $filename;
-        if (!move_uploaded_file((string) ($file['tmp_name'] ?? ''), $targetPath)) {
-            throw new RuntimeException('Nao foi possivel salvar o arquivo da prova.');
-        }
-
         $originalName = trim((string) ($upload['originalName'] ?? $file['name'] ?? ''));
-        $url = $this->buildUploadUrl('/uploads/exams/' . $filename);
+        $mimeType = (string) ($upload['mimeType'] ?? $file['type'] ?? 'application/octet-stream');
+        $stored = (new ObjectStorage())->storeUploadedFile(
+            (string) ($file['tmp_name'] ?? ''),
+            'exams/' . $filename,
+            $mimeType
+        );
         $labels = [
             'edital' => 'Edital',
             'gabarito' => 'Gabarito',
@@ -1044,9 +1057,11 @@ class QuestionsService
                 'kind' => $normalizedKind,
                 'label' => $labels[$normalizedKind],
                 'name' => $originalName !== '' ? $originalName : $filename,
-                'url' => $url,
-                'mimeType' => (string) ($upload['mimeType'] ?? $file['type'] ?? ''),
-                'size' => (int) ($upload['size'] ?? $file['size'] ?? 0),
+                'url' => $stored['url'],
+                'storageKey' => $stored['storageKey'],
+                'storageDriver' => $stored['driver'],
+                'mimeType' => $mimeType,
+                'size' => (int) $stored['size'],
                 'uploadedAt' => date(DATE_ATOM),
             ],
         ];
@@ -1162,19 +1177,21 @@ class QuestionsService
     {
         $this->assertAdmin($authenticatedUserId, $isAdmin);
         $extension = $this->validator->validateQuestionGroupImageUpload($file);
-        $uploadDir = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'question-contexts';
-        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
-            throw new RuntimeException('Nao foi possivel criar a pasta de uploads.');
-        }
-
         $filename = 'context-' . date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
-        $targetPath = $uploadDir . DIRECTORY_SEPARATOR . $filename;
-        if (!move_uploaded_file((string) ($file['tmp_name'] ?? ''), $targetPath)) {
-            throw new RuntimeException('Nao foi possivel salvar a imagem enviada.');
-        }
+        $mimeType = (string) ($file['type'] ?? ('image/' . ($extension === 'jpg' ? 'jpeg' : $extension)));
+        $stored = (new ObjectStorage())->storeUploadedFile(
+            (string) ($file['tmp_name'] ?? ''),
+            'question-contexts/' . $filename,
+            $mimeType
+        );
 
-        $url = $this->buildUploadUrl('/uploads/question-contexts/' . $filename);
-        return ['url' => $url, 'image_url' => $url, 'imageUrl' => $url];
+        return [
+            'url' => $stored['url'],
+            'image_url' => $stored['url'],
+            'imageUrl' => $stored['url'],
+            'storageKey' => $stored['storageKey'],
+            'storageDriver' => $stored['driver'],
+        ];
     }
 
     private function buildQuestionListItemV2(
@@ -2879,18 +2896,12 @@ class QuestionsService
             return '';
         }
 
-        $uploadDir = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'exams';
-        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
-            throw new RuntimeException('Nao foi possivel criar a pasta de provas.');
-        }
-
         $filename = 'prova-' . date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.pdf';
-        $targetPath = $uploadDir . DIRECTORY_SEPARATOR . $filename;
-        if (!move_uploaded_file((string) ($file['tmp_name'] ?? ''), $targetPath)) {
-            throw new RuntimeException('Nao foi possivel salvar o PDF da prova.');
-        }
-
-        return $this->buildUploadUrl('/uploads/exams/' . $filename);
+        return (new ObjectStorage())->storeUploadedFile(
+            (string) ($file['tmp_name'] ?? ''),
+            'exams/' . $filename,
+            'application/pdf'
+        )['url'];
     }
 
     private function storeBase64ContextImage(string $base64): string
@@ -2908,15 +2919,8 @@ class QuestionsService
             return '';
         }
 
-        $uploadDir = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'question-contexts';
-        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
-            throw new RuntimeException('Nao foi possivel criar a pasta de imagens de contexto.');
-        }
-
         $filename = 'context-import-' . date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.jpg';
-        file_put_contents($uploadDir . DIRECTORY_SEPARATOR . $filename, $bytes);
-
-        return $this->buildUploadUrl('/uploads/question-contexts/' . $filename);
+        return (new ObjectStorage())->storeBytes($bytes, 'question-contexts/' . $filename, 'image/jpeg')['url'];
     }
 
     private function persistQuestionContextAssets(array $assets): array
@@ -3088,17 +3092,9 @@ class QuestionsService
             return '';
         }
 
-        $uploadDir = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'question-assets';
-        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
-            throw new RuntimeException('Nao foi possivel criar a pasta de imagens das questoes.');
-        }
-
         $filename = 'question-asset-' . date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
-        if (file_put_contents($uploadDir . DIRECTORY_SEPARATOR . $filename, $bytes) === false) {
-            throw new RuntimeException('Nao foi possivel salvar a imagem da questao.');
-        }
-
-        return $this->buildUploadUrl('/uploads/question-assets/' . $filename);
+        $mimeType = $extension === 'jpg' ? 'image/jpeg' : 'image/' . $extension;
+        return (new ObjectStorage())->storeBytes($bytes, 'question-assets/' . $filename, $mimeType)['url'];
     }
 
     private function syncQuestionFilters(string|int $questionId, array $taxonomies): array

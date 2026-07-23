@@ -11,6 +11,9 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
+
 class ExamsService
 {
     private ExamsRepository $repository;
@@ -26,7 +29,49 @@ class ExamsService
 
     public function list(array $query = []): array
     {
-        return $this->repository->list($query);
+        $limit = max(1, min(100, (int) ($query['limit'] ?? 30)));
+        $search = trim((string) ($query['search'] ?? ''));
+        $includeArchived = filter_var($query['include_archived'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $fingerprint = hash('sha256', json_encode([
+            'search' => mb_strtolower($search, 'UTF-8'),
+            'includeArchived' => $includeArchived,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $cursor = SignedKeysetCursor::decodePayload(
+            isset($query['cursor']) ? (string) $query['cursor'] : null,
+            'exams.admin'
+        );
+        if ($cursor !== null && !hash_equals($fingerprint, (string) ($cursor['fingerprint'] ?? ''))) {
+            throw new InvalidArgumentException('Cursor de paginacao invalido para estes filtros.');
+        }
+
+        $rows = $this->repository->list([
+            'search' => $search,
+            'include_archived' => $includeArchived,
+            'cursor_data' => $cursor,
+            'limit' => $limit + 1,
+        ]);
+        $hasMore = count($rows) > $limit;
+        if ($hasMore) {
+            $rows = array_slice($rows, 0, $limit);
+        }
+        $last = $rows ? $rows[array_key_last($rows)] : null;
+        $nextCursor = $hasMore && is_array($last)
+            ? SignedKeysetCursor::encodePayload([
+                'year' => (int) ($last['ano'] ?? $last['year'] ?? 0),
+                'name' => (string) ($last['nome'] ?? $last['name'] ?? ''),
+                'id' => (int) ($last['id'] ?? 0),
+                'fingerprint' => $fingerprint,
+            ], 'exams.admin')
+            : null;
+
+        return [
+            'items' => $rows,
+            'pageInfo' => [
+                'limit' => $limit,
+                'hasMore' => $hasMore,
+                'nextCursor' => $nextCursor,
+            ],
+        ];
     }
 
     public function show(int $id): ?array
@@ -70,18 +115,16 @@ class ExamsService
         }
 
         $upload = $this->validator->validateAttachmentUpload($file);
-        $backendRoot = realpath(dirname(__DIR__, 3)) ?: dirname(__DIR__, 3);
-        $uploadDir = $backendRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'exams';
-        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
-            throw new RuntimeException('Não foi possível criar a pasta de provas.');
-        }
-
         $extension = (string) ($upload['extension'] ?? 'bin');
         $filename = $normalizedKind . '-' . date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
-        $targetPath = $uploadDir . DIRECTORY_SEPARATOR . $filename;
-        if (!move_uploaded_file((string) ($file['tmp_name'] ?? ''), $targetPath)) {
-            throw new RuntimeException('Não foi possível salvar o arquivo da prova.');
-        }
+        $storageKey = 'exams/' . $filename;
+        $mimeType = (string) ($upload['mimeType'] ?? $file['type'] ?? 'application/octet-stream');
+        $storage = new ObjectStorage();
+        $stored = $storage->storeUploadedFile(
+            (string) ($file['tmp_name'] ?? ''),
+            $storageKey,
+            $mimeType
+        );
 
         $labels = [
             'edital' => 'Edital',
@@ -94,15 +137,22 @@ class ExamsService
             'kind' => $normalizedKind,
             'label' => $labels[$normalizedKind],
             'name' => $originalName !== '' ? $originalName : $filename,
-            'url' => $this->buildUploadUrl('/uploads/exams/' . $filename),
-            'mimeType' => (string) ($upload['mimeType'] ?? $file['type'] ?? ''),
-            'size' => (int) ($upload['size'] ?? $file['size'] ?? 0),
+            'url' => $stored['url'],
+            'storageKey' => $stored['storageKey'],
+            'storageDriver' => $stored['driver'],
+            'mimeType' => $mimeType,
+            'size' => (int) $stored['size'],
             'uploadedAt' => date(DATE_ATOM),
             'uploadedByUserId' => (string) ($user['id'] ?? ''),
         ];
 
         if ($examId !== null && $examId > 0) {
-            $attachment = $this->repository->addFile($examId, $attachment, (string) ($user['id'] ?? ''));
+            try {
+                $attachment = $this->repository->addFile($examId, $attachment, (string) ($user['id'] ?? ''));
+            } catch (Throwable $exception) {
+                $storage->delete($stored['storageKey']);
+                throw $exception;
+            }
         }
 
         return ['file' => $attachment];
@@ -203,22 +253,4 @@ class ExamsService
         return $this->repository->findExtraction($id);
     }
 
-    private function buildUploadUrl(string $path): string
-    {
-        $scriptName = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
-        $basePath = '';
-        $apiPos = strpos($scriptName, '/api/');
-        if ($apiPos !== false) {
-            $basePath = rtrim(substr($scriptName, 0, $apiPos), '/');
-        }
-
-        $relative = $basePath . $path;
-        $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
-        if ($host === '') {
-            return $relative;
-        }
-
-        $scheme = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') ? 'https' : 'http';
-        return $scheme . '://' . $host . $relative;
-    }
 }

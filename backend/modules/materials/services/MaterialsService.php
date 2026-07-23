@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
 
 use setasign\Fpdi\Tcpdf\Fpdi;
 
@@ -478,15 +479,16 @@ class MaterialsService
         $filename = bin2hex(random_bytes(20)) . '.' . $upload['extension'];
 
         if ($upload['mimeType'] !== 'application/pdf') {
-            $uploadDirectory = $this->ensurePublicCoverUploadDirectory();
-            $targetPath = $uploadDirectory . DIRECTORY_SEPARATOR . $filename;
-
-            if (!move_uploaded_file((string) $file['tmp_name'], $targetPath)) {
-                throw new RuntimeException('Falha ao salvar o arquivo no servidor.');
-            }
+            $stored = (new ObjectStorage())->storeUploadedFile(
+                (string) $file['tmp_name'],
+                'covers/' . $filename,
+                (string) $upload['mimeType']
+            );
 
             return [
-                'publicUrl' => '/uploads/covers/' . $filename,
+                'publicUrl' => $stored['url'],
+                'storageKey' => $stored['storageKey'],
+                'storageDriver' => $stored['driver'],
                 'pageCount' => null,
             ];
         }
@@ -1252,19 +1254,6 @@ class MaterialsService
     private function ensurePrivateMaterialStorageDirectory(): string
     {
         $directory = $this->privateMaterialStorageDirectory();
-        if (!is_dir($directory)) {
-            mkdir($directory, 0775, true);
-        }
-
-        return $directory;
-    }
-
-    /**
-     * Capas podem ser publicas; PDFs integrais nunca compartilham esse diretorio.
-     */
-    private function ensurePublicCoverUploadDirectory(): string
-    {
-        $directory = dirname(__DIR__, 3) . '/uploads/covers';
         if (!is_dir($directory)) {
             mkdir($directory, 0775, true);
         }

@@ -296,7 +296,9 @@ function handleLegalCommentaryAdminListRoute(PDO $db): void
     try {
         requireAdminSessionContext($db);
         $controller = createLegalCommentaryController($db);
-        Response::success($controller->adminList(trim((string) ($_GET['q'] ?? '')) ?: null));
+        Response::success($controller->adminList($_GET));
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel carregar as leis no admin.', $e);
     }

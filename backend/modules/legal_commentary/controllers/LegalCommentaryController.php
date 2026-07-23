@@ -112,7 +112,7 @@ class LegalCommentaryController
         return $this->service->createComment($userId, $userName, $payload, $userRole);
     }
 
-    public function adminList(?string $query = null): array
+    public function adminList(array $query = []): array
     {
         return $this->service->adminList($query);
     }

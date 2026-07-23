@@ -22,7 +22,11 @@ class ExamsController
 
     public function list(): void
     {
-        Response::success(['items' => $this->service->list($_GET)], 'Banco de provas carregado.');
+        try {
+            Response::success($this->service->list($_GET), 'Banco de provas carregado.');
+        } catch (InvalidArgumentException $exception) {
+            Response::badRequest($exception->getMessage());
+        }
     }
 
     public function show(int $id): void
