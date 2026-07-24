@@ -27,6 +27,7 @@ class CommentsValidator
     public function validateListQuery(array $query): array
     {
         $targetId = trim((string) ($query['target_id'] ?? $query['targetId'] ?? ''));
+        $targetType = trim((string) ($query['target_type'] ?? $query['targetType'] ?? 'question'));
         $fallbackUserId = trim((string) ($query['user_id'] ?? $query['userId'] ?? ''));
         $limit = filter_var($query['limit'] ?? 50, FILTER_VALIDATE_INT);
         $cursor = trim((string) ($query['cursor'] ?? ''));
@@ -34,9 +35,13 @@ class CommentsValidator
         if ($targetId === '') {
             throw new InvalidArgumentException('target_id e obrigatorio.');
         }
+        if (!in_array($targetType, ['question', 'material', 'blog_article'], true)) {
+            throw new InvalidArgumentException('target_type invalido.');
+        }
 
         return [
             'targetId' => $targetId,
+            'targetType' => $targetType,
             'fallbackUserId' => $fallbackUserId !== '' ? $fallbackUserId : null,
             'limit' => $limit === false ? 50 : max(1, min(100, (int) $limit)),
             'cursor' => $cursor !== '' ? $cursor : null,
@@ -97,8 +102,8 @@ class CommentsValidator
             throw new InvalidArgumentException('content e obrigatorio.');
         }
 
-        if (!in_array($targetType, ['question', 'material'], true)) {
-            $targetType = 'question';
+        if (!in_array($targetType, ['question', 'material', 'blog_article'], true)) {
+            throw new InvalidArgumentException('targetType invalido.');
         }
 
         return [

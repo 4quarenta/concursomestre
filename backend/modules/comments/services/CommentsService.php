@@ -46,6 +46,12 @@ class CommentsService
     public function listComments(array $query, ?array $authenticatedUserPayload): array
     {
         $filters = $this->validator->validateListQuery($query);
+        if (
+            $filters['targetType'] === 'blog_article'
+            && $this->repository->findPublicBlogArticleSlug($filters['targetId']) === null
+        ) {
+            throw new OutOfBoundsException('Noticia nao encontrada.');
+        }
         $viewerUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
         if ($viewerUserId === '') {
             $viewerUserId = (string) ($filters['fallbackUserId'] ?? '');
@@ -54,6 +60,7 @@ class CommentsService
         $limit = (int) ($filters['limit'] ?? 50);
         $rows = $this->repository->listByTargetId(
             $filters['targetId'],
+            $filters['targetType'],
             $viewerUserId !== '' ? $viewerUserId : null,
             $limit,
             $filters['cursor'] ?? null
@@ -111,6 +118,12 @@ class CommentsService
         $authorId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
         if ($authorId === '') {
             throw new RuntimeException('Sessao invalida. Faca login novamente.');
+        }
+        if (
+            $normalized['targetType'] === 'blog_article'
+            && $this->repository->findPublicBlogArticleSlug($normalized['targetId'], true) === null
+        ) {
+            throw new DomainException('Os comentarios desta noticia nao estao disponiveis.');
         }
 
         $author = $this->repository->findUserById($authorId);
@@ -343,6 +356,10 @@ class CommentsService
      */
     private function buildTargetLink(string $targetType, string $targetId): string
     {
+        if ($targetType === 'blog_article') {
+            $slug = $this->repository->findPublicBlogArticleSlug($targetId);
+            return $slug !== null ? '/blog/' . rawurlencode($slug) : '/blog';
+        }
         if ($targetType === 'material') {
             return '/marketplace?openMaterial=' . $this->resolveMaterialId($targetId);
         }

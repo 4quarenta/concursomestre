@@ -41,6 +41,7 @@ const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/read',
   '/subscription',
   '/promo',
+  '/blog',
 ];
 
 const isWithoutPlatformShell = (pathname: string) => (

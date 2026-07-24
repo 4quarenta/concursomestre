@@ -7,7 +7,7 @@ require_once dirname(__DIR__, 3) . '/shared/storage/ObjectStorage.php';
 
 final class AdminBrandAssetsService
 {
-    private const ALLOWED_PURPOSES = ['email-logo', 'og-image', 'taxonomy-logo'];
+    private const ALLOWED_PURPOSES = ['email-logo', 'og-image', 'taxonomy-logo', 'blog-cover'];
 
     private const ALLOWED_MIME_TYPES = [
         'image/png' => ['extension' => 'png', 'maxSize' => 5242880],

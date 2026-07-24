@@ -22,7 +22,7 @@ export type AdminPanelSection = 'dashboard' | 'alerts' | 'billing-health';
 export type AdminOperationSection = 'questions' | 'question-groups' | 'exams' | 'import' | 'filters' | 'lei-comentada' | 'users';
 export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'automation' | 'analytics';
-export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
+export type AdminMarketingSection = 'blog' | 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
 export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments';
 export type AdminSettingsSection = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
 
@@ -42,10 +42,11 @@ export type AdminNavigationSection = {
 
 export type SupportPendingCounts = Partial<Record<'feedback' | 'threads' | 'reports' | 'comments' | 'refunds', number>>;
 
-export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['operation', 'support'];
+export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['operation', 'marketing', 'support'];
 
 const STAFF_ADMIN_ALLOWED_SECTIONS: Partial<Record<AdminPageTab, string[]>> = {
   operation: ['questions', 'question-groups', 'exams', 'import', 'filters', 'lei-comentada'],
+  marketing: ['blog'],
   support: ['feedback', 'threads', 'reports', 'rankings', 'comments'],
 };
 
@@ -156,7 +157,7 @@ export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as c
 export const OPERATION_SECTION_KEYS = ['questions', 'question-groups', 'exams', 'import', 'filters', 'lei-comentada', 'users'] as const;
 export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as const;
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'automation', 'analytics'] as const;
-export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
+export const MARKETING_SECTION_KEYS = ['blog', 'landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
 export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments'] as const;
 export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'gamification', 'notifications', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs'] as const;
 
@@ -259,6 +260,8 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   analytics: { tab: 'finance', section: 'analytics' },
   'finance-analytics': { tab: 'finance', section: 'analytics' },
   marketing: { tab: 'marketing', section: 'landing-pages' },
+  blog: { tab: 'marketing', section: 'blog' },
+  news: { tab: 'marketing', section: 'blog' },
   'landing-pages': { tab: 'marketing', section: 'landing-pages' },
   campaigns: { tab: 'marketing', section: 'campaigns' },
   campaign: { tab: 'marketing', section: 'campaigns' },
@@ -326,6 +329,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'automation', label: 'Automação' },
   ],
   marketing: [
+    { key: 'blog', label: 'Blog' },
     { key: 'landing-pages', label: 'Landing Pages' },
     { key: 'campaigns', label: 'Campanhas' },
     { key: 'visual-themes', label: 'Temas visuais' },

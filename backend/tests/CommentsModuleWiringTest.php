@@ -60,6 +60,18 @@ assertContainsCommentsDelegate(
 );
 
 assertContainsCommentsDelegate(
+    $base . '/modules/comments/repositories/CommentsRepository.php',
+    'AND c.target_type = :target_type',
+    'Comment listing must isolate equal ids from different target domains'
+);
+
+assertContainsCommentsDelegate(
+    $base . '/modules/comments/validators/CommentsValidator.php',
+    "'blog_article'",
+    'Comments must support the canonical blog article target'
+);
+
+assertContainsCommentsDelegate(
     $base . '/modules/comments/routes.php',
     'function handleCommentsMutationRoute',
     'Comments routes must expose the mutation handler'

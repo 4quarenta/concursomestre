@@ -761,8 +761,10 @@ function handleAdminBrandAssetUploadRoute(PDO $db): void
             Response::error('Metodo nao permitido.', 405);
         }
 
-        $context = requirePlatformAdminSessionContext($db);
         $purpose = trim((string) ($_POST['purpose'] ?? ''));
+        $context = $purpose === 'blog-cover'
+            ? requireAdminSessionContext($db)
+            : requirePlatformAdminSessionContext($db);
         $file = $_FILES['asset'] ?? null;
         if (!is_array($file)) {
             Response::validationError('Selecione uma imagem valida.');

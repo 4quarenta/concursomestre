@@ -235,7 +235,7 @@ export const adminService = {
    * Envia uma imagem de identidade visual pelo endpoint administrativo dedicado.
    * @since v1.0.0
    */
-  async uploadBrandAsset(file: File, purpose: 'email-logo' | 'og-image' | 'taxonomy-logo'): Promise<AdminBrandAsset> {
+  async uploadBrandAsset(file: File, purpose: 'email-logo' | 'og-image' | 'taxonomy-logo' | 'blog-cover'): Promise<AdminBrandAsset> {
     const formData = new FormData();
     formData.append('purpose', purpose);
     formData.append('asset', file);

@@ -92,6 +92,18 @@ export const ENDPOINTS = {
         handle: 'commentsHandle',
     },
 
+    blog: {
+        list: 'blog/list.php',
+        detail: 'blog/detail.php',
+        categories: 'blog/categories.php',
+        like: 'blog/like.php',
+        adminList: 'blog/admin/list.php',
+        adminDetail: 'blog/admin/detail.php',
+        adminSave: 'blog/admin/save.php',
+        adminDelete: 'blog/admin/delete.php',
+        adminCategories: 'blog/admin/categories.php',
+    },
+
     notifications: {
         list: 'notifications/list.php',
         markRead: 'notifications/mark_read.php',

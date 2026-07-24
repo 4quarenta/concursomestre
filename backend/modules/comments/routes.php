@@ -68,6 +68,8 @@ function handleCommentsListRoute(PDO $db): void
         Response::success($result, 'Comments retrieved');
     } catch (InvalidArgumentException $e) {
         Response::badRequest($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Failed to fetch comments', $e);
     }

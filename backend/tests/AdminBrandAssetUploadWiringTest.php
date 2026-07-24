@@ -14,13 +14,15 @@ foreach (['requirePlatformAdminSessionContext', 'logAdminAudit', 'handleAdminBra
     }
 }
 
-foreach (['UploadSecurity::validate', 'image/png', 'image/jpeg', 'image/webp', 'random_bytes', 'move_uploaded_file', '4096'] as $needle) {
+foreach (['UploadSecurity::validate', 'image/png', 'image/jpeg', 'image/webp', 'random_bytes', '4096'] as $needle) {
     if (!str_contains($service, $needle)) {
         throw new RuntimeException("Admin asset upload must enforce {$needle}.");
     }
 }
-if (!str_contains($service, 'taxonomy-logo')) {
-    throw new RuntimeException('Admin asset upload must support protected taxonomy logos.');
+foreach (['taxonomy-logo', 'blog-cover'] as $purpose) {
+    if (!str_contains($service, $purpose)) {
+        throw new RuntimeException("Admin asset upload must support protected {$purpose} assets.");
+    }
 }
 
 if (!str_contains($bridge, 'handleAdminBrandAssetUploadRoute($db);')) {

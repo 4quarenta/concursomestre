@@ -35,6 +35,15 @@ $atomicWrite = static function (string $path, string $contents): void {
         throw new RuntimeException('Falha ao materializar ' . basename($path));
     }
 };
+$safeDate = static function (mixed $value, ?int $fallback = null): string {
+    $timestamp = strtotime((string) $value);
+    return gmdate('Y-m-d', $timestamp !== false ? $timestamp : ($fallback ?? time()));
+};
+$sourceLastmod = static function (string $relativePath) use ($safeDate): string {
+    $absolutePath = dirname(__DIR__, 3) . '/' . ltrim($relativePath, '/');
+    $mtime = is_file($absolutePath) ? filemtime($absolutePath) : false;
+    return $safeDate(null, $mtime !== false ? $mtime : time());
+};
 $buildUrlSet = static function (array $entries) use ($escape): string {
     $lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -47,17 +56,29 @@ $buildUrlSet = static function (array $entries) use ($escape): string {
     $lines[] = '</urlset>';
     return implode("\n", $lines) . "\n";
 };
-
 $files = [];
 $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0];
-$institutionalPaths = [
-    '/', '/planos', '/practice', '/concursos', '/faq', '/lei-comentada',
-    '/elite', '/marketplace', '/changelog', '/privacy', '/terms',
+$institutionalSources = [
+    '/' => 'src/app/page.tsx',
+    '/planos' => 'src/app/planos/page.tsx',
+    '/practice' => 'src/app/practice/page.tsx',
+    '/concursos' => 'src/app/concursos/page.tsx',
+    '/faq' => 'src/app/faq/page.tsx',
+    '/lei-comentada' => 'src/app/lei-comentada/page.tsx',
+    '/blog' => 'src/app/blog/page.tsx',
+    '/elite' => 'src/app/elite/page.tsx',
+    '/marketplace' => 'src/app/marketplace/page.tsx',
+    '/changelog' => 'src/app/changelog/page.tsx',
+    '/privacy' => 'src/app/privacy/page.tsx',
+    '/terms' => 'src/app/terms/page.tsx',
 ];
-$institutionalEntries = array_map(static fn (string $path): array => [
-    'loc' => $baseUrl . $path,
-    'lastmod' => substr($generatedAt, 0, 10),
-], $institutionalPaths);
+$institutionalEntries = [];
+foreach ($institutionalSources as $path => $source) {
+    $institutionalEntries[] = [
+        'loc' => $baseUrl . $path,
+        'lastmod' => $sourceLastmod($source),
+    ];
+}
 $institutionalFile = 'institutional-00001.xml';
 $atomicWrite($outputDir . '/' . $institutionalFile, $buildUrlSet($institutionalEntries));
 $files[] = ['name' => $institutionalFile, 'lastmod' => $generatedAt];
@@ -90,7 +111,7 @@ while (true) {
         }
         $entries[] = [
             'loc' => $baseUrl . '/question/' . $id . '/' . $slugify((string) ($row['label'] ?? '')),
-            'lastmod' => gmdate('Y-m-d', strtotime((string) ($row['last_modified'] ?? 'now')) ?: time()),
+            'lastmod' => $safeDate($row['last_modified'] ?? null),
         ];
         $cursor = $id;
     }
@@ -132,7 +153,7 @@ while (true) {
         }
         $entries[] = [
             'loc' => $baseUrl . '/lei-comentada/' . rawurlencode($slug),
-            'lastmod' => gmdate('Y-m-d', strtotime((string) ($row['last_modified'] ?? 'now')) ?: time()),
+            'lastmod' => $safeDate($row['last_modified'] ?? null),
         ];
         $lawCursor = $id;
     }
@@ -156,7 +177,13 @@ foreach ($files as $file) {
 }
 $indexLines[] = '</sitemapindex>';
 $atomicWrite($outputDir . '/sitemap.xml', implode("\n", $indexLines) . "\n");
-$atomicWrite($outputDir . '/robots.txt', "User-agent: *\nAllow: /\n\nSitemap: {$baseUrl}/sitemap.xml\n");
+$atomicWrite(
+    $outputDir . '/robots.txt',
+    "User-agent: *\nAllow: /\n\n"
+        . "Sitemap: {$baseUrl}/sitemap.xml\n"
+        . "Sitemap: {$baseUrl}/sitemaps/blog-sitemap.xml\n"
+        . "Sitemap: {$baseUrl}/sitemaps/google-news.xml\n"
+);
 $atomicWrite($outputDir . '/sitemap-status.json', json_encode([
     'scope' => 'static_sitemap_coverage',
     'generatedAt' => $generatedAt,

@@ -36,6 +36,18 @@ describe('public information SSR snapshots', () => {
     expect(routeFrameSource).toContain("|| pathname.startsWith('/support')");
   });
 
+  it('renders the blog with its public editorial shell instead of the authenticated platform frame', () => {
+    const routeFrameSource = readSource('src/providers/NextRouteFrame.tsx');
+    const blogSource = readSource('src/app/blog/page.tsx');
+    const robotsSource = readSource('src/app/robots.ts');
+
+    expect(routeFrameSource).toMatch(/ROUTES_WITHOUT_PLATFORM_SHELL[\s\S]*'\/blog'/);
+    expect(blogSource).toContain('<BlogHeader />');
+    expect(blogSource).not.toContain("'use client'");
+    expect(robotsSource).toContain('/sitemaps/blog-sitemap.xml');
+    expect(robotsSource).toContain('/sitemaps/google-news.xml');
+  });
+
   it('sanitizes private changelog entries before server rendering', () => {
     const versions = normalizePublicChangelogVersions([
       {

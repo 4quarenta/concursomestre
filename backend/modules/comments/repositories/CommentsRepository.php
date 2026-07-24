@@ -39,6 +39,7 @@ class CommentsRepository
      */
     public function listByTargetId(
         string $targetId,
+        string $targetType,
         ?string $viewerUserId,
         int $limit = 50,
         ?string $cursor = null
@@ -88,6 +89,7 @@ class CommentsRepository
                   FROM comments c
                   LEFT JOIN users u ON u.id = c.user_id
                   WHERE c.target_id = :target_id
+                    AND c.target_type = :target_type
                     AND c.moderation_status = 'approved'";
 
         if ($cursorParts['createdAt'] !== null) {
@@ -101,6 +103,7 @@ class CommentsRepository
 
         $stmt = $this->db->prepare($query);
         $stmt->bindValue(':target_id', $targetId);
+        $stmt->bindValue(':target_type', $targetType);
         $stmt->bindValue(':viewer_user_id', $viewerUserId ?? '');
         $stmt->bindValue(':viewer_user_id_exists', $viewerUserId ?? '');
         $stmt->bindValue(':viewer_user_id_report', $viewerUserId ?? '');
@@ -143,6 +146,31 @@ class CommentsRepository
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return is_array($user) ? $user : null;
+    }
+
+    /**
+     * Confirma se um artigo publico do blog pode receber interacoes.
+     *
+     * @since 1.0.0
+     */
+    public function findPublicBlogArticleSlug(string $articleId, bool $requireCommentsEnabled = false): ?string
+    {
+        $conditions = [
+            'id = :id',
+            'deleted_at IS NULL',
+            "status IN ('published', 'scheduled')",
+            'published_at IS NOT NULL',
+            'published_at <= NOW()',
+        ];
+        if ($requireCommentsEnabled) {
+            $conditions[] = 'allow_comments = 1';
+        }
+        $stmt = $this->db->prepare(
+            'SELECT slug FROM blog_articles WHERE ' . implode(' AND ', $conditions) . ' LIMIT 1'
+        );
+        $stmt->execute([':id' => $articleId]);
+        $slug = $stmt->fetchColumn();
+        return is_string($slug) && trim($slug) !== '' ? trim($slug) : null;
     }
 
     /**

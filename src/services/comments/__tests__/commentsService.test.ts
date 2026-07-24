@@ -89,6 +89,7 @@ describe('commentService', () => {
     expect(mockGet).toHaveBeenCalledWith('commentsList', {
       params: {
         target_id: '123',
+        target_type: 'question',
         user_id: 'user-1',
       },
     });

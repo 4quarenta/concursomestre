@@ -37,7 +37,7 @@ type AddCommentInput = {
   userPlan?: string;
   userRole?: string;
   parentId?: string;
-  targetType?: 'question' | 'material';
+  targetType?: 'question' | 'material' | 'blog_article';
 };
 
 type CommentCreationPayload = {
@@ -111,13 +111,18 @@ export const commentService = {
    * pelo frontend.
    * @since 1.0.0
    */
-  async getComments(targetId: string, userId?: string): Promise<QuestaoComentario[]> {
-    return withRequestCoalescing(buildRequestCacheKey('comments:list', { targetId, userId: userId || '' }), async () => {
+  async getComments(
+    targetId: string,
+    userId?: string,
+    targetType: 'question' | 'material' | 'blog_article' = 'question',
+  ): Promise<QuestaoComentario[]> {
+    return withRequestCoalescing(buildRequestCacheKey('comments:list', { targetId, targetType, userId: userId || '' }), async () => {
       const response = await apiClient.get(
         ENDPOINTS.comments.list,
         {
           params: {
             target_id: targetId,
+            target_type: targetType,
             user_id: userId || '',
           },
         },

@@ -59,7 +59,7 @@ const NAV_ITEMS = [
   { label: 'Recursos', href: '#recursos' },
   { label: 'Planos', href: '#planos' },
   { label: 'Depoimentos', href: '#depoimentos' },
-  { label: 'Blog', href: '#blog' },
+  { label: 'Blog', href: '/blog' },
 ];
 
 const HERO_BULLETS = [
@@ -216,7 +216,7 @@ const FOOTER_COLUMNS = [
       { label: 'Recursos', href: '#recursos' },
       { label: 'Planos', href: '#planos' },
       { label: 'Depoimentos', href: '#depoimentos' },
-      { label: 'Blog', href: '#blog' },
+      { label: 'Blog', href: '/blog' },
     ],
   },
   {
