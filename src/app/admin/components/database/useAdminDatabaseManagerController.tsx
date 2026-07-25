@@ -40,6 +40,7 @@ type AdminDatabaseSubTab =
   | 'materials'
   | 'rankings'
   | 'import'
+  | 'gran-crawler'
   | 'reports'
   | 'blocked'
   | 'filters'
@@ -72,6 +73,7 @@ const VALID_ADMIN_DATABASE_SUBTABS: AdminDatabaseSubTab[] = [
   'materials',
   'rankings',
   'import',
+  'gran-crawler',
   'reports',
   'blocked',
   'filters',

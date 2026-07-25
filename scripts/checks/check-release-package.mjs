@@ -59,7 +59,8 @@ const walk = (directory) => {
     totalBytes += fs.statSync(absolutePath).size;
     if (forbiddenEnvironmentFiles.has(entry.name)) failures.push(`Ambiente real incluido: ${relativePath}`);
     if (forbiddenExtensions.has(path.extname(entry.name).toLowerCase())) failures.push(`Artefato sensivel: ${relativePath}`);
-    if (/\.(sql\.gz|tar\.gz|zip)$/i.test(entry.name)) failures.push(`Arquivo compactado aninhado: ${relativePath}`);
+    const isPublicDownloadArchive = /^public\/downloads\/[^/]+\.zip$/i.test(relativePath);
+    if (/\.(sql\.gz|tar\.gz|zip)$/i.test(entry.name) && !isPublicDownloadArchive) failures.push(`Arquivo compactado aninhado: ${relativePath}`);
     if (/^(dump|backup|database|production-data).*\.sql$/i.test(entry.name)) failures.push(`Possivel dump incluido: ${relativePath}`);
   }
 };

@@ -39,6 +39,7 @@ class RateLimiter
         'report_write' => ['max' => 10, 'window' => 600],
         'upload' => ['max' => 20, 'window' => 900],
         'analytics_track' => ['max' => 120, 'window' => 60],
+        'admin_crawler' => ['max' => 30, 'window' => 300],
     ];
 
     /**

@@ -2208,16 +2208,16 @@ export const inferImportedQuestionTypeFromPayload = (value: unknown, optionsCoun
 };
 
 export const readExternalImageData = (record?: Record<string, unknown> | null) => {
-  const value = readLooseText(record, [
+  const primaryValue = readLooseText(record, [
     'imageData',
     'image_data',
     'base64',
     'data',
     'dataUrl',
     'dataURL',
-    'src',
-    'url',
   ]);
+  const sourceValue = readLooseText(record, ['src', 'url']);
+  const value = primaryValue || (/^data:image\//i.test(sourceValue) ? sourceValue : '');
   return value.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '').trim();
 };
 
@@ -2632,11 +2632,31 @@ export const toQuestionFilterValue = (
   }
 
   if (item && typeof item === 'object') {
-    return {
+    const payload: QuestionFilterValuePayload = {
       id: item.id ?? null,
       label,
       slug: item.slug ? String(item.slug) : undefined,
     };
+    const metadataKeys: Array<keyof QuestionFilterValuePayload> = [
+      'materia',
+      'taxonomyLevel',
+      'taxonomy_level',
+      'provider',
+      'externalId',
+      'externalParentId',
+      'externalRootId',
+      'externalSlug',
+      'parentName',
+      'rootSubjectName',
+      'palavrasChave',
+    ];
+    metadataKeys.forEach((key) => {
+      const value = item[key];
+      if (value !== undefined && value !== null && value !== '') {
+        Object.assign(payload, { [key]: value });
+      }
+    });
+    return payload;
   }
 
   return {
@@ -2662,6 +2682,60 @@ export const toQuestionFilterValues = (
       });
 };
 
+const normalizeTaxonomyLevel = (item: QuestionTaxonomyLabel) => (
+  normalizeComparisonText(
+    String(item.taxonomyLevel || item.taxonomy_level || ''),
+  )
+);
+
+export const partitionQuestionTaxonomies = (
+  assuntos: QuestionTaxonomyLabel[] = [],
+) => {
+  const subjects: QuestionTaxonomyLabel[] = [];
+  const topics: QuestionTaxonomyLabel[] = [];
+  const subtopics: QuestionTaxonomyLabel[] = [];
+  const legacyNonSubjects: QuestionTaxonomyLabel[] = [];
+
+  assuntos.forEach((item) => {
+    const level = normalizeTaxonomyLevel(item);
+    if (
+      Boolean(item.materia)
+      || level === 'materia'
+      || level === 'disciplina'
+      || level === 'subject'
+    ) {
+      subjects.push(item);
+      return;
+    }
+    if (level.includes('topico') || level.includes('topic')) {
+      topics.push(item);
+      return;
+    }
+    if (
+      level.includes('assunto')
+      || level.includes('subtopico')
+      || level.includes('subtopic')
+    ) {
+      subtopics.push(item);
+      return;
+    }
+    legacyNonSubjects.push(item);
+  });
+
+  // Contratos antigos armazenavam [materia, topico, assunto...] sem nivel.
+  // O fallback fica restrito a esses itens realmente sem classificacao.
+  if (legacyNonSubjects.length > 0) {
+    if (topics.length === 0) {
+      topics.push(legacyNonSubjects[0]);
+      subtopics.push(...legacyNonSubjects.slice(1));
+    } else {
+      subtopics.push(...legacyNonSubjects);
+    }
+  }
+
+  return { subjects, topics, subtopics };
+};
+
 export const buildQuestionFiltersPayload = ({
   assuntos = [],
   bancas = [],
@@ -2685,15 +2759,16 @@ export const buildQuestionFiltersPayload = ({
   tiposProva?: Array<QuestionTaxonomyLabel | string | number>;
   provas?: Array<QuestionTaxonomyLabel | string | number>;
 }): QuestionFiltersPayload => {
-  const subjectTaxonomy = assuntos.find((subject) => Boolean((subject as QuestionTaxonomyLabel).materia));
-  const nonSubjectTaxonomies = assuntos.filter((subject) => !Boolean((subject as QuestionTaxonomyLabel).materia));
-  const topicTaxonomy = nonSubjectTaxonomies[0];
-  const specificSubjectTaxonomies = nonSubjectTaxonomies.slice(1);
+  const {
+    subjects,
+    topics,
+    subtopics,
+  } = partitionQuestionTaxonomies(assuntos);
 
   return {
-    materias: toQuestionFilterValues([subjectTaxonomy]),
-    topicos: toQuestionFilterValues([topicTaxonomy]),
-    assuntos: toQuestionFilterValues(specificSubjectTaxonomies),
+    materias: toQuestionFilterValues(subjects),
+    topicos: toQuestionFilterValues(topics),
+    assuntos: toQuestionFilterValues(subtopics),
     bancas: toQuestionFilterValues(bancas),
     orgaos: toQuestionFilterValues(orgaos),
     cargos: toQuestionFilterValues(cargos),
@@ -2709,14 +2784,14 @@ export const buildQuestionFiltersPayload = ({
 };
 
 export const getQuestionTaxonomyParts = (question: Question) => {
-  const subjects = Array.isArray(question.assuntos) ? question.assuntos : [];
-  const subject = subjects.find((item) => Boolean(item.materia));
-  const nonSubjects = subjects.filter((item) => !item.materia);
+  const taxonomies = partitionQuestionTaxonomies(
+    (Array.isArray(question.assuntos) ? question.assuntos : []) as unknown as QuestionTaxonomyLabel[],
+  );
 
   return {
-    subject: getTaxonomyText(subject as unknown as QuestionTaxonomyLabel),
-    topic: getTaxonomyText(nonSubjects[0] as unknown as QuestionTaxonomyLabel),
-    specificSubject: getTaxonomyText(nonSubjects[1] as unknown as QuestionTaxonomyLabel),
+    subject: getTaxonomyText(taxonomies.subjects[0]),
+    topic: getTaxonomyText(taxonomies.topics[0]),
+    specificSubject: getTaxonomyText(taxonomies.subtopics[0]),
   };
 };
 
@@ -3296,8 +3371,10 @@ export const buildQuestionPayloadImportCard = ({
     .map((image, index) => {
       const record = image as unknown as Record<string, unknown>;
       const tempId = String(record.tempId || record.id || `q_${questionNumber}_img_${index + 1}`);
-      const imageData = String(record.imageData || record.base64 || '');
-      const url = String(record.url || '');
+      const rawImageData = String(record.imageData || record.base64 || '');
+      const explicitUrl = String(record.url || '');
+      const url = explicitUrl || (/^https:\/\//i.test(rawImageData) ? rawImageData : '');
+      const imageData = url === rawImageData ? '' : rawImageData;
       return {
         tempId,
         type: 'image' as const,

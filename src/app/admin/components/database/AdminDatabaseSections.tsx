@@ -16,6 +16,8 @@ import AdminMaterialsSection from '../materials/AdminMaterialsSection';
 import BlockedMaterialsSection from '../materials/BlockedMaterialsSection';
 import AdminExamBankSection from '../exams/AdminExamBankSection';
 import AdminImportSection from '../import/AdminImportSection';
+import AdminGranCrawlerSection, { type GranImportPayload } from '../import/AdminGranCrawlerSection';
+import AdminGranCrawlerReviewBatch from '../import/AdminGranCrawlerReviewBatch';
 import AdminLegalCommentarySection from '../legal-commentary/AdminLegalCommentarySection';
 import AdminQuestionGroupsSection from '../questions/AdminQuestionGroupsSection';
 import AdminQuestionsSection from '../questions/AdminQuestionsSection';
@@ -36,6 +38,52 @@ type AdminRankingsSectionProps = React.ComponentProps<typeof AdminRankingsSectio
 type BlockedMaterialsSectionProps = React.ComponentProps<typeof BlockedMaterialsSection>;
 type FiltersManagementSectionProps = React.ComponentProps<typeof FiltersManagementSection>;
 type AdminImportSectionProps = React.ComponentProps<typeof AdminImportSection>;
+
+const getGranPayloadKey = (payload: GranImportPayload) => (
+  payload.exam.sourceKey
+  || payload.exam.externalId
+  || payload.exam.title
+  || `gran-${payload.questions[0]?.tempId || 'proof'}`
+);
+
+interface AdminGranCrawlerReviewQueueProps {
+  payloads: GranImportPayload[];
+  systemSettings: SystemSettings;
+  onGeminiApiKeyChange: (value: string) => void;
+  onSaveSettings: () => Promise<unknown> | unknown;
+  isSavingSettings?: boolean;
+  onImportedQuestionsSaved?: () => Promise<void> | void;
+}
+
+const AdminGranCrawlerReviewQueue = ({
+  payloads,
+  systemSettings,
+  onGeminiApiKeyChange,
+  onSaveSettings,
+  isSavingSettings,
+  onImportedQuestionsSaved,
+}: AdminGranCrawlerReviewQueueProps) => {
+  return (
+    <div className="space-y-4" aria-label="Fila unificada de revisão do Gran">
+      {payloads.map((payload) => {
+        const payloadKey = getGranPayloadKey(payload);
+
+        return (
+          <AdminGranCrawlerReviewBatch
+            key={payloadKey}
+            payload={payload}
+            cardsOnly
+            systemSettings={systemSettings}
+            onGeminiApiKeyChange={onGeminiApiKeyChange}
+            onSaveSettings={onSaveSettings}
+            isSavingSettings={isSavingSettings}
+            onImportedQuestionsSaved={onImportedQuestionsSaved}
+          />
+        );
+      })}
+    </div>
+  );
+};
 
 interface AdminDatabaseSectionsProps {
   activeSubTab: string;
@@ -281,6 +329,23 @@ const AdminDatabaseSections = ({
         onSaveSettings={onSaveImportSettings}
         isSavingSettings={isSavingImportSettings}
         {...importWorkflowProps}
+      />
+    );
+  }
+
+  if (activeSubTab === 'gran-crawler') {
+    return (
+      <AdminGranCrawlerSection
+        renderReviewQueue={(payloads) => (
+          <AdminGranCrawlerReviewQueue
+            payloads={payloads}
+            systemSettings={systemSettings}
+            onGeminiApiKeyChange={onGeminiApiKeyChange}
+            onSaveSettings={onSaveImportSettings}
+            isSavingSettings={isSavingImportSettings}
+            onImportedQuestionsSaved={onQuestionsRefresh}
+          />
+        )}
       />
     );
   }

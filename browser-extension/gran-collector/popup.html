@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Coletor Gran</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">ConcursoMestre</p>
+      <h1>Coletor Gran</h1>
+      <p class="description">
+        Se ja estiver logado, recarregue a lista de questoes da Gran. A extensao reconhece automaticamente
+        a proxima requisicao autenticada.
+      </p>
+      <div id="status" class="status status--idle">Verificando sessao...</div>
+      <div class="actions">
+        <button id="open-gran" type="button" class="primary">Abrir Gran</button>
+        <button id="refresh" type="button" class="secondary">Atualizar</button>
+        <button id="disconnect" type="button" class="secondary">Desconectar</button>
+      </div>
+      <p id="feedback" class="feedback" aria-live="polite"></p>
+      <p id="version" class="version"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

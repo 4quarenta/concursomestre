@@ -649,9 +649,13 @@ class QuestionsService
         $questions = is_array($payload['questions'] ?? null) ? $payload['questions'] : [];
 
         $focus = $this->normalizeBulkImportFocus($payload['focus'] ?? []);
-        if ($focus['name'] === '') {
-            throw new InvalidArgumentException('Selecione um foco para importar a prova.');
+        $questionFocuses = $this->collectBulkQuestionFocuses($questions);
+        if ($focus['name'] === '' && $questionFocuses === []) {
+            throw new InvalidArgumentException('Informe a area/foco de cada questao ou um foco de fallback para o lote.');
         }
+        $examFocus = $focus['name'] !== ''
+            ? $focus
+            : (count($questionFocuses) === 1 ? $questionFocuses[0] : ['id' => null, 'name' => '', 'slug' => '']);
 
         $examPayload = is_array($payload['exam'] ?? null) ? $payload['exam'] : [];
         $contexts = is_array($payload['contexts'] ?? null) ? $payload['contexts'] : [];
@@ -677,13 +681,22 @@ class QuestionsService
 
         $this->db->beginTransaction();
         try {
-            $focusId = $this->ensureFilterId('carreira', $focus['name'], $focus['slug'], 0, 1, $focus['id']);
-            $focusTaxonomy = [
-                'id' => $focusId,
+            $focusId = $examFocus['name'] !== ''
+                ? $this->ensureFilterId(
+                    'carreira',
+                    $examFocus['name'],
+                    $examFocus['slug'],
+                    0,
+                    1,
+                    $examFocus['id']
+                )
+                : null;
+            $focusTaxonomy = $focus['name'] !== '' ? [
+                'id' => $this->ensureFilterId('carreira', $focus['name'], $focus['slug'], 0, 1, $focus['id']),
                 'name' => $focus['name'],
                 'nome' => $focus['name'],
                 'slug' => $focus['slug'],
-            ];
+            ] : null;
 
             $examRecord = $this->withPublicationOwnership(
                 $this->buildImportedExamRecord($examPayload, $questions, $focusId, $pdfUrl),
@@ -780,7 +793,10 @@ class QuestionsService
                 $question['prova_id'] = $examId;
                 $question['questionOrigin'] = 'exam';
                 $question['question_origin'] = 'exam';
-                $question['carreiras'] = $this->mergeTaxonomyList($question['carreiras'] ?? $question['focos'] ?? [], [$focusTaxonomy]);
+                $questionFocusItems = $this->readBulkQuestionFocusItems($question);
+                if ($questionFocusItems === [] && is_array($focusTaxonomy)) {
+                    $question['carreiras'] = [$focusTaxonomy];
+                }
                 $question['bancas'] = $this->mergeTaxonomyList(
                     $question['bancas'] ?? [],
                     $this->taxonomyPayloadFromFilter('banca', $examRecord['banca_id'], $examRecord['banca_name'] ?? $examPayload['agency'] ?? $examPayload['banca'] ?? '')
@@ -2227,6 +2243,52 @@ class QuestionsService
         ];
     }
 
+    /**
+     * Le a area/foco do proprio item sem converter um foco de prova em filtro
+     * global. O contrato canonico usa filters.careers.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function readBulkQuestionFocusItems(array $question): array
+    {
+        $filters = is_array($question['filters'] ?? null) ? $question['filters'] : [];
+        $values = $question['carreiras']
+            ?? $question['focos']
+            ?? $filters['careers']
+            ?? $filters['carreiras']
+            ?? [];
+        if (!is_array($values)) {
+            $values = [$values];
+        }
+
+        return array_values(array_filter($values, function (mixed $value): bool {
+            return $this->normalizeBulkImportFocus($value)['name'] !== '';
+        }));
+    }
+
+    /**
+     * @param list<array<string, mixed>> $questions
+     * @return list<array{id: ?int, name: string, slug: string}>
+     */
+    private function collectBulkQuestionFocuses(array $questions): array
+    {
+        $unique = [];
+        foreach ($questions as $question) {
+            if (!is_array($question)) {
+                continue;
+            }
+            foreach ($this->readBulkQuestionFocusItems($question) as $item) {
+                $focus = $this->normalizeBulkImportFocus($item);
+                if ($focus['name'] === '') {
+                    continue;
+                }
+                $key = $focus['slug'] !== '' ? $focus['slug'] : $this->slugify($focus['name']);
+                $unique[$key] = $focus;
+            }
+        }
+        return array_values($unique);
+    }
+
     private function withPublicationOwnership(array $record, string $authenticatedUserId): array
     {
         $record['created_by_user_id'] = $authenticatedUserId;
@@ -2349,6 +2411,10 @@ class QuestionsService
             'source' => 'bulk_import_pdf',
             'raw' => $examPayload,
             'pdfUrl' => $pdfUrl,
+            'files' => array_values(array_filter(
+                is_array($examPayload['files'] ?? null) ? $examPayload['files'] : [],
+                'is_array'
+            )),
             'banca' => $this->buildTaxonomyPayload('banca', $bancaId, $agencyName),
             'roles' => $roleNames,
             'cargos' => $roleNames,

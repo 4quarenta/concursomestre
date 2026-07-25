@@ -33,6 +33,7 @@ import {
 import { normalizeProvaRecord } from '../exams/examBankUtils';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { runPythonExtractor } from './pythonExtractorClient';
+import { readCanonicalQuestionFilters, resolveFirstQuestionFocus } from './adminImportCanonicalFilters';
 import {
   type GenerateSpecificType,
   type ImportPublishAction,
@@ -219,7 +220,6 @@ import {
 } from './adminImportWorkflowCore';
 export type { GenerateSpecificType, ImportPublishAction } from './adminImportWorkflowCore';
 
-
 export const useAdminImportWorkflow = ({
   enabled = true,
   systemSettings,
@@ -269,7 +269,6 @@ export const useAdminImportWorkflow = ({
   const [publishedQuestionNumbers, setPublishedQuestionNumbers] = useState<number[]>([]);
   const [publishingAction, setPublishingAction] = useState<ImportPublishAction | null>(null);
   const publishingActionRef = useRef<ImportPublishAction | null>(null);
-
   const selectedExam = useMemo(
     () => examBank.find((exam) => String(exam.id) === selectedExamId) || null,
     [examBank, selectedExamId],
@@ -284,13 +283,11 @@ export const useAdminImportWorkflow = ({
     () => resolveExamInheritedFocus(selectedExam, systemSettings.taxonomies),
     [selectedExam, systemSettings.taxonomies],
   );
-
   useEffect(() => {
     if (!enabled) {
       setIsLoadingExamBank(false);
       return;
     }
-
     let active = true;
     setIsLoadingExamBank(true);
     examService.list({ limit: 500, status: 'published,draft' })
@@ -303,14 +300,12 @@ export const useAdminImportWorkflow = ({
       .finally(() => {
         if (active) setIsLoadingExamBank(false);
       });
-
     return () => {
       active = false;
     };
   // The exam list is loaded once for this workbench session.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
-
   const getSelectedExamMetadata = (): ImportMetadata => {
     if (!selectedExam) return {};
 
@@ -4848,16 +4843,13 @@ export const useAdminImportWorkflow = ({
     }
   };
 
-  const handleImportFromAiJson = async (sourceJson: string) => {
+  const handleImportFromAiJson = async (
+    sourceJson: string,
+    options: { silentSuccess?: boolean } = {},
+  ) => {
     const rawJson = String(sourceJson || '').trim();
     if (!rawJson) {
       addToast('Cole a resposta JSON da IA antes de gerar a revisão.', 'error');
-      return;
-    }
-
-    const selectedFocus = resolveSelectedFocus();
-    if (!selectedFocus) {
-      addToast('Selecione ou crie um foco antes de importar o JSON da IA.', 'error');
       return;
     }
 
@@ -4868,6 +4860,7 @@ export const useAdminImportWorkflow = ({
 
     try {
       const payload = JSON.parse(extractJsonObjectText(rawJson)) as Record<string, unknown>;
+      const selectedFocus = resolveSelectedFocus();
       const metadataRecord = toLooseRecord(readLooseField(payload, ['metadata', 'metadados', 'exam', 'prova'])) || {};
       const rawQuestions = readLooseArray(payload, ['questions', 'questoes', 'questões']);
       if (!rawQuestions.length) {
@@ -5096,6 +5089,7 @@ export const useAdminImportWorkflow = ({
           index + 1,
         );
         const filters = toLooseRecord(readLooseField(record, ['filters', 'filtros'])) || {};
+        const canonicalFilters = readCanonicalQuestionFilters(filters);
         const externalTaxonomy = readExternalAiQuestionTaxonomy(record, filters);
         const rawOptions = normalizeAiQuestionOptions(
           readLooseField(record, ['alternatives', 'alternativas', 'options', 'itens']),
@@ -5215,16 +5209,16 @@ export const useAdminImportWorkflow = ({
           'imagens',
         ]).map((image, imageIndex) => {
           const imageRecord = toLooseRecord(image);
-          const imageData = readExternalImageData(imageRecord);
           return {
             tempId: `ai-json-q${number}-img-${imageIndex + 1}`,
             title: readLooseText(imageRecord, ['title', 'titulo', 'name', 'nome']) || `Figura ${imageIndex + 1}`,
             description: readLooseText(imageRecord, ['description', 'descricao', 'text', 'texto']),
-            imageData,
+            imageData: readExternalImageData(imageRecord),
+            url: readLooseText(imageRecord, ['url', 'src']),
             pageImageData: readLooseText(imageRecord, ['pageImageData', 'page_image_data', 'pageBase64']),
             figureBox: normalizeExtractionFigureBox(readLooseField(imageRecord, ['figureBox', 'box', 'bbox']) as FigureBox),
             page: Number(readLooseField(imageRecord, ['page', 'pagina']) || 0) || undefined,
-            manualCropApplied: Boolean(imageData),
+            manualCropApplied: Boolean(readExternalImageData(imageRecord)),
           };
         }).filter((image) => (
           supportImageHasUsefulPayload(image)
@@ -5303,15 +5297,17 @@ export const useAdminImportWorkflow = ({
           teacherComment,
           detailedComment,
           contextKey,
-          bancas: nextMetadata.agency ? [createTaxonomyLabel(String(nextMetadata.agency), { sigla: String(nextMetadata.agency) })] : [],
-          orgaos: nextMetadata.source ? [createTaxonomyLabel(String(nextMetadata.source))] : [],
-          cargos: nextMetadata.role ? [createTaxonomyLabel(String(nextMetadata.role), { descricao: String(nextMetadata.role) })] : [],
-          assuntos: buildExternalAiQuestionTaxonomies(externalTaxonomy),
-          anos: Number(nextMetadata.year) ? [Number(nextMetadata.year)] : [],
-          carreiras: selectedFocus ? [selectedFocus] : [],
-          niveis: nextMetadata.level ? [createTaxonomyLabel(String(nextMetadata.level))] : [],
+          bancas: canonicalFilters.examBoards.length > 0 ? canonicalFilters.examBoards : (nextMetadata.agency ? [createTaxonomyLabel(String(nextMetadata.agency), { sigla: String(nextMetadata.agency) })] : []),
+          orgaos: canonicalFilters.organizations.length > 0 ? canonicalFilters.organizations : (nextMetadata.source ? [createTaxonomyLabel(String(nextMetadata.source))] : []),
+          cargos: canonicalFilters.roles.length > 0 ? canonicalFilters.roles : (nextMetadata.role ? [createTaxonomyLabel(String(nextMetadata.role), { descricao: String(nextMetadata.role) })] : []),
+          assuntos: (canonicalFilters.subjects.length + canonicalFilters.topics.length + canonicalFilters.subtopics.length > 0
+            ? [...canonicalFilters.subjects, ...canonicalFilters.topics, ...canonicalFilters.subtopics]
+            : buildExternalAiQuestionTaxonomies(externalTaxonomy)) as Question['assuntos'],
+          anos: canonicalFilters.years.length > 0 ? canonicalFilters.years : (Number(nextMetadata.year) ? [Number(nextMetadata.year)] : []),
+          carreiras: canonicalFilters.careers.length > 0 ? canonicalFilters.careers : (selectedFocus ? [selectedFocus] : []),
+          niveis: canonicalFilters.levels.length > 0 ? canonicalFilters.levels : (nextMetadata.level ? [createTaxonomyLabel(String(nextMetadata.level))] : []),
           nivel: nextMetadata.level || undefined,
-          tiposProva: nextMetadata.examType ? [createTaxonomyLabel(String(nextMetadata.examType))] : [],
+          tiposProva: canonicalFilters.examTypes.length > 0 ? canonicalFilters.examTypes : (nextMetadata.examType ? [createTaxonomyLabel(String(nextMetadata.examType))] : []),
           tipo: modality,
           hasFigure: supportImages.length > 0 || rawOptions.some((option) => option.imageData || option.figureBox),
           figureDescription: readLooseText(record, ['figureDescription', 'descricaoFigura'])
@@ -5382,7 +5378,9 @@ export const useAdminImportWorkflow = ({
       setPublishedExam(null);
       setPublishedQuestionNumbers([]);
       addLog(`JSON da IA importado: ${ensured.diagnostics.cardsCreatedCount} card(s), ${ensured.diagnostics.completeCardsCount} completo(s), ${ensured.diagnostics.placeholderCardsCount} pendente(s).`);
-      addToast('Resposta da IA carregada na revisão.', 'success');
+      if (!options.silentSuccess) {
+        addToast('Resposta da IA carregada na revisão.', 'success');
+      }
     } catch (error) {
       addToast(`Não foi possível ler o JSON da IA: ${readErrorMessage(error)}`, 'error');
       addLog(`JSON da IA: falha ao importar (${readErrorMessage(error)}).`);
@@ -5829,7 +5827,8 @@ export const useAdminImportWorkflow = ({
   };
 
   const validateExamBeforePublish = () => {
-    const selectedFocus = resolveSelectedFocus();
+    const selectedFocus = resolveSelectedFocus()
+      || resolveFirstQuestionFocus(extractedQuestions as unknown as Array<Record<string, unknown>>);
     if (!selectedFocus) {
       addToast('Selecione ou crie um foco antes de publicar.', 'error');
       return null;

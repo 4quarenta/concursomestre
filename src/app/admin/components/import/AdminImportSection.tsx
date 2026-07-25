@@ -11,7 +11,12 @@
 
 import React from 'react';
 import Image from 'next/image';
-import type { Prova, Question, SystemSettings } from '@types';
+import type {
+  Prova,
+  Question,
+  QuestionTaxonomyLabel,
+  SystemSettings,
+} from '@types';
 import MathRichText from '@/components/shared/math/MathRichText';
 import RichTextEditor from '@/components/shared/ui/RichTextEditor';
 import {
@@ -51,6 +56,7 @@ import {
   ADMIN_SECONDARY_BUTTON_CLASS,
 } from '../shared/adminPanelStyles';
 import { EXTERNAL_AI_FULL_BATCH_PROMPT } from './externalAiExamPrompt';
+import { partitionQuestionTaxonomies } from './adminImportWorkflowPublicationCore';
 
 type GenerateSpecificType = 'teacher' | 'detailed';
 type ExternalEditorialMode = GenerateSpecificType;
@@ -385,16 +391,24 @@ const getQuestionNumber = (question: ExtractedQuestionPreview, fallback: number)
   return match ? Number(match[0]) : fallback;
 };
 
+const getQuestionTaxonomyGroups = (question: Question) => partitionQuestionTaxonomies(
+  (question.assuntos || []) as unknown as QuestionTaxonomyLabel[],
+);
+
+const getQuestionTaxonomyItemName = (item: Record<string, unknown> | undefined) => (
+  asText(item?.name || item?.nome || item?.label || item?.descricao || item?.slug)
+);
+
 const getQuestionSubject = (question: Question) => (
-  (question.assuntos || []).find((subject) => Boolean(subject.materia))?.name || ''
+  getQuestionTaxonomyItemName(getQuestionTaxonomyGroups(question).subjects[0])
 );
 
 const getQuestionTopic = (question: Question) => (
-  (question.assuntos || []).filter((subject) => !subject.materia)[0]?.name || ''
+  getQuestionTaxonomyItemName(getQuestionTaxonomyGroups(question).topics[0])
 );
 
 const getQuestionSpecificSubject = (question: Question) => (
-  (question.assuntos || []).filter((subject) => !subject.materia)[1]?.name || ''
+  getQuestionTaxonomyItemName(getQuestionTaxonomyGroups(question).subtopics[0])
 );
 
 const getQuestionIntroText = (question: Question) => {
@@ -1345,6 +1359,9 @@ const FigureCropSelector = ({
 };
 
 interface AdminImportSectionProps {
+  reviewOnly?: boolean;
+  reviewDisplayMode?: 'full' | 'cards';
+  reviewSourceLabel?: string;
   systemSettings: SystemSettings;
   onGeminiApiKeyChange: (value: string) => void;
   onSaveSettings: () => void;
@@ -1389,7 +1406,10 @@ interface AdminImportSectionProps {
   onGenerateDetailedAll: () => void;
   onRetryMissingQuestions: () => void | Promise<void>;
   onParseQuestionsFromText: (text: string) => void | Promise<void>;
-  onImportFromAiJson: (json: string) => void | Promise<void>;
+  onImportFromAiJson: (
+    json: string,
+    options?: { silentSuccess?: boolean },
+  ) => void | Promise<void>;
   onImportExternalEditorialJson: (json: string) => void | Promise<void>;
   onPublishExam: () => void | Promise<void>;
   onPublishAllQuestions: () => void | Promise<void>;
@@ -1435,6 +1455,9 @@ interface AdminImportSectionProps {
 }
 
 const AdminImportSection = ({
+  reviewOnly = false,
+  reviewDisplayMode = 'full',
+  reviewSourceLabel = '',
   systemSettings,
   onGeminiApiKeyChange,
   onSaveSettings,
@@ -1600,7 +1623,12 @@ const AdminImportSection = ({
           || !isQuestionReadyForPublicationPreview(question);
       })
   ), [extractedQuestions, placeholderQuestionSet]);
-  const effectiveReviewTab = activeReviewTab === 'pending' && pendingAlternativeQuestions.length === 0 ? 'questions' : activeReviewTab;
+  const cardsOnly = reviewOnly && reviewDisplayMode === 'cards';
+  const effectiveReviewTab = cardsOnly
+    ? 'questions'
+    : activeReviewTab === 'pending' && pendingAlternativeQuestions.length === 0
+      ? 'questions'
+      : activeReviewTab;
   const questionsForReview = effectiveReviewTab === 'pending'
     ? pendingAlternativeQuestions
     : (extractedQuestions as ExtractedQuestionPreview[]).map((question, index) => ({ question, index }));
@@ -1902,7 +1930,8 @@ const AdminImportSection = ({
   return (
     <>
     <div className="space-y-6 animate-slide-up">
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className={`grid grid-cols-1 gap-6 ${reviewOnly ? '' : 'lg:grid-cols-12'}`}>
+        {!reviewOnly && (
         <div className="space-y-6 lg:col-span-4">
           <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-6 p-6 transition-colors duration-300`}>
             <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-4 dark:border-slate-800">
@@ -2298,10 +2327,12 @@ const AdminImportSection = ({
             </div>
           </div>
         </div>
+        )}
 
-        <div className="flex flex-col gap-6 lg:col-span-8">
+        <div className={`flex flex-col gap-6 ${reviewOnly ? 'min-w-0' : 'lg:col-span-8'}`}>
           {extractedQuestions.length > 0 ? (
             <div className="flex flex-1 flex-col space-y-4 animate-slide-up">
+              {!cardsOnly && (
               <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-4 p-5`}>
                 <div className="flex flex-wrap items-start gap-4">
                   <div className="grid min-w-[min(100%,42rem)] flex-1 grid-cols-2 gap-2 md:grid-cols-5">
@@ -2479,7 +2510,9 @@ const AdminImportSection = ({
                   </div>
                 )}
               </div>
+              )}
 
+              {!cardsOnly && (
               <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-wrap gap-2 p-2`}>
                 {([
                   ['proof', 'Prova', `${subjectsForDisplay.length} matérias`, Database],
@@ -2512,8 +2545,9 @@ const AdminImportSection = ({
                   );
                 })}
               </div>
+              )}
 
-              {effectiveReviewTab === 'proof' && (
+              {!cardsOnly && effectiveReviewTab === 'proof' && (
               <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-4 p-4 text-xs`}>
                 {selectedExamId ? (
                   <div className="rounded-sm border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/50 dark:bg-sky-950/20">
@@ -2637,7 +2671,7 @@ const AdminImportSection = ({
               </div>
               )}
 
-              {effectiveReviewTab === 'contexts' && (
+              {!cardsOnly && effectiveReviewTab === 'contexts' && (
                 <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-3 p-4`}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
@@ -2898,6 +2932,8 @@ const AdminImportSection = ({
                 </div>
               )}
 
+              {!cardsOnly && (
+              <>
               {aiLimitReached && (
                 <div className="rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
                   <div className="flex items-start gap-3">
@@ -3063,8 +3099,11 @@ const AdminImportSection = ({
                 </div>
               )}
 
+              </>
+              )}
+
               {(effectiveReviewTab === 'questions' || effectiveReviewTab === 'pending') && (
-              <div className="no-scrollbar flex-1 max-h-[800px] space-y-4 overflow-y-auto pr-2">
+              <div className={`no-scrollbar flex-1 space-y-4 ${cardsOnly ? 'max-h-none overflow-visible pr-0' : 'max-h-[800px] overflow-y-auto pr-2'}`}>
                 {effectiveReviewTab === 'pending' && pendingAlternativeQuestions.length === 0 && (
                   <div className={`${ADMIN_PAGE_PANEL_CLASS} p-6 text-center text-sm font-bold text-slate-500 dark:text-slate-400`}>
                     Nenhuma questao pendente de alternativas.
@@ -3092,6 +3131,16 @@ const AdminImportSection = ({
                   const showReferenceBlock = Boolean(referenceText) || editingReferenceTextIndex === index;
                   const hasSharedContext = linkedContexts.length > 0;
                   const hasIndividualSupport = Boolean(introText || supportImages.length > 0);
+                  const taxonomyGroups = getQuestionTaxonomyGroups(question);
+                  const subjectLabels = taxonomyGroups.subjects
+                    .map(getQuestionTaxonomyItemName)
+                    .filter(Boolean);
+                  const topicLabels = taxonomyGroups.topics
+                    .map(getQuestionTaxonomyItemName)
+                    .filter(Boolean);
+                  const subtopicLabels = taxonomyGroups.subtopics
+                    .map(getQuestionTaxonomyItemName)
+                    .filter(Boolean);
                   const hasFigureResource = Boolean(
                     question.hasFigure
                     || question.figureBox
@@ -3130,14 +3179,22 @@ const AdminImportSection = ({
                           {questionNumber}
                         </span>
                         <div className="flex flex-wrap gap-2">
+                          {cardsOnly && reviewSourceLabel && (
+                            <span className="max-w-[22rem] truncate rounded-sm border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-300" title={reviewSourceLabel}>{reviewSourceLabel}</span>
+                          )}
                           <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                             {question.bancas?.map((banca) => banca.sigla || banca.name).join(' / ') || 'Banca N/I'}
                           </span>
                           <span className="rounded-sm bg-sky-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-                            {question.assuntos?.filter((subject) => subject.materia).map((subject) => subject.name).join(', ') || 'Materia N/I'}
+                            {subjectLabels.join(' / ') || 'Materia N/I'}
                           </span>
-                          <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
-                            {question.assuntos?.filter((subject) => !subject.materia).map((subject) => subject.name).join(', ') || 'Assunto N/I'}
+                          {topicLabels.length > 0 && (
+                            <span className="rounded-sm bg-violet-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                              Tópico: {topicLabels.join(' / ')}
+                            </span>
+                          )}
+                          <span className="rounded-sm bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                            {subtopicLabels.length > 0 ? `Assunto: ${subtopicLabels.join(' / ')}` : 'Assunto N/I'}
                           </span>
                         </div>
                       </div>

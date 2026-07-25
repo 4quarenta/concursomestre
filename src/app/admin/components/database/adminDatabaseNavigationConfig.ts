@@ -37,7 +37,7 @@ export const ADMIN_DATABASE_CATEGORIES: AdminDatabaseCategoryConfig[] = [
     label: 'Conteúdo',
     description: 'Banco de questões, importação e taxonomias.',
     icon: BookOpen,
-    tabs: ['questions', 'question-groups', 'exams', 'import', 'filters', 'lei-comentada'],
+    tabs: ['questions', 'question-groups', 'exams', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
   },
   {
     id: 'people',
@@ -67,6 +67,11 @@ export const ADMIN_DATABASE_SUBTAB_META: Record<string, AdminDatabaseSubTabMeta>
   import: {
     label: 'Importador',
     description: 'Extração assistida, revisão e publicação em massa.',
+    category: 'content',
+  },
+  'gran-crawler': {
+    label: 'Crawler Gran',
+    description: 'Coleta autenticada no navegador, revisao e envio seguro para a fila.',
     category: 'content',
   },
   exams: {

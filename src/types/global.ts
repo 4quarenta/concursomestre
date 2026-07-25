@@ -145,6 +145,17 @@ export interface QuestionFilterValuePayload {
   id?: number | string | null;
   label: string;
   slug?: string;
+  materia?: boolean;
+  taxonomyLevel?: string;
+  taxonomy_level?: string;
+  provider?: string;
+  externalId?: number | string;
+  externalParentId?: number | string;
+  externalRootId?: number | string;
+  externalSlug?: string;
+  parentName?: string;
+  rootSubjectName?: string;
+  palavrasChave?: string[];
 }
 
 export interface QuestionFiltersPayload {

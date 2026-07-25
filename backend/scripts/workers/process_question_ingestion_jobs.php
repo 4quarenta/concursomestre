@@ -10,9 +10,10 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../modules/questions/routes.php';
 require_once __DIR__ . '/../../modules/questions/services/PrivateQuestionIngestionService.php';
+require_once __DIR__ . '/../../modules/questions/services/GranExamFileMaterializer.php';
 
-$actorUserId = trim((string) (getenv('QUESTION_INGESTION_ACTOR_ID') ?: ''));
-if ($actorUserId === '') {
+$defaultActorUserId = trim((string) (getenv('QUESTION_INGESTION_ACTOR_ID') ?: ''));
+if ($defaultActorUserId === '') {
     fwrite(STDERR, "Defina QUESTION_INGESTION_ACTOR_ID para processar a fila.\n");
     exit(2);
 }
@@ -20,6 +21,7 @@ if ($actorUserId === '') {
 $maxJobs = max(1, min(100, (int) ($argv[1] ?? 10)));
 $db = (new Database())->getConnection();
 $ingestion = new PrivateQuestionIngestionService($db);
+$granExamFileMaterializer = new GranExamFileMaterializer();
 $processed = [];
 $workerSlot = preg_replace('/[^a-zA-Z0-9_-]/', '-', trim((string) (getenv('WORKER_SLOT') ?: 'manual'))) ?: 'manual';
 $workerId = sprintf('%s:%s:%d', gethostname() ?: 'worker', $workerSlot, getmypid());
@@ -30,10 +32,12 @@ for ($index = 0; $index < $maxJobs; $index++) {
         break;
     }
     try {
+        $actorUserId = trim((string) ($job['actor_user_id'] ?? '')) ?: $defaultActorUserId;
         $payload = json_decode((string) $job['payload_json'], true, 512, JSON_THROW_ON_ERROR);
         if (!is_array($payload)) {
             throw new InvalidArgumentException('Payload de job invalido.');
         }
+        $payload = $granExamFileMaterializer->materialize($payload);
         $result = buildQuestionsController($db)->bulkImportQuestions($actorUserId, true, $payload, null);
         $ingestion->completeJob((int) $job['id'], (int) $job['request_id'], $result, $workerId);
         $processed[] = ['jobId' => (int) $job['id'], 'status' => 'done'];

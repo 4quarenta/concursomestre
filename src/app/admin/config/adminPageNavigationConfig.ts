@@ -19,7 +19,7 @@ import type { LucideIcon } from 'lucide-react';
 
 export type AdminPageTab = 'panel' | 'operation' | 'marketplace' | 'finance' | 'marketing' | 'support' | 'settings';
 export type AdminPanelSection = 'dashboard' | 'alerts' | 'billing-health';
-export type AdminOperationSection = 'questions' | 'question-groups' | 'exams' | 'import' | 'filters' | 'lei-comentada' | 'users';
+export type AdminOperationSection = 'questions' | 'question-groups' | 'exams' | 'import' | 'gran-crawler' | 'filters' | 'lei-comentada' | 'users';
 export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'automation' | 'analytics';
 export type AdminMarketingSection = 'blog' | 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
@@ -45,7 +45,7 @@ export type SupportPendingCounts = Partial<Record<'feedback' | 'threads' | 'repo
 export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['operation', 'marketing', 'support'];
 
 const STAFF_ADMIN_ALLOWED_SECTIONS: Partial<Record<AdminPageTab, string[]>> = {
-  operation: ['questions', 'question-groups', 'exams', 'import', 'filters', 'lei-comentada'],
+  operation: ['questions', 'question-groups', 'exams', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
   marketing: ['blog'],
   support: ['feedback', 'threads', 'reports', 'rankings', 'comments'],
 };
@@ -154,7 +154,7 @@ export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
 };
 
 export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as const;
-export const OPERATION_SECTION_KEYS = ['questions', 'question-groups', 'exams', 'import', 'filters', 'lei-comentada', 'users'] as const;
+export const OPERATION_SECTION_KEYS = ['questions', 'question-groups', 'exams', 'import', 'gran-crawler', 'filters', 'lei-comentada', 'users'] as const;
 export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as const;
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'automation', 'analytics'] as const;
 export const MARKETING_SECTION_KEYS = ['blog', 'landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
@@ -232,9 +232,9 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   groups: { tab: 'operation', section: 'question-groups' },
   exams: { tab: 'operation', section: 'exams' },
   import: { tab: 'operation', section: 'import' },
-  'gran-crawler': { tab: 'operation', section: 'import' },
-  gran: { tab: 'operation', section: 'import' },
-  crawler: { tab: 'operation', section: 'import' },
+  'gran-crawler': { tab: 'operation', section: 'gran-crawler' },
+  gran: { tab: 'operation', section: 'gran-crawler' },
+  crawler: { tab: 'operation', section: 'gran-crawler' },
   filters: { tab: 'operation', section: 'filters' },
   'lei-comentada': { tab: 'operation', section: 'lei-comentada' },
   'legal-commentary': { tab: 'operation', section: 'lei-comentada' },
@@ -312,6 +312,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'question-groups', label: 'Contextos de questões' },
     { key: 'exams', label: 'Banco de provas' },
     { key: 'import', label: 'Importador' },
+    { key: 'gran-crawler', label: 'Crawler Gran' },
     { key: 'filters', label: 'Filtros' },
     { key: 'lei-comentada', label: 'Lei Comentada' },
     { key: 'users', label: 'Usuários' },

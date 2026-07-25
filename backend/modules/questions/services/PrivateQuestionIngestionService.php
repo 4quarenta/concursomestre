@@ -163,6 +163,166 @@ final class PrivateQuestionIngestionService
         }
     }
 
+    /**
+     * Enfileira um lote enviado por uma sessao administrativa ja autenticada.
+     *
+     * Diferente do cliente local HMAC, o ator vem exclusivamente da sessao
+     * validada pelo endpoint /api/admin. Nenhuma credencial do provedor externo
+     * faz parte do payload persistido.
+     */
+    public function enqueueFromAdminSession(
+        array $payload,
+        string $actorUserId,
+        string $idempotencyKey = ''
+    ): array {
+        $this->assertSchemaReady();
+        $actorUserId = trim($actorUserId);
+        if ($actorUserId === '' || strlen($actorUserId) > 80) {
+            throw new DomainException('Sessao administrativa invalida para a ingestao.');
+        }
+        if (($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
+            throw new InvalidArgumentException('A ingestao exige o contrato question-import.v2.');
+        }
+        $questions = $payload['questions'] ?? [];
+        if (!is_array($questions) || count($questions) === 0) {
+            throw new InvalidArgumentException('Selecione ao menos uma questao para importar.');
+        }
+        if (count($questions) > $this->maxQuestionsPerJob()) {
+            throw new InvalidArgumentException(sprintf(
+                'O lote possui %d questoes. Divida-o em lotes de no maximo %d.',
+                count($questions),
+                $this->maxQuestionsPerJob()
+            ));
+        }
+
+        $rawBody = json_encode(
+            $payload,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+        );
+        if (strlen($rawBody) > $this->maxBodyBytes()) {
+            throw new InvalidArgumentException('O lote excede o limite seguro de ingestao.');
+        }
+
+        $payloadHash = hash('sha256', $rawBody);
+        $idempotencyKey = trim($idempotencyKey);
+        if ($idempotencyKey === '') {
+            $idempotencyKey = 'admin-' . $payloadHash;
+        }
+        if (strlen($idempotencyKey) > 120 || preg_match('/^[A-Za-z0-9_.:-]+$/', $idempotencyKey) !== 1) {
+            throw new InvalidArgumentException('Chave de idempotencia invalida.');
+        }
+        $clientKey = 'admin-browser:' . $actorUserId;
+
+        $this->db->beginTransaction();
+        try {
+            $existing = $this->db->prepare(
+                'SELECT id, payload_hash, status, job_id
+                 FROM private_ingestion_requests
+                 WHERE client_key = :client_key AND idempotency_key = :idempotency_key
+                 LIMIT 1 FOR UPDATE'
+            );
+            $existing->execute([
+                ':client_key' => $clientKey,
+                ':idempotency_key' => $idempotencyKey,
+            ]);
+            $request = $existing->fetch(PDO::FETCH_ASSOC);
+            if (is_array($request)) {
+                if (!hash_equals((string) $request['payload_hash'], $payloadHash)) {
+                    throw new DomainException('A chave de idempotencia ja foi usada para outro lote.');
+                }
+                $this->db->commit();
+                return [
+                    'requestId' => (int) $request['id'],
+                    'jobId' => isset($request['job_id']) ? (int) $request['job_id'] : null,
+                    'status' => (string) $request['status'],
+                    'idempotentReplay' => true,
+                ];
+            }
+
+            $insertRequest = $this->db->prepare(
+                'INSERT INTO private_ingestion_requests (client_key, idempotency_key, payload_hash, status)
+                 VALUES (:client_key, :idempotency_key, :payload_hash, :status)'
+            );
+            $insertRequest->execute([
+                ':client_key' => $clientKey,
+                ':idempotency_key' => $idempotencyKey,
+                ':payload_hash' => $payloadHash,
+                ':status' => 'pending',
+            ]);
+            $requestId = (int) $this->db->lastInsertId();
+
+            $insertJob = $this->db->prepare(
+                'INSERT INTO private_ingestion_jobs (request_id, actor_user_id, payload_json, status, available_at)
+                 VALUES (:request_id, :actor_user_id, :payload_json, :status, UTC_TIMESTAMP())'
+            );
+            $insertJob->execute([
+                ':request_id' => $requestId,
+                ':actor_user_id' => $actorUserId,
+                ':payload_json' => $rawBody,
+                ':status' => 'pending',
+            ]);
+            $jobId = (int) $this->db->lastInsertId();
+            $this->db->prepare(
+                'UPDATE private_ingestion_requests SET job_id = :job_id WHERE id = :id'
+            )->execute([':job_id' => $jobId, ':id' => $requestId]);
+            $this->db->commit();
+
+            return [
+                'requestId' => $requestId,
+                'jobId' => $jobId,
+                'status' => 'pending',
+                'idempotentReplay' => false,
+            ];
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    public function listRecentJobs(string $actorUserId, bool $canViewAll = false, int $limit = 20): array
+    {
+        $this->assertSchemaReady();
+        $limit = max(1, min(50, $limit));
+        $params = [];
+        $where = '';
+        if (!$canViewAll) {
+            $where = 'WHERE jobs.actor_user_id = :actor_user_id';
+            $params[':actor_user_id'] = trim($actorUserId);
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT jobs.id, jobs.request_id, jobs.actor_user_id, jobs.status, jobs.attempts,
+                    jobs.error_message, jobs.created_at, jobs.available_at, jobs.locked_at,
+                    jobs.completed_at, jobs.dead_lettered_at, requests.response_json
+             FROM private_ingestion_jobs jobs
+             INNER JOIN private_ingestion_requests requests ON requests.id = jobs.request_id
+             {$where}
+             ORDER BY jobs.id DESC
+             LIMIT {$limit}"
+        );
+        $stmt->execute($params);
+
+        return array_map(static function (array $row): array {
+            $response = json_decode((string) ($row['response_json'] ?? ''), true);
+            return [
+                'jobId' => (int) $row['id'],
+                'requestId' => (int) $row['request_id'],
+                'actorUserId' => (string) ($row['actor_user_id'] ?? ''),
+                'status' => (string) $row['status'],
+                'attempts' => (int) ($row['attempts'] ?? 0),
+                'error' => trim((string) ($row['error_message'] ?? '')) ?: null,
+                'createdAt' => $row['created_at'] ?? null,
+                'availableAt' => $row['available_at'] ?? null,
+                'lockedAt' => $row['locked_at'] ?? null,
+                'completedAt' => $row['completed_at'] ?? null,
+                'deadLetteredAt' => $row['dead_lettered_at'] ?? null,
+                'result' => is_array($response) ? $response : null,
+            ];
+        }, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+    }
+
     public function reserveNextJob(?string $workerId = null): ?array
     {
         $this->assertSchemaReady();

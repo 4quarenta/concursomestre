@@ -14,7 +14,7 @@ foreach (['requirePlatformAdminSessionContext', 'logAdminAudit', 'handleAdminBra
     }
 }
 
-foreach (['UploadSecurity::validate', 'image/png', 'image/jpeg', 'image/webp', 'random_bytes', '4096'] as $needle) {
+foreach (['UploadSecurity::validate', 'ObjectStorage', 'storeUploadedFile', 'image/png', 'image/jpeg', 'image/webp', 'random_bytes', '4096'] as $needle) {
     if (!str_contains($service, $needle)) {
         throw new RuntimeException("Admin asset upload must enforce {$needle}.");
     }
