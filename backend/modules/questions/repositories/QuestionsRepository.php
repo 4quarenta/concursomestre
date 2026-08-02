@@ -1355,6 +1355,32 @@ class QuestionsRepository
     {
         $this->ensureQuestionGroupInfrastructure();
 
+        $sourceProvider = trim((string) ($payload['source_provider'] ?? $payload['sourceProvider'] ?? ''));
+        $sourceExternalId = trim((string) ($payload['source_external_id'] ?? $payload['sourceExternalId'] ?? ''));
+        $reusedExternalSource = false;
+        if (empty($payload['id']) && $sourceProvider !== '' && $sourceExternalId !== '') {
+            $find = $this->db->prepare(
+                'SELECT id FROM questions_groups
+                 WHERE source_provider = :source_provider AND source_external_id = :source_external_id
+                 LIMIT 1'
+            );
+            $find->execute([
+                ':source_provider' => $sourceProvider,
+                ':source_external_id' => $sourceExternalId,
+            ]);
+            $existingId = $find->fetchColumn();
+            if ($existingId !== false) {
+                $payload['id'] = (int) $existingId;
+                $reusedExternalSource = true;
+            }
+        }
+
+        // A repeat Gran collection reuses the reviewed context without
+        // replacing local text, assets, or authorship.
+        if ($reusedExternalSource) {
+            return (int) $payload['id'];
+        }
+
         if (!empty($payload['id'])) {
             $stmt = $this->db->prepare(
                 "UPDATE questions_groups
@@ -1363,6 +1389,8 @@ class QuestionsRepository
                      texto = :texto,
                      image_url = :image_url,
                      assets_json = :assets_json,
+                     source_provider = :source_provider,
+                     source_external_id = :source_external_id,
                      updated_by_user_id = :updated_by_user_id,
                      updated_at = NOW()
                  WHERE id = :group_id"
@@ -1376,6 +1404,8 @@ class QuestionsRepository
                     texto,
                     image_url,
                     assets_json,
+                    source_provider,
+                    source_external_id,
                     created_by_user_id,
                     updated_by_user_id,
                     created_at,
@@ -1386,6 +1416,8 @@ class QuestionsRepository
                     :texto,
                     :image_url,
                     :assets_json,
+                    :source_provider,
+                    :source_external_id,
                     :created_by_user_id,
                     :updated_by_user_id,
                     NOW(),
@@ -1415,6 +1447,8 @@ class QuestionsRepository
             $firstAssetUrl !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
         );
         $stmt->bindValue(':assets_json', is_string($assetsJson) ? $assetsJson : '[]');
+        $stmt->bindValue(':source_provider', $sourceProvider !== '' ? $sourceProvider : null, $sourceProvider !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':source_external_id', $sourceExternalId !== '' ? $sourceExternalId : null, $sourceExternalId !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
         if (empty($payload['id'])) {
             $stmt->bindValue(
                 ':created_by_user_id',
@@ -1645,8 +1679,6 @@ class QuestionsRepository
             return [];
         }
 
-        $this->ensureImportedExamInfrastructure();
-
         [$placeholders, $bindings] = $this->buildInClause('prova_question_id', $questionIds);
         $stmt = $this->db->prepare(
             "SELECT qp.question_id,
@@ -1738,6 +1770,9 @@ class QuestionsRepository
         foreach ($bindings as $placeholder => $value) {
             $stmt->bindValue($placeholder, $value);
         }
+        foreach ($archiveBindings as $placeholder => $value) {
+            $stmt->bindValue($placeholder, $value);
+        }
 
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -1767,21 +1802,25 @@ class QuestionsRepository
      */
     public function listFilteredQuestionRows(int $limit, int $offset, string $keyword = ''): array
     {
-        $this->ensurePublicationColumns();
-
-        $sql = "SELECT q.*,
+        $sql = "SELECT q.id,
+                       q.enunciado,
+                       q.enunciado_clean,
+                       q.tipo,
+                       q.dificuldade,
+                       q.anulada,
+                       q.desatualizada,
+                       q.publish_status,
+                       q.visibility_status,
+                       q.scheduled_at,
+                       q.published_at,
+                       q.prova_id,
+                       q.source_provider,
+                       q.source_external_id,
+                       q.source_question_number,
+                       q.created_at,
                        qs.total_attempts,
                        qs.correct_count,
-                       qs.wrong_count,
-                       (
-                         SELECT GROUP_CONCAT(
-                             CONCAT(f.type, '::', f.name, '::', f.slug, '::', IFNULL(f.meta_materia, 0))
-                             SEPARATOR '|||'
-                         )
-                         FROM question_filters qf
-                         INNER JOIN filters f ON f.id = qf.filter_id
-                         WHERE qf.question_id = q.id
-                       ) AS filters_string
+                       qs.wrong_count
                 FROM questions q
                 LEFT JOIN question_stats qs ON qs.question_id = q.id";
 
@@ -1954,9 +1993,6 @@ class QuestionsRepository
         foreach ($bindings as $placeholder => $value) {
             $stmt->bindValue($placeholder, $value);
         }
-        foreach ($archiveBindings as $placeholder => $value) {
-            $stmt->bindValue($placeholder, $value);
-        }
         $stmt->execute();
 
         $result = [];
@@ -1971,7 +2007,13 @@ class QuestionsRepository
      *
      * @since 1.0.0
      */
-    public function findQuestionByImportIdentity(?string $fingerprint, ?string $examKey, ?string $questionNumber): ?array
+    public function findQuestionByImportIdentity(
+        ?string $fingerprint,
+        ?string $examKey,
+        ?string $questionNumber,
+        ?string $sourceProvider = null,
+        ?string $sourceExternalId = null
+    ): ?array
     {
         $this->ensurePublicationColumns();
 
@@ -1982,6 +2024,14 @@ class QuestionsRepository
         if ($fingerprint !== '') {
             $clauses[] = 'import_fingerprint = :import_fingerprint';
             $params[':import_fingerprint'] = $fingerprint;
+        }
+
+        $sourceProvider = trim((string) $sourceProvider);
+        $sourceExternalId = trim((string) $sourceExternalId);
+        if ($sourceProvider !== '' && $sourceExternalId !== '') {
+            $clauses[] = '(source_provider = :source_provider AND source_external_id = :source_external_id)';
+            $params[':source_provider'] = $sourceProvider;
+            $params[':source_external_id'] = $sourceExternalId;
         }
 
         $examKey = trim((string) $examKey);
@@ -2032,6 +2082,8 @@ class QuestionsRepository
                 import_fingerprint,
                 source_exam_key,
                 source_question_number,
+                source_provider,
+                source_external_id,
                 resposta_correta_item_index,
                 prova_id,
                 grupo_questao_id,
@@ -2056,6 +2108,8 @@ class QuestionsRepository
                 :import_fingerprint,
                 :source_exam_key,
                 :source_question_number,
+                :source_provider,
+                :source_external_id,
                 :resposta_correta_item_index,
                 :prova_id,
                 :grupo_questao_id,
@@ -2100,6 +2154,8 @@ class QuestionsRepository
                  import_fingerprint = :import_fingerprint,
                  source_exam_key = :source_exam_key,
                  source_question_number = :source_question_number,
+                 source_provider = :source_provider,
+                 source_external_id = :source_external_id,
                  resposta_correta_item_index = :resposta_correta_item_index,
                  prova_id = :prova_id,
                  grupo_questao_id = :grupo_questao_id,
@@ -2283,6 +2339,61 @@ class QuestionsRepository
     }
 
     /**
+     * Resolve a taxonomia local pela identidade imutavel do provedor externo.
+     * IDs de terceiros jamais podem ser interpretados como IDs desta tabela.
+     */
+    public function findFilterIdBySourceIdentity(
+        string $type,
+        string $provider,
+        string $entityType,
+        string $externalId
+    ): ?int {
+        try {
+            $identity = $this->db->prepare(
+                "SELECT filter_id
+                 FROM filter_source_identities
+                 WHERE filter_type = :filter_type
+                   AND source_provider = :source_provider
+                   AND source_entity_type = :source_entity_type
+                   AND source_external_id = :source_external_id
+                 LIMIT 1"
+            );
+            $identity->execute([
+                ':filter_type' => $type,
+                ':source_provider' => $provider,
+                ':source_entity_type' => $entityType,
+                ':source_external_id' => $externalId,
+            ]);
+            $identityValue = $identity->fetchColumn();
+            if ($identityValue !== false) {
+                return (int) $identityValue;
+            }
+        } catch (Throwable) {
+            // Compatibilidade com uma instalação ainda sem a migration de
+            // identidades auxiliares. A identidade primária continua válida.
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT id
+             FROM filters
+             WHERE type = :type
+               AND source_provider = :source_provider
+               AND source_entity_type = :source_entity_type
+               AND source_external_id = :source_external_id
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':type' => $type,
+            ':source_provider' => $provider,
+            ':source_entity_type' => $entityType,
+            ':source_external_id' => $externalId,
+        ]);
+
+        $value = $stmt->fetchColumn();
+        return $value !== false ? (int) $value : null;
+    }
+
+    /**
      * Cria um filtro novo quando a taxonomia ainda no existe.
       * @since 1.0.0
      */
@@ -2321,13 +2432,22 @@ class QuestionsRepository
         $stmt = $this->db->prepare(
             "SELECT id
              FROM provas
-             WHERE id = :id
+             WHERE (source_provider = :source_provider AND source_external_id = :source_external_id)
+                OR id = :id
                 OR (slug = :slug AND ano = :ano)
                 OR (nome = :nome AND ano = :ano_name)
-             ORDER BY CASE WHEN id = :preferred_id THEN 0 ELSE 1 END, id DESC
+             ORDER BY CASE
+                WHEN source_provider = :source_provider_order AND source_external_id = :source_external_id_order THEN 0
+                WHEN id = :preferred_id THEN 1
+                ELSE 2
+             END, id DESC
              LIMIT 1"
         );
         $stmt->execute([
+            ':source_provider' => $record['source_provider'] ?? null,
+            ':source_external_id' => $record['source_external_id'] ?? null,
+            ':source_provider_order' => $record['source_provider'] ?? null,
+            ':source_external_id_order' => $record['source_external_id'] ?? null,
             ':id' => (int) ($record['id'] ?? 0),
             ':preferred_id' => (int) ($record['id'] ?? 0),
             ':slug' => $record['slug'],
@@ -2380,16 +2500,49 @@ class QuestionsRepository
     {
         $this->ensureExamInfrastructure();
 
+        $sourceProvider = trim((string) ($record['source_provider'] ?? ''));
+        $sourceExternalId = trim((string) ($record['source_external_id'] ?? ''));
+        if ($sourceProvider !== '' && $sourceExternalId !== '') {
+            $externalSource = $this->db->prepare(
+                'SELECT id FROM provas
+                 WHERE source_provider = :source_provider AND source_external_id = :source_external_id
+                 LIMIT 1'
+            );
+            $externalSource->execute([
+                ':source_provider' => $sourceProvider,
+                ':source_external_id' => $sourceExternalId,
+            ]);
+            $externalSourceId = $externalSource->fetchColumn();
+            if ($externalSourceId !== false) {
+                // A manually reviewed exam remains authoritative after the
+                // first collection; a matching external source only reuses it.
+                // The publication transition is intentionally independent of
+                // metadata, so a previously saved draft can be promoted
+                // without overwriting editorial changes.
+                $this->updateImportedExamPublication((int) $externalSourceId, $record);
+                return (int) $externalSourceId;
+            }
+        }
+
         $stmt = $this->db->prepare(
             "SELECT id
              FROM provas
-             WHERE id = :id
+             WHERE (source_provider = :source_provider AND source_external_id = :source_external_id)
+                OR id = :id
                 OR (slug = :slug AND ano = :ano)
                 OR (nome = :nome AND ano = :ano_name)
-             ORDER BY CASE WHEN id = :preferred_id THEN 0 ELSE 1 END, id DESC
+             ORDER BY CASE
+                WHEN source_provider = :source_provider_order AND source_external_id = :source_external_id_order THEN 0
+                WHEN id = :preferred_id THEN 1
+                ELSE 2
+             END, id DESC
              LIMIT 1"
         );
         $stmt->execute([
+            ':source_provider' => $record['source_provider'] ?? null,
+            ':source_external_id' => $record['source_external_id'] ?? null,
+            ':source_provider_order' => $record['source_provider'] ?? null,
+            ':source_external_id_order' => $record['source_external_id'] ?? null,
             ':id' => (int) ($record['id'] ?? 0),
             ':preferred_id' => (int) ($record['id'] ?? 0),
             ':slug' => $record['slug'],
@@ -2399,6 +2552,37 @@ class QuestionsRepository
         ]);
 
         $existingId = $stmt->fetchColumn();
+        if ($existingId !== false) {
+            if ($sourceProvider !== '' && $sourceExternalId !== '') {
+                $existingSource = $this->db->prepare(
+                    'SELECT source_provider, source_external_id FROM provas WHERE id = :id LIMIT 1'
+                );
+                $existingSource->execute([':id' => (int) $existingId]);
+                $existingIdentity = $existingSource->fetch(PDO::FETCH_ASSOC) ?: [];
+                $existingProvider = trim((string) ($existingIdentity['source_provider'] ?? ''));
+                $existingExternalId = trim((string) ($existingIdentity['source_external_id'] ?? ''));
+
+                if ($existingProvider === '' && $existingExternalId === '') {
+                    $attachSource = $this->db->prepare(
+                        'UPDATE provas
+                         SET source_provider = :source_provider, source_external_id = :source_external_id
+                         WHERE id = :id
+                           AND (source_provider IS NULL OR source_provider = \'\')
+                           AND (source_external_id IS NULL OR source_external_id = \'\')'
+                    );
+                    $attachSource->execute([
+                        ':source_provider' => $sourceProvider,
+                        ':source_external_id' => $sourceExternalId,
+                        ':id' => (int) $existingId,
+                    ]);
+                    return (int) $existingId;
+                }
+
+                // A matching title is not enough when it is already owned by
+                // another external provider identity. Keep both exam records.
+                $existingId = false;
+            }
+        }
         if ($existingId !== false) {
             $updateStmt = $this->db->prepare(
                 "UPDATE provas
@@ -2413,6 +2597,11 @@ class QuestionsRepository
                      carreira_id = :carreira_id,
                      pdf_url = COALESCE(:pdf_url, pdf_url),
                      metadata_json = :metadata_json,
+                     source_provider = :source_provider,
+                     source_external_id = :source_external_id,
+                     status_editorial = :status_editorial,
+                     visibility_status = :visibility_status,
+                     scheduled_at = :scheduled_at,
                      updated_by_user_id = :updated_by_user_id,
                      published_by_user_id = COALESCE(:published_by_user_id, published_by_user_id),
                      updated_at = NOW()
@@ -2439,6 +2628,11 @@ class QuestionsRepository
                 carreira_id,
                 pdf_url,
                 metadata_json,
+                source_provider,
+                source_external_id,
+                status_editorial,
+                visibility_status,
+                scheduled_at,
                 created_by_user_id,
                 updated_by_user_id,
                 published_by_user_id,
@@ -2456,6 +2650,11 @@ class QuestionsRepository
                 :carreira_id,
                 :pdf_url,
                 :metadata_json,
+                :source_provider,
+                :source_external_id,
+                :status_editorial,
+                :visibility_status,
+                :scheduled_at,
                 :created_by_user_id,
                 :updated_by_user_id,
                 :published_by_user_id,
@@ -2594,6 +2793,27 @@ class QuestionsRepository
             ($record['pdf_url'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
         );
         $stmt->bindValue(':metadata_json', $record['metadata_json'] ?? '{}');
+        $stmt->bindValue(
+            ':source_provider',
+            ($record['source_provider'] ?? '') !== '' ? $record['source_provider'] : null,
+            ($record['source_provider'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+        );
+        $stmt->bindValue(
+            ':source_external_id',
+            ($record['source_external_id'] ?? '') !== '' ? $record['source_external_id'] : null,
+            ($record['source_external_id'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+        );
+        $stmt->bindValue(':status_editorial', (string) ($record['status_editorial'] ?? 'published'));
+        $stmt->bindValue(':visibility_status', (string) ($record['visibility_status'] ?? 'public'));
+        $stmt->bindValue(
+            ':scheduled_at',
+            ($record['scheduled_at'] ?? null) !== null && (string) ($record['scheduled_at'] ?? '') !== ''
+                ? (string) $record['scheduled_at']
+                : null,
+            ($record['scheduled_at'] ?? null) !== null && (string) ($record['scheduled_at'] ?? '') !== ''
+                ? PDO::PARAM_STR
+                : PDO::PARAM_NULL
+        );
         if (str_starts_with(ltrim($stmt->queryString), 'INSERT')) {
             $stmt->bindValue(
                 ':created_by_user_id',
@@ -2611,6 +2831,43 @@ class QuestionsRepository
             ($record['published_by_user_id'] ?? '') !== '' ? $record['published_by_user_id'] : null,
             ($record['published_by_user_id'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
         );
+    }
+
+    private function updateImportedExamPublication(int $examId, array $record): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE provas
+             SET status_editorial = :status_editorial,
+                 visibility_status = :visibility_status,
+                 scheduled_at = :scheduled_at,
+                 updated_by_user_id = :updated_by_user_id,
+                 published_by_user_id = COALESCE(:published_by_user_id, published_by_user_id),
+                 updated_at = NOW()
+             WHERE id = :id'
+        );
+        $stmt->bindValue(':status_editorial', (string) ($record['status_editorial'] ?? 'published'));
+        $stmt->bindValue(':visibility_status', (string) ($record['visibility_status'] ?? 'public'));
+        $stmt->bindValue(
+            ':scheduled_at',
+            ($record['scheduled_at'] ?? null) !== null && (string) ($record['scheduled_at'] ?? '') !== ''
+                ? (string) $record['scheduled_at']
+                : null,
+            ($record['scheduled_at'] ?? null) !== null && (string) ($record['scheduled_at'] ?? '') !== ''
+                ? PDO::PARAM_STR
+                : PDO::PARAM_NULL
+        );
+        $stmt->bindValue(
+            ':updated_by_user_id',
+            ($record['updated_by_user_id'] ?? '') !== '' ? $record['updated_by_user_id'] : null,
+            ($record['updated_by_user_id'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+        );
+        $stmt->bindValue(
+            ':published_by_user_id',
+            ($record['published_by_user_id'] ?? '') !== '' ? $record['published_by_user_id'] : null,
+            ($record['published_by_user_id'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+        );
+        $stmt->bindValue(':id', $examId, PDO::PARAM_INT);
+        $stmt->execute();
     }
 
     /**
@@ -2812,6 +3069,16 @@ class QuestionsRepository
             ($record['source_question_number'] ?? '') !== '' ? $record['source_question_number'] : null,
             ($record['source_question_number'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
         );
+        $stmt->bindValue(
+            ':source_provider',
+            ($record['source_provider'] ?? '') !== '' ? $record['source_provider'] : null,
+            ($record['source_provider'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+        );
+        $stmt->bindValue(
+            ':source_external_id',
+            ($record['source_external_id'] ?? '') !== '' ? $record['source_external_id'] : null,
+            ($record['source_external_id'] ?? '') !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+        );
         $stmt->bindValue(':resposta_correta_item_index', $record['resposta_correta_item_index'], PDO::PARAM_INT);
         $stmt->bindValue(':prova_id', $record['prova_id']);
         $stmt->bindValue(
@@ -2878,7 +3145,9 @@ class QuestionsRepository
     private function ensureQuestionImportIdentityInfrastructure(): void
     {
         SchemaReadiness::assertTablesAndColumns($this->db, 'identidade de importacao de questoes', [
-            'questions' => ['import_fingerprint', 'source_exam_key', 'source_question_number'],
+            'questions' => [
+                'import_fingerprint', 'source_exam_key', 'source_question_number', 'source_provider', 'source_external_id',
+            ],
         ]);
     }
 
@@ -2890,7 +3159,9 @@ class QuestionsRepository
     private function ensureQuestionGroupInfrastructure(): void
     {
         SchemaReadiness::assertTablesAndColumns($this->db, 'grupos legados de questoes', [
-            'questions_groups' => ['id', 'texto', 'assets_json', 'created_by_user_id', 'updated_by_user_id'],
+            'questions_groups' => [
+                'id', 'texto', 'assets_json', 'source_provider', 'source_external_id', 'created_by_user_id', 'updated_by_user_id',
+            ],
             'questions' => ['grupo_questao_id'],
         ]);
     }
@@ -2921,7 +3192,8 @@ class QuestionsRepository
         SchemaReadiness::assertTablesAndColumns($this->db, 'provas importadas', [
             'provas' => [
                 'id', 'nome', 'slug', 'ano', 'banca_id', 'orgao_id', 'cargo_id', 'nivel_id', 'tipo_prova_id',
-                'carreira_id', 'pdf_url', 'metadata_json', 'created_by_user_id', 'updated_by_user_id', 'published_by_user_id',
+                'carreira_id', 'pdf_url', 'metadata_json', 'source_provider', 'source_external_id',
+                'created_by_user_id', 'updated_by_user_id', 'published_by_user_id',
             ],
         ]);
     }

@@ -598,6 +598,8 @@ const buildGeneratedQuestionPayload = ({
 interface AdminQuestionsSectionProps {
   questions: Question[];
   pagination: QuestionsPagination;
+  isLoading?: boolean;
+  errorMessage?: string;
   filter: string;
   onFilterChange: (value: string) => void;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
@@ -620,6 +622,8 @@ interface AdminQuestionsSectionProps {
 const AdminQuestionsSection = ({
   questions,
   pagination,
+  isLoading = false,
+  errorMessage = '',
   filter,
   onFilterChange,
   renderSortableHeader,
@@ -1285,6 +1289,27 @@ const AdminQuestionsSection = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+            {isLoading && questions.length === 0 && (
+              <tr>
+                <td colSpan={10} className="p-10 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
+                  Carregando questões...
+                </td>
+              </tr>
+            )}
+            {!isLoading && errorMessage !== '' && (
+              <tr>
+                <td colSpan={10} className="p-10 text-center text-sm font-medium text-red-600 dark:text-red-400">
+                  {errorMessage}
+                </td>
+              </tr>
+            )}
+            {!isLoading && errorMessage === '' && questions.length === 0 && (
+              <tr>
+                <td colSpan={10} className="p-10 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
+                  Nenhuma questão encontrada.
+                </td>
+              </tr>
+            )}
             {questions.map((question) => {
               const questionRecord = toQuestionRecord(question);
               const questionId = getQuestionId(question);

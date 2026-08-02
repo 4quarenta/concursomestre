@@ -17,18 +17,12 @@ $endpoint = (string) file_get_contents($backend . '/api/admin/gran_crawler.php')
 $queue = (string) file_get_contents($backend . '/modules/questions/services/PrivateQuestionIngestionService.php');
 $questionsService = (string) file_get_contents($backend . '/modules/questions/services/QuestionsService.php');
 $worker = (string) file_get_contents($backend . '/scripts/workers/process_question_ingestion_jobs.php');
-$component = (string) file_get_contents(
-    $root . '/src/app/admin/components/import/AdminGranCrawlerSection.tsx'
-);
-$reviewBatch = (string) file_get_contents(
-    $root . '/src/app/admin/components/import/AdminGranCrawlerReviewBatch.tsx'
-);
-$sections = (string) file_get_contents(
-    $root . '/src/app/admin/components/database/AdminDatabaseSections.tsx'
-);
-$bridge = (string) file_get_contents(
-    $root . '/src/app/admin/components/import/granExtensionBridge.ts'
-);
+$component = (string) file_get_contents($root . '/src/app/admin/components/import/AdminGranCrawlerSection.tsx');
+$reviewBatch = (string) file_get_contents($root . '/src/app/admin/components/import/AdminGranCrawlerReviewBatch.tsx');
+$sections = (string) file_get_contents($root . '/src/app/admin/components/database/AdminDatabaseSections.tsx');
+$bridge = (string) file_get_contents($root . '/src/app/admin/components/import/granExtensionBridge.ts');
+$batchMigration = (string) file_get_contents($backend . '/database/migrations/20260802_010000_gran_crawler_batches.php');
+$batchRollback = (string) file_get_contents($backend . '/database/rollbacks/20260802_010000_gran_crawler_batches.sql');
 $legacyEntry = (string) file_get_contents($backend . '/scripts/importers/questions/gran/index.php');
 
 foreach ([
@@ -36,48 +30,39 @@ foreach ([
     "RateLimiter::enforceProfile('admin_crawler'",
     'AdminGranCrawlerService',
     'Cache-Control: private, no-store',
+    "'runtime_store_unavailable'",
+    'Response::serviceUnavailable(',
 ] as $needle) {
-    adminGranCrawlerWiringAssert(str_contains($route, $needle), 'Rota admin sem protecao: ' . $needle);
+    adminGranCrawlerWiringAssert(str_contains($route, $needle), 'Protected admin route missing: ' . $needle);
 }
 adminGranCrawlerWiringAssert(
     str_contains($endpoint, 'handleAdminGranCrawlerRoute'),
-    'Endpoint administrativo nao delega para a rota protegida.'
+    'Admin endpoint does not delegate to the protected route.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($service, 'CURLOPT_FOLLOWLOCATION => false')
     && str_contains($service, 'CURLOPT_PROTOCOLS => CURLPROTO_HTTPS')
-    && str_contains($service, "'x-client-id: ' . \$clientId")
-    && str_contains($service, 'normalizeAccessToken'),
-    'Cliente Gran deve bloquear redirects e protocolos inseguros.'
-);
-adminGranCrawlerWiringAssert(
-    str_contains($service, "private const API_HOST = 'rota-api.grancursosonline.com.br'")
+    && str_contains($service, "private const API_HOST = 'rota-api.grancursosonline.com.br'")
     && str_contains($service, "private const API_PATH = '/v1/elastic/questao'")
     && str_contains($service, "\$scheme !== 'https'")
     && str_contains($service, "\$host !== self::API_HOST")
     && str_contains($service, "\$path !== self::API_PATH")
     && !str_contains($service, 'HTTP_COOKIE')
     && !str_contains($service, 'INSERT INTO gran'),
-    'URL direta deve permanecer restrita ao host/rota oficial e sem persistir sessao externa.'
+    'Gran client must be restricted to HTTPS and the known official endpoint.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($queue, 'enqueueFromAdminSession')
-    && str_contains($queue, "'admin-browser:' . \$actorUserId"),
-    'Fila deve identificar o ator administrativo sem HMAC exposto ao browser.'
-);
-adminGranCrawlerWiringAssert(
-    str_contains($worker, "\$job['actor_user_id']"),
-    'Worker deve publicar usando o ator gravado pela sessao administrativa.'
-);
-adminGranCrawlerWiringAssert(
-    str_contains($worker, 'GranExamFileMaterializer.php')
+    && str_contains($queue, "'admin-browser:' . \$actorUserId")
+    && str_contains($worker, "\$job['actor_user_id']")
+    && str_contains($worker, 'GranExamFileMaterializer.php')
     && str_contains($worker, '$granExamFileMaterializer->materialize($payload)'),
-    'Worker deve copiar documentos Gran para o storage proprio antes da persistencia.'
+    'Queue and worker must preserve the administrative actor and materialize official files.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($questionsService, "'files' => array_values(array_filter(")
     && str_contains($questionsService, "\$examPayload['files']"),
-    'Metadado canonico da prova deve encaminhar arquivos materializados para prova_arquivos.'
+    'Exam files must flow from canonical metadata to prova_arquivos.'
 );
 adminGranCrawlerWiringAssert(
     !str_contains($component, 'localStorage')
@@ -87,7 +72,7 @@ adminGranCrawlerWiringAssert(
     && str_contains($component, "action: 'map'")
     && str_contains($component, 'granExamFiles: collection.examFiles')
     && str_contains($component, 'collectGranQuestions'),
-    'Frontend deve coletar pela extensao sem receber ou persistir a credencial Gran.'
+    'Frontend must collect through the extension without receiving Gran credentials.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($route, "\$action === 'map'")
@@ -99,41 +84,68 @@ adminGranCrawlerWiringAssert(
     && str_contains($service, "'sourceExamKey' =>")
     && str_contains($service, "'provider' => 'gran'")
     && str_contains($service, 'normalizeGranExamFiles'),
-    'Backend deve mapear apenas o JSON da extensao e aposentar a coleta exposta pelo servidor.'
+    'Backend must map only the extension JSON and retain Gran source identity.'
 );
 adminGranCrawlerWiringAssert(
-    str_contains($component, 'renderReviewQueue(result.payloads)')
-    && str_contains($component, 'Fila de importação')
+    str_contains($component, 'reviewQueues.pendingPayloads.length > 0 && renderReviewQueue')
     && !str_contains($component, 'Revisar no importador')
-    && !str_contains($component, 'Adicionar à fila de revisão')
     && !str_contains($component, 'handleReviewPayload')
-    && str_contains($component, 'question.filters?.careers')
     && !str_contains($component, "action: 'enqueue'")
-    && !str_contains($component, 'examTitle')
-    && !str_contains($component, 'Título da prova'),
-    'A coleta deve separar provas reais, preservar areas e alimentar automaticamente a fila canonica.'
+    && !str_contains($component, 'examTitle'),
+    'Collection must enter the canonical review queue automatically without a global exam title.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($sections, 'AdminGranCrawlerReviewBatch')
-    && str_contains($sections, 'renderReviewQueue={(payloads)')
+    && str_contains($sections, 'renderReviewQueue={(payloads, queueContext)')
     && str_contains($sections, 'payloads.map((payload)')
     && str_contains($reviewBatch, 'useAdminQuestionWorkbench')
     && str_contains($reviewBatch, 'importEnabled: false')
-    && str_contains($reviewBatch, 'importWorkflowProps.onImportFromAiJson(payloadJson)')
+    && str_contains($reviewBatch, 'importWorkflowProps.onImportFromAiJson(payloadJson,')
     && str_contains($reviewBatch, '<AdminImportSection')
-    && str_contains($reviewBatch, 'reviewOnly')
-    && !str_contains($sections, "onSelectSubTab('import')"),
-    'Cada prova Gran deve criar automaticamente um workflow isolado com o mesmo editor completo.'
+    && str_contains($reviewBatch, 'reviewOnly'),
+    'Gran cards must use the same complete import editor in review-only mode.'
 );
 adminGranCrawlerWiringAssert(
-    str_contains($bridge, "window.postMessage")
-    && str_contains($bridge, "event.origin !== window.location.origin")
+    str_contains($route, "\$action === 'enqueue_publication'")
+    && str_contains($service, 'enqueueBatchFromAdminSession')
+    && str_contains($queue, 'MAX_QUESTIONS_PER_BATCH = 5000')
+    && str_contains($queue, 'DEFAULT_MAX_QUESTIONS_PER_JOB = 1000')
+    && str_contains($queue, 'MAX_PAYLOADS_PER_JOB = 50')
+    && str_contains($queue, 'private_ingestion_batches')
+    && str_contains($worker, 'bulkImportQuestionBatches')
+    && str_contains($sections, "action: 'enqueue_publication'")
+    && str_contains($sections, 'Publicar selecionadas'),
+    'Mass publication must use one parent batch and bounded asynchronous child jobs.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($batchMigration, 'gran_taxonomy_sync_manifests')
+    && str_contains($batchMigration, 'private_ingestion_batches')
+    && str_contains($batchMigration, 'fk_private_ingestion_jobs_batch')
+    && str_contains($batchRollback, 'DROP FOREIGN KEY fk_private_ingestion_jobs_batch')
+    && str_contains($batchRollback, 'DROP TABLE IF EXISTS private_ingestion_batches'),
+    'Crawler batch and manifest schema require an additive migration and explicit rollback.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($component, 'fetchGranCrawlerBootstrap')
+    && substr_count($component, 'apiClient.get(ENDPOINT)') === 1
+    && str_contains($component, 'BOOTSTRAP_CACHE_MS = 60_000')
+    && str_contains($component, 'isTaxonomyVerificationFresh')
+    && str_contains($component, 'reviewQueues.publishedPayloads')
+    && str_contains($component, 'Limpar fila'),
+    'Crawler UI must use one cached bootstrap and an accumulated review queue.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($bridge, 'window.postMessage')
+    && str_contains($bridge, 'event.origin !== window.location.origin')
+    && str_contains($bridge, 'detectGranCollector')
+    && str_contains($bridge, 'EXTENSION_MARKER_ATTRIBUTE')
+    && str_contains($component, 'const presencePromise = detectGranCollector()')
     && !str_contains($bridge, 'granAccessToken'),
-    'Ponte da extensao deve validar origem e nunca transportar o bearer.'
+    'Extension bridge must validate origin and never transport the bearer token.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($legacyEntry, 'http_response_code(410)'),
-    'Entrada publica legada deve continuar aposentada.'
+    'Legacy public Gran importer entry must remain retired.'
 );
 
 fwrite(STDOUT, "AdminGranCrawlerWiringTest: PASS\n");

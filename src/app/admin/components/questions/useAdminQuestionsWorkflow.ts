@@ -9,7 +9,7 @@
 *
 */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Question } from '@types';
 import { adminService } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
@@ -145,13 +145,25 @@ export const useAdminQuestionsWorkflow = ({
 }: UseAdminQuestionsWorkflowOptions) => {
   const [adminQuestions, setAdminQuestions] = useState<Question[]>([]);
   const [pagination, setPagination] = useState<QuestionsPagination>(DEFAULT_PAGINATION);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+  const [questionsError, setQuestionsError] = useState('');
+  const requestSequence = useRef(0);
 
   const loadQuestions = useCallback(async (page = 1) => {
+    const requestId = requestSequence.current + 1;
+    requestSequence.current = requestId;
+    setIsLoadingQuestions(true);
+    setQuestionsError('');
+
     try {
       const response = await adminService.getQuestions({
         page,
         keyword,
       });
+
+      if (requestId !== requestSequence.current) {
+        return;
+      }
 
       setAdminQuestions(sortQuestionsByPublicationDesc(response.rows || []));
       setPagination({
@@ -161,8 +173,17 @@ export const useAdminQuestionsWorkflow = ({
         page: response.page,
       });
     } catch (error) {
+      if (requestId !== requestSequence.current) {
+        return;
+      }
       clientLog.warn('Error loading questions:', error);
-      addToast(readApiErrorMessage(error, 'Erro ao carregar questoes administrativas.'), 'error');
+      const message = readApiErrorMessage(error, 'Erro ao carregar questões administrativas.');
+      setQuestionsError(message);
+      addToast(message, 'error');
+    } finally {
+      if (requestId === requestSequence.current) {
+        setIsLoadingQuestions(false);
+      }
     }
   }, [addToast, keyword]);
 
@@ -194,12 +215,17 @@ export const useAdminQuestionsWorkflow = ({
       void loadQuestions(1);
     });
 
-    return () => window.cancelAnimationFrame(frameId);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      requestSequence.current += 1;
+    };
   }, [activeSubTab, loadQuestions]);
 
   return {
     adminQuestions,
     pagination,
+    isLoadingQuestions,
+    questionsError,
     loadQuestions,
     reloadCurrentPage,
     removeQuestionFromPage,

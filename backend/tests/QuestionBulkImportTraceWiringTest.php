@@ -39,7 +39,7 @@ foreach ([
     'finishExamQuestionImportTrace',
     'createSavepoint($savepoint)',
     'rollbackToSavepoint($savepoint)',
-    "'status' => 'created'",
+    "'status' => \$updatingExistingQuestion ? 'updated' : 'created'",
     "'status' => 'duplicate'",
     "'status' => 'failed'",
     'buildSanitizedBulkImportDiagnostic',

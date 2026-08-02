@@ -18,11 +18,13 @@ $popup = (string) file_get_contents($extension . '/popup.js');
 
 granExtensionAssert(is_array($manifest), 'Manifesto da extensao deve ser JSON valido.');
 granExtensionAssert(($manifest['manifest_version'] ?? null) === 3, 'Extensao deve usar Manifest V3.');
-granExtensionAssert(($manifest['version'] ?? null) === '1.0.6', 'Pacote corrigido deve usar a versao 1.0.6.');
+granExtensionAssert(($manifest['version'] ?? null) === '1.0.15', 'Pacote corrigido deve usar a versao 1.0.15.');
 granExtensionAssert(
     ($manifest['host_permissions'] ?? []) === [
         'https://rota-api.grancursosonline.com.br/*',
         'https://questoes.grancursosonline.com.br/*',
+        'https://concursomestre.com/*',
+        'http://localhost:3000/*',
     ],
     'Permissoes remotas devem se limitar aos hosts oficiais da API e da pagina da Gran.'
 );
@@ -55,6 +57,23 @@ foreach ([
     'cadernoDeProva',
     'arquivoGabarito',
     'examFiles: examFiles.files',
+    'TAXONOMY_ENDPOINTS',
+    "['_source[]', 'nome_completo']",
+    "['_source[]', 'sigla']",
+    "['_source[]', 'descricao']",
+    "['_source[]', 'website']",
+    "['_source[]', 'logo_url']",
+    "'/v3/materia/arvore'",
+    'assunto_tree:',
+    'collectTaxonomyPage',
+    'collectTaxonomyBatch',
+    "'COLLECT_TAXONOMY_PAGE'",
+    "'COLLECT_TAXONOMY_BATCH'",
+    "'CHECK_TAXONOMY_UPDATES'",
+    "params.set('perPage', '1')",
+    'ensureCollectorBridgeInOpenTabs',
+    'chrome.runtime.onInstalled.addListener',
+    'chrome.runtime.onStartup.addListener',
 ] as $needle) {
     granExtensionAssert(str_contains($worker, $needle), 'Protecao ausente na extensao: ' . $needle);
 }
@@ -72,10 +91,28 @@ granExtensionAssert(
     'Coleta de documentos deve ser limitada, deduplicada e formada somente por IDs numericos.'
 );
 granExtensionAssert(
+    str_contains($worker, 'collectTaxonomyPage(message.kind, message.page, message.rootExternalIds)')
+    && str_contains($worker, 'collectTaxonomyBatch(message.kind, message.rootExternalIds)')
+    && !str_contains($worker, 'collectTaxonomyPage(message.url'),
+    'Taxonomias devem usar somente a whitelist local da extensao, sem URL livre do painel.'
+);
+granExtensionAssert(
     str_contains($content, 'event.source !== window')
     && str_contains($content, 'event.origin !== window.location.origin')
-    && str_contains($content, 'ALLOWED_TYPES'),
-    'Content script deve validar origem e tipos da ponte.'
+    && str_contains($content, 'ALLOWED_TYPES')
+    && str_contains($content, 'isAllowedCrawlerPage()')
+    && str_contains($content, 'EXTENSION_MARKER_ATTRIBUTE')
+    && str_contains($content, 'EXTENSION_DISCOVER_EVENT')
+    && str_contains($content, 'announceReady')
+    && str_contains($content, 'previousBridge.cleanup()')
+    && str_contains($content, 'event.stopImmediatePropagation()')
+    && in_array('https://concursomestre.com/*', $manifest['content_scripts'][0]['matches'] ?? [], true),
+    'Content script deve acompanhar navegacao SPA, mas aceitar comandos somente na rota do crawler.'
+);
+granExtensionAssert(
+    str_contains($worker, 'sender?.url || sender?.tab?.url')
+    && str_contains($worker, 'url.pathname.startsWith(`${crawlerPath}/`)'),
+    'Service worker deve reconhecer a rota canonica e suas variantes sem abrir acesso a outras paginas.'
 );
 granExtensionAssert(
     !str_contains($popup, 'localStorage') && !str_contains($popup, 'sessionStorage'),

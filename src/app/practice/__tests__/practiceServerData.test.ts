@@ -43,7 +43,7 @@ const payload = {
         engagement: { commentsCount: 2 },
       },
     ],
-    pageInfo: { limit: 10, hasMore: true, nextCursor: 'cursor-2' },
+    pageInfo: { limit: 10, total: 137, hasMore: true, nextCursor: 'cursor-2' },
   },
 };
 
@@ -59,7 +59,8 @@ describe('practice SSR data', () => {
       commentsCount: 2,
     });
     expect(result.questions[0].itens).toHaveLength(2);
-    expect(result.pageInfo).toEqual({ limit: 10, hasMore: true, nextCursor: 'cursor-2' });
+    expect(result.total).toBe(137);
+    expect(result.pageInfo).toEqual({ limit: 10, total: 137, hasMore: true, nextCursor: 'cursor-2' });
   });
 
   it('builds a public practice query and scopes a highlighted question', () => {
@@ -85,7 +86,7 @@ describe('practice SSR data', () => {
     expect(result).toEqual({
       questions: [],
       total: 0,
-      pageInfo: { limit: 10, hasMore: false, nextCursor: null },
+      pageInfo: { limit: 10, total: 0, hasMore: false, nextCursor: null },
     });
   });
 });

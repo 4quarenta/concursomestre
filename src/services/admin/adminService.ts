@@ -1015,22 +1015,30 @@ export const adminService = {
     page?: number;
     keyword?: string;
   }): Promise<AdminQuestionListPayload> {
-    const response = await requestApi<AdminQuestionListPayload>(apiClient.get<ApiResponse<AdminQuestionListPayload>>(ENDPOINTS.questions.filter, {
-      params: {
-        page: String(params.page || 1),
-        keyword: params.keyword || '',
+    const requestParams = {
+      page: String(params.page || 1),
+      keyword: params.keyword || '',
+    };
+
+    return withRequestCoalescing(
+      buildRequestCacheKey('admin:questions', requestParams),
+      async () => {
+        const response = await requestApi<AdminQuestionListPayload>(apiClient.get<ApiResponse<AdminQuestionListPayload>>(
+          ENDPOINTS.questions.filter,
+          { params: requestParams },
+        ));
+        const payload = readApiData(response, {
+          rows: [],
+          total: 0,
+          perPage: 20,
+          pages: 1,
+          page: params.page || 1,
+        });
+
+        return normalizeAdminQuestionListPayload(payload, params.page || 1);
       },
-    }));
-
-    const payload = readApiData(response, {
-      rows: [],
-      total: 0,
-      perPage: 20,
-      pages: 1,
-      page: params.page || 1,
-    });
-
-    return normalizeAdminQuestionListPayload(payload, params.page || 1);
+      0,
+    );
   },
 
   /**

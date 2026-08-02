@@ -69,6 +69,7 @@ vi.mock('@services/api', () => ({
       create: 'questionsCreate',
       examImport: 'questionsExamImport',
       bulkImport: 'questionsBulkImport',
+      multiBatchImport: 'questionsMultiBatchImport',
       update: 'questionsUpdate',
       delete: 'questionsDelete',
       submit: 'questionsAnswer',
@@ -114,7 +115,7 @@ describe('questionService', () => {
             },
           },
         ],
-        pageInfo: { limit: 50, hasMore: true, nextCursor: 'cursor-2' },
+        pageInfo: { limit: 50, total: 137, hasMore: true, nextCursor: 'cursor-2' },
       },
     });
 
@@ -129,8 +130,8 @@ describe('questionService', () => {
       },
     });
     expect(result.rows).toHaveLength(1);
-    expect(result.total).toBe(1);
-    expect(result.pageInfo).toEqual({ limit: 50, hasMore: true, nextCursor: 'cursor-2' });
+    expect(result.total).toBe(137);
+    expect(result.pageInfo).toEqual({ limit: 50, total: 137, hasMore: true, nextCursor: 'cursor-2' });
     expect(result.rows[0].resposta).toBe(-1);
     expect(result.rows[0].isSaved).toBe(true);
     expect(result.rows[0].userAnswer).toEqual({
@@ -193,7 +194,7 @@ describe('questionService', () => {
             userState: { answered: false, isSaved: true },
           },
         ],
-        pageInfo: { limit: 20, hasMore: false, nextCursor: null },
+        pageInfo: { limit: 20, total: 1, hasMore: false, nextCursor: null },
       },
     });
 
@@ -556,6 +557,55 @@ describe('questionService', () => {
     }));
   });
 
+  it('publishes imported questions and their exam even when the review card is a draft', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: { count: 1, created: [] },
+    });
+
+    await questionService.createImportedQuestionBatch({
+      focus: { name: 'Policial', slug: 'policial' },
+      exam: {
+        title: 'IBFC - 2018 - PM-PB - Soldado',
+        publishStatus: 'draft',
+        visibilityStatus: 'internal',
+      },
+      contexts: [],
+      questions: [{
+        tempId: 'q_1',
+        source: { origin: 'exam', examId: null, questionNumber: 1, contextTempId: null, sourcePage: null },
+        content: { statement: 'Assinale a alternativa correta.', statementClean: 'Assinale a alternativa correta.', supportText: '', reference: '' },
+        assets: [],
+        filters: { subjects: [], topics: [], subtopics: [], examBoards: [], organizations: [], roles: [], careers: [], years: [], levels: [], examTypes: [] },
+        type: 'single_choice',
+        difficulty: 'medium',
+        alternatives: [{ tempId: 'alt_a', order: 1, label: 'A', text: 'Alternativa A.', textClean: 'Alternativa A.', assets: [] }],
+        answer: { mode: 'single', raw: 'A', correctAlternativeTempIds: ['alt_a'] },
+        editorial: [],
+        publication: { status: 'draft', visibility: 'private', scheduledAt: null },
+        review: { required: true, status: 'pending', reasons: ['coleta_externa_requer_revisao'] },
+      }],
+    });
+
+    const formData = mockPost.mock.calls[0][1] as FormData;
+    const sentPayload = JSON.parse(String(formData.get('payload')));
+
+    expect(sentPayload.exam).toEqual(expect.objectContaining({
+      publishStatus: 'published',
+      statusEditorial: 'published',
+      visibilityStatus: 'public',
+    }));
+    expect(sentPayload.questions[0].publication).toEqual(expect.objectContaining({
+      status: 'published',
+      visibility: 'public',
+      scheduledAt: null,
+    }));
+    expect(sentPayload.questions[0].review).toEqual(expect.objectContaining({
+      required: true,
+      status: 'pending',
+    }));
+  });
+
   it('normalizes imported question numbers and published exam id aliases from bulk import', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
@@ -606,5 +656,41 @@ describe('questionService', () => {
       sourceQuestionNumber: '64',
       source_question_number: '64',
     }));
+  });
+
+  it('publishes independent exam batches through one administrative request', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Publicacao em lote concluida.',
+      data: {
+        count: 2,
+        skippedDuplicateCount: 1,
+        itemFailures: [],
+        batches: [
+          { clientKey: 'gran:501', count: 1, created: [{ source_question_number: '12' }] },
+          { clientKey: 'gran:601', count: 1, created: [{ source_question_number: '4' }] },
+        ],
+      },
+    });
+
+    const result = await questionService.createImportedQuestionMultiBatch([
+      { clientKey: 'gran:501', payload: { exam: { externalId: '501' }, focus: { name: 'Policial' }, contexts: [], questions: [] } },
+      { clientKey: 'gran:601', payload: { exam: { externalId: '601' }, focus: { name: 'Bombeiro' }, contexts: [], questions: [] } },
+    ]);
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost).toHaveBeenCalledWith(
+      'questionsMultiBatchImport',
+      expect.objectContaining({ schemaVersion: 'question-import.v2', batches: expect.any(Array) }),
+      { timeout: 300000 },
+    );
+    const sentPayload = mockPost.mock.calls[0][1] as { batches: Array<{ payload: { exam: Record<string, unknown> } }> };
+    expect(sentPayload.batches[0].payload.exam).toEqual(expect.objectContaining({
+      publishStatus: 'published',
+      statusEditorial: 'published',
+      visibilityStatus: 'public',
+    }));
+    expect(result).toEqual(expect.objectContaining({ success: true, count: 2, skippedDuplicateCount: 1 }));
+    expect(result.batches).toHaveLength(2);
   });
 });

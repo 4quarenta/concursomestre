@@ -166,6 +166,21 @@ granCrawlerAssert(
     'Cada lote deve preservar a prova real informada pela Gran.'
 );
 granCrawlerAssert(
+    ($payloads[0]['exam']['provider'] ?? null) === 'gran'
+    && (string) ($payloads[0]['exam']['externalId'] ?? '') === '501',
+    'A prova deve preservar provider e externalId da Gran para idempotencia.'
+);
+granCrawlerAssert(
+    ($payloads[0]['questions'][0]['source']['provider'] ?? null) === 'gran'
+    && (string) ($payloads[0]['questions'][0]['source']['externalId'] ?? '') === '991',
+    'A questao deve preservar provider e externalId da Gran para idempotencia.'
+);
+granCrawlerAssert(
+    ($payloads[0]['contexts'][0]['source']['provider'] ?? null) === 'gran'
+    && (string) ($payloads[0]['contexts'][0]['source']['externalId'] ?? '') === '77',
+    'O contexto deve preservar provider e externalId da Gran para idempotencia.'
+);
+granCrawlerAssert(
     ($payloads[0]['questions'][0]['filters']['examBoards'][0]['label'] ?? null) === 'IBFC'
     && ($payloads[0]['questions'][0]['filters']['organizations'][0]['label'] ?? null) === 'PM-PB'
     && ($payloads[0]['questions'][0]['filters']['roles'][0]['label'] ?? null) === 'Soldado'
@@ -180,6 +195,11 @@ granCrawlerAssert(
     array_key_exists('id', $payloads[0]['questions'][0]['filters']['careers'][0] ?? [])
     && $payloads[0]['questions'][0]['filters']['careers'][0]['id'] === null,
     'Taxonomias externas devem declarar id nulo ate serem conciliadas com a taxonomia interna.'
+);
+granCrawlerAssert(
+    ($payloads[0]['questions'][0]['filters']['careers'][0]['sourceEntityType'] ?? null) === 'area'
+    && ($payloads[0]['questions'][0]['filters']['careers'][0]['externalId'] ?? null) === 31,
+    'A area da Gran deve ser preservada como foco, com identidade externa propria.'
 );
 granCrawlerAssert(
     str_contains($payloads[0]['questions'][0]['content']['statement'], '[image:')
@@ -289,6 +309,7 @@ granCrawlerAssert(
     && ($hierarchyFilters['subtopics'][0]['externalId'] ?? null) === 405118
     && ($hierarchyFilters['subtopics'][0]['externalParentId'] ?? null) === 420298
     && ($hierarchyFilters['subtopics'][0]['externalRootId'] ?? null) === 405030
+    && ($hierarchyFilters['subtopics'][0]['sourceEntityType'] ?? null) === 'assunto'
     && ($hierarchyFilters['subtopics'][0]['rootSubjectName'] ?? null) === 'Informatica'
     && !isset($hierarchyFilters['subtopics'][0]['pai']),
     'IDs do Gran devem ser metadados externos e nunca IDs de taxonomia local.'

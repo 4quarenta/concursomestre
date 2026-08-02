@@ -183,6 +183,12 @@ class QuestionsController
         return $this->service->bulkImportQuestions($authenticatedUserId, $isAdmin, $payload, $proofPdfFile);
     }
 
+    /** Importa varios lotes de provas em uma unica requisicao administrativa. */
+    public function bulkImportQuestionBatches(string $authenticatedUserId, bool $isAdmin, array $payload): array
+    {
+        return $this->service->bulkImportQuestionBatches($authenticatedUserId, $isAdmin, $payload);
+    }
+
     /**
      * Cria ou atualiza apenas o registro da prova importada.
      *

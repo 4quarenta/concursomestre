@@ -223,6 +223,7 @@ class QuestionsService
                 'items' => [],
                 'pageInfo' => [
                     'limit' => 0,
+                    'total' => 0,
                     'hasMore' => false,
                     'nextCursor' => null,
                 ],
@@ -232,6 +233,9 @@ class QuestionsService
         $data = $this->validator->validateListQueryV2($query);
         $scope = $this->questionListCursorScope($data['filters'], $authenticatedUserId);
         $cursorPayload = SignedKeysetCursor::decodePayload($data['cursor'], $scope);
+        $total = is_array($cursorPayload) && is_numeric($cursorPayload['total'] ?? null)
+            ? max(0, (int) $cursorPayload['total'])
+            : $this->publicPageCache->getTotal($data['filters']);
 
         $cached = $this->publicPageCache->get($data['limit'], $data['cursor'], $data['filters']);
         if ($cached !== null) {
@@ -251,6 +255,13 @@ class QuestionsService
             }
             $ids = $this->extractQuestionIds($rows);
             $filters = $this->repository->listQuestionFiltersByIds($ids);
+        }
+
+        if ($total === null) {
+            $total = $this->repository->countAllQuestions($data['filters'], $authenticatedUserId);
+            $this->publicPageCache->setTotal($data['filters'], $total);
+        }
+        if ($cached === null) {
             $this->publicPageCache->set($data['limit'], $data['cursor'], $data['filters'], [
                 'rows' => $rows,
                 'filters' => $filters,
@@ -280,6 +291,7 @@ class QuestionsService
             ? SignedKeysetCursor::encodePayload([
                 'publishedAt' => (string) ($lastRow['published_sort_at'] ?? ''),
                 'id' => (string) ($lastRow['id'] ?? ''),
+                'total' => $total,
             ], $scope)
             : null;
 
@@ -335,6 +347,7 @@ class QuestionsService
             'items' => $items,
             'pageInfo' => [
                 'limit' => $data['limit'],
+                'total' => $total,
                 'hasMore' => $hasMore,
                 'nextCursor' => $nextCursor,
             ],
@@ -523,12 +536,107 @@ class QuestionsService
         $total = $this->repository->countFilteredQuestions($data['keyword']);
 
         return [
-            'rows' => $this->normalizeQuestionRows($rows, null, true, true, true, true),
+            'rows' => $this->normalizeAdminQuestionListRows(
+                $rows,
+                $canViewTeacherComments,
+                $canViewDetailedAnalysis
+            ),
             'total' => $total,
             'perPage' => $data['perPage'],
             'pages' => $data['perPage'] > 0 ? (int) ceil($total / $data['perPage']) : 0,
             'page' => $data['page'],
         ];
+    }
+
+    /**
+     * Monta o DTO leve da biblioteca administrativa sem carregar alternativas,
+     * gabarito, assets, contextos ou corpos editoriais de cada questao.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeAdminQuestionListRows(
+        array $rows,
+        bool $canViewTeacherComments,
+        bool $canViewDetailedAnalysis
+    ): array {
+        $ids = $this->extractQuestionIds($rows);
+        $counts = $this->repository->listQuestionCommentCounts($ids);
+        $filters = $this->repository->listQuestionFiltersByIds($ids);
+        $provas = $this->repository->listQuestionProvasByIds($ids);
+        $editorialFlags = $this->canonicalRepository->isAvailable()
+            ? $this->canonicalRepository->listQuestionEditorialFlags($ids)
+            : [];
+
+        $normalized = [];
+        foreach ($rows as $row) {
+            $id = (string) ($row['id'] ?? '');
+            $buckets = $this->partitionFilters($filters[$id] ?? []);
+            $questionProvas = $provas[$id] ?? [];
+            $flags = $editorialFlags[$id] ?? [];
+            $hasTeacherComment = $canViewTeacherComments
+                && !empty($flags['hasTeacherComment']);
+            $hasDetailedAnalysis = $canViewDetailedAnalysis
+                && !empty($flags['hasDetailedAnalysis']);
+            $statement = (string) ($row['enunciado'] ?? '');
+            $statementClean = (string) ($row['enunciado_clean'] ?? strip_tags($statement));
+            $origin = !empty($row['prova_id']) || $questionProvas !== [] ? 'exam' : 'platform';
+            $publicationStatus = (string) ($row['publish_status'] ?? 'published');
+            $visibilityStatus = (string) ($row['visibility_status'] ?? 'public');
+            $difficulty = (int) ($row['dificuldade'] ?? 1);
+
+            $normalized[] = [
+                'id' => is_numeric($row['id'] ?? null) ? (int) $row['id'] : ($row['id'] ?? null),
+                'content' => [
+                    'statement' => $statement,
+                    'statementClean' => $statementClean,
+                ],
+                'source' => [
+                    'origin' => $origin,
+                    'examId' => $row['prova_id'] ?? null,
+                    'questionNumber' => $row['source_question_number'] ?? null,
+                    'provider' => $row['source_provider'] ?? null,
+                    'externalId' => $row['source_external_id'] ?? null,
+                ],
+                'type' => (string) ($row['tipo'] ?? '') === 'certo_errado' ? 'true_false' : 'single_choice',
+                'difficulty' => $this->difficultyLabel($difficulty),
+                'filters' => [
+                    'subjects' => array_values(array_filter($buckets['assuntos'], static fn (array $item): bool => !empty($item['materia']))),
+                    'topics' => array_values(array_filter($buckets['assuntos'], static fn (array $item): bool => empty($item['materia']) && !empty($item['parentId']))),
+                    'subtopics' => array_values(array_filter($buckets['assuntos'], static fn (array $item): bool => empty($item['materia']) && empty($item['parentId']))),
+                    'examBoards' => $buckets['bancas'],
+                    'organizations' => $buckets['orgaos'],
+                    'roles' => $buckets['cargos'],
+                    'careers' => $buckets['carreiras'],
+                    'years' => $buckets['anos'],
+                    'levels' => $buckets['niveis'],
+                    'examTypes' => $buckets['tiposProva'],
+                ],
+                'exams' => $questionProvas,
+                'publication' => [
+                    'status' => $publicationStatus,
+                    'visibility' => $visibilityStatus,
+                    'scheduledAt' => $row['scheduled_at'] ?? null,
+                    'publishedAt' => $row['published_at'] ?? null,
+                ],
+                'editorial' => [
+                    'hasTeacherComment' => $hasTeacherComment,
+                    'hasDetailedAnalysis' => $hasDetailedAnalysis,
+                ],
+                'stats' => [
+                    'totalAttempts' => (int) ($row['total_attempts'] ?? 0),
+                    'correctCount' => (int) ($row['correct_count'] ?? 0),
+                    'wrongCount' => (int) ($row['wrong_count'] ?? 0),
+                ],
+                'commentsCount' => (int) ($counts[$id] ?? 0),
+                'flags' => [
+                    'annulled' => !empty($row['anulada']),
+                    'outdated' => !empty($row['desatualizada']),
+                ],
+                'createdAt' => $row['created_at'] ?? null,
+            ];
+        }
+
+        return $normalized;
     }
 
     public function getQuestionStats(array $query): array
@@ -669,6 +777,7 @@ class QuestionsService
         $duplicateSkipped = [];
         $itemFailures = [];
         $seenImportKeys = [];
+        $createdQuestionProvas = [];
         $importTraceId = $this->repository->beginExamQuestionImportTrace($authenticatedUserId, [
             'examId' => $examPayload['id'] ?? null,
             'requestedQuestionCount' => count($questions),
@@ -734,6 +843,13 @@ class QuestionsService
                     'assets' => $context['assets'] ?? [],
                 ]);
                 $contextData['assets'] = $this->persistQuestionContextAssets($contextData['assets']);
+                $contextSource = is_array($context['source'] ?? null) ? $context['source'] : [];
+                $contextData['source_provider'] = $this->normalizeImportedSourceProvider(
+                    $contextSource['provider'] ?? $context['sourceProvider'] ?? $context['source_provider'] ?? null
+                );
+                $contextData['source_external_id'] = $this->normalizeImportedSourceExternalId(
+                    $contextSource['externalId'] ?? $context['sourceExternalId'] ?? $context['source_external_id'] ?? null
+                );
                 $contextData['created_by_user_id'] = $authenticatedUserId;
                 $contextData['updated_by_user_id'] = $authenticatedUserId;
                 $groupIdByTempId[$tempId] = $this->repository->saveQuestionGroup($contextData);
@@ -821,6 +937,10 @@ class QuestionsService
                 $question['tiposProva'] = $this->mergeTaxonomyList($question['tiposProva'] ?? [], $this->taxonomyPayloadFromFilter('tipo_prova', $examRecord['tipo_prova_id'], $examPayload['examType'] ?? $examPayload['tipoProva'] ?? ''));
                 $question['anos'] = $question['anos'] ?? [(int) $examRecord['ano']];
 
+                // Esta rota representa a confirmacao de publicacao do lote.
+                // Revisao pendente continua em `review`, mas nunca transforma
+                // uma questao efetivamente publicada em rascunho privado.
+                $question = $this->forceImportedQuestionPublication($question);
                 $question = $this->persistQuestionRichTextImages($question);
                 $validatedQuestion = $this->validator->validateSavePayload($question);
                 $importIdentity = $this->buildImportedQuestionIdentity($validatedQuestion, $examRecord);
@@ -846,25 +966,37 @@ class QuestionsService
                 $existingQuestion = $this->repository->findQuestionByImportIdentity(
                     $importIdentity['import_fingerprint'],
                     $importIdentity['source_exam_key'],
-                    $importIdentity['source_question_number']
+                    $importIdentity['source_question_number'],
+                    $importIdentity['source_provider'],
+                    $importIdentity['source_external_id']
                 );
+                $updatingExistingQuestion = false;
                 if ($existingQuestion !== null) {
-                    $duplicate = [
-                        'reason' => 'already_exists',
-                        'questionId' => $existingQuestion['id'] ?? null,
-                        'questionNumber' => $importIdentity['source_question_number'],
-                    ];
-                    $duplicateSkipped[] = $duplicate;
-                    $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
-                        'examId' => $examId,
-                        'questionId' => $existingQuestion['id'] ?? null,
-                        'externalKey' => $question['tempId'] ?? null,
-                        'questionNumber' => $importIdentity['source_question_number'],
-                        'status' => 'duplicate',
-                        'reason' => $duplicate['reason'],
-                    ]);
-                    $this->repository->releaseSavepoint($savepoint);
-                    continue;
+                    $existingStatus = strtolower(trim((string) ($existingQuestion['publish_status'] ?? '')));
+                    if (in_array($existingStatus, ['published', 'publicado'], true)) {
+                        $duplicate = [
+                            'reason' => 'already_published',
+                            'questionId' => $existingQuestion['id'] ?? null,
+                            'questionNumber' => $importIdentity['source_question_number'],
+                        ];
+                        $duplicateSkipped[] = $duplicate;
+                        $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
+                            'examId' => $examId,
+                            'questionId' => $existingQuestion['id'] ?? null,
+                            'externalKey' => $question['tempId'] ?? null,
+                            'questionNumber' => $importIdentity['source_question_number'],
+                            'status' => 'duplicate',
+                            'reason' => $duplicate['reason'],
+                        ]);
+                        $this->repository->releaseSavepoint($savepoint);
+                        continue;
+                    }
+
+                    // O ID externo identifica a mesma questão. Um rascunho já
+                    // existente deve ser atualizado e publicado, nunca inserido
+                    // novamente nem ignorado como se já estivesse concluído.
+                    $validatedQuestion['id'] = (int) $existingQuestion['id'];
+                    $updatingExistingQuestion = true;
                 }
 
                 $validatedQuestion = array_merge($validatedQuestion, $importIdentity);
@@ -881,7 +1013,7 @@ class QuestionsService
                     'questionId' => $questionId,
                     'externalKey' => $question['tempId'] ?? null,
                     'questionNumber' => $importIdentity['source_question_number'],
-                    'status' => 'created',
+                    'status' => $updatingExistingQuestion ? 'updated' : 'created',
                 ]);
                 $this->repository->releaseSavepoint($savepoint);
                 } catch (Throwable $questionError) {
@@ -929,6 +1061,19 @@ class QuestionsService
                 }
             }
 
+            // O campo legado questions.prova_id e a relacao canonica question_provas
+            // precisam ser gravados juntos. A UI administrativa usa a relacao canonica
+            // para montar a prova vinculada; sem esta verificacao uma importacao poderia
+            // parecer concluida, mas deixar cards sem prova no retorno.
+            $createdQuestionProvas = $this->repository->listQuestionProvasByIds($createdQuestionIds);
+            $unlinkedQuestionIds = array_values(array_filter(
+                $createdQuestionIds,
+                static fn ($questionId): bool => empty($createdQuestionProvas[(string) $questionId] ?? [])
+            ));
+            if ($unlinkedQuestionIds !== []) {
+                throw new RuntimeException('A importacao nao conseguiu vincular todas as questoes a prova canonica.');
+            }
+
             $this->commitIfNeeded();
         } catch (Throwable $e) {
             $this->rollback();
@@ -966,7 +1111,7 @@ class QuestionsService
                     null,
                     0,
                     $filters[(string) $questionId] ?? [],
-                    [],
+                    $createdQuestionProvas[(string) $questionId] ?? [],
                     null,
                     true,
                     true,
@@ -990,6 +1135,59 @@ class QuestionsService
             'itemFailures' => $itemFailures,
             'item_failures' => $itemFailures,
             'importTraceId' => $importTraceId,
+        ];
+    }
+
+    /**
+     * Processa provas independentes em uma unica resposta HTTP. Cada prova conserva
+     * sua propria transacao, evitando que uma falha editorial descarte os demais lotes.
+     */
+    public function bulkImportQuestionBatches(string $authenticatedUserId, bool $isAdmin, array $payload): array
+    {
+        $this->assertAdmin($authenticatedUserId, $isAdmin);
+        if (($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
+            throw new InvalidArgumentException('Contrato de importacao invalido. Informe schemaVersion question-import.v2.');
+        }
+        $batches = is_array($payload['batches'] ?? null) ? array_values($payload['batches']) : [];
+        if ($batches === []) throw new InvalidArgumentException('Informe ao menos um lote de questoes.');
+        if (count($batches) > 50) throw new InvalidArgumentException('O lote unificado aceita no maximo 50 provas por requisicao.');
+
+        $results = [];
+        $created = [];
+        $duplicates = [];
+        $failures = [];
+        foreach ($batches as $position => $batch) {
+            if (!is_array($batch)) {
+                $failures[] = ['clientKey' => (string) $position, 'message' => 'Lote de prova invalido.'];
+                continue;
+            }
+            $clientKey = trim((string) ($batch['clientKey'] ?? $batch['client_key'] ?? $position));
+            $batchPayload = is_array($batch['payload'] ?? null) ? $batch['payload'] : $batch;
+            $batchPayload['schemaVersion'] = 'question-import.v2';
+            try {
+                $result = $this->bulkImportQuestions($authenticatedUserId, $isAdmin, $batchPayload);
+                $result['clientKey'] = $clientKey;
+                $results[] = $result;
+                $created = array_merge($created, is_array($result['created'] ?? null) ? $result['created'] : []);
+                $duplicates = array_merge($duplicates, is_array($result['duplicatesSkipped'] ?? null) ? $result['duplicatesSkipped'] : []);
+                foreach (is_array($result['itemFailures'] ?? null) ? $result['itemFailures'] : [] as $failure) {
+                    $failures[] = ['clientKey' => $clientKey] + (is_array($failure) ? $failure : []);
+                }
+            } catch (Throwable $error) {
+                $diagnostic = $this->buildSanitizedBulkImportDiagnostic($error);
+                $failures[] = ['clientKey' => $clientKey, 'message' => $diagnostic['message'], 'code' => $diagnostic['code']];
+                $results[] = ['clientKey' => $clientKey, 'success' => false, 'count' => 0, 'created' => [], 'itemFailures' => [$diagnostic]];
+            }
+        }
+
+        return [
+            'success' => true,
+            'count' => count($created),
+            'created' => $created,
+            'skippedDuplicateCount' => count($duplicates),
+            'duplicatesSkipped' => $duplicates,
+            'itemFailures' => $failures,
+            'batches' => $results,
         ];
     }
 
@@ -2064,6 +2262,8 @@ class QuestionsService
             'importFingerprint' => trim((string) ($data['import_fingerprint'] ?? '')),
             'sourceExamKey' => trim((string) ($data['source_exam_key'] ?? '')),
             'sourceQuestionNumber' => trim((string) ($data['source_question_number'] ?? '')),
+            'sourceProvider' => trim((string) ($data['source_provider'] ?? '')),
+            'sourceExternalId' => trim((string) ($data['source_external_id'] ?? '')),
         ];
 
         $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
@@ -2100,6 +2300,8 @@ class QuestionsService
             'import_fingerprint' => $data['import_fingerprint'] ?? null,
             'source_exam_key' => $data['source_exam_key'] ?? null,
             'source_question_number' => $data['source_question_number'] ?? null,
+            'source_provider' => $data['source_provider'] ?? null,
+            'source_external_id' => $data['source_external_id'] ?? null,
             'resposta_correta_item_index' => $answerIndex,
             'prova_id' => $data['prova_id'],
             'grupo_questao_id' => $data['grupo_questao_id'],
@@ -2403,12 +2605,34 @@ class QuestionsService
             ?? $examPayload['id']
             ?? 0
         );
+        $firstSource = is_array($firstQuestion['source'] ?? null) ? $firstQuestion['source'] : [];
+        $sourceProvider = $this->normalizeImportedSourceProvider(
+            $examPayload['provider']
+            ?? $examPayload['sourceProvider']
+            ?? $examPayload['source_provider']
+            ?? $firstSource['provider']
+            ?? null
+        );
+        $sourceExternalId = $this->normalizeImportedSourceExternalId(
+            $examPayload['externalId']
+            ?? $examPayload['sourceExternalId']
+            ?? $examPayload['source_external_id']
+            ?? $firstSource['externalExamId']
+            ?? null
+        );
 
         $name = $this->buildImportedExamTitle($agencyName, $sourceTitle, $roleTitle, $year, $explicitTitle);
         $bookletMetadata = $this->normalizeImportedExamBookletMetadata($examPayload, $firstQuestion);
+        $publicationStatus = $this->normalizeImportedExamPublicationStatus($examPayload);
+        $visibilityStatus = $this->normalizeImportedExamVisibilityStatus($examPayload);
+        $scheduledAt = $publicationStatus === 'scheduled'
+            ? $this->normalizeImportedExamScheduledAt($examPayload)
+            : null;
 
         $metadataJson = json_encode([
             'source' => 'bulk_import_pdf',
+            'sourceProvider' => $sourceProvider,
+            'sourceExternalId' => $sourceExternalId,
             'raw' => $examPayload,
             'pdfUrl' => $pdfUrl,
             'files' => array_values(array_filter(
@@ -2433,6 +2657,8 @@ class QuestionsService
 
         return [
             'id' => $examId > 0 ? $examId : null,
+            'source_provider' => $sourceProvider,
+            'source_external_id' => $sourceExternalId,
             'nome' => $name,
             'slug' => $this->slugify($name),
             'ano' => $year,
@@ -2451,7 +2677,74 @@ class QuestionsService
             'role_ids' => $roleIds,
             'level_name' => $levelName,
             'exam_type_name' => $examTypeName,
+            'status_editorial' => $publicationStatus,
+            'visibility_status' => $visibilityStatus,
+            'scheduled_at' => $scheduledAt,
         ];
+    }
+
+    private function forceImportedQuestionPublication(array $question): array
+    {
+        $publication = is_array($question['publication'] ?? null) ? $question['publication'] : [];
+        $question['publication'] = array_merge($publication, [
+            'status' => 'published',
+            'visibility' => 'public',
+            'scheduledAt' => null,
+        ]);
+        $question['publishStatus'] = 'published';
+        $question['publish_status'] = 'published';
+        $question['visibilityStatus'] = 'public';
+        $question['visibility_status'] = 'public';
+        $question['scheduledAt'] = null;
+        $question['scheduled_at'] = null;
+
+        return $question;
+    }
+
+    /**
+     * A revisao do importador nao e um estado persistido da prova. O contrato
+     * de publicacao envia esse valor explicitamente; chamadas legadas que nao
+     * o informam mantem o comportamento historico de publicar a prova.
+     */
+    private function normalizeImportedExamPublicationStatus(array $payload): string
+    {
+        $status = strtolower(trim((string) (
+            $payload['publishStatus']
+            ?? $payload['statusEditorial']
+            ?? $payload['status_editorial']
+            ?? 'published'
+        )));
+
+        return in_array($status, ['published', 'draft', 'scheduled', 'archived'], true)
+            ? $status
+            : 'published';
+    }
+
+    private function normalizeImportedExamVisibilityStatus(array $payload): string
+    {
+        $visibility = strtolower(trim((string) (
+            $payload['visibilityStatus']
+            ?? $payload['visibility_status']
+            ?? 'public'
+        )));
+
+        return in_array($visibility, ['public', 'elite', 'internal'], true)
+            ? $visibility
+            : 'public';
+    }
+
+    private function normalizeImportedExamScheduledAt(array $payload): ?string
+    {
+        $value = trim((string) ($payload['scheduledAt'] ?? $payload['scheduled_at'] ?? ''));
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return (new DateTimeImmutable($value))->format('Y-m-d H:i:s');
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function buildImportedExamTitle(string $agencyName, string $sourceName, string $roleName, int $year, string $explicitTitle = ''): string
@@ -2485,6 +2778,8 @@ class QuestionsService
     private function buildImportedQuestionIdentity(array $question, array $examRecord): array
     {
         $sourceExamKey = $this->buildImportedExamKey($examRecord);
+        $sourceProvider = $this->normalizeImportedSourceProvider($question['source_provider'] ?? null);
+        $sourceExternalId = $this->normalizeImportedSourceExternalId($question['source_external_id'] ?? null);
         $questionNumber = $this->normalizeImportedQuestionNumber($question['question_number'] ?? null);
         $statement = $this->normalizeImportedQuestionText(
             (string) ($question['enunciado_clean'] ?? $question['enunciado'] ?? '')
@@ -2494,22 +2789,31 @@ class QuestionsService
             array_values(array_filter($question['itens'] ?? [], 'is_array'))
         );
 
-        $fingerprintPayload = implode('|', array_filter([
-            $sourceExamKey,
-            $questionNumber,
-            $statement,
-            implode('||', $options),
-        ], static fn (string $value): bool => $value !== ''));
+        $fingerprintPayload = $sourceProvider !== '' && $sourceExternalId !== ''
+            ? implode('|', ['external', $sourceProvider, $sourceExternalId])
+            : implode('|', array_filter([
+                $sourceExamKey,
+                $questionNumber,
+                $statement,
+                implode('||', $options),
+            ], static fn (string $value): bool => $value !== ''));
 
         return [
             'import_fingerprint' => hash('sha256', $fingerprintPayload),
             'source_exam_key' => $sourceExamKey,
             'source_question_number' => $questionNumber,
+            'source_provider' => $sourceProvider,
+            'source_external_id' => $sourceExternalId,
         ];
     }
 
     private function buildImportedQuestionBatchKey(array $identity): string
     {
+        $sourceProvider = trim((string) ($identity['source_provider'] ?? ''));
+        $sourceExternalId = trim((string) ($identity['source_external_id'] ?? ''));
+        if ($sourceProvider !== '' && $sourceExternalId !== '') {
+            return 'external:' . $sourceProvider . ':' . $sourceExternalId;
+        }
         $sourceExamKey = trim((string) ($identity['source_exam_key'] ?? ''));
         $questionNumber = trim((string) ($identity['source_question_number'] ?? ''));
         if ($sourceExamKey !== '' && $questionNumber !== '') {
@@ -2552,11 +2856,36 @@ class QuestionsService
 
     private function buildImportedExamKey(array $examRecord): string
     {
+        $sourceProvider = $this->normalizeImportedSourceProvider($examRecord['source_provider'] ?? null);
+        $sourceExternalId = $this->normalizeImportedSourceExternalId($examRecord['source_external_id'] ?? null);
+        if ($sourceProvider !== '' && $sourceExternalId !== '') {
+            return $sourceProvider . ':exam:' . $sourceExternalId;
+        }
         $slug = trim((string) ($examRecord['slug'] ?? ''));
         $year = (int) ($examRecord['ano'] ?? 0);
         $rawKey = $slug . ':' . $year;
 
         return substr($slug, 0, 120) . ':' . $year . ':' . substr(sha1($rawKey), 0, 12);
+    }
+
+    private function normalizeImportedSourceProvider(mixed $value): string
+    {
+        $value = strtolower(trim((string) $value));
+        if ($value === '' || strlen($value) > 40 || preg_match('/^[a-z0-9][a-z0-9_-]*$/', $value) !== 1) {
+            return '';
+        }
+
+        return $value;
+    }
+
+    private function normalizeImportedSourceExternalId(mixed $value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || strlen($value) > 120 || preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
+            return '';
+        }
+
+        return $value;
     }
 
     private function normalizeBulkContextQuestionNumbers(mixed $value): array
@@ -3175,10 +3504,32 @@ class QuestionsService
 
                 $filterType = $this->resolveFilterType((string) $type);
                 $slug = $this->extractTaxonomySlug($item, $name);
-                $parentId = $this->resolveTaxonomyParentId($item, $filterType);
                 $metaMateria = $filterType === 'assunto' && $this->isMateriaTaxonomy($item) ? 1 : 0;
                 $metaCarreira = $filterType === 'carreira' ? 1 : 0;
                 $id = $this->extractNumericId($item);
+                $sourceIdentity = $this->extractExternalTaxonomySourceIdentity($item, $filterType);
+
+                if ($sourceIdentity !== null) {
+                    $id = $this->repository->findFilterIdBySourceIdentity(
+                        $filterType,
+                        $sourceIdentity['provider'],
+                        $sourceIdentity['entityType'],
+                        $sourceIdentity['externalId']
+                    );
+                    if ($id === null) {
+                        throw new InvalidArgumentException(
+                            'A taxonomia Gran "' . $name . '" ainda nao foi sincronizada. '
+                            . 'Sincronize as taxonomias da Gran antes de publicar o lote.'
+                        );
+                    }
+                }
+
+                // Um item Gran ja resolvido pelo ID local nao precisa recriar
+                // nem procurar o pai pelo nome. Isso evita que um ancestral
+                // externo ausente vire uma nova taxonomia local.
+                $parentId = $sourceIdentity !== null
+                    ? null
+                    : $this->resolveTaxonomyParentId($item, $filterType);
 
                 if ($id === null) {
                     $id = $this->repository->findFilterIdByIdentity($filterType, $name, $slug, $parentId)
@@ -3201,7 +3552,7 @@ class QuestionsService
         if (!is_array($item)) {
             return null;
         }
-        foreach (['parentId', 'parent_id', 'pai', 'assunto_raiz', 'rootSubjectId', 'root_subject_id'] as $key) {
+        foreach (['parentId', 'parent_id'] as $key) {
             if (isset($item[$key]) && is_numeric($item[$key]) && (int) $item[$key] > 0) {
                 return (int) $item[$key];
             }
@@ -3225,6 +3576,34 @@ class QuestionsService
             $parentType === 'carreira' ? 1 : 0,
             null
         );
+    }
+
+    /** @return array{provider:string,entityType:string,externalId:string}|null */
+    private function extractExternalTaxonomySourceIdentity(mixed $item, string $filterType): ?array
+    {
+        if (!is_array($item) || strtolower(trim((string) ($item['provider'] ?? ''))) !== 'gran') {
+            return null;
+        }
+        $externalId = trim((string) ($item['externalId'] ?? $item['external_id'] ?? ''));
+        if ($externalId === '') {
+            return null;
+        }
+        $entityType = strtolower(trim((string) ($item['sourceEntityType'] ?? $item['source_entity_type'] ?? '')));
+        if ($entityType === '') {
+            $entityType = match ($filterType) {
+                'banca' => 'banca',
+                'orgao' => 'orgao',
+                'cargo' => 'cargo',
+                'carreira' => 'area',
+                default => 'assunto',
+            };
+        }
+
+        return [
+            'provider' => 'gran',
+            'entityType' => $entityType,
+            'externalId' => $externalId,
+        ];
     }
 
     private function partitionFilters(array $filters): array

@@ -29,17 +29,18 @@ $materialsService = $base . '/modules/materials/services/MaterialsService.php';
 $questionsRepository = $base . '/modules/questions/repositories/QuestionsRepository.php';
 $schema = $base . '/database/schema.sql';
 $migration = $base . '/scripts/migrations/migrate_marketplace_schema_compatibility.php';
+$eventMigration = $base . '/database/migrations/20260722_050000_async_events_and_answer_archive.php';
 
 assertMarketplaceGamificationContains(
-    $helper,
+    $eventMigration,
     'CREATE TABLE IF NOT EXISTS user_gamification_events',
-    'Gamification helper must create an idempotent event ledger'
+    'Migration must create an idempotent gamification event ledger'
 );
 
 assertMarketplaceGamificationContains(
-    $helper,
+    $eventMigration,
     'UNIQUE KEY uniq_user_gamification_event_key',
-    'Gamification event ledger must protect repeated webhooks and retries'
+    'Migration must protect repeated webhooks and retries'
 );
 
 assertMarketplaceGamificationContains(

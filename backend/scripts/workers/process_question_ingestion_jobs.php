@@ -37,8 +37,22 @@ for ($index = 0; $index < $maxJobs; $index++) {
         if (!is_array($payload)) {
             throw new InvalidArgumentException('Payload de job invalido.');
         }
-        $payload = $granExamFileMaterializer->materialize($payload);
-        $result = buildQuestionsController($db)->bulkImportQuestions($actorUserId, true, $payload, null);
+        $controller = buildQuestionsController($db);
+        if (is_array($payload['batches'] ?? null)) {
+            $payload['batches'] = array_map(
+                static function (mixed $batch) use ($granExamFileMaterializer): mixed {
+                    if (!is_array($batch)) return $batch;
+                    $batchPayload = is_array($batch['payload'] ?? null) ? $batch['payload'] : $batch;
+                    $batch['payload'] = $granExamFileMaterializer->materialize($batchPayload);
+                    return $batch;
+                },
+                array_values($payload['batches'])
+            );
+            $result = $controller->bulkImportQuestionBatches($actorUserId, true, $payload);
+        } else {
+            $payload = $granExamFileMaterializer->materialize($payload);
+            $result = $controller->bulkImportQuestions($actorUserId, true, $payload, null);
+        }
         $ingestion->completeJob((int) $job['id'], (int) $job['request_id'], $result, $workerId);
         $processed[] = ['jobId' => (int) $job['id'], 'status' => 'done'];
     } catch (Throwable $exception) {

@@ -42,6 +42,16 @@ class FiltersController
         return $this->service->list();
     }
 
+    public function listPage(int $page, int $perPage, string $type = 'all', string $search = ''): array
+    {
+        return $this->service->listPage($page, $perPage, $type, $search);
+    }
+
+    public function getAdminDetail(int $id): array
+    {
+        return $this->service->getAdminDetail($id);
+    }
+
     /**
      * Persiste ou atualiza uma taxonomia.
      *
@@ -60,5 +70,13 @@ class FiltersController
     public function delete(int $id): array
     {
         return $this->service->delete($id);
+    }
+
+    /**
+     * Remove varias taxonomias com validacao e transacao compartilhadas.
+     */
+    public function deleteMany(mixed $ids): array
+    {
+        return $this->service->deleteMany($ids);
     }
 }

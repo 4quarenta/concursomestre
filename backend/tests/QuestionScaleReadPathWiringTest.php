@@ -33,16 +33,35 @@ try {
         && str_contains($repository, 'ORDER BY {$sortExpression} DESC, q.id DESC'),
         'Ordenacao keyset nao e estavel.'
     );
-    questionScaleAssert(!str_contains(
-        substr($service, strpos($service, 'public function listQuestionsV2'), 5000),
-        'countAllQuestions'
-    ), 'Listagem v2 ainda executa COUNT(*).');
+    questionScaleAssert(
+        str_contains($service, "['total']")
+        && str_contains($service, 'getTotal($data[\'filters\'])')
+        && str_contains($service, "'total' => \$total"),
+        'Total exato nao e reaproveitado pelo cache e pelo cursor assinado.'
+    );
     questionScaleAssert(str_contains($service, "'pageInfo'"), 'Contrato v2 nao expoe pageInfo.');
     questionScaleAssert(str_contains($service, 'QuestionPublicPageCache'), 'Cache publico nao esta conectado ao service.');
     questionScaleAssert(
         str_contains($service, 'listLatestUserAnswersMap($authenticatedUserId, $ids)')
         && str_contains($service, 'listSavedQuestionIds($authenticatedUserId, $ids)'),
         'Estado privado do usuario nao e aplicado em lote depois do cache publico.'
+    );
+    $answersStart = strpos($repository, 'public function listLatestUserAnswersMap');
+    $savedStart = strpos($repository, 'public function listSavedQuestionIds');
+    $identityStart = strpos($repository, 'public function findQuestionByImportIdentity');
+    $answersMethod = $answersStart !== false && $savedStart !== false
+        ? substr($repository, $answersStart, $savedStart - $answersStart)
+        : '';
+    $savedMethod = $savedStart !== false && $identityStart !== false
+        ? substr($repository, $savedStart, $identityStart - $savedStart)
+        : '';
+    questionScaleAssert(
+        str_contains($answersMethod, 'foreach ($archiveBindings as $placeholder => $value)'),
+        'A leitura autenticada nao vincula os placeholders do historico arquivado.'
+    );
+    questionScaleAssert(
+        !str_contains($savedMethod, '$archiveBindings'),
+        'A leitura de questoes salvas tenta vincular parametros inexistentes.'
     );
     questionScaleAssert(
         str_contains($service, "\$item['userState']")

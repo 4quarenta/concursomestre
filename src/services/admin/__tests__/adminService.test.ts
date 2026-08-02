@@ -242,6 +242,65 @@ describe('adminService', () => {
     expect(payload.total).toBe(12);
   });
 
+  it('normalizes the lightweight canonical admin question list contract', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        rows: [{
+          id: 53,
+          content: {
+            statement: '<p>Enunciado completo</p>',
+            statementClean: 'Enunciado completo',
+          },
+          filters: {
+            subjects: [{ id: 10, nome: 'Psicologia' }],
+            topics: [{ id: 11, nome: 'Atenção' }],
+            subtopics: [],
+            examBoards: [{ id: 12, nome: 'FGV' }],
+            organizations: [],
+            roles: [],
+            careers: [],
+            years: [2026],
+          },
+          exams: [{ id: 29, nome: 'Prova de Psicologia', ano: 2026 }],
+          publication: {
+            status: 'published',
+            visibility: 'public',
+            publishedAt: '2026-08-01 15:00:00',
+          },
+          editorial: {
+            hasTeacherComment: true,
+            hasDetailedAnalysis: true,
+          },
+          type: 'true_false',
+          difficulty: 'hard',
+          flags: {
+            annulled: true,
+            outdated: false,
+          },
+        }],
+        total: 1,
+        perPage: 20,
+        pages: 1,
+        page: 1,
+      },
+    });
+
+    const payload = await adminService.getQuestions({ page: 1 });
+    const question = payload.rows[0];
+
+    expect(question.enunciado_clean).toBe('Enunciado completo');
+    expect(question.provas?.[0]?.nome).toBe('Prova de Psicologia');
+    expect(question.bancas?.[0]?.nome).toBe('FGV');
+    expect(question.assuntos).toHaveLength(2);
+    expect(question.hasTeacherComment).toBe(true);
+    expect(question.hasDetailedComment).toBe(true);
+    expect(question.publishStatus).toBe('published');
+    expect(question.tipo).toBe('certo_errado');
+    expect(question.dificuldade).toBe(3);
+    expect(question.anulada).toBe(true);
+  });
+
   it('loads reports through the official reports endpoint', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,

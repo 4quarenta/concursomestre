@@ -81,6 +81,7 @@ assertApiInventoryByDirectory($base, [
         'comments_moderation_bulk.php',
         'comments_moderation_export.php',
         'feedback.php',
+        'gran_crawler.php',
         'list_tables.php',
         'logs.php',
         'plans.php',
@@ -94,11 +95,27 @@ assertApiInventoryByDirectory($base, [
         'user_actions.php',
         'user_details.php',
     ],
+    'admin/filters' => [
+        'list.php',
+    ],
     'ai' => [
         'generate.php',
     ],
     'analytics' => [
         'track.php',
+    ],
+    'blog' => [
+        'categories.php',
+        'detail.php',
+        'like.php',
+        'list.php',
+    ],
+    'blog/admin' => [
+        'categories.php',
+        'delete.php',
+        'detail.php',
+        'list.php',
+        'save.php',
     ],
     'auth' => [
         'admin-route-access.php',
@@ -244,6 +261,7 @@ assertApiInventoryByDirectory($base, [
         'groups.php',
         'history.php',
         'list.php',
+        'multi_batch_import.php',
         'reset_answers.php',
         'save.php',
         'show.php',

@@ -71,6 +71,10 @@ try {
     questionCacheAssert($cache->get(20, null, $filters) === null, 'Cache devolveu payload privado adulterado.');
     questionCacheAssert(!$cache->canCache(['onlySaved' => true]), 'Filtro privado onlySaved foi considerado compartilhavel.');
     questionCacheAssert(!$cache->canCache(['excludeAnswered' => true]), 'Filtro privado excludeAnswered foi considerado compartilhavel.');
+    questionCacheAssert($cache->getTotal($filters) === null, 'Cache retornou total inexistente.');
+    questionCacheAssert($cache->setTotal($filters, 137), 'Total publico nao foi armazenado.');
+    questionCacheAssert($cache->getTotal($filters) === 137, 'Total publico nao foi recuperado.');
+    questionCacheAssert(!$cache->setTotal(['onlySaved' => true], 10), 'Cache aceitou total privado do usuario.');
 
     $cache->invalidate();
     questionCacheAssert(($store->values['questions:public-list:version'] ?? null) === '1', 'Versao do cache nao foi invalidada.');

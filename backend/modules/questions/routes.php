@@ -474,6 +474,32 @@ function handleQuestionsBulkImportRoute(PDO $db): void
     }
 }
 
+/** Importa varios lotes de provas sem multiplicar requests ou respostas no cliente. */
+function handleQuestionsMultiBatchImportRoute(PDO $db): void
+{
+    try {
+        @set_time_limit(300);
+        $authenticatedUserPayload = verifyAuthenticatedUserPayload();
+        $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
+        $isAdmin = in_array((string) ($authenticatedUserPayload['role'] ?? ''), ['admin', 'staff'], true);
+        $result = buildQuestionsController($db)->bulkImportQuestionBatches(
+            $authenticatedUserId,
+            $isAdmin,
+            readQuestionsJsonRequestBody()
+        );
+        try { (new SimpleCache(__DIR__ . '/../../storage/cache', true))->clearAll(); } catch (Throwable $cacheError) { error_log('Questions multi batch cache clear failed: ' . $cacheError->getMessage()); }
+        Response::success($result, 'Publicacao em lote concluida.');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (DomainException $e) {
+        Response::forbidden($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::serverError('Nao foi possivel publicar o lote de questoes.', $e);
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel publicar o lote de questoes.', $e);
+    }
+}
+
 /**
  * Rota administrativa leve para criar apenas o registro da prova importada.
  *

@@ -16,6 +16,8 @@
  *
  * @since 1.0.0
  */
+require_once __DIR__ . '/../../../shared/runtime/RuntimeStoreFactory.php';
+
 class FiltersRepository
 {
     private PDO $db;
@@ -58,6 +60,188 @@ class FiltersRepository
     }
 
     /**
+     * Retorna o uso editorial de cada taxonomia em consultas agregadas.
+     *
+     * Os contadores representam vinculos existentes, independentemente do
+     * estado editorial do conteudo, para que o painel administrativo possa
+     * avaliar o impacto de editar ou remover uma taxonomia.
+     */
+    public function fetchUsageOverview(array $filterIds = []): array
+    {
+        $byFilterId = [];
+
+        $filterIds = array_values(array_unique(array_filter(array_map('intval', $filterIds))));
+        $filterCondition = $filterIds === [] ? '' : ' WHERE filter_id IN (' . implode(',', array_fill(0, count($filterIds), '?')) . ')';
+
+        $this->mergeUsageRows($byFilterId, $this->fetchUsageRows(
+            'SELECT filter_id, COUNT(DISTINCT question_id) AS usage_count
+             FROM question_filters
+             ' . $filterCondition . '
+             GROUP BY filter_id',
+            $filterIds
+        ), 'questions');
+
+        $this->mergeUsageRows($byFilterId, $this->fetchUsageRows(
+            'SELECT filter_id, COUNT(DISTINCT prova_id) AS usage_count
+             FROM prova_filters
+             ' . $filterCondition . '
+             GROUP BY filter_id',
+            $filterIds
+        ), 'exams');
+
+        $this->mergeUsageRows($byFilterId, $this->fetchUsageRows(
+            'SELECT filter_id, COUNT(DISTINCT law_id) AS usage_count
+             FROM (
+                SELECT law_topic_filter_id AS filter_id, id AS law_id
+                FROM laws
+                WHERE law_topic_filter_id IS NOT NULL
+                UNION
+                SELECT subtopic_filter_id AS filter_id, law_id
+                FROM law_sections
+                WHERE subtopic_filter_id IS NOT NULL
+                UNION
+                SELECT assunto_filter_id AS filter_id, law_id
+                FROM law_sections
+                WHERE assunto_filter_id IS NOT NULL
+                UNION
+                SELECT assunto_filter_id AS filter_id, law_id
+                FROM law_articles
+                WHERE assunto_filter_id IS NOT NULL
+             ) AS law_filter_links
+             ' . $filterCondition . '
+             GROUP BY filter_id',
+            $filterIds
+        ), 'laws');
+
+        foreach ($byFilterId as &$usage) {
+            $usage['total'] = $usage['questions'] + $usage['exams'] + $usage['laws'];
+        }
+        unset($usage);
+
+        return $byFilterId;
+    }
+
+    /**
+     * Lista somente a pagina administrativa solicitada, sem materializar toda
+     * a arvore de taxonomias no navegador.
+     */
+    public function fetchPage(int $page, int $perPage, string $uiType = 'all', string $search = ''): array
+    {
+        [$where, $params] = $this->buildPageWhereClause($uiType, $search);
+        $count = $this->db->prepare("SELECT COUNT(*) FROM filters f {$where}");
+        $count->execute($params);
+        $total = (int) $count->fetchColumn();
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min(max(1, $page), $pages);
+        $offset = ($page - 1) * $perPage;
+
+        $query = $this->db->prepare("
+            SELECT f.id, f.type, f.name, f.slug, f.acronym, f.parent_id, f.description, f.website,
+                   f.asset_url, f.icon_key, f.keywords_json, f.meta_materia, f.taxonomy_level, f.meta_carreira,
+                   parent.name AS parent_name
+            FROM filters f
+            LEFT JOIN filters parent ON parent.id = f.parent_id
+            {$where}
+            ORDER BY f.name ASC, f.id ASC
+            LIMIT :limit OFFSET :offset
+        ");
+        foreach ($params as $name => $value) {
+            $query->bindValue($name, $value);
+        }
+        $query->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $query->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $query->execute();
+        $rows = $query->fetchAll(PDO::FETCH_ASSOC);
+        $aliasesByFilterId = $this->fetchAliasesByFilterIds(array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $rows
+        ));
+        $relationshipsByFilterId = $this->fetchRelationshipsByFilterIds(array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $rows
+        ));
+        foreach ($rows as &$row) {
+            $row['aliases'] = $aliasesByFilterId[(int) $row['id']] ?? [];
+            $row['relationships'] = $relationshipsByFilterId[(int) $row['id']] ?? [];
+        }
+        unset($row);
+
+        return [
+            'rows' => $rows,
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'pages' => $pages,
+        ];
+    }
+
+    /**
+     * Resume os vinculos por tipo para a navegacao lateral. A resposta fica
+     * cacheada por poucos segundos; os contadores de cada linha continuam
+     * sendo calculados para a pagina atual.
+     */
+    public function fetchUsageSummary(): array
+    {
+        $store = RuntimeStoreFactory::shared();
+        $cacheKey = 'filters:admin:usage-summary:v1';
+        $cached = $store->get($cacheKey);
+        if (is_string($cached)) {
+            $decoded = json_decode($cached, true);
+            if (is_array($decoded) && isset($decoded['all'], $decoded['byType'])) {
+                return $decoded;
+            }
+        }
+
+        $summary = $this->emptyUsageSummary();
+        foreach ($this->db->query(
+            'SELECT type, taxonomy_level, meta_materia, COUNT(*) AS taxonomy_count
+             FROM filters
+             GROUP BY type, taxonomy_level, meta_materia'
+        )->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $type = $this->resolveUsageType($row);
+            $this->ensureUsageSummaryType($summary, $type);
+            $summary['byType'][$type]['taxonomies'] += (int) $row['taxonomy_count'];
+            $summary['all']['taxonomies'] += (int) $row['taxonomy_count'];
+        }
+
+        $this->mergeUsageSummaryRows($summary, $this->db->query(
+            'SELECT f.type, f.taxonomy_level, f.meta_materia, COUNT(DISTINCT qf.question_id) AS usage_count
+             FROM question_filters qf
+             INNER JOIN filters f ON f.id = qf.filter_id
+             GROUP BY f.type, f.taxonomy_level, f.meta_materia'
+        )->fetchAll(PDO::FETCH_ASSOC), 'questions');
+        $this->mergeUsageSummaryRows($summary, $this->db->query(
+            'SELECT f.type, f.taxonomy_level, f.meta_materia, COUNT(DISTINCT pf.prova_id) AS usage_count
+             FROM prova_filters pf
+             INNER JOIN filters f ON f.id = pf.filter_id
+             GROUP BY f.type, f.taxonomy_level, f.meta_materia'
+        )->fetchAll(PDO::FETCH_ASSOC), 'exams');
+        $this->mergeUsageSummaryRows($summary, $this->db->query(
+            'SELECT f.type, f.taxonomy_level, f.meta_materia, COUNT(DISTINCT law_id) AS usage_count
+             FROM (
+                SELECT law_topic_filter_id AS filter_id, id AS law_id FROM laws WHERE law_topic_filter_id IS NOT NULL
+                UNION
+                SELECT subtopic_filter_id AS filter_id, law_id FROM law_sections WHERE subtopic_filter_id IS NOT NULL
+                UNION
+                SELECT assunto_filter_id AS filter_id, law_id FROM law_sections WHERE assunto_filter_id IS NOT NULL
+                UNION
+                SELECT assunto_filter_id AS filter_id, law_id FROM law_articles WHERE assunto_filter_id IS NOT NULL
+             ) AS law_filter_links
+             INNER JOIN filters f ON f.id = law_filter_links.filter_id
+             GROUP BY f.type, f.taxonomy_level, f.meta_materia'
+        )->fetchAll(PDO::FETCH_ASSOC), 'laws');
+
+        foreach ($summary['byType'] as &$usage) {
+            $usage['total'] = $usage['questions'] + $usage['exams'] + $usage['laws'];
+        }
+        unset($usage);
+        $summary['all']['total'] = $summary['all']['questions'] + $summary['all']['exams'] + $summary['all']['laws'];
+        $store->set($cacheKey, json_encode($summary), 15);
+
+        return $summary;
+    }
+
+    /**
      * Verifica se o slug ja existe, ignorando um id opcional.
      *
      * @since 1.0.0
@@ -83,11 +267,13 @@ class FiltersRepository
     public function fetchById(int $id): ?array
     {
         $stmt = $this->db->prepare("
-            SELECT id, type, name, slug, acronym, parent_id, description, website,
-                   asset_url, icon_key, keywords_json,
-                   meta_materia, taxonomy_level, meta_carreira
-            FROM filters
-            WHERE id = :id
+            SELECT f.id, f.type, f.name, f.slug, f.acronym, f.parent_id, f.description, f.website,
+                   f.asset_url, f.icon_key, f.keywords_json,
+                   f.meta_materia, f.taxonomy_level, f.meta_carreira,
+                   parent.name AS parent_name
+            FROM filters f
+            LEFT JOIN filters parent ON parent.id = f.parent_id
+            WHERE f.id = :id
             LIMIT 1
         ");
         $stmt->execute([':id' => $id]);
@@ -98,6 +284,10 @@ class FiltersRepository
         }
         $aliases = $this->fetchAliasesByFilterIds([$id]);
         $row['aliases'] = $aliases[$id] ?? [];
+        $relationships = $this->fetchRelationshipsByFilterIds([$id]);
+        $row['relationships'] = $relationships[$id] ?? [];
+        $sourceIdentities = $this->fetchSourceIdentitiesByFilterIds([$id]);
+        $row['sourceIdentities'] = $sourceIdentities[$id] ?? [];
         return $row;
     }
 
@@ -211,6 +401,7 @@ class FiltersRepository
             if ($ownsTransaction) {
                 $this->db->commit();
             }
+            $this->invalidateUsageSummary();
         } catch (Throwable $exception) {
             if ($ownsTransaction && $this->db->inTransaction()) {
                 $this->db->rollBack();
@@ -262,6 +453,7 @@ class FiltersRepository
             if ($ownsTransaction) {
                 $this->db->commit();
             }
+            $this->invalidateUsageSummary();
             return $id;
         } catch (Throwable $exception) {
             if ($ownsTransaction && $this->db->inTransaction()) {
@@ -278,8 +470,89 @@ class FiltersRepository
      */
     public function delete(int $id): void
     {
-        $stmt = $this->db->prepare('DELETE FROM filters WHERE id = :id');
-        $stmt->execute([':id' => $id]);
+        $this->deleteMany([$id]);
+    }
+
+    /**
+     * Exclui taxonomias sem vinculos em uma unica transacao.
+     *
+     * @param int[] $ids
+     * @return int[] ids efetivamente removidos
+     */
+    public function deleteMany(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $ownsTransaction = !$this->db->inTransaction();
+
+        try {
+            if ($ownsTransaction) {
+                $this->db->beginTransaction();
+            }
+
+            $existingStatement = $this->db->prepare(
+                "SELECT id FROM filters WHERE id IN ({$placeholders}) FOR UPDATE"
+            );
+            $existingStatement->execute($ids);
+            $existingIds = array_map('intval', $existingStatement->fetchAll(PDO::FETCH_COLUMN));
+            if ($existingIds === []) {
+                throw new RuntimeException('As taxonomias selecionadas nao existem mais.', 409);
+            }
+
+            $usageByFilterId = $this->fetchUsageOverview($existingIds);
+            $linkedIds = array_values(array_filter(
+                $existingIds,
+                static fn (int $id): bool => (int) ($usageByFilterId[$id]['total'] ?? 0) > 0
+            ));
+            if ($linkedIds !== []) {
+                throw new RuntimeException(
+                    count($linkedIds) . ' taxonomia(s) possuem vinculos com questoes, provas ou leis. Remova os vinculos antes de excluir.',
+                    409
+                );
+            }
+
+            $existingPlaceholders = implode(',', array_fill(0, count($existingIds), '?'));
+            $childStatement = $this->db->prepare(
+                "SELECT COUNT(*) FROM filters
+                 WHERE parent_id IN ({$existingPlaceholders})
+                   AND id NOT IN ({$existingPlaceholders})"
+            );
+            $childStatement->execute(array_merge($existingIds, $existingIds));
+            if ((int) $childStatement->fetchColumn() > 0) {
+                throw new RuntimeException(
+                    'A selecao possui taxonomias com subitens nao selecionados. Exclua ou inclua os subitens primeiro.',
+                    409
+                );
+            }
+
+            $deleteStatement = $this->db->prepare(
+                "DELETE FROM filters WHERE id IN ({$existingPlaceholders})"
+            );
+            $deleteStatement->execute($existingIds);
+
+            if ($ownsTransaction) {
+                $this->db->commit();
+            }
+            $this->invalidateUsageSummary();
+
+            return $existingIds;
+        } catch (Throwable $exception) {
+            if ($ownsTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            if ($exception instanceof PDOException && (string) $exception->getCode() === '23000') {
+                throw new RuntimeException(
+                    'Uma ou mais taxonomias ainda possuem vinculos protegidos. Remova os vinculos antes de excluir.',
+                    409,
+                    $exception
+                );
+            }
+            throw $exception;
+        }
     }
 
     private function fetchAliasesByFilterIds(array $filterIds): array
@@ -300,6 +573,209 @@ class FiltersRepository
             $result[(int) $row['filter_id']][] = (string) $row['alias'];
         }
         return $result;
+    }
+
+    private function fetchRelationshipsByFilterIds(array $filterIds): array
+    {
+        $filterIds = array_values(array_unique(array_filter(array_map('intval', $filterIds))));
+        if ($filterIds === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($filterIds), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT relationship.source_filter_id, relationship.relation_type,
+                    relationship.source_provider, target.id AS target_id,
+                    target.type AS target_type, target.name AS target_name,
+                    target.slug AS target_slug, target.acronym AS target_acronym
+             FROM filter_relationships relationship
+             INNER JOIN filters target ON target.id = relationship.target_filter_id
+             WHERE relationship.source_filter_id IN ({$placeholders})
+             ORDER BY relationship.source_filter_id, relationship.relation_type, target.name, target.id"
+        );
+        $stmt->execute($filterIds);
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $result[(int) $row['source_filter_id']][] = [
+                'type' => (string) $row['relation_type'],
+                'sourceProvider' => (string) $row['source_provider'],
+                'target' => [
+                    'id' => (int) $row['target_id'],
+                    'type' => (string) $row['target_type'],
+                    'name' => (string) $row['target_name'],
+                    'slug' => (string) $row['target_slug'],
+                    'acronym' => $row['target_acronym'] !== null ? (string) $row['target_acronym'] : null,
+                ],
+            ];
+        }
+        return $result;
+    }
+
+    private function fetchSourceIdentitiesByFilterIds(array $filterIds): array
+    {
+        $filterIds = array_values(array_unique(array_filter(array_map('intval', $filterIds))));
+        if ($filterIds === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($filterIds), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT filter_id, filter_type, source_provider, source_entity_type,
+                    source_external_id, source_parent_external_id, source_root_external_id,
+                    source_metadata_json, updated_at
+             FROM filter_source_identities
+             WHERE filter_id IN ({$placeholders})
+             ORDER BY filter_id, source_provider, source_entity_type, source_external_id"
+        );
+        $stmt->execute($filterIds);
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $metadata = json_decode((string) ($row['source_metadata_json'] ?? ''), true);
+            $result[(int) $row['filter_id']][] = [
+                'filterType' => (string) $row['filter_type'],
+                'provider' => (string) $row['source_provider'],
+                'entityType' => (string) $row['source_entity_type'],
+                'externalId' => (string) $row['source_external_id'],
+                'parentExternalId' => $row['source_parent_external_id'] !== null
+                    ? (string) $row['source_parent_external_id']
+                    : null,
+                'rootExternalId' => $row['source_root_external_id'] !== null
+                    ? (string) $row['source_root_external_id']
+                    : null,
+                'metadata' => is_array($metadata) ? $metadata : [],
+                'updatedAt' => (string) $row['updated_at'],
+            ];
+        }
+        return $result;
+    }
+
+    private function mergeUsageRows(array &$usageByFilterId, array $rows, string $field): void
+    {
+        foreach ($rows as $row) {
+            $filterId = (int) ($row['filter_id'] ?? 0);
+            if ($filterId <= 0) {
+                continue;
+            }
+            if (!isset($usageByFilterId[$filterId])) {
+                $usageByFilterId[$filterId] = [
+                    'questions' => 0,
+                    'exams' => 0,
+                    'laws' => 0,
+                    'total' => 0,
+                ];
+            }
+            $usageByFilterId[$filterId][$field] = (int) ($row['usage_count'] ?? 0);
+        }
+    }
+
+    private function fetchUsageRows(string $sql, array $filterIds): array
+    {
+        if ($filterIds === []) {
+            return $this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        }
+        $statement = $this->db->prepare($sql);
+        $statement->execute($filterIds);
+        return $statement->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function buildPageWhereClause(string $uiType, string $search): array
+    {
+        $conditions = [];
+        $params = [];
+        $uiType = strtolower(trim($uiType));
+        if ($uiType !== '' && $uiType !== 'all') {
+            switch ($uiType) {
+                case 'materia':
+                    $conditions[] = "f.type = 'assunto' AND (f.meta_materia = 1 OR f.taxonomy_level = 'materia')";
+                    break;
+                case 'topico':
+                    $conditions[] = "f.type = 'assunto' AND f.meta_materia = 0 AND f.taxonomy_level = 'topico'";
+                    break;
+                case 'assunto':
+                    $conditions[] = "f.type = 'assunto' AND f.meta_materia = 0 AND (f.taxonomy_level IS NULL OR f.taxonomy_level NOT IN ('materia', 'topico'))";
+                    break;
+                default:
+                    $conditions[] = 'f.type = :type';
+                    $params[':type'] = $uiType;
+                    break;
+            }
+        }
+
+        $search = trim($search);
+        if ($search !== '') {
+            $escapedSearch = '%' . addcslashes($search, '%_\\') . '%';
+            $params[':search_name'] = $escapedSearch;
+            $params[':search_slug'] = $escapedSearch;
+            $params[':search_acronym'] = $escapedSearch;
+            $params[':search_alias'] = $escapedSearch;
+            $conditions[] = "(
+                f.name LIKE :search_name ESCAPE '\\\\'
+                OR f.slug LIKE :search_slug ESCAPE '\\\\'
+                OR f.acronym LIKE :search_acronym ESCAPE '\\\\'
+                OR EXISTS (
+                    SELECT 1 FROM filter_aliases alias
+                    WHERE alias.filter_id = f.id AND alias.alias LIKE :search_alias ESCAPE '\\\\'
+                )
+            )";
+        }
+
+        return [$conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions), $params];
+    }
+
+    private function emptyUsageSummary(): array
+    {
+        $types = ['banca', 'orgao', 'cargo', 'materia', 'topico', 'assunto', 'ano', 'carreira', 'area'];
+        $empty = [
+            'taxonomies' => 0,
+            'questions' => 0,
+            'exams' => 0,
+            'laws' => 0,
+            'total' => 0,
+        ];
+        return [
+            'all' => $empty,
+            'byType' => array_fill_keys($types, $empty),
+        ];
+    }
+
+    private function mergeUsageSummaryRows(array &$summary, array $rows, string $field): void
+    {
+        foreach ($rows as $row) {
+            $type = $this->resolveUsageType($row);
+            $this->ensureUsageSummaryType($summary, $type);
+            $count = (int) ($row['usage_count'] ?? 0);
+            $summary['byType'][$type][$field] += $count;
+            $summary['all'][$field] += $count;
+        }
+    }
+
+    private function ensureUsageSummaryType(array &$summary, string $type): void
+    {
+        if (isset($summary['byType'][$type])) {
+            return;
+        }
+
+        $summary['byType'][$type] = [
+            'taxonomies' => 0,
+            'questions' => 0,
+            'exams' => 0,
+            'laws' => 0,
+            'total' => 0,
+        ];
+    }
+
+    private function resolveUsageType(array $row): string
+    {
+        if (($row['type'] ?? '') !== 'assunto') {
+            return (string) ($row['type'] ?? '');
+        }
+        if (!empty($row['meta_materia']) || ($row['taxonomy_level'] ?? '') === 'materia') {
+            return 'materia';
+        }
+        return ($row['taxonomy_level'] ?? '') === 'topico' ? 'topico' : 'assunto';
+    }
+
+    private function invalidateUsageSummary(): void
+    {
+        RuntimeStoreFactory::shared()->delete('filters:admin:usage-summary:v1');
     }
 
     private function replaceAliases(int $filterId, array $aliases): void

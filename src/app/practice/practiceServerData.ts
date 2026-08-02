@@ -18,6 +18,7 @@ const EMPTY_INITIAL_PAGE: PracticeInitialQuestionPage = {
   total: 0,
   pageInfo: {
     limit: 10,
+    total: 0,
     hasMore: false,
     nextCursor: null,
   },
@@ -101,12 +102,14 @@ export const mapPracticeServerPayload = (payload: unknown): PracticeInitialQuest
   const questions = items
     .map((item) => (isV2Detail(item) ? mapV2DetailToQuestion(item) : mapV2ListItemToQuestion(item)))
     .filter(isQuestionPubliclyVisible);
+  const total = Math.max(questions.length, Number(page.pageInfo?.total ?? questions.length));
 
   return {
     questions,
-    total: questions.length,
+    total,
     pageInfo: {
       limit: Math.max(1, Number(page.pageInfo?.limit || 10)),
+      total,
       hasMore: Boolean(page.pageInfo?.hasMore),
       nextCursor: typeof page.pageInfo?.nextCursor === 'string' && page.pageInfo.nextCursor
         ? page.pageInfo.nextCursor

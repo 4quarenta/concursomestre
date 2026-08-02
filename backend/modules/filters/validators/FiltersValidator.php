@@ -73,4 +73,30 @@ class FiltersValidator
             throw new InvalidArgumentException($message);
         }
     }
+
+    /**
+     * Normaliza os ids recebidos por uma acao administrativa em massa.
+     *
+     * @return int[]
+     */
+    public function normalizeDeleteIds(mixed $ids, int $limit = 500): array
+    {
+        if (!is_array($ids)) {
+            throw new InvalidArgumentException('Informe as taxonomias que devem ser excluidas.');
+        }
+
+        $normalized = array_values(array_unique(array_filter(
+            array_map(static fn (mixed $id): int => (int) $id, $ids),
+            static fn (int $id): bool => $id > 0
+        )));
+
+        if ($normalized === []) {
+            throw new InvalidArgumentException('Selecione ao menos uma taxonomia para excluir.');
+        }
+        if (count($normalized) > $limit) {
+            throw new InvalidArgumentException("Selecione no maximo {$limit} taxonomias por operacao.");
+        }
+
+        return $normalized;
+    }
 }

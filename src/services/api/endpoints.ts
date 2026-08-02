@@ -54,6 +54,7 @@ export const ENDPOINTS = {
         examImport: 'questionsExamImport',
         examFiles: 'questions/exam-files.php',
         bulkImport: 'questionsBulkImport',
+        multiBatchImport: 'questionsMultiBatchImport',
         update: 'questionsUpdate',
         delete: 'questionsDelete',
         submit: 'questionsAnswer',
@@ -198,6 +199,7 @@ export const ENDPOINTS = {
 
     filters: {
         list: 'filtersList',
+        adminList: 'adminFiltersList',
         save: 'filtersSave',
         delete: 'filtersDelete',
     },

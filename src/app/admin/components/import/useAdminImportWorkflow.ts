@@ -33,6 +33,7 @@ import {
 import { normalizeProvaRecord } from '../exams/examBankUtils';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { runPythonExtractor } from './pythonExtractorClient';
+import { buildImportedContextsForPublication } from './granReviewPublicationCore';
 import { readCanonicalQuestionFilters, resolveFirstQuestionFocus } from './adminImportCanonicalFilters';
 import {
   type GenerateSpecificType,
@@ -150,6 +151,7 @@ import {
   getReliableExtractedQuestionNumber,
   auditQuestionCoverage,
   isQuestionReadyForImportPublication,
+  publishSelectedImportQuestionEntries,
   shouldRunFinalQuestionPartsReview,
   getImportedQuestionNumber,
   getPublishedExamId,
@@ -308,7 +310,6 @@ export const useAdminImportWorkflow = ({
   }, [enabled]);
   const getSelectedExamMetadata = (): ImportMetadata => {
     if (!selectedExam) return {};
-
     const selectedExamRecordForMetadata = selectedExam as unknown as Record<string, unknown>;
     const organizations = (selectedExam.orgaos?.length ? selectedExam.orgaos : [selectedExam.orgao])
       .filter(Boolean)
@@ -328,7 +329,6 @@ export const useAdminImportWorkflow = ({
       selectedExamRecordForMetadata.questions,
       selectedExamRecordForMetadata.metadata,
     );
-
     return {
       agency,
       year: String(selectedExam.ano),
@@ -355,12 +355,10 @@ export const useAdminImportWorkflow = ({
         : {}),
     };
   };
-
   useEffect(() => {
     if (!selectedExamRecord || !selectedExam) {
       return;
     }
-
     setPublishedExam(selectedExamRecord);
     setImportMetadata((current) => ({
       ...(current || {}),
@@ -369,12 +367,10 @@ export const useAdminImportWorkflow = ({
   // Keep the workbench tied to the selected Banco de Provas record.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedExam?.id, selectedExamRecord]);
-
   useEffect(() => {
     if (!selectedExamId || !selectedExamFocus) {
       return;
     }
-
     const inheritedFocusValue = getFocusSelectValue(selectedExamFocus);
     if (inheritedFocusValue && inheritedFocusValue !== selectedFocusId) {
       setSelectedFocusId(inheritedFocusValue);
@@ -383,7 +379,6 @@ export const useAdminImportWorkflow = ({
       setManualFocusName('');
     }
   }, [manualFocusName, selectedExamFocus, selectedExamId, selectedFocusId]);
-
   const loadAttachedExamFile = async (exam: Prova, kind: 'prova' | 'gabarito') => {
     const files = exam.files?.length ? exam.files : (exam.examFiles || []);
     const attachment = files.find((file) => (file.kind || file.type) === kind);
@@ -391,7 +386,6 @@ export const useAdminImportWorkflow = ({
       ? exam.proofUrl || exam.pdfUrl
       : exam.answerKeyUrl || exam.gabaritoUrl);
     if (!url) return null;
-
     const response = await fetchAuthenticatedResource(url);
     const blob = await response.blob();
     const fallbackName = kind === 'prova' ? `prova-${exam.id}.pdf` : `gabarito-${exam.id}.pdf`;
@@ -399,7 +393,6 @@ export const useAdminImportWorkflow = ({
       type: blob.type || attachment?.mimeType || 'application/pdf',
     });
   };
-
   const handleSelectedExamIdChange = async (value: string) => {
     setSelectedExamId(value);
     setPublishedQuestionNumbers([]);
@@ -414,13 +407,11 @@ export const useAdminImportWorkflow = ({
       setManualFocusName('');
       return;
     }
-
     const examFocus = resolveExamInheritedFocus(exam, systemSettings.taxonomies);
     if (examFocus) {
       setSelectedFocusId(getFocusSelectValue(examFocus));
       setManualFocusName('');
     }
-
     const organizations = (exam.orgaos?.length ? exam.orgaos : [exam.orgao])
       .filter(Boolean)
       .map((item) => String(item.sigla || item.nome || item.name || '').trim())
@@ -5070,7 +5061,7 @@ export const useAdminImportWorkflow = ({
           });
         });
       const answerKeyMap: Record<number, number> = {};
-
+      const alreadyPublishedQuestionNumbers = new Set<number>();
       const normalizedQuestions = rawQuestions.map((item, index) => {
         const record = toLooseRecord(item) || {};
         const sourceRecord = toLooseRecord(readLooseField(record, ['source', 'origem'])) || {};
@@ -5088,6 +5079,17 @@ export const useAdminImportWorkflow = ({
           || readLooseField(record, ['number', 'numero', 'número', 'questionNumber', 'questao', 'questão']),
           index + 1,
         );
+        const sourceProvider = readLooseText(sourceRecord, ['provider', 'sourceProvider']).toLowerCase();
+        const localQuestionId = Number(readLooseField(sourceRecord, ['localQuestionId', 'local_question_id']) || 0);
+        const sourceAlreadyPublished = readLooseField(sourceRecord, ['alreadyPublished', 'already_published']) === true;
+        if (
+          sourceProvider === 'gran'
+          && sourceAlreadyPublished
+          && Number.isInteger(localQuestionId)
+          && localQuestionId > 0
+        ) {
+          alreadyPublishedQuestionNumbers.add(number);
+        }
         const filters = toLooseRecord(readLooseField(record, ['filters', 'filtros'])) || {};
         const canonicalFilters = readCanonicalQuestionFilters(filters);
         const externalTaxonomy = readExternalAiQuestionTaxonomy(record, filters);
@@ -5376,7 +5378,7 @@ export const useAdminImportWorkflow = ({
       });
       setImportDiagnostics(ensured.diagnostics);
       setPublishedExam(null);
-      setPublishedQuestionNumbers([]);
+      setPublishedQuestionNumbers(Array.from(alreadyPublishedQuestionNumbers).sort((left, right) => left - right));
       addLog(`JSON da IA importado: ${ensured.diagnostics.cardsCreatedCount} card(s), ${ensured.diagnostics.completeCardsCount} completo(s), ${ensured.diagnostics.placeholderCardsCount} pendente(s).`);
       if (!options.silentSuccess) {
         addToast('Resposta da IA carregada na revisão.', 'success');
@@ -5690,6 +5692,18 @@ export const useAdminImportWorkflow = ({
     return normalizedExam;
   };
 
+  const ensurePublishedExamForQuestions = async (selectedFocus: QuestionTaxonomyLabel) => {
+    if (activePublishedExam && activePublishedExamId) return activePublishedExam;
+    const { examName, exam } = buildImportExamPayload(extractedQuestions);
+    const response = await questionService.createImportedExam({ exam, focus: selectedFocus as Record<string, unknown> });
+    if (!response.success) throw new Error(response.message || 'Falha ao salvar a prova importada.');
+
+    const syncedExam = await syncPublishedExam(response.exam, examName);
+    if (!syncedExam || !getPublishedExamId(syncedExam as Record<string, unknown>)) throw new Error('A API salvou a prova, mas nao retornou um ID valido para vincular as questoes.');
+
+    return syncedExam as Record<string, unknown>;
+  };
+
   const buildQuestionPublishPayload = (entries: Array<{ question: Question; index: number }>) => {
     const normalizedImportState = normalizeQuestionContextUsage(
       extractedQuestions.map((question) => applyExamYearToQuestion(question, importMetadata)),
@@ -5826,6 +5840,42 @@ export const useAdminImportWorkflow = ({
     };
   };
 
+  const prepareSelectedGranReviewPublication = (indexes: number[]) => {
+    const published = new Set(publishedQuestionNumbers);
+    const entries = Array.from(new Set(indexes)).sort((left, right) => left - right)
+      .map((index) => ({ question: extractedQuestions[index], index }))
+      .filter((entry): entry is { question: Question; index: number } => Boolean(entry.question))
+      .filter(({ question, index }) => isQuestionReadyForImportPublication(question) && !published.has(getImportedQuestionNumber(question, index + 1)));
+    const focus = resolveSelectedFocus() || resolveFirstQuestionFocus(extractedQuestions as unknown as Array<Record<string, unknown>>);
+    const { agency, role, source, year } = readRequiredExamMetadata();
+    if (entries.length === 0) return { error: 'Nenhuma questão selecionada está pronta para publicação.' };
+    if (!focus) return { error: 'Selecione ou crie um foco antes de publicar.' };
+    if (!agency || !year || !source || !role) return { error: 'Preencha Banca, Ano, Órgão e Cargo/Prova antes de publicar a prova.' };
+    const prepared = buildQuestionPublishPayload(entries);
+    const { exam } = buildImportExamPayload(prepared.questionsForPublish);
+    return {
+      questionNumbers: prepared.questionNumbers,
+      payload: {
+        schemaVersion: 'question-import.v2' as const,
+        exam,
+        focus: focus as Record<string, unknown>,
+        contexts: buildImportedContextsForPublication(prepared.contextsForPublish, buildContextPublishContent),
+        questions: prepared.questionsForPublish,
+      },
+    };
+  };
+
+  const applyGranReviewPublicationResult = (result: Record<string, unknown>) => {
+    const created = Array.isArray(result.created) ? result.created as Question[] : [];
+    const duplicates = Array.isArray(result.duplicatesSkipped) ? result.duplicatesSkipped : Array.isArray(result.duplicates_skipped) ? result.duplicates_skipped : [];
+    const confirmed = Array.from(new Set([
+      ...created.map((question) => getPublishedQuestionNumberFromRecord(question)).filter((number) => number > 0),
+      ...duplicates.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')).map(getPublishedQuestionNumberFromRecord).filter((number) => number > 0),
+    ]));
+    if (confirmed.length) setPublishedQuestionNumbers((previous) => Array.from(new Set([...previous, ...confirmed])).sort((left, right) => left - right));
+    if (created.length) onImportedQuestionsSaved?.(created);
+  };
+
   const validateExamBeforePublish = () => {
     const selectedFocus = resolveSelectedFocus()
       || resolveFirstQuestionFocus(extractedQuestions as unknown as Array<Record<string, unknown>>);
@@ -5852,32 +5902,19 @@ export const useAdminImportWorkflow = ({
     if (!selectedFocus) {
       return;
     }
-    if (selectedExamRecord && activePublishedExamId) {
-      setPublishedExam(selectedExamRecord);
-      addLog(`Prova #${selectedExam?.id || activePublishedExamId} ja vinculada. Nenhuma prova duplicada foi criada.`);
-      addToast('A prova selecionada já está vinculada ao lote.', 'success');
-      return;
-    }
     if (!beginPublishingAction('exam')) {
       return;
     }
 
     try {
-      const { examName, exam } = buildImportExamPayload(extractedQuestions);
-      const response = await questionService.createImportedExam({
-        exam,
-        focus: selectedFocus as Record<string, unknown>,
-      });
-
-      if (!response.success) {
-        throw new Error(response.message || 'Falha ao salvar a prova importada.');
+      const wasAlreadyPublished = Boolean(activePublishedExam && activePublishedExamId);
+      const syncedExam = await ensurePublishedExamForQuestions(selectedFocus);
+      if (wasAlreadyPublished) {
+        addLog(`Prova #${selectedExam?.id || getPublishedExamId(syncedExam)} ja vinculada. Nenhuma prova duplicada foi criada.`);
+        addToast('A prova selecionada já está vinculada ao lote.', 'success');
+      } else {
+        addToast('Prova publicada. Agora voce pode publicar as questoes vinculadas.', 'success');
       }
-
-      const syncedExam = await syncPublishedExam(response.exam, examName);
-      if (!syncedExam || !getPublishedExamId(syncedExam as Record<string, unknown>)) {
-        throw new Error('A API salvou a prova, mas nao retornou um ID valido para o banco de provas.');
-      }
-      addToast('Prova publicada. Agora voce pode publicar as questoes vinculadas.', 'success');
     } catch (error) {
       addToast(`Erro ao publicar prova: ${readErrorMessage(error)}`, 'error');
     } finally {
@@ -5895,15 +5932,6 @@ export const useAdminImportWorkflow = ({
 
     const selectedFocus = validateExamBeforePublish();
     if (!selectedFocus) {
-      return;
-    }
-    if (!activePublishedExam) {
-      addToast('Publique a prova antes de publicar questoes.', 'error');
-      return;
-    }
-    const publishedExamId = activePublishedExamId;
-    if (!publishedExamId) {
-      addToast('A prova publicada nao retornou ID valido. Publique a prova novamente antes das questoes.', 'error');
       return;
     }
     if (entries.length === 0) {
@@ -5925,6 +5953,14 @@ export const useAdminImportWorkflow = ({
     }
 
     try {
+      const ensuredExam = await ensurePublishedExamForQuestions(selectedFocus);
+      const publishedExamId = getPublishedExamId(ensuredExam);
+      if (!publishedExamId) {
+        throw new Error('A prova nao retornou um ID valido para vincular as questoes.');
+      }
+      if (!activePublishedExam) {
+        addLog(`Prova #${publishedExamId} publicada automaticamente antes das questoes selecionadas.`);
+      }
       const {
         questionsForPublish,
         contextsForPublish,
@@ -5957,55 +5993,7 @@ export const useAdminImportWorkflow = ({
         schemaVersion: 'question-import.v2',
         exam: examPayloadForQuestionBatch,
         focus: selectedFocus as Record<string, unknown>,
-        contexts: contextsForPublish.map((context) => {
-          const publishContent = buildContextPublishContent(context);
-          const contextAssets: QuestionAsset[] = [
-            ...(context.imageData
-              ? [{
-                tempId: `${context.tempId}-img-1`,
-                type: 'image' as const,
-                usage: 'context' as const,
-                base64: context.imageData,
-                alt: context.figureDescription || context.title || 'Imagem do contexto.',
-                sourcePage: context.sourcePage || context.page || null,
-                order: 1,
-              }]
-              : []),
-            ...(context.figures || [])
-              .filter((figure) => Boolean(figure.imageData))
-              .map((figure, index) => ({
-                tempId: String(figure.figureKey || `${context.tempId}-img-${index + 2}`),
-                type: 'image' as const,
-                usage: 'context' as const,
-                base64: String(figure.imageData || ''),
-                alt: figure.description || context.figureDescription || `Imagem ${index + 2} do contexto.`,
-                sourcePage: figure.page || context.sourcePage || context.page || null,
-                order: index + 2,
-              })),
-          ].filter((asset, index, assets) => (
-            assets.findIndex((candidate) => candidate.tempId === asset.tempId) === index
-          ));
-          let contextText = String(publishContent.text || context.text || '')
-            .replace(/\[FIGURA:\s*([-\w]+)\]/gi, '[image:$1]')
-            .trim();
-          contextAssets.forEach((asset) => {
-            const marker = `[image:${asset.tempId}]`;
-            if (!contextText.includes(marker)) {
-              contextText = [contextText, marker].filter(Boolean).join('\n\n');
-            }
-          });
-
-          return {
-            tempId: context.tempId,
-            type: context.questionNumbers.length > 1 ? 'shared' : 'individual',
-            body: contextText,
-            bodyClean: stripHtml(contextText),
-            reference: String(publishContent.referenceText || context.referenceText || '').trim(),
-            sourcePage: context.sourcePage || context.page || null,
-            assets: contextAssets,
-            questionNumbers: context.questionNumbers,
-          };
-        }),
+        contexts: buildImportedContextsForPublication(contextsForPublish, buildContextPublishContent),
         questions: questionsForPublish,
         requireExistingExam: true,
       }, null);
@@ -6018,7 +6006,7 @@ export const useAdminImportWorkflow = ({
         setPublishedExam(selectedExamRecord);
         addLog(`Prova #${publishedExamId} preservada: o lote foi apenas vinculado ao cadastro existente, sem atualizar metadados do Banco de Provas.`);
       } else {
-        await syncPublishedExam((response.exam || activePublishedExam) as Record<string, unknown>, examName);
+        await syncPublishedExam((response.exam || ensuredExam) as Record<string, unknown>, examName);
       }
       setExtractedQuestions(normalizedQuestions);
       setExtractedContexts(normalizedContexts);
@@ -6100,6 +6088,16 @@ export const useAdminImportWorkflow = ({
 
     await publishQuestionEntries(entries, 'questions');
   };
+
+  const handlePublishSelectedQuestions = (indexes: number[]) => publishSelectedImportQuestionEntries({
+    indexes,
+    questions: extractedQuestions,
+    publishedQuestionNumbers,
+    getQuestionNumber: getImportedQuestionNumber,
+    onSkipped: (skippedCount, readyCount) => addToast(`${skippedCount} seleção(ões) incompleta(s) foram mantidas na revisão. Publicando somente ${readyCount} questão(ões) pronta(s).`, readyCount > 0 ? 'warning' : 'error'),
+    onEmpty: (emptySelection) => { if (emptySelection) addToast('Selecione ao menos uma questão pronta para publicar.', 'info'); },
+    publish: (entries) => publishQuestionEntries(entries, 'questions'),
+  });
 
   const handlePublishSingleQuestion = async (index: number) => {
     const question = extractedQuestions[index];
@@ -7036,7 +7034,10 @@ export const useAdminImportWorkflow = ({
     handleGenerateSpecific,
     handlePublishExamOnly,
     handlePublishAllQuestions,
+    handlePublishSelectedQuestions,
     handlePublishSingleQuestion,
+    prepareSelectedGranReviewPublication,
+    applyGranReviewPublicationResult,
     updateImportMetadataField,
     updateExtractedQuestionField,
     updateExtractedQuestionStatement,

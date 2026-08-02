@@ -367,6 +367,18 @@ class QuestionsValidator
             'imageUrl' => (string) ($payload['imageUrl'] ?? ''),
             'source_page' => $payload['sourcePage'] ?? $payload['source_page'] ?? null,
             'question_number' => $payload['questionNumber'] ?? $payload['question_number'] ?? null,
+            'source_provider' => $this->normalizeSourceIdentityValue(
+                $payload['sourceProvider'] ?? $payload['source_provider'] ?? null,
+                40
+            ),
+            'source_external_id' => $this->normalizeSourceIdentityValue(
+                $payload['sourceExternalId'] ?? $payload['source_external_id'] ?? null,
+                120
+            ),
+            'source_exam_key' => $this->normalizeSourceIdentityValue(
+                $payload['sourceExamKey'] ?? $payload['source_exam_key'] ?? null,
+                160
+            ),
             'support_context_key' => (string) ($payload['contextKey'] ?? $payload['supportContextKey'] ?? $payload['support_context_key'] ?? ''),
             'canonical_context_id' => is_numeric($payload['canonicalContextId'] ?? $payload['canonical_context_id'] ?? null)
                 ? (int) ($payload['canonicalContextId'] ?? $payload['canonical_context_id'])
@@ -461,6 +473,9 @@ class QuestionsValidator
         $payload['questionOrigin'] = $source['origin'] ?? $payload['questionOrigin'] ?? $payload['question_origin'] ?? null;
         $payload['questionNumber'] = $source['questionNumber'] ?? $source['question_number'] ?? $payload['questionNumber'] ?? $payload['question_number'] ?? null;
         $payload['sourcePage'] = $source['sourcePage'] ?? $source['source_page'] ?? $payload['sourcePage'] ?? $payload['source_page'] ?? null;
+        $payload['sourceProvider'] = $source['provider'] ?? $source['sourceProvider'] ?? $source['source_provider'] ?? $payload['sourceProvider'] ?? $payload['source_provider'] ?? null;
+        $payload['sourceExternalId'] = $source['externalId'] ?? $source['sourceExternalId'] ?? $source['source_external_id'] ?? $payload['sourceExternalId'] ?? $payload['source_external_id'] ?? null;
+        $payload['sourceExamKey'] = $source['sourceExamKey'] ?? $source['source_exam_key'] ?? $payload['sourceExamKey'] ?? $payload['source_exam_key'] ?? null;
         $payload['teacherComment'] = (string) ($this->resolveCanonicalEditorialBody($editorials, 'teacher_comment')
             ?? $editorialComments['teacherComment']
             ?? $editorialComments['teacher_comment']
@@ -960,6 +975,20 @@ class QuestionsValidator
     {
         $userId = trim((string) ($payload['user_id'] ?? $payload['userId'] ?? ''));
         return $userId !== '' ? $userId : null;
+    }
+
+    /**
+     * Identificadores externos sao apenas chaves de idempotencia: nunca devem
+     * receber HTML, espacos de controle ou valores arbitrariamente longos.
+     */
+    private function normalizeSourceIdentityValue(mixed $value, int $maxLength): string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || strlen($value) > $maxLength || preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
+            return '';
+        }
+
+        return $value;
     }
 
     /**

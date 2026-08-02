@@ -1362,6 +1362,10 @@ interface AdminImportSectionProps {
   reviewOnly?: boolean;
   reviewDisplayMode?: 'full' | 'cards';
   reviewSourceLabel?: string;
+  reviewSelectedQuestionIndexes?: ReadonlySet<number>;
+  reviewQuestionQueueStatuses?: Record<number, 'queued' | 'processing' | 'published' | 'failed'>;
+  onReviewQuestionSelectionChange?: (index: number, selected: boolean) => void;
+  onReviewQuestionPublishRequest?: (index: number) => void;
   systemSettings: SystemSettings;
   onGeminiApiKeyChange: (value: string) => void;
   onSaveSettings: () => void;
@@ -1413,6 +1417,7 @@ interface AdminImportSectionProps {
   onImportExternalEditorialJson: (json: string) => void | Promise<void>;
   onPublishExam: () => void | Promise<void>;
   onPublishAllQuestions: () => void | Promise<void>;
+  onPublishSelectedQuestions: (indexes: number[]) => void | Promise<void>;
   onPublishQuestion: (index: number) => void | Promise<void>;
   onEditExtractedQuestion: (question: Question, index: number) => void;
   onMarkExtractedQuestionReviewed: (index: number) => void;
@@ -1458,6 +1463,10 @@ const AdminImportSection = ({
   reviewOnly = false,
   reviewDisplayMode = 'full',
   reviewSourceLabel = '',
+  reviewSelectedQuestionIndexes,
+  reviewQuestionQueueStatuses,
+  onReviewQuestionSelectionChange,
+  onReviewQuestionPublishRequest,
   systemSettings,
   onGeminiApiKeyChange,
   onSaveSettings,
@@ -1624,6 +1633,7 @@ const AdminImportSection = ({
       })
   ), [extractedQuestions, placeholderQuestionSet]);
   const cardsOnly = reviewOnly && reviewDisplayMode === 'cards';
+  const [expandedReviewQuestionIndexes, setExpandedReviewQuestionIndexes] = React.useState<Set<number>>(() => new Set());
   const effectiveReviewTab = cardsOnly
     ? 'questions'
     : activeReviewTab === 'pending' && pendingAlternativeQuestions.length === 0
@@ -3121,9 +3131,14 @@ const AdminImportSection = ({
                   const qualityReasons = getQuestionQuality(question)?.reasons || question.statusReasons || [];
                   const hasStoredAnswer = Number.isInteger(Number(question.correctOptionIndex))
                     || Number(question.resposta || 0) > 0;
-                  const isQuestionPublished = publishedQuestionSet.has(questionNumber);
+                  const queueStatus = reviewQuestionQueueStatuses?.[index];
+                  const isQuestionPublished = publishedQuestionSet.has(questionNumber) || queueStatus === 'published';
                   const publishQuestionAction = `question:${questionNumber}` as const;
-                  const singlePublishBlocked = isPublishing || !publishedExam || !questionReadyForPublication || isQuestionPublished;
+                  const isPublicationPending = queueStatus === 'queued' || queueStatus === 'processing';
+                  const singlePublishBlocked = isPublishing || (!cardsOnly && !publishedExam) || !questionReadyForPublication || isQuestionPublished || isPublicationPending;
+                  const isQuestionSelectable = Boolean(cardsOnly && onReviewQuestionSelectionChange && questionReadyForPublication && !isQuestionPublished && !isPublicationPending);
+                  const isQuestionSelected = Boolean(reviewSelectedQuestionIndexes?.has(index));
+                  const isCardExpanded = !cardsOnly || expandedReviewQuestionIndexes.has(index);
                   const introText = getQuestionIntroText(question);
                   const referenceText = getQuestionReferenceText(question);
                   const supportImages = getQuestionSupportImages(question);
@@ -3175,6 +3190,25 @@ const AdminImportSection = ({
                     }`} />
                     <div className="mb-4 flex items-start justify-between">
                       <div className="flex items-center gap-3">
+                        {cardsOnly && onReviewQuestionSelectionChange && (
+                          <label
+                            className={`flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[9px] font-black uppercase tracking-widest ${
+                              isQuestionSelectable
+                                ? 'cursor-pointer border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-300'
+                                : 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-600'
+                            }`}
+                            title={isQuestionSelectable ? 'Selecionar para publicação em lote' : 'Complete e revise esta questão antes de selecioná-la'}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isQuestionSelected}
+                              disabled={!isQuestionSelectable}
+                              onChange={(event) => onReviewQuestionSelectionChange(index, event.target.checked)}
+                              className="h-3.5 w-3.5 accent-sky-700"
+                            />
+                            Selecionar
+                          </label>
+                        )}
                         <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-slate-900 text-xs font-black text-white dark:bg-sky-700">
                           {questionNumber}
                         </span>
@@ -3198,10 +3232,14 @@ const AdminImportSection = ({
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
                         {(question.anulada || question.isCanceled) && <span className="rounded bg-red-100 px-2 py-0.5 text-[8px] font-black uppercase text-red-700 dark:bg-red-900/40 dark:text-red-400">Anulada</span>}
                         {(question.desatualizada || question.isOutdated) && <span className="rounded bg-amber-100 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">Desat.</span>}
-                        {isQuestionPublished && <span className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300">Publicado</span>}
+                        {isQuestionPublished && <span className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300">Publicada</span>}
+                        {!isQuestionPublished && questionReadyForPublication && !queueStatus && <span className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300">Pronta</span>}
+                        {queueStatus === 'queued' && <span className="rounded-sm border border-sky-300 bg-sky-50 px-2 py-1 text-[9px] font-black uppercase text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">Na fila</span>}
+                        {queueStatus === 'processing' && <span className="rounded-sm border border-sky-300 bg-sky-50 px-2 py-1 text-[9px] font-black uppercase text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">Processando</span>}
+                        {queueStatus === 'failed' && <span className="rounded-sm border border-red-300 bg-red-50 px-2 py-1 text-[9px] font-black uppercase text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">Falhou</span>}
                         {placeholder && <span className="rounded-sm border border-amber-400 bg-amber-100 px-2 py-1 text-[9px] font-black uppercase text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">Pendente · não localizada</span>}
                         {!placeholder && !questionReadyForPublication && <span className="rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300">Incompleta</span>}
                         <div className={`rounded-sm border px-2 py-1 text-[10px] font-black uppercase ${
@@ -3226,6 +3264,32 @@ const AdminImportSection = ({
                             Revisado
                           </button>
                         )}
+                        {cardsOnly && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedReviewQuestionIndexes((previous) => {
+                              const next = new Set(previous);
+                              if (next.has(index)) next.delete(index);
+                              else next.add(index);
+                              return next;
+                            })}
+                            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            <ChevronDown className={`transition-transform ${isCardExpanded ? 'rotate-180' : ''}`} size={13} />
+                            {isCardExpanded ? 'Ocultar conteúdo' : 'Mostrar conteúdo'}
+                          </button>
+                        )}
+                        {cardsOnly && onReviewQuestionPublishRequest && !isQuestionPublished && (
+                          <button
+                            type="button"
+                            onClick={() => onReviewQuestionPublishRequest(index)}
+                            disabled={singlePublishBlocked}
+                            className="inline-flex items-center gap-1 rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300"
+                          >
+                            {queueStatus === 'processing' ? <Loader2 className="animate-spin" size={12} /> : <FileCheck size={12} />}
+                            Publicar
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onEditExtractedQuestion(question, index)}
@@ -3245,6 +3309,21 @@ const AdminImportSection = ({
                       </div>
                     </div>
 
+                    {cardsOnly && !isCardExpanded && (
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+                        <p className="line-clamp-3 text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
+                          {getQuestionStatementPreview(question).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || 'Enunciado ainda não preenchido.'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                          <span>{options.length} alternativa(s)</span>
+                          <span>{hasSharedContext ? 'Com contexto' : hasIndividualSupport ? 'Com apoio individual' : 'Sem contexto'}</span>
+                          <span>{hasFigureResource ? 'Com recurso visual' : 'Sem recurso visual'}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {isCardExpanded && (
+                    <>
                     <div className="mb-4 flex flex-wrap gap-3">
                       <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
                         <Briefcase size={12} />
@@ -3828,10 +3907,13 @@ const AdminImportSection = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onPublishQuestion(index)}
+                        onClick={() => {
+                          if (cardsOnly && onReviewQuestionPublishRequest) onReviewQuestionPublishRequest(index);
+                          else onPublishQuestion(index);
+                        }}
                         disabled={singlePublishBlocked}
                         className="ml-auto flex items-center gap-1.5 rounded-sm border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
-                        title={!publishedExam ? 'Publique a prova antes de publicar questoes.' : undefined}
+                        title={!cardsOnly && !publishedExam ? 'Publique a prova antes de publicar questoes.' : undefined}
                       >
                         {publishingAction === publishQuestionAction ? <Loader2 className="animate-spin" size={12} /> : <FileCheck size={12} />}
                         {isQuestionPublished ? 'Publicado' : 'Postar Questao'}
@@ -3854,6 +3936,8 @@ const AdminImportSection = ({
                         </p>
                         <MathRichText content={getDetailedCommentPreview(question)} disableCallouts className="max-h-72 overflow-y-auto rounded-sm bg-white/70 p-3 text-[11px] font-medium leading-relaxed text-slate-700 dark:bg-slate-950/20 dark:text-slate-200" />
                       </div>
+                    )}
+                    </>
                     )}
                   </div>
                   );

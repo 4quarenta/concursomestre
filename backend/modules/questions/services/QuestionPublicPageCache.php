@@ -64,6 +64,28 @@ final class QuestionPublicPageCache
             && $this->store->set($this->cacheKey($limit, $cursor, $filters), $encoded, $this->ttlSeconds);
     }
 
+    public function getTotal(array $filters): ?int
+    {
+        if (!$this->canCache($filters)) {
+            return null;
+        }
+
+        $raw = $this->store->get($this->totalCacheKey($filters));
+        return is_string($raw) && preg_match('/^\d+$/', $raw) === 1
+            ? (int) $raw
+            : null;
+    }
+
+    public function setTotal(array $filters, int $total): bool
+    {
+        return $this->canCache($filters)
+            && $this->store->set(
+                $this->totalCacheKey($filters),
+                (string) max(0, $total),
+                $this->ttlSeconds
+            );
+    }
+
     public function invalidate(): void
     {
         if ($this->store->isShared()) {
@@ -81,6 +103,16 @@ final class QuestionPublicPageCache
             'filters' => $filters,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         return 'questions:public-list:page:' . hash('sha256', is_string($payload) ? $payload : '');
+    }
+
+    private function totalCacheKey(array $filters): string
+    {
+        $payload = json_encode([
+            'version' => $this->store->get(self::VERSION_KEY) ?: '0',
+            'filters' => $this->normalize($filters),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return 'questions:public-list:total:' . hash('sha256', is_string($payload) ? $payload : '');
     }
 
     private function containsPrivateState(mixed $value): bool

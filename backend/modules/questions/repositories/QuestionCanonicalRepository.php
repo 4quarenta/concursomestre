@@ -25,7 +25,9 @@ final class QuestionCanonicalRepository
 
         SchemaReadiness::assertTablesAndColumns($this->db, 'agregado canonico de questoes', [
             'question_options' => ['id', 'question_id', 'display_order', 'label', 'body', 'is_correct'],
-            'question_contexts' => ['id', 'external_key', 'context_type', 'body'],
+            'question_contexts' => [
+                'id', 'external_key', 'context_type', 'body', 'source_provider', 'source_external_id',
+            ],
             'question_context_questions' => ['context_id', 'question_id', 'relation_role'],
             'question_assets' => ['id', 'question_id', 'context_id', 'option_id', 'usage_type'],
             'question_editorials' => ['id', 'question_id', 'editorial_type', 'body', 'status'],
@@ -275,11 +277,38 @@ final class QuestionCanonicalRepository
         if ($externalKey === '') {
             throw new InvalidArgumentException('Contexto sem identificador temporario.');
         }
-        $find = $this->db->prepare('SELECT id FROM question_contexts WHERE external_key = :external_key LIMIT 1');
-        $find->execute([':external_key' => $externalKey]);
+        $source = is_array($context['source'] ?? null) ? $context['source'] : [];
+        $sourceProvider = $this->normalizeSourceProvider(
+            $source['provider'] ?? $context['sourceProvider'] ?? $context['source_provider'] ?? null
+        );
+        $sourceExternalId = $this->normalizeSourceExternalId(
+            $source['externalId'] ?? $context['sourceExternalId'] ?? $context['source_external_id'] ?? null
+        );
+
+        if ($sourceProvider !== '' && $sourceExternalId !== '') {
+            $find = $this->db->prepare(
+                'SELECT id FROM question_contexts
+                 WHERE source_provider = :source_provider AND source_external_id = :source_external_id
+                 LIMIT 1'
+            );
+            $find->execute([
+                ':source_provider' => $sourceProvider,
+                ':source_external_id' => $sourceExternalId,
+            ]);
+        } else {
+            $find = $this->db->prepare('SELECT id FROM question_contexts WHERE external_key = :external_key LIMIT 1');
+            $find->execute([':external_key' => $externalKey]);
+        }
         $contextId = $find->fetchColumn();
+        if ($contextId !== false && $sourceProvider !== '' && $sourceExternalId !== '') {
+            // Reviewed Gran contexts are authoritative; a repeated collection
+            // only points at the same canonical record.
+            return (int) $contextId;
+        }
         $params = [
             ':external_key' => $externalKey,
+            ':source_provider' => $sourceProvider !== '' ? $sourceProvider : null,
+            ':source_external_id' => $sourceExternalId !== '' ? $sourceExternalId : null,
             ':context_type' => trim((string) ($context['type'] ?? 'shared')) ?: 'shared',
             ':body' => (string) ($context['body'] ?? $context['texto'] ?? $context['text'] ?? ''),
             ':body_clean' => (string) ($context['bodyClean'] ?? $context['textoClean'] ?? ''),
@@ -288,14 +317,15 @@ final class QuestionCanonicalRepository
             ':metadata_json' => $this->encodeJson([
                 'question_numbers' => array_values($context['questionNumbers'] ?? $context['questionIds'] ?? []),
             ]),
-            ':actor' => $actorUserId !== '' ? $actorUserId : null,
+            ':created_by_actor' => $actorUserId !== '' ? $actorUserId : null,
+            ':updated_by_actor' => $actorUserId !== '' ? $actorUserId : null,
         ];
         if ($contextId === false) {
             $insert = $this->db->prepare(
                 'INSERT INTO question_contexts
-                    (external_key, context_type, body, body_clean, reference_text, source_page, metadata_json, created_by_user_id, updated_by_user_id)
+                    (external_key, source_provider, source_external_id, context_type, body, body_clean, reference_text, source_page, metadata_json, created_by_user_id, updated_by_user_id)
                  VALUES
-                    (:external_key, :context_type, :body, :body_clean, :reference_text, :source_page, :metadata_json, :actor, :actor)'
+                    (:external_key, :source_provider, :source_external_id, :context_type, :body, :body_clean, :reference_text, :source_page, :metadata_json, :created_by_actor, :updated_by_actor)'
             );
             $insert->execute($params);
             $id = (int) $this->db->lastInsertId();
@@ -303,21 +333,46 @@ final class QuestionCanonicalRepository
             $id = (int) $contextId;
             $update = $this->db->prepare(
                 'UPDATE question_contexts
-                 SET context_type = :context_type,
+                 SET external_key = :external_key,
+                     source_provider = :source_provider,
+                     source_external_id = :source_external_id,
+                     context_type = :context_type,
                      body = :body,
                      body_clean = :body_clean,
                      reference_text = :reference_text,
                      source_page = :source_page,
                      metadata_json = :metadata_json,
-                     updated_by_user_id = :actor
+                     updated_by_user_id = :updated_by_actor
                  WHERE id = :id'
             );
             $params[':id'] = $id;
-            $update->execute($params);
+            $updateParams = $params;
+            unset($updateParams[':created_by_actor']);
+            $update->execute($updateParams);
             $this->db->prepare('DELETE FROM question_assets WHERE context_id = :context_id')->execute([':context_id' => $id]);
         }
         $this->insertAssets(null, $id, null, $context['assets'] ?? []);
         return $id;
+    }
+
+    private function normalizeSourceProvider(mixed $value): string
+    {
+        $value = strtolower(trim((string) $value));
+        if ($value === '' || strlen($value) > 40 || preg_match('/^[a-z0-9][a-z0-9_-]*$/', $value) !== 1) {
+            return '';
+        }
+
+        return $value;
+    }
+
+    private function normalizeSourceExternalId(mixed $value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || strlen($value) > 120 || preg_match('/[\x00-\x1F\x7F]/', $value) === 1) {
+            return '';
+        }
+
+        return $value;
     }
 
     public function linkQuestionContext(int $contextId, int $questionId, string $role = 'shared'): void
@@ -552,6 +607,45 @@ final class QuestionCanonicalRepository
         }
 
         return array_filter($aggregates, static fn (array $aggregate): bool => $aggregate['alternatives'] !== []);
+    }
+
+    /**
+     * Retorna somente a presenca dos editoriais usados pela listagem
+     * administrativa. O corpo continua restrito ao endpoint de detalhe.
+     *
+     * @return array<string, array{hasTeacherComment: bool, hasDetailedAnalysis: bool}>
+     * @since 1.0.0
+     */
+    public function listQuestionEditorialFlags(array $questionIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $id): int => (int) $id,
+            $questionIds
+        ), static fn (int $id): bool => $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT question_id,
+                    MAX(CASE WHEN editorial_type = 'teacher_comment' AND TRIM(body) <> '' THEN 1 ELSE 0 END) AS has_teacher_comment,
+                    MAX(CASE WHEN editorial_type = 'detailed_analysis' AND TRIM(body) <> '' THEN 1 ELSE 0 END) AS has_detailed_analysis
+             FROM question_editorials
+             WHERE question_id IN ({$placeholders})
+             GROUP BY question_id"
+        );
+        $stmt->execute($ids);
+
+        $flags = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $flags[(string) $row['question_id']] = [
+                'hasTeacherComment' => (int) ($row['has_teacher_comment'] ?? 0) === 1,
+                'hasDetailedAnalysis' => (int) ($row['has_detailed_analysis'] ?? 0) === 1,
+            ];
+        }
+
+        return $flags;
     }
 
     private function insertAssets(?int $questionId, ?int $contextId, ?int $optionId, mixed $assets): void

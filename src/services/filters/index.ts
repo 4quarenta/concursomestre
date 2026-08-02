@@ -11,7 +11,7 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
-import type { Question } from '@types';
+import type { Question, TaxonomyUsage, TaxonomyUsageSummary } from '@types';
 
 type RawFilterNode = Record<string, unknown>;
 
@@ -41,6 +41,11 @@ type FiltersSaveResponse = {
   };
 };
 
+export interface FiltersBulkDeleteResult {
+  deletedIds: number[];
+  deletedCount: number;
+}
+
 export interface FiltersApiPayload {
   bancas?: RawFilterNode[];
   orgaos?: RawFilterNode[];
@@ -48,6 +53,44 @@ export interface FiltersApiPayload {
   cargos?: RawFilterNode[];
   anos?: Array<string | number>;
   carreiras?: RawFilterNode[];
+  areas?: RawFilterNode[];
+  usage?: {
+    all?: Record<string, unknown>;
+    byType?: Record<string, Record<string, unknown>>;
+    byFilterId?: Record<string, Record<string, unknown>>;
+  };
+}
+
+export interface AdminFilterListItem {
+  id: number;
+  type: string;
+  name: string;
+  slug: string;
+  sigla?: string | null;
+  parentId?: number | null;
+  parentName?: string | null;
+  description?: string | null;
+  website?: string | null;
+  assetUrl?: string | null;
+  iconKey?: string | null;
+  aliases?: string[];
+  keywords?: string[];
+  taxonomyLevel?: string | null;
+  relationships?: Array<Record<string, unknown>>;
+  sourceIdentities?: Array<Record<string, unknown>>;
+  usage: TaxonomyUsage;
+}
+
+export interface AdminFiltersPage {
+  rows: AdminFilterListItem[];
+  total: number;
+  page: number;
+  perPage: number;
+  pages: number;
+  usage: {
+    all: TaxonomyUsageSummary;
+    byType: Record<string, TaxonomyUsageSummary>;
+  };
 }
 
 export interface FilterSavePayload {
@@ -83,7 +126,18 @@ const readTaxonomyPresentation = (item: RawFilterNode) => ({
     : typeof item.icon_key === 'string' ? item.icon_key : undefined,
   aliases: readStringList(item.aliases),
   keywords: readStringList(item.keywords),
+  usage: readTaxonomyUsage(item.usage),
 });
+
+const readTaxonomyUsage = (value: unknown) => {
+  const usage = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    questions: Number(usage.questions || 0),
+    exams: Number(usage.exams || 0),
+    laws: Number(usage.laws || 0),
+    total: Number(usage.total || 0),
+  };
+};
 
 export const ENEM_FOCUS_NAME = 'ENEM';
 
@@ -400,7 +454,32 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
       parentId: item.pai || item.parent_id ? String(item.pai || item.parent_id) : undefined,
       type: 'career',
     })),
+    areas: (data.areas || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      ...readTaxonomyPresentation(item),
+      parentId: item.pai || item.parent_id ? String(item.pai || item.parent_id) : undefined,
+      type: 'area',
+    })),
     years: (data.anos || []).map(String),
+    usage: data.usage ? {
+      all: {
+        taxonomies: Number(data.usage.all?.taxonomies || 0),
+        questions: Number(data.usage.all?.questions || 0),
+        exams: Number(data.usage.all?.exams || 0),
+        laws: Number(data.usage.all?.laws || 0),
+        total: Number(data.usage.all?.total || 0),
+      },
+      byType: Object.fromEntries(Object.entries(data.usage.byType || {}).map(([type, usage]) => [type, {
+        taxonomies: Number(usage.taxonomies || 0),
+        questions: Number(usage.questions || 0),
+        exams: Number(usage.exams || 0),
+        laws: Number(usage.laws || 0),
+        total: Number(usage.total || 0),
+      }])),
+      byFilterId: Object.fromEntries(Object.entries(data.usage.byFilterId || {}).map(([id, usage]) => [id, readTaxonomyUsage(usage)])),
+    } : undefined,
     modalities: ['Múltipla Escolha', 'Certo/Errado'],
   };
 };
@@ -425,6 +504,48 @@ export const filtersService = {
   async listTaxonomies(force = false) {
     const payload = await this.list(force);
     return normalizeFiltersToTaxonomies(payload);
+  },
+
+  async listAdminPage(params: {
+    page?: number;
+    perPage?: number;
+    type?: string;
+    search?: string;
+  } = {}): Promise<AdminFiltersPage> {
+    const response = await apiClient.get<AdminFiltersPage>(ENDPOINTS.filters.adminList, {
+      params: {
+        page: String(params.page || 1),
+        per_page: String(params.perPage || 50),
+        type: params.type || 'all',
+        search: params.search || '',
+      },
+    });
+    return readApiData<AdminFiltersPage>(response, {
+      rows: [],
+      total: 0,
+      page: 1,
+      perPage: 50,
+      pages: 1,
+      usage: {
+        all: { taxonomies: 0, questions: 0, exams: 0, laws: 0, total: 0 },
+        byType: {},
+      },
+    });
+  },
+
+  async getAdminItem(id: number): Promise<AdminFilterListItem> {
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error('Taxonomia invalida.');
+    }
+
+    const response = await apiClient.get<AdminFilterListItem>(ENDPOINTS.filters.adminList, {
+      params: { id: String(id) },
+    });
+    const item = readApiData<AdminFilterListItem | null>(response, null);
+    if (!item || Number(item.id) !== id) {
+      throw new Error('A taxonomia nao foi encontrada.');
+    }
+    return item;
   },
 
   async save(payload: FilterSavePayload): Promise<number> {
@@ -496,6 +617,26 @@ export const filtersService = {
     const response = await apiClient.get(ENDPOINTS.filters.delete, { params: { id: id.toString() } });
     assertApiSuccess(response, 'Erro ao deletar filtro');
     clearRequestCoalescing(buildRequestCacheKey('filters:list'));
+  },
+
+  async removeMany(ids: number[]): Promise<FiltersBulkDeleteResult> {
+    const normalizedIds = [...new Set(ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    if (normalizedIds.length === 0) {
+      throw new Error('Selecione ao menos uma taxonomia para excluir.');
+    }
+
+    const response = await apiClient.post(ENDPOINTS.filters.delete, { ids: normalizedIds });
+    assertApiSuccess(response, 'Erro ao excluir taxonomias');
+    const result = readApiData<FiltersBulkDeleteResult>(response, {
+      deletedIds: [],
+      deletedCount: 0,
+    });
+    clearRequestCoalescing(buildRequestCacheKey('filters:list'));
+
+    return {
+      deletedIds: Array.isArray(result.deletedIds) ? result.deletedIds.map(Number).filter(Number.isFinite) : [],
+      deletedCount: Number(result.deletedCount || 0),
+    };
   },
 };
 

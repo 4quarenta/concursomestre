@@ -31,6 +31,19 @@ assertAdminApiRbac($bridgeFiles !== [], 'Nenhum endpoint /api/admin foi encontra
 
 foreach ($bridgeFiles as $bridgePath) {
     $bridgeSource = file_get_contents($bridgePath);
+    $isGranCrawlerBridge = basename($bridgePath) === 'gran_crawler.php';
+    if ($isGranCrawlerBridge) {
+        $granRouteSource = file_get_contents($base . '/modules/admin/gran_crawler_routes.php');
+        assertAdminApiRbac(
+            is_string($bridgeSource)
+                && str_contains($bridgeSource, "'/../../modules/admin/gran_crawler_routes.php'")
+                && str_contains($bridgeSource, 'handleAdminGranCrawlerRoute($db)')
+                && is_string($granRouteSource)
+                && str_contains($granRouteSource, 'requireAdminSessionContext($db)'),
+            'Bridge do crawler deve delegar ao modulo dedicado protegido por RBAC.'
+        );
+        continue;
+    }
     assertAdminApiRbac(
         is_string($bridgeSource) && str_contains($bridgeSource, "'/../../modules/admin/routes.php'"),
         'Bridge administrativo deve delegar ao modulo com RBAC: ' . basename($bridgePath)

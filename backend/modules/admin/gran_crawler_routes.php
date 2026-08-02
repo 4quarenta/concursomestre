@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/services/AdminGranCrawlerService.php';
+require_once __DIR__ . '/services/AdminGranTaxonomySyncService.php';
 require_once __DIR__ . '/../../shared/security/AdminSecurity.php';
 require_once __DIR__ . '/../../shared/middleware/RateLimiter.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
@@ -19,16 +20,14 @@ function handleAdminGranCrawlerRoute(PDO $db): void
         $service = new AdminGranCrawlerService($db);
 
         if ($method === 'GET') {
-            Response::success([
-                'jobs' => $service->listJobs($actorUserId, $role === 'admin'),
-            ]);
+            Response::success($service->bootstrap($actorUserId, $role === 'admin'));
         }
         if ($method !== 'POST') {
             Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
         }
 
         $rawInput = (string) file_get_contents('php://input');
-        if (strlen($rawInput) > 12_000_000) {
+        if (strlen($rawInput) > 120_000_000) {
             Response::error('O lote recebido excede o limite seguro.', 413, null, 'payload_too_large');
         }
         $input = json_decode($rawInput, true);
@@ -46,6 +45,36 @@ function handleAdminGranCrawlerRoute(PDO $db): void
             );
         }
 
+        if ($action === 'taxonomy_status') {
+            $result = (new AdminGranTaxonomySyncService($db))->getStatus();
+            Response::success(['taxonomies' => $result], 'Status das taxonomias Gran carregado.');
+        }
+
+        if ($action === 'check_taxonomy_updates') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            $manifests = $input['manifests'] ?? null;
+            if (!is_array($manifests)) {
+                throw new InvalidArgumentException('A extensao nao retornou manifestos validos.');
+            }
+            $result = (new AdminGranTaxonomySyncService($db))->compareUpdateManifests(array_values($manifests));
+            Response::success(['taxonomies' => $result], 'Atualizacoes das taxonomias verificadas sem gravar catalogos.');
+        }
+
+        if ($action === 'mark_taxonomy_synced') {
+            RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
+            $kind = strtolower(trim((string) ($input['taxonomyKind'] ?? '')));
+            $result = (new AdminGranTaxonomySyncService($db))->markManifestSynchronized($kind);
+            Response::success(['taxonomies' => $result], 'Manifesto da taxonomia atualizado.');
+        }
+
+        if ($action === 'taxonomy_hierarchy_gaps') {
+            $roots = (new AdminGranTaxonomySyncService($db))->getMissingSubjectHierarchyExternalIds();
+            Response::success([
+                'rootExternalIds' => $roots,
+                'count' => count($roots),
+            ], 'Ramos ausentes da hierarquia Gran carregados.');
+        }
+
         if ($action === 'map') {
             RateLimiter::enforceProfile('admin_crawler', $actorUserId);
             $result = $service->mapBrowserResponse($input);
@@ -58,8 +87,146 @@ function handleAdminGranCrawlerRoute(PDO $db): void
             Response::success($result, 'JSON da extensao carregado para revisao.');
         }
 
-        if ($action === 'enqueue') {
-            $result = $service->enqueue($input, $actorUserId);
+        if ($action === 'sync_taxonomy_chunk') {
+            RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
+            $kind = strtolower(trim((string) ($input['taxonomyKind'] ?? '')));
+            $granResponse = $input['granResponse'] ?? null;
+            if (!is_array($granResponse)) {
+                throw new InvalidArgumentException('A extensao nao retornou uma pagina valida de taxonomias.');
+            }
+            $result = (new AdminGranTaxonomySyncService($db))->syncChunk($kind, $granResponse);
+            logAdminAudit($db, $actorUserId, 'gran_crawler.taxonomy_sync', 'filter', null, [
+                'kind' => $kind,
+                'processed' => (int) ($result['processed'] ?? 0),
+                'created' => (int) ($result['created'] ?? 0),
+                'updated' => (int) ($result['updated'] ?? 0),
+                'pending' => (int) ($result['pending'] ?? 0),
+            ]);
+            Response::success($result, 'Pagina de taxonomias Gran sincronizada.');
+        }
+
+        if ($action === 'sync_taxonomy_batch') {
+            RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
+            $kind = strtolower(trim((string) ($input['taxonomyKind'] ?? '')));
+            $granResponses = $input['granResponses'] ?? null;
+            if (!is_array($granResponses)) {
+                throw new InvalidArgumentException('A extensao nao retornou um lote valido de taxonomias.');
+            }
+            $finalizeRelations = !array_key_exists('finalizeRelations', $input)
+                || filter_var($input['finalizeRelations'], FILTER_VALIDATE_BOOLEAN);
+            $result = (new AdminGranTaxonomySyncService($db))->syncBatch(
+                $kind,
+                $granResponses,
+                $finalizeRelations
+            );
+            logAdminAudit($db, $actorUserId, 'gran_crawler.taxonomy_sync_batch', 'filter', null, [
+                'kind' => $kind,
+                'pages' => (int) ($result['pages'] ?? 0),
+                'processed' => (int) ($result['processed'] ?? 0),
+                'created' => (int) ($result['created'] ?? 0),
+                'updated' => (int) ($result['updated'] ?? 0),
+                'pending' => (int) ($result['pending'] ?? 0),
+                'relations_finalized' => $finalizeRelations,
+            ]);
+            Response::success($result, 'Lote de taxonomias Gran sincronizado.');
+        }
+
+        if ($action === 'sync_missing_subject_roots') {
+            RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
+            $granResponses = $input['granResponses'] ?? null;
+            $rootExternalIds = $input['rootExternalIds'] ?? null;
+            if (!is_array($granResponses) || !is_array($rootExternalIds)) {
+                throw new InvalidArgumentException('O catalogo ou as raizes pendentes sao invalidos.');
+            }
+            $result = (new AdminGranTaxonomySyncService($db))->syncMissingSubjectRoots(
+                $granResponses,
+                array_values($rootExternalIds)
+            );
+            logAdminAudit($db, $actorUserId, 'gran_crawler.taxonomy_root_recovery', 'filter', null, [
+                'requested' => (int) ($result['requested'] ?? 0),
+                'found' => (int) ($result['found'] ?? 0),
+                'created' => (int) ($result['created'] ?? 0),
+                'updated' => (int) ($result['updated'] ?? 0),
+                'unresolved' => (int) ($result['unresolved'] ?? 0),
+            ]);
+            Response::success($result, 'Materias-raiz pendentes processadas.');
+        }
+
+        if ($action === 'resolve_subject_taxonomy_pending') {
+            RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
+            $taxonomyService = new AdminGranTaxonomySyncService($db);
+            $granResponses = $input['granResponses'] ?? null;
+            $requestedExternalIds = $input['requestedExternalIds'] ?? null;
+            if (!is_array($granResponses) || !is_array($requestedExternalIds)) {
+                throw new InvalidArgumentException('Os dados da hierarquia pendente sao invalidos.');
+            }
+            $recovery = $taxonomyService->syncMissingSubjectHierarchyNodes(
+                array_values($granResponses),
+                array_values($requestedExternalIds)
+            );
+            $finalized = $taxonomyService->finalizeSync();
+            $nextMissingExternalIds = $taxonomyService->getMissingSubjectHierarchyExternalIds();
+            $result = [
+                'recovery' => $recovery,
+                'finalized' => $finalized,
+                'nextMissingExternalIds' => $nextMissingExternalIds,
+            ];
+            logAdminAudit(
+                $db,
+                $actorUserId,
+                'gran_crawler.taxonomy_pending_resolution',
+                'filter',
+                null,
+                [
+                    'requested' => (int) ($recovery['requested'] ?? 0),
+                    'found' => (int) ($recovery['found'] ?? 0),
+                    'created' => (int) ($recovery['created'] ?? 0),
+                    'updated' => (int) ($recovery['updated'] ?? 0),
+                    'unresolved_nodes' => (int) ($recovery['unresolved'] ?? 0),
+                    'resolved' => (int) ($finalized['resolved'] ?? 0),
+                    'pending' => (int) ($finalized['pending'] ?? 0),
+                ]
+            );
+            Response::success($result, 'Pais e raizes pendentes da hierarquia foram processados.');
+        }
+
+        if ($action === 'finalize_taxonomy_sync') {
+            RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
+            $result = (new AdminGranTaxonomySyncService($db))->finalizeSync();
+            logAdminAudit($db, $actorUserId, 'gran_crawler.taxonomy_finalize', 'filter', null, $result);
+            Response::success($result, 'Hierarquia das taxonomias Gran reconciliada.');
+        }
+
+        if ($action === 'finalize_cargo_taxonomy_relations') {
+            RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
+            $cursor = max(0, (int) ($input['cursor'] ?? 0));
+            $limit = max(100, min(2000, (int) ($input['limit'] ?? 1000)));
+            $pendingOnly = filter_var($input['pendingOnly'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $result = (new AdminGranTaxonomySyncService($db))->finalizeCargoRelationsChunk(
+                $cursor,
+                $limit,
+                $pendingOnly
+            );
+            if (($result['hasMore'] ?? false) === false) {
+                logAdminAudit(
+                    $db,
+                    $actorUserId,
+                    'gran_crawler.cargo_taxonomy_finalize',
+                    'filter',
+                    null,
+                    $result + ['pendingOnly' => $pendingOnly]
+                );
+            }
+            Response::success(
+                $result,
+                ($result['hasMore'] ?? false)
+                    ? 'Lote de vinculos de cargos reconciliado.'
+                    : 'Vinculos de cargos Gran reconciliados.'
+            );
+        }
+
+        if ($action === 'enqueue' || $action === 'enqueue_publication') {
+            $result = $service->enqueuePublication($input, $actorUserId);
             $payloads = is_array($input['payloads'] ?? null)
                 ? array_values(array_filter($input['payloads'], 'is_array'))
                 : (is_array($input['payload'] ?? null) ? [$input['payload']] : []);
@@ -72,9 +239,9 @@ function handleAdminGranCrawlerRoute(PDO $db): void
             logAdminAudit(
                 $db,
                 $actorUserId,
-                'gran_crawler.enqueue',
+                'gran_crawler.enqueue_publication',
                 'question_ingestion',
-                isset($result['jobs'][0]['jobId']) ? (string) $result['jobs'][0]['jobId'] : null,
+                isset($result['batchId']) ? (string) $result['batchId'] : null,
                 [
                     'exam_count' => count($payloads),
                     'question_count' => $questionCount,
@@ -82,7 +249,7 @@ function handleAdminGranCrawlerRoute(PDO $db): void
                 ]
             );
             http_response_code(202);
-            Response::success($result, 'Lotes por prova enfileirados para importacao.');
+            Response::success($result, 'Publicacao enfileirada para processamento assincrono.');
         }
 
         Response::badRequest('Acao invalida.');
@@ -91,12 +258,20 @@ function handleAdminGranCrawlerRoute(PDO $db): void
     } catch (DomainException $exception) {
         Response::forbidden($exception->getMessage());
     } catch (RuntimeException $exception) {
-        $status = str_contains($exception->getMessage(), 'limitou temporariamente') ? 429 : 502;
+        if (str_contains($exception->getMessage(), 'Rate limit compartilhado indisponivel')) {
+            Response::serviceUnavailable(
+                'O controle compartilhado de taxa esta temporariamente indisponivel. Tente novamente em instantes.',
+                $exception,
+                'runtime_store_unavailable'
+            );
+        }
+
+        $status = str_contains($exception->getMessage(), 'limitou temporariamente') ? 429 : 500;
         Response::error(
             $exception->getMessage(),
             $status,
             null,
-            $status === 429 ? 'gran_rate_limited' : 'gran_upstream_error'
+            $status === 429 ? 'gran_rate_limited' : 'gran_crawler_runtime_error'
         );
     } catch (Throwable $exception) {
         error_log('[admin_gran_crawler] ' . $exception->getMessage());

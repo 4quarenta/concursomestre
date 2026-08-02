@@ -9,7 +9,7 @@
 *
 */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { filtersService } from '@services/filters';
 import { adminService } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
@@ -98,6 +98,7 @@ export const useAdminTaxonomyWorkflow = ({
   const [isDeletingFilter, setIsDeletingFilter] = useState(false);
   const [selectedParentId, setSelectedParentId] = useState<number | string | null>(null);
   const [showTaxonomyModal, setShowTaxonomyModal] = useState(false);
+  const editingRequestIdRef = useRef(0);
 
   const fetchFilters = useCallback(async () => {
     try {
@@ -108,6 +109,7 @@ export const useAdminTaxonomyWorkflow = ({
   }, [ensureTaxonomiesLoaded]);
 
   const resetTaxonomyForm = () => {
+    editingRequestIdRef.current += 1;
     setFilterInput('');
     setFilterSlug('');
     setFilterAcronym('');
@@ -171,6 +173,7 @@ export const useAdminTaxonomyWorkflow = ({
       resetTaxonomyForm();
       setShowTaxonomyModal(false);
       await fetchFilters();
+      window.dispatchEvent(new Event('admin-taxonomies-changed'));
       addToast(editingFilterItem ? 'Item atualizado!' : 'Item adicionado!', 'success');
     } catch (error: unknown) {
       addToast(readApiErrorMessage(error, 'Erro ao salvar filtro'), 'error');
@@ -201,6 +204,7 @@ export const useAdminTaxonomyWorkflow = ({
     try {
       await filtersService.remove(pendingDeleteFilter.id);
       await fetchFilters();
+      window.dispatchEvent(new Event('admin-taxonomies-changed'));
       addToast('Filtro removido com sucesso.', 'success');
       setPendingDeleteFilter(null);
     } catch (error) {
@@ -210,7 +214,7 @@ export const useAdminTaxonomyWorkflow = ({
     }
   };
 
-  const startEditingFilter = (item: TaxonomyItem) => {
+  const hydrateEditingFilter = (item: TaxonomyItem) => {
     const itemName = item.name || '';
     setFilterInput(itemName);
     setFilterSlug(item.slug || slugify(itemName));
@@ -221,8 +225,32 @@ export const useAdminTaxonomyWorkflow = ({
     setFilterAliases((item.aliases || []).join(', '));
     setFilterKeywords((item.keywords || []).join(', '));
     setEditingFilterItem({ id: item.id, item, originalName: itemName, type: item.type });
-    setSelectedParentId(item.parent_id || item.parentId);
+    setSelectedParentId(item.parent_id ?? item.parentId ?? null);
+  };
+
+  const startEditingFilter = (item: TaxonomyItem) => {
+    hydrateEditingFilter(item);
     setShowTaxonomyModal(true);
+
+    const id = Number(item.id || 0);
+    if (!Number.isInteger(id) || id <= 0) {
+      return;
+    }
+
+    const requestId = editingRequestIdRef.current + 1;
+    editingRequestIdRef.current = requestId;
+    void filtersService.getAdminItem(id)
+      .then((canonicalItem) => {
+        if (editingRequestIdRef.current !== requestId) {
+          return;
+        }
+        hydrateEditingFilter(canonicalItem);
+      })
+      .catch((requestError) => {
+        if (editingRequestIdRef.current === requestId) {
+          addToast(readApiErrorMessage(requestError, 'Nao foi possivel atualizar os dados da taxonomia.'), 'error');
+        }
+      });
   };
 
   const handleFilterInputChange = useCallback((nextValue: string) => {
@@ -246,6 +274,25 @@ export const useAdminTaxonomyWorkflow = ({
     }
   };
 
+  const deleteFiltersInBulk = async (ids: number[]): Promise<boolean> => {
+    if (isDeletingFilter) {
+      return false;
+    }
+
+    setIsDeletingFilter(true);
+    try {
+      const result = await filtersService.removeMany(ids);
+      window.dispatchEvent(new Event('admin-taxonomies-changed'));
+      addToast(`${result.deletedCount} taxonomia(s) removida(s) com sucesso.`, 'success');
+      return true;
+    } catch (error) {
+      addToast(readApiErrorMessage(error, 'Erro ao excluir taxonomias'), 'error');
+      return false;
+    } finally {
+      setIsDeletingFilter(false);
+    }
+  };
+
   const cancelEditingFilter = () => {
     resetTaxonomyForm();
     setShowTaxonomyModal(false);
@@ -253,6 +300,7 @@ export const useAdminTaxonomyWorkflow = ({
 
   const openCreateFilterModal = () => {
     cancelEditingFilter();
+    void fetchFilters();
     if (activeFilterType === 'all') {
       setActiveFilterType('materia');
     }
@@ -261,14 +309,11 @@ export const useAdminTaxonomyWorkflow = ({
 
   const openCreateChildFilterModal = (type: string, parentId: number | string) => {
     cancelEditingFilter();
+    void fetchFilters();
     setActiveFilterType(getChildFilterType(type));
     setSelectedParentId(parentId);
     setShowTaxonomyModal(true);
   };
-
-  useEffect(() => {
-    fetchFilters();
-  }, [fetchFilters]);
 
   return {
     filterTypes: FILTER_TYPES,
@@ -304,6 +349,7 @@ export const useAdminTaxonomyWorkflow = ({
     requestDeleteFilter,
     cancelDeleteFilter,
     confirmDeleteFilter,
+    deleteFiltersInBulk,
     startEditingFilter,
     cancelEditingFilter,
     openCreateFilterModal,

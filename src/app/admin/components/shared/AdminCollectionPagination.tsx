@@ -43,7 +43,7 @@ const AdminCollectionPagination = ({
         Anterior
       </button>
       <span className="flex items-center px-4 text-sm font-semibold text-blue-600 dark:text-blue-300">
-        Página {page} de {totalPages}
+        Pagina {page} de {totalPages}
       </span>
       <button
         type="button"
@@ -51,7 +51,7 @@ const AdminCollectionPagination = ({
         onClick={() => onPageChange(page + 1)}
         className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-30 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
       >
-        Próxima
+        Proxima
       </button>
     </div>
   </div>

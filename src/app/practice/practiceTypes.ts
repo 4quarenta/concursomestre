@@ -5,6 +5,7 @@ export interface PracticeInitialQuestionPage {
   total: number;
   pageInfo: {
     limit: number;
+    total: number;
     hasMore: boolean;
     nextCursor: string | null;
   };

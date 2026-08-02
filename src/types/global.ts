@@ -132,6 +132,13 @@ export interface QuestionSourcePayload {
   contextTempId?: number | string | null;
   questionGroupId?: number | string | null;
   sourcePage?: number | string | null;
+  provider?: string | null;
+  externalId?: number | string | null;
+  externalExamId?: number | string | null;
+  sourceExamKey?: string | null;
+  localQuestionId?: number | string | null;
+  alreadyPublished?: boolean;
+  publicationStatus?: string | null;
 }
 
 export interface QuestionContentPayload {
@@ -149,6 +156,7 @@ export interface QuestionFilterValuePayload {
   taxonomyLevel?: string;
   taxonomy_level?: string;
   provider?: string;
+  sourceEntityType?: string;
   externalId?: number | string;
   externalParentId?: number | string;
   externalRootId?: number | string;
@@ -1249,6 +1257,18 @@ export interface TaxonomyItem {
   iconKey?: string;
   aliases?: string[];
   keywords?: string[];
+  usage?: TaxonomyUsage;
+}
+
+export interface TaxonomyUsage {
+  questions: number;
+  exams: number;
+  laws: number;
+  total: number;
+}
+
+export interface TaxonomyUsageSummary extends TaxonomyUsage {
+  taxonomies: number;
 }
 
 export interface GlobalTaxonomies {
@@ -1263,6 +1283,11 @@ export interface GlobalTaxonomies {
   careers: TaxonomyItem[];
   years: string[];
   modalities: string[];
+  usage?: {
+    all: TaxonomyUsageSummary;
+    byType: Record<string, TaxonomyUsageSummary>;
+    byFilterId: Record<string, TaxonomyUsage>;
+  };
 }
 
 export interface FirebaseClientConfig {

@@ -13,11 +13,13 @@ final class PrivateQuestionIngestionService
 {
     private const DEFAULT_MAX_BODY_BYTES = 15_000_000;
     private const HARD_MAX_BODY_BYTES = 15_500_000;
-    private const DEFAULT_MAX_QUESTIONS_PER_JOB = 250;
+    private const DEFAULT_MAX_QUESTIONS_PER_JOB = 1000;
     private const HARD_MAX_QUESTIONS_PER_JOB = 1000;
+    private const MAX_PAYLOADS_PER_JOB = 50;
     private const DEFAULT_MAX_ATTEMPTS = 5;
     private const DEFAULT_STALE_LOCK_MINUTES = 15;
     private const MAX_CLOCK_SKEW_SECONDS = 300;
+    private const MAX_QUESTIONS_PER_BATCH = 5000;
 
     public function __construct(private readonly PDO $db)
     {
@@ -173,18 +175,22 @@ final class PrivateQuestionIngestionService
     public function enqueueFromAdminSession(
         array $payload,
         string $actorUserId,
-        string $idempotencyKey = ''
+        string $idempotencyKey = '',
+        ?int $batchId = null
     ): array {
         $this->assertSchemaReady();
         $actorUserId = trim($actorUserId);
         if ($actorUserId === '' || strlen($actorUserId) > 80) {
             throw new DomainException('Sessao administrativa invalida para a ingestao.');
         }
+        if ($batchId !== null && $batchId < 1) {
+            throw new InvalidArgumentException('Lote-pai de ingestao invalido.');
+        }
         if (($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
             throw new InvalidArgumentException('A ingestao exige o contrato question-import.v2.');
         }
-        $questions = $payload['questions'] ?? [];
-        if (!is_array($questions) || count($questions) === 0) {
+        $questions = $this->flattenPayloadQuestions($payload);
+        if ($questions === []) {
             throw new InvalidArgumentException('Selecione ao menos uma questao para importar.');
         }
         if (count($questions) > $this->maxQuestionsPerJob()) {
@@ -230,6 +236,16 @@ final class PrivateQuestionIngestionService
                 if (!hash_equals((string) $request['payload_hash'], $payloadHash)) {
                     throw new DomainException('A chave de idempotencia ja foi usada para outro lote.');
                 }
+                if ($batchId !== null && !empty($request['job_id'])) {
+                    $this->db->prepare(
+                        'UPDATE private_ingestion_jobs SET batch_id = :batch_id '
+                        . 'WHERE id = :job_id AND (batch_id IS NULL OR batch_id = :batch_id_match)'
+                    )->execute([
+                        ':batch_id' => $batchId,
+                        ':batch_id_match' => $batchId,
+                        ':job_id' => (int) $request['job_id'],
+                    ]);
+                }
                 $this->db->commit();
                 return [
                     'requestId' => (int) $request['id'],
@@ -252,11 +268,13 @@ final class PrivateQuestionIngestionService
             $requestId = (int) $this->db->lastInsertId();
 
             $insertJob = $this->db->prepare(
-                'INSERT INTO private_ingestion_jobs (request_id, actor_user_id, payload_json, status, available_at)
-                 VALUES (:request_id, :actor_user_id, :payload_json, :status, UTC_TIMESTAMP())'
+                'INSERT INTO private_ingestion_jobs '
+                . '(request_id, batch_id, actor_user_id, payload_json, status, available_at) '
+                . 'VALUES (:request_id, :batch_id, :actor_user_id, :payload_json, :status, UTC_TIMESTAMP())'
             );
             $insertJob->execute([
                 ':request_id' => $requestId,
+                ':batch_id' => $batchId,
                 ':actor_user_id' => $actorUserId,
                 ':payload_json' => $rawBody,
                 ':status' => 'pending',
@@ -279,6 +297,92 @@ final class PrivateQuestionIngestionService
             }
             throw $exception;
         }
+    }
+
+    /**
+     * Enfileira uma submissao administrativa grande como um lote-pai observavel.
+     * Os filhos continuam usando exatamente a fila canonica existente.
+     *
+     * @param array<int,array<string,mixed>> $payloads
+     */
+    public function enqueueBatchFromAdminSession(
+        array $payloads,
+        string $actorUserId,
+        string $idempotencyKey = ''
+    ): array {
+        $this->assertBatchSchemaReady();
+        $actorUserId = trim($actorUserId);
+        if ($actorUserId === '' || strlen($actorUserId) > 80) {
+            throw new DomainException('Sessao administrativa invalida para a ingestao.');
+        }
+
+        $normalizedPayloads = [];
+        $questionCount = 0;
+        $questionKeys = [];
+        foreach ($payloads as $payload) {
+            if (!is_array($payload) || ($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
+                throw new InvalidArgumentException('Todos os lotes devem usar o contrato question-import.v2.');
+            }
+            $questions = is_array($payload['questions'] ?? null) ? array_values($payload['questions']) : [];
+            if ($questions === []) {
+                continue;
+            }
+            $questionCount += count($questions);
+            foreach ($questions as $position => $question) {
+                if (!is_array($question)) {
+                    throw new InvalidArgumentException('O lote contem uma questao invalida.');
+                }
+                $questionKeys[] = $this->questionSourceKey($question, $position);
+            }
+            $normalizedPayloads[] = $payload;
+        }
+        self::assertBatchQuestionCount($questionCount);
+
+        $canonical = json_encode(
+            $normalizedPayloads,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+        );
+        $payloadHash = hash('sha256', $canonical);
+        $idempotencyKey = trim($idempotencyKey) ?: 'gran-batch-' . $payloadHash;
+        if (strlen($idempotencyKey) > 120 || preg_match('/^[A-Za-z0-9_.:-]+$/', $idempotencyKey) !== 1) {
+            throw new InvalidArgumentException('Chave de idempotencia invalida.');
+        }
+
+        $batch = $this->findOrCreateBatch(
+            $actorUserId,
+            $idempotencyKey,
+            $payloadHash,
+            $questionCount,
+            array_values(array_unique($questionKeys))
+        );
+        $chunks = $this->splitCanonicalPayloads($normalizedPayloads);
+        foreach ($chunks as $index => $chunk) {
+            $childKey = $idempotencyKey . '-job-' . ($index + 1);
+            $this->enqueueFromAdminSession($chunk, $actorUserId, $childKey, (int) $batch['id']);
+        }
+        $this->db->prepare(
+            'UPDATE private_ingestion_batches SET job_count = :job_count WHERE id = :id'
+        )->execute([':job_count' => count($chunks), ':id' => (int) $batch['id']]);
+
+        return $this->refreshBatch((int) $batch['id']) + [
+            'idempotentReplay' => (bool) ($batch['idempotentReplay'] ?? false),
+        ];
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function listRecentBatches(string $actorUserId, bool $canViewAll = false, int $limit = 20): array
+    {
+        $this->assertBatchSchemaReady();
+        $limit = max(1, min(50, $limit));
+        $where = $canViewAll ? '' : 'WHERE actor_user_id = :actor_user_id';
+        $stmt = $this->db->prepare(
+            "SELECT * FROM private_ingestion_batches {$where} ORDER BY id DESC LIMIT {$limit}"
+        );
+        $stmt->execute($canViewAll ? [] : [':actor_user_id' => trim($actorUserId)]);
+        return array_values(array_map(
+            fn (array $row): array => $this->formatBatchRow($row),
+            $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []
+        ));
     }
 
     public function listRecentJobs(string $actorUserId, bool $canViewAll = false, int $limit = 20): array
@@ -426,6 +530,7 @@ final class PrivateQuestionIngestionService
                 throw new RuntimeException('A requisicao da ingestao nao corresponde ao job concluido.');
             }
             $this->db->commit();
+            $this->refreshBatchForJob($jobId);
         } catch (Throwable $exception) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
@@ -479,6 +584,7 @@ final class PrivateQuestionIngestionService
                     "UPDATE private_ingestion_requests SET status = 'pending', response_json = :response_json WHERE id = :id"
                 )->execute([':response_json' => $response, ':id' => $requestId]);
                 $this->db->commit();
+                $this->refreshBatchForJob($jobId);
                 return 'pending';
             }
 
@@ -500,6 +606,7 @@ final class PrivateQuestionIngestionService
                 ':id' => $requestId,
             ]);
             $this->db->commit();
+            $this->refreshBatchForJob($jobId);
             return 'failed';
         } catch (Throwable $failure) {
             if ($this->db->inTransaction()) {
@@ -516,9 +623,409 @@ final class PrivateQuestionIngestionService
             'private_ingestion_requests' => ['client_key', 'idempotency_key', 'payload_hash', 'status', 'job_id'],
             'private_ingestion_jobs' => [
                 'request_id', 'payload_json', 'status', 'available_at', 'attempts',
-                'locked_at', 'locked_by', 'last_error_at', 'dead_lettered_at',
+                'locked_at', 'locked_by', 'last_error_at', 'dead_lettered_at', 'batch_id',
             ],
         ]);
+    }
+
+    private function assertBatchSchemaReady(): void
+    {
+        $this->assertSchemaReady();
+        SchemaReadiness::assertTablesAndColumns($this->db, 'lotes do crawler Gran', [
+            'private_ingestion_batches' => [
+                'public_id', 'actor_user_id', 'idempotency_key', 'payload_hash', 'status',
+                'question_count', 'job_count', 'question_keys_json', 'question_statuses_json',
+            ],
+            'private_ingestion_jobs' => ['batch_id'],
+        ]);
+    }
+
+    /** @return array<string,mixed> */
+    private function findOrCreateBatch(
+        string $actorUserId,
+        string $idempotencyKey,
+        string $payloadHash,
+        int $questionCount,
+        array $questionKeys
+    ): array {
+        $select = $this->db->prepare(
+            'SELECT * FROM private_ingestion_batches
+             WHERE actor_user_id = :actor_user_id AND idempotency_key = :idempotency_key LIMIT 1'
+        );
+        $select->execute([':actor_user_id' => $actorUserId, ':idempotency_key' => $idempotencyKey]);
+        $existing = $select->fetch(PDO::FETCH_ASSOC);
+        if (is_array($existing)) {
+            if (!hash_equals((string) $existing['payload_hash'], $payloadHash)) {
+                throw new DomainException('A chave de idempotencia ja foi usada para outra submissao.');
+            }
+            $existing['idempotentReplay'] = true;
+            return $existing;
+        }
+
+        $publicId = $this->uuidV4();
+        $insert = $this->db->prepare(
+            'INSERT INTO private_ingestion_batches
+             (public_id, actor_user_id, idempotency_key, payload_hash, status, question_count, question_keys_json)
+             VALUES (:public_id, :actor_user_id, :idempotency_key, :payload_hash, :status, :question_count, :question_keys_json)'
+        );
+        try {
+            $insert->execute([
+                ':public_id' => $publicId,
+                ':actor_user_id' => $actorUserId,
+                ':idempotency_key' => $idempotencyKey,
+                ':payload_hash' => $payloadHash,
+                ':status' => 'pending',
+                ':question_count' => $questionCount,
+                ':question_keys_json' => json_encode($questionKeys, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+            return ['id' => (int) $this->db->lastInsertId(), 'public_id' => $publicId, 'idempotentReplay' => false];
+        } catch (PDOException $exception) {
+            if ((int) ($exception->errorInfo[1] ?? 0) !== 1062) {
+                throw $exception;
+            }
+            $select->execute([':actor_user_id' => $actorUserId, ':idempotency_key' => $idempotencyKey]);
+            $existing = $select->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($existing) || !hash_equals((string) $existing['payload_hash'], $payloadHash)) {
+                throw new DomainException('A chave de idempotencia ja foi usada para outra submissao.');
+            }
+            $existing['idempotentReplay'] = true;
+            return $existing;
+        }
+    }
+
+    /** @param array<int,array<string,mixed>> $payloads @return array<int,array<string,mixed>> */
+    private function splitCanonicalPayloads(array $payloads): array
+    {
+        $units = [];
+        foreach ($payloads as $payload) {
+            $questions = array_values($payload['questions']);
+            $current = [];
+            foreach ($questions as $question) {
+                $candidate = [...$current, $question];
+                $candidatePayload = $this->payloadWithQuestions($payload, $candidate);
+                $encoded = json_encode($candidatePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+                if ($current !== [] && (count($candidate) > $this->maxQuestionsPerJob() || strlen($encoded) > $this->maxBodyBytes())) {
+                    $units[] = $this->payloadWithQuestions($payload, $current);
+                    $current = [$question];
+                    $single = json_encode(
+                        $this->payloadWithQuestions($payload, $current),
+                        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+                    );
+                    if (strlen($single) > $this->maxBodyBytes()) {
+                        throw new InvalidArgumentException('Uma questao isolada excede o limite seguro de 15 MB.');
+                    }
+                    continue;
+                }
+                $current = $candidate;
+            }
+            if ($current !== []) {
+                $units[] = $this->payloadWithQuestions($payload, $current);
+            }
+        }
+
+        $chunks = [];
+        $currentUnits = [];
+        $currentQuestionCount = 0;
+        foreach ($units as $unit) {
+            $unitQuestionCount = count($unit['questions'] ?? []);
+            $candidateUnits = [...$currentUnits, $unit];
+            $candidateQuestionCount = $currentQuestionCount + $unitQuestionCount;
+            $candidatePayload = $this->buildJobPayload($candidateUnits);
+            $encoded = json_encode(
+                $candidatePayload,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+            );
+            $exceedsLimit = count($candidateUnits) > self::MAX_PAYLOADS_PER_JOB
+                || $candidateQuestionCount > $this->maxQuestionsPerJob()
+                || strlen($encoded) > $this->maxBodyBytes();
+
+            if ($currentUnits !== [] && $exceedsLimit) {
+                $chunks[] = $this->buildJobPayload($currentUnits);
+                $currentUnits = [$unit];
+                $currentQuestionCount = $unitQuestionCount;
+                $singleJob = json_encode(
+                    $this->buildJobPayload($currentUnits),
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+                );
+                if (strlen($singleJob) > $this->maxBodyBytes()) {
+                    throw new InvalidArgumentException('Uma prova isolada excede o limite seguro de 15 MB.');
+                }
+                continue;
+            }
+            if ($exceedsLimit) {
+                throw new InvalidArgumentException('Um lote isolado excede os limites seguros da fila.');
+            }
+            $currentUnits = $candidateUnits;
+            $currentQuestionCount = $candidateQuestionCount;
+        }
+        if ($currentUnits !== []) {
+            $chunks[] = $this->buildJobPayload($currentUnits);
+        }
+        return $chunks;
+    }
+
+    /** @param array<int,array<string,mixed>> $payloads @return array<string,mixed> */
+    private function buildJobPayload(array $payloads): array
+    {
+        if (count($payloads) === 1) return $payloads[0];
+        return [
+            'schemaVersion' => 'question-import.v2',
+            'batches' => array_map(static function (array $payload, int $index): array {
+                $exam = is_array($payload['exam'] ?? null) ? $payload['exam'] : [];
+                $clientKey = trim((string) (
+                    $exam['sourceKey']
+                    ?? $exam['externalId']
+                    ?? $exam['title']
+                    ?? 'batch-' . ($index + 1)
+                ));
+                return ['clientKey' => $clientKey . ':' . ($index + 1), 'payload' => $payload];
+            }, $payloads, array_keys($payloads)),
+        ];
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function flattenPayloadQuestions(array $payload): array
+    {
+        if (is_array($payload['questions'] ?? null)) {
+            return array_values(array_filter($payload['questions'], 'is_array'));
+        }
+        $questions = [];
+        foreach ((array) ($payload['batches'] ?? []) as $batch) {
+            if (!is_array($batch)) continue;
+            $batchPayload = is_array($batch['payload'] ?? null) ? $batch['payload'] : $batch;
+            foreach ((array) ($batchPayload['questions'] ?? []) as $question) {
+                if (is_array($question)) $questions[] = $question;
+            }
+        }
+        return $questions;
+    }
+
+    /** @param array<int,array<string,mixed>> $questions @return array<string,mixed> */
+    private function payloadWithQuestions(array $payload, array $questions): array
+    {
+        $numbers = [];
+        $contextIds = [];
+        foreach ($questions as $question) {
+            $number = (int) ($question['source']['questionNumber'] ?? 0);
+            if ($number > 0) $numbers[$number] = true;
+            $contextId = trim((string) ($question['source']['contextTempId'] ?? ''));
+            if ($contextId !== '') $contextIds[$contextId] = true;
+        }
+        $payload['questions'] = array_values($questions);
+        if (is_array($payload['contexts'] ?? null)) {
+            $payload['contexts'] = array_values(array_filter(
+                $payload['contexts'],
+                static function (mixed $context) use ($numbers, $contextIds): bool {
+                    if (!is_array($context)) return false;
+                    $tempId = trim((string) ($context['tempId'] ?? ''));
+                    if ($tempId !== '' && isset($contextIds[$tempId])) return true;
+                    foreach ((array) ($context['questionNumbers'] ?? []) as $number) {
+                        if (isset($numbers[(int) $number])) return true;
+                    }
+                    return false;
+                }
+            ));
+        }
+        if (isset($payload['exam']['questionRange']) && is_array($payload['exam']['questionRange'])) {
+            $ordered = array_keys($numbers);
+            sort($ordered, SORT_NUMERIC);
+            $payload['exam']['questionRange'] = [
+                'start' => $ordered[0] ?? null,
+                'end' => $ordered !== [] ? $ordered[count($ordered) - 1] : null,
+                'total' => count($questions),
+            ];
+        }
+        return $payload;
+    }
+
+    private function questionSourceKey(array $question, int $fallback): string
+    {
+        $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+        $provider = trim((string) ($source['provider'] ?? 'gran')) ?: 'gran';
+        $external = trim((string) ($source['externalId'] ?? ''));
+        if ($external !== '') return $provider . ':question:' . $external;
+        $tempId = trim((string) ($question['tempId'] ?? ''));
+        if ($tempId !== '') return $tempId;
+        return $provider . ':fallback:' . $fallback . ':' . hash('sha256', json_encode($question));
+    }
+
+    private static function assertBatchQuestionCount(int $questionCount): void
+    {
+        if ($questionCount < 1 || $questionCount > self::MAX_QUESTIONS_PER_BATCH) {
+            throw new InvalidArgumentException('Envie entre 1 e 5000 questoes por submissao.');
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private function refreshBatch(int $batchId): array
+    {
+        $batchStmt = $this->db->prepare('SELECT * FROM private_ingestion_batches WHERE id = :id LIMIT 1');
+        $batchStmt->execute([':id' => $batchId]);
+        $batch = $batchStmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($batch)) throw new RuntimeException('Lote de ingestao nao encontrado.');
+
+        $jobsStmt = $this->db->prepare(
+            'SELECT status, payload_json, result_json, error_message FROM private_ingestion_jobs WHERE batch_id = :batch_id'
+        );
+        $jobsStmt->execute([':batch_id' => $batchId]);
+        $counts = ['pending' => 0, 'processing' => 0, 'done' => 0, 'failed' => 0, 'created' => 0, 'duplicates' => 0, 'questionFailures' => 0];
+        $errors = [];
+        $questionStatuses = [];
+        foreach ($jobsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $job) {
+            $status = (string) ($job['status'] ?? 'pending');
+            if (isset($counts[$status])) $counts[$status]++;
+            $result = json_decode((string) ($job['result_json'] ?? ''), true);
+            $jobPayload = json_decode((string) ($job['payload_json'] ?? ''), true);
+            $questionKeysByTempId = [];
+            $questionKeysByNumber = [];
+            $questionKeysByClientKey = [];
+            $questionKeysByClientNumber = [];
+            $jobBatches = is_array($jobPayload['batches'] ?? null)
+                ? array_values($jobPayload['batches'])
+                : [['clientKey' => '', 'payload' => is_array($jobPayload) ? $jobPayload : []]];
+            $position = 0;
+            foreach ($jobBatches as $jobBatch) {
+                if (!is_array($jobBatch)) continue;
+                $clientKey = trim((string) ($jobBatch['clientKey'] ?? $jobBatch['client_key'] ?? ''));
+                $batchPayload = is_array($jobBatch['payload'] ?? null) ? $jobBatch['payload'] : $jobBatch;
+                foreach ((array) ($batchPayload['questions'] ?? []) as $question) {
+                    if (!is_array($question)) continue;
+                    $key = $this->questionSourceKey($question, $position++);
+                    $tempId = trim((string) ($question['tempId'] ?? ''));
+                    $number = trim((string) ($question['source']['questionNumber'] ?? ''));
+                    if ($tempId !== '') $questionKeysByTempId[$tempId] = $key;
+                    if ($number !== '') $questionKeysByNumber[$number] = $key;
+                    if ($clientKey !== '') {
+                        $questionKeysByClientKey[$clientKey][] = $key;
+                        if ($number !== '') $questionKeysByClientNumber[$clientKey . ':' . $number] = $key;
+                    }
+                    $questionStatuses[$key] = match ($status) {
+                        'processing' => 'processing',
+                        'done' => 'published',
+                        'failed' => 'failed',
+                        default => 'queued',
+                    };
+                }
+            }
+            if (is_array($result)) {
+                $counts['created'] += (int) ($result['count'] ?? $result['createdCount'] ?? 0);
+                $counts['duplicates'] += (int) (
+                    $result['skippedDuplicateCount']
+                    ?? $result['skipped_duplicate_count']
+                    ?? $result['duplicateCount']
+                    ?? 0
+                );
+                $itemFailures = is_array($result['itemFailures'] ?? null) ? $result['itemFailures'] : [];
+                $counts['questionFailures'] += count($itemFailures);
+                foreach ($itemFailures as $failure) {
+                    if (!is_array($failure)) continue;
+                    $failureTempId = trim((string) ($failure['tempId'] ?? ''));
+                    $failureNumber = trim((string) ($failure['questionNumber'] ?? ''));
+                    $failureClientKey = trim((string) ($failure['clientKey'] ?? $failure['client_key'] ?? ''));
+                    $failureKey = $questionKeysByTempId[$failureTempId]
+                        ?? $questionKeysByClientNumber[$failureClientKey . ':' . $failureNumber]
+                        ?? $questionKeysByNumber[$failureNumber]
+                        ?? null;
+                    if (is_string($failureKey) && $failureKey !== '') {
+                        $questionStatuses[$failureKey] = 'failed';
+                    } elseif ($failureClientKey !== '') {
+                        foreach ($questionKeysByClientKey[$failureClientKey] ?? [] as $clientQuestionKey) {
+                            $questionStatuses[$clientQuestionKey] = 'failed';
+                        }
+                    }
+                }
+            }
+            $error = trim((string) ($job['error_message'] ?? ''));
+            if ($error !== '') $errors[] = $error;
+        }
+        $jobCount = $counts['pending'] + $counts['processing'] + $counts['done'] + $counts['failed'];
+        $status = $counts['processing'] > 0 ? 'processing'
+            : ($counts['pending'] > 0 ? 'pending'
+                : ($counts['failed'] > 0
+                    ? ($counts['done'] > 0 ? 'partial' : 'failed')
+                    : ($counts['questionFailures'] > 0 ? 'partial' : 'done')));
+        $update = $this->db->prepare(
+            'UPDATE private_ingestion_batches SET status = :status, job_count = :job_count,
+             pending_job_count = :pending, processing_job_count = :processing,
+             completed_job_count = :completed, failed_job_count = :failed,
+             created_question_count = :created, duplicate_question_count = :duplicates,
+             failed_question_count = :question_failures, question_statuses_json = :question_statuses_json,
+             error_summary = :error_summary,
+             started_at = IF(:has_started = 1, COALESCE(started_at, UTC_TIMESTAMP()), started_at),
+             completed_at = IF(:is_complete = 1, COALESCE(completed_at, UTC_TIMESTAMP()), NULL)
+             WHERE id = :id'
+        );
+        $update->execute([
+            ':status' => $status,
+            ':job_count' => $jobCount,
+            ':pending' => $counts['pending'],
+            ':processing' => $counts['processing'],
+            ':completed' => $counts['done'],
+            ':failed' => $counts['failed'],
+            ':created' => $counts['created'],
+            ':duplicates' => $counts['duplicates'],
+            ':question_failures' => $counts['questionFailures'],
+            ':question_statuses_json' => json_encode($questionStatuses, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ':error_summary' => $errors === [] ? null : substr(implode(' | ', array_unique($errors)), 0, 3000),
+            ':has_started' => ($counts['processing'] + $counts['done'] + $counts['failed']) > 0 ? 1 : 0,
+            ':is_complete' => ($jobCount > 0 && $counts['pending'] === 0 && $counts['processing'] === 0) ? 1 : 0,
+            ':id' => $batchId,
+        ]);
+        $batchStmt->execute([':id' => $batchId]);
+        $row = $batchStmt->fetch(PDO::FETCH_ASSOC) ?: $batch;
+        return $this->formatBatchRow($row);
+    }
+
+    /** @param array<string,mixed> $row @return array<string,mixed> */
+    private function formatBatchRow(array $row): array
+    {
+        $keys = json_decode((string) ($row['question_keys_json'] ?? '[]'), true);
+        $questionStatuses = json_decode((string) ($row['question_statuses_json'] ?? '{}'), true);
+        return [
+            'batchId' => (string) $row['public_id'],
+            'status' => (string) $row['status'],
+            'questionCount' => (int) $row['question_count'],
+            'jobCount' => (int) $row['job_count'],
+            'pending' => (int) $row['pending_job_count'],
+            'processing' => (int) $row['processing_job_count'],
+            'published' => (int) $row['created_question_count'],
+            'duplicates' => (int) $row['duplicate_question_count'],
+            'failures' => (int) $row['failed_question_count'],
+            'questionKeys' => is_array($keys) ? $keys : [],
+            'questionStatuses' => is_array($questionStatuses) ? $questionStatuses : [],
+            'error' => trim((string) ($row['error_summary'] ?? '')) ?: null,
+            'createdAt' => $row['created_at'] ?? null,
+            'startedAt' => $row['started_at'] ?? null,
+            'completedAt' => $row['completed_at'] ?? null,
+        ];
+    }
+
+    private function refreshBatchForJob(int $jobId): void
+    {
+        try {
+            $stmt = $this->db->prepare('SELECT batch_id FROM private_ingestion_jobs WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $jobId]);
+            $batchId = (int) $stmt->fetchColumn();
+            if ($batchId > 0) {
+                $this->refreshBatch($batchId);
+            }
+        } catch (Throwable $exception) {
+            error_log(sprintf(
+                '[private-ingestion] Falha ao consolidar o lote do job %d: %s',
+                $jobId,
+                $exception->getMessage()
+            ));
+        }
+    }
+
+    private function uuidV4(): string
+    {
+        $data = random_bytes(16);
+        $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
+        $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
+        $hex = bin2hex($data);
+        return substr($hex, 0, 8) . '-' . substr($hex, 8, 4) . '-' . substr($hex, 12, 4)
+            . '-' . substr($hex, 16, 4) . '-' . substr($hex, 20);
     }
 
     private function maxBodyBytes(): int

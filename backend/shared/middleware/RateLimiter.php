@@ -40,6 +40,11 @@ class RateLimiter
         'upload' => ['max' => 20, 'window' => 900],
         'analytics_track' => ['max' => 120, 'window' => 60],
         'admin_crawler' => ['max' => 30, 'window' => 300],
+        // A sincronizacao canonica percorre diversos catalogos paginados da
+        // Gran de forma sequencial. Ela e uma operacao administrativa
+        // autenticada, mas nao pode compartilhar o limite curto da consulta
+        // avulsa de questoes, ou a propria sincronizacao se auto-bloqueia.
+        'admin_taxonomy_sync' => ['max' => 600, 'window' => 900],
     ];
 
     /**

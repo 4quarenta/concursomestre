@@ -54,6 +54,7 @@ vi.mock('@services/api', () => ({
   ENDPOINTS: {
     filters: {
       list: 'filtersList',
+      adminList: 'adminFiltersList',
       save: 'filtersSave',
       delete: 'filtersDelete',
     },
@@ -84,6 +85,7 @@ describe('filtersService', () => {
         sigla: 'CBM-PB',
         slug: 'corpo-de-bombeiros-militar-da-paraiba',
         assetUrl: '/uploads/admin-assets/taxonomy-logo/cbm-pb.webp',
+        usage: { questions: 12, exams: 3, laws: 1, total: 16 },
       }],
       assuntos: [
         { id: 2, nome: 'Direito', slug: 'direito', materia: true },
@@ -92,6 +94,16 @@ describe('filtersService', () => {
       ],
       carreiras: [{ id: 20, nome: 'Policial', slug: 'policial' }],
       anos: [2024],
+      areas: [{ id: 21, nome: 'Segurança Pública', slug: 'seguranca-publica' }],
+      usage: {
+        all: { taxonomies: 6, questions: 12, exams: 3, laws: 1, total: 16 },
+        byType: {
+          orgao: { taxonomies: 1, questions: 12, exams: 3, laws: 1, total: 16 },
+        },
+        byFilterId: {
+          '10': { questions: 12, exams: 3, laws: 1, total: 16 },
+        },
+      },
     });
 
     expect(taxonomies.agencies[0].name).toBe('FGV');
@@ -99,6 +111,7 @@ describe('filtersService', () => {
       name: 'Corpo de Bombeiros Militar da Paraiba',
       sigla: 'CBM-PB',
       assetUrl: '/uploads/admin-assets/taxonomy-logo/cbm-pb.webp',
+      usage: { questions: 12, exams: 3, laws: 1, total: 16 },
     }));
     expect(taxonomies.subjects[0].name).toBe('Direito');
     expect(taxonomies.subjectTopics?.[0].name).toBe('Direito Constitucional');
@@ -109,6 +122,16 @@ describe('filtersService', () => {
       expect.objectContaining({ id: '20', name: 'Policial', slug: 'policial', type: 'career' }),
     ]);
     expect(taxonomies.years).toEqual(['2024']);
+    expect(taxonomies.areas).toEqual([
+      expect.objectContaining({ id: '21', name: 'Segurança Pública', type: 'area' }),
+    ]);
+    expect(taxonomies.usage?.byType.orgao).toEqual({
+      taxonomies: 1,
+      questions: 12,
+      exams: 3,
+      laws: 1,
+      total: 16,
+    });
   });
 
   it('always exposes ENEM in the foco selector helper', () => {
@@ -163,6 +186,60 @@ describe('filtersService', () => {
 
     expect(mockGet).toHaveBeenCalledWith('filtersList');
     expect(payload.bancas?.[0].nome).toBe('CESPE');
+  });
+
+  it('loads one administrative taxonomy page instead of the full public tree', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        rows: [{
+          id: 12,
+          type: 'orgao',
+          name: 'Corpo de Bombeiros Militar da Paraiba',
+          slug: 'cbm-pb',
+          usage: { questions: 4, exams: 1, laws: 0, total: 5 },
+        }],
+        total: 153,
+        page: 2,
+        perPage: 50,
+        pages: 4,
+        usage: {
+          all: { taxonomies: 153, questions: 4, exams: 1, laws: 0, total: 5 },
+          byType: { orgao: { taxonomies: 1, questions: 4, exams: 1, laws: 0, total: 5 } },
+        },
+      },
+    });
+
+    const result = await filtersService.listAdminPage({ page: 2, perPage: 50, type: 'orgao', search: 'bombeiros' });
+
+    expect(mockGet).toHaveBeenCalledWith('adminFiltersList', {
+      params: { page: '2', per_page: '50', type: 'orgao', search: 'bombeiros' },
+    });
+    expect(result.total).toBe(153);
+    expect(result.rows[0]).toEqual(expect.objectContaining({ id: 12, type: 'orgao' }));
+  });
+
+  it('loads the canonical administrative taxonomy before editing', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: 31,
+        type: 'banca',
+        name: 'Instituto Brasileiro de Formacao e Capacitacao',
+        sigla: 'IBFC',
+        slug: 'ibfc',
+        usage: { questions: 10, exams: 2, laws: 0, total: 12 },
+      },
+    });
+
+    const result = await filtersService.getAdminItem(31);
+
+    expect(mockGet).toHaveBeenCalledWith('adminFiltersList', { params: { id: '31' } });
+    expect(result).toEqual(expect.objectContaining({
+      id: 31,
+      name: 'Instituto Brasileiro de Formacao e Capacitacao',
+      sigla: 'IBFC',
+    }));
   });
 
   it('saves filters through the official endpoint', async () => {
@@ -225,5 +302,18 @@ describe('filtersService', () => {
     expect(mockGet).toHaveBeenCalledWith('filtersDelete', {
       params: { id: '12' },
     });
+  });
+
+  it('removes several filters with one bulk request', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: { deletedIds: [12, 14], deletedCount: 2 },
+    });
+
+    const result = await filtersService.removeMany([12, 14, 12]);
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost).toHaveBeenCalledWith('filtersDelete', { ids: [12, 14] });
+    expect(result).toEqual({ deletedIds: [12, 14], deletedCount: 2 });
   });
 });

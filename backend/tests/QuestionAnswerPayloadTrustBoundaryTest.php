@@ -81,8 +81,10 @@ assertQuestionAnswerTrustBoundary(
     'A persistencia de user_answers deve usar somente o resultado calculado pelo servidor.'
 );
 assertQuestionAnswerTrustBoundary(
-    is_string($serviceSource) && str_contains($serviceSource, 'applyAnswerProgressRewards($userId, $isCorrect)'),
-    'XP e gamificacao devem receber somente o resultado calculado pelo servidor.'
+    is_string($serviceSource)
+        && str_contains($serviceSource, "'question.answer.recorded'")
+        && str_contains($serviceSource, "'isCorrect' => \$isCorrect"),
+    'O evento assincrono de XP e gamificacao deve receber somente o resultado calculado pelo servidor.'
 );
 
 $simulationsSource = file_get_contents(__DIR__ . '/../modules/simulations/services/SimulationsService.php');

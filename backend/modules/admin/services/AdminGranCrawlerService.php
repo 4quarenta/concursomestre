@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../questions/services/PrivateQuestionIngestionService.php';
+require_once __DIR__ . '/AdminGranTaxonomySyncService.php';
 
 /**
  * Consulta a API conhecida da Gran e transforma o retorno em question-import.v2.
@@ -19,9 +20,19 @@ final class AdminGranCrawlerService
     private const ASSET_ORIGIN = 'https://arquivos.infra-questoes.grancursosonline.com.br';
     private const MAX_REMOTE_RESPONSE_BYTES = 8_000_000;
     private const MAX_REQUEST_URL_BYTES = 8_000;
+    private const MAX_QUESTIONS_PER_PAGE = 100;
 
     /** @var null|Closure(string,string,string):array{status:int,body:string} */
     private ?Closure $httpClient;
+
+    /** @var array<string, array<string, mixed>> */
+    private array $granTaxonomyIdentityCache = [];
+
+    /** @var array<string, array<string, mixed>> */
+    private array $granQuestionIdentityCache = [];
+
+    /** @var array<string, array<string, mixed>> */
+    private array $granExamIdentityCache = [];
 
     public function __construct(
         private readonly PDO $db,
@@ -44,7 +55,7 @@ final class AdminGranCrawlerService
         }
 
         $fallbackPage = max(1, min(1_000_000, (int) ($input['page'] ?? 1)));
-        $fallbackPerPage = max(1, min(50, (int) ($input['perPage'] ?? 20)));
+        $fallbackPerPage = max(1, min(self::MAX_QUESTIONS_PER_PAGE, (int) ($input['perPage'] ?? 20)));
         $fallbackYear = trim((string) ($input['year'] ?? ''));
         if (
             $fallbackYear !== ''
@@ -104,7 +115,7 @@ final class AdminGranCrawlerService
         }
 
         $page = max(1, min(1_000_000, (int) ($input['page'] ?? 1)));
-        $perPage = max(1, min(50, (int) ($input['perPage'] ?? 20)));
+        $perPage = max(1, min(self::MAX_QUESTIONS_PER_PAGE, (int) ($input['perPage'] ?? 20)));
         $year = trim((string) ($input['year'] ?? ''));
         if ($year !== '' && (!ctype_digit($year) || (int) $year < 1900 || (int) $year > 2200)) {
             throw new InvalidArgumentException('Ano de busca invalido.');
@@ -261,7 +272,7 @@ final class AdminGranCrawlerService
         $perPage = $this->readBoundedQueryInteger(
             $query['perPage'] ?? $fallbackPerPage,
             1,
-            50,
+            self::MAX_QUESTIONS_PER_PAGE,
             'quantidade por pagina'
         );
         $query['page'] = $page;
@@ -353,14 +364,19 @@ final class AdminGranCrawlerService
 
     public function enqueue(array $input, string $actorUserId): array
     {
+        return $this->enqueuePublication($input, $actorUserId);
+    }
+
+    public function enqueuePublication(array $input, string $actorUserId): array
+    {
         $payloads = is_array($input['payloads'] ?? null) && array_is_list($input['payloads'])
             ? array_values(array_filter($input['payloads'], 'is_array'))
             : [];
         if ($payloads === [] && is_array($input['payload'] ?? null)) {
             $payloads = [$input['payload']];
         }
-        if ($payloads === [] || count($payloads) > 50) {
-            throw new InvalidArgumentException('Envie entre 1 e 50 lotes canonicos por requisicao.');
+        if ($payloads === []) {
+            throw new InvalidArgumentException('Envie ao menos um lote canonico por requisicao.');
         }
         $focus = is_array($input['focus'] ?? null) ? $input['focus'] : [];
         $focusName = trim((string) ($focus['name'] ?? $focus['label'] ?? ''));
@@ -370,14 +386,18 @@ final class AdminGranCrawlerService
             'slug' => trim((string) ($focus['slug'] ?? $this->slugify($focusName))),
         ] : null;
         $baseIdempotencyKey = trim((string) ($input['idempotencyKey'] ?? ''));
-        $ingestion = new PrivateQuestionIngestionService($this->db);
-        $jobs = [];
+        $preparedPayloads = [];
+        $questionCount = 0;
 
-        foreach ($payloads as $index => $payload) {
+        foreach ($payloads as $payload) {
             if (($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
                 throw new InvalidArgumentException('Todos os lotes devem usar o contrato question-import.v2.');
             }
             $questions = is_array($payload['questions'] ?? null) ? $payload['questions'] : [];
+            $questionCount += count($questions);
+            if ($questionCount > 5000) {
+                throw new InvalidArgumentException('A submissao aceita no maximo 5000 questoes.');
+            }
             foreach ($questions as $questionIndex => $question) {
                 if (!is_array($question)) {
                     continue;
@@ -405,23 +425,13 @@ final class AdminGranCrawlerService
             } else {
                 unset($payload['focus']);
             }
-            $idempotencyKey = $baseIdempotencyKey !== ''
-                ? $baseIdempotencyKey . '-' . ($index + 1)
-                : '';
-            $jobs[] = $ingestion->enqueueFromAdminSession(
-                $payload,
-                $actorUserId,
-                $idempotencyKey
-            );
+            $preparedPayloads[] = $payload;
         }
-
-        return [
-            'jobs' => $jobs,
-            'jobCount' => count($jobs),
-            'idempotentReplay' => $jobs !== []
-                && count(array_filter($jobs, static fn (array $job): bool => !empty($job['idempotentReplay'])))
-                    === count($jobs),
-        ];
+        return (new PrivateQuestionIngestionService($this->db))->enqueueBatchFromAdminSession(
+            $preparedPayloads,
+            $actorUserId,
+            $baseIdempotencyKey
+        );
     }
 
     public function listJobs(string $actorUserId, bool $canViewAll = false): array
@@ -431,6 +441,17 @@ final class AdminGranCrawlerService
             $canViewAll,
             20
         );
+    }
+
+    /** @return array<string,mixed> */
+    public function bootstrap(string $actorUserId, bool $canViewAll = false): array
+    {
+        $ingestion = new PrivateQuestionIngestionService($this->db);
+        return [
+            'jobs' => $ingestion->listRecentJobs($actorUserId, $canViewAll, 20),
+            'taxonomyStatus' => (new AdminGranTaxonomySyncService($this->db))->getStatus(),
+            'publicationBatches' => $ingestion->listRecentBatches($actorUserId, $canViewAll, 20),
+        ];
     }
 
     private function requestGran(string $url, string $token, string $clientId): array
@@ -520,6 +541,13 @@ final class AdminGranCrawlerService
      */
     private function mapQuestionImportPayloads(array $rows, array $metadata): array
     {
+        $this->granTaxonomyIdentityCache = [];
+        $this->granQuestionIdentityCache = [];
+        $this->granExamIdentityCache = [];
+        $this->preloadGranTaxonomyIdentities($rows);
+        $this->preloadGranQuestionIdentities($rows);
+        $this->preloadGranExamIdentities($rows);
+
         $groups = [];
 
         foreach ($rows as $row) {
@@ -560,6 +588,267 @@ final class AdminGranCrawlerService
             ),
             $payloads
         ));
+    }
+
+    /**
+     * Carrega em poucas consultas os IDs locais já associados às identidades da
+     * Gran. A tabela de identidades auxiliares é a fonte principal porque uma
+     * taxonomia canônica pode representar mais de um ID histórico do provedor.
+     */
+    private function preloadGranTaxonomyIdentities(array $rows): void
+    {
+        $definitions = [
+            ['type' => 'assunto', 'entityType' => 'assunto', 'keys' => ['assuntos']],
+            ['type' => 'banca', 'entityType' => 'banca', 'keys' => ['bancas', 'banca']],
+            ['type' => 'orgao', 'entityType' => 'orgao', 'keys' => ['orgaos', 'orgao']],
+            ['type' => 'cargo', 'entityType' => 'cargo', 'keys' => ['cargos', 'cargo']],
+            ['type' => 'carreira', 'entityType' => 'area', 'keys' => ['areas', 'area', 'focos', 'foco']],
+            ['type' => 'carreira', 'entityType' => 'carreira', 'keys' => ['carreiras', 'carreira']],
+        ];
+        $externalIds = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $sources = [$row, ...$this->extractProofCandidates($row)];
+            foreach ($definitions as $definition) {
+                foreach ($sources as $source) {
+                    if (!is_array($source)) {
+                        continue;
+                    }
+                    foreach ($definition['keys'] as $key) {
+                        if (!array_key_exists($key, $source)) {
+                            continue;
+                        }
+                        $values = $source[$key];
+                        $values = is_array($values) && array_is_list($values) ? $values : [$values];
+                        foreach ($values as $value) {
+                            $externalId = $this->granTaxonomyExternalId($value, $definition['entityType']);
+                            if ($externalId !== null) {
+                                $externalIds[(string) $externalId] = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($externalIds === []) {
+            return;
+        }
+
+        foreach (array_chunk(array_keys($externalIds), 500) as $chunkIndex => $chunk) {
+            $placeholders = [];
+            $bindings = [':gran_provider_' . $chunkIndex => 'gran'];
+            foreach ($chunk as $index => $externalId) {
+                $placeholder = ':gran_taxonomy_id_' . $chunkIndex . '_' . $index;
+                $placeholders[] = $placeholder;
+                $bindings[$placeholder] = $externalId;
+            }
+
+            try {
+                $stmt = $this->db->prepare(
+                    'SELECT i.filter_id AS local_id, i.filter_type, i.source_entity_type,
+                            i.source_external_id, i.source_parent_external_id,
+                            i.source_root_external_id, f.name, f.slug,
+                            f.taxonomy_level, f.parent_id
+                     FROM filter_source_identities i
+                     INNER JOIN filters f ON f.id = i.filter_id
+                     WHERE i.source_provider = :gran_provider_' . $chunkIndex . '
+                       AND i.source_external_id IN (' . implode(', ', $placeholders) . ')'
+                );
+                $stmt->execute($bindings);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $identity) {
+                    if (is_array($identity)) {
+                        $this->cacheGranTaxonomyIdentity($identity);
+                    }
+                }
+            } catch (Throwable) {
+                // Compatibilidade temporária com ambientes que ainda não
+                // aplicaram a tabela de identidades auxiliares.
+            }
+
+            try {
+                $directBindings = [':gran_direct_provider_' . $chunkIndex => 'gran'];
+                $directPlaceholders = [];
+                foreach ($chunk as $index => $externalId) {
+                    $placeholder = ':gran_direct_taxonomy_id_' . $chunkIndex . '_' . $index;
+                    $directPlaceholders[] = $placeholder;
+                    $directBindings[$placeholder] = $externalId;
+                }
+                $stmt = $this->db->prepare(
+                    'SELECT id AS local_id, type AS filter_type, source_entity_type,
+                            source_external_id, source_parent_external_id,
+                            source_root_external_id, name, slug, taxonomy_level, parent_id
+                     FROM filters
+                     WHERE source_provider = :gran_direct_provider_' . $chunkIndex . '
+                       AND source_external_id IN (' . implode(', ', $directPlaceholders) . ')'
+                );
+                $stmt->execute($directBindings);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $identity) {
+                    if (is_array($identity)) {
+                        $this->cacheGranTaxonomyIdentity($identity, false);
+                    }
+                }
+            } catch (Throwable) {
+                // O payload continua com a identidade externa e a publicação
+                // aplicará a validação autoritativa antes de criar vínculos.
+            }
+        }
+    }
+
+    private function preloadGranQuestionIdentities(array $rows): void
+    {
+        $externalIds = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $externalId = $this->readText(
+                $row['id_questao'] ?? null,
+                $row['id'] ?? null,
+                $row['question_id'] ?? null
+            );
+            if ($externalId !== '') {
+                $externalIds[$externalId] = true;
+            }
+        }
+
+        foreach (array_chunk(array_keys($externalIds), 500) as $chunkIndex => $chunk) {
+            if ($chunk === []) {
+                continue;
+            }
+            $placeholders = [];
+            $bindings = [':gran_question_provider_' . $chunkIndex => 'gran'];
+            foreach ($chunk as $index => $externalId) {
+                $placeholder = ':gran_question_id_' . $chunkIndex . '_' . $index;
+                $placeholders[] = $placeholder;
+                $bindings[$placeholder] = $externalId;
+            }
+            try {
+                $stmt = $this->db->prepare(
+                    'SELECT id, source_external_id, publish_status, visibility_status
+                     FROM questions
+                     WHERE source_provider = :gran_question_provider_' . $chunkIndex . '
+                       AND source_external_id IN (' . implode(', ', $placeholders) . ')'
+                );
+                $stmt->execute($bindings);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $question) {
+                    $externalId = trim((string) ($question['source_external_id'] ?? ''));
+                    if ($externalId !== '') {
+                        $this->granQuestionIdentityCache[$externalId] = $question;
+                    }
+                }
+            } catch (Throwable) {
+                // Ambientes sem as colunas de identidade seguem funcionando;
+                // a idempotência também é aplicada novamente ao publicar.
+            }
+        }
+    }
+
+    private function preloadGranExamIdentities(array $rows): void
+    {
+        $externalIds = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $proofs = $this->extractProofCandidates($row);
+            if ($proofs === []) {
+                $proofs = [$row];
+            }
+            foreach ($proofs as $proof) {
+                $externalId = $this->readText(
+                    $proof['id'] ?? null,
+                    $proof['_id'] ?? null,
+                    $proof['id_prova'] ?? null,
+                    $proof['prova_id'] ?? null,
+                    $proof['idProva'] ?? null,
+                    $proof['provaId'] ?? null,
+                    $proof['exam_id'] ?? null,
+                    $proof['examId'] ?? null
+                );
+                if ($externalId !== '') {
+                    $externalIds[$externalId] = true;
+                }
+            }
+        }
+
+        foreach (array_chunk(array_keys($externalIds), 500) as $chunkIndex => $chunk) {
+            if ($chunk === []) {
+                continue;
+            }
+            $placeholders = [];
+            $bindings = [':gran_exam_provider_' . $chunkIndex => 'gran'];
+            foreach ($chunk as $index => $externalId) {
+                $placeholder = ':gran_exam_id_' . $chunkIndex . '_' . $index;
+                $placeholders[] = $placeholder;
+                $bindings[$placeholder] = $externalId;
+            }
+            try {
+                $stmt = $this->db->prepare(
+                    'SELECT id, source_external_id, status_editorial, visibility_status
+                     FROM provas
+                     WHERE source_provider = :gran_exam_provider_' . $chunkIndex . '
+                       AND source_external_id IN (' . implode(', ', $placeholders) . ')'
+                );
+                $stmt->execute($bindings);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $exam) {
+                    $externalId = trim((string) ($exam['source_external_id'] ?? ''));
+                    if ($externalId !== '') {
+                        $this->granExamIdentityCache[$externalId] = $exam;
+                    }
+                }
+            } catch (Throwable) {
+                // A prova ainda será reconciliada de forma autoritativa pelo
+                // repositório no momento da publicação.
+            }
+        }
+    }
+
+    private function granTaxonomyExternalId(mixed $value, string $entityType): int|string|null
+    {
+        if (is_array($value)) {
+            return $this->externalTaxonomyId(
+                $value['id'] ?? $value['_id'] ?? $value['id_' . $entityType] ?? null
+            );
+        }
+
+        return is_int($value) || is_float($value) || (is_string($value) && ctype_digit(trim($value)))
+            ? $this->externalTaxonomyId($value)
+            : null;
+    }
+
+    private function cacheGranTaxonomyIdentity(array $identity, bool $overwrite = true): void
+    {
+        $key = $this->granTaxonomyIdentityKey(
+            (string) ($identity['filter_type'] ?? ''),
+            (string) ($identity['source_entity_type'] ?? ''),
+            $identity['source_external_id'] ?? null
+        );
+        if ($key === '' || (!$overwrite && isset($this->granTaxonomyIdentityCache[$key]))) {
+            return;
+        }
+        $this->granTaxonomyIdentityCache[$key] = $identity;
+    }
+
+    private function granTaxonomyIdentityKey(string $type, string $entityType, mixed $externalId): string
+    {
+        $normalizedExternalId = $this->externalTaxonomyId($externalId);
+        $type = trim($type);
+        $entityType = trim($entityType);
+        return $type !== '' && $entityType !== '' && $normalizedExternalId !== null
+            ? $type . '|' . $entityType . '|' . (string) $normalizedExternalId
+            : '';
+    }
+
+    private function granTaxonomyIdentity(string $type, string $entityType, mixed $externalId): ?array
+    {
+        $key = $this->granTaxonomyIdentityKey($type, $entityType, $externalId);
+        return $key !== '' && isset($this->granTaxonomyIdentityCache[$key])
+            ? $this->granTaxonomyIdentityCache[$key]
+            : null;
     }
 
     private function mapQuestionImportPayload(array $rows, array $metadata): array
@@ -648,6 +937,10 @@ final class AdminGranCrawlerService
                         ));
                         $contexts[] = [
                             'tempId' => $contextTempId,
+                            'source' => [
+                                'provider' => 'gran',
+                                'externalId' => $groupIdentity !== '' ? $groupIdentity : null,
+                            ],
                             'type' => 'shared',
                             'body' => $this->replaceInlineImagesWithMarkers(
                                 $sanitizedGroupBody,
@@ -720,12 +1013,33 @@ final class AdminGranCrawlerService
                 $editorial[] = ['type' => 'detailed_analysis', 'title' => '', 'body' => $this->sanitizeRichText($detailed), 'status' => 'draft'];
             }
 
+            $existingQuestion = $externalId !== ''
+                ? ($this->granQuestionIdentityCache[$externalId] ?? null)
+                : null;
+            $existingQuestionId = is_array($existingQuestion) && is_numeric($existingQuestion['id'] ?? null)
+                ? (int) $existingQuestion['id']
+                : null;
+            $existingPublicationStatus = strtolower(trim((string) (
+                is_array($existingQuestion) ? ($existingQuestion['publish_status'] ?? '') : ''
+            )));
+            $alreadyPublished = $existingQuestionId !== null
+                && in_array($existingPublicationStatus, ['published', 'publicado'], true);
+            $existingVisibility = trim((string) (
+                is_array($existingQuestion) ? ($existingQuestion['visibility_status'] ?? '') : ''
+            ));
+            $existingExam = $externalExamId !== ''
+                ? ($this->granExamIdentityCache[$externalExamId] ?? null)
+                : null;
+            $existingExamId = is_array($existingExam) && is_numeric($existingExam['id'] ?? null)
+                ? (int) $existingExam['id']
+                : null;
+
             $question = [
                 'tempId' => $tempId,
-                'id' => null,
+                'id' => $existingQuestionId,
                 'source' => [
                     'origin' => 'exam',
-                    'examId' => null,
+                    'examId' => $existingExamId,
                     'questionNumber' => $number,
                     'contextTempId' => $contextTempId,
                     'sourcePage' => $sourcePage,
@@ -733,6 +1047,11 @@ final class AdminGranCrawlerService
                     'externalExamId' => $externalExamId !== '' ? $externalExamId : null,
                     'sourceExamKey' => $sourceExamKey !== '' ? $sourceExamKey : null,
                     'provider' => 'gran',
+                    'localQuestionId' => $existingQuestionId,
+                    'alreadyPublished' => $alreadyPublished,
+                    'publicationStatus' => $existingPublicationStatus !== ''
+                        ? $existingPublicationStatus
+                        : null,
                 ],
                 'content' => [
                     'statement' => $this->replaceInlineImagesWithMarkers($statement, $statementAssets),
@@ -745,7 +1064,10 @@ final class AdminGranCrawlerService
                     ),
                 ],
                 'assets' => $questionAssets,
-                'filters' => $this->mapFilters($row, $examMetadata),
+                // IDs da Gran nunca sao IDs locais. Primeiro preservamos a
+                // identidade externa; se a taxonomia ja foi sincronizada,
+                // hidratamos somente o ID local correspondente.
+                'filters' => $this->hydrateGranTaxonomyIds($this->mapFilters($row, $examMetadata)),
                 'type' => $questionType,
                 'difficulty' => $this->resolveDifficulty($row['dificuldade'] ?? null),
                 'alternatives' => $alternatives['items'],
@@ -757,13 +1079,25 @@ final class AdminGranCrawlerService
                     'correctAlternativeTempIds' => $correctIds,
                 ],
                 'editorial' => $editorial,
-                'publication' => ['status' => 'draft', 'visibility' => 'private', 'scheduledAt' => null],
-                'review' => ['required' => true, 'status' => 'pending', 'reasons' => []],
+                'publication' => [
+                    'status' => $alreadyPublished ? 'published' : 'draft',
+                    'visibility' => $alreadyPublished && $existingVisibility !== ''
+                        ? $existingVisibility
+                        : 'private',
+                    'scheduledAt' => null,
+                ],
+                'review' => [
+                    'required' => !$alreadyPublished,
+                    'status' => $alreadyPublished ? 'published' : 'pending',
+                    'reasons' => [],
+                ],
             ];
             $contextHasAssets = $contextTempId !== null
                 && isset($contextIndexes[$contextTempId])
                 && ($contexts[$contextIndexes[$contextTempId]]['assets'] ?? []) !== [];
-            $question['review']['reasons'] = $this->reviewReasons($question, $contextHasAssets);
+            $question['review']['reasons'] = $alreadyPublished
+                ? []
+                : $this->reviewReasons($question, $contextHasAssets);
             $questions[] = $question;
         }
 
@@ -888,37 +1222,51 @@ final class AdminGranCrawlerService
     private function mapFilters(array $row, array $examMetadata = []): array
     {
         $knowledgeTaxonomy = $this->mapGranKnowledgeTaxonomy($row);
+        $taxonomySources = is_array($examMetadata['taxonomySources'] ?? null)
+            ? $examMetadata['taxonomySources']
+            : [];
+        $boardValues = $row['bancas'] ?? $row['banca'] ?? [];
+        if ($this->taxonomyLabelsFromValues($boardValues) === []) {
+            $boardValues = $taxonomySources['bancas'] ?? [];
+        }
+        $organizationValues = $row['orgaos'] ?? $row['orgao'] ?? [];
+        if ($this->taxonomyLabelsFromValues($organizationValues) === []) {
+            $organizationValues = $taxonomySources['orgaos'] ?? [];
+        }
+        $roleValues = $row['cargos'] ?? $row['cargo'] ?? [];
+        if ($this->taxonomyLabelsFromValues($roleValues) === []) {
+            $roleValues = $taxonomySources['cargos'] ?? [];
+        }
 
         return [
             'subjects' => $knowledgeTaxonomy['subjects'],
             'topics' => $knowledgeTaxonomy['topics'],
             'subtopics' => $knowledgeTaxonomy['subtopics'],
-            'examBoards' => $this->taxonomyItems(array_merge(
-                $this->taxonomyLabelsFromValues($row['bancas'] ?? []),
+            'examBoards' => $this->mergeGranTaxonomyItems(
+                $this->granTaxonomyItems($boardValues, 'banca'),
+                $this->taxonomyItems(array_merge(
+                    $this->taxonomyLabelsFromValues($boardValues),
                 $this->normalizeStringList([$examMetadata['agency'] ?? null])
-            )),
-            'organizations' => $this->taxonomyItems(array_merge(
-                $this->taxonomyLabelsFromValues($row['orgaos'] ?? []),
+                ))
+            ),
+            'organizations' => $this->mergeGranTaxonomyItems(
+                $this->granTaxonomyItems($organizationValues, 'orgao'),
+                $this->taxonomyItems(array_merge(
+                    $this->taxonomyLabelsFromValues($organizationValues),
                 $this->normalizeStringList($examMetadata['organizations'] ?? [])
-            )),
-            'roles' => $this->taxonomyItems(array_merge(
-                $this->taxonomyLabelsFromValues($row['cargos'] ?? []),
+                ))
+            ),
+            'roles' => $this->mergeGranTaxonomyItems(
+                $this->granTaxonomyItems($roleValues, 'cargo'),
+                $this->taxonomyItems(array_merge(
+                    $this->taxonomyLabelsFromValues($roleValues),
                 $this->normalizeStringList($examMetadata['roles'] ?? [])
-            )),
-            'careers' => $this->taxonomyItems((function () use ($row, $examMetadata): array {
-                $questionFocuses = $this->taxonomyLabelsFromValues(
-                    $row['area']
-                    ?? $row['areas']
-                    ?? $row['carreira']
-                    ?? $row['carreiras']
-                    ?? $row['foco']
-                    ?? $row['focos']
-                    ?? []
-                );
-                return $questionFocuses !== []
-                    ? $questionFocuses
-                    : $this->normalizeStringList($examMetadata['focuses'] ?? []);
-            })()),
+                ))
+            ),
+            // No contrato da Gran, area representa o foco de estudo. Carreira
+            // e apenas fallback, nunca substitui uma area explicitamente vinda
+            // da questao.
+            'careers' => $this->mapGranFocusItems($row, $examMetadata),
             'years' => $this->taxonomyItems(
                 array_merge(
                     is_array($row['anos'] ?? null) ? $row['anos'] : [$row['ano'] ?? null],
@@ -934,6 +1282,151 @@ final class AdminGranCrawlerService
                 $this->normalizeStringList([$examMetadata['examType'] ?? null])
             )),
         ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function mapGranFocusItems(array $row, array $examMetadata): array
+    {
+        $areaValues = $row['area'] ?? $row['areas'] ?? $row['foco'] ?? $row['focos'] ?? [];
+        if ($this->taxonomyLabelsFromValues($areaValues) === []) {
+            $taxonomySources = is_array($examMetadata['taxonomySources'] ?? null)
+                ? $examMetadata['taxonomySources']
+                : [];
+            $areaValues = $taxonomySources['focos'] ?? [];
+        }
+        $areaItems = $this->granTaxonomyItems($areaValues, 'area');
+        if ($areaItems !== []) {
+            return $areaItems;
+        }
+
+        $careerValues = $row['carreira'] ?? $row['carreiras'] ?? [];
+        $careerItems = $this->granTaxonomyItems($careerValues, 'carreira');
+        if ($careerItems !== []) {
+            return $careerItems;
+        }
+
+        return $this->taxonomyItems($this->normalizeStringList($examMetadata['focuses'] ?? []));
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function granTaxonomyItems(mixed $values, string $entityType): array
+    {
+        $values = is_array($values) && array_is_list($values) ? $values : [$values];
+        $filterType = match ($entityType) {
+            'banca' => 'banca',
+            'orgao' => 'orgao',
+            'cargo' => 'cargo',
+            'area', 'carreira' => 'carreira',
+            default => 'assunto',
+        };
+        $items = [];
+        foreach ($values as $value) {
+            $externalId = $this->granTaxonomyExternalId($value, $entityType);
+            $canonical = $externalId !== null
+                ? $this->granTaxonomyIdentity($filterType, $entityType, $externalId)
+                : null;
+            $label = $this->entityLabel($value);
+            $canonicalName = is_array($canonical)
+                ? trim((string) ($canonical['name'] ?? ''))
+                : '';
+            if ($canonicalName !== '') {
+                $label = $canonicalName;
+            }
+            if ($label === '') {
+                continue;
+            }
+            $item = [
+                'id' => is_array($canonical) && is_numeric($canonical['local_id'] ?? null)
+                    ? (int) $canonical['local_id']
+                    : null,
+                'label' => $label,
+                'name' => $label,
+                'slug' => is_array($canonical) && trim((string) ($canonical['slug'] ?? '')) !== ''
+                    ? trim((string) $canonical['slug'])
+                    : $this->slugify($label),
+                'provider' => 'gran',
+                'sourceEntityType' => $entityType,
+            ];
+            if ($externalId !== null) {
+                $item['externalId'] = $externalId;
+            }
+            if (is_array($value)) {
+                $externalSlug = $this->readText($value['slug'] ?? null);
+                if ($externalSlug !== '') {
+                    $item['externalSlug'] = $externalSlug;
+                }
+            }
+            $items[] = $item;
+        }
+
+        return $this->mergeGranTaxonomyItems([], $items);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function mergeGranTaxonomyItems(array ...$groups): array
+    {
+        $result = [];
+        $seen = [];
+        foreach ($groups as $group) {
+            foreach ($group as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $externalId = $item['externalId'] ?? null;
+                $key = $externalId !== null
+                    ? 'gran:' . (string) ($item['sourceEntityType'] ?? '') . ':' . (string) $externalId
+                    : 'label:' . $this->slugify((string) ($item['label'] ?? ''));
+                $labelKey = 'label:' . $this->slugify((string) ($item['label'] ?? ''));
+                if ($labelKey === 'label:' || isset($seen[$key]) || isset($seen[$labelKey])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $seen[$labelKey] = true;
+                $result[] = $item;
+            }
+        }
+
+        return $result;
+    }
+
+    /** @return array<string, array<int, array<string, mixed>>> */
+    private function hydrateGranTaxonomyIds(array $filters): array
+    {
+        $definitions = [
+            'subjects' => ['type' => 'assunto', 'entityType' => 'assunto'],
+            'topics' => ['type' => 'assunto', 'entityType' => 'assunto'],
+            'subtopics' => ['type' => 'assunto', 'entityType' => 'assunto'],
+            'examBoards' => ['type' => 'banca', 'entityType' => 'banca'],
+            'organizations' => ['type' => 'orgao', 'entityType' => 'orgao'],
+            'roles' => ['type' => 'cargo', 'entityType' => 'cargo'],
+            'careers' => ['type' => 'carreira', 'entityType' => 'area'],
+        ];
+        foreach ($definitions as $bucket => $definition) {
+            if (!is_array($filters[$bucket] ?? null)) {
+                continue;
+            }
+            foreach ($filters[$bucket] as $index => $item) {
+                if (!is_array($item) || ($item['provider'] ?? null) !== 'gran') {
+                    continue;
+                }
+                $externalId = $this->externalTaxonomyId($item['externalId'] ?? null);
+                if ($externalId === null) {
+                    continue;
+                }
+                $entityType = trim((string) ($item['sourceEntityType'] ?? $definition['entityType']));
+                $identity = $this->granTaxonomyIdentity(
+                    $definition['type'],
+                    $entityType,
+                    $externalId
+                );
+                if (is_array($identity) && is_numeric($identity['local_id'] ?? null)) {
+                    $item['id'] = (int) $identity['local_id'];
+                }
+                $filters[$bucket][$index] = $item;
+            }
+        }
+
+        return $filters;
     }
 
     /**
@@ -953,21 +1446,66 @@ final class AdminGranCrawlerService
 
         foreach ($rawValues as $value) {
             if (!is_array($value)) {
+                $externalId = $this->granTaxonomyExternalId($value, 'assunto');
+                $canonical = $externalId !== null
+                    ? $this->granTaxonomyIdentity('assunto', 'assunto', $externalId)
+                    : null;
                 $label = $this->entityLabel($value);
+                $canonicalName = is_array($canonical)
+                    ? trim((string) ($canonical['name'] ?? ''))
+                    : '';
+                if ($canonicalName !== '') {
+                    $label = $canonicalName;
+                }
                 if ($label !== '') {
-                    $records[] = ['nome' => $label];
+                    $record = ['nome' => $label];
+                    if ($externalId !== null) {
+                        $record['id'] = $externalId;
+                    }
+                    if (is_array($canonical)) {
+                        $record['_localId'] = $canonical['local_id'] ?? null;
+                        $record['taxonomy_level'] = $canonical['taxonomy_level'] ?? null;
+                        $record['pai'] = $canonical['source_parent_external_id'] ?? null;
+                        $record['assunto_raiz'] = $canonical['source_root_external_id'] ?? null;
+                        $hasHierarchyMetadata = true;
+                    }
+                    $records[] = $record;
+                    if ($externalId !== null) {
+                        $recordsByExternalId[(string) $externalId] = $record;
+                    }
                 }
                 continue;
             }
 
+            $externalId = $this->granTaxonomyExternalId($value, 'assunto');
+            $canonical = $externalId !== null
+                ? $this->granTaxonomyIdentity('assunto', 'assunto', $externalId)
+                : null;
             $label = $this->entityLabel($value);
+            $canonicalName = is_array($canonical)
+                ? trim((string) ($canonical['name'] ?? ''))
+                : '';
+            if ($canonicalName !== '') {
+                $label = $canonicalName;
+            }
             if ($label === '') {
                 continue;
             }
 
             $value['nome'] = $label;
+            if (is_array($canonical)) {
+                $value['_localId'] = $canonical['local_id'] ?? null;
+                foreach ([
+                    'taxonomy_level' => 'taxonomy_level',
+                    'pai' => 'source_parent_external_id',
+                    'assunto_raiz' => 'source_root_external_id',
+                ] as $targetKey => $canonicalKey) {
+                    if (!array_key_exists($targetKey, $value) || $value[$targetKey] === null || $value[$targetKey] === '') {
+                        $value[$targetKey] = $canonical[$canonicalKey] ?? null;
+                    }
+                }
+            }
             $records[] = $value;
-            $externalId = $this->externalTaxonomyId($value['id'] ?? null);
             if ($externalId !== null) {
                 $recordsByExternalId[(string) $externalId] = $value;
             }
@@ -1135,6 +1673,12 @@ final class AdminGranCrawlerService
         $rootRecord = $externalRootId !== null
             ? ($recordsByExternalId[(string) $externalRootId] ?? null)
             : null;
+        if (!is_array($parentRecord) && $externalParentId !== null) {
+            $parentRecord = $this->granTaxonomyIdentity('assunto', 'assunto', $externalParentId);
+        }
+        if (!is_array($rootRecord) && $externalRootId !== null) {
+            $rootRecord = $this->granTaxonomyIdentity('assunto', 'assunto', $externalRootId);
+        }
         $parentName = is_array($parentRecord) ? $this->entityLabel($parentRecord) : '';
         $rootName = is_array($rootRecord) ? $this->entityLabel($rootRecord) : '';
 
@@ -1148,7 +1692,9 @@ final class AdminGranCrawlerService
 
         $keywords = $this->normalizeStringList($record['palavrasChave'] ?? []);
         $item = [
-            'id' => null,
+            'id' => isset($record['_localId']) && is_numeric($record['_localId'])
+                ? (int) $record['_localId']
+                : null,
             'label' => $label,
             'name' => $label,
             'nome' => $label,
@@ -1157,6 +1703,7 @@ final class AdminGranCrawlerService
             'taxonomyLevel' => $level,
             'taxonomy_level' => $level,
             'provider' => 'gran',
+            'sourceEntityType' => 'assunto',
         ];
         foreach ([
             'externalId' => $externalId,
@@ -1277,8 +1824,11 @@ final class AdminGranCrawlerService
             : ['type' => null, 'color' => null, 'name' => null];
 
         return [
-            'id' => null,
+            'id' => isset($resolved['id']) && is_numeric($resolved['id'])
+                ? (int) $resolved['id']
+                : null,
             'sourceKey' => trim((string) ($resolved['sourceKey'] ?? '')),
+            'provider' => trim((string) ($resolved['provider'] ?? '')) ?: null,
             'externalId' => $resolved['externalId'] ?? null,
             'title' => $title,
             'agency' => $board !== '' ? $board : null,
@@ -1333,33 +1883,34 @@ final class AdminGranCrawlerService
             );
         }
 
-        $boards = $this->taxonomyLabelsFromValues(
-            $proof['bancas']
+        $boardValues = $proof['bancas']
             ?? $proof['banca']
             ?? $proof['examBoards']
             ?? $row['bancas']
-            ?? []
-        );
-        $organizations = $this->taxonomyLabelsFromValues(
-            $proof['orgaos']
+            ?? $row['banca']
+            ?? [];
+        $organizationValues = $proof['orgaos']
             ?? $proof['orgao']
             ?? $proof['organizations']
             ?? $row['orgaos']
-            ?? []
-        );
-        $roles = $this->taxonomyLabelsFromValues(
-            $proof['cargos']
+            ?? $row['orgao']
+            ?? [];
+        $roleValues = $proof['cargos']
             ?? $proof['cargo']
             ?? $proof['roles']
             ?? $row['cargos']
-            ?? []
-        );
-        $focuses = $this->taxonomyLabelsFromValues(
-            $proof['carreiras']
+            ?? $row['cargo']
+            ?? [];
+        $focusValues = $proof['areas']
+            ?? $proof['area']
             ?? $proof['focos']
             ?? $proof['focuses']
-            ?? []
-        );
+            ?? $proof['carreiras']
+            ?? [];
+        $boards = $this->taxonomyLabelsFromValues($boardValues);
+        $organizations = $this->taxonomyLabelsFromValues($organizationValues);
+        $roles = $this->taxonomyLabelsFromValues($roleValues);
+        $focuses = $this->taxonomyLabelsFromValues($focusValues);
         $year = $this->resolveExamYear($proof, $row, $metadata);
         $level = $this->entityLabel(
             $proof['nivel']
@@ -1422,9 +1973,15 @@ final class AdminGranCrawlerService
                 'booklet' => [$bookletType, $bookletColor, $bookletName],
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)), 0, 24);
 
+        $existingExam = $externalId !== '' ? ($this->granExamIdentityCache[$externalId] ?? null) : null;
+        $existingExamId = is_array($existingExam) && is_numeric($existingExam['id'] ?? null)
+            ? (int) $existingExam['id']
+            : null;
+
         return [
-            'id' => null,
+            'id' => $existingExamId,
             'sourceKey' => $sourceKey,
+            'provider' => 'gran',
             'externalId' => $externalId !== '' ? $externalId : null,
             'title' => $title,
             'agency' => $boards[0] ?? null,
@@ -1434,6 +1991,12 @@ final class AdminGranCrawlerService
             'year' => $year,
             'level' => $level !== '' ? $level : null,
             'examType' => $examTypes[0] ?? null,
+            'taxonomySources' => [
+                'bancas' => $boardValues,
+                'orgaos' => $organizationValues,
+                'cargos' => $roleValues,
+                'focos' => $focusValues,
+            ],
             'booklet' => [
                 'type' => $bookletType !== '' ? $bookletType : null,
                 'color' => $bookletColor !== '' ? $bookletColor : null,

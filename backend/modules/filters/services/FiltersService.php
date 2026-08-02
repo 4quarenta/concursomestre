@@ -52,6 +52,7 @@ class FiltersService
             'cargos' => [],
             'anos' => [],
             'carreiras' => [],
+            'areas' => [],
         ];
 
         $rows = $this->repository->fetchAll();
@@ -118,6 +119,11 @@ class FiltersService
                     $result['carreiras'][] = $item;
                     break;
 
+                case 'area':
+                    $item['pai'] = $row['parent_id'];
+                    $result['areas'][] = $item;
+                    break;
+
                 case 'ano':
                     $result['anos'][] = (int) $row['name'];
                     break;
@@ -125,6 +131,107 @@ class FiltersService
         }
 
         return $result;
+    }
+
+    /**
+     * Lista a biblioteca administrativa de taxonomias de forma paginada.
+     */
+    public function listPage(int $page, int $perPage, string $type = 'all', string $search = ''): array
+    {
+        $pageData = $this->repository->fetchPage($page, $perPage, $type, $search);
+        $filterIds = array_map(static fn (array $row): int => (int) $row['id'], $pageData['rows']);
+        $usageByFilterId = $this->repository->fetchUsageOverview($filterIds);
+
+        $rows = array_map(function (array $row) use ($usageByFilterId): array {
+            return [
+                'id' => (int) $row['id'],
+                'type' => $this->resolveUiType($row),
+                'name' => (string) $row['name'],
+                'slug' => (string) $row['slug'],
+                'sigla' => $row['acronym'] ?: null,
+                'parentId' => $row['parent_id'] !== null ? (int) $row['parent_id'] : null,
+                'parentName' => $row['parent_name'] ?: null,
+                'description' => $row['description'],
+                'website' => $row['website'],
+                'assetUrl' => $row['asset_url'],
+                'iconKey' => $row['icon_key'],
+                'aliases' => array_values($row['aliases'] ?? []),
+                'keywords' => $this->decodeStringList($row['keywords_json'] ?? null),
+                'taxonomyLevel' => $row['taxonomy_level'] ?: null,
+                'relationships' => array_values($row['relationships'] ?? []),
+                'usage' => $usageByFilterId[(int) $row['id']] ?? $this->emptyUsage(),
+            ];
+        }, $pageData['rows']);
+
+        return [
+            'rows' => $rows,
+            'total' => $pageData['total'],
+            'page' => $pageData['page'],
+            'perPage' => $pageData['perPage'],
+            'pages' => $pageData['pages'],
+            'usage' => $this->repository->fetchUsageSummary(),
+        ];
+    }
+
+    /**
+     * Carrega o registro administrativo completo imediatamente antes da
+     * edicao. A listagem continua leve e paginada; o modal deixa de depender
+     * de uma linha potencialmente antiga mantida no estado do navegador.
+     */
+    public function getAdminDetail(int $id): array
+    {
+        $this->validator->validatePositiveId($id, 'Filtro invalido.');
+        $row = $this->repository->fetchById($id);
+        if ($row === null) {
+            throw new InvalidArgumentException('Filtro nao encontrado.');
+        }
+
+        $usageByFilterId = $this->repository->fetchUsageOverview([$id]);
+        return [
+            'id' => (int) $row['id'],
+            'type' => $this->resolveUiType($row),
+            'name' => (string) $row['name'],
+            'slug' => (string) $row['slug'],
+            'sigla' => $row['acronym'] ?: null,
+            'parentId' => $row['parent_id'] !== null ? (int) $row['parent_id'] : null,
+            'parentName' => $row['parent_name'] ?: null,
+            'description' => $row['description'],
+            'website' => $row['website'],
+            'assetUrl' => $row['asset_url'],
+            'iconKey' => $row['icon_key'],
+            'aliases' => array_values($row['aliases'] ?? []),
+            'keywords' => $this->decodeStringList($row['keywords_json'] ?? null),
+            'taxonomyLevel' => $row['taxonomy_level'] ?: null,
+            'relationships' => array_values($row['relationships'] ?? []),
+            'sourceIdentities' => array_values($row['sourceIdentities'] ?? []),
+            'usage' => $usageByFilterId[$id] ?? $this->emptyUsage(),
+        ];
+    }
+
+    private function resolveUiType(array $row): string
+    {
+        if (($row['type'] ?? '') !== 'assunto') {
+            return (string) ($row['type'] ?? '');
+        }
+
+        $taxonomyLevel = strtolower(trim((string) ($row['taxonomy_level'] ?? '')));
+        if (!empty($row['meta_materia']) || $taxonomyLevel === 'materia') {
+            return 'materia';
+        }
+        if ($taxonomyLevel === 'topico') {
+            return 'topico';
+        }
+        return 'assunto';
+    }
+
+    private function emptyUsage(): array
+    {
+        return [
+            'questions' => 0,
+            'exams' => 0,
+            'laws' => 0,
+            'total' => 0,
+        ];
     }
 
     /**
@@ -278,6 +385,24 @@ class FiltersService
             'message' => 'Filtro excluido com sucesso',
             'audit_action' => 'filter.delete',
             'audit_entity_id' => (string) $id,
+        ];
+    }
+
+    /**
+     * Exclui uma selecao de taxonomias em uma unica operacao administrativa.
+     */
+    public function deleteMany(mixed $ids): array
+    {
+        $normalizedIds = $this->validator->normalizeDeleteIds($ids);
+        $deletedIds = $this->repository->deleteMany($normalizedIds);
+
+        return [
+            'deletedIds' => $deletedIds,
+            'deletedCount' => count($deletedIds),
+            'message' => count($deletedIds) . ' taxonomia(s) excluida(s) com sucesso.',
+            'audit_action' => 'filter.bulk-delete',
+            'audit_entity_id' => 'bulk',
+            'audit_metadata' => ['ids' => $deletedIds, 'count' => count($deletedIds)],
         ];
     }
 

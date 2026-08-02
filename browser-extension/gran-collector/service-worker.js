@@ -11,11 +11,73 @@ const HEADER_RULE_ID = 44001;
 const MAX_EXAM_FILE_REQUESTS = 50;
 const EXAM_FILE_REQUEST_CONCURRENCY = 4;
 const examFilesCache = new Map();
+const TAXONOMY_PAGE_SIZE = 1000;
+const MAX_TAXONOMY_ROOTS_PER_REQUEST = 25;
+const MAX_TAXONOMY_ROOTS_PER_BATCH = 5000;
+const MAX_TAXONOMY_PAGES_PER_BATCH = 500;
+
+// A pagina administrativa nunca envia URL livre para sincronizar taxonomias.
+// Cada tipo possui uma rota e um conjunto de parametros imutaveis auditaveis.
+const TAXONOMY_ENDPOINTS = Object.freeze({
+  assunto_tree: {
+    path: '/v3/materia/arvore',
+    perPage: TAXONOMY_PAGE_SIZE,
+    params: [
+      ['sort', 'indiceOrdenacao'], ['materia', '0'], ['comQuestoes', '1'],
+      ['_source[]', 'id'], ['_source[]', 'nome'], ['_source[]', 'assunto_raiz'],
+      ['_source[]', 'pai'], ['_source[]', 'indice'], ['_source[]', 'nivel'], ['_source[]', 'filhos'],
+      ['_source[]', 'nome_clean'], ['_source[]', 'palavrasChave'], ['_source[]', 'slug'],
+      ['_source[]', 'materia'], ['_source[]', 'oab'], ['_source[]', 'timestamp'],
+      ['_source[]', 'maisBuscado'], ['_source[]', 'maisBuscadoPosicao'],
+      ['_source[]', 'qtdQuestoes'], ['_source[]', 'qtdQuestoesNaoAcumulado'],
+      ['_source[]', 'index'],
+    ],
+  },
+  assunto: {
+    path: '/v1/elastic/assunto', perPage: TAXONOMY_PAGE_SIZE,
+    params: [
+      ['_source[]', 'id'], ['_source[]', 'nome'], ['_source[]', 'nome_clean'],
+      ['_source[]', 'assunto_raiz'], ['_source[]', 'pai'], ['_source[]', 'filhos'],
+      ['_source[]', 'materia'], ['_source[]', 'oab'], ['_source[]', 'palavrasChave'],
+      ['_source[]', 'qtdQuestoes'], ['_source[]', 'qtdQuestoesNaoAcumulado'],
+      ['_source[]', 'maisBuscado'], ['_source[]', 'maisBuscadoPosicao'],
+      ['_source[]', 'slug'], ['_source[]', 'timestamp'], ['_source[]', 'index'],
+    ],
+  },
+  cargo: { path: '/v1/elastic/cargo', perPage: TAXONOMY_PAGE_SIZE, params: [] },
+  orgao: { path: '/v1/elastic/orgao', perPage: TAXONOMY_PAGE_SIZE, params: [] },
+  carreira: { path: '/v1/elastic/carreira', perPage: TAXONOMY_PAGE_SIZE, params: [] },
+  banca: {
+    path: '/v1/elastic/banca',
+    perPage: TAXONOMY_PAGE_SIZE,
+    params: [
+      ['_source[]', 'id'], ['_source[]', 'nome'], ['_source[]', 'nome_clean'],
+      ['_source[]', 'nome_completo'], ['_source[]', 'razao_social'],
+      ['_source[]', 'sigla'], ['_source[]', 'acronym'], ['_source[]', 'abreviacao'],
+      ['_source[]', 'descricao'], ['_source[]', 'description'],
+      ['_source[]', 'site'], ['_source[]', 'website'], ['_source[]', 'site_url'],
+      ['_source[]', 'url_site'], ['_source[]', 'logo'], ['_source[]', 'logo_url'],
+      ['_source[]', 'imagem'], ['_source[]', 'image'],
+      ['_source[]', 'palavrasChave'], ['_source[]', 'palavras_chave'], ['_source[]', 'aliases'],
+      ['_source[]', 'oab'], ['_source[]', 'inedita'], ['_source[]', 'tiposProva'],
+      ['_source[]', 'qtdConcursos'], ['_source[]', 'qtdProvas'],
+      ['_source[]', 'qtdQuestoes'], ['_source[]', 'qtdComentarios'],
+      ['_source[]', 'maisBuscado'], ['_source[]', 'maisBuscadoPosicao'],
+      ['_source[]', 'slug'], ['_source[]', 'timestamp'], ['_source[]', 'index'],
+    ],
+  },
+  // Gran chama foco de estudo de area; localmente ele e salvo como carreira/foco.
+  area: { path: '/v1/elastic/area', perPage: TAXONOMY_PAGE_SIZE, params: [] },
+});
 
 const ALLOWED_PAGE_ORIGINS = new Set([
   'https://concursomestre.com',
   'http://localhost:3000',
 ]);
+const CRAWLER_TAB_PATTERNS = [
+  'https://concursomestre.com/admin/operation/gran-crawler*',
+  'http://localhost:3000/admin/operation/gran-crawler*',
+];
 
 const base64UrlDecode = (value) => {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -85,9 +147,11 @@ const validateGranUrl = (value) => {
 
 const isAllowedSender = (sender) => {
   try {
-    const url = new URL(sender?.url || '');
-    return ALLOWED_PAGE_ORIGINS.has(url.origin)
-      && url.pathname === '/admin/operation/gran-crawler';
+    const url = new URL(sender?.url || sender?.tab?.url || '');
+    const crawlerPath = '/admin/operation/gran-crawler';
+    return sender?.id === chrome.runtime.id
+      && ALLOWED_PAGE_ORIGINS.has(url.origin)
+      && (url.pathname === crawlerPath || url.pathname.startsWith(`${crawlerPath}/`));
   } catch {
     return false;
   }
@@ -107,7 +171,7 @@ const installHeaderRule = async () => {
         ],
       },
       condition: {
-        urlFilter: `|${GRAN_API_ORIGIN}/v1/`,
+        urlFilter: `|${GRAN_API_ORIGIN}/`,
         resourceTypes: ['xmlhttprequest'],
       },
     }],
@@ -455,13 +519,207 @@ const collect = async (urlValue) => {
   };
 };
 
+const normalizeTaxonomyRootIds = (kind, rawRootIds, maxRoots = MAX_TAXONOMY_ROOTS_PER_REQUEST) => {
+  if (kind !== 'assunto_tree') return [];
+  if (!Array.isArray(rawRootIds)) return [];
+  const uniqueIds = new Set();
+  for (const value of rawRootIds) {
+    const id = String(value || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,120}$/.test(id)) {
+      throw new Error('Identificador de raiz da taxonomia invalido.');
+    }
+    uniqueIds.add(id);
+    if (uniqueIds.size > maxRoots) {
+      throw new Error('O lote de raizes da taxonomia excede o limite seguro.');
+    }
+  }
+  return [...uniqueIds];
+};
+
+const readPositiveInteger = (...values) => {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+};
+
+const readTaxonomyPageCount = (payload, perPage) => {
+  const data = payload?.data && typeof payload.data === 'object' ? payload.data : {};
+  const meta = data?.meta && typeof data.meta === 'object'
+    ? data.meta
+    : payload?.meta && typeof payload.meta === 'object'
+      ? payload.meta
+      : {};
+  const explicitPages = readPositiveInteger(
+    data.pages,
+    data.totalPages,
+    data.total_pages,
+    meta.pages,
+    meta.totalPages,
+    meta.total_pages,
+    payload?.pages,
+    payload?.totalPages,
+    payload?.total_pages,
+  );
+  if (explicitPages > 0) return explicitPages;
+  const total = readPositiveInteger(
+    data.total,
+    data.totalItems,
+    data.total_items,
+    meta.total,
+    meta.totalItems,
+    meta.total_items,
+    payload?.total,
+    payload?.totalItems,
+    payload?.total_items,
+  );
+  return total > 0 ? Math.ceil(total / Math.max(1, perPage)) : 1;
+};
+
+const collectTaxonomyPage = async (kindValue, pageValue, rawRootIds) => {
+  const kind = String(kindValue || '').trim().toLowerCase();
+  const definition = TAXONOMY_ENDPOINTS[kind];
+  if (!definition) throw new Error('Tipo de taxonomia Gran invalido.');
+  const page = Number(pageValue || 1);
+  if (!Number.isInteger(page) || page < 1 || page > 10_000) {
+    throw new Error('Pagina de taxonomia invalida.');
+  }
+  const session = await getSession();
+  if (!session) throw new Error('Abra a extensao e conecte uma sessao Gran valida.');
+
+  const params = new URLSearchParams(definition.params);
+  params.set('perPage', String(definition.perPage));
+  params.set('page', String(page));
+  for (const rootExternalId of normalizeTaxonomyRootIds(kind, rawRootIds)) {
+    params.append('raiz[]', rootExternalId);
+  }
+  const requestUrl = `${GRAN_API_ORIGIN}${definition.path}?${params.toString()}`;
+  const response = await fetchGranJson(requestUrl, session);
+  return {
+    kind,
+    page,
+    status: response.status,
+    requestUrl,
+    json: response.json,
+  };
+};
+
+const collectTaxonomyBatch = async (kindValue, rawRootIds) => {
+  const kind = String(kindValue || '').trim().toLowerCase();
+  const definition = TAXONOMY_ENDPOINTS[kind];
+  if (!definition) throw new Error('Tipo de taxonomia Gran invalido.');
+
+  const roots = normalizeTaxonomyRootIds(kind, rawRootIds, MAX_TAXONOMY_ROOTS_PER_BATCH);
+  const rootBatches = roots.length > 0
+    ? Array.from(
+      { length: Math.ceil(roots.length / MAX_TAXONOMY_ROOTS_PER_REQUEST) },
+      (_, index) => roots.slice(
+        index * MAX_TAXONOMY_ROOTS_PER_REQUEST,
+        (index + 1) * MAX_TAXONOMY_ROOTS_PER_REQUEST,
+      ),
+    )
+    : [[]];
+  const responses = [];
+
+  for (const rootBatch of rootBatches) {
+    const firstPage = await collectTaxonomyPage(kind, 1, rootBatch);
+    responses.push(firstPage);
+    const totalPages = Math.min(
+      MAX_TAXONOMY_PAGES_PER_BATCH,
+      readTaxonomyPageCount(firstPage.json, definition.perPage),
+    );
+    for (let page = 2; page <= totalPages; page += 1) {
+      responses.push(await collectTaxonomyPage(kind, page, rootBatch));
+    }
+    if (responses.length > MAX_TAXONOMY_PAGES_PER_BATCH) {
+      throw new Error('A taxonomia excedeu o limite seguro de paginas por lote.');
+    }
+  }
+
+  return {
+    kind,
+    responses,
+    requestCount: responses.length,
+    rootCount: roots.length,
+  };
+};
+
+const taxonomyManifestTotal = (payload) => {
+  const data = payload?.data && typeof payload.data === 'object' ? payload.data : {};
+  const meta = data?.meta && typeof data.meta === 'object'
+    ? data.meta
+    : payload?.meta && typeof payload.meta === 'object' ? payload.meta : {};
+  return readPositiveInteger(
+    data.total, data.totalItems, data.total_items,
+    meta.total, meta.totalItems, meta.total_items,
+    payload?.total, payload?.totalItems, payload?.total_items,
+  );
+};
+
+const firstTaxonomyRecord = (payload) => {
+  const rows = extractRows(payload);
+  if (rows.length > 0 && rows[0] && typeof rows[0] === 'object') return rows[0];
+  const data = payload?.data;
+  if (Array.isArray(data) && data[0] && typeof data[0] === 'object') return data[0];
+  return {};
+};
+
+const sha256 = async (value) => {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const checkTaxonomyUpdates = async () => {
+  const session = await getSession();
+  if (!session) throw new Error('Abra a extensao e conecte uma sessao Gran valida.');
+  const manifests = [];
+  for (const [kind, definition] of Object.entries(TAXONOMY_ENDPOINTS)) {
+    const params = new URLSearchParams(definition.params);
+    params.set('perPage', '1');
+    params.set('page', '1');
+    const requestUrl = `${GRAN_API_ORIGIN}${definition.path}?${params.toString()}`;
+    const response = await fetchGranJson(requestUrl, session);
+    const record = firstTaxonomyRecord(response.json);
+    const total = taxonomyManifestTotal(response.json);
+    const indexSignature = String(record.index ?? response.json?.index ?? '').trim() || null;
+    const updatedAt = String(record.timestamp ?? record.updated_at ?? response.json?.timestamp ?? '').trim() || null;
+    manifests.push({
+      taxonomyKind: kind,
+      total,
+      indexSignature,
+      updatedAt,
+      fingerprint: await sha256(JSON.stringify([kind, total, indexSignature, updatedAt])),
+      checkedAt: new Date().toISOString(),
+    });
+  }
+  return { manifests, requestCount: manifests.length };
+};
+
+const ensureCollectorBridgeInOpenTabs = async () => {
+  const tabs = await chrome.tabs.query({ url: CRAWLER_TAB_PATTERNS });
+  await Promise.all(tabs.map(async (tab) => {
+    if (!tab.id) return;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content-script.js'],
+      });
+    } catch {
+      // A aba pode ter sido fechada ou estar navegando durante a atualizacao.
+    }
+  }));
+};
+
 chrome.runtime.onInstalled.addListener(() => {
-  void installHeaderRule();
+  void Promise.all([installHeaderRule(), ensureCollectorBridgeInOpenTabs()]);
 });
 chrome.runtime.onStartup.addListener(() => {
-  void installHeaderRule();
+  void Promise.all([installHeaderRule(), ensureCollectorBridgeInOpenTabs()]);
 });
 void installHeaderRule();
+void ensureCollectorBridgeInOpenTabs();
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
@@ -488,7 +746,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const popupAction = ['CLEAR_SESSION', 'GET_STATUS'].includes(action)
     && sender?.id === chrome.runtime.id
     && !sender?.tab;
-  const pageAction = ['PING', 'COLLECT'].includes(action) && isAllowedSender(sender);
+  const pageAction = [
+    'PING', 'COLLECT', 'COLLECT_TAXONOMY_PAGE', 'COLLECT_TAXONOMY_BATCH', 'CHECK_TAXONOMY_UPDATES',
+  ].includes(action)
+    && isAllowedSender(sender);
   if (!popupAction && !pageAction) {
     sendResponse({ success: false, message: 'Origem da solicitacao nao autorizada.' });
     return false;
@@ -497,6 +758,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       ? clearSession()
       : action === 'COLLECT'
         ? collect(message.url)
+        : action === 'COLLECT_TAXONOMY_PAGE'
+          ? collectTaxonomyPage(message.kind, message.page, message.rootExternalIds)
+          : action === 'COLLECT_TAXONOMY_BATCH'
+            ? collectTaxonomyBatch(message.kind, message.rootExternalIds)
+            : action === 'CHECK_TAXONOMY_UPDATES'
+              ? checkTaxonomyUpdates()
         : getStatus();
   operation
     .then((data) => sendResponse({ success: true, data }))

@@ -188,6 +188,18 @@ CREATE TABLE IF NOT EXISTS filters (
     slug VARCHAR(255) NOT NULL,
     acronym VARCHAR(40) DEFAULT NULL,
     parent_id INT DEFAULT NULL,
+    description TEXT NULL,
+    website VARCHAR(1000) NULL,
+    asset_url VARCHAR(1000) NULL,
+    icon_key VARCHAR(120) NULL,
+    keywords_json JSON NULL,
+    taxonomy_level VARCHAR(20) NULL,
+    meta_carreira BOOLEAN DEFAULT FALSE,
+    source_provider VARCHAR(40) NULL,
+    source_entity_type VARCHAR(40) NULL,
+    source_external_id VARCHAR(120) NULL,
+    source_parent_external_id VARCHAR(120) NULL,
+    source_root_external_id VARCHAR(120) NULL,
     
     -- Metadata fields specific to certain types (e.g., UF for Orgao, OAB for Banca)
     meta_uf VARCHAR(2),
@@ -197,8 +209,66 @@ CREATE TABLE IF NOT EXISTS filters (
     
     UNIQUE KEY unique_type_slug (type, slug),
     UNIQUE KEY uq_filters_type_acronym (type, acronym),
+    UNIQUE KEY uq_filters_source_identity (type, source_provider, source_entity_type, source_external_id),
     FOREIGN KEY (parent_id) REFERENCES filters(id) ON DELETE SET NULL,
-    INDEX idx_type (type)
+    INDEX idx_type (type),
+    INDEX idx_filters_type_name_id (type, name, id),
+    INDEX idx_filters_source_parent (type, source_provider, source_entity_type, source_parent_external_id)
+);
+
+-- Stable many-to-one identities for imported taxonomies. A provider may keep
+-- more than one historical external ID for the same canonical filter.
+CREATE TABLE IF NOT EXISTS filter_source_identities (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    filter_id INT NOT NULL,
+    filter_type VARCHAR(40) NOT NULL,
+    source_provider VARCHAR(40) NOT NULL,
+    source_entity_type VARCHAR(40) NOT NULL,
+    source_external_id VARCHAR(120) NOT NULL,
+    source_parent_external_id VARCHAR(120) NULL,
+    source_root_external_id VARCHAR(120) NULL,
+    source_metadata_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_filter_source_identity (
+        filter_type, source_provider, source_entity_type, source_external_id
+    ),
+    INDEX idx_filter_source_filter (filter_id),
+    INDEX idx_filter_source_parent (
+        filter_type, source_provider, source_entity_type, source_parent_external_id
+    ),
+    FOREIGN KEY (filter_id) REFERENCES filters(id) ON DELETE CASCADE
+);
+
+-- Directed relations that cannot be represented by the single legacy
+-- filters.parent_id column (for example, one cargo linked to many careers).
+CREATE TABLE IF NOT EXISTS filter_relationships (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    source_filter_id INT NOT NULL,
+    target_filter_id INT NOT NULL,
+    relation_type VARCHAR(60) NOT NULL,
+    source_provider VARCHAR(40) NOT NULL DEFAULT 'platform',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_filter_relationship (
+        source_filter_id, target_filter_id, relation_type, source_provider
+    ),
+    INDEX idx_filter_relationship_target (target_filter_id, relation_type, source_filter_id),
+    INDEX idx_filter_relationship_source (source_filter_id, relation_type, target_filter_id),
+    FOREIGN KEY (source_filter_id) REFERENCES filters(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_filter_id) REFERENCES filters(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS filter_aliases (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    filter_id INT NOT NULL,
+    alias VARCHAR(255) NOT NULL,
+    normalized_alias VARCHAR(255) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_filter_alias (filter_id, normalized_alias),
+    INDEX idx_filter_alias_lookup (normalized_alias),
+    INDEX idx_filter_alias_filter (filter_id),
+    FOREIGN KEY (filter_id) REFERENCES filters(id) ON DELETE CASCADE
 );
 
 -- Provas (Exams)

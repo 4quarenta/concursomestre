@@ -72,8 +72,13 @@ if [[ -d "$release_dir/backend/uploads" ]]; then
 fi
 # install e rsync preservam metadados de diretorios existentes. Reafirme o
 # contrato operacional depois da copia para impedir um legado root:root.
-chown root:"$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
-chmod 2770 "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
+# O PHP-FPM grava cache, logs e uploads nesses caminhos compartilhados; a
+# normalizacao precisa cobrir o conteudo interno, nao apenas os diretorios raiz.
+chgrp -R "$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"
+find "$CM_SHARED_DIR/backend/storage" -type d -exec chmod 2770 {} +
+find "$CM_SHARED_DIR/backend/storage" -type f -exec chmod 0660 {} +
+find "$CM_SHARED_DIR/backend/uploads" -type d -exec chmod 2775 {} +
+find "$CM_SHARED_DIR/backend/uploads" -type f -exec chmod 0664 {} +
 rm -rf "$release_dir/backend/storage" "$release_dir/backend/uploads"
 ln -s "$CM_SHARED_DIR/backend/storage" "$release_dir/backend/storage"
 ln -s "$CM_SHARED_DIR/backend/uploads" "$release_dir/backend/uploads"
@@ -105,6 +110,19 @@ previous_frontend="$(cm_current_symlink_target "$CM_FRONTEND_LINK")"
 previous_backend_target="$(cm_current_symlink_target "$CM_BACKEND_LINK")"; [[ -z "$previous_backend_target" ]] || previous_backend="$(dirname "$previous_backend_target")"
 cm_atomic_symlink "$release_dir/backend" "$CM_BACKEND_LINK"; cm_atomic_symlink "$release_dir" "$CM_FRONTEND_LINK"; switched='true'
 cm_run nginx -t
+# Releases anteriores iniciaram ocasionalmente uma unidade transitória em
+# paralelo ao serviço canônico. Ela mantém a porta do Next ocupada e faz o
+# restart seguinte continuar servindo um diretório já removido. Pare apenas
+# essas unidades transitórias antes de reiniciar o serviço gerenciado.
+mapfile -t stale_frontend_runtime_units < <(
+  systemctl list-units --type=service --all --no-legend 'concursomestre-web-runtime-*.service' \
+    | awk '{print $1}'
+)
+for stale_frontend_runtime_unit in "${stale_frontend_runtime_units[@]}"; do
+  [[ -z "$stale_frontend_runtime_unit" ]] && continue
+  cm_log "Encerrando runtime transitório obsoleto: $stale_frontend_runtime_unit"
+  systemctl stop "$stale_frontend_runtime_unit" >/dev/null 2>&1 || true
+done
 cm_service_action restart "$CM_PHP_FPM_SERVICE"; cm_service_action restart "$CM_FRONTEND_SERVICE"; cm_service_action reload "$CM_NGINX_SERVICE"
 timeout="${CM_SMOKE_TIMEOUT_SECONDS:-15}"
 cm_http_expect_success "${CM_API_BASE_URL%/}/system/health.php" "$timeout"

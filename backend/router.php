@@ -119,6 +119,7 @@ $routes = [
     'questionsCreate' => 'api/questions/save.php',
     'questionsExamImport' => 'api/questions/exam_import.php',
     'questionsBulkImport' => 'api/questions/bulk_import.php',
+    'questionsMultiBatchImport' => 'api/questions/multi_batch_import.php',
     'questionsSave' => 'api/questions/save.php',
     'questionsUpdate' => 'api/questions/update.php',
     'questionsDelete' => 'api/questions/delete.php',
@@ -187,6 +188,7 @@ $routes = [
 
     // Filters
     'filtersList' => 'api/filters/list.php',
+    'adminFiltersList' => 'api/admin/filters/list.php',
     'filtersSave' => 'api/filters/save.php',
     'filtersDelete' => 'api/filters/delete.php',
 
@@ -250,4 +252,3 @@ if (strpos($path, '/') !== false && isAllowedLegacyApiPath($path)) {
 
 http_response_code(404);
 echo json_encode(['success' => false, 'message' => "Route not found: {$path}"]);
-

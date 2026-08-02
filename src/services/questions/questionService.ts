@@ -32,6 +32,7 @@ type QuestionListResult = {
   total: number;
   pageInfo?: {
     limit: number;
+    total: number;
     hasMore: boolean;
     nextCursor: string | null;
   };
@@ -54,7 +55,7 @@ type QuestionCreateResponse = {
   id?: string | number;
 };
 
-type ImportedQuestionBatchPayload = {
+export type ImportedQuestionBatchPayload = {
   schemaVersion?: 'question-import.v2';
   exam: Record<string, unknown>;
   focus: Record<string, unknown>;
@@ -79,6 +80,24 @@ type ImportedQuestionBatchResponse = {
   skippedDuplicateCount?: number;
   skipped_duplicate_count?: number;
   newTaxonomies?: Array<Record<string, unknown>>;
+};
+
+type ImportedQuestionMultiBatchResponse = {
+  count?: number;
+  created?: Question[];
+  skippedDuplicateCount?: number;
+  itemFailures?: Array<Record<string, unknown>>;
+  batches?: Array<{
+    clientKey?: string;
+    count?: number;
+    created?: Question[];
+    duplicatesSkipped?: Array<Record<string, unknown>>;
+    duplicates_skipped?: Array<Record<string, unknown>>;
+    skippedDuplicateCount?: number;
+    skipped_duplicate_count?: number;
+    itemFailures?: Array<Record<string, unknown>>;
+    item_failures?: Array<Record<string, unknown>>;
+  }>;
 };
 
 type ToggleSavedQuestionResponse = {
@@ -247,6 +266,7 @@ export type QuestionV2PageResponse = {
   items?: Array<QuestionV2ListItem | QuestionV2Detail>;
   pageInfo?: {
     limit?: number;
+    total?: number;
     hasMore?: boolean;
     nextCursor?: string | null;
   };
@@ -571,6 +591,40 @@ const buildCanonicalQuestionPayload = (question: Question): QuestionPayload => {
     },
   };
 };
+
+/**
+ * A revisao do importador existe apenas no cliente. Quando o lote chega a
+ * este servico, a acao solicitada ja e de publicacao e nao de salvar rascunho.
+ * Normalizar aqui evita que o estado transitorio do card seja persistido como
+ * `draft` ou `private` por engano, inclusive nos lotes do coletor Gran.
+ */
+const buildPublishedImportedQuestionBatchPayload = (
+  payload: ImportedQuestionBatchPayload,
+): ImportedQuestionBatchPayload => ({
+  ...payload,
+  schemaVersion: 'question-import.v2',
+  exam: {
+    ...(payload.exam || {}),
+    publishStatus: 'published',
+    statusEditorial: 'published',
+    status_editorial: 'published',
+    visibilityStatus: 'public',
+    visibility_status: 'public',
+  },
+  questions: payload.questions.map((question) => {
+    const canonicalQuestion = buildCanonicalQuestionPayload(question as unknown as Question);
+
+    return {
+      ...canonicalQuestion,
+      publication: {
+        ...canonicalQuestion.publication,
+        status: 'published',
+        visibility: 'public',
+        scheduledAt: null,
+      },
+    };
+  }),
+});
 
 const EMPTY_EDITORIAL_FEEDBACK_SNAPSHOT: QuestionEditorialFeedbackSnapshot = {
   feedback: {
@@ -1021,10 +1075,10 @@ export const questionService = {
       const visibleRows = includeUnpublished
         ? normalizedRows
         : normalizedRows.filter((row) => isQuestionPubliclyVisible(row));
-      const total = v2Items
-        ? visibleRows.length
-        : Array.isArray(payload) ? visibleRows.length : Number(('total' in payload ? payload.total : undefined) || visibleRows.length);
       const v2PageInfo = v2Items ? (payload as QuestionV2PageResponse).pageInfo : undefined;
+      const total = v2Items
+        ? Math.max(visibleRows.length, Number(v2PageInfo?.total ?? visibleRows.length))
+        : Array.isArray(payload) ? visibleRows.length : Number(('total' in payload ? payload.total : undefined) || visibleRows.length);
 
       return {
         rows: visibleRows,
@@ -1032,6 +1086,7 @@ export const questionService = {
         ...(v2Items ? {
           pageInfo: {
             limit: Number(v2PageInfo?.limit || filters?.limit || visibleRows.length || 20),
+            total,
             hasMore: Boolean(v2PageInfo?.hasMore),
             nextCursor: typeof v2PageInfo?.nextCursor === 'string' && v2PageInfo.nextCursor
               ? v2PageInfo.nextCursor
@@ -1402,11 +1457,7 @@ export const questionService = {
   }> {
     try {
       const formData = new FormData();
-      const canonicalPayload: ImportedQuestionBatchPayload = {
-        ...payload,
-        schemaVersion: 'question-import.v2',
-        questions: payload.questions.map((question) => buildCanonicalQuestionPayload(question as unknown as Question)),
-      };
+      const canonicalPayload = buildPublishedImportedQuestionBatchPayload(payload);
       formData.append('payload', JSON.stringify(canonicalPayload));
       if (proofPdf) {
         formData.append('proof_pdf', proofPdf, proofPdf.name);
@@ -1448,6 +1499,50 @@ export const questionService = {
         skippedDuplicateCount: 0,
         newTaxonomies: [],
         exam: undefined,
+      };
+    }
+  },
+
+  /** Persiste lotes de provas distintos em uma unica requisicao administrativa. */
+  async createImportedQuestionMultiBatch(batches: Array<{ clientKey: string; payload: ImportedQuestionBatchPayload }>): Promise<{
+    success: boolean;
+    message?: string;
+    count: number;
+    skippedDuplicateCount: number;
+    itemFailures: Array<Record<string, unknown>>;
+    batches: Array<Record<string, unknown>>;
+  }> {
+    try {
+      const response = await apiClient.post<ImportedQuestionMultiBatchResponse>(
+        ENDPOINTS.questions.multiBatchImport,
+        {
+          schemaVersion: 'question-import.v2',
+          batches: batches.map(({ clientKey, payload }) => ({
+            clientKey,
+            payload: buildPublishedImportedQuestionBatchPayload(payload),
+          })),
+        },
+        { timeout: 300000 },
+      );
+      const envelope = assertApiSuccess<ImportedQuestionMultiBatchResponse>(response, 'Não foi possível publicar as questões selecionadas.');
+      const data = readApiData<ImportedQuestionMultiBatchResponse>(response, {} as ImportedQuestionMultiBatchResponse);
+      const raw = envelope.raw as ImportedQuestionMultiBatchResponse;
+      return {
+        success: true,
+        message: envelope.message,
+        count: Number(data.count ?? raw.count ?? 0),
+        skippedDuplicateCount: Number(data.skippedDuplicateCount ?? raw.skippedDuplicateCount ?? 0),
+        itemFailures: data.itemFailures ?? raw.itemFailures ?? [],
+        batches: Array.isArray(data.batches) ? data.batches : Array.isArray(raw.batches) ? raw.batches : [],
+      };
+    } catch (error: unknown) {
+      return {
+        success: false,
+        message: readApiErrorMessage(error, 'Não foi possível publicar as questões selecionadas.'),
+        count: 0,
+        skippedDuplicateCount: 0,
+        itemFailures: [],
+        batches: [],
       };
     }
   },

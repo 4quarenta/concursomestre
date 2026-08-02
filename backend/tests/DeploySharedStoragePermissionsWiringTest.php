@@ -13,15 +13,16 @@ function assertDeployStorage(bool $condition, string $message): void
 $script = file_get_contents(dirname(__DIR__, 2) . '/scripts/deploy/deploy-release.sh');
 assertDeployStorage(is_string($script), 'deploy-release.sh must be readable.');
 assertDeployStorage(
-    str_contains($script, 'chown root:"$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"'),
+    str_contains($script, 'chgrp -R "$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"'),
     'Deploy must restore the application group on existing shared directories.'
 );
 assertDeployStorage(
-    str_contains($script, 'chmod 2770 "$CM_SHARED_DIR/backend/storage" "$CM_SHARED_DIR/backend/uploads"'),
+    str_contains($script, 'find "$CM_SHARED_DIR/backend/storage" -type d -exec chmod 2770 {} +')
+        && str_contains($script, 'find "$CM_SHARED_DIR/backend/uploads" -type d -exec chmod 2775 {} +'),
     'Deploy must keep shared directories writable and setgid for the application group.'
 );
 $uploadsSync = strpos($script, 'rsync -a --ignore-existing "$release_dir/backend/uploads/"');
-$permissions = strpos($script, 'chown root:"$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage"');
+$permissions = strpos($script, 'chgrp -R "$CM_APP_GROUP" "$CM_SHARED_DIR/backend/storage"');
 assertDeployStorage(
     is_int($uploadsSync) && is_int($permissions) && $permissions > $uploadsSync,
     'Shared permissions must be restored after rsync copies directory metadata.'

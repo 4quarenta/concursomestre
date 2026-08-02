@@ -27,7 +27,9 @@ server {
     ssl_certificate /etc/letsencrypt/live/app.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/app.example.com/privkey.pem;
 
-    client_max_body_size 32m;
+    # O crawler administrativo aceita ate 5.000 questoes em uma unica submissao.
+    # Os jobs internos continuam limitados a 15 MB no worker.
+    client_max_body_size 128m;
 
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;

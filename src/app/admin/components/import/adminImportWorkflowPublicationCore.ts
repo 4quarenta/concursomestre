@@ -542,6 +542,41 @@ export const isQuestionReadyForImportPublication = (question: Question) => (
   getQuestionPublicationBlockReasons(question).length === 0
 );
 
+export const publishSelectedImportQuestionEntries = async ({
+  indexes,
+  questions,
+  publishedQuestionNumbers,
+  getQuestionNumber,
+  onSkipped,
+  onEmpty,
+  publish,
+}: {
+  indexes: number[];
+  questions: Question[];
+  publishedQuestionNumbers: number[];
+  getQuestionNumber: (question: Question, fallback: number) => number;
+  onSkipped: (skippedCount: number, readyCount: number) => void;
+  onEmpty: (emptySelection: boolean) => void;
+  publish: (entries: Array<{ question: Question; index: number }>) => Promise<void>;
+}) => {
+  const selectedIndexes = Array.from(new Set(indexes))
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < questions.length);
+  const publishedSet = new Set(publishedQuestionNumbers);
+  const selectedEntries = selectedIndexes
+    .map((index) => ({ question: questions[index], index }))
+    .filter(({ question, index }) => Boolean(question) && !publishedSet.has(getQuestionNumber(question, index + 1)));
+  const entries = selectedEntries.filter(({ question }) => isQuestionReadyForImportPublication(question));
+  const skippedEntries = selectedEntries.filter(({ question }) => !isQuestionReadyForImportPublication(question));
+
+  if (skippedEntries.length > 0) onSkipped(skippedEntries.length, entries.length);
+  if (entries.length === 0) {
+    onEmpty(selectedIndexes.length === 0);
+    return;
+  }
+
+  await publish(entries);
+};
+
 export const refreshManuallyEditedImportQuestion = (question: Question): Question => {
   const draft = question as unknown as ImportedQuestionDraft;
   const publicationReasons = getQuestionPublicationBlockReasons(question);
