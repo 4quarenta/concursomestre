@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 /**
  * Authenticates and queues payloads from a local, operator-controlled crawler.
@@ -379,29 +380,116 @@ final class PrivateQuestionIngestionService
     /** @return array<int,array<string,mixed>> */
     public function listRecentBatches(string $actorUserId, bool $canViewAll = false, int $limit = 20): array
     {
-        $this->assertBatchSchemaReady();
-        $limit = max(1, min(50, $limit));
-        $where = $canViewAll ? '' : 'WHERE actor_user_id = :actor_user_id';
-        $stmt = $this->db->prepare(
-            "SELECT * FROM private_ingestion_batches {$where} ORDER BY id DESC LIMIT {$limit}"
-        );
-        $stmt->execute($canViewAll ? [] : [':actor_user_id' => trim($actorUserId)]);
-        return array_values(array_map(
-            fn (array $row): array => $this->formatBatchRow($row),
-            $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []
-        ));
+        return $this->listRecentBatchesPage($actorUserId, $canViewAll, $limit, null)['items'];
     }
 
     public function listRecentJobs(string $actorUserId, bool $canViewAll = false, int $limit = 20): array
     {
+        return $this->listRecentJobsPage($actorUserId, $canViewAll, $limit, null)['items'];
+    }
+
+    /** @return array{jobs:array<int,array<string,mixed>>,publicationBatches:array<int,array<string,mixed>>,pageInfo:array<string,mixed>} */
+    public function listProcessingHistory(
+        string $actorUserId,
+        bool $canViewAll = false,
+        int $limit = 10,
+        ?string $cursor = null
+    ): array {
+        $this->assertBatchSchemaReady();
+        $limit = max(5, min(25, $limit));
+        $fingerprint = hash('sha256', ($canViewAll ? 'all:' : 'actor:') . trim($actorUserId));
+        $cursorData = SignedKeysetCursor::decodePayload($cursor, 'admin.gran.processing-history');
+        if ($cursorData !== null
+            && (!hash_equals($fingerprint, (string) ($cursorData['fingerprint'] ?? ''))
+                || (int) ($cursorData['limit'] ?? 0) !== $limit)) {
+            throw new InvalidArgumentException('Cursor de paginacao invalido para este historico.');
+        }
+
+        $batchDone = (bool) ($cursorData['batchDone'] ?? false);
+        $jobDone = (bool) ($cursorData['jobDone'] ?? false);
+        $batchAfterId = max(0, (int) ($cursorData['batchId'] ?? 0)) ?: null;
+        $jobAfterId = max(0, (int) ($cursorData['jobId'] ?? 0)) ?: null;
+        $batchPage = $batchDone
+            ? ['items' => [], 'hasMore' => false, 'lastId' => $batchAfterId]
+            : $this->listRecentBatchesPage($actorUserId, $canViewAll, $limit, $batchAfterId);
+        $jobPage = $jobDone
+            ? ['items' => [], 'hasMore' => false, 'lastId' => $jobAfterId]
+            : $this->listRecentJobsPage($actorUserId, $canViewAll, $limit, $jobAfterId);
+        $nextBatchDone = $batchDone || !$batchPage['hasMore'];
+        $nextJobDone = $jobDone || !$jobPage['hasMore'];
+        $hasMore = !$nextBatchDone || !$nextJobDone;
+
+        return [
+            'jobs' => $jobPage['items'],
+            'publicationBatches' => $batchPage['items'],
+            'pageInfo' => [
+                'limit' => $limit,
+                'hasMore' => $hasMore,
+                'nextCursor' => $hasMore ? SignedKeysetCursor::encodePayload([
+                    'batchId' => $batchPage['lastId'],
+                    'jobId' => $jobPage['lastId'],
+                    'batchDone' => $nextBatchDone,
+                    'jobDone' => $nextJobDone,
+                    'limit' => $limit,
+                    'fingerprint' => $fingerprint,
+                ], 'admin.gran.processing-history') : null,
+            ],
+        ];
+    }
+
+    /** @return array{items:array<int,array<string,mixed>>,hasMore:bool,lastId:?int} */
+    private function listRecentBatchesPage(
+        string $actorUserId,
+        bool $canViewAll,
+        int $limit,
+        ?int $afterId
+    ): array {
+        $this->assertBatchSchemaReady();
+        $limit = max(1, min(50, $limit));
+        $params = [];
+        $conditions = [];
+        if (!$canViewAll) {
+            $conditions[] = 'actor_user_id = :actor_user_id';
+            $params[':actor_user_id'] = trim($actorUserId);
+        }
+        if ($afterId !== null) $conditions[] = 'id < ' . max(1, $afterId);
+        $where = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
+        $stmt = $this->db->prepare(
+            "SELECT * FROM private_ingestion_batches {$where} ORDER BY id DESC LIMIT " . ($limit + 1)
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $hasMore = count($rows) > $limit;
+        if ($hasMore) $rows = array_slice($rows, 0, $limit);
+        $last = $rows === [] ? null : $rows[array_key_last($rows)];
+
+        return [
+            'items' => array_values(array_map(
+                fn (array $row): array => $this->formatBatchRow($row),
+                $rows
+            )),
+            'hasMore' => $hasMore,
+            'lastId' => is_array($last) ? (int) ($last['id'] ?? 0) : $afterId,
+        ];
+    }
+
+    /** @return array{items:array<int,array<string,mixed>>,hasMore:bool,lastId:?int} */
+    private function listRecentJobsPage(
+        string $actorUserId,
+        bool $canViewAll,
+        int $limit,
+        ?int $afterId
+    ): array {
         $this->assertSchemaReady();
         $limit = max(1, min(50, $limit));
         $params = [];
-        $where = '';
+        $conditions = [];
         if (!$canViewAll) {
-            $where = 'WHERE jobs.actor_user_id = :actor_user_id';
+            $conditions[] = 'jobs.actor_user_id = :actor_user_id';
             $params[':actor_user_id'] = trim($actorUserId);
         }
+        if ($afterId !== null) $conditions[] = 'jobs.id < ' . max(1, $afterId);
+        $where = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
 
         $stmt = $this->db->prepare(
             "SELECT jobs.id, jobs.request_id, jobs.batch_id, jobs.actor_user_id, jobs.status, jobs.attempts,
@@ -413,11 +501,15 @@ final class PrivateQuestionIngestionService
              LEFT JOIN private_ingestion_batches batches ON batches.id = jobs.batch_id
              {$where}
              ORDER BY jobs.id DESC
-             LIMIT {$limit}"
+             LIMIT " . ($limit + 1)
         );
         $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $hasMore = count($rows) > $limit;
+        if ($hasMore) $rows = array_slice($rows, 0, $limit);
+        $last = $rows === [] ? null : $rows[array_key_last($rows)];
 
-        return array_map(function (array $row): array {
+        $items = array_map(function (array $row): array {
             $response = json_decode((string) ($row['response_json'] ?? ''), true);
             $payload = json_decode((string) ($row['payload_json'] ?? ''), true);
             $summary = is_array($payload) ? $this->summarizeJobPayload($payload) : [];
@@ -440,7 +532,13 @@ final class PrivateQuestionIngestionService
                 'collectionPages' => $summary['collectionPages'] ?? [],
                 'result' => is_array($response) ? $response : null,
             ];
-        }, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+        }, $rows);
+
+        return [
+            'items' => $items,
+            'hasMore' => $hasMore,
+            'lastId' => is_array($last) ? (int) ($last['id'] ?? 0) : $afterId,
+        ];
     }
 
     /** @param array<string,mixed> $payload @return array<string,mixed> */

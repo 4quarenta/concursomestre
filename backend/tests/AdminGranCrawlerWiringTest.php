@@ -142,12 +142,22 @@ adminGranCrawlerWiringAssert(
 );
 adminGranCrawlerWiringAssert(
     str_contains($component, 'fetchGranCrawlerBootstrap')
-    && substr_count($component, 'apiClient.get(ENDPOINT)') === 1
+    && substr_count($component, 'apiClient.get(ENDPOINT,') === 1
     && str_contains($component, 'BOOTSTRAP_CACHE_MS = 60_000')
     && str_contains($component, 'isTaxonomyVerificationFresh')
     && str_contains($component, 'reviewQueues.publishedPayloads')
     && str_contains($component, 'Limpar fila'),
     'Crawler UI must use one cached bootstrap and an accumulated review queue.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($queue, 'SignedKeysetCursor::decodePayload')
+    && str_contains($queue, 'admin.gran.processing-history')
+    && str_contains($queue, 'listProcessingHistory')
+    && str_contains($route, "\$_GET['history_cursor']")
+    && str_contains($component, 'gran-processing-history-pagination')
+    && str_contains($component, 'handleHistoryPrevious')
+    && str_contains($component, 'handleHistoryNext'),
+    'Processing history must use signed keyset pagination from backend to UI.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($bridge, 'window.postMessage')

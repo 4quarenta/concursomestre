@@ -158,6 +158,11 @@ type GranCrawlerBootstrapData = {
   jobs?: GranJob[];
   taxonomyStatus?: Record<string, GranTaxonomyStatus>;
   publicationBatches?: GranPublicationBatch[];
+  pageInfo?: {
+    limit: number;
+    hasMore: boolean;
+    nextCursor?: string | null;
+  };
 };
 
 const ENDPOINT = 'admin/gran_crawler.php';
@@ -166,9 +171,10 @@ const MAX_GRAN_QUESTIONS_PER_PAGE = 100;
 const BOOTSTRAP_CACHE_MS = 60_000;
 const COLLECTOR_STATUS_CACHE_MS = 30_000;
 const TAXONOMY_CHECK_FRESH_MS = 6 * 60 * 60 * 1000;
+const HISTORY_PAGE_SIZE = 10;
 
-let bootstrapCache: { data: GranCrawlerBootstrapData; fetchedAt: number } | null = null;
-let bootstrapRequest: Promise<GranCrawlerBootstrapData> | null = null;
+const bootstrapCache = new Map<string, { data: GranCrawlerBootstrapData; fetchedAt: number }>();
+const bootstrapRequests = new Map<string, Promise<GranCrawlerBootstrapData>>();
 let collectorStatusCache: { status: GranCollectorStatus; checkedAt: number } | null = null;
 
 const GRAN_TAXONOMY_STEPS: Array<{ kind: GranTaxonomyCollectorResult['kind']; label: string }> = [
@@ -244,23 +250,36 @@ const readApiData = <T,>(response: { data?: unknown }): T => {
   return body as T;
 };
 
-const fetchGranCrawlerBootstrap = async (force = false): Promise<GranCrawlerBootstrapData> => {
+const fetchGranCrawlerBootstrap = async (
+  historyCursor: string | null,
+  historyLimit = HISTORY_PAGE_SIZE,
+  force = false,
+): Promise<GranCrawlerBootstrapData> => {
   const now = Date.now();
-  if (!force && bootstrapCache && now - bootstrapCache.fetchedAt < BOOTSTRAP_CACHE_MS) {
-    return bootstrapCache.data;
+  const cacheKey = `${historyLimit}:${historyCursor || 'first'}`;
+  const cached = bootstrapCache.get(cacheKey);
+  if (!force && cached && now - cached.fetchedAt < BOOTSTRAP_CACHE_MS) {
+    return cached.data;
   }
-  if (bootstrapRequest) return bootstrapRequest;
+  const pending = bootstrapRequests.get(cacheKey);
+  if (pending) return pending;
 
-  bootstrapRequest = apiClient.get(ENDPOINT)
+  const request = apiClient.get(ENDPOINT, {
+    params: {
+      history_limit: historyLimit,
+      ...(historyCursor ? { history_cursor: historyCursor } : {}),
+    },
+  })
     .then((response) => {
       const data = readApiData<GranCrawlerBootstrapData>(response) || {};
-      bootstrapCache = { data, fetchedAt: Date.now() };
+      bootstrapCache.set(cacheKey, { data, fetchedAt: Date.now() });
       return data;
     })
     .finally(() => {
-      bootstrapRequest = null;
+      bootstrapRequests.delete(cacheKey);
     });
-  return bootstrapRequest;
+  bootstrapRequests.set(cacheKey, request);
+  return request;
 };
 
 const isTaxonomyVerificationFresh = (
@@ -327,6 +346,13 @@ const AdminGranCrawlerSection = ({
   const [result, setResult] = React.useState<GranFetchResult | null>(null);
   const [jobs, setJobs] = React.useState<GranJob[]>([]);
   const [publicationBatches, setPublicationBatches] = React.useState<GranPublicationBatch[]>([]);
+  const [historyPage, setHistoryPage] = React.useState(1);
+  const [historyCursors, setHistoryCursors] = React.useState<Array<string | null>>([null]);
+  const [historyPageInfo, setHistoryPageInfo] = React.useState({
+    limit: HISTORY_PAGE_SIZE,
+    hasMore: false,
+    nextCursor: null as string | null,
+  });
   const [taxonomyExpanded, setTaxonomyExpanded] = React.useState(false);
   const [isCheckingTaxonomyUpdates, setIsCheckingTaxonomyUpdates] = React.useState(false);
   const [isFetching, setIsFetching] = React.useState(false);
@@ -342,6 +368,7 @@ const AdminGranCrawlerSection = ({
     () => typeof document === 'undefined' || document.visibilityState === 'visible',
   );
   const fetchAbortRef = React.useRef<AbortController | null>(null);
+  const historyCursor = historyCursors[historyPage - 1] || null;
   const hasActiveJobs = jobs.some((job) => ['pending', 'processing'].includes(job.status))
     || publicationBatches.some((batch) => ['pending', 'processing'].includes(batch.status));
   const reviewQueues = React.useMemo(
@@ -390,12 +417,18 @@ const AdminGranCrawlerSection = ({
     silent = false,
     hydrateTaxonomies = false,
     force = false,
+    cursor: string | null = null,
   ): Promise<GranCrawlerBootstrapData | null> => {
     if (!silent) setIsLoadingJobs(true);
     try {
-      const data = await fetchGranCrawlerBootstrap(force);
+      const data = await fetchGranCrawlerBootstrap(cursor, HISTORY_PAGE_SIZE, force);
       setJobs(Array.isArray(data?.jobs) ? data.jobs : []);
       setPublicationBatches(Array.isArray(data?.publicationBatches) ? data.publicationBatches : []);
+      setHistoryPageInfo({
+        limit: Number(data?.pageInfo?.limit || HISTORY_PAGE_SIZE),
+        hasMore: data?.pageInfo?.hasMore === true,
+        nextCursor: typeof data?.pageInfo?.nextCursor === 'string' ? data.pageInfo.nextCursor : null,
+      });
       if (hydrateTaxonomies && data?.taxonomyStatus && typeof data.taxonomyStatus === 'object') {
         setTaxonomyStatuses(data.taxonomyStatus);
         setIsLoadingTaxonomyStatus(false);
@@ -413,13 +446,13 @@ const AdminGranCrawlerSection = ({
 
   const loadTaxonomyStatus = React.useCallback(async (silent = false) => {
     if (!silent) setIsLoadingTaxonomyStatus(true);
-    const data = await loadBootstrap(true, true, true);
+    const data = await loadBootstrap(true, true, true, historyCursor);
     if (!silent) setIsLoadingTaxonomyStatus(false);
     return data?.taxonomyStatus && typeof data.taxonomyStatus === 'object' ? data.taxonomyStatus : null;
-  }, [loadBootstrap]);
+  }, [historyCursor, loadBootstrap]);
 
   React.useEffect(() => {
-    void Promise.resolve().then(() => loadBootstrap(true, true));
+    void Promise.resolve().then(() => loadBootstrap(true, true, false, null));
     void Promise.resolve().then(() => checkCollector());
     return () => fetchAbortRef.current?.abort();
   }, [checkCollector, loadBootstrap]);
@@ -428,19 +461,42 @@ const AdminGranCrawlerSection = ({
     const handleVisibility = () => {
       const visible = document.visibilityState === 'visible';
       setIsPageVisible(visible);
-      if (visible && hasActiveJobs) void loadBootstrap(true, false, true);
+      if (visible && hasActiveJobs) void loadBootstrap(true, false, true, historyCursor);
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [hasActiveJobs, loadBootstrap]);
+  }, [hasActiveJobs, historyCursor, loadBootstrap]);
 
   React.useEffect(() => {
     if (!hasActiveJobs || !isPageVisible) return undefined;
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadBootstrap(true, false, true);
+      if (document.visibilityState === 'visible') void loadBootstrap(true, false, true, historyCursor);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [hasActiveJobs, isPageVisible, loadBootstrap]);
+  }, [hasActiveJobs, historyCursor, isPageVisible, loadBootstrap]);
+
+  const handleHistoryNext = React.useCallback(async () => {
+    const nextCursor = historyPageInfo.nextCursor;
+    if (!nextCursor || isLoadingJobs) return;
+    const data = await loadBootstrap(false, false, false, nextCursor);
+    if (!data) return;
+    setHistoryCursors((current) => [...current.slice(0, historyPage), nextCursor]);
+    setHistoryPage((current) => current + 1);
+  }, [historyPage, historyPageInfo.nextCursor, isLoadingJobs, loadBootstrap]);
+
+  const handleHistoryPrevious = React.useCallback(async () => {
+    if (historyPage <= 1 || isLoadingJobs) return;
+    const previousCursor = historyCursors[historyPage - 2] || null;
+    const data = await loadBootstrap(false, false, false, previousCursor);
+    if (!data) return;
+    setHistoryPage((current) => Math.max(1, current - 1));
+  }, [historyCursors, historyPage, isLoadingJobs, loadBootstrap]);
+
+  const refreshFirstHistoryPage = React.useCallback(async () => {
+    setHistoryCursors([null]);
+    setHistoryPage(1);
+    await loadBootstrap(true, false, true, null);
+  }, [loadBootstrap]);
 
   const handleDirectUrlChange = React.useCallback((value: string) => {
     setGranRequestUrl(value);
@@ -1181,7 +1237,7 @@ const AdminGranCrawlerSection = ({
         <section>
           {renderReviewQueue(reviewQueues.pendingPayloads, {
             publicationBatches,
-            onPublicationQueued: () => void loadBootstrap(true, false, true),
+            onPublicationQueued: () => void refreshFirstHistoryPage(),
           })}
         </section>
       ) : null}
@@ -1197,7 +1253,7 @@ const AdminGranCrawlerSection = ({
           <div className="mt-4">
             {renderReviewQueue(reviewQueues.publishedPayloads, {
               publicationBatches,
-              onPublicationQueued: () => void loadBootstrap(true, false, true),
+              onPublicationQueued: () => void refreshFirstHistoryPage(),
             })}
           </div>
         </details>
@@ -1215,7 +1271,7 @@ const AdminGranCrawlerSection = ({
           </div>
           <button
             type="button"
-            onClick={() => void loadBootstrap(false, false, true)}
+            onClick={() => void loadBootstrap(false, false, true, historyCursor)}
             disabled={isLoadingJobs}
             className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs`}
           >
@@ -1296,9 +1352,37 @@ const AdminGranCrawlerSection = ({
               </details>
             ))}
           </div>
-        ) : (
+        ) : publicationBatches.length === 0 ? (
           <p className="text-sm text-slate-500">Nenhum lote recente.</p>
-        )}
+        ) : null}
+        <div
+          data-testid="gran-processing-history-pagination"
+          className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700"
+        >
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Página {historyPage} · até {historyPageInfo.limit} lotes e {historyPageInfo.limit} jobs por página
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleHistoryPrevious()}
+              disabled={historyPage <= 1 || isLoadingJobs}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs`}
+            >
+              <ChevronLeft size={14} />
+              Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleHistoryNext()}
+              disabled={!historyPageInfo.hasMore || !historyPageInfo.nextCursor || isLoadingJobs}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs`}
+            >
+              Próxima
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   );

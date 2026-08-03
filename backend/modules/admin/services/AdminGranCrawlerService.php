@@ -447,13 +447,22 @@ final class AdminGranCrawlerService
     }
 
     /** @return array<string,mixed> */
-    public function bootstrap(string $actorUserId, bool $canViewAll = false): array
+    public function bootstrap(
+        string $actorUserId,
+        bool $canViewAll = false,
+        int $historyLimit = 10,
+        ?string $historyCursor = null
+    ): array
     {
         $ingestion = new PrivateQuestionIngestionService($this->db);
-        return [
-            'jobs' => $ingestion->listRecentJobs($actorUserId, $canViewAll, 20),
+        $history = $ingestion->listProcessingHistory(
+            $actorUserId,
+            $canViewAll,
+            $historyLimit,
+            $historyCursor
+        );
+        return $history + [
             'taxonomyStatus' => (new AdminGranTaxonomySyncService($this->db))->getStatus(),
-            'publicationBatches' => $ingestion->listRecentBatches($actorUserId, $canViewAll, 20),
         ];
     }
 
