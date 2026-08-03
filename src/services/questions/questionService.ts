@@ -57,6 +57,7 @@ type QuestionCreateResponse = {
 
 export type ImportedQuestionBatchPayload = {
   schemaVersion?: 'question-import.v2';
+  import?: Record<string, unknown>;
   exam: Record<string, unknown>;
   focus: Record<string, unknown>;
   contexts: QuestionContextPayload[];

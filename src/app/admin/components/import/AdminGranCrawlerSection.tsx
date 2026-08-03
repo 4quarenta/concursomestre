@@ -52,6 +52,14 @@ type GranQuestion = {
 
 export type GranImportPayload = {
   schemaVersion: 'question-import.v2';
+  import?: {
+    sourceType?: string;
+    extractionMode?: string;
+    collectionPage?: number | null;
+    collectionPerPage?: number | null;
+    collectionRequestUrl?: string | null;
+    [key: string]: unknown;
+  };
   exam: {
     sourceKey?: string;
     externalId?: string | null;
@@ -95,10 +103,20 @@ type GranFetchResult = {
 
 type GranJob = {
   jobId: number;
+  requestId?: number;
+  batchId?: string | null;
   status: 'pending' | 'processing' | 'done' | 'failed' | string;
   attempts: number;
+  questionCount?: number;
+  examCount?: number;
+  examTitles?: string[];
+  collectionPages?: number[];
   error?: string | null;
   createdAt?: string | null;
+  availableAt?: string | null;
+  lockedAt?: string | null;
+  completedAt?: string | null;
+  deadLetteredAt?: string | null;
   result?: {
     createdQuestionIds?: Array<string | number>;
   } | null;
@@ -106,6 +124,8 @@ type GranJob = {
 
 export type GranPublicationBatch = {
   batchId: string;
+  displayName?: string;
+  collectionPages?: number[];
   status: string;
   questionCount: number;
   jobCount: number;
@@ -118,6 +138,8 @@ export type GranPublicationBatch = {
   questionStatuses?: Record<string, 'queued' | 'processing' | 'published' | 'failed'>;
   error?: string | null;
   createdAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
 };
 
 type AdminGranCrawlerSectionProps = {
@@ -256,6 +278,13 @@ const formatDateTime = (value?: string | null) => {
   if (!value) return 'Agora';
   const parsed = new Date(value.replace(' ', 'T') + (value.includes('Z') ? '' : 'Z'));
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('pt-BR');
+};
+
+const formatCollectionPages = (pages?: number[]) => {
+  const normalized = Array.from(new Set((pages || []).filter((page) => Number.isInteger(page) && page > 0)))
+    .sort((left, right) => left - right);
+  if (normalized.length === 0) return 'Página não registrada';
+  return normalized.length === 1 ? `Página ${normalized[0]}` : `Páginas ${normalized.join(', ')}`;
 };
 
 const describeCollectorCaptureStatus = (status: GranCollectorStatus | null) => {
@@ -1202,16 +1231,28 @@ const AdminGranCrawlerSection = ({
                 ? Math.min(100, Math.round((finished / batch.questionCount) * 100))
                 : 0;
               return (
-                <div key={batch.batchId} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <strong>Lote {batch.batchId.slice(0, 8)} · {statusLabel[batch.status] || batch.status}</strong>
-                    <span>{batch.published} publicadas · {batch.duplicates} duplicadas · {batch.failures} falhas</span>
-                  </div>
+                <details key={batch.batchId} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                  <summary className="cursor-pointer list-none text-xs marker:hidden">
+                    <span className="flex flex-wrap items-center justify-between gap-2">
+                      <strong>
+                        Lote {batch.batchId.slice(0, 8)} · {batch.displayName || `${formatCollectionPages(batch.collectionPages)} · ${batch.questionCount} questões`} · {statusLabel[batch.status] || batch.status}
+                      </strong>
+                      <span>{batch.published} publicadas · {batch.duplicates} duplicadas · {batch.failures} falhas</span>
+                    </span>
+                  </summary>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                     <div className="h-full bg-sky-600 transition-[width]" style={{ width: `${progress}%` }} />
                   </div>
+                  <div className="mt-3 grid gap-1 text-xs text-slate-500 sm:grid-cols-2 dark:text-slate-400">
+                    <span>ID completo: {batch.batchId}</span>
+                    <span>{formatCollectionPages(batch.collectionPages)}</span>
+                    <span>{batch.questionCount} questões em {batch.jobCount} job(s)</span>
+                    <span>{batch.pending} aguardando · {batch.processing} processando</span>
+                    <span>Criado em {formatDateTime(batch.createdAt)}</span>
+                    <span>Concluído em {batch.completedAt ? formatDateTime(batch.completedAt) : '—'}</span>
+                  </div>
                   {batch.error ? <p className="mt-2 text-xs font-semibold text-rose-600">{batch.error}</p> : null}
-                </div>
+                </details>
               );
             })}
           </div>
@@ -1219,28 +1260,40 @@ const AdminGranCrawlerSection = ({
         {jobs.length ? (
           <div className="divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
             {jobs.map((job) => (
-              <div
-                key={job.jobId}
-                className="flex flex-col gap-2 px-4 py-3 md:flex-row md:items-center md:justify-between"
-              >
-                <div>
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                    Job #{job.jobId} · {statusLabel[job.status] || job.status}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {formatDateTime(job.createdAt)} · {job.attempts} tentativa(s)
-                  </p>
-                  {job.error ? (
-                    <p className="mt-1 text-xs font-semibold text-rose-600">{job.error}</p>
-                  ) : null}
-                </div>
-                {job.status === 'done' ? (
-                  <span className="inline-flex items-center gap-2 text-xs font-bold text-emerald-600">
-                    <CheckCircle2 size={15} />
-                    {job.result?.createdQuestionIds?.length || 0} questão(ões) criada(s)
+              <details key={job.jobId} className="px-4 py-3">
+                <summary className="cursor-pointer list-none marker:hidden">
+                  <span className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <span>
+                      <strong className="text-sm text-slate-800 dark:text-slate-100">
+                        Job #{job.jobId} · {statusLabel[job.status] || job.status}
+                      </strong>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {formatDateTime(job.createdAt)} · {job.questionCount || 0} questão(ões)
+                      </span>
+                    </span>
+                    {job.status === 'done' ? (
+                      <span className="inline-flex items-center gap-2 text-xs font-bold text-emerald-600">
+                        <CheckCircle2 size={15} />
+                        {job.result?.createdQuestionIds?.length || 0} criada(s)
+                      </span>
+                    ) : null}
                   </span>
+                </summary>
+                <div className="mt-3 grid gap-1 text-xs text-slate-500 sm:grid-cols-2 dark:text-slate-400">
+                  <span>Request #{job.requestId || '—'}</span>
+                  <span>Lote {job.batchId ? job.batchId.slice(0, 8) : 'independente'}</span>
+                  <span>{formatCollectionPages(job.collectionPages)}</span>
+                  <span>{job.examCount || 0} prova(s) · {job.attempts} tentativa(s)</span>
+                  <span>Disponível em {formatDateTime(job.availableAt)}</span>
+                  <span>Concluído em {job.completedAt ? formatDateTime(job.completedAt) : '—'}</span>
+                </div>
+                {job.examTitles?.length ? (
+                  <p className="mt-2 truncate text-xs text-slate-500" title={job.examTitles.join(' / ')}>
+                    Provas: {job.examTitles.join(' / ')}
+                  </p>
                 ) : null}
-              </div>
+                {job.error ? <p className="mt-2 text-xs font-semibold text-rose-600">{job.error}</p> : null}
+              </details>
             ))}
           </div>
         ) : (

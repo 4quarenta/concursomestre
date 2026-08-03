@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mergeGranReviewPayloads, partitionGranReviewPayloads } from '../granCrawlerReviewUtils';
+import {
+  classifyGranReviewQuestionIndexes,
+  getGranReviewQueueOffsets,
+  mergeGranReviewPayloads,
+  partitionGranReviewPayloads,
+} from '../granCrawlerReviewUtils';
 
 describe('partitionGranReviewPayloads', () => {
   it('keeps unpublished questions visible and hides published questions in a separate queue', () => {
@@ -74,5 +79,32 @@ describe('partitionGranReviewPayloads', () => {
     expect(full.total).toBe(5000);
     expect(full.added).toBe(1);
     expect(full.limitReached).toBe(true);
+  });
+
+  it('selects all 100 review cards while keeping only complete items publishable', () => {
+    const questions = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      ready: index < 56,
+    }));
+
+    const availability = classifyGranReviewQuestionIndexes({
+      questions,
+      isPublished: () => false,
+      isReady: (question) => question.ready,
+    });
+
+    expect(availability.selectable).toHaveLength(100);
+    expect(availability.publishable).toHaveLength(56);
+    expect(availability.selectable.at(-1)).toBe(99);
+  });
+
+  it('builds continuous review indexes across multiple exam payloads', () => {
+    const offsets = getGranReviewQueueOffsets([
+      { questions: Array.from({ length: 40 }, () => ({})) },
+      { questions: Array.from({ length: 60 }, () => ({})) },
+    ]);
+
+    expect(offsets).toEqual([0, 40]);
+    expect(offsets[1] + 60).toBe(100);
   });
 });

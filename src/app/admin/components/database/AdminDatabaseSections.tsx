@@ -24,7 +24,11 @@ import AdminGranCrawlerSection, {
   type GranImportPayload,
   type GranPublicationBatch,
 } from '../import/AdminGranCrawlerSection';
-import AdminGranCrawlerReviewBatch, { type GranReviewBatchPublisher } from '../import/AdminGranCrawlerReviewBatch';
+import AdminGranCrawlerReviewBatch, {
+  type GranQuestionIndexAvailability,
+  type GranReviewBatchPublisher,
+} from '../import/AdminGranCrawlerReviewBatch';
+import { getGranReviewQueueOffsets } from '../import/granCrawlerReviewUtils';
 import AdminLegalCommentarySection from '../legal-commentary/AdminLegalCommentarySection';
 import AdminQuestionGroupsSection from '../questions/AdminQuestionGroupsSection';
 import AdminQuestionsSection from '../questions/AdminQuestionsSection';
@@ -64,7 +68,7 @@ interface AdminGranCrawlerReviewQueueProps {
   onImportedQuestionsSaved?: () => Promise<void> | void;
 }
 
-type GranSelectableQuestionIndexes = () => number[];
+type GranSelectableQuestionIndexes = () => GranQuestionIndexAvailability;
 
 const AdminGranCrawlerReviewQueue = ({
   payloads,
@@ -79,6 +83,7 @@ const AdminGranCrawlerReviewQueue = ({
   const { addToast } = useToast();
   const [selectedQuestionIndexesByPayload, setSelectedQuestionIndexesByPayload] = React.useState<Record<string, number[]>>({});
   const [selectableQuestionIndexesByPayload, setSelectableQuestionIndexesByPayload] = React.useState<Record<string, number[]>>({});
+  const [publishableQuestionIndexesByPayload, setPublishableQuestionIndexesByPayload] = React.useState<Record<string, number[]>>({});
   const [isPublishingSelected, setIsPublishingSelected] = React.useState(false);
   const publishersRef = React.useRef(new Map<string, GranReviewBatchPublisher>());
   const queueStatusByQuestionKey = React.useMemo(() => {
@@ -90,24 +95,32 @@ const AdminGranCrawlerReviewQueue = ({
     });
     return statuses;
   }, [publicationBatches]);
-  const selectedReadyIndexesByPayload = React.useMemo(() => Object.fromEntries(
+  const selectedSelectableIndexesByPayload = React.useMemo(() => Object.fromEntries(
     Object.entries(selectedQuestionIndexesByPayload).map(([payloadKey, indexes]) => {
       const selectableIndexes = new Set(selectableQuestionIndexesByPayload[payloadKey] || []);
       return [payloadKey, indexes.filter((index) => selectableIndexes.has(index))];
     }),
   ) as Record<string, number[]>, [selectedQuestionIndexesByPayload, selectableQuestionIndexesByPayload]);
+  const selectedReadyIndexesByPayload = React.useMemo(() => Object.fromEntries(
+    Object.entries(selectedSelectableIndexesByPayload).map(([payloadKey, indexes]) => {
+      const publishableIndexes = new Set(publishableQuestionIndexesByPayload[payloadKey] || []);
+      return [payloadKey, indexes.filter((index) => publishableIndexes.has(index))];
+    }),
+  ) as Record<string, number[]>, [publishableQuestionIndexesByPayload, selectedSelectableIndexesByPayload]);
   const selectedPayloadKeys = Object.entries(selectedReadyIndexesByPayload)
     .filter(([, indexes]) => indexes.length > 0)
     .map(([payloadKey]) => payloadKey);
-  const selectedQuestionCount = selectedPayloadKeys.reduce(
+  const selectedReadyQuestionCount = selectedPayloadKeys.reduce(
     (count, payloadKey) => count + (selectedReadyIndexesByPayload[payloadKey]?.length || 0),
     0,
   );
+  const selectedQuestionCount = Object.values(selectedSelectableIndexesByPayload)
+    .reduce((count, indexes) => count + indexes.length, 0);
   const selectableQuestionCount = Object.values(selectableQuestionIndexesByPayload)
     .reduce((count, indexes) => count + indexes.length, 0);
   const areAllSelectableQuestionsSelected = selectableQuestionCount > 0
     && Object.entries(selectableQuestionIndexesByPayload).every(([payloadKey, indexes]) => {
-      const selectedIndexes = new Set(selectedReadyIndexesByPayload[payloadKey] || []);
+      const selectedIndexes = new Set(selectedSelectableIndexesByPayload[payloadKey] || []);
       return indexes.every((index) => selectedIndexes.has(index));
     });
   const handleSelectedQuestionChange = React.useCallback((payloadKey: string, index: number, selected: boolean) => {
@@ -133,7 +146,11 @@ const AdminGranCrawlerReviewQueue = ({
     else publishersRef.current.delete(payloadKey);
   }, []);
   const handleRegisterSelectableQuestionIndexes = React.useCallback((payloadKey: string, handler: GranSelectableQuestionIndexes | null) => {
-    setSelectableQuestionIndexesByPayload((previous) => {
+    const availability = handler?.() || null;
+    const updateIndexes = (
+      setter: React.Dispatch<React.SetStateAction<Record<string, number[]>>>,
+      source: number[] | null,
+    ) => setter((previous) => {
       if (!handler) {
         if (!(payloadKey in previous)) return previous;
         const next = { ...previous };
@@ -141,7 +158,7 @@ const AdminGranCrawlerReviewQueue = ({
         return next;
       }
 
-      const indexes = Array.from(new Set(handler()))
+      const indexes = Array.from(new Set(source || []))
         .filter((index) => Number.isInteger(index) && index >= 0)
         .sort((left, right) => left - right);
       const current = previous[payloadKey] || [];
@@ -150,6 +167,8 @@ const AdminGranCrawlerReviewQueue = ({
       }
       return { ...previous, [payloadKey]: indexes };
     });
+    updateIndexes(setSelectableQuestionIndexesByPayload, availability?.selectable || null);
+    updateIndexes(setPublishableQuestionIndexesByPayload, availability?.publishable || null);
   }, []);
   const handleToggleAllSelectableQuestions = React.useCallback(() => {
     setSelectedQuestionIndexesByPayload(
@@ -163,7 +182,7 @@ const AdminGranCrawlerReviewQueue = ({
     );
   }, [areAllSelectableQuestionsSelected, selectableQuestionIndexesByPayload]);
   const handlePublishSelected = async () => {
-    if (isPublishingSelected || selectedQuestionCount === 0) return;
+    if (isPublishingSelected || selectedReadyQuestionCount === 0) return;
 
     setIsPublishingSelected(true);
     try {
@@ -203,8 +222,8 @@ const AdminGranCrawlerReviewQueue = ({
       setSelectedQuestionIndexesByPayload({});
       onPublicationQueued();
       addToast(
-        `${body.data?.questionCount || selectedQuestionCount} questão(ões) foram enviadas em um lote assíncrono${body.data?.jobCount ? ` com ${body.data.jobCount} job(s)` : ''}.`,
-        preparationErrors.length > 0 ? 'warning' : 'success',
+        `${body.data?.questionCount || selectedReadyQuestionCount} questão(ões) pronta(s) foram enviadas em um lote assíncrono${body.data?.jobCount ? ` com ${body.data.jobCount} job(s)` : ''}${selectedQuestionCount > selectedReadyQuestionCount ? `; ${selectedQuestionCount - selectedReadyQuestionCount} item(ns) incompleto(s) permaneceram na revisão.` : '.'}`,
+        preparationErrors.length > 0 || selectedQuestionCount > selectedReadyQuestionCount ? 'warning' : 'success',
       );
     } catch (error) {
       addToast(error instanceof Error ? error.message : 'Não foi possível publicar as questões selecionadas.', 'error');
@@ -246,6 +265,8 @@ const AdminGranCrawlerReviewQueue = ({
     }
   }, [addToast, isPublishingSelected, onPublicationQueued]);
 
+  const reviewQueueOffsets = React.useMemo(() => getGranReviewQueueOffsets(payloads), [payloads]);
+
   return (
     <div className="space-y-4" aria-label="Fila unificada de revisão do Gran">
       <div className="sticky top-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-sm border border-sky-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-sky-900/50 dark:bg-slate-950/95">
@@ -253,10 +274,10 @@ const AdminGranCrawlerReviewQueue = ({
           <p className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">Revisão unificada</p>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {selectedQuestionCount > 0
-              ? `${selectedQuestionCount} de ${selectableQuestionCount} questão(ões) pronta(s) selecionada(s) para publicação.`
+              ? `${selectedQuestionCount} de ${selectableQuestionCount} item(ns) selecionado(s); ${selectedReadyQuestionCount} pronto(s) para publicação.`
               : selectableQuestionCount > 0
-                ? `${selectableQuestionCount} questão(ões) pronta(s) disponível(is) para publicação.`
-                : 'Complete e revise as questões antes de selecioná-las.'}
+                ? `${selectableQuestionCount} item(ns) disponível(is) para seleção; os incompletos permanecem bloqueados para publicação.`
+                : 'Não há itens disponíveis para seleção.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -265,7 +286,7 @@ const AdminGranCrawlerReviewQueue = ({
             onClick={handleToggleAllSelectableQuestions}
             disabled={selectableQuestionCount === 0 || isPublishingSelected}
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-sm border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-sky-800 transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 dark:border-sky-900/50 dark:bg-slate-950 dark:text-sky-200 dark:hover:bg-sky-950/30 dark:disabled:border-slate-800 dark:disabled:text-slate-600"
-            title={areAllSelectableQuestionsSelected ? 'Desmarcar todas as questões prontas' : 'Selecionar todas as questões prontas'}
+            title={areAllSelectableQuestionsSelected ? 'Desmarcar todos os itens' : 'Selecionar todos os itens da revisão'}
           >
             {areAllSelectableQuestionsSelected ? <X size={15} /> : <ListChecks size={15} />}
             {areAllSelectableQuestionsSelected ? 'Desmarcar todas' : 'Selecionar todas'}
@@ -273,16 +294,16 @@ const AdminGranCrawlerReviewQueue = ({
           <button
             type="button"
             onClick={() => void handlePublishSelected()}
-            disabled={selectedQuestionCount === 0 || isPublishingSelected}
+            disabled={selectedReadyQuestionCount === 0 || isPublishingSelected}
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-sm bg-emerald-700 px-4 text-xs font-black uppercase tracking-wide text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-emerald-700/40 disabled:text-white/80"
             title="Publicar somente as questões selecionadas e completas"
           >
             {isPublishingSelected ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />}
-            Publicar selecionadas{selectedQuestionCount > 0 ? ` (${selectedQuestionCount})` : ''}
+            Publicar prontas{selectedReadyQuestionCount > 0 ? ` (${selectedReadyQuestionCount})` : ''}
           </button>
         </div>
       </div>
-      {payloads.map((payload) => {
+      {payloads.map((payload, payloadIndex) => {
         const payloadKey = getGranPayloadKey(payload);
         const reviewQuestionQueueStatuses = Object.fromEntries(
           payload.questions.map((question, index) => {
@@ -304,6 +325,7 @@ const AdminGranCrawlerReviewQueue = ({
             onSelectedQuestionChange={handleSelectedQuestionChange}
             onRegisterBatchPublisher={handleRegisterBatchPublisher}
             onRegisterSelectableQuestionIndexes={handleRegisterSelectableQuestionIndexes}
+            reviewQueueIndexOffset={reviewQueueOffsets[payloadIndex] || 0}
             systemSettings={systemSettings}
             onGeminiApiKeyChange={onGeminiApiKeyChange}
             onSaveSettings={onSaveSettings}

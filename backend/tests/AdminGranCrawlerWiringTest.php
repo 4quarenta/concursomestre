@@ -24,6 +24,8 @@ $sections = (string) file_get_contents($root . '/src/app/admin/components/databa
 $bridge = (string) file_get_contents($root . '/src/app/admin/components/import/granExtensionBridge.ts');
 $batchMigration = (string) file_get_contents($backend . '/database/migrations/20260802_010000_gran_crawler_batches.php');
 $batchRollback = (string) file_get_contents($backend . '/database/rollbacks/20260802_010000_gran_crawler_batches.sql');
+$batchMetadataMigration = (string) file_get_contents($backend . '/database/migrations/20260802_020000_gran_batch_collection_metadata.php');
+$batchMetadataRollback = (string) file_get_contents($backend . '/database/rollbacks/20260802_020000_gran_batch_collection_metadata.sql');
 $legacyEntry = (string) file_get_contents($backend . '/scripts/importers/questions/gran/index.php');
 
 foreach ([
@@ -100,7 +102,7 @@ adminGranCrawlerWiringAssert(
 adminGranCrawlerWiringAssert(
     str_contains($sections, 'AdminGranCrawlerReviewBatch')
     && str_contains($sections, 'renderReviewQueue={(payloads, queueContext)')
-    && str_contains($sections, 'payloads.map((payload)')
+    && str_contains($sections, 'payloads.map((payload, payloadIndex)')
     && str_contains($reviewBatch, 'useAdminQuestionWorkbench')
     && str_contains($reviewBatch, 'importEnabled: false')
     && str_contains($reviewBatch, 'importWorkflowProps.onImportFromAiJson(payloadJson,')
@@ -117,7 +119,7 @@ adminGranCrawlerWiringAssert(
     && str_contains($queue, 'private_ingestion_batches')
     && str_contains($worker, 'bulkImportQuestionBatches')
     && str_contains($sections, "action: 'enqueue_publication'")
-    && str_contains($sections, 'Publicar selecionadas'),
+    && str_contains($sections, 'Publicar prontas'),
     'Mass publication must use one parent batch and bounded asynchronous child jobs.'
 );
 adminGranCrawlerWiringAssert(
@@ -127,6 +129,16 @@ adminGranCrawlerWiringAssert(
     && str_contains($batchRollback, 'DROP FOREIGN KEY fk_private_ingestion_jobs_batch')
     && str_contains($batchRollback, 'DROP TABLE IF EXISTS private_ingestion_batches'),
     'Crawler batch and manifest schema require an additive migration and explicit rollback.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($service, "'collectionPage' => \$request['page']")
+    && str_contains($queue, 'collection_pages_json')
+    && str_contains($queue, 'summarizeJobPayload')
+    && str_contains($batchMetadataMigration, 'ADD COLUMN collection_pages_json')
+    && str_contains($batchMetadataRollback, 'DROP COLUMN collection_pages_json')
+    && str_contains($component, 'batch.displayName')
+    && str_contains($component, 'Job #{job.jobId}'),
+    'Crawler batches and jobs must expose compact persisted collection details.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($component, 'fetchGranCrawlerBootstrap')

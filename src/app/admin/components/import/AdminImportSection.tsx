@@ -1363,6 +1363,8 @@ interface AdminImportSectionProps {
   reviewDisplayMode?: 'full' | 'cards';
   reviewSourceLabel?: string;
   reviewSelectedQuestionIndexes?: ReadonlySet<number>;
+  reviewAllowIncompleteSelection?: boolean;
+  reviewQueueIndexOffset?: number;
   reviewQuestionQueueStatuses?: Record<number, 'queued' | 'processing' | 'published' | 'failed'>;
   onReviewQuestionSelectionChange?: (index: number, selected: boolean) => void;
   onReviewQuestionPublishRequest?: (index: number) => void;
@@ -1464,6 +1466,8 @@ const AdminImportSection = ({
   reviewDisplayMode = 'full',
   reviewSourceLabel = '',
   reviewSelectedQuestionIndexes,
+  reviewAllowIncompleteSelection = false,
+  reviewQueueIndexOffset = 0,
   reviewQuestionQueueStatuses,
   onReviewQuestionSelectionChange,
   onReviewQuestionPublishRequest,
@@ -3136,7 +3140,13 @@ const AdminImportSection = ({
                   const publishQuestionAction = `question:${questionNumber}` as const;
                   const isPublicationPending = queueStatus === 'queued' || queueStatus === 'processing';
                   const singlePublishBlocked = isPublishing || (!cardsOnly && !publishedExam) || !questionReadyForPublication || isQuestionPublished || isPublicationPending;
-                  const isQuestionSelectable = Boolean(cardsOnly && onReviewQuestionSelectionChange && questionReadyForPublication && !isQuestionPublished && !isPublicationPending);
+                  const isQuestionSelectable = Boolean(
+                    cardsOnly
+                    && onReviewQuestionSelectionChange
+                    && (reviewAllowIncompleteSelection || questionReadyForPublication)
+                    && !isQuestionPublished
+                    && !isPublicationPending,
+                  );
                   const isQuestionSelected = Boolean(reviewSelectedQuestionIndexes?.has(index));
                   const isCardExpanded = !cardsOnly || expandedReviewQuestionIndexes.has(index);
                   const introText = getQuestionIntroText(question);
@@ -3197,7 +3207,11 @@ const AdminImportSection = ({
                                 ? 'cursor-pointer border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-300'
                                 : 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-600'
                             }`}
-                            title={isQuestionSelectable ? 'Selecionar para publicação em lote' : 'Complete e revise esta questão antes de selecioná-la'}
+                            title={isQuestionSelectable
+                              ? (questionReadyForPublication
+                                ? 'Selecionar para publicação em lote'
+                                : 'Selecionar para revisão; a publicação continuará bloqueada até a questão ficar completa')
+                              : 'Esta questão já foi publicada ou está em processamento'}
                           >
                             <input
                               type="checkbox"
@@ -3213,6 +3227,11 @@ const AdminImportSection = ({
                           {questionNumber}
                         </span>
                         <div className="flex flex-wrap gap-2">
+                          {cardsOnly && (
+                            <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                              Item #{reviewQueueIndexOffset + index + 1}
+                            </span>
+                          )}
                           {cardsOnly && reviewSourceLabel && (
                             <span className="max-w-[22rem] truncate rounded-sm border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-300" title={reviewSourceLabel}>{reviewSourceLabel}</span>
                           )}

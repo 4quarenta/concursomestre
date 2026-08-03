@@ -319,6 +319,7 @@ final class PrivateQuestionIngestionService
         $normalizedPayloads = [];
         $questionCount = 0;
         $questionKeys = [];
+        $collectionPages = [];
         foreach ($payloads as $payload) {
             if (!is_array($payload) || ($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
                 throw new InvalidArgumentException('Todos os lotes devem usar o contrato question-import.v2.');
@@ -334,9 +335,14 @@ final class PrivateQuestionIngestionService
                 }
                 $questionKeys[] = $this->questionSourceKey($question, $position);
             }
+            $importMetadata = is_array($payload['import'] ?? null) ? $payload['import'] : [];
+            $collectionPage = (int) ($importMetadata['collectionPage'] ?? 0);
+            if ($collectionPage > 0) $collectionPages[] = $collectionPage;
             $normalizedPayloads[] = $payload;
         }
         self::assertBatchQuestionCount($questionCount);
+        $collectionPages = array_values(array_unique($collectionPages));
+        sort($collectionPages);
 
         $canonical = json_encode(
             $normalizedPayloads,
@@ -353,7 +359,8 @@ final class PrivateQuestionIngestionService
             $idempotencyKey,
             $payloadHash,
             $questionCount,
-            array_values(array_unique($questionKeys))
+            array_values(array_unique($questionKeys)),
+            $collectionPages
         );
         $chunks = $this->splitCanonicalPayloads($normalizedPayloads);
         foreach ($chunks as $index => $chunk) {
@@ -397,22 +404,27 @@ final class PrivateQuestionIngestionService
         }
 
         $stmt = $this->db->prepare(
-            "SELECT jobs.id, jobs.request_id, jobs.actor_user_id, jobs.status, jobs.attempts,
+            "SELECT jobs.id, jobs.request_id, jobs.batch_id, jobs.actor_user_id, jobs.status, jobs.attempts,
                     jobs.error_message, jobs.created_at, jobs.available_at, jobs.locked_at,
-                    jobs.completed_at, jobs.dead_lettered_at, requests.response_json
+                    jobs.completed_at, jobs.dead_lettered_at, jobs.payload_json, requests.response_json,
+                    batches.public_id AS batch_public_id
              FROM private_ingestion_jobs jobs
              INNER JOIN private_ingestion_requests requests ON requests.id = jobs.request_id
+             LEFT JOIN private_ingestion_batches batches ON batches.id = jobs.batch_id
              {$where}
              ORDER BY jobs.id DESC
              LIMIT {$limit}"
         );
         $stmt->execute($params);
 
-        return array_map(static function (array $row): array {
+        return array_map(function (array $row): array {
             $response = json_decode((string) ($row['response_json'] ?? ''), true);
+            $payload = json_decode((string) ($row['payload_json'] ?? ''), true);
+            $summary = is_array($payload) ? $this->summarizeJobPayload($payload) : [];
             return [
                 'jobId' => (int) $row['id'],
                 'requestId' => (int) $row['request_id'],
+                'batchId' => trim((string) ($row['batch_public_id'] ?? '')) ?: null,
                 'actorUserId' => (string) ($row['actor_user_id'] ?? ''),
                 'status' => (string) $row['status'],
                 'attempts' => (int) ($row['attempts'] ?? 0),
@@ -422,9 +434,50 @@ final class PrivateQuestionIngestionService
                 'lockedAt' => $row['locked_at'] ?? null,
                 'completedAt' => $row['completed_at'] ?? null,
                 'deadLetteredAt' => $row['dead_lettered_at'] ?? null,
+                'questionCount' => (int) ($summary['questionCount'] ?? 0),
+                'examCount' => (int) ($summary['examCount'] ?? 0),
+                'examTitles' => $summary['examTitles'] ?? [],
+                'collectionPages' => $summary['collectionPages'] ?? [],
                 'result' => is_array($response) ? $response : null,
             ];
         }, $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+    }
+
+    /** @param array<string,mixed> $payload @return array<string,mixed> */
+    private function summarizeJobPayload(array $payload): array
+    {
+        $payloads = [];
+        if (is_array($payload['batches'] ?? null)) {
+            foreach ($payload['batches'] as $batch) {
+                if (is_array($batch) && is_array($batch['payload'] ?? null)) $payloads[] = $batch['payload'];
+            }
+        } else {
+            $payloads[] = $payload;
+        }
+
+        $questionCount = 0;
+        $examTitles = [];
+        $collectionPages = [];
+        foreach ($payloads as $item) {
+            $questions = is_array($item['questions'] ?? null) ? $item['questions'] : [];
+            $questionCount += count($questions);
+            $exam = is_array($item['exam'] ?? null) ? $item['exam'] : [];
+            $title = trim((string) ($exam['title'] ?? ''));
+            if ($title !== '') $examTitles[] = $title;
+            $importMetadata = is_array($item['import'] ?? null) ? $item['import'] : [];
+            $page = (int) ($importMetadata['collectionPage'] ?? 0);
+            if ($page > 0) $collectionPages[] = $page;
+        }
+        $examTitles = array_values(array_unique($examTitles));
+        $collectionPages = array_values(array_unique($collectionPages));
+        sort($collectionPages);
+
+        return [
+            'questionCount' => $questionCount,
+            'examCount' => count($examTitles),
+            'examTitles' => array_slice($examTitles, 0, 5),
+            'collectionPages' => $collectionPages,
+        ];
     }
 
     public function reserveNextJob(?string $workerId = null): ?array
@@ -635,6 +688,7 @@ final class PrivateQuestionIngestionService
             'private_ingestion_batches' => [
                 'public_id', 'actor_user_id', 'idempotency_key', 'payload_hash', 'status',
                 'question_count', 'job_count', 'question_keys_json', 'question_statuses_json',
+                'collection_pages_json',
             ],
             'private_ingestion_jobs' => ['batch_id'],
         ]);
@@ -646,7 +700,8 @@ final class PrivateQuestionIngestionService
         string $idempotencyKey,
         string $payloadHash,
         int $questionCount,
-        array $questionKeys
+        array $questionKeys,
+        array $collectionPages
     ): array {
         $select = $this->db->prepare(
             'SELECT * FROM private_ingestion_batches
@@ -665,8 +720,8 @@ final class PrivateQuestionIngestionService
         $publicId = $this->uuidV4();
         $insert = $this->db->prepare(
             'INSERT INTO private_ingestion_batches
-             (public_id, actor_user_id, idempotency_key, payload_hash, status, question_count, question_keys_json)
-             VALUES (:public_id, :actor_user_id, :idempotency_key, :payload_hash, :status, :question_count, :question_keys_json)'
+             (public_id, actor_user_id, idempotency_key, payload_hash, status, question_count, question_keys_json, collection_pages_json)
+             VALUES (:public_id, :actor_user_id, :idempotency_key, :payload_hash, :status, :question_count, :question_keys_json, :collection_pages_json)'
         );
         try {
             $insert->execute([
@@ -677,6 +732,7 @@ final class PrivateQuestionIngestionService
                 ':status' => 'pending',
                 ':question_count' => $questionCount,
                 ':question_keys_json' => json_encode($questionKeys, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ':collection_pages_json' => json_encode($collectionPages, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ]);
             return ['id' => (int) $this->db->lastInsertId(), 'public_id' => $publicId, 'idempotentReplay' => false];
         } catch (PDOException $exception) {
@@ -981,10 +1037,26 @@ final class PrivateQuestionIngestionService
     {
         $keys = json_decode((string) ($row['question_keys_json'] ?? '[]'), true);
         $questionStatuses = json_decode((string) ($row['question_statuses_json'] ?? '{}'), true);
+        $collectionPages = json_decode((string) ($row['collection_pages_json'] ?? '[]'), true);
+        $collectionPages = is_array($collectionPages)
+            ? array_values(array_filter(array_map('intval', $collectionPages), static fn (int $page): bool => $page > 0))
+            : [];
+        $questionCount = (int) $row['question_count'];
+        $pageLabel = $collectionPages === []
+            ? ''
+            : (count($collectionPages) === 1
+                ? 'Pagina ' . $collectionPages[0]
+                : 'Paginas ' . implode(', ', $collectionPages));
+        $displayName = trim(implode(' - ', array_filter([
+            $pageLabel,
+            sprintf('%d questao(oes)', $questionCount),
+        ])));
         return [
             'batchId' => (string) $row['public_id'],
+            'displayName' => $displayName,
+            'collectionPages' => $collectionPages,
             'status' => (string) $row['status'],
-            'questionCount' => (int) $row['question_count'],
+            'questionCount' => $questionCount,
             'jobCount' => (int) $row['job_count'],
             'pending' => (int) $row['pending_job_count'],
             'processing' => (int) $row['processing_job_count'],

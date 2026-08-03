@@ -33,6 +33,40 @@ type GranReviewPayload = {
   };
 };
 
+export type GranReviewQueueStatus = 'queued' | 'processing' | 'published' | 'failed';
+
+export const classifyGranReviewQuestionIndexes = <T>({
+  questions,
+  isPublished,
+  isReady,
+  queueStatuses = {},
+}: {
+  questions: T[];
+  isPublished: (question: T, index: number) => boolean;
+  isReady: (question: T, index: number) => boolean;
+  queueStatuses?: Record<number, GranReviewQueueStatus>;
+}) => questions.reduce<{ selectable: number[]; publishable: number[] }>((result, question, index) => {
+  const queueStatus = queueStatuses[index];
+  const unavailable = isPublished(question, index)
+    || queueStatus === 'queued'
+    || queueStatus === 'processing'
+    || queueStatus === 'published';
+  if (unavailable) return result;
+
+  result.selectable.push(index);
+  if (isReady(question, index)) result.publishable.push(index);
+  return result;
+}, { selectable: [], publishable: [] });
+
+export const getGranReviewQueueOffsets = <T extends Pick<GranReviewPayload, 'questions'>>(payloads: T[]) => {
+  let offset = 0;
+  return payloads.map((payload) => {
+    const currentOffset = offset;
+    offset += payload.questions.length;
+    return currentOffset;
+  });
+};
+
 export const isGranQuestionAlreadyPublished = (question: GranReviewQuestion) => {
   if (question.source?.alreadyPublished === true) return true;
   const status = String(

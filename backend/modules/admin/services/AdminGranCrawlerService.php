@@ -80,6 +80,9 @@ final class AdminGranCrawlerService
             'year' => $request['year'] !== '' ? (int) $request['year'] : null,
             'extractionMode' => 'gran_browser_extension',
             'granExamFiles' => $granExamFiles,
+            'collectionPage' => $request['page'],
+            'collectionPerPage' => $request['perPage'],
+            'collectionRequestUrl' => $request['url'],
         ]);
 
         return [
@@ -1114,6 +1117,9 @@ final class AdminGranCrawlerService
                 'sourceType' => 'authorized_admin_collection',
                 'extractionMode' => (string) ($metadata['extractionMode'] ?? 'gran_admin_proxy'),
                 'status' => 'draft',
+                'collectionPage' => isset($metadata['collectionPage']) ? (int) $metadata['collectionPage'] : null,
+                'collectionPerPage' => isset($metadata['collectionPerPage']) ? (int) $metadata['collectionPerPage'] : null,
+                'collectionRequestUrl' => trim((string) ($metadata['collectionRequestUrl'] ?? '')) ?: null,
                 'diagnostics' => [
                     sprintf('Coleta administrativa autorizada: %d questao(oes).', count($questions)),
                     'Todo item exige revisao editorial antes da publicacao.',

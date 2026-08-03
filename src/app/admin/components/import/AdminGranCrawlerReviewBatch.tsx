@@ -9,8 +9,13 @@ import { useAdminQuestionWorkbench } from '../questions/useAdminQuestionWorkbenc
 import AdminImportSection from './AdminImportSection';
 import { isQuestionReadyForImportPublication } from './adminImportWorkflowPublicationCore';
 import type { GranImportPayload } from './AdminGranCrawlerSection';
+import { classifyGranReviewQuestionIndexes } from './granCrawlerReviewUtils';
 
-type SelectableQuestionIndexesHandler = () => number[];
+export type GranQuestionIndexAvailability = {
+  selectable: number[];
+  publishable: number[];
+};
+type SelectableQuestionIndexesHandler = () => GranQuestionIndexAvailability;
 export type GranReviewBatchPublisher = {
   prepare: (indexes: number[]) => { error?: string; questionNumbers?: number[]; payload?: ImportedQuestionBatchPayload };
   apply: (result: Record<string, unknown>) => void;
@@ -25,6 +30,7 @@ interface AdminGranCrawlerReviewBatchProps {
   onSelectedQuestionChange?: (payloadKey: string, index: number, selected: boolean) => void;
   onRegisterBatchPublisher?: (payloadKey: string, handler: GranReviewBatchPublisher | null) => void;
   onRegisterSelectableQuestionIndexes?: (payloadKey: string, handler: SelectableQuestionIndexesHandler | null) => void;
+  reviewQueueIndexOffset?: number;
   systemSettings: SystemSettings;
   onGeminiApiKeyChange: (value: string) => void;
   onSaveSettings: () => Promise<unknown> | unknown;
@@ -50,6 +56,7 @@ const AdminGranCrawlerReviewBatch = ({
   onSelectedQuestionChange,
   onRegisterBatchPublisher,
   onRegisterSelectableQuestionIndexes,
+  reviewQueueIndexOffset = 0,
   systemSettings,
   onGeminiApiKeyChange,
   onSaveSettings,
@@ -76,8 +83,7 @@ const AdminGranCrawlerReviewBatch = ({
   const payloadKey = React.useMemo(() => getPayloadKey(payload), [payload]);
   const getSelectableQuestionIndexes = React.useCallback(() => {
     const publishedQuestionNumbers = new Set(importWorkflowProps.publishedQuestionNumbers || []);
-
-    return importWorkflowProps.extractedQuestions.reduce<number[]>((indexes, question, index) => {
+    const questionNumber = (question: Question, index: number) => {
       const questionRecord = question as Question & {
         questionNumber?: number | string;
         question_number?: number | string;
@@ -89,21 +95,34 @@ const AdminGranCrawlerReviewBatch = ({
         ?? questionRecord.number
         ?? index + 1,
       );
-      const questionNumber = Number.isFinite(candidateNumber) && candidateNumber > 0
+      return Number.isFinite(candidateNumber) && candidateNumber > 0
         ? candidateNumber
         : index + 1;
+    };
 
-      if (
-        isQuestionReadyForImportPublication(question)
-        && !publishedQuestionNumbers.has(questionNumber)
-        && !['queued', 'processing', 'published'].includes(reviewQuestionQueueStatuses?.[index] || '')
-      ) {
-        indexes.push(index);
-      }
-
-      return indexes;
-    }, []);
+    return classifyGranReviewQuestionIndexes({
+      questions: importWorkflowProps.extractedQuestions,
+      isPublished: (question, index) => publishedQuestionNumbers.has(questionNumber(question, index)),
+      isReady: isQuestionReadyForImportPublication,
+      queueStatuses: reviewQuestionQueueStatuses,
+    });
   }, [importWorkflowProps.extractedQuestions, importWorkflowProps.publishedQuestionNumbers, reviewQuestionQueueStatuses]);
+
+  const prepareGranPublication = React.useCallback((indexes: number[]) => {
+    const prepared = importWorkflowProps.prepareSelectedGranReviewPublication(indexes);
+    if (!prepared.payload) return prepared;
+
+    const importMetadata = payload.import && typeof payload.import === 'object'
+      ? payload.import as Record<string, unknown>
+      : undefined;
+    return {
+      ...prepared,
+      payload: {
+        ...prepared.payload,
+        ...(importMetadata ? { import: importMetadata } : {}),
+      },
+    };
+  }, [importWorkflowProps.prepareSelectedGranReviewPublication, payload.import]);
 
   React.useEffect(() => {
     if (importedPayloadRef.current === payloadJson) {
@@ -120,11 +139,11 @@ const AdminGranCrawlerReviewBatch = ({
   React.useEffect(() => {
     if (!cardsOnly || !onRegisterBatchPublisher) return;
     onRegisterBatchPublisher(payloadKey, {
-      prepare: importWorkflowProps.prepareSelectedGranReviewPublication,
+      prepare: prepareGranPublication,
       apply: importWorkflowProps.onGranReviewPublicationResult,
     });
     return () => onRegisterBatchPublisher(payloadKey, null);
-  }, [cardsOnly, importWorkflowProps.onGranReviewPublicationResult, importWorkflowProps.prepareSelectedGranReviewPublication, onRegisterBatchPublisher, payloadKey]);
+  }, [cardsOnly, importWorkflowProps.onGranReviewPublicationResult, onRegisterBatchPublisher, payloadKey, prepareGranPublication]);
 
   React.useEffect(() => {
     if (!cardsOnly || !onRegisterSelectableQuestionIndexes) return;
@@ -142,6 +161,8 @@ const AdminGranCrawlerReviewBatch = ({
         reviewOnly
         reviewDisplayMode={cardsOnly ? 'cards' : 'full'}
         reviewSelectedQuestionIndexes={selectedQuestionIndexes}
+        reviewAllowIncompleteSelection
+        reviewQueueIndexOffset={reviewQueueIndexOffset}
         reviewQuestionQueueStatuses={reviewQuestionQueueStatuses}
         onReviewQuestionPublishRequest={onPublishQuestion}
         onReviewQuestionSelectionChange={(index, selected) => onSelectedQuestionChange?.(payloadKey, index, selected)}
