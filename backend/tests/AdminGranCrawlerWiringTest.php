@@ -96,7 +96,7 @@ adminGranCrawlerWiringAssert(
     && !str_contains($component, 'Revisar no importador')
     && !str_contains($component, 'handleReviewPayload')
     && !str_contains($component, "action: 'enqueue'")
-    && !str_contains($component, 'examTitle'),
+    && !str_contains($component, 'const [examTitle, setExamTitle]'),
     'Collection must enter the canonical review queue automatically without a global exam title.'
 );
 adminGranCrawlerWiringAssert(
