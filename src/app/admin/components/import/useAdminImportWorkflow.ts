@@ -5065,6 +5065,7 @@ export const useAdminImportWorkflow = ({
       const normalizedQuestions = rawQuestions.map((item, index) => {
         const record = toLooseRecord(item) || {};
         const sourceRecord = toLooseRecord(readLooseField(record, ['source', 'origem'])) || {};
+        const originalTempId = readLooseText(record, ['tempId', 'temp_id', 'externalKey', 'external_key']);
         const contentRecord = toLooseRecord(readLooseField(record, ['content', 'conteudo', 'conteúdo'])) || {};
         const answerRecord = toLooseRecord(readLooseField(record, ['answer', 'gabarito', 'resposta'])) || {};
         const editorialItems = readLooseArray(record, ['editorial']);
@@ -5292,6 +5293,22 @@ export const useAdminImportWorkflow = ({
         };
 
         return buildQuestionPayloadImportCard({
+          tempId: originalTempId,
+          source: {
+            origin: readLooseText(sourceRecord, ['origin', 'origem']) || 'exam',
+            examId: readLooseField(sourceRecord, ['examId', 'exam_id', 'provaId', 'prova_id']) as number | string | null,
+            questionNumber: number,
+            contextTempId: contextKey || null,
+            questionGroupId: readLooseField(sourceRecord, ['questionGroupId', 'question_group_id']) as number | string | null,
+            sourcePage: readLooseField(sourceRecord, ['sourcePage', 'source_page', 'page', 'pagina']) as number | string | null,
+            provider: readLooseText(sourceRecord, ['provider', 'sourceProvider', 'source_provider']) || null,
+            externalId: readLooseField(sourceRecord, ['externalId', 'external_id', 'sourceExternalId', 'source_external_id']) as number | string | null,
+            externalExamId: readLooseField(sourceRecord, ['externalExamId', 'external_exam_id']) as number | string | null,
+            sourceExamKey: readLooseText(sourceRecord, ['sourceExamKey', 'source_exam_key']) || null,
+            localQuestionId: readLooseField(sourceRecord, ['localQuestionId', 'local_question_id']) as number | string | null,
+            alreadyPublished: sourceAlreadyPublished,
+            publicationStatus: readLooseText(sourceRecord, ['publicationStatus', 'publication_status']) || null,
+          },
           questionNumber: number,
           statement,
           introText: supportText,
@@ -7070,6 +7087,7 @@ export const __examImportParserTestApi = {
   auditQuestionCoverage,
   buildAdaptiveExamParserProfile,
   buildExamTitle,
+  buildQuestionPayloadImportCard,
   buildImportExamTaxonomyMetadata,
   buildPageContentInventory,
   createMechanicalExtractionFromText,

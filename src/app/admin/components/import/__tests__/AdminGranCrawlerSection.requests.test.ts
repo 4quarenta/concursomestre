@@ -29,6 +29,10 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('isTaxonomyVerificationFresh');
     expect(source).toContain('Verificando atualizacoes antes de sincronizar.');
     expect(source).toContain('handleCheckTaxonomyUpdates(true)');
+    expect(source).toContain('data-testid="gran-taxonomy-check-result"');
+    expect(source).toContain('changedCategories');
+    expect(source.indexOf('data-testid="gran-taxonomy-check-result"'))
+      .toBeLessThan(source.indexOf('{taxonomyExpanded ? <>'));
   });
 
   it('uses bounded persistence and cursor-based cargo finalization', () => {

@@ -16,6 +16,7 @@ $route = (string) file_get_contents($backend . '/modules/admin/gran_crawler_rout
 $endpoint = (string) file_get_contents($backend . '/api/admin/gran_crawler.php');
 $queue = (string) file_get_contents($backend . '/modules/questions/services/PrivateQuestionIngestionService.php');
 $questionsService = (string) file_get_contents($backend . '/modules/questions/services/QuestionsService.php');
+$questionsRepository = (string) file_get_contents($backend . '/modules/questions/repositories/QuestionsRepository.php');
 $worker = (string) file_get_contents($backend . '/scripts/workers/process_question_ingestion_jobs.php');
 $component = (string) file_get_contents($root . '/src/app/admin/components/import/AdminGranCrawlerSection.tsx');
 $reviewBatch = (string) file_get_contents($root . '/src/app/admin/components/import/AdminGranCrawlerReviewBatch.tsx');
@@ -61,7 +62,9 @@ adminGranCrawlerWiringAssert(
 );
 adminGranCrawlerWiringAssert(
     str_contains($questionsService, "'files' => array_values(array_filter(")
-    && str_contains($questionsService, "\$examPayload['files']"),
+    && str_contains($questionsService, "\$examPayload['files']")
+    && str_contains($questionsRepository, 'syncImportedExamFiles')
+    && str_contains($questionsRepository, '$this->syncImportedExamFiles((int) $externalSourceId, $record);'),
     'Exam files must flow from canonical metadata to prova_arquivos.'
 );
 adminGranCrawlerWiringAssert(

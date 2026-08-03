@@ -2520,6 +2520,7 @@ class QuestionsRepository
                 // metadata, so a previously saved draft can be promoted
                 // without overwriting editorial changes.
                 $this->updateImportedExamPublication((int) $externalSourceId, $record);
+                $this->syncImportedExamFiles((int) $externalSourceId, $record);
                 return (int) $externalSourceId;
             }
         }
@@ -2575,6 +2576,7 @@ class QuestionsRepository
                         ':source_external_id' => $sourceExternalId,
                         ':id' => (int) $existingId,
                     ]);
+                    $this->syncImportedExamFiles((int) $existingId, $record);
                     return (int) $existingId;
                 }
 
@@ -2703,6 +2705,43 @@ class QuestionsRepository
             ]);
         }
 
+        $this->syncImportedExamFiles($examId, $record);
+
+        $metadata = [];
+        if (isset($record['metadata_json']) && is_string($record['metadata_json'])) {
+            $decoded = json_decode($record['metadata_json'], true);
+            $metadata = is_array($decoded) ? $decoded : [];
+        }
+
+        $bookletName = trim((string) ($metadata['caderno'] ?? ''));
+        $bookletType = trim((string) ($metadata['tipoCaderno'] ?? $metadata['bookletType'] ?? ''));
+        $bookletColor = trim((string) ($metadata['corCaderno'] ?? $metadata['bookletColor'] ?? ''));
+        if ($bookletName === '' && ($bookletType !== '' || $bookletColor !== '')) {
+            $bookletName = trim(implode(' - ', array_filter([$bookletType, $bookletColor])));
+        }
+        if ($bookletName !== '') {
+            $insertBooklet = $this->db->prepare("INSERT INTO prova_cadernos (prova_id, nome, tipo, cor, ordem, metadata_json)
+                VALUES (:prova_id, :nome, :tipo, :cor, 0, :metadata)
+                ON DUPLICATE KEY UPDATE tipo = VALUES(tipo), cor = VALUES(cor), metadata_json = VALUES(metadata_json)");
+            $insertBooklet->execute([
+                ':prova_id' => $examId,
+                ':nome' => $bookletName,
+                ':tipo' => $bookletType !== '' ? $bookletType : null,
+                ':cor' => $bookletColor !== '' ? $bookletColor : null,
+                ':metadata' => json_encode([
+                    'source' => 'importador',
+                    'tipoCaderno' => $bookletType,
+                    'corCaderno' => $bookletColor,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+        }
+    }
+
+    /**
+     * Adds newly materialized official files without replacing reviewed exam metadata.
+     */
+    private function syncImportedExamFiles(int $examId, array $record): void
+    {
         $metadata = [];
         if (isset($record['metadata_json']) && is_string($record['metadata_json'])) {
             $decoded = json_decode($record['metadata_json'], true);
@@ -2718,13 +2757,17 @@ class QuestionsRepository
             ];
         }
         foreach (['files', 'examFiles'] as $filesKey) {
-            if (!empty($metadata[$filesKey]) && is_array($metadata[$filesKey])) {
-                foreach ($metadata[$filesKey] as $file) {
-                    if (is_array($file)) {
-                        $files[] = $file;
-                    }
+            if (empty($metadata[$filesKey]) || !is_array($metadata[$filesKey])) {
+                continue;
+            }
+            foreach ($metadata[$filesKey] as $file) {
+                if (is_array($file)) {
+                    $files[] = $file;
                 }
             }
+        }
+        if ($files === []) {
+            return;
         }
 
         $insertFile = $this->db->prepare("INSERT INTO prova_arquivos (prova_id, tipo, nome_original, caminho, mime_type, tamanho, metadata_json)
@@ -2751,29 +2794,6 @@ class QuestionsRepository
                 ':metadata' => json_encode($file, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ':exists_prova_id' => $examId,
                 ':exists_caminho' => $url,
-            ]);
-        }
-
-        $bookletName = trim((string) ($metadata['caderno'] ?? ''));
-        $bookletType = trim((string) ($metadata['tipoCaderno'] ?? $metadata['bookletType'] ?? ''));
-        $bookletColor = trim((string) ($metadata['corCaderno'] ?? $metadata['bookletColor'] ?? ''));
-        if ($bookletName === '' && ($bookletType !== '' || $bookletColor !== '')) {
-            $bookletName = trim(implode(' - ', array_filter([$bookletType, $bookletColor])));
-        }
-        if ($bookletName !== '') {
-            $insertBooklet = $this->db->prepare("INSERT INTO prova_cadernos (prova_id, nome, tipo, cor, ordem, metadata_json)
-                VALUES (:prova_id, :nome, :tipo, :cor, 0, :metadata)
-                ON DUPLICATE KEY UPDATE tipo = VALUES(tipo), cor = VALUES(cor), metadata_json = VALUES(metadata_json)");
-            $insertBooklet->execute([
-                ':prova_id' => $examId,
-                ':nome' => $bookletName,
-                ':tipo' => $bookletType !== '' ? $bookletType : null,
-                ':cor' => $bookletColor !== '' ? $bookletColor : null,
-                ':metadata' => json_encode([
-                    'source' => 'importador',
-                    'tipoCaderno' => $bookletType,
-                    'corCaderno' => $bookletColor,
-                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ]);
         }
     }

@@ -16,6 +16,7 @@ const {
   auditQuestionCoverage,
   buildAdaptiveExamParserProfile,
   buildExamTitle,
+  buildQuestionPayloadImportCard,
   buildImportExamTaxonomyMetadata,
   buildPageContentInventory,
   createMechanicalExtractionFromText,
@@ -42,6 +43,70 @@ const {
   resolveExamParserProfile,
   textNeedsExternalSupportContext,
 } = __examImportParserTestApi;
+
+describe('identidade canonica do JSON externo', () => {
+  it('preserva a identidade Gran durante a montagem do card', () => {
+    const question = buildQuestionPayloadImportCard({
+      tempId: 'gran-question-991',
+      source: {
+        origin: 'exam',
+        provider: 'gran',
+        externalId: '991',
+        externalExamId: '501',
+        sourceExamKey: 'gran:exam:501',
+        questionNumber: 12,
+        sourcePage: 3,
+      },
+      questionNumber: 12,
+      statement: 'Assinale a opcao correta.',
+      introText: '',
+      referenceText: '',
+      teacherComment: '',
+      detailedComment: '',
+      contextKey: '',
+      bancas: [],
+      orgaos: [],
+      cargos: [],
+      assuntos: [],
+      anos: [],
+      carreiras: [],
+      niveis: [],
+      tiposProva: [],
+      tipo: 'single_choice',
+      dificuldade: 2,
+      itens: [
+        { id: 1, corpo: 'Alternativa A', rotulo: 'A' },
+        { id: 2, corpo: 'Alternativa B', rotulo: 'B' },
+      ],
+      resposta: 1,
+      correctOptionIndex: 0,
+      hasFigure: false,
+      supportImages: [],
+      status: 'ok',
+      needsImportReview: false,
+      reasons: [],
+      quality: {
+        origin: 'manual',
+        confidence: 1,
+        complete: true,
+        localized: true,
+        needsReview: false,
+        reasons: [],
+      },
+    });
+
+    expect(question.tempId).toBe('gran-question-991');
+    expect(question.source).toMatchObject({
+      provider: 'gran',
+      externalId: '991',
+      externalExamId: '501',
+      sourceExamKey: 'gran:exam:501',
+      questionNumber: 12,
+      sourcePage: 3,
+    });
+    expect(question.questionCreatePayload?.source).toEqual(question.source);
+  });
+});
 
 describe('normalização do JSON da IA externa', () => {
   it('remove alternativa vazia criada para completar A-E', () => {

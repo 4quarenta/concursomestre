@@ -88,6 +88,8 @@ granTaxonomySyncAssert(
     && str_contains($route, "'taxonomy_status'")
     && str_contains($route, 'AdminGranTaxonomySyncService')
     && str_contains($route, "'check_taxonomy_updates'")
+    && str_contains($route, "'changedCategories'")
+    && str_contains($route, "'checkedCatalogs'")
     && str_contains($route, "'mark_taxonomy_synced'")
     && substr_count($route, "RateLimiter::enforceProfile('admin_taxonomy_sync'") === 7,
     'Rotas administrativas da sincronizacao Gran ausentes.'
@@ -140,6 +142,7 @@ granTaxonomySyncAssert(
     && str_contains($section, 'handleCheckTaxonomyUpdates')
     && str_contains($section, 'handleTaxonomySync')
     && str_contains($section, 'taxonomyExpanded')
+    && str_contains($section, 'gran-taxonomy-check-result')
     && str_contains($section, 'Verificar atualizacoes'),
     'Painel deve verificar manifestos sem escrita, iniciar fechado e sincronizar apenas catalogos necessarios.'
 );

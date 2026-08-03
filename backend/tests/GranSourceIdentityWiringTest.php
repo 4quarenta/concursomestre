@@ -76,7 +76,9 @@ granSourceIdentityAssert(
 granSourceIdentityAssert(
     str_contains($questionsRepository, 'a matching external source only reuses it.')
     && str_contains($questionsRepository, 'source_provider = :source_provider')
-    && str_contains($questionsRepository, 'source_external_id = :source_external_id'),
+    && str_contains($questionsRepository, 'source_external_id = :source_external_id')
+    && str_contains($questionsRepository, '$this->syncImportedExamFiles((int) $externalSourceId, $record);')
+    && str_contains($questionsRepository, 'WHERE NOT EXISTS ('),
     'Provas e grupos Gran existentes devem ser reutilizados sem sobrescrever a revisao local.'
 );
 granSourceIdentityAssert(

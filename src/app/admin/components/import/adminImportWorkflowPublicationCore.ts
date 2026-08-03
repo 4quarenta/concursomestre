@@ -3363,6 +3363,8 @@ export const buildExternalAiQuestionTaxonomies = (taxonomy: {
 };
 
 export const buildQuestionPayloadImportCard = ({
+  tempId,
+  source,
   questionNumber,
   statement,
   introText,
@@ -3392,7 +3394,10 @@ export const buildQuestionPayloadImportCard = ({
   reasons,
   quality,
 }: QuestionCreateImportCardParams): Question => {
-  const importTempId = `ai-json-${questionNumber}`;
+  const sourceExternalId = String(source?.externalId ?? '').trim();
+  const importTempId = String(tempId || '').trim()
+    || (source?.provider && sourceExternalId ? `${source.provider}-question-${sourceExternalId}` : '')
+    || `ai-json-${questionNumber}`;
   const alternativePayloads: QuestionAlternativePayload[] = itens.map((item, index) => ({
     tempId: `q_${questionNumber}_alt_${String.fromCharCode(97 + index)}`,
     order: index + 1,
@@ -3426,11 +3431,12 @@ export const buildQuestionPayloadImportCard = ({
     tempId: importTempId,
     id: null,
     source: {
+      ...(source || {}),
       origin: 'exam',
-      examId: null,
+      examId: source?.examId ?? null,
       questionNumber,
-      contextTempId: contextKey || null,
-      sourcePage: null,
+      contextTempId: contextKey || source?.contextTempId || null,
+      sourcePage: source?.sourcePage ?? null,
     },
     content: {
       statement,

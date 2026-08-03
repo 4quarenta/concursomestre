@@ -63,10 +63,10 @@ final class GranExamFileMaterializer
                 throw new InvalidArgumentException('Tipo de documento Gran nao permitido.');
             }
             $this->assertAllowedSourceUrl($sourceUrl);
-            $download = $this->download($sourceUrl);
-            $temporaryPath = $download['temporaryPath'];
-
+            unset($temporaryPath);
             try {
+                $download = $this->download($sourceUrl, $kind);
+                $temporaryPath = $download['temporaryPath'];
                 $storageKey = sprintf(
                     'exams/gran/%s/%s-%s.pdf',
                     $externalExamId,
@@ -91,8 +91,17 @@ final class GranExamFileMaterializer
                     'sourceUrlHash' => hash('sha256', $sourceUrl),
                     'importedAt' => gmdate('c'),
                 ];
+            } catch (RuntimeException $exception) {
+                $this->appendDiagnostic(
+                    $payload,
+                    sprintf(
+                        'Arquivo oficial %s nao materializado: %s',
+                        $kind,
+                        $exception->getMessage()
+                    )
+                );
             } finally {
-                if (is_file($temporaryPath)) {
+                if (isset($temporaryPath) && is_file($temporaryPath)) {
                     @unlink($temporaryPath);
                 }
             }
@@ -125,12 +134,12 @@ final class GranExamFileMaterializer
     }
 
     /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string} */
-    private function download(string $sourceUrl): array
+    private function download(string $sourceUrl, string $kind): array
     {
         if ($this->downloader !== null) {
             $result = ($this->downloader)($sourceUrl, self::MAX_FILE_BYTES);
             try {
-                return $this->validateDownloadedFile($result);
+                return $this->validateDownloadedFile($result, $kind);
             } catch (Throwable $exception) {
                 $temporaryPath = (string) ($result['temporaryPath'] ?? '');
                 if (is_file($temporaryPath)) {
@@ -158,7 +167,7 @@ final class GranExamFileMaterializer
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_TIMEOUT => 120,
             CURLOPT_FAILONERROR => false,
-            CURLOPT_HTTPHEADER => ['Accept: application/pdf'],
+            CURLOPT_HTTPHEADER => ['Accept: application/pdf, application/zip, application/octet-stream'],
             CURLOPT_USERAGENT => 'ConcursoMestre-ExamImporter/1.0',
             CURLOPT_WRITEFUNCTION => static function ($curl, string $chunk) use (
                 $stream,
@@ -197,7 +206,7 @@ final class GranExamFileMaterializer
                 'mimeType' => $contentType,
                 'size' => $bytes,
                 'sha256' => (string) hash_file('sha256', $temporaryPath),
-            ]);
+            ], $kind);
         } catch (Throwable $exception) {
             @unlink($temporaryPath);
             throw $exception;
@@ -205,7 +214,7 @@ final class GranExamFileMaterializer
     }
 
     /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string} */
-    private function validateDownloadedFile(array $result): array
+    private function validateDownloadedFile(array $result, string $kind): array
     {
         $temporaryPath = (string) ($result['temporaryPath'] ?? '');
         $size = (int) ($result['size'] ?? 0);
@@ -220,16 +229,146 @@ final class GranExamFileMaterializer
         $magic = (string) file_get_contents($temporaryPath, false, null, 0, 5);
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $detectedMime = strtolower((string) $finfo->file($temporaryPath));
-        if ($magic !== '%PDF-' || $detectedMime !== 'application/pdf') {
-            throw new RuntimeException('O arquivo remoto nao e um PDF valido.');
+        if ($magic === '%PDF-' && $detectedMime === 'application/pdf') {
+            return [
+                'temporaryPath' => $temporaryPath,
+                'mimeType' => 'application/pdf',
+                'size' => $size,
+                'sha256' => (string) ($result['sha256'] ?? hash_file('sha256', $temporaryPath)),
+            ];
         }
 
-        return [
-            'temporaryPath' => $temporaryPath,
-            'mimeType' => 'application/pdf',
-            'size' => $size,
-            'sha256' => (string) ($result['sha256'] ?? hash_file('sha256', $temporaryPath)),
-        ];
+        if ($kind === 'gabarito' && str_starts_with($magic, "PK\x03\x04")) {
+            return $this->extractAnswerKeyPdf($temporaryPath);
+        }
+
+        throw new RuntimeException('O arquivo remoto nao e um PDF valido.');
+    }
+
+    /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string} */
+    private function extractAnswerKeyPdf(string $zipPath): array
+    {
+        if (!class_exists(ZipArchive::class)) {
+            throw new RuntimeException('Extensao ZIP obrigatoria para materializar o gabarito oficial.');
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath) !== true) {
+            throw new RuntimeException('O gabarito compactado nao pode ser aberto.');
+        }
+
+        $candidates = [];
+        try {
+            for ($index = 0; $index < $zip->numFiles; $index++) {
+                $entry = $zip->statIndex($index);
+                if (!is_array($entry)) {
+                    continue;
+                }
+                $name = str_replace('\\', '/', trim((string) ($entry['name'] ?? '')));
+                $size = (int) ($entry['size'] ?? 0);
+                $encryptionMethod = (int) ($entry['encryption_method'] ?? 0);
+                if ($encryptionMethod !== 0 || !$this->isSafePdfArchiveEntry($name, $size)) {
+                    continue;
+                }
+                $normalizedName = strtolower(basename($name));
+                $score = 0;
+                if (preg_match('/(?:final|definitiv|oficial)/', $normalizedName) === 1) {
+                    $score += 100;
+                }
+                if (str_contains($normalizedName, 'gabarito')) {
+                    $score += 80;
+                }
+                if (str_contains($normalizedName, 'preliminar')) {
+                    $score -= 20;
+                }
+                if (str_contains($normalizedName, 'recurso')) {
+                    $score -= 100;
+                }
+                $candidates[] = ['index' => $index, 'name' => $name, 'score' => $score];
+            }
+
+            usort(
+                $candidates,
+                static fn (array $left, array $right): int => $right['score'] <=> $left['score']
+            );
+            $selected = $candidates[0] ?? null;
+            if (!is_array($selected)) {
+                throw new RuntimeException('O ZIP do gabarito nao contem um PDF seguro.');
+            }
+
+            $input = $zip->getStream((string) $selected['name']);
+            $temporaryPath = tempnam(sys_get_temp_dir(), 'cm-gran-key-pdf-');
+            $output = $temporaryPath !== false ? fopen($temporaryPath, 'wb') : false;
+            if ($input === false || $temporaryPath === false || $output === false) {
+                if (is_resource($input)) fclose($input);
+                if (is_resource($output)) fclose($output);
+                if (is_string($temporaryPath) && is_file($temporaryPath)) @unlink($temporaryPath);
+                throw new RuntimeException('Nao foi possivel extrair o PDF do gabarito.');
+            }
+
+            $bytes = 0;
+            try {
+                while (!feof($input)) {
+                    $chunk = fread($input, 1_048_576);
+                    if ($chunk === false) {
+                        throw new RuntimeException('Falha durante a leitura do gabarito compactado.');
+                    }
+                    $bytes += strlen($chunk);
+                    if ($bytes > self::MAX_FILE_BYTES) {
+                        throw new RuntimeException('O PDF do gabarito excede o limite de 100 MB.');
+                    }
+                    if ($chunk !== '' && fwrite($output, $chunk) === false) {
+                        throw new RuntimeException('Falha durante a gravacao temporaria do gabarito.');
+                    }
+                }
+            } catch (Throwable $exception) {
+                fclose($input);
+                fclose($output);
+                @unlink($temporaryPath);
+                throw $exception;
+            }
+            fclose($input);
+            fclose($output);
+
+            try {
+                return $this->validateDownloadedFile([
+                    'temporaryPath' => $temporaryPath,
+                    'mimeType' => 'application/pdf',
+                    'size' => $bytes,
+                    'sha256' => (string) hash_file('sha256', $temporaryPath),
+                ], 'gabarito_pdf');
+            } catch (Throwable $exception) {
+                @unlink($temporaryPath);
+                throw $exception;
+            }
+        } finally {
+            $zip->close();
+            @unlink($zipPath);
+        }
+    }
+
+    private function isSafePdfArchiveEntry(string $name, int $size): bool
+    {
+        if ($name === '' || $size < 5 || $size > self::MAX_FILE_BYTES) {
+            return false;
+        }
+        if (
+            str_starts_with($name, '/')
+            || preg_match('/^[a-zA-Z]:\//', $name) === 1
+            || in_array('..', explode('/', $name), true)
+        ) {
+            return false;
+        }
+        return strtolower((string) pathinfo($name, PATHINFO_EXTENSION)) === 'pdf';
+    }
+
+    private function appendDiagnostic(array &$payload, string $diagnostic): void
+    {
+        $import = is_array($payload['import'] ?? null) ? $payload['import'] : [];
+        $diagnostics = is_array($import['diagnostics'] ?? null) ? $import['diagnostics'] : [];
+        $diagnostics[] = $diagnostic;
+        $import['diagnostics'] = array_values(array_unique(array_map('strval', $diagnostics)));
+        $payload['import'] = $import;
     }
 
     /** @return array{storageKey:string,url:string,driver:string,size:int} */

@@ -57,7 +57,19 @@ function handleAdminGranCrawlerRoute(PDO $db): void
                 throw new InvalidArgumentException('A extensao nao retornou manifestos validos.');
             }
             $result = (new AdminGranTaxonomySyncService($db))->compareUpdateManifests(array_values($manifests));
-            Response::success(['taxonomies' => $result], 'Atualizacoes das taxonomias verificadas sem gravar catalogos.');
+            $changedCategories = count(array_filter(
+                $result,
+                static fn (array $status): bool => ($status['updateAvailable'] ?? false) === true
+            ));
+            Response::success([
+                'taxonomies' => $result,
+                'summary' => [
+                    'checkedCatalogs' => count($manifests),
+                    'changedCategories' => $changedCategories,
+                    'currentCategories' => max(0, count($result) - $changedCategories),
+                    'checkedAt' => gmdate('c'),
+                ],
+            ], 'Atualizacoes das taxonomias verificadas sem gravar catalogos.');
         }
 
         if ($action === 'mark_taxonomy_synced') {

@@ -12,6 +12,7 @@
 import type {
   Question,
   QuestionPayload,
+  QuestionSourcePayload,
   QuestionTaxonomyLabel,
   SystemSettings,
 } from '@types';
@@ -85,6 +86,8 @@ export interface ImportedQuestionDraft extends Partial<Question> {
 }
 
 export interface QuestionCreateImportCardParams {
+  tempId?: string;
+  source?: QuestionSourcePayload;
   questionNumber: number;
   statement: string;
   introText: string;

@@ -75,6 +75,110 @@ granExamFileAssert(
     'URL temporaria remota nao deve ser persistida no registro canonico.'
 );
 
+granExamFileAssert(class_exists(ZipArchive::class), 'Extensao ZIP deve estar disponivel no runtime.');
+$zipFixture = tempnam(sys_get_temp_dir(), 'cm-gran-key-zip-');
+if ($zipFixture === false) {
+    throw new RuntimeException('Nao foi possivel preparar o ZIP de gabarito.');
+}
+$zip = new ZipArchive();
+granExamFileAssert(
+    $zip->open($zipFixture, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true,
+    'Nao foi possivel criar o ZIP de gabarito.'
+);
+$zip->addFromString('preliminar.pdf', "%PDF-1.4\nPRELIMINAR\n%%EOF\n");
+$zip->addFromString('final.pdf', "%PDF-1.4\nFINAL-GABARITO\n%%EOF\n");
+$zip->addFromString('recursos.pdf', "%PDF-1.4\nRECURSOS\n%%EOF\n");
+$zip->close();
+
+$zipMaterializer = new GranExamFileMaterializer(
+    static function (string $url, int $maxBytes) use ($zipFixture): array {
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'cm-gran-key-copy-');
+        if ($temporaryPath === false || !copy($zipFixture, $temporaryPath)) {
+            throw new RuntimeException('Falha ao copiar ZIP de gabarito.');
+        }
+        return [
+            'temporaryPath' => $temporaryPath,
+            'mimeType' => 'application/zip',
+            'size' => (int) filesize($temporaryPath),
+            'sha256' => (string) hash_file('sha256', $temporaryPath),
+        ];
+    },
+    static function (string $temporaryPath, string $storageKey, string $mimeType) use ($storageRoot): array {
+        $target = $storageRoot . '/' . str_replace('/', '-', $storageKey);
+        if (!copy($temporaryPath, $target)) {
+            throw new RuntimeException('Falha ao gravar gabarito extraido.');
+        }
+        return [
+            'storageKey' => $storageKey,
+            'url' => '/uploads/' . $storageKey,
+            'driver' => 'local',
+            'size' => (int) filesize($target),
+        ];
+    }
+);
+$zipPayload = $zipMaterializer->materialize([
+    'exam' => [
+        'externalId' => '251243',
+        'files' => [[
+            'kind' => 'gabarito',
+            'name' => 'Gabarito oficial',
+            'sourceUrl' => 'https://arquivos.infra-questoes.grancursosonline.com.br/gabarito/G_251243.zip',
+        ]],
+    ],
+    'questions' => [['tempId' => 'q_1']],
+]);
+$zipFile = $zipPayload['exam']['files'][0] ?? [];
+$zipStoredPath = $storageRoot . '/' . str_replace('/', '-', (string) ($zipFile['storageKey'] ?? ''));
+granExamFileAssert(
+    ($zipFile['mimeType'] ?? null) === 'application/pdf'
+    && is_file($zipStoredPath)
+    && str_contains((string) file_get_contents($zipStoredPath), 'FINAL-GABARITO'),
+    'ZIP do gabarito deve materializar o PDF definitivo, nao o preliminar ou recursos.'
+);
+
+$invalidRemoteFixture = tempnam(sys_get_temp_dir(), 'cm-gran-invalid-');
+if ($invalidRemoteFixture === false) {
+    throw new RuntimeException('Nao foi possivel preparar fixture invalida.');
+}
+file_put_contents($invalidRemoteFixture, '<html>arquivo indisponivel</html>');
+$resilientMaterializer = new GranExamFileMaterializer(
+    static function (string $url, int $maxBytes) use ($invalidRemoteFixture): array {
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'cm-gran-invalid-copy-');
+        if ($temporaryPath === false || !copy($invalidRemoteFixture, $temporaryPath)) {
+            throw new RuntimeException('Falha ao copiar fixture invalida.');
+        }
+        return [
+            'temporaryPath' => $temporaryPath,
+            'mimeType' => 'text/html',
+            'size' => (int) filesize($temporaryPath),
+            'sha256' => (string) hash_file('sha256', $temporaryPath),
+        ];
+    },
+    static function (): array {
+        throw new RuntimeException('Storage nao deve ser chamado para arquivo invalido.');
+    }
+);
+$resilientPayload = $resilientMaterializer->materialize([
+    'import' => ['diagnostics' => []],
+    'exam' => [
+        'externalId' => '251243',
+        'files' => [[
+            'kind' => 'prova',
+            'sourceUrl' => 'https://arquivos.infra-questoes.grancursosonline.com.br/prova/indisponivel.pdf',
+        ]],
+    ],
+    'questions' => [['tempId' => 'q_1']],
+]);
+granExamFileAssert(
+    count($resilientPayload['questions'] ?? []) === 1
+    && ($resilientPayload['exam']['files'] ?? []) === []
+    && str_contains(
+        implode(' ', $resilientPayload['import']['diagnostics'] ?? []),
+        'Arquivo oficial prova nao materializado'
+    ),
+    'Arquivo oficial invalido deve gerar diagnostico sem bloquear as questoes.'
+);
+
 $unsafeRejected = false;
 try {
     $materializer->materialize([
@@ -93,6 +197,8 @@ granExamFileAssert($unsafeRejected, 'Host arbitrario deve ser rejeitado antes do
 granExamFileAssert($downloadCount === 1, 'URL rejeitada nao pode acionar o downloader.');
 
 @unlink($fixture);
+@unlink($zipFixture);
+@unlink($invalidRemoteFixture);
 foreach (glob($storageRoot . '/*') ?: [] as $storedFixture) {
     @unlink($storedFixture);
 }

@@ -200,6 +200,13 @@ type TaxonomySyncSummary = {
   resolved: number;
 };
 
+type TaxonomyCheckSummary = {
+  checkedCatalogs: number;
+  changedCategories: number;
+  currentCategories: number;
+  checkedAt: string;
+};
+
 const statusLabel: Record<string, string> = {
   pending: 'Na fila',
   processing: 'Processando',
@@ -300,6 +307,7 @@ const AdminGranCrawlerSection = ({
   const [taxonomyStatuses, setTaxonomyStatuses] = React.useState<Record<string, GranTaxonomyStatus>>({});
   const [taxonomyProgress, setTaxonomyProgress] = React.useState('');
   const [taxonomySummary, setTaxonomySummary] = React.useState<TaxonomySyncSummary | null>(null);
+  const [taxonomyCheckSummary, setTaxonomyCheckSummary] = React.useState<TaxonomyCheckSummary | null>(null);
   const [error, setError] = React.useState('');
   const [isPageVisible, setIsPageVisible] = React.useState(
     () => typeof document === 'undefined' || document.visibilityState === 'visible',
@@ -551,10 +559,24 @@ const AdminGranCrawlerSection = ({
         action: 'check_taxonomy_updates',
         manifests: remote.manifests,
       });
-      const data = readApiData<{ taxonomies?: Record<string, GranTaxonomyStatus> }>(response);
+      const data = readApiData<{
+        taxonomies?: Record<string, GranTaxonomyStatus>;
+        summary?: TaxonomyCheckSummary;
+      }>(response);
       const statuses = data?.taxonomies && typeof data.taxonomies === 'object' ? data.taxonomies : {};
+      const changedCategories = data?.summary?.changedCategories
+        ?? Object.values(statuses).filter((status) => status.updateAvailable === true).length;
+      const checkedCatalogs = data?.summary?.checkedCatalogs ?? remote.requestCount;
+      const currentCategories = data?.summary?.currentCategories
+        ?? Math.max(0, Object.keys(statuses).length - changedCategories);
+      const summary = {
+        checkedCatalogs,
+        changedCategories,
+        currentCategories,
+        checkedAt: data?.summary?.checkedAt ?? new Date().toISOString(),
+      };
       setTaxonomyStatuses(statuses);
-      setTaxonomyProgress(`${remote.requestCount} catalogos verificados. Nenhum registro foi alterado.`);
+      setTaxonomyCheckSummary(summary);
       return statuses;
     } catch (requestError) {
       if (showFailure) {
@@ -879,6 +901,20 @@ const AdminGranCrawlerSection = ({
               </button>
             </div>
           </div>
+          {taxonomyCheckSummary ? (
+            <p
+              className="mt-3 rounded-md border border-indigo-200 bg-white/70 px-3 py-2 text-xs font-semibold text-indigo-700 dark:border-indigo-900 dark:bg-slate-950/30 dark:text-indigo-300"
+              data-testid="gran-taxonomy-check-result"
+            >
+              {taxonomyCheckSummary.checkedCatalogs} catalogos verificados.
+              {' '}
+              {taxonomyCheckSummary.changedCategories > 0
+                ? `${taxonomyCheckSummary.changedCategories} categoria(s) possuem atualizacoes e ${taxonomyCheckSummary.currentCategories} estao em dia.`
+                : 'Todas as categorias estao atualizadas.'}
+              {' '}
+              Verificado em {new Date(taxonomyCheckSummary.checkedAt).toLocaleString('pt-BR')}.
+            </p>
+          ) : null}
           {taxonomyExpanded ? <>
           {taxonomyProgress ? <p className="mt-3 text-xs font-semibold text-indigo-700 dark:text-indigo-300">{taxonomyProgress}</p> : null}
           {collectorState !== 'ready' ? (
