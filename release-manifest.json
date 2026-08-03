@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "product": "ConcursoMestre",
   "version": "1.0.0",
-  "revision": "1.0.0-crawler-review-batches",
-  "commit": "a458aa78b0603a184b94f4181db4f6ea79bccfa4",
+  "revision": "1.0.0-crawler-history-pagination",
+  "commit": "39e9ca913d257ba698ccdb95fcf76c965975c52e",
   "gitDirty": false,
-  "generatedAt": "2026-08-03T02:09:47.297Z",
+  "generatedAt": "2026-08-03T20:07:18.665Z",
   "runtime": {
     "node": "v20.12.2",
     "nodeMinimum": "20.19.0",
