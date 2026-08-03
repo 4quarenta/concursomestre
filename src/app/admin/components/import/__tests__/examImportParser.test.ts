@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { __examImportParserTestApi } from '../useAdminImportWorkflow';
+import { buildQuestionPayloadImportCard } from '../adminImportWorkflowCore';
 
 vi.mock('@services/questions', () => ({
   aiService: {},
@@ -16,7 +17,6 @@ const {
   auditQuestionCoverage,
   buildAdaptiveExamParserProfile,
   buildExamTitle,
-  buildQuestionPayloadImportCard,
   buildImportExamTaxonomyMetadata,
   buildPageContentInventory,
   createMechanicalExtractionFromText,

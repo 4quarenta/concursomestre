@@ -16,6 +16,7 @@ import type {
   QuestionFiltersPayload,
   QuestionFilterValuePayload,
   QuestionPayload,
+  QuestionSourcePayload,
   QuestionTaxonomyLabel,
   SystemSettings,
 } from '@types';
@@ -3361,6 +3362,27 @@ export const buildExternalAiQuestionTaxonomies = (taxonomy: {
 
   return [subject, topic, specificSubject].filter(Boolean) as unknown as Question['assuntos'];
 };
+
+export const readExternalQuestionSourcePayload = (
+  sourceRecord: Record<string, unknown>,
+  questionNumber: number,
+  contextTempId: string,
+  alreadyPublished: boolean,
+): QuestionSourcePayload => ({
+  origin: readLooseText(sourceRecord, ['origin', 'origem']) || 'exam',
+  examId: readLooseField(sourceRecord, ['examId', 'exam_id', 'provaId', 'prova_id']) as number | string | null,
+  questionNumber,
+  contextTempId: contextTempId || null,
+  questionGroupId: readLooseField(sourceRecord, ['questionGroupId', 'question_group_id']) as number | string | null,
+  sourcePage: readLooseField(sourceRecord, ['sourcePage', 'source_page', 'page', 'pagina']) as number | string | null,
+  provider: readLooseText(sourceRecord, ['provider', 'sourceProvider', 'source_provider']) || null,
+  externalId: readLooseField(sourceRecord, ['externalId', 'external_id', 'sourceExternalId', 'source_external_id']) as number | string | null,
+  externalExamId: readLooseField(sourceRecord, ['externalExamId', 'external_exam_id']) as number | string | null,
+  sourceExamKey: readLooseText(sourceRecord, ['sourceExamKey', 'source_exam_key']) || null,
+  localQuestionId: readLooseField(sourceRecord, ['localQuestionId', 'local_question_id']) as number | string | null,
+  alreadyPublished,
+  publicationStatus: readLooseText(sourceRecord, ['publicationStatus', 'publication_status']) || null,
+});
 
 export const buildQuestionPayloadImportCard = ({
   tempId,
