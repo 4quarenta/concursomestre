@@ -94,6 +94,12 @@ cm_run_in "$release_dir" npm run build
 chgrp -R "$CM_APP_GROUP" "$release_dir"
 chmod -R go-w "$release_dir"
 find "$release_dir" -type d -exec chmod g+rx {} +
+# O Next materializa ISR e fetch cache em runtime. O build roda como root,
+# portanto o grupo da aplicacao precisa manter escrita apenas nesse artefato.
+if [[ -d "$release_dir/.next" ]]; then
+  chmod -R g+w "$release_dir/.next"
+  find "$release_dir/.next" -type d -exec chmod g+s {} +
+fi
 cm_run php "$release_dir/backend/scripts/migrations/run_schema_migrations.php" --dry-run
 
 if cm_is_true "$APPLY_MIGRATIONS"; then
