@@ -231,12 +231,8 @@ $imageOnlyResult = $service->mapBrowserResponse([
                 'id' => 67813,
                 'numero_questao' => 1,
                 'hasImage' => true,
-                'enunciado' => [
-                    'imagem' => [
-                        'url' => 'https://arquivos.infra-questoes.grancursosonline.com.br/questoes/67813/enunciado.png',
-                        'alt' => 'Imagem associada para resolucao da questao.',
-                    ],
-                ],
+                'enunciado_clean' => '',
+                'enunciado' => '<IMG src=https://arquivos.infra-questoes.grancursosonline.com.br/imagens_provas/2563/imagemp.bmp.gif>',
                 'itens' => [
                     ['id' => 678131, 'rotulo' => 'A', 'corpo' => 'somente 1 e 2'],
                     ['id' => 678132, 'rotulo' => 'B', 'corpo' => 'somente 1 e 3'],
@@ -260,8 +256,10 @@ granCrawlerAssert(
     str_contains((string) ($imageOnlyQuestion['content']['statement'] ?? ''), '[image:')
     && ($imageOnlyQuestion['content']['statementClean'] ?? null) === ''
     && count($imageOnlyQuestion['assets'] ?? []) === 1
-    && ($imageOnlyQuestion['assets'][0]['usage'] ?? null) === 'statement',
-    'Questao com enunciado exclusivamente visual deve preservar a imagem como statement canonico.'
+    && ($imageOnlyQuestion['assets'][0]['usage'] ?? null) === 'statement'
+    && ($imageOnlyQuestion['assets'][0]['url'] ?? null)
+        === 'https://arquivos.infra-questoes.grancursosonline.com.br/imagens_provas/2563/imagemp.bmp.gif',
+    'Questao visual com IMG maiusculo e src sem aspas deve preservar imagem e marcador canonicos.'
 );
 granCrawlerAssert(
     !in_array('enunciado_ausente', $imageOnlyQuestion['review']['reasons'] ?? [], true),

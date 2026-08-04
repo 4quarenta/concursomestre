@@ -2295,9 +2295,15 @@ final class AdminGranCrawlerService
     private function extractInlineAssets(string $html, string $prefix, string $usage, ?int $sourcePage): array
     {
         $assets = [];
-        if (preg_match_all('/<img\b[^>]*\bsrc\s*=\s*(["\'])(.*?)\1[^>]*>/i', $html, $matches, PREG_SET_ORDER)) {
+        if (preg_match_all(
+            '/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))[^>]*>/i',
+            $html,
+            $matches,
+            PREG_SET_ORDER
+        )) {
             foreach ($matches as $match) {
-                $url = $this->resolveAssetUrl($match[2] ?? '');
+                $source = $this->readText($match[1] ?? null, $match[2] ?? null, $match[3] ?? null);
+                $url = $this->resolveAssetUrl($source);
                 if ($url === '') {
                     continue;
                 }
