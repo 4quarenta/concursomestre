@@ -62,7 +62,10 @@ $remotePayload = [
             ]],
             'grupo_questao' => [
                 'id' => 77,
-                'enunciado' => 'Texto para as questoes 12 e 13.',
+                'enunciado' => [
+                    'texto' => 'Texto para as questoes 12 e 13.',
+                    'imagem' => '/media/contexto-cabecalho.png',
+                ],
                 'texto' => '<p>Contexto compartilhado. <img src="/media/contexto.png"></p>',
             ],
         ], [
@@ -207,7 +210,7 @@ granCrawlerAssert(
     && str_contains($payloads[0]['contexts'][0]['body'], '[image:')
     && str_contains($payloads[0]['questions'][0]['alternatives'][1]['text'], '[image:')
     && count($payloads[0]['questions'][0]['assets']) === 2
-    && count($payloads[0]['contexts'][0]['assets']) === 1
+    && count($payloads[0]['contexts'][0]['assets']) === 2
     && count($payloads[0]['questions'][0]['alternatives'][1]['assets']) === 1,
     'Imagens devem virar assets canonicos e marcadores no ponto correto do texto.'
 );

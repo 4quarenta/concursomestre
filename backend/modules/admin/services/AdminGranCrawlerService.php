@@ -886,9 +886,13 @@ final class AdminGranCrawlerService
             $contextClean = '';
 
             if ($group !== null) {
+                $rawGroupContents = [
+                    $group['enunciado'] ?? $group['statement'] ?? null,
+                    $group['texto'] ?? $group['body'] ?? $group['text'] ?? null,
+                ];
                 $groupBody = $this->joinDistinctHtml([
-                    $group['enunciado'] ?? $group['statement'] ?? '',
-                    $group['texto'] ?? $group['body'] ?? $group['text'] ?? '',
+                    $this->readRichTextValue($rawGroupContents[0]),
+                    $this->readRichTextValue($rawGroupContents[1]),
                 ]);
                 $sanitizedGroupBody = $this->sanitizeRichText($groupBody);
                 $inlineContextAssets = $this->extractInlineAssets(
@@ -897,12 +901,26 @@ final class AdminGranCrawlerService
                     'context',
                     $sourcePage
                 );
-                $explicitContextAssets = $this->extractAssets(
-                    $group,
-                    'gran_ctx_preview',
-                    'context',
-                    $sourcePage
-                );
+                $explicitContextAssets = $this->deduplicateAssets(array_merge(
+                    $this->extractAssets(
+                        $group,
+                        'gran_ctx_preview',
+                        'context',
+                        $sourcePage
+                    ),
+                    $this->extractStructuredContentAssets(
+                        $rawGroupContents[0],
+                        'gran_ctx_preview_statement',
+                        'context',
+                        $sourcePage
+                    ),
+                    $this->extractStructuredContentAssets(
+                        $rawGroupContents[1],
+                        'gran_ctx_preview_body',
+                        'context',
+                        $sourcePage
+                    )
+                ));
                 if ($this->cleanText($groupBody) !== '' || $inlineContextAssets !== [] || $explicitContextAssets !== []) {
                     $groupIdentity = $this->readText(
                         $group['id'] ?? null,
@@ -926,7 +944,19 @@ final class AdminGranCrawlerService
                         );
                         $contextAssets = $this->deduplicateAssets(array_merge(
                             $inlineContextAssets,
-                            $this->extractAssets($group, $contextTempId, 'context', $sourcePage)
+                            $this->extractAssets($group, $contextTempId, 'context', $sourcePage),
+                            $this->extractStructuredContentAssets(
+                                $rawGroupContents[0],
+                                $contextTempId . '_statement',
+                                'context',
+                                $sourcePage
+                            ),
+                            $this->extractStructuredContentAssets(
+                                $rawGroupContents[1],
+                                $contextTempId . '_body',
+                                'context',
+                                $sourcePage
+                            )
                         ));
                         $contexts[] = [
                             'tempId' => $contextTempId,
