@@ -537,7 +537,11 @@ class QuestionsRepository
         }
         $normalized = preg_replace('/[\r\n\t]+/', ' ', $normalized) ?? '';
         $normalized = preg_replace('/\s{2,}/', ' ', $normalized) ?? '';
-        $normalized = preg_replace('/\b[A-Z]:[\\\/][^ ]+|\/(?:var|home|root|workspace|tmp)\/[^ ]+/i', '[path]', $normalized) ?? '';
+        $normalized = preg_replace(
+            '~\b[A-Z]:[\\\\/][^\s]+|/(?:var|home|root|workspace|tmp)/[^\s]+~i',
+            '[path]',
+            $normalized
+        ) ?? '';
         $normalized = preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', '[email]', $normalized) ?? '';
         $normalized = preg_replace('/https?:\/\/\S+/i', '[url]', $normalized) ?? '';
         return substr($normalized, 0, $maxLength);
@@ -3286,5 +3290,4 @@ class QuestionsRepository
         return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
     }
 }
-
 

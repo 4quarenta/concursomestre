@@ -847,9 +847,12 @@ class QuestionsService
                 $contextData['source_provider'] = $this->normalizeImportedSourceProvider(
                     $contextSource['provider'] ?? $context['sourceProvider'] ?? $context['source_provider'] ?? null
                 );
-                $contextData['source_external_id'] = $this->normalizeImportedSourceExternalId(
+                $rawContextExternalId = $this->normalizeImportedSourceExternalId(
                     $contextSource['externalId'] ?? $context['sourceExternalId'] ?? $context['source_external_id'] ?? null
                 );
+                $contextData['source_external_id'] = $contextData['source_provider'] !== ''
+                    ? $this->scopeImportedContextExternalId($examId, $rawContextExternalId)
+                    : '';
                 $contextData['created_by_user_id'] = $authenticatedUserId;
                 $contextData['updated_by_user_id'] = $authenticatedUserId;
                 $groupIdByTempId[$tempId] = $this->repository->saveQuestionGroup($contextData);
@@ -860,6 +863,13 @@ class QuestionsService
                 $canonicalContext['tempId'] = 'prova_' . $examId . '_' . $tempId;
                 $canonicalContext['body'] = $contextData['texto'];
                 $canonicalContext['assets'] = $contextData['assets'];
+                if ($contextData['source_provider'] !== '' && $contextData['source_external_id'] !== '') {
+                    $canonicalContext['source'] = [
+                        'provider' => $contextData['source_provider'],
+                        'externalId' => $contextData['source_external_id'],
+                        'originalExternalId' => $rawContextExternalId !== '' ? $rawContextExternalId : null,
+                    ];
+                }
                 $canonicalContextIdByTempId[$tempId] = $this->canonicalRepository->saveContext($canonicalContext, $authenticatedUserId);
             }
 
@@ -897,6 +907,11 @@ class QuestionsService
                     ?? $question['contextKey']
                     ?? ''
                 ));
+                if ($contextTempId !== '' && !isset($groupIdByTempId[$contextTempId])) {
+                    throw new InvalidArgumentException(
+                        'A questao referencia um contexto que nao existe neste lote: ' . $contextTempId . '.'
+                    );
+                }
                 if ($contextTempId !== '' && isset($groupIdByTempId[$contextTempId])) {
                     $question['grupoQuestaoId'] = $groupIdByTempId[$contextTempId];
                     $question['grupo_questao_id'] = $groupIdByTempId[$contextTempId];
@@ -2844,7 +2859,11 @@ class QuestionsService
         $message = trim(strip_tags($error->getMessage()));
         $message = preg_replace('/[\r\n\t]+/', ' ', $message) ?? '';
         $message = preg_replace('/\s{2,}/', ' ', $message) ?? '';
-        $message = preg_replace('/\b[A-Z]:[\\\/][^ ]+|\/(?:var|home|root|workspace|tmp)\/[^ ]+/i', '[path]', $message) ?? '';
+        $message = preg_replace(
+            '~\b[A-Z]:[\\\\/][^\s]+|/(?:var|home|root|workspace|tmp)/[^\s]+~i',
+            '[path]',
+            $message
+        ) ?? '';
         $message = preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', '[email]', $message) ?? '';
         $message = preg_replace('/https?:\/\/\S+/i', '[url]', $message) ?? '';
 
@@ -3348,10 +3367,31 @@ class QuestionsService
                 : $structuredText;
         }
 
-        $plainText = trim((string) ($context['text'] ?? $context['texto'] ?? ''));
+        // `body` e o campo canonico de contexts no contrato question-import.v2.
+        // Os demais nomes permanecem apenas para ler lotes antigos ja enfileirados.
+        $plainText = trim((string) (
+            $context['body']
+            ?? $context['text']
+            ?? $context['texto']
+            ?? ''
+        ));
         return str_contains($plainText, 'data:image/')
             ? $this->persistInlineQuestionAssetImages($plainText)
             : $plainText;
+    }
+
+    private function scopeImportedContextExternalId(int $examId, string $externalId): string
+    {
+        if ($examId <= 0 || $externalId === '') {
+            return '';
+        }
+
+        $scoped = 'exam-' . $examId . ':context:' . $externalId;
+        if (strlen($scoped) <= 120) {
+            return $scoped;
+        }
+
+        return 'exam-' . $examId . ':context-sha256:' . hash('sha256', $externalId);
     }
 
     private function persistQuestionRichTextImages(array $payload): array
