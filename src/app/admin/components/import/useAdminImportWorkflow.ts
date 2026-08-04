@@ -1110,12 +1110,8 @@ export const useAdminImportWorkflow = ({
 
     return values.join(':');
   };
-
   const getSupportImageSignature = (image: Partial<ImportedQuestionImageDraft>) => {
-    const url = String(image.url || '').trim();
-    if (url) {
-      return `url:${url}`;
-    }
+    if (String(image.url || '').trim()) return `url:${String(image.url || '').trim()}`;
     const imageData = String(image.imageData || '').trim();
     if (imageData) {
       return `image:${imageData}`;
@@ -1138,10 +1134,8 @@ export const useAdminImportWorkflow = ({
 
     return '';
   };
-
   const supportImageHasUsefulPayload = (image: Partial<ImportedQuestionImageDraft>) => (
-    Boolean(String(image.url || '').trim())
-    || Boolean(String(image.imageData || '').trim())
+    Boolean(String(image.url || '').trim()) || Boolean(String(image.imageData || '').trim())
     || Boolean(String(image.pageImageData || '').trim() && image.figureBox)
     || Boolean(image.figureBox)
     || normalizeVisualTextSignature(image.description).length >= 24
@@ -5222,9 +5216,7 @@ export const useAdminImportWorkflow = ({
             description: readLooseText(imageRecord, ['description', 'descricao', 'text', 'texto']),
             imageData: readExternalImageData(imageRecord),
             url: readLooseText(imageRecord, ['url', 'src']),
-            usage: (['statement', 'support', 'alternative', 'context', 'reference'].includes(
-              readLooseText(imageRecord, ['usage', 'usage_type']),
-            ) ? readLooseText(imageRecord, ['usage', 'usage_type']) : 'support') as ImportedQuestionImageDraft['usage'],
+            usage: (['statement', 'support', 'alternative', 'context', 'reference'].includes(readLooseText(imageRecord, ['usage', 'usage_type'])) ? readLooseText(imageRecord, ['usage', 'usage_type']) : 'support') as ImportedQuestionImageDraft['usage'],
             pageImageData: readLooseText(imageRecord, ['pageImageData', 'page_image_data', 'pageBase64']),
             figureBox: normalizeExtractionFigureBox(readLooseField(imageRecord, ['figureBox', 'box', 'bbox']) as FigureBox),
             page: Number(readLooseField(imageRecord, ['page', 'pagina']) || 0) || undefined,
