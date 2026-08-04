@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { CheckCircle2, ListChecks, Loader2, X } from 'lucide-react';
+import { CheckCircle2, ListChecks, Loader2, RotateCcw, X } from 'lucide-react';
 import type { Material, Prova, Question, Ranking, SystemSettings, UserProfile } from '@types';
 import { apiClient } from '@services/api';
 import type { ImportedQuestionBatchPayload } from '@services/questions';
@@ -28,7 +28,13 @@ import AdminGranCrawlerReviewBatch, {
   type GranQuestionIndexAvailability,
   type GranReviewBatchPublisher,
 } from '../import/AdminGranCrawlerReviewBatch';
-import { getGranReviewQueueOffsets } from '../import/granCrawlerReviewUtils';
+import {
+  countGranReviewStatuses,
+  filterGranReviewPayloads,
+  getGranReviewQuestionSourceKey,
+  getGranReviewQueueOffsets,
+  type GranReviewDisplayStatus,
+} from '../import/granCrawlerReviewUtils';
 import AdminLegalCommentarySection from '../legal-commentary/AdminLegalCommentarySection';
 import AdminQuestionGroupsSection from '../questions/AdminQuestionGroupsSection';
 import AdminQuestionsSection from '../questions/AdminQuestionsSection';
@@ -85,6 +91,7 @@ const AdminGranCrawlerReviewQueue = ({
   const [selectableQuestionIndexesByPayload, setSelectableQuestionIndexesByPayload] = React.useState<Record<string, number[]>>({});
   const [publishableQuestionIndexesByPayload, setPublishableQuestionIndexesByPayload] = React.useState<Record<string, number[]>>({});
   const [isPublishingSelected, setIsPublishingSelected] = React.useState(false);
+  const [statusFilter, setStatusFilter] = React.useState<GranReviewDisplayStatus | 'all'>('review');
   const publishersRef = React.useRef(new Map<string, GranReviewBatchPublisher>());
   const queueStatusByQuestionKey = React.useMemo(() => {
     const statuses: Record<string, 'queued' | 'processing' | 'published' | 'failed'> = {};
@@ -95,6 +102,14 @@ const AdminGranCrawlerReviewQueue = ({
     });
     return statuses;
   }, [publicationBatches]);
+  const statusCounts = React.useMemo(
+    () => countGranReviewStatuses(payloads, queueStatusByQuestionKey),
+    [payloads, queueStatusByQuestionKey],
+  );
+  const filteredPayloads = React.useMemo(
+    () => filterGranReviewPayloads(payloads, statusFilter, queueStatusByQuestionKey),
+    [payloads, queueStatusByQuestionKey, statusFilter],
+  );
   const selectedSelectableIndexesByPayload = React.useMemo(() => Object.fromEntries(
     Object.entries(selectedQuestionIndexesByPayload).map(([payloadKey, indexes]) => {
       const selectableIndexes = new Set(selectableQuestionIndexesByPayload[payloadKey] || []);
@@ -107,10 +122,7 @@ const AdminGranCrawlerReviewQueue = ({
       return [payloadKey, indexes.filter((index) => publishableIndexes.has(index))];
     }),
   ) as Record<string, number[]>, [publishableQuestionIndexesByPayload, selectedSelectableIndexesByPayload]);
-  const selectedPayloadKeys = Object.entries(selectedReadyIndexesByPayload)
-    .filter(([, indexes]) => indexes.length > 0)
-    .map(([payloadKey]) => payloadKey);
-  const selectedReadyQuestionCount = selectedPayloadKeys.reduce(
+  const selectedReadyQuestionCount = Object.keys(selectedReadyIndexesByPayload).reduce(
     (count, payloadKey) => count + (selectedReadyIndexesByPayload[payloadKey]?.length || 0),
     0,
   );
@@ -181,16 +193,23 @@ const AdminGranCrawlerReviewQueue = ({
         ),
     );
   }, [areAllSelectableQuestionsSelected, selectableQuestionIndexesByPayload]);
-  const handlePublishSelected = async () => {
-    if (isPublishingSelected || selectedReadyQuestionCount === 0) return;
+  const enqueueQuestionIndexes = async (
+    requestedIndexesByPayload: Record<string, number[]>,
+    requestedQuestionCount: number,
+    retryFailed = false,
+  ) => {
+    if (isPublishingSelected || requestedQuestionCount === 0) return;
 
     setIsPublishingSelected(true);
     try {
       const batches: Array<{ clientKey: string; payload: ImportedQuestionBatchPayload }> = [];
       const preparationErrors: string[] = [];
-      for (const payloadKey of selectedPayloadKeys) {
+      const requestedPayloadKeys = Object.entries(requestedIndexesByPayload)
+        .filter(([, indexes]) => indexes.length > 0)
+        .map(([payloadKey]) => payloadKey);
+      for (const payloadKey of requestedPayloadKeys) {
         const handler = publishersRef.current.get(payloadKey);
-        const indexes = selectedReadyIndexesByPayload[payloadKey] || [];
+        const indexes = requestedIndexesByPayload[payloadKey] || [];
         if (!handler || indexes.length === 0) continue;
 
         const prepared = handler.prepare(indexes);
@@ -222,8 +241,10 @@ const AdminGranCrawlerReviewQueue = ({
       setSelectedQuestionIndexesByPayload({});
       onPublicationQueued();
       addToast(
-        `${body.data?.questionCount || selectedReadyQuestionCount} questão(ões) pronta(s) foram enviadas em um lote assíncrono${body.data?.jobCount ? ` com ${body.data.jobCount} job(s)` : ''}${selectedQuestionCount > selectedReadyQuestionCount ? `; ${selectedQuestionCount - selectedReadyQuestionCount} item(ns) incompleto(s) permaneceram na revisão.` : '.'}`,
-        preparationErrors.length > 0 || selectedQuestionCount > selectedReadyQuestionCount ? 'warning' : 'success',
+        retryFailed
+          ? `${body.data?.questionCount || requestedQuestionCount} questão(ões) com falha foram reenviadas em um lote assíncrono.`
+          : `${body.data?.questionCount || requestedQuestionCount} questão(ões) pronta(s) foram enviadas em um lote assíncrono${body.data?.jobCount ? ` com ${body.data.jobCount} job(s)` : ''}${selectedQuestionCount > requestedQuestionCount ? `; ${selectedQuestionCount - requestedQuestionCount} item(ns) incompleto(s) permaneceram na revisão.` : '.'}`,
+        preparationErrors.length > 0 || (!retryFailed && selectedQuestionCount > requestedQuestionCount) ? 'warning' : 'success',
       );
     } catch (error) {
       addToast(error instanceof Error ? error.message : 'Não foi possível publicar as questões selecionadas.', 'error');
@@ -231,6 +252,10 @@ const AdminGranCrawlerReviewQueue = ({
       setIsPublishingSelected(false);
     }
   };
+  const handlePublishSelected = () => enqueueQuestionIndexes(
+    selectedReadyIndexesByPayload,
+    selectedReadyQuestionCount,
+  );
   const handlePublishQuestion = React.useCallback(async (payloadKey: string, index: number) => {
     if (isPublishingSelected) return;
     const handler = publishersRef.current.get(payloadKey);
@@ -265,10 +290,41 @@ const AdminGranCrawlerReviewQueue = ({
     }
   }, [addToast, isPublishingSelected, onPublicationQueued]);
 
-  const reviewQueueOffsets = React.useMemo(() => getGranReviewQueueOffsets(payloads), [payloads]);
+  const retryableFailedQuestionCount = statusFilter === 'failed'
+    ? Object.values(publishableQuestionIndexesByPayload).reduce((count, indexes) => count + indexes.length, 0)
+    : 0;
+  const reviewQueueOffsets = React.useMemo(() => getGranReviewQueueOffsets(filteredPayloads), [filteredPayloads]);
+  const statusOptions: Array<{ value: GranReviewDisplayStatus | 'all'; label: string; count: number }> = [
+    { value: 'review', label: 'Revisar', count: statusCounts.review },
+    { value: 'failed', label: 'Falhou', count: statusCounts.failed },
+    { value: 'queued', label: 'Na fila', count: statusCounts.queued },
+    { value: 'processing', label: 'Processando', count: statusCounts.processing },
+    { value: 'published', label: 'Publicado', count: statusCounts.published },
+    { value: 'all', label: 'Todos', count: payloads.reduce((total, payload) => total + payload.questions.length, 0) },
+  ];
 
   return (
     <div className="space-y-4" aria-label="Fila unificada de revisão do Gran">
+      <div className="flex flex-wrap items-center gap-2" aria-label="Filtrar questões por status">
+        {statusOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => {
+              setStatusFilter(option.value);
+              setSelectedQuestionIndexesByPayload({});
+            }}
+            className={`inline-flex min-h-9 items-center gap-2 rounded-sm border px-3 text-xs font-bold transition-colors ${statusFilter === option.value
+              ? 'border-sky-600 bg-sky-600 text-white'
+              : 'border-slate-200 bg-white text-slate-600 hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}
+          >
+            {option.label}
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${statusFilter === option.value ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
+              {option.count}
+            </span>
+          </button>
+        ))}
+      </div>
       <div className="sticky top-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-sm border border-sky-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-sky-900/50 dark:bg-slate-950/95">
         <div>
           <p className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">Revisão unificada</p>
@@ -281,6 +337,22 @@ const AdminGranCrawlerReviewQueue = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {statusFilter === 'failed' ? (
+            <button
+              type="button"
+              onClick={() => void enqueueQuestionIndexes(
+                publishableQuestionIndexesByPayload,
+                retryableFailedQuestionCount,
+                true,
+              )}
+              disabled={retryableFailedQuestionCount === 0 || isPublishingSelected}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-sm border border-amber-300 bg-amber-50 px-4 text-xs font-black uppercase tracking-wide text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+              title="Reenviar somente as questões com falha que estão completas"
+            >
+              {isPublishingSelected ? <Loader2 className="animate-spin" size={15} /> : <RotateCcw size={15} />}
+              Tentar falhas novamente ({retryableFailedQuestionCount})
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleToggleAllSelectableQuestions}
@@ -303,13 +375,16 @@ const AdminGranCrawlerReviewQueue = ({
           </button>
         </div>
       </div>
-      {payloads.map((payload, payloadIndex) => {
+      {filteredPayloads.length === 0 ? (
+        <div className="rounded-sm border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+          Nenhuma questão com este status.
+        </div>
+      ) : null}
+      {filteredPayloads.map((payload, payloadIndex) => {
         const payloadKey = getGranPayloadKey(payload);
         const reviewQuestionQueueStatuses = Object.fromEntries(
           payload.questions.map((question, index) => {
-            const externalId = String(question.source?.externalId || '').trim();
-            const provider = String(question.source?.provider || 'gran').trim() || 'gran';
-            const sourceKey = externalId ? `${provider}:question:${externalId}` : String(question.tempId || '');
+            const sourceKey = getGranReviewQuestionSourceKey(question);
             return [index, queueStatusByQuestionKey[sourceKey]];
           }).filter(([, status]) => Boolean(status)),
         ) as Record<number, 'queued' | 'processing' | 'published' | 'failed'>;

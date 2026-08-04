@@ -27,6 +27,13 @@ type GranReviewPayload = {
   };
 };
 export type GranReviewQueueStatus = 'queued' | 'processing' | 'published' | 'failed';
+export type GranReviewDisplayStatus = 'review' | GranReviewQueueStatus;
+
+export const getGranReviewQuestionSourceKey = (question: GranReviewQuestion) => {
+  const externalId = String(question.source?.externalId || '').trim();
+  const provider = String(question.source?.provider || 'gran').trim() || 'gran';
+  return externalId ? `${provider}:question:${externalId}` : String(question.tempId || '').trim();
+};
 
 export const classifyGranReviewQuestionIndexes = <T>({
   questions,
@@ -68,6 +75,14 @@ export const isGranQuestionAlreadyPublished = (question: GranReviewQuestion) => 
     || '',
   ).trim().toLowerCase();
   return status === 'published' || status === 'publicado';
+};
+
+export const getGranReviewDisplayStatus = (
+  question: GranReviewQuestion,
+  queueStatuses: Record<string, GranReviewQueueStatus> = {},
+): GranReviewDisplayStatus => {
+  if (isGranQuestionAlreadyPublished(question)) return 'published';
+  return queueStatuses[getGranReviewQuestionSourceKey(question)] || 'review';
 };
 
 const clonePayloadWithQuestions = <T extends GranReviewPayload>(
@@ -135,4 +150,26 @@ export const partitionGranReviewPayloads = <T extends GranReviewPayload>(payload
     publishedQuestionCount,
   };
 };
+
+export const filterGranReviewPayloads = <T extends GranReviewPayload>(
+  payloads: T[],
+  status: GranReviewDisplayStatus | 'all',
+  queueStatuses: Record<string, GranReviewQueueStatus> = {},
+) => payloads.flatMap((payload) => {
+  if (status === 'all') return [payload];
+  const questions = payload.questions.filter((question) => (
+    getGranReviewDisplayStatus(question, queueStatuses) === status
+  ));
+  return questions.length > 0 ? [clonePayloadWithQuestions(payload, questions)] : [];
+});
+
+export const countGranReviewStatuses = (
+  payloads: GranReviewPayload[],
+  queueStatuses: Record<string, GranReviewQueueStatus> = {},
+) => payloads.reduce<Record<GranReviewDisplayStatus, number>>((counts, payload) => {
+  payload.questions.forEach((question) => {
+    counts[getGranReviewDisplayStatus(question, queueStatuses)] += 1;
+  });
+  return counts;
+}, { review: 0, queued: 0, processing: 0, published: 0, failed: 0 });
 

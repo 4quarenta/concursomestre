@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyGranReviewQuestionIndexes,
+  countGranReviewStatuses,
+  filterGranReviewPayloads,
   getGranReviewQueueOffsets,
   partitionGranReviewPayloads,
 } from '../granCrawlerReviewUtils';
@@ -81,5 +83,30 @@ describe('partitionGranReviewPayloads', () => {
 
     expect(offsets).toEqual([0, 40]);
     expect(offsets[1] + 60).toBe(100);
+  });
+
+  it('filters review, failed and published questions without losing their contexts', () => {
+    const payload = {
+      exam: { title: 'Prova Gran' },
+      contexts: [{ tempId: 'ctx_1', questionNumbers: [1, 2, 3] }],
+      questions: [
+        { tempId: 'q_1', source: { externalId: 1, questionNumber: 1, contextTempId: 'ctx_1' } },
+        { tempId: 'q_2', source: { externalId: 2, questionNumber: 2, contextTempId: 'ctx_1' } },
+        { tempId: 'q_3', source: { externalId: 3, questionNumber: 3, contextTempId: 'ctx_1', alreadyPublished: true } },
+      ],
+    };
+    const statuses = { 'gran:question:2': 'failed' as const };
+
+    expect(countGranReviewStatuses([payload], statuses)).toEqual({
+      review: 1,
+      queued: 0,
+      processing: 0,
+      published: 1,
+      failed: 1,
+    });
+    const failed = filterGranReviewPayloads([payload], 'failed', statuses);
+    expect(failed[0]?.questions.map((question) => question.tempId)).toEqual(['q_2']);
+    expect(failed[0]?.contexts[0]?.questionNumbers).toEqual([2]);
+    expect(filterGranReviewPayloads([payload], 'published', statuses)[0]?.questions).toHaveLength(1);
   });
 });

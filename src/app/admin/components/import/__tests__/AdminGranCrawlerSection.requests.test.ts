@@ -6,6 +6,10 @@ const source = fs.readFileSync(
   path.resolve(process.cwd(), 'src/app/admin/components/import/AdminGranCrawlerSection.tsx'),
   'utf8',
 );
+const reviewQueueSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/app/admin/components/database/AdminDatabaseSections.tsx'),
+  'utf8',
+);
 
 describe('AdminGranCrawlerSection requests', () => {
   it('loads taxonomy status and the current publication in one initial bootstrap', () => {
@@ -55,7 +59,7 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('{ timeout: 80_000 }');
   });
 
-  it('accepts a manual bounded page size and keeps published questions collapsed', () => {
+  it('accepts a manual bounded page size and delegates every status to the unified queue', () => {
     expect(source).toContain('MAX_GRAN_QUESTIONS_PER_PAGE = 1000');
     expect(source).toContain('type="number"');
     expect(source).toContain('max={MAX_GRAN_QUESTIONS_PER_PAGE}');
@@ -64,7 +68,11 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('setResult(data);');
     expect(source).not.toContain('mergeGranReviewPayloads(current.payloads');
     expect(source).toContain('partitionGranReviewPayloads');
-    expect(source).toContain('<details className={ADMIN_PAGE_PANEL_CLASS}>');
-    expect(source).toContain('Questões já publicadas');
+    expect(source).toContain('renderReviewQueue(result?.payloads || []');
+    expect(source).not.toContain('<details className={ADMIN_PAGE_PANEL_CLASS}>');
+    expect(reviewQueueSource).toContain("useState<GranReviewDisplayStatus | 'all'>('review')");
+    expect(reviewQueueSource).toContain("{ value: 'failed', label: 'Falhou'");
+    expect(reviewQueueSource).toContain('Tentar falhas novamente');
+    expect(reviewQueueSource.match(/action: 'enqueue_publication'/g)).toHaveLength(2);
   });
 });

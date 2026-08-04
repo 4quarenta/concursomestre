@@ -1158,30 +1158,13 @@ const AdminGranCrawlerSection = ({
         </section>
       ) : null}
 
-      {reviewQueues.pendingPayloads.length > 0 && renderReviewQueue ? (
+      {(result?.payloads?.length || 0) > 0 && renderReviewQueue ? (
         <section>
-          {renderReviewQueue(reviewQueues.pendingPayloads, {
+          {renderReviewQueue(result?.payloads || [], {
             publicationBatches,
             onPublicationQueued: () => void refreshCurrentProcessing(),
           })}
         </section>
-      ) : null}
-
-      {reviewQueues.publishedPayloads.length > 0 && renderReviewQueue ? (
-        <details className={ADMIN_PAGE_PANEL_CLASS}>
-          <summary className="cursor-pointer select-none text-sm font-black text-slate-800 dark:text-slate-100">
-            Questões já publicadas ({reviewQueues.publishedQuestionCount})
-          </summary>
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            Ocultas por padrão e somente para conferência. Elas não entram novamente na publicação.
-          </p>
-          <div className="mt-4">
-            {renderReviewQueue(reviewQueues.publishedPayloads, {
-              publicationBatches,
-              onPublicationQueued: () => void refreshCurrentProcessing(),
-            })}
-          </div>
-        </details>
       ) : null}
 
       {currentBatch ? (
