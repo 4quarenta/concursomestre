@@ -393,9 +393,15 @@ final class PrivateQuestionIngestionService
         $stmt->execute([':actor_user_id' => $actorUserId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // Rebuild the snapshot from retained jobs so batches created before a
-        // diagnostics schema upgrade also expose their per-question failures.
-        return is_array($row) ? $this->refreshBatch((int) $row['id']) : null;
+        if (!is_array($row)) return null;
+        $status = (string) ($row['status'] ?? '');
+        $requiresRefresh = in_array($status, ['pending', 'processing'], true)
+            || ($row['question_errors_json'] ?? null) === null;
+        // Rebuild old snapshots once; completed batches with diagnostics remain
+        // read-only on later crawler bootstraps.
+        return $requiresRefresh
+            ? $this->refreshBatch((int) $row['id'])
+            : $this->formatBatchRow($row);
     }
 
     /** @return array{batches:int,jobs:int,requests:int} */
