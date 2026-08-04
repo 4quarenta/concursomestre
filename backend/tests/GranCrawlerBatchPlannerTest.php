@@ -52,6 +52,8 @@ $flatten = new ReflectionMethod(PrivateQuestionIngestionService::class, 'flatten
 $flatten->setAccessible(true);
 $validateCount = new ReflectionMethod(PrivateQuestionIngestionService::class, 'assertBatchQuestionCount');
 $validateCount->setAccessible(true);
+$sanitizeFailure = new ReflectionMethod(PrivateQuestionIngestionService::class, 'sanitizePublicFailureMessage');
+$sanitizeFailure->setAccessible(true);
 
 foreach ([51, 1000] as $count) {
     $jobs = $split->invoke($service, [granBatchPayload(1, $count, 'exam-single')]);
@@ -88,5 +90,14 @@ try {
     $rejected = $cause instanceof InvalidArgumentException;
 }
 granBatchPlannerAssert($rejected, 'Uma submissao de 5.001 questoes deve ser rejeitada.');
+
+granBatchPlannerAssert(
+    $sanitizeFailure->invoke($service, 'A questao nao possui alternativas publicaveis.') === 'A questao nao possui alternativas publicaveis.',
+    'Uma mensagem editorial segura deve ser preservada para a revisao.'
+);
+granBatchPlannerAssert(
+    !str_contains($sanitizeFailure->invoke($service, 'SQLSTATE[23000]: INSERT INTO questions falhou'), 'SQLSTATE'),
+    'Detalhes internos do banco nao podem ser expostos no card.'
+);
 
 fwrite(STDOUT, "GranCrawlerBatchPlannerTest: PASS\n");

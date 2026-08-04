@@ -393,7 +393,9 @@ final class PrivateQuestionIngestionService
         $stmt->execute([':actor_user_id' => $actorUserId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        return is_array($row) ? $this->formatBatchRow($row) : null;
+        // Rebuild the snapshot from retained jobs so batches created before a
+        // diagnostics schema upgrade also expose their per-question failures.
+        return is_array($row) ? $this->refreshBatch((int) $row['id']) : null;
     }
 
     /** @return array{batches:int,jobs:int,requests:int} */
@@ -716,7 +718,7 @@ final class PrivateQuestionIngestionService
             'private_ingestion_batches' => [
                 'public_id', 'actor_user_id', 'idempotency_key', 'payload_hash', 'status',
                 'question_count', 'job_count', 'question_keys_json', 'question_statuses_json',
-                'collection_pages_json',
+                'question_errors_json', 'collection_pages_json',
             ],
             'private_ingestion_jobs' => ['batch_id'],
         ]);
@@ -955,6 +957,7 @@ final class PrivateQuestionIngestionService
         $counts = ['pending' => 0, 'processing' => 0, 'done' => 0, 'failed' => 0, 'created' => 0, 'duplicates' => 0, 'questionFailures' => 0];
         $errors = [];
         $questionStatuses = [];
+        $questionErrors = [];
         foreach ($jobsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $job) {
             $status = (string) ($job['status'] ?? 'pending');
             if (isset($counts[$status])) $counts[$status]++;
@@ -964,6 +967,7 @@ final class PrivateQuestionIngestionService
             $questionKeysByNumber = [];
             $questionKeysByClientKey = [];
             $questionKeysByClientNumber = [];
+            $jobQuestionKeys = [];
             $jobBatches = is_array($jobPayload['batches'] ?? null)
                 ? array_values($jobPayload['batches'])
                 : [['clientKey' => '', 'payload' => is_array($jobPayload) ? $jobPayload : []]];
@@ -975,6 +979,7 @@ final class PrivateQuestionIngestionService
                 foreach ((array) ($batchPayload['questions'] ?? []) as $question) {
                     if (!is_array($question)) continue;
                     $key = $this->questionSourceKey($question, $position++);
+                    $jobQuestionKeys[$key] = true;
                     $tempId = trim((string) ($question['tempId'] ?? ''));
                     $number = trim((string) ($question['source']['questionNumber'] ?? ''));
                     if ($tempId !== '') $questionKeysByTempId[$tempId] = $key;
@@ -1012,15 +1017,26 @@ final class PrivateQuestionIngestionService
                         ?? null;
                     if (is_string($failureKey) && $failureKey !== '') {
                         $questionStatuses[$failureKey] = 'failed';
+                        $questionErrors[$failureKey] = $this->publicQuestionFailure($failure);
                     } elseif ($failureClientKey !== '') {
                         foreach ($questionKeysByClientKey[$failureClientKey] ?? [] as $clientQuestionKey) {
                             $questionStatuses[$clientQuestionKey] = 'failed';
+                            $questionErrors[$clientQuestionKey] = $this->publicQuestionFailure($failure);
                         }
                     }
                 }
             }
             $error = trim((string) ($job['error_message'] ?? ''));
-            if ($error !== '') $errors[] = $error;
+            if ($error !== '') $errors[] = $this->sanitizePublicFailureMessage($error);
+            if ($status === 'failed') {
+                $jobFailure = $this->publicQuestionFailure([
+                    'code' => 'job_processing_failed',
+                    'message' => $error,
+                ]);
+                foreach (array_keys($jobQuestionKeys) as $questionKey) {
+                    $questionErrors[$questionKey] ??= $jobFailure;
+                }
+            }
         }
         $jobCount = $counts['pending'] + $counts['processing'] + $counts['done'] + $counts['failed'];
         $status = $counts['processing'] > 0 ? 'processing'
@@ -1034,6 +1050,7 @@ final class PrivateQuestionIngestionService
              completed_job_count = :completed, failed_job_count = :failed,
              created_question_count = :created, duplicate_question_count = :duplicates,
              failed_question_count = :question_failures, question_statuses_json = :question_statuses_json,
+             question_errors_json = :question_errors_json,
              error_summary = :error_summary,
              started_at = IF(:has_started = 1, COALESCE(started_at, UTC_TIMESTAMP()), started_at),
              completed_at = IF(:is_complete = 1, COALESCE(completed_at, UTC_TIMESTAMP()), NULL)
@@ -1050,6 +1067,7 @@ final class PrivateQuestionIngestionService
             ':duplicates' => $counts['duplicates'],
             ':question_failures' => $counts['questionFailures'],
             ':question_statuses_json' => json_encode($questionStatuses, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ':question_errors_json' => json_encode($questionErrors, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ':error_summary' => $errors === [] ? null : substr(implode(' | ', array_unique($errors)), 0, 3000),
             ':has_started' => ($counts['processing'] + $counts['done'] + $counts['failed']) > 0 ? 1 : 0,
             ':is_complete' => ($jobCount > 0 && $counts['pending'] === 0 && $counts['processing'] === 0) ? 1 : 0,
@@ -1065,6 +1083,7 @@ final class PrivateQuestionIngestionService
     {
         $keys = json_decode((string) ($row['question_keys_json'] ?? '[]'), true);
         $questionStatuses = json_decode((string) ($row['question_statuses_json'] ?? '{}'), true);
+        $questionErrors = json_decode((string) ($row['question_errors_json'] ?? '{}'), true);
         $collectionPages = json_decode((string) ($row['collection_pages_json'] ?? '[]'), true);
         $collectionPages = is_array($collectionPages)
             ? array_values(array_filter(array_map('intval', $collectionPages), static fn (int $page): bool => $page > 0))
@@ -1093,11 +1112,37 @@ final class PrivateQuestionIngestionService
             'failures' => (int) $row['failed_question_count'],
             'questionKeys' => is_array($keys) ? $keys : [],
             'questionStatuses' => is_array($questionStatuses) ? $questionStatuses : [],
+            'questionErrors' => is_array($questionErrors) ? $questionErrors : [],
             'error' => trim((string) ($row['error_summary'] ?? '')) ?: null,
             'createdAt' => $row['created_at'] ?? null,
             'startedAt' => $row['started_at'] ?? null,
             'completedAt' => $row['completed_at'] ?? null,
         ];
+    }
+
+    /** @param array<string,mixed> $failure @return array{code:string,message:string} */
+    private function publicQuestionFailure(array $failure): array
+    {
+        $code = strtolower(trim((string) ($failure['code'] ?? 'publication_failed')));
+        $code = preg_replace('/[^a-z0-9_.-]+/', '_', $code) ?: 'publication_failed';
+        $message = $this->sanitizePublicFailureMessage((string) ($failure['message'] ?? ''));
+        return [
+            'code' => substr($code, 0, 64),
+            'message' => $message,
+        ];
+    }
+
+    private function sanitizePublicFailureMessage(string $message): string
+    {
+        $message = trim((string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', strip_tags($message)));
+        $containsInternalDetail = preg_match(
+            '/SQLSTATE|PDOException|stack\s+trace|(?:SELECT|INSERT|UPDATE|DELETE)\s+.+\s+(?:FROM|INTO|SET)|\/home\/|\\\\vendor\\\\/i',
+            $message
+        ) === 1;
+        if ($message === '' || $containsInternalDetail) {
+            return 'Falha interna ao publicar esta questao. Tente novamente; se persistir, consulte os logs administrativos.';
+        }
+        return mb_substr($message, 0, 300);
     }
 
     private function refreshBatchForJob(int $jobId): void

@@ -26,6 +26,7 @@ interface AdminGranCrawlerReviewBatchProps {
   cardsOnly?: boolean;
   selectedQuestionIndexes?: ReadonlySet<number>;
   reviewQuestionQueueStatuses?: Record<number, 'queued' | 'processing' | 'published' | 'failed'>;
+  reviewQuestionQueueErrors?: Record<number, string>;
   onPublishQuestion?: (index: number) => void;
   onSelectedQuestionChange?: (payloadKey: string, index: number, selected: boolean) => void;
   onRegisterBatchPublisher?: (payloadKey: string, handler: GranReviewBatchPublisher | null) => void;
@@ -52,6 +53,7 @@ const AdminGranCrawlerReviewBatch = ({
   cardsOnly = false,
   selectedQuestionIndexes,
   reviewQuestionQueueStatuses,
+  reviewQuestionQueueErrors,
   onPublishQuestion,
   onSelectedQuestionChange,
   onRegisterBatchPublisher,
@@ -164,6 +166,7 @@ const AdminGranCrawlerReviewBatch = ({
         reviewAllowIncompleteSelection
         reviewQueueIndexOffset={reviewQueueIndexOffset}
         reviewQuestionQueueStatuses={reviewQuestionQueueStatuses}
+        reviewQuestionQueueErrors={reviewQuestionQueueErrors}
         onReviewQuestionPublishRequest={onPublishQuestion}
         onReviewQuestionSelectionChange={(index, selected) => onSelectedQuestionChange?.(payloadKey, index, selected)}
         reviewSourceLabel={payload.exam.title || 'Prova de origem não identificada'}

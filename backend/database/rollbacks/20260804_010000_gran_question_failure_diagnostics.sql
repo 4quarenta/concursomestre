@@ -1,0 +1,1 @@
+ALTER TABLE private_ingestion_batches DROP COLUMN question_errors_json;

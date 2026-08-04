@@ -115,6 +115,7 @@ export type GranPublicationBatch = {
   failures: number;
   questionKeys?: string[];
   questionStatuses?: Record<string, 'queued' | 'processing' | 'published' | 'failed'>;
+  questionErrors?: Record<string, { code?: string; message?: string }>;
   error?: string | null;
   createdAt?: string | null;
   startedAt?: string | null;

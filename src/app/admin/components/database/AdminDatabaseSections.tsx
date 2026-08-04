@@ -102,6 +102,16 @@ const AdminGranCrawlerReviewQueue = ({
     });
     return statuses;
   }, [publicationBatches]);
+  const queueErrorByQuestionKey = React.useMemo(() => {
+    const errors: Record<string, string> = {};
+    publicationBatches.forEach((batch) => {
+      Object.entries(batch.questionErrors || {}).forEach(([key, diagnostic]) => {
+        const message = String(diagnostic?.message || '').trim();
+        if (message && !(key in errors)) errors[key] = message;
+      });
+    });
+    return errors;
+  }, [publicationBatches]);
   const statusCounts = React.useMemo(
     () => countGranReviewStatuses(payloads, queueStatusByQuestionKey),
     [payloads, queueStatusByQuestionKey],
@@ -388,6 +398,12 @@ const AdminGranCrawlerReviewQueue = ({
             return [index, queueStatusByQuestionKey[sourceKey]];
           }).filter(([, status]) => Boolean(status)),
         ) as Record<number, 'queued' | 'processing' | 'published' | 'failed'>;
+        const reviewQuestionQueueErrors = Object.fromEntries(
+          payload.questions.map((question, index) => {
+            const sourceKey = getGranReviewQuestionSourceKey(question);
+            return [index, queueErrorByQuestionKey[sourceKey]];
+          }).filter(([, message]) => Boolean(message)),
+        ) as Record<number, string>;
 
         return (
           <AdminGranCrawlerReviewBatch
@@ -396,6 +412,7 @@ const AdminGranCrawlerReviewQueue = ({
             cardsOnly
             selectedQuestionIndexes={new Set(selectedQuestionIndexesByPayload[payloadKey] || [])}
             reviewQuestionQueueStatuses={reviewQuestionQueueStatuses}
+            reviewQuestionQueueErrors={reviewQuestionQueueErrors}
             onPublishQuestion={(index) => void handlePublishQuestion(payloadKey, index)}
             onSelectedQuestionChange={handleSelectedQuestionChange}
             onRegisterBatchPublisher={handleRegisterBatchPublisher}

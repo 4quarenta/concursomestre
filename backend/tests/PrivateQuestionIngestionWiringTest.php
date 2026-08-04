@@ -27,6 +27,9 @@ foreach ([
     'available_at',
     'locked_by',
     'dead_lettered_at',
+    'question_errors_json',
+    'publicQuestionFailure',
+    'sanitizePublicFailureMessage',
     'isRetryableFailure',
 ] as $needle) {
     assertPrivateIngestion(str_contains($service, $needle), 'Servico de ingestao privado sem protecao esperada: ' . $needle);

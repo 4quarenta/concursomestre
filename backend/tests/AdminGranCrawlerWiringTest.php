@@ -26,6 +26,8 @@ $batchMigration = (string) file_get_contents($backend . '/database/migrations/20
 $batchRollback = (string) file_get_contents($backend . '/database/rollbacks/20260802_010000_gran_crawler_batches.sql');
 $batchMetadataMigration = (string) file_get_contents($backend . '/database/migrations/20260802_020000_gran_batch_collection_metadata.php');
 $batchMetadataRollback = (string) file_get_contents($backend . '/database/rollbacks/20260802_020000_gran_batch_collection_metadata.sql');
+$failureMigration = (string) file_get_contents($backend . '/database/migrations/20260804_010000_gran_question_failure_diagnostics.php');
+$failureRollback = (string) file_get_contents($backend . '/database/rollbacks/20260804_010000_gran_question_failure_diagnostics.sql');
 $legacyEntry = (string) file_get_contents($backend . '/scripts/importers/questions/gran/index.php');
 
 foreach ([
@@ -41,6 +43,15 @@ foreach ([
 adminGranCrawlerWiringAssert(
     str_contains($endpoint, 'handleAdminGranCrawlerRoute'),
     'Admin endpoint does not delegate to the protected route.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($queue, 'question_errors_json')
+    && str_contains($queue, "'questionErrors' =>")
+    && str_contains($sections, 'reviewQuestionQueueErrors')
+    && str_contains($reviewBatch, 'reviewQuestionQueueErrors')
+    && str_contains($failureMigration, 'ADD COLUMN question_errors_json')
+    && str_contains($failureRollback, 'DROP COLUMN question_errors_json'),
+    'Falhas por questao devem persistir diagnostico sanitizado e aparecer no card de revisao.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($service, 'CURLOPT_FOLLOWLOCATION => false')
@@ -99,7 +110,8 @@ adminGranCrawlerWiringAssert(
     'Backend must map only the extension JSON and retain Gran source identity.'
 );
 adminGranCrawlerWiringAssert(
-    str_contains($component, 'reviewQueues.pendingPayloads.length > 0 && renderReviewQueue')
+    str_contains($component, "(result?.payloads?.length || 0) > 0 && renderReviewQueue")
+    && str_contains($component, 'renderReviewQueue(result?.payloads || []')
     && !str_contains($component, 'Revisar no importador')
     && !str_contains($component, 'handleReviewPayload')
     && !str_contains($component, "action: 'enqueue'")
@@ -109,7 +121,7 @@ adminGranCrawlerWiringAssert(
 adminGranCrawlerWiringAssert(
     str_contains($sections, 'AdminGranCrawlerReviewBatch')
     && str_contains($sections, 'renderReviewQueue={(payloads, queueContext)')
-    && str_contains($sections, 'payloads.map((payload, payloadIndex)')
+    && str_contains($sections, 'filteredPayloads.map((payload, payloadIndex)')
     && str_contains($reviewBatch, 'useAdminQuestionWorkbench')
     && str_contains($reviewBatch, 'importEnabled: false')
     && str_contains($reviewBatch, 'importWorkflowProps.onImportFromAiJson(payloadJson,')
@@ -151,7 +163,7 @@ adminGranCrawlerWiringAssert(
     && substr_count($component, 'apiClient.get(ENDPOINT)') === 1
     && str_contains($component, 'BOOTSTRAP_CACHE_MS = 60_000')
     && str_contains($component, 'isTaxonomyVerificationFresh')
-    && str_contains($component, 'reviewQueues.publishedPayloads')
+    && str_contains($component, 'renderReviewQueue(result?.payloads || []')
     && str_contains($component, 'Limpar fila'),
     'Crawler UI must use one cached bootstrap and an accumulated review queue.'
 );

@@ -10,6 +10,10 @@ const reviewQueueSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/app/admin/components/database/AdminDatabaseSections.tsx'),
   'utf8',
 );
+const reviewCardSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/app/admin/components/import/AdminImportSection.tsx'),
+  'utf8',
+);
 
 describe('AdminGranCrawlerSection requests', () => {
   it('loads taxonomy status and the current publication in one initial bootstrap', () => {
@@ -74,5 +78,13 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(reviewQueueSource).toContain("{ value: 'failed', label: 'Falhou'");
     expect(reviewQueueSource).toContain('Tentar falhas novamente');
     expect(reviewQueueSource.match(/action: 'enqueue_publication'/g)).toHaveLength(2);
+  });
+
+  it('maps and renders the sanitized reason for every failed question', () => {
+    expect(source).toContain('questionErrors?: Record<string, { code?: string; message?: string }>');
+    expect(reviewQueueSource).toContain('queueErrorByQuestionKey');
+    expect(reviewQueueSource).toContain('reviewQuestionQueueErrors');
+    expect(reviewCardSource).toContain("queueStatus === 'failed' && queueError");
+    expect(reviewCardSource).toContain('Motivo da falha: {queueError}');
   });
 });

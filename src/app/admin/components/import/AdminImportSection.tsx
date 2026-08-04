@@ -1384,6 +1384,7 @@ interface AdminImportSectionProps {
   reviewAllowIncompleteSelection?: boolean;
   reviewQueueIndexOffset?: number;
   reviewQuestionQueueStatuses?: Record<number, 'queued' | 'processing' | 'published' | 'failed'>;
+  reviewQuestionQueueErrors?: Record<number, string>;
   onReviewQuestionSelectionChange?: (index: number, selected: boolean) => void;
   onReviewQuestionPublishRequest?: (index: number) => void;
   systemSettings: SystemSettings;
@@ -1487,6 +1488,7 @@ const AdminImportSection = ({
   reviewAllowIncompleteSelection = false,
   reviewQueueIndexOffset = 0,
   reviewQuestionQueueStatuses,
+  reviewQuestionQueueErrors,
   onReviewQuestionSelectionChange,
   onReviewQuestionPublishRequest,
   systemSettings,
@@ -3154,6 +3156,7 @@ const AdminImportSection = ({
                   const hasStoredAnswer = Number.isInteger(Number(question.correctOptionIndex))
                     || Number(question.resposta || 0) > 0;
                   const queueStatus = reviewQuestionQueueStatuses?.[index];
+                  const queueError = reviewQuestionQueueErrors?.[index]?.trim() || '';
                   const isQuestionPublished = publishedQuestionSet.has(questionNumber) || queueStatus === 'published';
                   const publishQuestionAction = `question:${questionNumber}` as const;
                   const isPublicationPending = queueStatus === 'queued' || queueStatus === 'processing';
@@ -3218,7 +3221,7 @@ const AdminImportSection = ({
                         ? 'bg-amber-500'
                         : 'bg-slate-200 group-hover:bg-sky-700 dark:bg-slate-800 dark:group-hover:bg-sky-500'
                     }`} />
-                    <div className="mb-4 flex items-start justify-between">
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         {cardsOnly && onReviewQuestionSelectionChange && (
                           <label
@@ -3346,6 +3349,11 @@ const AdminImportSection = ({
                           <Trash2 size={14} />
                         </button>
                       </div>
+                      {queueStatus === 'failed' && queueError ? (
+                        <p className="mt-3 w-full rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                          Motivo da falha: {queueError}
+                        </p>
+                      ) : null}
                     </div>
 
                     {cardsOnly && !isCardExpanded && (
