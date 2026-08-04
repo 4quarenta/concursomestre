@@ -136,13 +136,12 @@ adminGranCrawlerWiringAssert(
     && str_contains($queue, 'summarizeJobPayload')
     && str_contains($batchMetadataMigration, 'ADD COLUMN collection_pages_json')
     && str_contains($batchMetadataRollback, 'DROP COLUMN collection_pages_json')
-    && str_contains($component, 'batch.displayName')
-    && str_contains($component, 'Job #{job.jobId}'),
-    'Crawler batches and jobs must expose compact persisted collection details.'
+    && str_contains($component, 'currentBatch.displayName'),
+    'Crawler must retain collection metadata while exposing only the current processing summary.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($component, 'fetchGranCrawlerBootstrap')
-    && substr_count($component, 'apiClient.get(ENDPOINT,') === 1
+    && substr_count($component, 'apiClient.get(ENDPOINT)') === 1
     && str_contains($component, 'BOOTSTRAP_CACHE_MS = 60_000')
     && str_contains($component, 'isTaxonomyVerificationFresh')
     && str_contains($component, 'reviewQueues.publishedPayloads')
@@ -150,14 +149,20 @@ adminGranCrawlerWiringAssert(
     'Crawler UI must use one cached bootstrap and an accumulated review queue.'
 );
 adminGranCrawlerWiringAssert(
-    str_contains($queue, 'SignedKeysetCursor::decodePayload')
-    && str_contains($queue, 'admin.gran.processing-history')
-    && str_contains($queue, 'listProcessingHistory')
-    && str_contains($route, "\$_GET['history_cursor']")
-    && str_contains($component, 'gran-processing-history-pagination')
-    && str_contains($component, 'handleHistoryPrevious')
-    && str_contains($component, 'handleHistoryNext'),
-    'Processing history must use signed keyset pagination from backend to UI.'
+    str_contains($queue, 'getCurrentProcessingBatch')
+    && str_contains($queue, "CASE WHEN status IN ('pending', 'processing') THEN 0 ELSE 1 END")
+    && str_contains($service, "'currentBatch' => \$ingestion->getCurrentProcessingBatch(\$actorUserId)")
+    && !str_contains($route, "\$_GET['history_cursor']")
+    && str_contains($component, 'gran-current-processing')
+    && !str_contains($component, 'gran-processing-history-pagination'),
+    'Crawler must expose only the authenticated actor current processing summary.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($queue, 'pruneCompletedProcessingRecords')
+    && str_contains($queue, "GET_LOCK('question_ingestion_retention', 0)")
+    && str_contains($worker, 'QUESTION_INGESTION_RETENTION_DAYS')
+    && str_contains($worker, 'pruneCompletedProcessingRecords'),
+    'Completed processing records require bounded automatic retention cleanup.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($bridge, 'window.postMessage')

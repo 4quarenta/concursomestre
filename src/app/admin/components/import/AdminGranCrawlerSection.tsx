@@ -101,27 +101,6 @@ type GranFetchResult = {
   payloads: GranImportPayload[];
 };
 
-type GranJob = {
-  jobId: number;
-  requestId?: number;
-  batchId?: string | null;
-  status: 'pending' | 'processing' | 'done' | 'failed' | string;
-  attempts: number;
-  questionCount?: number;
-  examCount?: number;
-  examTitles?: string[];
-  collectionPages?: number[];
-  error?: string | null;
-  createdAt?: string | null;
-  availableAt?: string | null;
-  lockedAt?: string | null;
-  completedAt?: string | null;
-  deadLetteredAt?: string | null;
-  result?: {
-    createdQuestionIds?: Array<string | number>;
-  } | null;
-};
-
 export type GranPublicationBatch = {
   batchId: string;
   displayName?: string;
@@ -155,14 +134,8 @@ type AdminGranCrawlerSectionProps = {
 type CollectorState = 'checking' | 'ready' | 'disconnected' | 'missing';
 
 type GranCrawlerBootstrapData = {
-  jobs?: GranJob[];
   taxonomyStatus?: Record<string, GranTaxonomyStatus>;
-  publicationBatches?: GranPublicationBatch[];
-  pageInfo?: {
-    limit: number;
-    hasMore: boolean;
-    nextCursor?: string | null;
-  };
+  currentBatch?: GranPublicationBatch | null;
 };
 
 const ENDPOINT = 'admin/gran_crawler.php';
@@ -171,10 +144,9 @@ const MAX_GRAN_QUESTIONS_PER_PAGE = 100;
 const BOOTSTRAP_CACHE_MS = 60_000;
 const COLLECTOR_STATUS_CACHE_MS = 30_000;
 const TAXONOMY_CHECK_FRESH_MS = 6 * 60 * 60 * 1000;
-const HISTORY_PAGE_SIZE = 10;
 
-const bootstrapCache = new Map<string, { data: GranCrawlerBootstrapData; fetchedAt: number }>();
-const bootstrapRequests = new Map<string, Promise<GranCrawlerBootstrapData>>();
+let bootstrapCache: { data: GranCrawlerBootstrapData; fetchedAt: number } | null = null;
+let bootstrapRequest: Promise<GranCrawlerBootstrapData> | null = null;
 let collectorStatusCache: { status: GranCollectorStatus; checkedAt: number } | null = null;
 
 const GRAN_TAXONOMY_STEPS: Array<{ kind: GranTaxonomyCollectorResult['kind']; label: string }> = [
@@ -250,36 +222,23 @@ const readApiData = <T,>(response: { data?: unknown }): T => {
   return body as T;
 };
 
-const fetchGranCrawlerBootstrap = async (
-  historyCursor: string | null,
-  historyLimit = HISTORY_PAGE_SIZE,
-  force = false,
-): Promise<GranCrawlerBootstrapData> => {
+const fetchGranCrawlerBootstrap = async (force = false): Promise<GranCrawlerBootstrapData> => {
   const now = Date.now();
-  const cacheKey = `${historyLimit}:${historyCursor || 'first'}`;
-  const cached = bootstrapCache.get(cacheKey);
-  if (!force && cached && now - cached.fetchedAt < BOOTSTRAP_CACHE_MS) {
-    return cached.data;
+  if (!force && bootstrapCache && now - bootstrapCache.fetchedAt < BOOTSTRAP_CACHE_MS) {
+    return bootstrapCache.data;
   }
-  const pending = bootstrapRequests.get(cacheKey);
-  if (pending) return pending;
+  if (bootstrapRequest) return bootstrapRequest;
 
-  const request = apiClient.get(ENDPOINT, {
-    params: {
-      history_limit: historyLimit,
-      ...(historyCursor ? { history_cursor: historyCursor } : {}),
-    },
-  })
+  bootstrapRequest = apiClient.get(ENDPOINT)
     .then((response) => {
       const data = readApiData<GranCrawlerBootstrapData>(response) || {};
-      bootstrapCache.set(cacheKey, { data, fetchedAt: Date.now() });
+      bootstrapCache = { data, fetchedAt: Date.now() };
       return data;
     })
     .finally(() => {
-      bootstrapRequests.delete(cacheKey);
+      bootstrapRequest = null;
     });
-  bootstrapRequests.set(cacheKey, request);
-  return request;
+  return bootstrapRequest;
 };
 
 const isTaxonomyVerificationFresh = (
@@ -344,19 +303,11 @@ const AdminGranCrawlerSection = ({
   const [perPage, setPerPage] = React.useState(20);
   const [year, setYear] = React.useState('');
   const [result, setResult] = React.useState<GranFetchResult | null>(null);
-  const [jobs, setJobs] = React.useState<GranJob[]>([]);
-  const [publicationBatches, setPublicationBatches] = React.useState<GranPublicationBatch[]>([]);
-  const [historyPage, setHistoryPage] = React.useState(1);
-  const [historyCursors, setHistoryCursors] = React.useState<Array<string | null>>([null]);
-  const [historyPageInfo, setHistoryPageInfo] = React.useState({
-    limit: HISTORY_PAGE_SIZE,
-    hasMore: false,
-    nextCursor: null as string | null,
-  });
+  const [currentBatch, setCurrentBatch] = React.useState<GranPublicationBatch | null>(null);
   const [taxonomyExpanded, setTaxonomyExpanded] = React.useState(false);
   const [isCheckingTaxonomyUpdates, setIsCheckingTaxonomyUpdates] = React.useState(false);
   const [isFetching, setIsFetching] = React.useState(false);
-  const [isLoadingJobs, setIsLoadingJobs] = React.useState(false);
+  const [isLoadingProcessing, setIsLoadingProcessing] = React.useState(false);
   const [syncingTaxonomyKey, setSyncingTaxonomyKey] = React.useState<string | null>(null);
   const [isLoadingTaxonomyStatus, setIsLoadingTaxonomyStatus] = React.useState(true);
   const [taxonomyStatuses, setTaxonomyStatuses] = React.useState<Record<string, GranTaxonomyStatus>>({});
@@ -368,9 +319,8 @@ const AdminGranCrawlerSection = ({
     () => typeof document === 'undefined' || document.visibilityState === 'visible',
   );
   const fetchAbortRef = React.useRef<AbortController | null>(null);
-  const historyCursor = historyCursors[historyPage - 1] || null;
-  const hasActiveJobs = jobs.some((job) => ['pending', 'processing'].includes(job.status))
-    || publicationBatches.some((batch) => ['pending', 'processing'].includes(batch.status));
+  const publicationBatches = React.useMemo(() => currentBatch ? [currentBatch] : [], [currentBatch]);
+  const hasActiveJobs = currentBatch !== null && ['pending', 'processing'].includes(currentBatch.status);
   const reviewQueues = React.useMemo(
     () => partitionGranReviewPayloads(result?.payloads || []),
     [result?.payloads],
@@ -417,18 +367,11 @@ const AdminGranCrawlerSection = ({
     silent = false,
     hydrateTaxonomies = false,
     force = false,
-    cursor: string | null = null,
   ): Promise<GranCrawlerBootstrapData | null> => {
-    if (!silent) setIsLoadingJobs(true);
+    if (!silent) setIsLoadingProcessing(true);
     try {
-      const data = await fetchGranCrawlerBootstrap(cursor, HISTORY_PAGE_SIZE, force);
-      setJobs(Array.isArray(data?.jobs) ? data.jobs : []);
-      setPublicationBatches(Array.isArray(data?.publicationBatches) ? data.publicationBatches : []);
-      setHistoryPageInfo({
-        limit: Number(data?.pageInfo?.limit || HISTORY_PAGE_SIZE),
-        hasMore: data?.pageInfo?.hasMore === true,
-        nextCursor: typeof data?.pageInfo?.nextCursor === 'string' ? data.pageInfo.nextCursor : null,
-      });
+      const data = await fetchGranCrawlerBootstrap(force);
+      setCurrentBatch(data?.currentBatch && typeof data.currentBatch === 'object' ? data.currentBatch : null);
       if (hydrateTaxonomies && data?.taxonomyStatus && typeof data.taxonomyStatus === 'object') {
         setTaxonomyStatuses(data.taxonomyStatus);
         setIsLoadingTaxonomyStatus(false);
@@ -440,19 +383,19 @@ const AdminGranCrawlerSection = ({
       }
       return null;
     } finally {
-      if (!silent) setIsLoadingJobs(false);
+      if (!silent) setIsLoadingProcessing(false);
     }
   }, []);
 
   const loadTaxonomyStatus = React.useCallback(async (silent = false) => {
     if (!silent) setIsLoadingTaxonomyStatus(true);
-    const data = await loadBootstrap(true, true, true, historyCursor);
+    const data = await loadBootstrap(true, true, true);
     if (!silent) setIsLoadingTaxonomyStatus(false);
     return data?.taxonomyStatus && typeof data.taxonomyStatus === 'object' ? data.taxonomyStatus : null;
-  }, [historyCursor, loadBootstrap]);
+  }, [loadBootstrap]);
 
   React.useEffect(() => {
-    void Promise.resolve().then(() => loadBootstrap(true, true, false, null));
+    void Promise.resolve().then(() => loadBootstrap(true, true));
     void Promise.resolve().then(() => checkCollector());
     return () => fetchAbortRef.current?.abort();
   }, [checkCollector, loadBootstrap]);
@@ -461,41 +404,22 @@ const AdminGranCrawlerSection = ({
     const handleVisibility = () => {
       const visible = document.visibilityState === 'visible';
       setIsPageVisible(visible);
-      if (visible && hasActiveJobs) void loadBootstrap(true, false, true, historyCursor);
+      if (visible && hasActiveJobs) void loadBootstrap(true, false, true);
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [hasActiveJobs, historyCursor, loadBootstrap]);
+  }, [hasActiveJobs, loadBootstrap]);
 
   React.useEffect(() => {
     if (!hasActiveJobs || !isPageVisible) return undefined;
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadBootstrap(true, false, true, historyCursor);
+      if (document.visibilityState === 'visible') void loadBootstrap(true, false, true);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [hasActiveJobs, historyCursor, isPageVisible, loadBootstrap]);
+  }, [hasActiveJobs, isPageVisible, loadBootstrap]);
 
-  const handleHistoryNext = React.useCallback(async () => {
-    const nextCursor = historyPageInfo.nextCursor;
-    if (!nextCursor || isLoadingJobs) return;
-    const data = await loadBootstrap(false, false, false, nextCursor);
-    if (!data) return;
-    setHistoryCursors((current) => [...current.slice(0, historyPage), nextCursor]);
-    setHistoryPage((current) => current + 1);
-  }, [historyPage, historyPageInfo.nextCursor, isLoadingJobs, loadBootstrap]);
-
-  const handleHistoryPrevious = React.useCallback(async () => {
-    if (historyPage <= 1 || isLoadingJobs) return;
-    const previousCursor = historyCursors[historyPage - 2] || null;
-    const data = await loadBootstrap(false, false, false, previousCursor);
-    if (!data) return;
-    setHistoryPage((current) => Math.max(1, current - 1));
-  }, [historyCursors, historyPage, isLoadingJobs, loadBootstrap]);
-
-  const refreshFirstHistoryPage = React.useCallback(async () => {
-    setHistoryCursors([null]);
-    setHistoryPage(1);
-    await loadBootstrap(true, false, true, null);
+  const refreshCurrentProcessing = React.useCallback(async () => {
+    await loadBootstrap(false, false, true);
   }, [loadBootstrap]);
 
   const handleDirectUrlChange = React.useCallback((value: string) => {
@@ -1237,7 +1161,7 @@ const AdminGranCrawlerSection = ({
         <section>
           {renderReviewQueue(reviewQueues.pendingPayloads, {
             publicationBatches,
-            onPublicationQueued: () => void refreshFirstHistoryPage(),
+            onPublicationQueued: () => void refreshCurrentProcessing(),
           })}
         </section>
       ) : null}
@@ -1253,137 +1177,73 @@ const AdminGranCrawlerSection = ({
           <div className="mt-4">
             {renderReviewQueue(reviewQueues.publishedPayloads, {
               publicationBatches,
-              onPublicationQueued: () => void refreshFirstHistoryPage(),
+              onPublicationQueued: () => void refreshCurrentProcessing(),
             })}
           </div>
         </details>
       ) : null}
 
-      <section className={`${ADMIN_PAGE_PANEL_CLASS} space-y-4`}>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-              Processamento
-            </p>
-            <h3 className="mt-1 text-base font-black text-slate-900 dark:text-slate-100">
-              Histórico de processamento
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={() => void loadBootstrap(false, false, true, historyCursor)}
-            disabled={isLoadingJobs}
-            className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs`}
-          >
-            <RefreshCw size={14} className={isLoadingJobs ? 'animate-spin' : ''} />
-            Atualizar
-          </button>
-        </div>
-        {publicationBatches.length > 0 ? (
-          <div className="space-y-2">
-            {publicationBatches.map((batch) => {
-              const finished = batch.published + batch.duplicates + batch.failures;
-              const progress = batch.questionCount > 0
-                ? Math.min(100, Math.round((finished / batch.questionCount) * 100))
-                : 0;
-              return (
-                <details key={batch.batchId} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
-                  <summary className="cursor-pointer list-none text-xs marker:hidden">
-                    <span className="flex flex-wrap items-center justify-between gap-2">
-                      <strong>
-                        Lote {batch.batchId.slice(0, 8)} · {batch.displayName || `${formatCollectionPages(batch.collectionPages)} · ${batch.questionCount} questões`} · {statusLabel[batch.status] || batch.status}
-                      </strong>
-                      <span>{batch.published} publicadas · {batch.duplicates} duplicadas · {batch.failures} falhas</span>
-                    </span>
-                  </summary>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div className="h-full bg-sky-600 transition-[width]" style={{ width: `${progress}%` }} />
-                  </div>
-                  <div className="mt-3 grid gap-1 text-xs text-slate-500 sm:grid-cols-2 dark:text-slate-400">
-                    <span>ID completo: {batch.batchId}</span>
-                    <span>{formatCollectionPages(batch.collectionPages)}</span>
-                    <span>{batch.questionCount} questões em {batch.jobCount} job(s)</span>
-                    <span>{batch.pending} aguardando · {batch.processing} processando</span>
-                    <span>Criado em {formatDateTime(batch.createdAt)}</span>
-                    <span>Concluído em {batch.completedAt ? formatDateTime(batch.completedAt) : '—'}</span>
-                  </div>
-                  {batch.error ? <p className="mt-2 text-xs font-semibold text-rose-600">{batch.error}</p> : null}
-                </details>
-              );
-            })}
-          </div>
-        ) : null}
-        {jobs.length ? (
-          <div className="divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
-            {jobs.map((job) => (
-              <details key={job.jobId} className="px-4 py-3">
-                <summary className="cursor-pointer list-none marker:hidden">
-                  <span className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <span>
-                      <strong className="text-sm text-slate-800 dark:text-slate-100">
-                        Job #{job.jobId} · {statusLabel[job.status] || job.status}
-                      </strong>
-                      <span className="mt-1 block text-xs text-slate-500">
-                        {formatDateTime(job.createdAt)} · {job.questionCount || 0} questão(ões)
-                      </span>
-                    </span>
-                    {job.status === 'done' ? (
-                      <span className="inline-flex items-center gap-2 text-xs font-bold text-emerald-600">
-                        <CheckCircle2 size={15} />
-                        {job.result?.createdQuestionIds?.length || 0} criada(s)
-                      </span>
-                    ) : null}
-                  </span>
-                </summary>
-                <div className="mt-3 grid gap-1 text-xs text-slate-500 sm:grid-cols-2 dark:text-slate-400">
-                  <span>Request #{job.requestId || '—'}</span>
-                  <span>Lote {job.batchId ? job.batchId.slice(0, 8) : 'independente'}</span>
-                  <span>{formatCollectionPages(job.collectionPages)}</span>
-                  <span>{job.examCount || 0} prova(s) · {job.attempts} tentativa(s)</span>
-                  <span>Disponível em {formatDateTime(job.availableAt)}</span>
-                  <span>Concluído em {job.completedAt ? formatDateTime(job.completedAt) : '—'}</span>
-                </div>
-                {job.examTitles?.length ? (
-                  <p className="mt-2 truncate text-xs text-slate-500" title={job.examTitles.join(' / ')}>
-                    Provas: {job.examTitles.join(' / ')}
-                  </p>
-                ) : null}
-                {job.error ? <p className="mt-2 text-xs font-semibold text-rose-600">{job.error}</p> : null}
-              </details>
-            ))}
-          </div>
-        ) : publicationBatches.length === 0 ? (
-          <p className="text-sm text-slate-500">Nenhum lote recente.</p>
-        ) : null}
-        <div
-          data-testid="gran-processing-history-pagination"
-          className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700"
+      {currentBatch ? (
+        <section
+          className={`${ADMIN_PAGE_PANEL_CLASS} space-y-3`}
+          data-testid="gran-current-processing"
         >
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            Página {historyPage} · até {historyPageInfo.limit} lotes e {historyPageInfo.limit} jobs por página
-          </p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                Publicação
+              </p>
+              <h3 className="mt-1 text-base font-black text-slate-900 dark:text-slate-100">
+                {hasActiveJobs ? 'Processamento atual' : 'Último processamento'}
+              </h3>
+            </div>
             <button
               type="button"
-              onClick={() => void handleHistoryPrevious()}
-              disabled={historyPage <= 1 || isLoadingJobs}
-              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs`}
+              onClick={() => void refreshCurrentProcessing()}
+              disabled={isLoadingProcessing}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs disabled:opacity-50`}
             >
-              <ChevronLeft size={14} />
-              Anterior
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleHistoryNext()}
-              disabled={!historyPageInfo.hasMore || !historyPageInfo.nextCursor || isLoadingJobs}
-              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs`}
-            >
-              Próxima
-              <ChevronRight size={14} />
+              <RefreshCw size={14} className={isLoadingProcessing ? 'animate-spin' : ''} />
+              Atualizar
             </button>
           </div>
-        </div>
-      </section>
+
+          <div className="rounded-md border border-slate-200 p-4 dark:border-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <strong className="text-slate-800 dark:text-slate-100">
+                {currentBatch.displayName || `${formatCollectionPages(currentBatch.collectionPages)} · ${currentBatch.questionCount} questões`}
+              </strong>
+              <span className="font-bold text-slate-500 dark:text-slate-400">
+                {statusLabel[currentBatch.status] || currentBatch.status}
+              </span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+              <div
+                className="h-full bg-sky-600 transition-[width]"
+                style={{
+                  width: `${currentBatch.questionCount > 0
+                    ? Math.min(100, Math.round((
+                      (currentBatch.published + currentBatch.duplicates + currentBatch.failures)
+                      / currentBatch.questionCount
+                    ) * 100))
+                    : 0}%`,
+                }}
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+              <span>{currentBatch.published} publicadas</span>
+              <span>{currentBatch.duplicates} já existentes</span>
+              <span>{currentBatch.pending} aguardando</span>
+              <span>{currentBatch.processing} processando</span>
+              <span>{currentBatch.failures} falhas</span>
+              <span>Iniciado em {formatDateTime(currentBatch.createdAt)}</span>
+            </div>
+            {currentBatch.error ? (
+              <p className="mt-2 text-xs font-semibold text-rose-600">{currentBatch.error}</p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 };

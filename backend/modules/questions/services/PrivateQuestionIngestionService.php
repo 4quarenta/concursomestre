@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
-require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 /**
  * Authenticates and queues payloads from a local, operator-controlled crawler.
@@ -377,168 +376,99 @@ final class PrivateQuestionIngestionService
         ];
     }
 
-    /** @return array<int,array<string,mixed>> */
-    public function listRecentBatches(string $actorUserId, bool $canViewAll = false, int $limit = 20): array
+    /** @return array<string,mixed>|null */
+    public function getCurrentProcessingBatch(string $actorUserId): ?array
     {
-        return $this->listRecentBatchesPage($actorUserId, $canViewAll, $limit, null)['items'];
-    }
-
-    public function listRecentJobs(string $actorUserId, bool $canViewAll = false, int $limit = 20): array
-    {
-        return $this->listRecentJobsPage($actorUserId, $canViewAll, $limit, null)['items'];
-    }
-
-    /** @return array{jobs:array<int,array<string,mixed>>,publicationBatches:array<int,array<string,mixed>>,pageInfo:array<string,mixed>} */
-    public function listProcessingHistory(
-        string $actorUserId,
-        bool $canViewAll = false,
-        int $limit = 10,
-        ?string $cursor = null
-    ): array {
         $this->assertBatchSchemaReady();
-        $limit = max(5, min(25, $limit));
-        $fingerprint = hash('sha256', ($canViewAll ? 'all:' : 'actor:') . trim($actorUserId));
-        $cursorData = SignedKeysetCursor::decodePayload($cursor, 'admin.gran.processing-history');
-        if ($cursorData !== null
-            && (!hash_equals($fingerprint, (string) ($cursorData['fingerprint'] ?? ''))
-                || (int) ($cursorData['limit'] ?? 0) !== $limit)) {
-            throw new InvalidArgumentException('Cursor de paginacao invalido para este historico.');
+        $actorUserId = trim($actorUserId);
+        if ($actorUserId === '') {
+            throw new InvalidArgumentException('Usuario do processamento nao informado.');
         }
-
-        $batchDone = (bool) ($cursorData['batchDone'] ?? false);
-        $jobDone = (bool) ($cursorData['jobDone'] ?? false);
-        $batchAfterId = max(0, (int) ($cursorData['batchId'] ?? 0)) ?: null;
-        $jobAfterId = max(0, (int) ($cursorData['jobId'] ?? 0)) ?: null;
-        $batchPage = $batchDone
-            ? ['items' => [], 'hasMore' => false, 'lastId' => $batchAfterId]
-            : $this->listRecentBatchesPage($actorUserId, $canViewAll, $limit, $batchAfterId);
-        $jobPage = $jobDone
-            ? ['items' => [], 'hasMore' => false, 'lastId' => $jobAfterId]
-            : $this->listRecentJobsPage($actorUserId, $canViewAll, $limit, $jobAfterId);
-        $nextBatchDone = $batchDone || !$batchPage['hasMore'];
-        $nextJobDone = $jobDone || !$jobPage['hasMore'];
-        $hasMore = !$nextBatchDone || !$nextJobDone;
-
-        return [
-            'jobs' => $jobPage['items'],
-            'publicationBatches' => $batchPage['items'],
-            'pageInfo' => [
-                'limit' => $limit,
-                'hasMore' => $hasMore,
-                'nextCursor' => $hasMore ? SignedKeysetCursor::encodePayload([
-                    'batchId' => $batchPage['lastId'],
-                    'jobId' => $jobPage['lastId'],
-                    'batchDone' => $nextBatchDone,
-                    'jobDone' => $nextJobDone,
-                    'limit' => $limit,
-                    'fingerprint' => $fingerprint,
-                ], 'admin.gran.processing-history') : null,
-            ],
-        ];
-    }
-
-    /** @return array{items:array<int,array<string,mixed>>,hasMore:bool,lastId:?int} */
-    private function listRecentBatchesPage(
-        string $actorUserId,
-        bool $canViewAll,
-        int $limit,
-        ?int $afterId
-    ): array {
-        $this->assertBatchSchemaReady();
-        $limit = max(1, min(50, $limit));
-        $params = [];
-        $conditions = [];
-        if (!$canViewAll) {
-            $conditions[] = 'actor_user_id = :actor_user_id';
-            $params[':actor_user_id'] = trim($actorUserId);
-        }
-        if ($afterId !== null) $conditions[] = 'id < ' . max(1, $afterId);
-        $where = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
-        $stmt = $this->db->prepare(
-            "SELECT * FROM private_ingestion_batches {$where} ORDER BY id DESC LIMIT " . ($limit + 1)
-        );
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        $hasMore = count($rows) > $limit;
-        if ($hasMore) $rows = array_slice($rows, 0, $limit);
-        $last = $rows === [] ? null : $rows[array_key_last($rows)];
-
-        return [
-            'items' => array_values(array_map(
-                fn (array $row): array => $this->formatBatchRow($row),
-                $rows
-            )),
-            'hasMore' => $hasMore,
-            'lastId' => is_array($last) ? (int) ($last['id'] ?? 0) : $afterId,
-        ];
-    }
-
-    /** @return array{items:array<int,array<string,mixed>>,hasMore:bool,lastId:?int} */
-    private function listRecentJobsPage(
-        string $actorUserId,
-        bool $canViewAll,
-        int $limit,
-        ?int $afterId
-    ): array {
-        $this->assertSchemaReady();
-        $limit = max(1, min(50, $limit));
-        $params = [];
-        $conditions = [];
-        if (!$canViewAll) {
-            $conditions[] = 'jobs.actor_user_id = :actor_user_id';
-            $params[':actor_user_id'] = trim($actorUserId);
-        }
-        if ($afterId !== null) $conditions[] = 'jobs.id < ' . max(1, $afterId);
-        $where = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
 
         $stmt = $this->db->prepare(
-            "SELECT jobs.id, jobs.request_id, jobs.batch_id, jobs.actor_user_id, jobs.status, jobs.attempts,
-                    jobs.error_message, jobs.created_at, jobs.available_at, jobs.locked_at,
-                    jobs.completed_at, jobs.dead_lettered_at, jobs.payload_json, requests.response_json,
-                    batches.public_id AS batch_public_id
-             FROM private_ingestion_jobs jobs
-             INNER JOIN private_ingestion_requests requests ON requests.id = jobs.request_id
-             LEFT JOIN private_ingestion_batches batches ON batches.id = jobs.batch_id
-             {$where}
-             ORDER BY jobs.id DESC
-             LIMIT " . ($limit + 1)
+            'SELECT * FROM private_ingestion_batches '
+            . "WHERE actor_user_id = :actor_user_id "
+            . "ORDER BY CASE WHEN status IN ('pending', 'processing') THEN 0 ELSE 1 END, id DESC LIMIT 1"
         );
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        $hasMore = count($rows) > $limit;
-        if ($hasMore) $rows = array_slice($rows, 0, $limit);
-        $last = $rows === [] ? null : $rows[array_key_last($rows)];
+        $stmt->execute([':actor_user_id' => $actorUserId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $items = array_map(function (array $row): array {
-            $response = json_decode((string) ($row['response_json'] ?? ''), true);
-            $payload = json_decode((string) ($row['payload_json'] ?? ''), true);
-            $summary = is_array($payload) ? $this->summarizeJobPayload($payload) : [];
+        return is_array($row) ? $this->formatBatchRow($row) : null;
+    }
+
+    /** @return array{batches:int,jobs:int,requests:int} */
+    public function pruneCompletedProcessingRecords(int $retentionDays = 1, int $limit = 500): array
+    {
+        $this->assertBatchSchemaReady();
+        $retentionDays = max(1, min(30, $retentionDays));
+        $limit = max(1, min(1000, $limit));
+        $lock = $this->db->query("SELECT GET_LOCK('question_ingestion_retention', 0)");
+        if ((int) $lock->fetchColumn() !== 1) {
+            return ['batches' => 0, 'jobs' => 0, 'requests' => 0];
+        }
+
+        try {
+            $stmt = $this->db->query(
+                "SELECT id FROM private_ingestion_batches
+                 WHERE status IN ('done', 'failed', 'partial')
+                   AND completed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL {$retentionDays} DAY)
+                 ORDER BY id ASC LIMIT {$limit}"
+            );
+            $batchIds = array_values(array_filter(array_map(
+                'intval',
+                $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []
+            ), static fn (int $id): bool => $id > 0));
+            if ($batchIds === []) {
+                return ['batches' => 0, 'jobs' => 0, 'requests' => 0];
+            }
+
+            $placeholders = implode(',', array_fill(0, count($batchIds), '?'));
+            $requestsStmt = $this->db->prepare(
+                "SELECT request_id FROM private_ingestion_jobs WHERE batch_id IN ({$placeholders})"
+            );
+            $requestsStmt->execute($batchIds);
+            $requestIds = array_values(array_filter(array_map(
+                'intval',
+                $requestsStmt->fetchAll(PDO::FETCH_COLUMN) ?: []
+            ), static fn (int $id): bool => $id > 0));
+
+            $this->db->beginTransaction();
+            $jobsDelete = $this->db->prepare(
+                "DELETE FROM private_ingestion_jobs WHERE batch_id IN ({$placeholders})"
+            );
+            $jobsDelete->execute($batchIds);
+            $deletedJobs = $jobsDelete->rowCount();
+
+            $deletedRequests = 0;
+            if ($requestIds !== []) {
+                $requestPlaceholders = implode(',', array_fill(0, count($requestIds), '?'));
+                $requestsDelete = $this->db->prepare(
+                    "DELETE FROM private_ingestion_requests WHERE id IN ({$requestPlaceholders})"
+                );
+                $requestsDelete->execute($requestIds);
+                $deletedRequests = $requestsDelete->rowCount();
+            }
+
+            $batchesDelete = $this->db->prepare(
+                "DELETE FROM private_ingestion_batches WHERE id IN ({$placeholders})"
+            );
+            $batchesDelete->execute($batchIds);
+            $deletedBatches = $batchesDelete->rowCount();
+            $this->db->commit();
+
             return [
-                'jobId' => (int) $row['id'],
-                'requestId' => (int) $row['request_id'],
-                'batchId' => trim((string) ($row['batch_public_id'] ?? '')) ?: null,
-                'actorUserId' => (string) ($row['actor_user_id'] ?? ''),
-                'status' => (string) $row['status'],
-                'attempts' => (int) ($row['attempts'] ?? 0),
-                'error' => trim((string) ($row['error_message'] ?? '')) ?: null,
-                'createdAt' => $row['created_at'] ?? null,
-                'availableAt' => $row['available_at'] ?? null,
-                'lockedAt' => $row['locked_at'] ?? null,
-                'completedAt' => $row['completed_at'] ?? null,
-                'deadLetteredAt' => $row['dead_lettered_at'] ?? null,
-                'questionCount' => (int) ($summary['questionCount'] ?? 0),
-                'examCount' => (int) ($summary['examCount'] ?? 0),
-                'examTitles' => $summary['examTitles'] ?? [],
-                'collectionPages' => $summary['collectionPages'] ?? [],
-                'result' => is_array($response) ? $response : null,
+                'batches' => $deletedBatches,
+                'jobs' => $deletedJobs,
+                'requests' => $deletedRequests,
             ];
-        }, $rows);
-
-        return [
-            'items' => $items,
-            'hasMore' => $hasMore,
-            'lastId' => is_array($last) ? (int) ($last['id'] ?? 0) : $afterId,
-        ];
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        } finally {
+            $this->db->query("SELECT RELEASE_LOCK('question_ingestion_retention')");
+        }
     }
 
     /** @param array<string,mixed> $payload @return array<string,mixed> */

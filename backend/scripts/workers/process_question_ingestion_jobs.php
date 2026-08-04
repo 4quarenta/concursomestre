@@ -61,7 +61,21 @@ for ($index = 0; $index < $maxJobs; $index++) {
     }
 }
 
-$result = ['worker' => $workerId, 'slot' => $workerSlot, 'processed' => $processed, 'finishedAt' => gmdate('c')];
+$retentionDays = max(1, min(30, (int) (getenv('QUESTION_INGESTION_RETENTION_DAYS') ?: 1)));
+try {
+    $pruned = $ingestion->pruneCompletedProcessingRecords($retentionDays);
+} catch (Throwable $exception) {
+    error_log('[question-ingestion-retention] ' . $exception->getMessage());
+    $pruned = ['batches' => 0, 'jobs' => 0, 'requests' => 0];
+}
+
+$result = [
+    'worker' => $workerId,
+    'slot' => $workerSlot,
+    'processed' => $processed,
+    'pruned' => $pruned,
+    'finishedAt' => gmdate('c'),
+];
 $healthDir = dirname(__DIR__, 2) . '/storage/health/workers';
 if ((is_dir($healthDir) || @mkdir($healthDir, 0775, true)) && is_dir($healthDir)) {
     @file_put_contents(

@@ -437,31 +437,12 @@ final class AdminGranCrawlerService
         );
     }
 
-    public function listJobs(string $actorUserId, bool $canViewAll = false): array
-    {
-        return (new PrivateQuestionIngestionService($this->db))->listRecentJobs(
-            $actorUserId,
-            $canViewAll,
-            20
-        );
-    }
-
     /** @return array<string,mixed> */
-    public function bootstrap(
-        string $actorUserId,
-        bool $canViewAll = false,
-        int $historyLimit = 10,
-        ?string $historyCursor = null
-    ): array
+    public function bootstrap(string $actorUserId): array
     {
         $ingestion = new PrivateQuestionIngestionService($this->db);
-        $history = $ingestion->listProcessingHistory(
-            $actorUserId,
-            $canViewAll,
-            $historyLimit,
-            $historyCursor
-        );
-        return $history + [
+        return [
+            'currentBatch' => $ingestion->getCurrentProcessingBatch($actorUserId),
             'taxonomyStatus' => (new AdminGranTaxonomySyncService($this->db))->getStatus(),
         ];
     }

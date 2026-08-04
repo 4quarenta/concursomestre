@@ -20,17 +20,7 @@ function handleAdminGranCrawlerRoute(PDO $db): void
         $service = new AdminGranCrawlerService($db);
 
         if ($method === 'GET') {
-            $historyLimit = max(5, min(25, (int) ($_GET['history_limit'] ?? 10)));
-            $historyCursor = trim((string) ($_GET['history_cursor'] ?? ''));
-            if (strlen($historyCursor) > 2048) {
-                throw new InvalidArgumentException('Cursor do historico de processamento invalido.');
-            }
-            Response::success($service->bootstrap(
-                $actorUserId,
-                $role === 'admin',
-                $historyLimit,
-                $historyCursor !== '' ? $historyCursor : null
-            ));
+            Response::success($service->bootstrap($actorUserId));
         }
         if ($method !== 'POST') {
             Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
