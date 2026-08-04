@@ -3,9 +3,9 @@
   "product": "ConcursoMestre",
   "version": "1.0.0",
   "revision": "selective-r6.1",
-  "commit": "36f59ff92cdd8044e6ad637c5a72a2d488645179",
+  "commit": "576d7629a498515241ceddb07dbd3eb6fc21dd81",
   "gitDirty": false,
-  "generatedAt": "2026-08-04T14:48:42.409Z",
+  "generatedAt": "2026-08-04T17:08:13.336Z",
   "runtime": {
     "node": "v20.12.2",
     "nodeMinimum": "20.19.0",
@@ -62,6 +62,7 @@
       "backend/database/migrations/20260802_010000_gran_crawler_batches.php": "4bddf49a02f7a8742d63fcd9fddcd9ae2c5ceda3762a54b7c9ead00e960773bb",
       "backend/database/migrations/20260802_020000_gran_batch_collection_metadata.php": "6a4ca74d9e17b75ad3dd0a315c6302d9b3547c298751c654e7a927ac80b55701",
       "backend/database/migrations/20260804_010000_gran_question_failure_diagnostics.php": "9936d8606b9fc00013476fc8c21f1b8c14ad131a2d50792aefc093fd1d446074",
+      "backend/database/migrations/20260804_020000_gran_batch_collection_year.php": "cdb914889af50e808a25c7f2eb5d0d36836530a3a0ca696d8208f88f5979d3fb",
       "backend/database/migrations/create_user_material_notes.sql": "2187d9f0e855a41927f976748b8e31d3aca6125e2d24fdad325004d3ba074477",
       "backend/database/migrations/refactor_cleanup.sql": "9ecb430009af8090f669f37c6b56caff4590fb6cd6fe2a9e9b5b82bc42531759",
       "backend/database/migrations/refactor_user_notes.sql": "540eaab854648f6e84dd4c534920ac2af34de92db969ae6ebfd1aa60d18ad68b"
@@ -87,7 +88,7 @@
     "backend/shared/http/LegacyEndpointDeprecation.php": "d8075e3c26b2787e29dee974181afd961d400abe0a5511fddad6db6b4836d0cb",
     "backend/shared/responses/ApiEnvelope.php": "dc7c1b29201beb2f80b6460a5f500b8b7597f9ff6c02a620a2456afc24b9d8d1",
     "backend/shared/runtime/RuntimeStoreFactory.php": "7156b809bf16f889b777a8ae88902f961e82f34911f446a4ddf01f35d6a5b2a5",
-    "backend/modules/questions/services/QuestionsService.php": "f809f4460f894ac73e4d7fba9fa9335b392b43da26d50b7edaec4b3c8a8f8886",
+    "backend/modules/questions/services/QuestionsService.php": "18dcbc881591da9cac9cfad7006847710a576f89c038a389bf6726d9686dcf31",
     "backend/modules/questions/repositories/QuestionsRepository.php": "a164a0dd6803119060f0fc5f50470dc4d0dea87638d9184831fd95f0027fb0b5",
     "backend/modules/subscriptions/services/SubscriptionsService.php": "220016e7819de39b1210a6464e6f4156858003516ed4fa8aec2c46441479ec81",
     "scripts/checks/production-readiness-local.mjs": "c8494d4e7ec6926a4b9db64858e79f139f92e86f4b310e0da2944c8443d61af6",
