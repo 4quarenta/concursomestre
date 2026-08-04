@@ -19,6 +19,7 @@ import FiltersManagementSection from './FiltersManagementSection';
 import AdminMaterialsSection from '../materials/AdminMaterialsSection';
 import BlockedMaterialsSection from '../materials/BlockedMaterialsSection';
 import AdminExamBankSection from '../exams/AdminExamBankSection';
+import AdminFilesSection from '../files/AdminFilesSection';
 import AdminImportSection from '../import/AdminImportSection';
 import AdminGranCrawlerSection, {
   type GranImportPayload,
@@ -591,6 +592,10 @@ const AdminDatabaseSections = ({
         onLoadMore={onLoadMoreExams}
       />
     );
+  }
+
+  if (activeSubTab === 'files') {
+    return <AdminFilesSection />;
   }
 
   if (activeSubTab === 'users') {

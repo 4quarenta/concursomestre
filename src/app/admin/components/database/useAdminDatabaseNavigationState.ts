@@ -16,6 +16,7 @@ type AdminDatabaseSubTab =
   | 'questions'
   | 'question-groups'
   | 'exams'
+  | 'files'
   | 'users'
   | 'materials'
   | 'rankings'
@@ -38,6 +39,7 @@ const VALID_SUBTABS: AdminDatabaseSubTab[] = [
   'questions',
   'question-groups',
   'exams',
+  'files',
   'users',
   'materials',
   'rankings',

@@ -105,6 +105,17 @@ final class ObjectStorage
         $this->signedS3Request('DELETE', $storageKey, null, 'application/octet-stream');
     }
 
+    /**
+     * Confirma a existencia de objetos locais sem expor o caminho interno.
+     * Para S3/R2 a biblioteca evita um HEAD por item e retorna true: a
+     * disponibilidade remota continua sendo validada pelo navegador/CDN.
+     */
+    public function exists(string $storageKey): ?bool
+    {
+        $storageKey = $this->normalizeKey($storageKey);
+        return $this->driver === 'local' ? is_file($this->localPath($storageKey)) : null;
+    }
+
     public function publicUrl(string $storageKey): string
     {
         return $this->publicBaseUrl . '/' . implode('/', array_map('rawurlencode', explode('/', $this->normalizeKey($storageKey))));

@@ -230,6 +230,7 @@ export const ENDPOINTS = {
         commentsModerationExport: 'admin/comments_moderation_export.php',
         securityIps: 'admin/security_ips.php',
         logs: 'admin/logs.php',
+        files: 'admin/files.php',
     },
 
     subscriptions: {

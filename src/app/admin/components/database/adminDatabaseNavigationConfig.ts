@@ -37,7 +37,7 @@ export const ADMIN_DATABASE_CATEGORIES: AdminDatabaseCategoryConfig[] = [
     label: 'Conteúdo',
     description: 'Banco de questões, importação e taxonomias.',
     icon: BookOpen,
-    tabs: ['questions', 'question-groups', 'exams', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
+    tabs: ['questions', 'question-groups', 'exams', 'files', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
   },
   {
     id: 'people',
@@ -77,6 +77,11 @@ export const ADMIN_DATABASE_SUBTAB_META: Record<string, AdminDatabaseSubTabMeta>
   exams: {
     label: 'Banco de provas',
     description: 'Cadastro global de provas para vínculo e manutenção no editor.',
+    category: 'content',
+  },
+  files: {
+    label: 'Arquivos',
+    description: 'Imagens, PDFs e uploads vinculados aos recursos da plataforma.',
     category: 'content',
   },
   filters: {
