@@ -262,6 +262,8 @@ export interface ImportedQuestionImageDraft {
   tempId: string;
   title: string;
   description?: string;
+  url?: string;
+  usage?: 'statement' | 'support' | 'alternative' | 'context' | 'reference';
   imageData?: string;
   pageImageData?: string;
   figureBox?: FigureBox;

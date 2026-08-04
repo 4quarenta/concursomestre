@@ -13,6 +13,7 @@ import type {
   Prova,
   Question,
   QuestionAlternativePayload,
+  QuestionAssetUsage,
   QuestionFiltersPayload,
   QuestionFilterValuePayload,
   QuestionPayload,
@@ -3437,10 +3438,16 @@ export const buildQuestionPayloadImportCard = ({
       const explicitUrl = String(record.url || '');
       const url = explicitUrl || (/^https:\/\//i.test(rawImageData) ? rawImageData : '');
       const imageData = url === rawImageData ? '' : rawImageData;
+      const usage: QuestionAssetUsage = record.usage === 'statement'
+        || record.usage === 'alternative'
+        || record.usage === 'context'
+        || record.usage === 'reference'
+        ? record.usage
+        : 'support';
       return {
         tempId,
         type: 'image' as const,
-        usage: 'support' as const,
+        usage,
         url,
         base64: imageData,
         alt: String(record.description || record.alt || record.caption || ''),

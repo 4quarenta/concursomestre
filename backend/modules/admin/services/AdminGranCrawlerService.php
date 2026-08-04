@@ -958,10 +958,8 @@ final class AdminGranCrawlerService
                 }
             }
 
-            $statement = $this->sanitizeRichText($this->readText(
-                $row['enunciado'] ?? null,
-                $row['statement'] ?? null
-            ));
+            $rawStatement = $row['enunciado'] ?? $row['statement'] ?? null;
+            $statement = $this->sanitizeRichText($this->readRichTextValue($rawStatement));
             $statementClean = $this->cleanText($this->readText(
                 $row['enunciado_clean'] ?? null,
                 $row['statement_clean'] ?? null,
@@ -973,7 +971,10 @@ final class AdminGranCrawlerService
                 $support = '';
             }
             $alternatives = $this->mapAlternatives($row, $tempId, $sourcePage);
-            $statementAssets = $this->extractInlineAssets($statement, $tempId, 'statement', $sourcePage);
+            $statementAssets = $this->deduplicateAssets(array_merge(
+                $this->extractInlineAssets($statement, $tempId, 'statement', $sourcePage),
+                $this->extractStructuredContentAssets($rawStatement, $tempId, 'statement', $sourcePage)
+            ));
             $supportAssets = $this->extractInlineAssets(
                 $support,
                 $tempId . '_support',
@@ -1027,6 +1028,10 @@ final class AdminGranCrawlerService
                 ? (int) $existingExam['id']
                 : null;
 
+            $statementWithAssets = $this->appendMissingAssetMarkers(
+                $this->replaceInlineImagesWithMarkers($statement, $statementAssets),
+                $statementAssets
+            );
             $question = [
                 'tempId' => $tempId,
                 'id' => $existingQuestionId,
@@ -1047,7 +1052,7 @@ final class AdminGranCrawlerService
                         : null,
                 ],
                 'content' => [
-                    'statement' => $this->replaceInlineImagesWithMarkers($statement, $statementAssets),
+                    'statement' => $statementWithAssets,
                     'statementClean' => $statementClean,
                     'supportText' => $this->replaceInlineImagesWithMarkers($support, $supportAssets),
                     'reference' => $this->readText(
@@ -2313,6 +2318,62 @@ final class AdminGranCrawlerService
         return $assets;
     }
 
+    private function readRichTextValue(mixed $value): string
+    {
+        if (is_string($value) || is_numeric($value)) {
+            $text = trim((string) $value);
+            return $this->looksLikeImageUrl($text) ? '' : $text;
+        }
+        if (!is_array($value)) {
+            return '';
+        }
+        foreach (['html', 'texto', 'text', 'body', 'content', 'conteudo', 'enunciado', 'statement'] as $key) {
+            if (!array_key_exists($key, $value)) {
+                continue;
+            }
+            $text = $this->readRichTextValue($value[$key]);
+            if ($text !== '') {
+                return $text;
+            }
+        }
+        return '';
+    }
+
+    private function extractStructuredContentAssets(
+        mixed $value,
+        string $prefix,
+        string $usage,
+        ?int $sourcePage
+    ): array {
+        if (is_string($value) || is_numeric($value)) {
+            $text = trim((string) $value);
+            if ($this->looksLikeImageUrl($text)) {
+                return $this->extractAssets(['imagem' => $text], $prefix, $usage, $sourcePage);
+            }
+            return $this->extractInlineAssets($this->sanitizeRichText($text), $prefix, $usage, $sourcePage);
+        }
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $assets = $this->extractAssets($value, $prefix, $usage, $sourcePage);
+        foreach (['html', 'texto', 'text', 'body', 'content', 'conteudo', 'enunciado', 'statement'] as $key) {
+            if (!array_key_exists($key, $value)) {
+                continue;
+            }
+            $assets = array_merge(
+                $assets,
+                $this->extractStructuredContentAssets(
+                    $value[$key],
+                    $prefix . '_' . $key,
+                    $usage,
+                    $sourcePage
+                )
+            );
+        }
+        return $this->deduplicateAssets($assets);
+    }
+
     private function extractAssets(array $source, string $prefix, string $usage, ?int $sourcePage): array
     {
         $candidates = [];
@@ -2326,6 +2387,15 @@ final class AdminGranCrawlerService
             if ($candidate !== null) {
                 $candidates[] = $candidate;
             }
+        }
+        $directAssetUrl = $this->readText(
+            $source['url'] ?? null,
+            $source['src'] ?? null,
+            $source['caminho'] ?? null,
+            $source['path'] ?? null
+        );
+        if ($this->looksLikeImageUrl($directAssetUrl)) {
+            $candidates[] = $source;
         }
         foreach (['imagens', 'images', 'figuras', 'assets', 'arquivos'] as $key) {
             foreach (is_array($source[$key] ?? null) ? $source[$key] : [] as $candidate) {
@@ -2403,11 +2473,45 @@ final class AdminGranCrawlerService
         );
     }
 
+    private function appendMissingAssetMarkers(string $html, array $assets): string
+    {
+        $markers = [];
+        foreach ($assets as $asset) {
+            $tempId = trim((string) ($asset['tempId'] ?? ''));
+            if ($tempId === '') {
+                continue;
+            }
+            $marker = '[image:' . $tempId . ']';
+            if (!str_contains($html, $marker)) {
+                $markers[] = $marker;
+            }
+        }
+        return trim(implode("\n", array_filter([$html, implode("\n", $markers)])));
+    }
+
+    private function looksLikeImageUrl(string $value): bool
+    {
+        $value = trim($value);
+        if ($value === '' || preg_match('/^(?:data|blob|javascript):/i', $value) === 1) {
+            return false;
+        }
+        if (preg_match('/\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i', $value) === 1) {
+            return true;
+        }
+        $parts = parse_url(str_starts_with($value, '//') ? 'https:' . $value : $value);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        return $host === 'arquivos.infra-questoes.grancursosonline.com.br'
+            || str_ends_with($host, '.infra-questoes.grancursosonline.com.br');
+    }
+
     private function resolveAssetUrl(string $value): string
     {
         $value = trim($value);
         if ($value === '') {
             return '';
+        }
+        if (str_starts_with($value, '//')) {
+            $value = 'https:' . $value;
         }
         if (!preg_match('/^https:\/\//i', $value)) {
             if (preg_match('/^[a-z]+:/i', $value)) {
@@ -2527,7 +2631,18 @@ final class AdminGranCrawlerService
     private function reviewReasons(array $question, bool $contextHasAssets = false): array
     {
         $reasons = ['coleta_externa_requer_revisao'];
-        if (trim((string) ($question['content']['statementClean'] ?? '')) === '') {
+        $hasStatementAsset = false;
+        foreach (is_array($question['assets'] ?? null) ? $question['assets'] : [] as $asset) {
+            if (is_array($asset) && ($asset['usage'] ?? null) === 'statement') {
+                $hasStatementAsset = true;
+                break;
+            }
+        }
+        if (
+            trim((string) ($question['content']['statementClean'] ?? '')) === ''
+            && trim((string) ($question['content']['statement'] ?? '')) === ''
+            && !$hasStatementAsset
+        ) {
             $reasons[] = 'enunciado_ausente';
         }
         if (($question['alternatives'] ?? []) === []) {

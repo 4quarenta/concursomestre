@@ -223,6 +223,51 @@ granCrawlerAssert(
     'hasImage deve extrair a imagem presente no enunciado, criar o asset e preservar seu marcador.'
 );
 
+$imageOnlyResult = $service->mapBrowserResponse([
+    'granResponse' => [
+        'data' => [
+            'total' => 1,
+            'rows' => [[
+                'id' => 67813,
+                'numero_questao' => 1,
+                'hasImage' => true,
+                'enunciado' => [
+                    'imagem' => [
+                        'url' => 'https://arquivos.infra-questoes.grancursosonline.com.br/questoes/67813/enunciado.png',
+                        'alt' => 'Imagem associada para resolucao da questao.',
+                    ],
+                ],
+                'itens' => [
+                    ['id' => 678131, 'rotulo' => 'A', 'corpo' => 'somente 1 e 2'],
+                    ['id' => 678132, 'rotulo' => 'B', 'corpo' => 'somente 1 e 3'],
+                    ['id' => 678133, 'rotulo' => 'C', 'corpo' => '1, 2 e 3'],
+                    ['id' => 678134, 'rotulo' => 'D', 'corpo' => 'somente 2 e 3'],
+                    ['id' => 678135, 'rotulo' => 'E', 'corpo' => 'nenhuma'],
+                ],
+                'resposta' => 678133,
+                'provas' => [[
+                    'id' => 67813,
+                    'nome' => 'NCE - IPLANRIO - Tecnico em Processamento - 1999',
+                    'ano' => 1999,
+                ]],
+            ]],
+        ],
+    ],
+    'granRequestUrl' => 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?perPage=1&page=1&anos%5B%5D=1999',
+]);
+$imageOnlyQuestion = $imageOnlyResult['payloads'][0]['questions'][0] ?? [];
+granCrawlerAssert(
+    str_contains((string) ($imageOnlyQuestion['content']['statement'] ?? ''), '[image:')
+    && ($imageOnlyQuestion['content']['statementClean'] ?? null) === ''
+    && count($imageOnlyQuestion['assets'] ?? []) === 1
+    && ($imageOnlyQuestion['assets'][0]['usage'] ?? null) === 'statement',
+    'Questao com enunciado exclusivamente visual deve preservar a imagem como statement canonico.'
+);
+granCrawlerAssert(
+    !in_array('enunciado_ausente', $imageOnlyQuestion['review']['reasons'] ?? [], true),
+    'Enunciado visual valido nao pode ser classificado como enunciado ausente.'
+);
+
 $hierarchyResult = $service->mapBrowserResponse([
     'granResponse' => [
         'data' => [

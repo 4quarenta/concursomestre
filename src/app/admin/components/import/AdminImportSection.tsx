@@ -14,6 +14,7 @@ import Image from 'next/image';
 import type {
   Prova,
   Question,
+  QuestionAsset,
   QuestionTaxonomyLabel,
   SystemSettings,
 } from '@types';
@@ -57,6 +58,7 @@ import {
 } from '../shared/adminPanelStyles';
 import { EXTERNAL_AI_FULL_BATCH_PROMPT } from './externalAiExamPrompt';
 import { partitionQuestionTaxonomies } from './adminImportWorkflowPublicationCore';
+import { renderQuestionContentWithAssets } from '@/services/questions/questionAssetRenderer';
 
 type GenerateSpecificType = 'teacher' | 'detailed';
 type ExternalEditorialMode = GenerateSpecificType;
@@ -433,6 +435,22 @@ const getQuestionSupportImages = (question: Question) => {
       })) as ExtractedQuestionImagePreview[];
   }
   return Array.isArray(record.supportImages) ? record.supportImages as ExtractedQuestionImagePreview[] : [];
+};
+
+const getQuestionStatementAssets = (question: Question): QuestionAsset[] => (
+  (Array.isArray(question.assets) ? question.assets : [])
+    .filter((asset) => asset.type === 'image' && asset.usage === 'statement')
+);
+
+const getQuestionStatementSummary = (question: Question) => {
+  const summary = stripPreviewText(getQuestionStatementPreview(question))
+    .replace(/\[image:[^\]]+\]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (summary) return summary;
+  return getQuestionStatementAssets(question).length > 0
+    ? 'Enunciado visual. Abra o conteúdo para conferir a imagem.'
+    : 'Enunciado ainda não preenchido.';
 };
 
 const getQuestionSubjects = (questions: Question[]) => questions
@@ -3152,6 +3170,7 @@ const AdminImportSection = ({
                   const introText = getQuestionIntroText(question);
                   const referenceText = getQuestionReferenceText(question);
                   const supportImages = getQuestionSupportImages(question);
+                  const statementAssets = getQuestionStatementAssets(question);
                   const showIntroBlock = Boolean(introText) || supportImages.length > 0 || editingIntroTextIndex === index;
                   const showReferenceBlock = Boolean(referenceText) || editingReferenceTextIndex === index;
                   const hasSharedContext = linkedContexts.length > 0;
@@ -3171,6 +3190,7 @@ const AdminImportSection = ({
                     || question.figureBox
                     || question.supportFigureBox
                     || question.optionFigureBox
+                    || statementAssets.length > 0
                     || supportImages.length > 0
                     || linkedContexts.some((context) => context.hasFigure || context.imageData || context.figureBox),
                   );
@@ -3331,7 +3351,7 @@ const AdminImportSection = ({
                     {cardsOnly && !isCardExpanded && (
                       <div className="rounded-sm border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
                         <p className="line-clamp-3 text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
-                          {getQuestionStatementPreview(question).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || 'Enunciado ainda não preenchido.'}
+                          {getQuestionStatementSummary(question)}
                         </p>
                         <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                           <span>{options.length} alternativa(s)</span>
@@ -3734,9 +3754,16 @@ const AdminImportSection = ({
                           className={`${ADMIN_FIELD_CLASS} min-h-32 w-full resize-y text-sm font-bold leading-relaxed text-slate-800 dark:text-slate-200`}
                         />
                       ) : (
-                        <h4 className="rounded-sm border border-slate-200 bg-white p-3 text-sm font-bold leading-relaxed text-slate-800 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-200">
-                          {getQuestionStatementPreview(question) || 'Enunciado ainda não preenchido. Clique em “Editar enunciado” para completar.'}
-                        </h4>
+                        getQuestionStatementPreview(question) || statementAssets.length > 0 ? (
+                          <MathRichText
+                            content={renderQuestionContentWithAssets(getQuestionStatementPreview(question), statementAssets)}
+                            className="question-rich-html rounded-sm border border-slate-200 bg-white p-3 text-sm font-bold leading-relaxed text-slate-800 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-200"
+                          />
+                        ) : (
+                          <p className="rounded-sm border border-slate-200 bg-white p-3 text-sm font-bold leading-relaxed text-slate-500 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-400">
+                            Enunciado ainda não preenchido. Clique em “Editar enunciado” para completar.
+                          </p>
+                        )
                       )}
                     </div>
 

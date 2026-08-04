@@ -106,6 +106,60 @@ describe('identidade canonica do JSON externo', () => {
     });
     expect(question.questionCreatePayload?.source).toEqual(question.source);
   });
+
+  it('preserva imagem como enunciado visual no contrato canonico', () => {
+    const question = buildQuestionPayloadImportCard({
+      source: { origin: 'exam', provider: 'gran', externalId: '67813', questionNumber: 1 },
+      questionNumber: 1,
+      statement: '[image:gran_q_67813_img_1]',
+      introText: '',
+      referenceText: '',
+      teacherComment: '',
+      detailedComment: '',
+      contextKey: '',
+      bancas: [],
+      orgaos: [],
+      cargos: [],
+      assuntos: [],
+      anos: [],
+      carreiras: [],
+      niveis: [],
+      tiposProva: [],
+      tipo: 'single_choice',
+      dificuldade: 2,
+      itens: [
+        { id: 1, corpo: 'somente 1 e 2', rotulo: 'A' },
+        { id: 2, corpo: 'somente 1 e 3', rotulo: 'B' },
+      ],
+      resposta: 1,
+      correctOptionIndex: 0,
+      hasFigure: true,
+      supportImages: [{
+        tempId: 'gran_q_67813_img_1',
+        title: 'Imagem do enunciado',
+        url: 'https://arquivos.infra-questoes.grancursosonline.com.br/questoes/67813/enunciado.png',
+        usage: 'statement',
+      }],
+      status: 'ok',
+      needsImportReview: true,
+      reasons: ['coleta_externa_requer_revisao'],
+      quality: {
+        origin: 'manual',
+        confidence: 1,
+        complete: true,
+        localized: true,
+        needsReview: true,
+        reasons: ['coleta_externa_requer_revisao'],
+      },
+    });
+
+    expect(question.content?.statement).toBe('[image:gran_q_67813_img_1]');
+    expect(question.assets).toEqual([expect.objectContaining({
+      tempId: 'gran_q_67813_img_1',
+      usage: 'statement',
+      url: 'https://arquivos.infra-questoes.grancursosonline.com.br/questoes/67813/enunciado.png',
+    })]);
+  });
 });
 
 describe('normalização do JSON da IA externa', () => {
