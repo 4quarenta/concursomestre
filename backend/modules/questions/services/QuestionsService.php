@@ -964,6 +964,7 @@ class QuestionsService
                     $duplicate = [
                         'reason' => 'duplicate_in_batch',
                         'questionNumber' => $importIdentity['source_question_number'],
+                        'tempId' => $question['tempId'] ?? null,
                     ];
                     $duplicateSkipped[] = $duplicate;
                     $this->repository->recordExamQuestionImportTraceItem($importTraceId, [
@@ -993,6 +994,7 @@ class QuestionsService
                             'reason' => 'already_published',
                             'questionId' => $existingQuestion['id'] ?? null,
                             'questionNumber' => $importIdentity['source_question_number'],
+                            'tempId' => $question['tempId'] ?? null,
                         ];
                         $duplicateSkipped[] = $duplicate;
                         $this->repository->recordExamQuestionImportTraceItem($importTraceId, [

@@ -320,6 +320,7 @@ final class PrivateQuestionIngestionService
         $questionCount = 0;
         $questionKeys = [];
         $collectionPages = [];
+        $collectionYears = [];
         foreach ($payloads as $payload) {
             if (!is_array($payload) || ($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
                 throw new InvalidArgumentException('Todos os lotes devem usar o contrato question-import.v2.');
@@ -338,11 +339,15 @@ final class PrivateQuestionIngestionService
             $importMetadata = is_array($payload['import'] ?? null) ? $payload['import'] : [];
             $collectionPage = (int) ($importMetadata['collectionPage'] ?? 0);
             if ($collectionPage > 0) $collectionPages[] = $collectionPage;
+            $collectionYear = (int) ($importMetadata['collectionYear'] ?? 0);
+            if ($collectionYear >= 1900 && $collectionYear <= 2200) $collectionYears[] = $collectionYear;
             $normalizedPayloads[] = $payload;
         }
         self::assertBatchQuestionCount($questionCount);
         $collectionPages = array_values(array_unique($collectionPages));
         sort($collectionPages);
+        $collectionYears = array_values(array_unique($collectionYears));
+        sort($collectionYears);
 
         $canonical = json_encode(
             $normalizedPayloads,
@@ -360,7 +365,8 @@ final class PrivateQuestionIngestionService
             $payloadHash,
             $questionCount,
             array_values(array_unique($questionKeys)),
-            $collectionPages
+            $collectionPages,
+            $collectionYears
         );
         $chunks = $this->splitCanonicalPayloads($normalizedPayloads);
         foreach ($chunks as $index => $chunk) {
@@ -725,6 +731,7 @@ final class PrivateQuestionIngestionService
                 'public_id', 'actor_user_id', 'idempotency_key', 'payload_hash', 'status',
                 'question_count', 'job_count', 'question_keys_json', 'question_statuses_json',
                 'question_errors_json', 'collection_pages_json',
+                'collection_years_json',
             ],
             'private_ingestion_jobs' => ['batch_id'],
         ]);
@@ -737,7 +744,8 @@ final class PrivateQuestionIngestionService
         string $payloadHash,
         int $questionCount,
         array $questionKeys,
-        array $collectionPages
+        array $collectionPages,
+        array $collectionYears
     ): array {
         $select = $this->db->prepare(
             'SELECT * FROM private_ingestion_batches
@@ -756,8 +764,8 @@ final class PrivateQuestionIngestionService
         $publicId = $this->uuidV4();
         $insert = $this->db->prepare(
             'INSERT INTO private_ingestion_batches
-             (public_id, actor_user_id, idempotency_key, payload_hash, status, question_count, question_keys_json, collection_pages_json)
-             VALUES (:public_id, :actor_user_id, :idempotency_key, :payload_hash, :status, :question_count, :question_keys_json, :collection_pages_json)'
+             (public_id, actor_user_id, idempotency_key, payload_hash, status, question_count, question_keys_json, collection_pages_json, collection_years_json)
+             VALUES (:public_id, :actor_user_id, :idempotency_key, :payload_hash, :status, :question_count, :question_keys_json, :collection_pages_json, :collection_years_json)'
         );
         try {
             $insert->execute([
@@ -769,6 +777,7 @@ final class PrivateQuestionIngestionService
                 ':question_count' => $questionCount,
                 ':question_keys_json' => json_encode($questionKeys, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ':collection_pages_json' => json_encode($collectionPages, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ':collection_years_json' => json_encode($collectionYears, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ]);
             return ['id' => (int) $this->db->lastInsertId(), 'public_id' => $publicId, 'idempotentReplay' => false];
         } catch (PDOException $exception) {
@@ -1011,6 +1020,20 @@ final class PrivateQuestionIngestionService
                     ?? 0
                 );
                 $itemFailures = is_array($result['itemFailures'] ?? null) ? $result['itemFailures'] : [];
+                $duplicates = is_array($result['duplicatesSkipped'] ?? null)
+                    ? $result['duplicatesSkipped']
+                    : (is_array($result['duplicates_skipped'] ?? null) ? $result['duplicates_skipped'] : []);
+                foreach ($duplicates as $duplicate) {
+                    if (!is_array($duplicate)) continue;
+                    $duplicateTempId = trim((string) ($duplicate['tempId'] ?? ''));
+                    $duplicateNumber = trim((string) ($duplicate['questionNumber'] ?? ''));
+                    $duplicateKey = $questionKeysByTempId[$duplicateTempId]
+                        ?? $questionKeysByNumber[$duplicateNumber]
+                        ?? null;
+                    if (is_string($duplicateKey) && $duplicateKey !== '') {
+                        $questionStatuses[$duplicateKey] = 'duplicate';
+                    }
+                }
                 $counts['questionFailures'] += count($itemFailures);
                 foreach ($itemFailures as $failure) {
                     if (!is_array($failure)) continue;
@@ -1094,20 +1117,34 @@ final class PrivateQuestionIngestionService
         $collectionPages = is_array($collectionPages)
             ? array_values(array_filter(array_map('intval', $collectionPages), static fn (int $page): bool => $page > 0))
             : [];
+        $collectionYears = json_decode((string) ($row['collection_years_json'] ?? '[]'), true);
+        $collectionYears = is_array($collectionYears)
+            ? array_values(array_filter(
+                array_map('intval', $collectionYears),
+                static fn (int $year): bool => $year >= 1900 && $year <= 2200
+            ))
+            : [];
         $questionCount = (int) $row['question_count'];
         $pageLabel = $collectionPages === []
             ? ''
             : (count($collectionPages) === 1
                 ? 'Pagina ' . $collectionPages[0]
                 : 'Paginas ' . implode(', ', $collectionPages));
+        $yearLabel = $collectionYears === []
+            ? ''
+            : (count($collectionYears) === 1
+                ? 'Ano ' . $collectionYears[0]
+                : 'Anos ' . implode(', ', $collectionYears));
         $displayName = trim(implode(' - ', array_filter([
             $pageLabel,
+            $yearLabel,
             sprintf('%d questao(oes)', $questionCount),
         ])));
         return [
             'batchId' => (string) $row['public_id'],
             'displayName' => $displayName,
             'collectionPages' => $collectionPages,
+            'collectionYears' => $collectionYears,
             'status' => (string) $row['status'],
             'questionCount' => $questionCount,
             'jobCount' => (int) $row['job_count'],

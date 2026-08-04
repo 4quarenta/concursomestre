@@ -1114,6 +1114,9 @@ final class AdminGranCrawlerService
                 'status' => 'draft',
                 'collectionPage' => isset($metadata['collectionPage']) ? (int) $metadata['collectionPage'] : null,
                 'collectionPerPage' => isset($metadata['collectionPerPage']) ? (int) $metadata['collectionPerPage'] : null,
+                'collectionYear' => isset($metadata['year']) && is_numeric($metadata['year'])
+                    ? (int) $metadata['year']
+                    : null,
                 'collectionRequestUrl' => trim((string) ($metadata['collectionRequestUrl'] ?? '')) ?: null,
                 'diagnostics' => [
                     sprintf('Coleta administrativa autorizada: %d questao(oes).', count($questions)),

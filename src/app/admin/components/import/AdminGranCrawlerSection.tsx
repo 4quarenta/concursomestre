@@ -3,8 +3,10 @@
 import React from 'react';
 import {
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Download,
   Loader2,
   PlugZap,
@@ -57,6 +59,7 @@ export type GranImportPayload = {
     extractionMode?: string;
     collectionPage?: number | null;
     collectionPerPage?: number | null;
+    collectionYear?: number | null;
     collectionRequestUrl?: string | null;
     [key: string]: unknown;
   };
@@ -105,6 +108,7 @@ export type GranPublicationBatch = {
   batchId: string;
   displayName?: string;
   collectionPages?: number[];
+  collectionYears?: number[];
   status: string;
   questionCount: number;
   jobCount: number;
@@ -114,7 +118,7 @@ export type GranPublicationBatch = {
   duplicates: number;
   failures: number;
   questionKeys?: string[];
-  questionStatuses?: Record<string, 'queued' | 'processing' | 'published' | 'failed'>;
+  questionStatuses?: Record<string, 'queued' | 'processing' | 'published' | 'duplicate' | 'failed'>;
   questionErrors?: Record<string, { code?: string; message?: string }>;
   error?: string | null;
   createdAt?: string | null;
@@ -214,6 +218,21 @@ const statusLabel: Record<string, string> = {
   processing: 'Processando',
   done: 'Concluído',
   failed: 'Falhou',
+  partial: 'Concluído com pendências',
+};
+
+const questionStatusLabel: Record<string, string> = {
+  queued: 'Aguardando',
+  processing: 'Processando',
+  published: 'Publicada',
+  duplicate: 'Já existente',
+  failed: 'Falhou',
+};
+
+const formatQuestionKey = (key: string, index: number) => {
+  const granMatch = key.match(/^gran:question:(.+)$/i);
+  if (granMatch?.[1]) return `#${index + 1} - Q${granMatch[1]}`;
+  return `#${index + 1} - ${key}`;
 };
 
 const readApiData = <T,>(response: { data?: unknown }): T => {
@@ -306,6 +325,7 @@ const AdminGranCrawlerSection = ({
   const [year, setYear] = React.useState('');
   const [result, setResult] = React.useState<GranFetchResult | null>(null);
   const [currentBatch, setCurrentBatch] = React.useState<GranPublicationBatch | null>(null);
+  const [showProcessingDetails, setShowProcessingDetails] = React.useState(false);
   const [taxonomyExpanded, setTaxonomyExpanded] = React.useState(false);
   const [isCheckingTaxonomyUpdates, setIsCheckingTaxonomyUpdates] = React.useState(false);
   const [isFetching, setIsFetching] = React.useState(false);
@@ -323,6 +343,18 @@ const AdminGranCrawlerSection = ({
   const fetchAbortRef = React.useRef<AbortController | null>(null);
   const publicationBatches = React.useMemo(() => currentBatch ? [currentBatch] : [], [currentBatch]);
   const hasActiveJobs = currentBatch !== null && ['pending', 'processing'].includes(currentBatch.status);
+  const currentBatchQuestionDetails = React.useMemo(() => {
+    if (!currentBatch) return [];
+    const keys = currentBatch.questionKeys || [];
+    const statuses = currentBatch.questionStatuses || {};
+    const errors = currentBatch.questionErrors || {};
+    return keys.map((key, index) => ({
+      key,
+      index,
+      status: statuses[key] || 'queued',
+      error: errors[key]?.message || null,
+    }));
+  }, [currentBatch]);
   const reviewQueues = React.useMemo(
     () => partitionGranReviewPayloads(result?.payloads || []),
     [result?.payloads],
@@ -1225,6 +1257,49 @@ const AdminGranCrawlerSection = ({
             </div>
             {currentBatch.error ? (
               <p className="mt-2 text-xs font-semibold text-rose-600">{currentBatch.error}</p>
+            ) : null}
+
+            {currentBatchQuestionDetails.length > 0 ? (
+              <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setShowProcessingDetails((current) => !current)}
+                  className="flex w-full items-center justify-between gap-3 text-left text-xs font-bold text-slate-700 dark:text-slate-200"
+                  aria-expanded={showProcessingDetails}
+                >
+                  <span>Detalhes das {currentBatchQuestionDetails.length} questões</span>
+                  {showProcessingDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+
+                {showProcessingDetails ? (
+                  <div className="mt-3 max-h-80 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-700">
+                    {currentBatchQuestionDetails.map((detail) => (
+                      <div
+                        key={detail.key}
+                        className="grid gap-1 border-b border-slate-100 px-3 py-2 text-xs last:border-b-0 dark:border-slate-800 md:grid-cols-[minmax(12rem,1fr)_9rem_minmax(16rem,2fr)]"
+                      >
+                        <strong className="break-all text-slate-700 dark:text-slate-200">
+                          {formatQuestionKey(detail.key, detail.index)}
+                        </strong>
+                        <span className={detail.status === 'failed'
+                          ? 'font-bold text-rose-600'
+                          : detail.status === 'published'
+                            ? 'font-bold text-emerald-600'
+                            : 'font-bold text-slate-500'}
+                        >
+                          {questionStatusLabel[detail.status] || detail.status}
+                        </span>
+                        <span className="text-slate-500 dark:text-slate-400">
+                          {detail.error
+                            || (detail.status === 'failed' ? 'Falha sem detalhe registrado.' : null)
+                            || (detail.status === 'duplicate' ? 'A questão já existia na plataforma.' : null)
+                            || (detail.status === 'published' ? 'Publicada neste processamento.' : '-')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </section>

@@ -87,4 +87,12 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(reviewCardSource).toContain("queueStatus === 'failed' && queueError");
     expect(reviewCardSource).toContain('Motivo da falha: {queueError}');
   });
+
+  it('shows the filtered year and per-question outcome details in the latest batch', () => {
+    expect(source).toContain('collectionYears?: number[]');
+    expect(source).toContain('Detalhes das {currentBatchQuestionDetails.length} questões');
+    expect(source).toContain('formatQuestionKey(detail.key, detail.index)');
+    expect(source).toContain("duplicate: 'Já existente'");
+    expect(source).toContain("detail.status === 'failed' ? 'Falha sem detalhe registrado.'");
+  });
 });

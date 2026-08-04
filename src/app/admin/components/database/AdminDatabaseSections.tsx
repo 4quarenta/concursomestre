@@ -97,7 +97,7 @@ const AdminGranCrawlerReviewQueue = ({
     const statuses: Record<string, 'queued' | 'processing' | 'published' | 'failed'> = {};
     publicationBatches.forEach((batch) => {
       Object.entries(batch.questionStatuses || {}).forEach(([key, status]) => {
-        if (!(key in statuses)) statuses[key] = status;
+        if (!(key in statuses)) statuses[key] = status === 'duplicate' ? 'published' : status;
       });
     });
     return statuses;
