@@ -3,9 +3,9 @@
   "product": "ConcursoMestre",
   "version": "1.0.0",
   "revision": "selective-r6.1",
-  "commit": "877d118d1020aa37f6bb2d86ae1b024e7575188e",
+  "commit": "ff6f55de9e1202f59b780921c8cbaa0b63ea9ad7",
   "gitDirty": false,
-  "generatedAt": "2026-08-04T13:03:47.021Z",
+  "generatedAt": "2026-08-04T13:25:00.421Z",
   "runtime": {
     "node": "v20.12.2",
     "nodeMinimum": "20.19.0",
@@ -61,6 +61,7 @@
       "backend/database/migrations/20260801_010000_filter_source_metadata_relations.php": "28026275796bbb33ba0e05a22a405edc81bd38e1b37a6236abfc1b64d30bc366",
       "backend/database/migrations/20260802_010000_gran_crawler_batches.php": "4bddf49a02f7a8742d63fcd9fddcd9ae2c5ceda3762a54b7c9ead00e960773bb",
       "backend/database/migrations/20260802_020000_gran_batch_collection_metadata.php": "6a4ca74d9e17b75ad3dd0a315c6302d9b3547c298751c654e7a927ac80b55701",
+      "backend/database/migrations/20260804_010000_gran_question_failure_diagnostics.php": "9936d8606b9fc00013476fc8c21f1b8c14ad131a2d50792aefc093fd1d446074",
       "backend/database/migrations/create_user_material_notes.sql": "2187d9f0e855a41927f976748b8e31d3aca6125e2d24fdad325004d3ba074477",
       "backend/database/migrations/refactor_cleanup.sql": "9ecb430009af8090f669f37c6b56caff4590fb6cd6fe2a9e9b5b82bc42531759",
       "backend/database/migrations/refactor_user_notes.sql": "540eaab854648f6e84dd4c534920ac2af34de92db969ae6ebfd1aa60d18ad68b"
