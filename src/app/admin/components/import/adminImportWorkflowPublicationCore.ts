@@ -2334,6 +2334,7 @@ export const normalizeExternalAiContextPayload = (payload: unknown): ImportedCon
         description: figureRecord
           ? readLooseText(figureRecord, ['description', 'descricao', 'text', 'texto'])
           : String(figure || '').trim(),
+        url: readLooseText(figureRecord, ['url', 'src', 'publicUrl', 'public_url']),
         imageData: readExternalImageData(figureRecord),
         pageImageData: readLooseText(figureRecord, ['pageImageData', 'page_image_data', 'pageBase64']),
         figureBox: normalizeExtractionFigureBox(readLooseField(figureRecord, ['figureBox', 'box', 'bbox']) as FigureBox),
@@ -2341,6 +2342,16 @@ export const normalizeExternalAiContextPayload = (payload: unknown): ImportedCon
         order: figureIndex + 1,
       };
     });
+    const assets = figures.map((figure, figureIndex) => ({
+      tempId: figure.figureKey,
+      type: 'image' as const,
+      usage: 'context' as const,
+      ...(figure.url ? { url: figure.url } : {}),
+      ...(figure.imageData ? { base64: figure.imageData } : {}),
+      alt: figure.description || `Imagem ${figureIndex + 1} do contexto.`,
+      sourcePage: figure.page || null,
+      order: figure.order || figureIndex + 1,
+    }));
 
     if (!text && !contextImageData && figures.length === 0) return;
     contexts.push({
@@ -2352,6 +2363,7 @@ export const normalizeExternalAiContextPayload = (payload: unknown): ImportedCon
       referenceText,
       richText: text,
       questionNumbers,
+      assets,
       hasFigure: figures.length > 0 || Boolean(contextImageData || contextFigureBox || readLooseField(record, ['hasFigure', 'temFigura'])),
       figureDescription: readLooseText(record, ['figureDescription', 'descricaoFigura']) || figures.map((figure) => figure.description).filter(Boolean).join('\n'),
       page: Number(readLooseField(record, ['page', 'pagina']) || 0),

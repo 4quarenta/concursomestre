@@ -11,6 +11,7 @@
 
 import type {
   Question,
+  QuestionAsset,
   QuestionPayload,
   QuestionSourcePayload,
   QuestionTaxonomyLabel,
@@ -238,6 +239,7 @@ export interface ImportedContextDraft {
   referenceText?: string;
   richText?: string;
   questionNumbers: number[];
+  assets?: QuestionAsset[];
   hasFigure: boolean;
   figureDescription: string;
   page: number;
@@ -249,6 +251,7 @@ export interface ImportedContextDraft {
     figureKey: string;
     type?: string;
     description?: string;
+    url?: string;
     imageData?: string;
     pageImageData?: string;
     figureBox?: FigureBox;

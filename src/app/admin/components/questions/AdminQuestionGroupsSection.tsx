@@ -98,6 +98,14 @@ const getContextUsage = (context: AdminQuestionGroupItem) => {
   return Number(context.question_count ?? context.questionCount ?? ids.length ?? 0);
 };
 
+const getContextAssetUrl = (asset?: QuestionAsset) => {
+  const url = String(asset?.url || '').trim();
+  if (url) return url;
+  const base64 = String(asset?.base64 || '').trim();
+  if (!base64) return '';
+  return base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
+};
+
 const buildDraftFromContext = (context: AdminQuestionGroupItem): QuestionContextDraft => ({
   id: context.id,
   texto: context.texto || context.enunciado || '',
@@ -593,12 +601,9 @@ const AdminQuestionGroupsSection = () => {
               </tr>
             ) : contexts.length > 0 ? contexts.map((context) => {
               const contextAssets = Array.isArray(context.assets) ? context.assets : [];
-              const imageUrl = String(
-                contextAssets[0]?.url
-                || context.image_url
-                || context.imageUrl
-                || '',
-              ).trim();
+              const imageUrls = contextAssets.map(getContextAssetUrl).filter(Boolean);
+              const legacyImageUrl = String(context.image_url || context.imageUrl || '').trim();
+              if (imageUrls.length === 0 && legacyImageUrl) imageUrls.push(legacyImageUrl);
               const usage = getContextUsage(context);
               const isSelected = selectedIds.has(Number(context.id));
 
@@ -632,18 +637,23 @@ const AdminQuestionGroupsSection = () => {
                     </div>
                   </td>
                   <td className="border-b border-slate-200 px-4 py-3 align-top dark:border-slate-800">
-                    {imageUrl ? (
+                    {imageUrls.length > 0 ? (
                       <div className="flex min-w-0 items-center gap-3">
-                        <Image
-                          src={resolveApiResourceUrl(imageUrl)}
-                          alt=""
-                          width={80}
-                          height={56}
-                          unoptimized
-                          className="h-14 w-20 shrink-0 rounded-sm border border-slate-300 object-cover dark:border-slate-700"
-                        />
+                        <div className="flex max-w-52 gap-1 overflow-x-auto">
+                          {imageUrls.map((url, index) => (
+                            <Image
+                              key={`${context.id}-asset-${index}`}
+                              src={resolveApiResourceUrl(url)}
+                              alt={`Imagem ${index + 1} do contexto`}
+                              width={80}
+                              height={56}
+                              unoptimized
+                              className="h-14 w-20 shrink-0 rounded-sm border border-slate-300 object-cover dark:border-slate-700"
+                            />
+                          ))}
+                        </div>
                         <span className="block min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">
-                          {contextAssets.length > 1 ? `${contextAssets.length} imagens` : imageUrl}
+                          {imageUrls.length > 1 ? `${imageUrls.length} imagens` : '1 imagem'}
                         </span>
                       </div>
                     ) : (

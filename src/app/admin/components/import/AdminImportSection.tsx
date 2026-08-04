@@ -209,6 +209,7 @@ type ExtractedContextPreview = {
   referenceText?: string;
   richText?: string;
   questionNumbers: number[];
+  assets?: QuestionAsset[];
   hasFigure: boolean;
   figureDescription: string;
   page: number;
@@ -224,6 +225,7 @@ type ExtractedContextPreview = {
     figureKey?: string;
     type?: string;
     description?: string;
+    url?: string;
     imageData?: string;
     pageImageData?: string;
     figureBox?: {
@@ -693,7 +695,8 @@ const isQuestionReadyForPublicationPreview = (question: ExtractedQuestionPreview
 const getImageDataUri = (imageData?: string) => {
   const value = asText(imageData);
   if (!value) return '';
-  return value.startsWith('data:') ? value : `data:image/jpeg;base64,${value}`;
+  if (/^(?:data:image\/|https?:\/\/|\/)/i.test(value)) return value;
+  return `data:image/jpeg;base64,${value}`;
 };
 
 const escapeHtmlAttribute = (value: unknown) => asText(value)
@@ -702,7 +705,7 @@ const escapeHtmlAttribute = (value: unknown) => asText(value)
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;');
 
-const figureMarkerPattern = /\[FIGURA:\s*([-\w]+)\]/gi;
+const figureMarkerPattern = /\[(?:FIGURA:\s*|image:)([-\w]+)\]/gi;
 
 const createContextInlineFigureHtml = (
   context: ExtractedContextPreview,
@@ -732,12 +735,12 @@ const getContextFigureImageData = (
   context: ExtractedContextPreview,
   figure?: NonNullable<ExtractedContextPreview['figures']>[number],
 ) => (figure
-  ? (figure.imageData || figure.pageImageData || '')
-  : (context.imageData || context.pageImageData || '')
+  ? (figure.url || figure.imageData || figure.pageImageData || '')
+  : (context.assets?.[0]?.url || context.assets?.[0]?.base64 || context.imageData || context.pageImageData || '')
 );
 
 const getContextPrimaryFigureImageData = (context: ExtractedContextPreview) => (
-  context.imageData || context.pageImageData || ''
+  context.assets?.[0]?.url || context.assets?.[0]?.base64 || context.imageData || context.pageImageData || ''
 );
 
 const renderContextTextWithInlineFigures = (context: ExtractedContextPreview) => {

@@ -21,14 +21,23 @@ export const buildImportedContextsForPublication = (
 ): QuestionContextPayload[] => contexts.map((context) => {
   const content = readContent(context);
   const assets: QuestionAsset[] = [
+    ...(context.assets || []).map((asset, index) => ({
+      ...asset,
+      tempId: String(asset.tempId || asset.id || `${context.tempId}-img-${index + 1}`),
+      type: 'image' as const,
+      usage: 'context' as const,
+      order: asset.order || index + 1,
+    })),
     ...(content.imageData ? [{
       tempId: `${context.tempId}-img-1`, type: 'image' as const, usage: 'context' as const,
       base64: content.imageData, alt: context.figureDescription || context.title || 'Imagem do contexto.',
       sourcePage: context.sourcePage || context.page || null, order: 1,
     }] : []),
-    ...(content.figures || []).filter((figure) => Boolean(figure.imageData)).map((figure, index) => ({
+    ...(content.figures || []).filter((figure) => Boolean(figure.imageData || figure.url)).map((figure, index) => ({
       tempId: String(figure.figureKey || `${context.tempId}-img-${index + 2}`), type: 'image' as const,
-      usage: 'context' as const, base64: String(figure.imageData || ''),
+      usage: 'context' as const,
+      ...(figure.imageData ? { base64: String(figure.imageData) } : {}),
+      ...(figure.url ? { url: String(figure.url) } : {}),
       alt: String(figure.description || context.figureDescription || `Imagem ${index + 2} do contexto.`),
       sourcePage: typeof figure.page === 'string' || typeof figure.page === 'number' ? figure.page : context.sourcePage || context.page || null, order: index + 2,
     })),
