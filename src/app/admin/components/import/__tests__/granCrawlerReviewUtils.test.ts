@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyGranReviewQuestionIndexes,
   getGranReviewQueueOffsets,
-  mergeGranReviewPayloads,
   partitionGranReviewPayloads,
 } from '../granCrawlerReviewUtils';
 
@@ -55,30 +54,6 @@ describe('partitionGranReviewPayloads', () => {
 
     expect(result.pendingQuestionCount).toBe(1);
     expect(result.publishedQuestionCount).toBe(0);
-  });
-
-  it('accumulates pages, removes duplicate Gran ids and stops at 5.000 cards', () => {
-    const question = (id: number) => ({
-      tempId: `q_${id}`,
-      source: { provider: 'gran', externalId: id, questionNumber: id },
-    });
-    const current = [{ exam: { title: 'Prova A' }, contexts: [], questions: [question(1), question(2)] }];
-    const incoming = [{ exam: { title: 'Prova B' }, contexts: [], questions: [question(2), question(3)] }];
-
-    const merged = mergeGranReviewPayloads(current, incoming, 5000);
-
-    expect(merged.total).toBe(3);
-    expect(merged.added).toBe(1);
-    expect(merged.payloads.flatMap((payload) => payload.questions).map((item) => item.tempId)).toEqual(['q_1', 'q_2', 'q_3']);
-
-    const full = mergeGranReviewPayloads(
-      [{ exam: {}, contexts: [], questions: Array.from({ length: 4999 }, (_, index) => question(index + 1)) }],
-      [{ exam: {}, contexts: [], questions: [question(5000), question(5001)] }],
-      5000,
-    );
-    expect(full.total).toBe(5000);
-    expect(full.added).toBe(1);
-    expect(full.limitReached).toBe(true);
   });
 
   it('selects all 100 review cards while keeping only complete items publishable', () => {

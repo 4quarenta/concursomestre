@@ -18,7 +18,7 @@ $popup = (string) file_get_contents($extension . '/popup.js');
 
 granExtensionAssert(is_array($manifest), 'Manifesto da extensao deve ser JSON valido.');
 granExtensionAssert(($manifest['manifest_version'] ?? null) === 3, 'Extensao deve usar Manifest V3.');
-granExtensionAssert(($manifest['version'] ?? null) === '1.0.15', 'Pacote corrigido deve usar a versao 1.0.15.');
+granExtensionAssert(($manifest['version'] ?? null) === '1.0.16', 'Pacote corrigido deve usar a versao 1.0.16.');
 granExtensionAssert(
     ($manifest['host_permissions'] ?? []) === [
         'https://rota-api.grancursosonline.com.br/*',

@@ -24,4 +24,14 @@ describe('Gran crawler URL controls', () => {
   it('rejects multiple or invalid years through the canonical control', () => {
     expect(() => buildGranQuestionQueryUrl('', { page: 1, perPage: 20, year: '1899' })).toThrow();
   });
+
+  it('allows up to 1.000 questions per request and clamps larger values', () => {
+    expect(new URL(buildGranQuestionQueryUrl('', { page: 1, perPage: 750, year: '1999' }))
+      .searchParams.get('perPage')).toBe('750');
+    expect(new URL(buildGranQuestionQueryUrl('', { page: 1, perPage: 5000, year: '1999' }))
+      .searchParams.get('perPage')).toBe('1000');
+    expect(readGranQuestionQueryControls(
+      'https://rota-api.grancursosonline.com.br/v1/elastic/questao?page=1&perPage=1000&anos%5B%5D=1999',
+    )).toEqual({ page: 1, perPage: 1000, year: '1999' });
+  });
 });

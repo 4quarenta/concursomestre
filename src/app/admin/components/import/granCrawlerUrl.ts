@@ -1,4 +1,5 @@
 const GRAN_API_ENDPOINT = 'https://rota-api.grancursosonline.com.br/v1/elastic/questao';
+const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
 
 export type GranQuestionQueryControls = {
   page: number;
@@ -30,7 +31,9 @@ export const readGranQuestionQueryControls = (urlValue: string): Partial<GranQue
   const years = [...new Set(rawYears)];
   return {
     page: Number.isInteger(page) && page >= 1 ? page : undefined,
-    perPage: Number.isInteger(perPage) && perPage >= 1 && perPage <= 100 ? perPage : undefined,
+    perPage: Number.isInteger(perPage) && perPage >= 1 && perPage <= MAX_GRAN_QUESTIONS_PER_PAGE
+      ? perPage
+      : undefined,
     year: years.length === 1 ? normalizeYear(years[0]) : '',
   };
 };
@@ -40,7 +43,7 @@ export const buildGranQuestionQueryUrl = (
   controls: GranQuestionQueryControls,
 ) => {
   const page = Math.max(1, Math.trunc(controls.page));
-  const perPage = Math.max(1, Math.min(100, Math.trunc(controls.perPage)));
+  const perPage = Math.max(1, Math.min(MAX_GRAN_QUESTIONS_PER_PAGE, Math.trunc(controls.perPage)));
   const year = normalizeYear(controls.year);
   const parsed = urlValue.trim() ? new URL(urlValue.trim()) : new URL(GRAN_API_ENDPOINT);
   if (parsed.origin !== 'https://rota-api.grancursosonline.com.br'

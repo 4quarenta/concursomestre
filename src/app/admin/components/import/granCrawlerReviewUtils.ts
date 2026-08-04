@@ -13,12 +13,6 @@ type GranReviewQuestion = {
   };
 };
 
-const granQuestionIdentity = (question: GranReviewQuestion) => {
-  const externalId = String(question.source?.externalId ?? '').trim();
-  if (externalId) return `${String(question.source?.provider || 'gran')}:question:${externalId}`;
-  return String(question.tempId || '').trim();
-};
-
 type GranReviewContext = {
   tempId?: string;
   questionNumbers?: Array<number | string>;
@@ -32,7 +26,6 @@ type GranReviewPayload = {
     [key: string]: unknown;
   };
 };
-
 export type GranReviewQueueStatus = 'queued' | 'processing' | 'published' | 'failed';
 
 export const classifyGranReviewQuestionIndexes = <T>({
@@ -143,30 +136,3 @@ export const partitionGranReviewPayloads = <T extends GranReviewPayload>(payload
   };
 };
 
-export const mergeGranReviewPayloads = <T extends GranReviewPayload>(
-  currentPayloads: T[],
-  incomingPayloads: T[],
-  limit = 5000,
-) => {
-  const existingIdentities = new Set<string>();
-  let questionCount = 0;
-  currentPayloads.forEach((payload) => payload.questions.forEach((question) => {
-    const identity = granQuestionIdentity(question);
-    if (identity) existingIdentities.add(identity);
-    questionCount += 1;
-  }));
-  const merged = [...currentPayloads];
-  let added = 0;
-  for (const payload of incomingPayloads) {
-    const questions = payload.questions.filter((question) => {
-      const identity = granQuestionIdentity(question);
-      if (identity && existingIdentities.has(identity)) return false;
-      if (questionCount + added >= limit) return false;
-      if (identity) existingIdentities.add(identity);
-      added += 1;
-      return true;
-    });
-    if (questions.length > 0) merged.push(clonePayloadWithQuestions(payload, questions));
-  }
-  return { payloads: merged, added, total: questionCount + added, limitReached: questionCount + added >= limit };
-};

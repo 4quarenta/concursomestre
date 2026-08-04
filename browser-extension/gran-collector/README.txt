@@ -1,5 +1,5 @@
 CONCURSOMESTRE - COLETOR GRAN
-VERSAO 1.0.15
+VERSAO 1.0.16
 
 Instalacao privada no Google Chrome:
 

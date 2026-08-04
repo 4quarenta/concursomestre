@@ -27,7 +27,7 @@ import {
   verifyGranCollector,
 } from './granExtensionBridge';
 import type { GranCollectorStatus, GranTaxonomyCollectorResult } from './granExtensionBridge';
-import { mergeGranReviewPayloads, partitionGranReviewPayloads } from './granCrawlerReviewUtils';
+import { partitionGranReviewPayloads } from './granCrawlerReviewUtils';
 import { splitGranTaxonomyResponses } from './granTaxonomySyncUtils';
 import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from './granCrawlerUrl';
 
@@ -139,8 +139,9 @@ type GranCrawlerBootstrapData = {
 };
 
 const ENDPOINT = 'admin/gran_crawler.php';
-const EXTENSION_DOWNLOAD_URL = '/downloads/concursomestre-coletor-gran-v1.0.15.zip';
-const MAX_GRAN_QUESTIONS_PER_PAGE = 100;
+const EXTENSION_DOWNLOAD_URL = '/downloads/concursomestre-coletor-gran-v1.0.16.zip';
+const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
+const GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear';
 const BOOTSTRAP_CACHE_MS = 60_000;
 const COLLECTOR_STATUS_CACHE_MS = 30_000;
 const TAXONOMY_CHECK_FRESH_MS = 6 * 60 * 60 * 1000;
@@ -395,6 +396,10 @@ const AdminGranCrawlerSection = ({
   }, [loadBootstrap]);
 
   React.useEffect(() => {
+    const savedYear = window.localStorage.getItem(GRAN_LAST_YEAR_STORAGE_KEY)?.trim() || '';
+    if (/^\d{4}$/.test(savedYear) && Number(savedYear) >= 1900 && Number(savedYear) <= 2200) {
+      setYear(savedYear);
+    }
     void Promise.resolve().then(() => loadBootstrap(true, true));
     void Promise.resolve().then(() => checkCollector());
     return () => fetchAbortRef.current?.abort();
@@ -481,17 +486,13 @@ const AdminGranCrawlerSection = ({
         year: year.trim(),
       }, { signal: controller.signal });
       const data = readApiData<GranFetchResult>(response);
-      setResult((current) => {
-        if (!current) return data;
-        const merged = mergeGranReviewPayloads(current.payloads, data.payloads, 5000);
-        if (merged.limitReached && merged.added < data.questionCount) {
-          setError('A fila atingiu o limite de 5.000 questoes. Publique ou limpe a fila antes de continuar.');
-        }
-        return { ...data, payloads: merged.payloads, questionCount: merged.total };
-      });
+      setResult(data);
       setPage(data.page);
       setPerPage(data.perPage);
       if (data.requestUrl) setGranRequestUrl(data.requestUrl);
+      const savedYear = year.trim();
+      if (savedYear) window.localStorage.setItem(GRAN_LAST_YEAR_STORAGE_KEY, savedYear);
+      else window.localStorage.removeItem(GRAN_LAST_YEAR_STORAGE_KEY);
 
     } catch (requestError: unknown) {
       if (controller.signal.aborted) return;
@@ -867,7 +868,7 @@ const AdminGranCrawlerSection = ({
             </div>
           </div>
           <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-            Remova a versão anterior, baixe a v1.0.15 e carregue a nova pasta em
+            Remova a versão anterior, baixe a v1.0.16 e carregue a nova pasta em
             {' '}
             <strong>chrome://extensions</strong>
             . O botão Verificar reconhece a extensão sem recarregar esta página. A sessão Gran precisa estar válida.

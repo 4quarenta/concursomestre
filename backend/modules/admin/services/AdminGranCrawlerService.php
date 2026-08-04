@@ -20,7 +20,7 @@ final class AdminGranCrawlerService
     private const ASSET_ORIGIN = 'https://arquivos.infra-questoes.grancursosonline.com.br';
     private const MAX_REMOTE_RESPONSE_BYTES = 8_000_000;
     private const MAX_REQUEST_URL_BYTES = 8_000;
-    private const MAX_QUESTIONS_PER_PAGE = 100;
+    private const MAX_QUESTIONS_PER_PAGE = 1000;
 
     /** @var null|Closure(string,string,string):array{status:int,body:string} */
     private ?Closure $httpClient;

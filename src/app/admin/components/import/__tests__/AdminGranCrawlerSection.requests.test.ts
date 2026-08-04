@@ -56,9 +56,13 @@ describe('AdminGranCrawlerSection requests', () => {
   });
 
   it('accepts a manual bounded page size and keeps published questions collapsed', () => {
-    expect(source).toContain('MAX_GRAN_QUESTIONS_PER_PAGE = 100');
+    expect(source).toContain('MAX_GRAN_QUESTIONS_PER_PAGE = 1000');
     expect(source).toContain('type="number"');
     expect(source).toContain('max={MAX_GRAN_QUESTIONS_PER_PAGE}');
+    expect(source).toContain("GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear'");
+    expect(source).toContain('window.localStorage.setItem(GRAN_LAST_YEAR_STORAGE_KEY, savedYear)');
+    expect(source).toContain('setResult(data);');
+    expect(source).not.toContain('mergeGranReviewPayloads(current.payloads');
     expect(source).toContain('partitionGranReviewPayloads');
     expect(source).toContain('<details className={ADMIN_PAGE_PANEL_CLASS}>');
     expect(source).toContain('Questões já publicadas');

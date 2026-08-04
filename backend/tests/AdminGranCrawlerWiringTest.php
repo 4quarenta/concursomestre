@@ -70,14 +70,21 @@ adminGranCrawlerWiringAssert(
     'Exam files must flow from canonical metadata to prova_arquivos.'
 );
 adminGranCrawlerWiringAssert(
-    !str_contains($component, 'localStorage')
-    && !str_contains($component, 'sessionStorage')
+    !str_contains($component, 'sessionStorage')
     && !str_contains($component, 'document.cookie')
     && !str_contains($component, 'granAccessToken')
+    && str_contains($component, "GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear'")
     && str_contains($component, "action: 'map'")
     && str_contains($component, 'granExamFiles: collection.examFiles')
     && str_contains($component, 'collectGranQuestions'),
     'Frontend must collect through the extension without receiving Gran credentials.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($service, 'MAX_QUESTIONS_PER_PAGE = 1000')
+    && str_contains($component, 'MAX_GRAN_QUESTIONS_PER_PAGE = 1000')
+    && str_contains($component, 'setResult(data);')
+    && !str_contains($component, 'mergeGranReviewPayloads'),
+    'Each query must replace the review queue and support up to 1,000 requested questions.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($route, "\$action === 'map'")
