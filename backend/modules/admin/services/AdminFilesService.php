@@ -47,17 +47,29 @@ final class AdminFilesService
 
     public function delete(string $id): void
     {
-        if (!preg_match('/^material_upload:(\d+)$/', $id, $match)) {
-            throw new InvalidArgumentException('Somente uploads pendentes e desvinculados podem ser excluidos aqui.');
+        if (!preg_match('/^([a-z_]+):([A-Za-z0-9-]+)$/', $id, $match)) {
+            throw new InvalidArgumentException('Identificador de arquivo invalido.');
         }
-        $upload = $this->repository->findDeletableMaterialUpload((int) $match[1]);
-        if ($upload === null) {
-            throw new RuntimeException('O arquivo nao existe ou possui vinculo ativo.');
+        $removed = $this->repository->removeFileReference($match[1], $match[2]);
+        if ($removed === null) {
+            throw new RuntimeException('O arquivo nao existe ou ja foi removido.');
         }
-        if (!$this->repository->deleteMaterialUpload((int) $match[1])) {
-            throw new RuntimeException('O arquivo ganhou um vinculo e nao pode mais ser excluido.');
+
+        $reference = trim((string) $removed['file_ref']);
+        if ($reference === '' || $this->repository->hasActiveReference($reference)) {
+            return;
         }
-        $this->storage->delete((string) $upload['storage_key']);
+        $storageKey = $this->storage->storageKeyFromPublicUrl($reference);
+        if ($storageKey === null && !preg_match('#^(?:https?:)?//#i', $reference) && !str_starts_with($reference, '/')) {
+            $storageKey = $reference;
+        }
+        if ($storageKey !== null) {
+            try {
+                $this->storage->delete($storageKey);
+            } catch (Throwable $exception) {
+                error_log('AdminFilesService: referencia removida, mas a limpeza fisica falhou: ' . $exception->getMessage());
+            }
+        }
     }
 
     private function normalize(array $row): array
@@ -91,6 +103,7 @@ final class AdminFilesService
             'createdAt' => $row['created_at'] ?? null,
             'ownerType' => $row['owner_type'] ?? null,
             'ownerId' => $row['owner_id'] ?? null,
+            'ownerLabel' => $row['owner_label'] ?? null,
             'linked' => (bool) $row['linked'],
             'deletable' => (bool) $row['deletable'],
             'availability' => $availability,

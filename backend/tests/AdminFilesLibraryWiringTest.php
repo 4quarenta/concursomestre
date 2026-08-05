@@ -41,10 +41,12 @@ try {
     foreach (['question_assets', 'prova_arquivos', 'material_uploads', 'users', 'filters', 'materials', 'blog_articles'] as $table) {
         adminFilesAssertContains($repository, $table, 'Origem ausente no inventario: ' . $table);
     }
-    adminFilesAssertContains($repository, "attached_material_id IS NULL AND status = 'pending'", 'Somente uploads pendentes e desvinculados podem ser excluidos.');
-    adminFilesAssertContains($service, "preg_match('/^material_upload:(\\d+)$/',", 'A exclusao deve rejeitar identificadores de recursos vinculados.');
+    adminFilesAssertContains($repository, "COALESCE(NULLIF(p.nome, ''), CONCAT('Prova #', pa.prova_id))", 'Arquivos de prova devem informar o titulo da prova.');
+    adminFilesAssertContains($repository, 'removeFileReference', 'A biblioteca deve remover referencias de todas as origens suportadas.');
+    adminFilesAssertContains($repository, 'hasActiveReference', 'Objetos compartilhados nao podem ser apagados enquanto houver referencias.');
+    adminFilesAssertContains($service, "preg_match('/^([a-z_]+):([A-Za-z0-9-]+)$/',", 'A exclusao deve validar o identificador canonico.');
 
-    $databaseDelete = strpos($service, 'deleteMaterialUpload(');
+    $databaseDelete = strpos($service, 'removeFileReference(');
     $storageDelete = strpos($service, '$this->storage->delete(');
     if ($databaseDelete === false || $storageDelete === false || $databaseDelete > $storageDelete) {
         throw new RuntimeException('O registro deve ser removido atomicamente antes da limpeza fisica tolerante a falha.');

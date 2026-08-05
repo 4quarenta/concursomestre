@@ -39,9 +39,11 @@ describe('admin file library', () => {
     expect(sectionSource).toContain('Sem vínculo');
   });
 
-  it('does not offer destructive actions for linked files', () => {
+  it('offers guarded deletion and identifies exam files by exam title', () => {
     expect(sectionSource).toContain('item.deletable ?');
-    expect(sectionSource).toContain('Excluir upload pendente?');
+    expect(sectionSource).toContain('Excluir arquivo?');
+    expect(sectionSource).toContain("item.source === 'exam_file' && item.ownerLabel");
+    expect(sectionSource).toContain('Banco de provas · Prova #');
     expect(sectionSource).toContain('Arquivo físico ausente');
   });
 });

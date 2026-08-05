@@ -54,6 +54,7 @@ type AdminFileItem = {
   createdAt: string | null;
   ownerType: string | null;
   ownerId: string | number | null;
+  ownerLabel: string | null;
   linked: boolean;
   deletable: boolean;
   availability: Availability;
@@ -150,7 +151,7 @@ const AdminFilesSection = () => {
     setDeleting(true);
     try {
       await apiClient.delete(ENDPOINTS.admin.files, { params: { id: pendingDelete.id } });
-      addToast('Arquivo pendente excluído.', 'success');
+      addToast('Arquivo excluído.', 'success');
       setPendingDelete(null);
       await loadFiles(pageInfo.page);
     } catch (deleteError) {
@@ -255,8 +256,16 @@ const AdminFilesSection = () => {
                       {item.availability === 'missing' ? <span className="mt-1 inline-block text-xs font-semibold text-red-600">Arquivo físico ausente</span> : null}
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-700 dark:text-slate-200">{SOURCE_LABELS[item.source] || item.source}</p>
-                      <p className="mt-1 text-xs text-slate-500">{item.linked ? `Vinculado a ${item.ownerType || 'recurso'} #${item.ownerId ?? '-'}` : 'Sem vínculo ativo'}</p>
+                      <p className="font-medium text-slate-700 dark:text-slate-200">
+                        {item.source === 'exam_file' && item.ownerLabel ? item.ownerLabel : (SOURCE_LABELS[item.source] || item.source)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {item.source === 'exam_file'
+                          ? `Banco de provas · Prova #${item.ownerId ?? '-'}`
+                          : item.linked
+                            ? `${item.ownerLabel || 'Recurso vinculado'} · #${item.ownerId ?? '-'}`
+                            : 'Sem vínculo ativo'}
+                      </p>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       <p>{formatSize(item.size)}</p>
@@ -266,7 +275,7 @@ const AdminFilesSection = () => {
                       <div className="flex justify-end gap-2">
                         {ownerPath ? <Link href={ownerPath} className={ADMIN_SECONDARY_BUTTON_CLASS}>Moderar</Link> : null}
                         {fileUrl ? <a href={fileUrl} target="_blank" rel="noopener noreferrer" className={ADMIN_SECONDARY_BUTTON_CLASS} title="Abrir arquivo"><ExternalLink size={15} /><span className="sr-only">Abrir</span></a> : null}
-                        {item.deletable ? <button type="button" onClick={() => setPendingDelete(item)} className="inline-flex items-center rounded-sm border border-red-300 p-2 text-red-600 hover:bg-red-50" title="Excluir arquivo pendente"><Trash2 size={15} /><span className="sr-only">Excluir</span></button> : null}
+                        {item.deletable ? <button type="button" onClick={() => setPendingDelete(item)} className="inline-flex items-center rounded-sm border border-red-300 p-2 text-red-600 hover:bg-red-50" title="Excluir arquivo"><Trash2 size={15} /><span className="sr-only">Excluir</span></button> : null}
                       </div>
                     </td>
                   </tr>
@@ -286,8 +295,10 @@ const AdminFilesSection = () => {
 
       <AdminConfirmDialog
         isOpen={pendingDelete !== null}
-        title="Excluir upload pendente?"
-        description="O arquivo ainda não possui vínculo. A exclusão remove o registro e o objeto armazenado e não pode ser desfeita."
+        title="Excluir arquivo?"
+        description={pendingDelete?.linked
+          ? `Este arquivo está vinculado a ${pendingDelete.ownerLabel || 'outro conteúdo'}. A exclusão removerá o vínculo e o arquivo armazenado quando ele não for compartilhado.`
+          : 'A exclusão remove o registro e o objeto armazenado e não pode ser desfeita.'}
         confirmLabel="Excluir arquivo"
         loading={deleting}
         onConfirm={() => void confirmDelete()}
