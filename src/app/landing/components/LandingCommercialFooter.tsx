@@ -109,7 +109,7 @@ const LandingCommercialFooter = () => {
           </div>
         </div>
       </div>
-      <p className="mt-10 text-center text-xs font-medium text-slate-400">
+      <p className="mt-10 text-center text-xs font-medium text-slate-600">
         © {new Date().getFullYear()} ConcursoMestre. Todos os direitos reservados.
       </p>
     </footer>

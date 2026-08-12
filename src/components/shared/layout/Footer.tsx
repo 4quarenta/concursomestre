@@ -92,10 +92,10 @@ const Footer: React.FC = () => {
       </div>
 
       <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-slate-100 pt-8 dark:border-slate-900 sm:flex-row">
-        <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 sm:text-left">
+        <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 sm:text-left">
           &copy; {currentYear} ConcursoMestre. Todos os direitos reservados.
         </p>
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">
           Vers&atilde;o {platformVersion}
         </p>
       </div>

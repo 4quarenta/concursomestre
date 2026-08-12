@@ -15,6 +15,7 @@ import { buildSystemSettingsQueryKey } from '@/state/app-config/appConfigQuery';
 
 interface AppConfigProviderProps {
   children: React.ReactNode;
+  initialPublicSettings?: Record<string, unknown> | null;
 }
 
 const isAdminSettingsRole = (role?: string | null) => role === 'admin' || role === 'staff';
@@ -26,7 +27,7 @@ const ADMIN_PANEL_SETTINGS_DELAY_MS = 8_000;
  *
  * @since 1.0.0
  */
-export const AppConfigProvider: React.FC<AppConfigProviderProps> = ({ children }) => {
+export const AppConfigProvider: React.FC<AppConfigProviderProps> = ({ children, initialPublicSettings = null }) => {
   const { currentUser, isLoading: authIsLoading } = useAuth();
   const pathname = usePathname() || '/';
   const replaceSystemSettings = useAppConfigStore((state) => state.replaceSystemSettings);
@@ -89,6 +90,7 @@ export const AppConfigProvider: React.FC<AppConfigProviderProps> = ({ children }
     ),
     enabled: settingsQueryEnabled,
     staleTime: 5 * 60_000,
+    initialData: mode === 'public' && initialPublicSettings ? initialPublicSettings : undefined,
   });
 
   React.useEffect(() => {

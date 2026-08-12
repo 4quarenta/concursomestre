@@ -147,7 +147,8 @@ $validatorSource = (string) file_get_contents($backend . '/modules/blog/validato
 assertBlogPlatform(str_contains($validatorSource, "'search' =>"), 'Public blog search must be validated by the backend.');
 
 $serverData = (string) file_get_contents($root . '/src/app/blog/blogServerData.ts');
-assertBlogPlatform(str_contains($serverData, "cache: 'no-store'"), 'Public blog reads must not retain a stale 404 after publishing.');
+assertBlogPlatform(str_contains($serverData, "revalidate: 300"), 'Public blog reads must use a bounded shared cache.');
+assertBlogPlatform(str_contains($serverData, "tags: ['public-blog']"), 'Public blog reads must expose an invalidation tag.');
 assertBlogPlatform(str_contains($serverData, "...(params.search ? { search: params.search } : {})"), 'SSR blog search must reach the public API.');
 assertBlogPlatform(str_contains($serverData, 'fetchBlogTagsForServer'), 'SSR blog pages must load navigable tags.');
 

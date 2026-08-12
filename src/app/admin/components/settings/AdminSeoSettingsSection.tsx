@@ -229,7 +229,7 @@ const AdminSeoSettingsSection = ({
             </div>
             <div className="space-y-1.5">
               <label className={labelClassName}>Canonical base URL</label>
-              <input value={seoSettings.global.canonical_base_url} onChange={(event) => updateGlobalField('canonical_base_url', event.target.value)} className={inputClassName} placeholder="https://concursomestre.com.br" />
+              <input value={seoSettings.global.canonical_base_url} onChange={(event) => updateGlobalField('canonical_base_url', event.target.value)} className={inputClassName} placeholder="https://concursomestre.com" />
             </div>
             <div className="space-y-1.5 md:col-span-2">
               <label className={labelClassName}>Meta description</label>

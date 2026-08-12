@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
+import { MarketplaceProvider } from '@providers/MarketplaceProvider';
 
 export const metadata = buildPublicPageMetadata({
   title: 'Materiais para concursos',
@@ -8,5 +9,5 @@ export const metadata = buildPublicPageMetadata({
 });
 
 export default function MaterialLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return children;
+  return <MarketplaceProvider>{children}</MarketplaceProvider>;
 }

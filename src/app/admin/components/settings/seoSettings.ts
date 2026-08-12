@@ -43,7 +43,7 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   global: {
     site_title: 'ConcursoMestre',
     meta_description: 'Plataforma completa para estudo, questoes, simulados e acompanhamento de desempenho.',
-    canonical_base_url: 'https://concursomestre.com.br',
+    canonical_base_url: 'https://concursomestre.com',
     robots_default: 'index,follow',
     default_og_title: 'ConcursoMestre',
     default_og_description: 'Mais que um banco de questões. Uma plataforma completa para acelerar sua aprovação.',

@@ -6,8 +6,7 @@ import { fetchPublicExamDirectoryPageForServer } from '../blogServerData';
 import { buildSiteUrl } from '@/config/siteUrl';
 import { serializeStructuredData } from '@services/seo/structuredData';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: 'Provas de concursos por ano, região e estado',

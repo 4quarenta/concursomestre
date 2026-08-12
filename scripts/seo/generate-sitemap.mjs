@@ -14,7 +14,7 @@ const INSTITUTIONAL_PATHS = ['/', '/plans', '/faq', '/changelog', '/privacy', '/
 
 const normalizeUrlBase = (value) => {
   if (!value) {
-    return 'https://concursomestre.com.br/';
+    return 'https://concursomestre.com/';
   }
 
   return value.endsWith('/') ? value : `${value}/`;

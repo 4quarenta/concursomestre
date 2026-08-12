@@ -519,7 +519,7 @@ const SearchableFilterSelect = ({
 
   return (
     <div ref={containerRef} className="relative flex w-full flex-col gap-1.5">
-      <label className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</label>
+      <label className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">{label}</label>
       <button
         type="button"
         aria-disabled={disabled}
@@ -545,7 +545,7 @@ const SearchableFilterSelect = ({
         <ChevronDown size={16} className={`shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {helperText ? (
-        <p className="px-1 text-[10px] font-medium leading-4 text-slate-400 dark:text-slate-500">{helperText}</p>
+        <p className="px-1 text-[10px] font-medium leading-4 text-slate-600 dark:text-slate-300">{helperText}</p>
       ) : null}
 
       {isOpen && !disabled ? (
@@ -614,7 +614,7 @@ const SearchableFilterSelect = ({
                       </span>
                       <span className="min-w-0">
                         <span className="block break-normal font-semibold leading-5">{option.label}</span>
-                        {option.helper ? <span className="mt-0.5 block text-[10px] font-medium leading-4 text-slate-400 dark:text-slate-500">{option.helper}</span> : null}
+                        {option.helper ? <span className="mt-0.5 block text-[10px] font-medium leading-4 text-slate-600 dark:text-slate-300">{option.helper}</span> : null}
                       </span>
                     </button>
                   ))}
@@ -2144,7 +2144,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
           <div className="flex flex-col gap-4 pt-2">
             {/* Group 1: Exclusion */}
             <div className="space-y-2">
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider ml-1">Excluir questões:</span>
+              <span className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Excluir questões:</span>
               <div className="flex flex-wrap gap-3">
                 <CheckboxFilter
                   label="Anuladas"
@@ -2192,7 +2192,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
 
             {/* Group 2: Inclusion/Features */}
             <div className="space-y-2">
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider ml-1">Apenas questões com:</span>
+              <span className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Apenas questões com:</span>
               <div className="flex flex-wrap gap-3">
                 <CheckboxFilter
                   label="Salvas"
@@ -2251,7 +2251,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
           {/* Visualização de Filtros Ativos e Resultados */}
           <div className="pt-4 border-t border-slate-50 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="flex flex-wrap gap-2 items-center min-h-[32px]">
-              <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mr-1">Filtros:</span>
+              <span className="mr-1 text-[9px] font-black uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">Filtros:</span>
               {Object.entries(pendingFilters).filter(([, value]) => isVisibleFilterValue(value)).length > 0 ? (
                 Object.entries(pendingFilters).map(([key, value]) => {
                   if (!isVisibleFilterValue(value)) return null;
@@ -2266,7 +2266,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
                   );
                 })
               ) : (
-                <span className="text-xs text-slate-300 font-medium italic">Nenhum filtro aplicado</span>
+                <span className="text-xs font-medium italic text-slate-600 dark:text-slate-300">Nenhum filtro aplicado</span>
               )}
             </div>
 
@@ -2278,11 +2278,11 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors">
                 <button
                   onClick={() => setViewMode('card')}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all ${viewMode === 'card' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-400 dark:text-slate-500'}`}
+                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all ${viewMode === 'card' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-300'}`}
                 >Foco</button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-400 dark:text-slate-500'}`}
+                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-300'}`}
                 >Lista</button>
               </div>
             </div>

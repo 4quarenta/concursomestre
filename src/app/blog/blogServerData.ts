@@ -105,7 +105,10 @@ const fetchPublic = async <T>(endpoint: string, params: Record<string, string> =
     });
     const response = await fetch(url, {
       headers: { Accept: 'application/json' },
-      cache: 'no-store',
+      next: {
+        revalidate: 300,
+        tags: ['public-blog'],
+      },
     });
     if (!response.ok) return null;
     return unwrap(await response.json()) as T;

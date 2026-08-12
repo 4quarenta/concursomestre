@@ -27,8 +27,7 @@ import {
 import { serializeStructuredData } from '@services/seo/structuredData';
 import type { BlogArticle } from '@services/blog';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: 'Notícias de concursos, editais e carreiras',

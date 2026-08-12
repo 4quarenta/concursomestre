@@ -16,7 +16,6 @@ import { AuthProvider } from './AuthProvider';
 import { AppConfigProvider } from './AppConfigProvider';
 import { ModalProvider } from './ModalProvider';
 import { NotificationsProvider } from './NotificationsProvider';
-import { MarketplaceProvider } from './MarketplaceProvider';
 import { PlatformMetadataProvider } from './PlatformMetadataProvider';
 import { ThemeProvider } from './ThemeProvider';
 import { SetupGate } from './SetupGate';
@@ -24,6 +23,7 @@ import AdNavigationPopController from '@/components/shared/feedback/AdNavigation
 
 interface AppProvidersProps {
   children: React.ReactNode;
+  initialPublicSettings?: Record<string, unknown> | null;
 }
 
 /**
@@ -32,7 +32,7 @@ interface AppProvidersProps {
  * quais camadas de contexto sustentam a UI inteira.
  * @since 1.0.0
  */
-export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
+export const AppProviders: React.FC<AppProvidersProps> = ({ children, initialPublicSettings = null }) => {
   return (
     <PlatformMetadataProvider>
       <ThemeProvider>
@@ -40,12 +40,10 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
           <ToastProvider>
             <SetupGate>
               <AuthProvider>
-                <AppConfigProvider>
+                <AppConfigProvider initialPublicSettings={initialPublicSettings}>
                   <AdNavigationPopController />
                   <ModalProvider>
-                    <NotificationsProvider>
-                      <MarketplaceProvider>{children}</MarketplaceProvider>
-                    </NotificationsProvider>
+                    <NotificationsProvider>{children}</NotificationsProvider>
                   </ModalProvider>
                 </AppConfigProvider>
               </AuthProvider>

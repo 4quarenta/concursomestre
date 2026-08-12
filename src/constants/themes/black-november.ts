@@ -17,7 +17,7 @@ export const blackNovemberTheme: ThemeConfig = {
     heroGradient: 'from-amber-400 via-amber-500 to-amber-700',
     bgOverlay: 'bg-zinc-900',
     accent: 'text-amber-500 bg-zinc-900',
-    button: 'bg-amber-600 hover:bg-amber-700',
+    button: 'bg-amber-700 hover:bg-amber-800',
     icon: Timer,
     forceMode: 'dark',
     ornaments: ['sliding-amber']

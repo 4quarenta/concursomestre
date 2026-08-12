@@ -93,7 +93,7 @@ export default async function PublicTaxonomyDirectory({
 
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#615fff]">Biblioteca de questões</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700 dark:text-indigo-300">Biblioteca de questões</p>
           <h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>{config.title}</h1>
           <p className={`mt-2 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>{config.description}</p>
         </div>
@@ -168,7 +168,7 @@ export default async function PublicTaxonomyDirectory({
             <h2 className="text-sm font-black text-slate-900 dark:text-slate-100">{config.title} disponíveis</h2>
             <p className="mt-0.5 text-xs font-medium text-slate-500">Selecione um item para estudar as questões relacionadas.</p>
           </div>
-          <span className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#615fff] dark:bg-indigo-500/10 dark:text-indigo-300">
+          <span className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
             {directory.pageInfo.total.toLocaleString('pt-BR')} {directory.pageInfo.total === 1 ? config.singular : config.title.toLowerCase()}
           </span>
         </div>
@@ -215,11 +215,11 @@ export default async function PublicTaxonomyDirectory({
           <nav className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 dark:border-slate-800 sm:px-5" aria-label="Paginação">
             {directory.pageInfo.hasPrevious ? (
               <Link href={buildDirectoryHref(config.path, { page: directory.pageInfo.page - 1, search, letter })} prefetch={false} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black hover:border-[#615fff]/40 hover:text-[#615fff] dark:border-slate-700 dark:bg-slate-900"><ChevronLeft size={14} /> Anterior</Link>
-            ) : <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-300 dark:border-slate-800 dark:text-slate-700"><ChevronLeft size={14} /> Anterior</span>}
+            ) : <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-500 dark:border-slate-800 dark:text-slate-400"><ChevronLeft size={14} /> Anterior</span>}
             <span className="text-xs font-bold text-slate-500">Página {directory.pageInfo.page} de {directory.pageInfo.pages}</span>
             {directory.pageInfo.hasMore ? (
               <Link href={buildDirectoryHref(config.path, { page: directory.pageInfo.page + 1, search, letter })} prefetch={false} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black hover:border-[#615fff]/40 hover:text-[#615fff] dark:border-slate-700 dark:bg-slate-900">Próxima <ChevronRight size={14} /></Link>
-            ) : <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-300 dark:border-slate-800 dark:text-slate-700">Próxima <ChevronRight size={14} /></span>}
+            ) : <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-500 dark:border-slate-800 dark:text-slate-400">Próxima <ChevronRight size={14} /></span>}
           </nav>
         ) : null}
       </section>

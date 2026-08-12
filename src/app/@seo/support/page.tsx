@@ -1,23 +1,16 @@
 import PublicInformationSeoSnapshot from '../PublicInformationSeoSnapshot';
-import { SUPPORT_SEO_SECTIONS } from '../../publicInformationContent';
 
-export default function SupportSeoSnapshot() {
+export default function SupportSeoPage() {
   return (
     <PublicInformationSeoSnapshot
-      eyebrow="Central de atendimento"
+      eyebrow="Atendimento"
       title="Suporte ConcursoMestre"
-      description="Relate problemas, envie sugestões, solicite ajuda e acompanhe o atendimento da equipe ConcursoMestre."
-      sections={SUPPORT_SEO_SECTIONS}
+      description="Relate problemas, envie sugestoes e encontre os canais de atendimento da plataforma."
+      sections={[]}
       links={[
-        { href: '/faq', label: 'Consultar dúvidas frequentes' },
-        { href: '/privacy', label: 'Política de privacidade' },
+        { href: '/faq', label: 'Perguntas frequentes' },
+        { href: '/novidades', label: 'Novidades da plataforma' },
       ]}
-      structuredData={{
-        '@context': 'https://schema.org',
-        '@type': 'ContactPage',
-        name: 'Suporte ConcursoMestre',
-        url: 'https://concursomestre.com/support',
-      }}
     />
   );
 }

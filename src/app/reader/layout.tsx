@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react';
 import { buildNoIndexMetadata } from '../seoMetadata';
-import 'katex/dist/katex.min.css';
 import { MarketplaceProvider } from '@providers/MarketplaceProvider';
 
-export const metadata = buildNoIndexMetadata({
-  title: 'Simulado',
-});
+export const metadata = buildNoIndexMetadata({ title: 'Leitor de materiais' });
 
-export default function SimulationLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default function ReaderLayout({ children }: Readonly<{ children: ReactNode }>) {
   return <MarketplaceProvider>{children}</MarketplaceProvider>;
 }

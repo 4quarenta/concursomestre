@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
+import 'katex/dist/katex.min.css';
 
 export const metadata = buildPublicPageMetadata({
   title: 'Lei Comentada',

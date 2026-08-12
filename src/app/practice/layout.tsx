@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
+import 'katex/dist/katex.min.css';
+import { MarketplaceProvider } from '@providers/MarketplaceProvider';
 
 export const metadata = buildPublicPageMetadata({
   title: 'Questões de concursos para praticar',
@@ -8,5 +10,5 @@ export const metadata = buildPublicPageMetadata({
 });
 
 export default function PracticeLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return children;
+  return <MarketplaceProvider>{children}</MarketplaceProvider>;
 }

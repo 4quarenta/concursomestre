@@ -28,7 +28,6 @@ import {
   Trophy,
 } from 'lucide-react';
 import type { MarketingLandingPage, Plan, PlanName } from '@types';
-import { useDocumentSeo } from '@services/seo';
 import {
   getCanonicalPlanName,
   getConfiguredPlanDisplayName,
@@ -39,7 +38,6 @@ import {
 } from '@services/plans';
 import { themeConfig } from '@constants/themes';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
-import { websiteManifest } from '../../../config/platform';
 import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
 import LandingSectionHeader from '../../landing/components/LandingSectionHeader';
 import { ThemeOrnaments } from '../../landing/components/ThemeOrnaments';
@@ -99,34 +97,6 @@ const isPlanInCycle = (plan: Plan, cycle: BillingCycle) => {
   }
 
   return isMonthly || isCustomShortCycle;
-};
-
-const buildCanonicalUrl = (slug: string, customCanonical?: string) => {
-  if (String(customCanonical || '').trim() !== '') {
-    return String(customCanonical).trim();
-  }
-
-  if (typeof window !== 'undefined') {
-    if (slug === 'planos') {
-      return `${window.location.origin}/planos`;
-    }
-
-    if (slug === 'elite') {
-      return `${window.location.origin}/elite`;
-    }
-
-    return `${window.location.origin}/l/${slug}`;
-  }
-
-  if (slug === 'planos') {
-    return `${websiteManifest.website.canonicalUrl || ''}/planos`;
-  }
-
-  if (slug === 'elite') {
-    return `${websiteManifest.website.canonicalUrl || ''}/elite`;
-  }
-
-  return `${websiteManifest.website.canonicalUrl || ''}/l/${slug}`;
 };
 
 const getCardIcon = (planName: PlanName) => {
@@ -280,17 +250,6 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
     systemSettings.limitedOfferCountdown?.enabled
     && limitedOfferEndsAt,
   );
-
-  const seoPayload = useMemo(() => ({
-    title: landingPage?.seo?.title || `${siteName} | Planos para estudar com mais estrategia`,
-    description: landingPage?.seo?.metaDescription || `Compare os planos do ${siteName} e escolha a assinatura ideal para estudar com milhares de questoes, gabaritos comentados, simulados e analises detalhadas.`,
-    canonical: buildCanonicalUrl(slug, landingPage?.seo?.canonicalUrl),
-    robots: 'index,follow',
-    ogTitle: landingPage?.seo?.ogTitle || `${siteName} | Escolha o plano ideal para acelerar sua preparacao`,
-    ogDescription: landingPage?.seo?.ogDescription || landingPage?.seo?.metaDescription || `Acesse questoes, simulados, gabaritos comentados e recursos premium do ${siteName}.`,
-  }), [landingPage?.seo?.canonicalUrl, landingPage?.seo?.metaDescription, landingPage?.seo?.ogDescription, landingPage?.seo?.ogTitle, landingPage?.seo?.title, siteName, slug]);
-
-  useDocumentSeo(seoPayload);
 
   if (loading) {
     return (
@@ -535,7 +494,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
                       </p>
                     )}
 
-                    <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${card.featured ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${card.featured ? 'text-indigo-100' : 'text-slate-600 dark:text-slate-300'}`}>
                       Garantia de 7 dias
                     </p>
                   </div>
@@ -669,12 +628,12 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
               <table className="min-w-full border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800">
-                    <th className="px-6 py-5 text-left text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Recurso</th>
+                    <th className="px-6 py-5 text-left text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 dark:text-slate-300">Recurso</th>
                     {comparisonColumns.map((column) => (
                       <th
                         key={column.key}
                         className={`px-6 py-5 text-left text-[10px] font-black uppercase tracking-[0.18em] ${
-                          column.featured ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-500'
+                          column.featured ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-300'
                         }`}
                       >
                         {column.label}

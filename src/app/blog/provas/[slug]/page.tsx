@@ -9,8 +9,7 @@ import { fetchPublicExamDetailForServer, type PublicExamFile, type PublicExamTax
 import { serializeStructuredData } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 type PublicExamPageProps = { params: Promise<{ slug: string }> };
 

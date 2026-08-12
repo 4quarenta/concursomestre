@@ -161,7 +161,7 @@ export default async function PublicBoardPage({ params, searchParams }: BoardPag
             ) : <Landmark size={30} />}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#615fff]">Banca organizadora</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700 dark:text-indigo-300">Banca organizadora</p>
             <h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>{boardName}</h1>
             <p className={`mt-3 max-w-4xl ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>
               {board.description || 'Banca cadastrada no acervo público do ConcursoMestre. Os dados abaixo são calculados a partir das questões e provas publicadas.'}
@@ -211,13 +211,13 @@ export default async function PublicBoardPage({ params, searchParams }: BoardPag
           <p className="mt-1 text-xs leading-5 text-slate-500">Perfil calculado, sem atribuir características não comprovadas à banca.</p>
           <div className="mt-5 space-y-5">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Modalidade</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-600 dark:text-slate-400">Modalidade</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {Array.from(profileByModality.entries()).map(([modality, count]) => <span key={modality} className="rounded-md bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">{modalityLabel(modality)} · {count.toLocaleString('pt-BR')}</span>)}
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Dificuldade cadastrada</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-600 dark:text-slate-400">Dificuldade cadastrada</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {Array.from(profileByDifficulty.entries()).map(([difficulty, count]) => <span key={difficulty} className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">{difficultyLabel(difficulty)} · {count.toLocaleString('pt-BR')}</span>)}
               </div>

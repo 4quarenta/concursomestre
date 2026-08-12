@@ -298,9 +298,9 @@ const MetricCard = ({
   trend: string;
 }) => (
   <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</p>
+    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">{label}</p>
     <p className="mt-2 text-xl font-black text-[#07103a]">{value}</p>
-    <p className="mt-1 text-[11px] font-bold text-emerald-600">{trend}</p>
+    <p className="mt-1 text-[11px] font-bold text-emerald-700">{trend}</p>
   </div>
 );
 
@@ -361,7 +361,7 @@ const PlatformMockup = () => (
                       </span>
                       <div>
                         <p className="text-[11px] font-black text-[#07103a]">{title}</p>
-                        <p className="text-[10px] font-semibold text-slate-400">{label}</p>
+                        <p className="text-[10px] font-semibold text-slate-600">{label}</p>
                       </div>
                     </div>
                   ))}
@@ -386,7 +386,7 @@ const PlatformMockup = () => (
             <div key={title}>
               <div className="flex items-center justify-between gap-2">
                 <p className="truncate text-[10px] font-bold text-[#07103a]">{title}</p>
-                <p className="text-[8px] font-black text-slate-400">{label}</p>
+                <p className="text-[8px] font-black text-slate-600">{label}</p>
               </div>
               <div className="mt-1 h-1.5 rounded-full bg-slate-100">
                 <div className={`h-full rounded-full ${color}`} style={{ width: label === 'Concluído' ? '100%' : label === 'Em andamento' ? '58%' : '24%' }} />
@@ -394,7 +394,7 @@ const PlatformMockup = () => (
             </div>
           ))}
         </div>
-        <div className="mt-5 grid grid-cols-4 gap-2 text-center text-[8px] font-bold text-slate-400">
+        <div className="mt-5 grid grid-cols-4 gap-2 text-center text-[8px] font-bold text-slate-600">
           {['Início', 'Questões', 'Estat.', 'Mais'].map((item) => <span key={item}>{item}</span>)}
         </div>
       </div>
@@ -542,7 +542,7 @@ const StarsRating = ({ rating = 5 }: { rating?: number }) => {
   const safeRating = Math.max(1, Math.min(5, Math.round(Number(rating) || 5)));
 
   return (
-    <div className="flex items-center gap-1" aria-label={`Avaliação ${safeRating} de 5`}>
+    <div className="flex items-center gap-1" role="img" aria-label={`Avaliação ${safeRating} de 5`}>
       {Array.from({ length: 5 }).map((_, index) => (
         <Star
           key={index}

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
+import { serializeStructuredData } from '@services/seo/structuredData';
 
 export const metadata = buildPublicPageMetadata({
   title: 'Suporte',
@@ -8,5 +9,5 @@ export const metadata = buildPublicPageMetadata({
 });
 
 export default function SupportLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return children;
+  return <>{children}<script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData({ '@context': 'https://schema.org', '@type': 'ContactPage', name: 'Suporte ConcursoMestre', url: 'https://concursomestre.com/support' }) }} /></>;
 }

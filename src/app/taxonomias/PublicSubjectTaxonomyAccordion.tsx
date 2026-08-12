@@ -117,7 +117,7 @@ function TaxonomyTreeItem({ item, depth }: { item: PublicTaxonomyChild; depth: n
         ) : <span className="grid h-8 w-8 shrink-0 place-items-center text-slate-300"><CircleDot size={12} /></span>}
         <Link href={{ pathname: '/practice', query: { [queryKey]: item.name } }} prefetch={false} className="min-w-0 flex-1 py-1 hover:text-[#615fff]">
           <span className="block truncate text-sm font-bold text-slate-700 dark:text-slate-200">{item.name}</span>
-          <span className="mt-0.5 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{levelLabel}</span>
+          <span className="mt-0.5 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-400">{levelLabel}</span>
         </Link>
         <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">{item.questionCount.toLocaleString('pt-BR')} questões</span>
       </div>
@@ -136,7 +136,7 @@ export default function PublicSubjectTaxonomyAccordion({ item }: { item: PublicT
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[#615fff] dark:bg-indigo-500/10 dark:text-indigo-300"><BookOpen size={17} /></span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-black text-slate-900 dark:text-slate-100">{item.name}</span>
-            <span className="mt-1 block text-xs font-semibold text-slate-400">Mostrar tópicos e assuntos</span>
+            <span className="mt-1 block text-xs font-semibold text-slate-600 dark:text-slate-400">Mostrar tópicos e assuntos</span>
           </span>
           <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180 text-[#615fff]' : ''}`} />
         </button>

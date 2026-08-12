@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { cache } from 'react';
 import type { MarketingLandingPage } from '@types';
 import { buildSiteUrl } from '../../config/siteUrl';
 import { websiteManifest } from '../../config/platform';
@@ -49,7 +50,7 @@ const readEnvelopeData = (payload: unknown): Record<string, unknown> => {
   return payload as Record<string, unknown>;
 };
 
-const fetchPublicSettingsForLandingSeo = async (): Promise<LandingSettingsResolution> => {
+const fetchPublicSettingsForLandingSeo = cache(async (): Promise<LandingSettingsResolution> => {
   if (typeof fetch !== 'function') {
     return { available: false, settings: {} };
   }
@@ -59,10 +60,10 @@ const fetchPublicSettingsForLandingSeo = async (): Promise<LandingSettingsResolu
 
   try {
     const response = await fetch(new URL('settings.php', getApiBaseUrl()).toString(), {
-      cache: 'no-store',
       headers: {
         Accept: 'application/json',
       },
+      next: { revalidate: 300 },
       signal: controller.signal,
     });
 
@@ -79,7 +80,7 @@ const fetchPublicSettingsForLandingSeo = async (): Promise<LandingSettingsResolu
   } finally {
     clearTimeout(timeout);
   }
-};
+});
 
 export const resolvePublishedMarketingLandingForSeo = async (slug: string): Promise<LandingSeoResolution> => {
   const resolution = await fetchPublicSettingsForLandingSeo();

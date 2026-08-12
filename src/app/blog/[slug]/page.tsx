@@ -23,8 +23,7 @@ import { fetchBlogArticleForServer, fetchBlogPageForServer } from '../blogServer
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import { serializeStructuredData } from '@services/seo/structuredData';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 type PageProps = { params: Promise<{ slug: string }> };
 

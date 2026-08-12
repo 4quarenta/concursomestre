@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
+import { MarketplaceProvider } from '@providers/MarketplaceProvider';
 
 export const metadata = buildPublicPageMetadata({
   title: 'Marketplace',
@@ -8,5 +9,5 @@ export const metadata = buildPublicPageMetadata({
 });
 
 export default function MarketplaceLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return children;
+  return <MarketplaceProvider>{children}</MarketplaceProvider>;
 }

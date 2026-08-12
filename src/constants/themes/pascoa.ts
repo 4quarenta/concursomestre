@@ -17,7 +17,7 @@ export const pascoaTheme: ThemeConfig = {
     heroGradient: 'from-emerald-400 to-teal-600',
     bgOverlay: 'bg-emerald-300',
     accent: 'text-emerald-700 bg-emerald-50',
-    button: 'bg-emerald-600 hover:bg-emerald-700',
+    button: 'bg-emerald-700 hover:bg-emerald-800',
     icon: Egg,
     forceMode: 'light',
     ornaments: ['hidden-eggs']

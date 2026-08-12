@@ -62,7 +62,7 @@ const ModuleAccessFallback: React.FC<ModuleAccessFallbackProps> = ({
 
         <div className="space-y-2">
           <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${
-            isUpgrade ? 'text-amber-600 dark:text-amber-300' : 'text-slate-400 dark:text-slate-500'
+            isUpgrade ? 'text-amber-700 dark:text-amber-300' : 'text-slate-600 dark:text-slate-300'
           }`}>
             {eyebrow}
           </p>

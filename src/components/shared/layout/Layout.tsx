@@ -722,6 +722,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
+                aria-label="Alternar tema"
                 className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all font-black uppercase"
               >
                 <span className="inline-flex" aria-hidden="true">
@@ -730,7 +731,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </span>
               </button>
               <div className="relative">
-                <button onClick={handleNotificationsToggle} className="p-1 relative">
+                <button onClick={handleNotificationsToggle} className="p-1 relative" aria-label="Abrir notificações">
                   <Bell size={20} className="text-slate-600 dark:text-slate-400" />
                   {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />}
                 </button>
@@ -749,7 +750,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   </>
                 )}
               </div>
-              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-slate-600 dark:text-slate-400">
+              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-slate-600 dark:text-slate-400" aria-label={isMobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}>
                 {isMobileMenuOpen ? <X /> : <Menu />}
               </button>
             </div>

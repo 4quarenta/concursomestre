@@ -26,7 +26,7 @@ $slugify = static function (string $value): string {
     $normalized = strtolower(is_string($converted) ? $converted : $plain);
     $normalized = preg_replace('/[^a-z0-9]+/', '-', $normalized) ?? '';
     $normalized = trim($normalized, '-');
-    return substr($normalized !== '' ? $normalized : 'questao', 0, 100);
+    return substr($normalized !== '' ? $normalized : 'questao', 0, 80);
 };
 $atomicWrite = static function (string $path, string $contents): void {
     $temporary = $path . '.tmp-' . getmypid();
@@ -171,6 +171,7 @@ while (true) {
 }
 
 $examCursor = 0;
+$seenExamUrls = [];
 $examPage = 0;
 while (true) {
     $stmt = $db->prepare(
@@ -198,8 +199,14 @@ while (true) {
         if ($id <= 0 || $slug === '') {
             continue;
         }
+        $examUrl = $baseUrl . '/blog/provas/' . rawurlencode($slug);
+        if (isset($seenExamUrls[$examUrl])) {
+            $examCursor = $id;
+            continue;
+        }
+        $seenExamUrls[$examUrl] = true;
         $entries[] = [
-            'loc' => $baseUrl . '/blog/provas/' . rawurlencode($slug),
+            'loc' => $examUrl,
             'lastmod' => $safeDate($row['last_modified'] ?? null),
         ];
         $examCursor = $id;
@@ -221,7 +228,6 @@ $taxonomyStmt = $db->query(
         AND f.slug <> ''
         AND (
             f.type = 'banca'
-            OR (f.type = 'assunto' AND (f.taxonomy_level = 'materia' OR f.meta_materia = 1))
         )
         AND EXISTS (
             SELECT 1
@@ -242,9 +248,8 @@ foreach ($taxonomyRows as $row) {
     if ($slug === '') {
         continue;
     }
-    $directory = (string) ($row['type'] ?? '') === 'banca' ? 'bancas' : 'disciplinas';
     $taxonomyEntries[] = [
-        'loc' => $baseUrl . '/' . $directory . '/' . rawurlencode($slug),
+        'loc' => $baseUrl . '/bancas/' . rawurlencode($slug),
         'lastmod' => $safeDate($row['last_modified'] ?? null),
     ];
 }
@@ -267,10 +272,13 @@ $indexLines[] = '</sitemapindex>';
 $atomicWrite($outputDir . '/sitemap.xml', implode("\n", $indexLines) . "\n");
 $atomicWrite(
     $outputDir . '/robots.txt',
-    "User-agent: *\nAllow: /\n\n"
+    "User-agent: *\nAllow: /\n"
+        . "Disallow: /admin\nDisallow: /api/\nDisallow: /auth\nDisallow: /checkout\n"
+        . "Disallow: /dashboard\nDisallow: /notifications\nDisallow: /partner-dashboard\n"
+        . "Disallow: /profile\nDisallow: /read/\nDisallow: /reset-password\n"
+        . "Disallow: /simulation\nDisallow: /subscription/\n\n"
         . "Sitemap: {$baseUrl}/sitemap.xml\n"
         . "Sitemap: {$baseUrl}/sitemaps/blog-sitemap.xml\n"
-        . "Sitemap: {$baseUrl}/sitemaps/google-news.xml\n"
 );
 $atomicWrite($outputDir . '/sitemap-status.json', json_encode([
     'scope' => 'static_sitemap_coverage',

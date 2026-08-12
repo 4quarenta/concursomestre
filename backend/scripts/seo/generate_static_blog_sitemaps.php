@@ -168,13 +168,13 @@ if ($tableExists('blog_articles')) {
     }
 
     $authorStmt = $db->query(
-        "SELECT author_id, MAX(updated_at) AS last_modified
-         FROM blog_articles
-         WHERE deleted_at IS NULL
-           AND status IN ('published', 'scheduled')
-           AND published_at IS NOT NULL
-           AND published_at <= NOW()
-         GROUP BY author_id"
+        "SELECT a.author_id, MAX(a.updated_at) AS last_modified
+         FROM blog_articles a
+         WHERE a.deleted_at IS NULL
+           AND a.status IN ('published', 'scheduled')
+           AND a.published_at IS NOT NULL
+           AND a.published_at <= NOW()
+         GROUP BY a.author_id"
     );
     foreach ($authorStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
         $authorId = trim((string) ($row['author_id'] ?? ''));
@@ -193,14 +193,17 @@ if ($tableExists('blog_articles')) {
     }
 
     $newsStmt = $db->query(
-        "SELECT slug, title, published_at
-         FROM blog_articles
-         WHERE deleted_at IS NULL
-           AND status IN ('published', 'scheduled')
-           AND published_at IS NOT NULL
-           AND published_at <= NOW()
-           AND published_at >= UTC_TIMESTAMP() - INTERVAL 2 DAY
-         ORDER BY published_at DESC, id DESC
+        "SELECT a.slug, a.title, a.published_at
+         FROM blog_articles a
+         LEFT JOIN blog_categories c ON c.id = a.category_id
+         WHERE a.deleted_at IS NULL
+           AND a.status IN ('published', 'scheduled')
+           AND a.published_at IS NOT NULL
+           AND a.published_at <= NOW()
+           AND a.published_at >= UTC_TIMESTAMP() - INTERVAL 2 DAY
+           AND LOWER(COALESCE(c.slug, '')) IN ('noticias', 'concursos', 'editais', 'resultados')
+           AND LOWER(a.slug) NOT IN ('hello-world', 'teste', 'post-teste')
+         ORDER BY a.published_at DESC, a.id DESC
          LIMIT 1000"
     );
     $newsEntries = [];

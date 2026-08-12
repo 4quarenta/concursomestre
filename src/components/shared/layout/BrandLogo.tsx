@@ -32,7 +32,7 @@ const STANDARD_LIGHT_SURFACE_LOGO_SRC = '/branding/logo-dark.png';
 const STANDARD_DARK_SURFACE_LOGO_SRC = '/branding/logo-light.png';
 const FULL_LIGHT_SURFACE_LOGO_SRC = '/branding/logo-full-dark.png';
 const FULL_DARK_SURFACE_LOGO_SRC = '/branding/logo-full-light.png';
-const BRAND_LOGO_ASPECT_RATIO = 662 / 137;
+const BRAND_LOGO_ASPECT_RATIO = 650 / 180;
 
 const BrandLogo: React.FC<BrandLogoProps> = ({
   className = '',

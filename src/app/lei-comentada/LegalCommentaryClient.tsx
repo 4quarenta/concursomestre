@@ -1578,15 +1578,15 @@ const AnnotatedLawsPage: React.FC<AnnotatedLawsPageProps> = ({ initialSnapshot =
 
         <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[390px]">
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Leis</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 dark:text-slate-300">Leis</p>
             <p className={`mt-2 leading-none ${PLATFORM_METRIC_VALUE_CLASS}`}>{formatNumber(snapshot.totals.laws)}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Artigos</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 dark:text-slate-300">Artigos</p>
             <p className={`mt-2 leading-none ${PLATFORM_METRIC_VALUE_CLASS}`}>{formatNumber(snapshot.totals.articles)}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Atualizacoes</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 dark:text-slate-300">Atualizacoes</p>
             <p className={`mt-2 leading-none ${PLATFORM_METRIC_VALUE_CLASS}`}>{formatNumber(snapshot.totals.updatedRecently)}</p>
           </div>
         </div>

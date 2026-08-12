@@ -12,7 +12,6 @@
 */
 
 import React from 'react';
-import { useParams } from 'next/navigation';
 import MarketingPlansLandingPage from '../planos/components/MarketingPlansLandingPage';
 
 /**
@@ -21,8 +20,7 @@ import MarketingPlansLandingPage from '../planos/components/MarketingPlansLandin
  *
  * @since v1.0.0
  */
-const LandingCampaignPage: React.FC = () => {
-  const { slug = '' } = useParams<{ slug?: string }>();
+const LandingCampaignPage: React.FC<{ slug: string }> = ({ slug }) => {
   return <MarketingPlansLandingPage slug={slug} />;
 };
 

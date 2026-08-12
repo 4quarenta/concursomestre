@@ -8,6 +8,7 @@ import { useNotificationsStore } from '@/state/notifications/notificationsStore'
 import { clientLog } from '@services/monitoring/clientLog';
 import { getAccessToken, isAccessTokenExpired } from '@services/auth/session';
 import { createVisibilityAwarePoller } from '@services/api';
+import { usePathname } from 'next/navigation';
 
 interface NotificationsProviderProps {
   children: React.ReactNode;
@@ -24,6 +25,17 @@ const shouldUseHeavyBootstrapDelay = (pathname: string) => (
   pathname.startsWith('/dashboard')
   || pathname.startsWith('/practice')
   || pathname.startsWith('/admin/panel')
+);
+
+const ROUTES_WITHOUT_NOTIFICATION_BOOTSTRAP = [
+  '/', '/blog', '/faq', '/terms', '/privacy', '/support', '/novidades',
+  '/planos', '/disciplinas', '/bancas', '/auth', '/reset-password', '/confirm-email',
+] as const;
+
+const shouldBootstrapNotificationsForPath = (pathname: string) => !(
+  ROUTES_WITHOUT_NOTIFICATION_BOOTSTRAP.some((route) => (
+    pathname === route || (route !== '/' && pathname.startsWith(`${route}/`))
+  )) || pathname.startsWith('/l/')
 );
 
 const scheduleNotificationsBootstrapFetch = (task: () => void): (() => void) => {
@@ -48,6 +60,7 @@ const scheduleNotificationsBootstrapFetch = (task: () => void): (() => void) => 
  * @since 1.0.0
  */
 export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({ children }) => {
+  const pathname = usePathname() || '/';
   const queryClient = useQueryClient();
   const { currentUser, isLoading: authIsLoading } = useAuth();
   const replaceNotifications = useNotificationsStore((state) => state.replaceNotifications);
@@ -56,7 +69,9 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({ ch
 
   const currentUserId = currentUser?.id ?? null;
   const hasValidAccessToken = Boolean(getAccessToken()) && !isAccessTokenExpired(getAccessToken(), 10);
-  const shouldFetchNotifications = Boolean(currentUserId && hasValidAccessToken);
+  const shouldFetchNotifications = Boolean(
+    currentUserId && hasValidAccessToken && shouldBootstrapNotificationsForPath(pathname),
+  );
   const fetchInFlightRef = React.useRef(false);
   const lastFetchAtRef = React.useRef(0);
 

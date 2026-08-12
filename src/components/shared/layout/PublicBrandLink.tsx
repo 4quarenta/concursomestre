@@ -48,7 +48,7 @@ const PublicBrandLink: React.FC<PublicBrandLinkProps> = ({
       className={className}
       aria-label={`Ir para ${currentUser ? 'o dashboard' : 'a home'} de ${siteName}`}
     >
-      <BrandLogo width={width} priority={priority} surface={surface} variant={variant} alt={siteName} />
+      <BrandLogo width={width} priority={priority} surface={surface} variant={variant} alt="" />
       <span className="sr-only">{siteName}</span>
     </Link>
   );

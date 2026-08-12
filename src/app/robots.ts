@@ -12,10 +12,8 @@ export default function robots(): MetadataRoute.Robots {
       disallow: SEO_ROBOT_DISALLOW_PATHS,
     },
     sitemap: [
-      buildSiteUrl('/sitemap-index.xml', siteUrl),
       buildSiteUrl('/sitemap.xml', siteUrl),
       buildSiteUrl('/sitemaps/blog-sitemap.xml', siteUrl),
-      buildSiteUrl('/sitemaps/google-news.xml', siteUrl),
     ],
     host: siteUrl.origin,
   };

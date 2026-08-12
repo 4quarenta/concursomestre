@@ -1,5 +1,7 @@
 ﻿import type { Metadata } from 'next';
 import type { Question } from '@types';
+import { notFound, permanentRedirect } from 'next/navigation';
+import { cache } from 'react';
 import { ENDPOINTS } from '@services/api/endpoints';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from '@services/questions/questionPublication';
@@ -47,7 +49,7 @@ const readQuestionPayload = (payload: unknown): Question | null => {
   return withQuestionPublicationAliases(question);
 };
 
-const fetchQuestionForPage = async (id?: string): Promise<Question | null> => {
+const fetchQuestionForPage = cache(async (id?: string): Promise<Question | null> => {
   const questionId = String(id || '').trim();
   if (!questionId) return null;
 
@@ -56,7 +58,7 @@ const fetchQuestionForPage = async (id?: string): Promise<Question | null> => {
     url.searchParams.set('id', questionId);
 
     const response = await fetch(url.toString(), {
-      cache: 'no-store',
+      next: { revalidate: 300 },
       headers: {
         Accept: 'application/json',
       },
@@ -75,7 +77,7 @@ const fetchQuestionForPage = async (id?: string): Promise<Question | null> => {
   } catch {
     return null;
   }
-};
+});
 
 export async function generateMetadata({ params }: { params: Promise<QuestionPageParams> }): Promise<Metadata> {
   const resolvedParams = await params;
@@ -125,6 +127,17 @@ export async function generateMetadata({ params }: { params: Promise<QuestionPag
 export default async function Page({ params }: { params: Promise<QuestionPageParams> }) {
   const resolvedParams = await params;
   const initialQuestion = await fetchQuestionForPage(resolvedParams.id);
+
+  if (!initialQuestion) {
+    notFound();
+  }
+
+  const canonicalPath = buildQuestionPath(initialQuestion);
+  const requestedSlug = Array.isArray(resolvedParams.slug) ? resolvedParams.slug.join('/') : '';
+  const canonicalSlug = canonicalPath.split('/').pop() || '';
+  if (requestedSlug !== canonicalSlug) {
+    permanentRedirect(canonicalPath);
+  }
 
   return <QuestionPublicPage initialQuestion={initialQuestion} />;
 }

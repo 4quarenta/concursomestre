@@ -171,6 +171,12 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.concursomestre.com' }],
+        destination: 'https://concursomestre.com/:path*',
+        permanent: true,
+      },
+      {
         source: '/changelog',
         destination: '/novidades',
         permanent: true,

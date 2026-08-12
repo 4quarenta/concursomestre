@@ -17,7 +17,7 @@ export const blackFridayTheme: ThemeConfig = {
     heroGradient: 'from-yellow-400 via-amber-500 to-yellow-600',
     bgOverlay: 'bg-zinc-900',
     accent: 'text-amber-500 bg-zinc-900',
-    button: 'bg-amber-600 hover:bg-amber-700',
+    button: 'bg-amber-700 hover:bg-amber-800',
     icon: Zap,
     forceMode: 'dark',
     ornaments: ['yellow-lights']

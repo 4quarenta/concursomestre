@@ -8,21 +8,28 @@ const readSource = (relativePath: string) => readFileSync(resolve(process.cwd(),
 
 describe('public information SSR snapshots', () => {
   it('keeps FAQ content in one shared source and exposes every answer to the SSR route', () => {
-    const seoSource = readSource('src/app/@seo/faq/page.tsx');
     const clientSource = readSource('src/app/faq/page.tsx');
     const questionCount = FAQ_DATA.reduce((total, category) => total + category.questions.length, 0);
 
     expect(questionCount).toBeGreaterThan(20);
-    expect(seoSource).toContain("import { FAQ_DATA }");
-    expect(seoSource).toContain("'@type': 'FAQPage'");
     expect(clientSource).toContain('import { FAQ_DATA');
+    expect(clientSource).toContain("'@type': 'FAQPage'");
   });
 
-  it.each(['support', 'privacy', 'terms'])('%s has a materialized parallel server route', (route) => {
-    const source = readSource(`src/app/@seo/${route}/page.tsx`);
+  it.each(['privacy', 'terms'])('%s exposes one structured server document without a duplicate SEO shell', (route) => {
+    const layoutSource = readSource(`src/app/${route}/layout.tsx`);
 
-    expect(source).not.toContain("'use client'");
-    expect(source).toContain('SeoSnapshot');
+    expect(layoutSource).toContain('application/ld+json');
+    expect(() => readSource(`src/app/@seo/${route}/page.tsx`)).toThrow();
+  });
+
+  it('gives the client-rendered support route one server-rendered heading', () => {
+    const supportSeoSource = readSource('src/app/@seo/support/page.tsx');
+    const supportLayoutSource = readSource('src/app/support/layout.tsx');
+
+    expect(supportSeoSource).toContain('SupportSeoPage');
+    expect(supportSeoSource).toContain('Suporte ConcursoMestre');
+    expect(supportLayoutSource).toContain('application/ld+json');
   });
 
   it('keeps support public and indexable while write actions remain session-bound', () => {
@@ -43,7 +50,7 @@ describe('public information SSR snapshots', () => {
     expect(blogSource).toContain('<BlogHeader />');
     expect(blogSource).not.toContain("'use client'");
     expect(robotsSource).toContain('/sitemaps/blog-sitemap.xml');
-    expect(robotsSource).toContain('/sitemaps/google-news.xml');
+    expect(robotsSource).not.toContain('/sitemaps/google-news.xml');
   });
 
   it('renders novidades on the server and sanitizes private entries', () => {

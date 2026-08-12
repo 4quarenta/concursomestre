@@ -516,7 +516,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                     />
                 ))}
                 {comments.length === 0 && (
-                    <p className="text-center text-slate-400 dark:text-slate-600 text-xs italic py-4">
+                    <p className="py-4 text-center text-xs italic text-slate-600 dark:text-slate-300">
                         Seja o primeiro a comentar!
                     </p>
                 )}

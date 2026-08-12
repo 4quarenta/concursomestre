@@ -17,7 +17,7 @@ export const saoJoaoTheme: ThemeConfig = {
     heroGradient: 'from-orange-600 to-red-600',
     bgOverlay: 'bg-orange-400',
     accent: 'text-orange-600 bg-orange-50',
-    button: 'bg-orange-600 hover:bg-orange-700',
+    button: 'bg-orange-700 hover:bg-orange-800',
     icon: Flame,
     forceMode: 'light',
     ornaments: ['flags', 'fire']

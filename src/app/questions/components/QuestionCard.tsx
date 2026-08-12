@@ -1266,11 +1266,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       <div className="bg-slate-50/70 dark:bg-slate-800/50 p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800">
         <div className="flex justify-between items-start gap-2 mb-3">
           <div className="flex min-w-0 items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-slate-400 dark:text-slate-500">#{indexDisplay}</span>
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">#{indexDisplay}</span>
             <Link
               href={buildQuestionPath(question)}
               prefetch={false}
-              className="text-[10px] font-bold text-slate-300 transition-colors hover:text-indigo-500 hover:underline dark:text-slate-600 dark:hover:text-indigo-400"
+              className="text-[10px] font-bold text-slate-600 transition-colors hover:text-indigo-600 hover:underline dark:text-slate-300 dark:hover:text-indigo-400"
               title={`Abrir página da questão ${question.id}`}
             >
               Q{question.id}
@@ -1292,6 +1292,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             <button
               onClick={handleToggleSaveLocal}
+              aria-label={canSaveQuestion ? (isSaved ? 'Remover questao dos itens salvos' : 'Salvar questao') : 'Recurso de salvar questao bloqueado'}
               className={`p-2 rounded-lg transition-all ${isSaved ? 'text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-700 border border-indigo-100 dark:border-indigo-900 shadow-sm' : canSaveQuestion ? 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700' : 'text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800'}`}
               title={canSaveQuestion ? 'Salvar questao' : 'Disponivel no plano configurado para salvar questoes'}
             >
@@ -1299,6 +1300,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </button>
             <button
               onClick={handleShare}
+              aria-label={canShareQuestion ? 'Compartilhar questao' : 'Recurso de compartilhar questao bloqueado'}
               className={`p-2 rounded-lg transition-all ${canShareQuestion ? 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400' : 'text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800'}`}
               title={canShareQuestion ? 'Compartilhar questao' : 'Disponivel no plano configurado para compartilhar'}
             >
@@ -1308,6 +1310,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <button
                 onClick={() => !isAlreadyReported && setIsReporting(!isReporting)}
                 disabled={isAlreadyReported}
+                aria-label={isAlreadyReported ? 'Questao ja reportada' : 'Reportar problema na questao'}
                 className={`p-2 rounded-lg transition-all ${isAlreadyReported ? 'text-amber-500 opacity-50' : isReporting ? 'text-red-500 bg-red-50 dark:bg-red-900/20' : 'text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400'}`}
               >
                 <Flag size={16} />
@@ -1319,14 +1322,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="flex justify-between items-center">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all ${showFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all ${showFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
           >
             {showFilters ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             Filtros da Questão
           </button>
 
           {mode === 'practice' && (
-            <div className="flex items-center gap-1 text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">
+            <div className="flex items-center gap-1 text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase">
               <BarChart3 size={12} className="text-emerald-500" />
               <span>{accuracyRate}% Acertos</span>
             </div>
@@ -1638,7 +1641,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   }
                 }}
                 title={isTeacherCommentUnavailable ? 'Comentario do professor ainda nao disponivel para esta questao.' : undefined}
-                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment && canOpenTeacherComment ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : canOpenTeacherComment ? 'text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-200 dark:hover:border-amber-900/50'}`}
+                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment && canOpenTeacherComment ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm' : canOpenTeacherComment ? 'text-amber-700 dark:text-amber-300 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-200 dark:hover:border-amber-900/50'}`}
               >
                 {canOpenTeacherComment ? <GraduationCap size={14} /> : <Lock size={12} />}
                 Gabarito Comentado
@@ -1661,7 +1664,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   }
                 }}
                 title={canSeeDetailed && !detailedCommentContent ? 'Analise detalhada ainda nao disponivel para esta questao.' : undefined}
-                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment && canSeeDetailed ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed && detailedCommentContent ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
+                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment && canSeeDetailed ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed && detailedCommentContent ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
               >
                 {canSeeDetailed && detailedCommentContent ? <BookOpen size={14} /> : <Lock size={12} />}
                 Análise Detalhada
@@ -1691,7 +1694,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               </button>
             )}
 
-            <button onClick={() => { handleToggleStats(); setShowMaterials(false); setShowAnnotatedLaws(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showStats ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeFullStats ? 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+            <button onClick={() => { handleToggleStats(); setShowMaterials(false); setShowAnnotatedLaws(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showStats ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeFullStats ? 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300' : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
               {canSeeFullStats ? <BarChart3 size={14} /> : <Lock size={12} />} Estatísticas
             </button>
 
@@ -1705,7 +1708,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <button
                     onClick={handleOpenNoteModal}
                     disabled={isPreparingNoteModal}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all disabled:opacity-70 disabled:cursor-not-allowed ${!canUseQuestionNotes ? 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' : noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all disabled:cursor-not-allowed ${!canUseQuestionNotes ? 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' : noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}
                   >
                     {isPreparingNoteModal ? <Loader2 size={14} className="animate-spin" /> : canUseQuestionNotes ? <StickyNote size={14} /> : <Lock size={12} />} {noteText ? 'Anotação ✅' : 'Anotar'}
                   </button>

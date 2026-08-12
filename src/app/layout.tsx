@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
+import { cache } from 'react';
 import { Inter } from 'next/font/google';
-import Script from 'next/script';
 import { websiteManifest } from '@/config/platform';
 import { getConfiguredSiteUrl } from '@/config/siteUrl';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { adaptPublicSystemSettings } from '@services/admin/publicSettingsContract';
 import NextAppProviders from '@/providers/NextAppProviders';
 import ClientHydrationMarker from '@/providers/ClientHydrationMarker';
-import 'katex/dist/katex.min.css';
+import DeferredGoogleAnalytics from '@/components/shared/analytics/DeferredGoogleAnalytics';
 import './globals.css';
 
 const siteUrl = getConfiguredSiteUrl();
@@ -45,9 +45,21 @@ const normalizeGoogleAnalyticsId = (value?: string | null): string => {
   return /^(G|GT|AW|DC)-[A-Z0-9-]{4,}$/i.test(normalized) ? normalized : '';
 };
 
-const fetchPublicMarketingSettings = async (): Promise<{ adsenseAccount: string; analyticsId: string }> => {
+type PublicMarketingSettings = {
+  adsenseAccount: string;
+  analyticsId: string;
+  settings: Record<string, unknown> | null;
+};
+
+const EMPTY_PUBLIC_MARKETING_SETTINGS: PublicMarketingSettings = {
+  adsenseAccount: '',
+  analyticsId: '',
+  settings: null,
+};
+
+const fetchPublicMarketingSettings = cache(async (): Promise<PublicMarketingSettings> => {
   if (typeof fetch !== 'function') {
-    return { adsenseAccount: '', analyticsId: '' };
+    return EMPTY_PUBLIC_MARKETING_SETTINGS;
   }
 
   const controller = new AbortController();
@@ -66,20 +78,21 @@ const fetchPublicMarketingSettings = async (): Promise<{ adsenseAccount: string;
     });
 
     if (!response.ok) {
-      return { adsenseAccount: '', analyticsId: '' };
+      return EMPTY_PUBLIC_MARKETING_SETTINGS;
     }
 
-    const settings = adaptPublicSystemSettings(readEnvelopeData(await response.json()));
+    const settings = adaptPublicSystemSettings(readEnvelopeData(await response.json())) as Record<string, unknown>;
     return {
       adsenseAccount: normalizeAdsenseAccountId(settings.adsenseClientId as string | undefined),
       analyticsId: normalizeGoogleAnalyticsId(settings.googleAnalyticsId as string | undefined),
+      settings,
     };
   } catch {
-    return { adsenseAccount: '', analyticsId: '' };
+    return EMPTY_PUBLIC_MARKETING_SETTINGS;
   } finally {
     clearTimeout(timeout);
   }
-};
+});
 
 const buildBaseMetadata = (adsenseAccount: string): Metadata => ({
   title: {
@@ -168,25 +181,10 @@ export default async function RootLayout(props: RootLayoutProps) {
           [data-server-seo-shell]:empty { display: none; }
           html[data-client-ready="true"] [data-server-seo-shell] { display: none; }
         `}</style>
-        {resolvedGoogleAnalyticsId ? (
-          <>
-            <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(resolvedGoogleAnalyticsId)}`}
-              strategy="afterInteractive"
-            />
-            <Script id="google-analytics" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${resolvedGoogleAnalyticsId}');
-              `}
-            </Script>
-          </>
-        ) : null}
+        {resolvedGoogleAnalyticsId ? <DeferredGoogleAnalytics measurementId={resolvedGoogleAnalyticsId} /> : null}
         <div data-server-seo-shell>{seo}</div>
         <ClientHydrationMarker />
-        <NextAppProviders>{children}</NextAppProviders>
+        <NextAppProviders initialPublicSettings={publicMarketingSettings.settings}>{children}</NextAppProviders>
       </body>
     </html>
   );
