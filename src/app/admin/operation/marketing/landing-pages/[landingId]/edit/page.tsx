@@ -32,7 +32,7 @@ const AdminLandingPageEditRoute = () => {
   const isNew = landingId === 'new';
 
   const { currentUser, isLoading: isAuthLoading } = useAuth();
-  const { systemSettings, isSystemSettingsLoaded, updateSystemSettings, saveSystemSettingsNow } = useSystemSettingsActions();
+  const { systemSettings, isSystemSettingsLoaded, saveSystemSettingsNow } = useSystemSettingsActions();
 
   React.useEffect(() => {
     if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {
@@ -72,7 +72,6 @@ const AdminLandingPageEditRoute = () => {
   return renderShell(
     <AdminLandingPagesManager
       systemSettings={systemSettings}
-      updateSystemSettings={updateSystemSettings}
       saveSystemSettingsNow={saveSystemSettingsNow}
       initialScreen="editor"
       initialLandingId={landingId}

@@ -26,6 +26,17 @@ describe('marketing landing pages', () => {
     expect(pages[1].planCards.map((card) => card.planName)).toEqual(['Gratuito', 'Elite']);
   });
 
+  it('respects an explicit landing collection after an administrator removes pages', () => {
+    expect(mergeMarketingLandingPages([], 'ConcursoMestre')).toEqual([]);
+
+    const eliteOnly = mergeMarketingLandingPages([
+      { ...mergeMarketingLandingPages(undefined, 'ConcursoMestre')[1] },
+    ], 'ConcursoMestre');
+
+    expect(eliteOnly).toHaveLength(1);
+    expect(eliteOnly[0].slug).toBe('elite');
+  });
+
   it('builds dedicated public paths for the default campaigns', () => {
     expect(buildMarketingLandingPath('planos')).toBe('/planos');
     expect(buildMarketingLandingPath('elite')).toBe('/elite');

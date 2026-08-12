@@ -153,7 +153,6 @@ const AdminMarketingSection = ({
       {activeSection === 'landing-pages' ? (
         <AdminLandingPagesManager
           systemSettings={systemSettings}
-          updateSystemSettings={updateSystemSettings}
           saveSystemSettingsNow={saveSystemSettingsNow}
         />
       ) : null}

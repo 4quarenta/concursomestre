@@ -690,23 +690,10 @@ export const mergeMarketingLandingPages = (
     return [createDefaultPlansLandingPage(siteName), createDefaultEliteLandingPage(siteName)];
   }
 
-  if (pages.length === 0) {
-    return [createDefaultPlansLandingPage(siteName), createDefaultEliteLandingPage(siteName)];
-  }
-
-  const normalized = pages.map((page) => normalizeMarketingLandingPage(page, siteName));
-  const hasPlanos = normalized.some((page) => page.slug === 'planos');
-  const hasElite = normalized.some((page) => page.slug === 'elite');
-
-  if (!hasPlanos) {
-    normalized.unshift(createDefaultPlansLandingPage(siteName));
-  }
-
-  if (!hasElite) {
-    normalized.push(createDefaultEliteLandingPage(siteName));
-  }
-
-  return normalized;
+  // An explicit array is authoritative, including an empty one. Recreating
+  // default pages here made deleted landings reappear immediately after the
+  // settings mutation completed.
+  return pages.map((page) => normalizeMarketingLandingPage(page, siteName));
 };
 
 export const duplicateMarketingLandingPage = (page: MarketingLandingPage): MarketingLandingPage => {

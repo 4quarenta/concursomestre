@@ -16,6 +16,11 @@ type LandingSeoResolution = {
   siteName: string;
 };
 
+type LandingSettingsResolution = {
+  available: boolean;
+  settings: Record<string, unknown>;
+};
+
 const FETCH_TIMEOUT_MS = 3500;
 
 const readEnv = (key: string): string => {
@@ -44,9 +49,9 @@ const readEnvelopeData = (payload: unknown): Record<string, unknown> => {
   return payload as Record<string, unknown>;
 };
 
-const fetchPublicSettingsForLandingSeo = async (): Promise<Record<string, unknown>> => {
+const fetchPublicSettingsForLandingSeo = async (): Promise<LandingSettingsResolution> => {
   if (typeof fetch !== 'function') {
-    return {};
+    return { available: false, settings: {} };
   }
 
   const controller = new AbortController();
@@ -62,23 +67,27 @@ const fetchPublicSettingsForLandingSeo = async (): Promise<Record<string, unknow
     });
 
     if (!response.ok) {
-      return {};
+      return { available: false, settings: {} };
     }
 
-    return adaptPublicSystemSettings(readEnvelopeData(await response.json())) as Record<string, unknown>;
+    return {
+      available: true,
+      settings: adaptPublicSystemSettings(readEnvelopeData(await response.json())) as Record<string, unknown>,
+    };
   } catch {
-    return {};
+    return { available: false, settings: {} };
   } finally {
     clearTimeout(timeout);
   }
 };
 
 export const resolvePublishedMarketingLandingForSeo = async (slug: string): Promise<LandingSeoResolution> => {
-  const settings = await fetchPublicSettingsForLandingSeo();
+  const resolution = await fetchPublicSettingsForLandingSeo();
+  const settings = resolution.settings;
   const siteName = String(settings.siteName || websiteManifest.website.applicationName || 'ConcursoMestre').trim();
-  const landingPages = Array.isArray(settings.landingPages)
+  const landingPages = resolution.available && Array.isArray(settings.landingPages)
     ? settings.landingPages as Partial<MarketingLandingPage>[]
-    : [];
+    : undefined;
   const pages = mergeMarketingLandingPages(landingPages, siteName);
   const landing = getPublishedMarketingLandingBySlug(pages, normalizeLandingSlug(slug));
 

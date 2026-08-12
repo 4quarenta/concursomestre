@@ -57,7 +57,6 @@ import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 interface AdminLandingPagesManagerProps {
   systemSettings: SystemSettings;
-  updateSystemSettings: (settings: SystemSettings) => void;
   saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
   initialScreen?: 'list' | 'editor';
   initialLandingId?: string;
@@ -143,7 +142,6 @@ const createEmptyFaq = (): MarketingLandingFaqItem => ({
  */
 const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
   systemSettings,
-  updateSystemSettings,
   saveSystemSettingsNow,
   initialScreen = 'list',
   initialLandingId = '',
@@ -289,11 +287,10 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
     setIsSaving(true);
 
     try {
-      const persisted = await saveSystemSettingsNow({
+      await saveSystemSettingsNow({
         ...systemSettings,
         landingPages: nextPages,
       });
-      updateSystemSettings(persisted);
       addToast(successMessage, 'success');
       return true;
     } catch {
@@ -673,7 +670,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
           </div>
         </div>
       ) : (
-      <div className={editorOnly ? 'space-y-6' : 'grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]'}>
+      <div className={editorOnly ? 'grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]' : 'grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]'}>
         {!editorOnly ? (
         <aside className={`${sectionClassName} space-y-4 xl:sticky xl:top-24 xl:self-start`}>
           <div className="flex items-start justify-between gap-4">
@@ -750,48 +747,30 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
         </aside>
         ) : null}
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {!selectedLanding ? (
             <div className={sectionClassName}>
               <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Nenhuma landing selecionada.</p>
             </div>
           ) : (
             <>
-              <section className={sectionClassName}>
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+                <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`}>
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Controle da campanha</p>
-                    <h3 className="mt-2 text-xl font-black text-slate-900 dark:text-slate-100">{selectedLanding.title}</h3>
-                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-                      Gerencie slug, status, plano vinculado e acessos de preview/publicacao.
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                      {normalizedInitialLandingId === 'new' ? 'Adicionar landing page' : 'Editar landing page'}
+                    </h3>
+                    <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Configure a identificacao e o plano comercial vinculado.
                     </p>
                   </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                    <button type="button" onClick={returnToLandingList} className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
-                      <ArrowLeft size={14} />
-                      Lista
-                    </button>
-                    <a href={previewHref} target="_blank" rel="noreferrer" className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
-                      <Eye size={14} />
-                      Preview
-                    </a>
-                    <a href={publishedHref} target="_blank" rel="noreferrer" className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
-                      <ExternalLink size={14} />
-                      Publica
-                    </a>
-                    <button type="button" onClick={() => void handleTogglePublish()} disabled={isSaving} className={`inline-flex items-center justify-center gap-2 rounded-sm border px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60 ${selectedLanding.status === 'published' ? 'border-slate-700 bg-slate-700 hover:bg-slate-800' : 'border-emerald-700 bg-emerald-700 hover:bg-emerald-800'}`}>
-                      {selectedLanding.status === 'published' ? <EyeOff size={14} /> : <Rocket size={14} />}
-                      {selectedLanding.status === 'published' ? 'Despublicar' : 'Publicar'}
-                    </button>
-                    <button type="button" onClick={() => void handleSaveSelectedLanding()} disabled={isSaving} className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em] disabled:opacity-60`}>
-                      <Save size={14} />
-                      Salvar
-                    </button>
-                  </div>
+                  <button type="button" onClick={returnToLandingList} className={ADMIN_SECONDARY_BUTTON_CLASS}>
+                    <ArrowLeft size={14} />
+                    Voltar para a lista
+                  </button>
                 </div>
 
-                <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 p-5 lg:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-1.5 xl:col-span-2">
                     <label className={labelClassName}>Titulo da landing</label>
                     <input value={selectedLanding.title} onChange={(event) => patchSelectedLanding((page) => ({ ...page, title: event.target.value }))} className={inputClassName} />
@@ -1171,6 +1150,87 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
             </>
           )}
         </div>
+
+        {editorOnly && selectedLanding ? (
+          <aside className="w-full space-y-5 xl:sticky xl:top-6">
+            <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+              <div className={ADMIN_SURFACE_HEADER_CLASS}>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Publicar</p>
+              </div>
+              <div className="space-y-4 p-4">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Status</span>
+                  <span className={`inline-flex rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${
+                    selectedLanding.status === 'published'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+                  }`}>
+                    {selectedLanding.status === 'published' ? 'Publicada' : 'Rascunho'}
+                  </span>
+                </div>
+
+                <div className="grid gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveSelectedLanding()}
+                    disabled={isSaving}
+                    className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-10 justify-center`}
+                  >
+                    <Save size={14} />
+                    Salvar alteracoes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleTogglePublish()}
+                    disabled={isSaving}
+                    className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-10 justify-center`}
+                  >
+                    {selectedLanding.status === 'published' ? <EyeOff size={14} /> : <Rocket size={14} />}
+                    {selectedLanding.status === 'published' ? 'Mover para rascunho' : 'Publicar landing'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
+                  <a href={previewHref} target="_blank" rel="noreferrer" className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center`}>
+                    <Eye size={14} />
+                    Preview
+                  </a>
+                  <a
+                    href={publishedHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-disabled={selectedLanding.status !== 'published'}
+                    className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center ${selectedLanding.status !== 'published' ? 'pointer-events-none opacity-45' : ''}`}
+                  >
+                    <ExternalLink size={14} />
+                    Ver pagina
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+              <div className={ADMIN_SURFACE_HEADER_CLASS}>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Acoes</p>
+              </div>
+              <div className="grid gap-2 p-4">
+                <button type="button" onClick={() => void handleDuplicateLanding()} disabled={isSaving} className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-10 justify-center`}>
+                  <Copy size={14} />
+                  Duplicar landing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingDelete(selectedLanding)}
+                  disabled={isSaving}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-sm border border-rose-300 bg-white px-3 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/60 dark:bg-slate-900 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                >
+                  <Trash2 size={14} />
+                  Excluir landing
+                </button>
+              </div>
+            </div>
+          </aside>
+        ) : null}
       </div>
       )}
     </div>
