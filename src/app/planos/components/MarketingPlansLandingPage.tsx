@@ -474,7 +474,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
                   <div className="mt-6 space-y-2">
                     {card.hasDiscount ? (
                       <>
-                        <p className={`text-xs font-bold uppercase tracking-[0.16em] line-through ${card.featured ? 'text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <p className={`text-xs font-bold uppercase tracking-[0.16em] line-through ${card.featured ? 'text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
                           De {formatCurrency(card.originalMonthlyAmount)}/mes
                         </p>
                         <p className={`text-4xl font-black tracking-tight ${card.featured ? 'text-emerald-300' : 'text-emerald-600 dark:text-emerald-400'}`}>
