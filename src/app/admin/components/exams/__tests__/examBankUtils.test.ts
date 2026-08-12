@@ -11,8 +11,29 @@
 
 import { describe, expect, it } from 'vitest';
 import { formatProvaLabel, normalizeProvaRecord } from '../examBankUtils';
+import { createDraftFromProva, normalizeExamDateTimeLocalValue } from '../useAdminExamBankWorkflow';
 
 describe('examBankUtils', () => {
+  it('normalizes MySQL publication dates and preserves the persisted question count', () => {
+    const prova = normalizeProvaRecord({
+      id: 123,
+      nome: 'NCE - IBGE - Recenseador - 2000',
+      ano: 2000,
+      publishStatus: 'published',
+      publishedAt: '2026-08-09 00:47:51',
+      createdAt: '2026-08-09 00:47:51',
+      questionCount: 5,
+      banca: { id: 1, nome: 'NCE', sigla: 'NCE' },
+      orgao: { id: 2, nome: 'IBGE', sigla: 'IBGE' },
+      cargo: { id: 3, descricao: 'Recenseador' },
+    });
+
+    expect(prova?.questionCount).toBe(5);
+    expect(prova?.publishedAt).toBe('2026-08-09 00:47:51');
+    expect(prova ? createDraftFromProva(prova).publishedAt : '').toBe('2026-08-09T00:47');
+    expect(normalizeExamDateTimeLocalValue('2026-10-12 13:45:00')).toBe('2026-10-12T13:45');
+  });
+
   it('preserves booklet metadata from imported exam metadata_json', () => {
     const prova = normalizeProvaRecord({
       id: 77,

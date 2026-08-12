@@ -89,4 +89,26 @@ describe('practice SSR data', () => {
       pageInfo: { limit: 10, total: 0, hasMore: false, nextCursor: null },
     });
   });
+
+  it('preserves a server-filtered subject page as the authoritative result set', () => {
+    const result = mapPracticeServerPayload({
+      ...payload,
+      data: {
+        ...payload.data,
+        items: payload.data.items.map((item) => ({
+          ...item,
+          filters: {
+            ...item.filters,
+            subjects: [{ id: 33532, label: 'Direito Penal', slug: 'direito-penal' }],
+            topics: [{ id: 10638, label: 'Legislacao Especial', slug: 'legislacao-especial' }],
+          },
+        })),
+        pageInfo: { limit: 50, total: 24, hasMore: false, nextCursor: null },
+      },
+    });
+
+    expect(result.questions).toHaveLength(1);
+    expect(result.questions[0].filters?.subjects?.[0]).toMatchObject({ label: 'Direito Penal' });
+    expect(result.total).toBe(24);
+  });
 });

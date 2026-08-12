@@ -88,12 +88,31 @@ vi.mock('@services/api/requestCoalescer', () => ({
 }));
 
 import { questionService } from '../index';
+import { mapV2DetailToQuestion } from '../questionService';
 
 type QuestionUpdatePayload = Parameters<typeof questionService.updateQuestion>[1];
 
 describe('questionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('preserves editorial availability for practice filters without exposing protected bodies', () => {
+    const question = mapV2DetailToQuestion({
+      id: 91,
+      content: { statement: 'Enunciado protegido.' },
+      editorialAvailability: {
+        hasTeacherComment: true,
+        hasDetailedAnalysis: true,
+      },
+      editorial: [],
+      publication: { status: 'published', visibility: 'public' },
+    });
+
+    expect(question.hasTeacherComment).toBe(true);
+    expect(question.hasDetailedComment).toBe(true);
+    expect(question.teacherComment).toBe('');
+    expect(question.detailedComment).toBe('');
   });
 
   it('unwraps paginated question responses from the public v2 list endpoint', async () => {
@@ -419,6 +438,40 @@ describe('questionService', () => {
     expect(result.success).toBe(true);
   });
 
+  it('persists newly generated editorial text instead of stale empty canonical placeholders', async () => {
+    mockPost.mockResolvedValueOnce({ success: true, data: { id: 34 } });
+
+    const payload = {
+      id: 34,
+      enunciado: 'Questao com editorial gerado',
+      teacherComment: 'Explicacao objetiva do professor. Gabarito: A.',
+      detailedComment: '## Gabarito comentado\nAnalise completa da questao.',
+      editorial: [
+        { type: 'teacher_comment', title: '', body: '', status: 'draft' },
+        { type: 'detailed_analysis', title: '', body: '', status: 'draft' },
+      ],
+    } as QuestionUpdatePayload;
+
+    const result = await questionService.updateQuestion('34', payload);
+
+    expect(mockPost).toHaveBeenCalledWith(
+      'questionsUpdate',
+      expect.objectContaining({
+        editorial: [
+          expect.objectContaining({
+            type: 'teacher_comment',
+            body: 'Explicacao objetiva do professor. Gabarito: A.',
+          }),
+          expect.objectContaining({
+            type: 'detailed_analysis',
+            body: '## Gabarito comentado\nAnalise completa da questao.',
+          }),
+        ],
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
   it('deletes a question through the backend contract that expects query params', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
@@ -454,6 +507,24 @@ describe('questionService', () => {
     expect(result.xpGain).toBe(3);
     expect(result.newXp).toBe(1203);
     expect(result.newLevel).toBe(2);
+  });
+
+  it('sends an explicit desired state for idempotent saved-question mutations', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      isSaved: false,
+      message: 'Questão removida dos salvos',
+    });
+
+    const result = await questionService.toggleSavedQuestion('user-2', 77, false);
+
+    expect(mockPost).toHaveBeenCalledWith('questionsToggleSave', {
+      user_id: 'user-2',
+      question_id: 77,
+      is_saved: false,
+    });
+    expect(result.success).toBe(true);
+    expect(result.isSaved).toBe(false);
   });
 
   it('resets user answers through the official endpoint', async () => {

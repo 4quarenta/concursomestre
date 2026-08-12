@@ -21,44 +21,50 @@ final class PublicSettingsProjection
                 static fn($page): bool => is_array($page) && (($page['status'] ?? 'draft') === 'published')
             ))
             : [];
+        $features = self::pick(
+            is_array($settings['features'] ?? null) ? $settings['features'] : [],
+            [
+                'practiceEnabled',
+                'marketplaceEnabled',
+                'rankingsEnabled',
+                'referralEnabled',
+                'annotatedLawsEnabled',
+                'flashcardsEnabled',
+                'communityEnabled',
+                'supportDonationsEnabled',
+                'aiCommentsEnabled',
+                'bulkImportEnabled',
+                'reportsEnabled',
+                'notificationsEnabled',
+                'simulationsEnabled',
+                'studyScheduleEnabled',
+                'maintenanceMode',
+                'registrationEnabled',
+                'landingPagePromoEnabled',
+                'xRayEnabled',
+                'loginRequired',
+                'partnerRegistrationEnabled',
+                'recurringEnabled',
+                'sameTierCycleChangeEnabled',
+            ]
+        );
+        $features['supportDonationsEnabled'] = self::toBoolean(
+            $features['supportDonationsEnabled'] ?? true
+        );
 
         return [
             'contractVersion' => self::CONTRACT_VERSION,
             'branding' => self::pick($settings, [
                 'appName',
                 'siteName',
+                'platformVersion',
                 'emailLogoUrl',
                 'supportPhone',
                 'legalContactEmail',
                 'privacyContactEmail',
                 'dailyMotivationMarkdown',
             ]),
-            'features' => self::pick(
-                is_array($settings['features'] ?? null) ? $settings['features'] : [],
-                [
-                    'practiceEnabled',
-                    'marketplaceEnabled',
-                    'rankingsEnabled',
-                    'referralEnabled',
-                    'annotatedLawsEnabled',
-                    'flashcardsEnabled',
-                    'communityEnabled',
-                    'aiCommentsEnabled',
-                    'bulkImportEnabled',
-                    'reportsEnabled',
-                    'notificationsEnabled',
-                    'simulationsEnabled',
-                    'studyScheduleEnabled',
-                    'maintenanceMode',
-                    'registrationEnabled',
-                    'landingPagePromoEnabled',
-                    'xRayEnabled',
-                    'loginRequired',
-                    'partnerRegistrationEnabled',
-                    'recurringEnabled',
-                    'sameTierCycleChangeEnabled',
-                ]
-            ),
+            'features' => $features,
             'plans' => self::pick($settings, [
                 'pricing',
                 'planDetails',

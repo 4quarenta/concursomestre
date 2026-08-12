@@ -9,10 +9,12 @@ interface ReplaceQuestionBankPayload {
   totalQuestions: number;
   hasMoreQuestions?: boolean;
   nextQuestionCursor?: string | null;
+  filterSignature?: string | null;
 }
 
 interface QuestionBankState {
   loadedOwnerKey: string | null;
+  loadedFilterSignature: string | null;
   questions: Question[];
   totalQuestions: number;
   hasMoreQuestions: boolean;
@@ -25,6 +27,7 @@ interface QuestionBankState {
     totalQuestions?: number,
     hasMoreQuestions?: boolean,
     nextQuestionCursor?: string | null,
+    filterSignature?: string | null,
   ) => void;
   prependQuestion: (question: Question) => void;
   upsertQuestion: (question: Question) => void;
@@ -89,6 +92,7 @@ const filterOutCommentTree = (comments: QuestaoComentario[], commentId: string):
 
 export const useQuestionBankStore = create<QuestionBankState>((set) => ({
   loadedOwnerKey: null,
+  loadedFilterSignature: null,
   questions: [],
   totalQuestions: 0,
   hasMoreQuestions: false,
@@ -100,9 +104,10 @@ export const useQuestionBankStore = create<QuestionBankState>((set) => ({
     totalQuestions: payload.totalQuestions,
     hasMoreQuestions: Boolean(payload.hasMoreQuestions),
     nextQuestionCursor: payload.nextQuestionCursor ?? null,
+    loadedFilterSignature: payload.filterSignature ?? null,
     isQuestionsLoaded: true,
   }),
-  appendQuestions: (ownerKey, incoming, totalQuestions, hasMoreQuestions, nextQuestionCursor) => set((state) => {
+  appendQuestions: (ownerKey, incoming, totalQuestions, hasMoreQuestions, nextQuestionCursor, filterSignature) => set((state) => {
     const questions = mergeUniqueQuestions(state.questions, incoming);
     return {
       loadedOwnerKey: ownerKey,
@@ -112,6 +117,7 @@ export const useQuestionBankStore = create<QuestionBankState>((set) => ({
         : Math.max(state.totalQuestions, questions.length),
       hasMoreQuestions: typeof hasMoreQuestions === 'boolean' ? hasMoreQuestions : state.hasMoreQuestions,
       nextQuestionCursor: nextQuestionCursor === undefined ? state.nextQuestionCursor : nextQuestionCursor,
+      loadedFilterSignature: filterSignature === undefined ? state.loadedFilterSignature : filterSignature,
       isQuestionsLoaded: true,
     };
   }),
@@ -233,6 +239,7 @@ export const useQuestionBankStore = create<QuestionBankState>((set) => ({
   })),
   resetQuestionBank: () => set({
     loadedOwnerKey: null,
+    loadedFilterSignature: null,
     questions: [],
     totalQuestions: 0,
     hasMoreQuestions: false,

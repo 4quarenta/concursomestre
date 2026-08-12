@@ -21,6 +21,7 @@ import {
 } from '@services/marketing/promotionCampaign';
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
+  platformVersion: '1.0.0',
   activeTheme: 'default',
   paymentProvider: 'stripe',
   paymentCheckoutMode: 'internal',
@@ -93,6 +94,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     annotatedLawsEnabled: false,
     flashcardsEnabled: false,
     communityEnabled: true,
+    supportDonationsEnabled: true,
     aiCommentsEnabled: true,
     bulkImportEnabled: true,
     reportsEnabled: true,

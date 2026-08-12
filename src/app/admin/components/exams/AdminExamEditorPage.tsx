@@ -105,17 +105,20 @@ const TextInput = ({
   onChange,
   placeholder,
   type = 'text',
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: React.HTMLInputTypeAttribute;
+  disabled?: boolean;
 }) => (
   <input
     type={type}
     value={value}
     onChange={(event) => onChange(event.target.value)}
     placeholder={placeholder}
+    disabled={disabled}
     className={`h-10 w-full ${ADMIN_FIELD_CLASS}`}
   />
 );
@@ -2218,6 +2221,7 @@ const AdminExamEditorPage = ({
     publishStatus: draft.publishStatus,
     visibilityStatus: draft.visibilityStatus,
     scheduledAt: draft.scheduledAt,
+    publishedAt: draft.publishedAt,
     banca: { id: Number(draft.bancaId || 0), nome: draft.bancaNome, name: draft.bancaNome, sigla: draft.bancaSigla },
     orgao: { id: Number(draft.orgaoId || 0), nome: draft.orgaoNome, name: draft.orgaoNome, sigla: draft.orgaoSigla },
     orgaos: (draft.orgaosText || '')
@@ -3431,8 +3435,13 @@ Se algum campo não estiver no documento, deixe vazio ou array vazio.`, [
               </div>
 
               <div>
-                <FieldLabel>Publicar em</FieldLabel>
-                <TextInput type="datetime-local" value={draft.scheduledAt} onChange={(value) => updateDraft({ scheduledAt: value })} />
+                <FieldLabel>{draft.publishStatus === 'published' ? 'Publicado em' : 'Publicar em'}</FieldLabel>
+                <TextInput
+                  type="datetime-local"
+                  value={draft.publishStatus === 'published' ? draft.publishedAt : draft.scheduledAt}
+                  onChange={(value) => updateDraft({ scheduledAt: value })}
+                  disabled={draft.publishStatus === 'published'}
+                />
               </div>
 
               <div className="space-y-2 border-t border-slate-200 pt-4 text-sm dark:border-slate-700">

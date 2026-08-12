@@ -231,6 +231,19 @@ class QuestionsService
         }
 
         $data = $this->validator->validateListQueryV2($query);
+        if (!empty($data['filters']['onlySaved'])
+            && ($authenticatedUserId === null || $authenticatedUserId === '')) {
+            return [
+                'items' => [],
+                'pageInfo' => [
+                    'limit' => $data['limit'],
+                    'total' => 0,
+                    'hasMore' => false,
+                    'nextCursor' => null,
+                ],
+            ];
+        }
+
         $scope = $this->questionListCursorScope($data['filters'], $authenticatedUserId);
         $cursorPayload = SignedKeysetCursor::decodePayload($data['cursor'], $scope);
         $total = is_array($cursorPayload) && is_numeric($cursorPayload['total'] ?? null)
@@ -573,10 +586,18 @@ class QuestionsService
             $buckets = $this->partitionFilters($filters[$id] ?? []);
             $questionProvas = $provas[$id] ?? [];
             $flags = $editorialFlags[$id] ?? [];
+            // A flag indexada e a fonte usada pelo filtro público. Mantemos a
+            // leitura canônica como confirmação para dados anteriores ao
+            // backfill, evitando que a própria UI descarte um item já aceito
+            // pela consulta SQL.
+            $hasStoredTeacherComment = !empty($row['has_teacher_comment'])
+                || !empty($flags['hasTeacherComment']);
+            $hasStoredDetailedAnalysis = !empty($row['has_detailed_comment'])
+                || !empty($flags['hasDetailedAnalysis']);
             $hasTeacherComment = $canViewTeacherComments
-                && !empty($flags['hasTeacherComment']);
+                && $hasStoredTeacherComment;
             $hasDetailedAnalysis = $canViewDetailedAnalysis
-                && !empty($flags['hasDetailedAnalysis']);
+                && $hasStoredDetailedAnalysis;
             $statement = (string) ($row['enunciado'] ?? '');
             $statementClean = (string) ($row['enunciado_clean'] ?? strip_tags($statement));
             $origin = !empty($row['prova_id']) || $questionProvas !== [] ? 'exam' : 'platform';
@@ -703,39 +724,103 @@ class QuestionsService
             return $payload;
         }
 
-        $needsTeacher = !array_key_exists('teacherComment', $payload)
-            && !array_key_exists('teacher_comment', $payload)
-            && !array_key_exists('comentarioProfessor', $payload);
-        $needsDetailed = !array_key_exists('detailedComment', $payload)
-            && !array_key_exists('detailed_comment', $payload)
-            && !array_key_exists('analiseDetalhada', $payload);
-
-        if (!$needsTeacher && !$needsDetailed) {
-            return $payload;
-        }
-
         $existing = $this->repository->findQuestionById($questionId);
         if (!is_array($existing)) {
             return $payload;
         }
 
         $data = $this->decodeQuestionJson($existing['data_json'] ?? null);
-        if ($needsTeacher) {
-            $payload['teacherComment'] = (string) (
-                $data['teacherComment']
+        $storedEditorial = [];
+        if ($this->canonicalRepository->isAvailable()) {
+            try {
+                $storedEditorial = $this->canonicalRepository->loadQuestionEditorialBodies((int) $questionId);
+            } catch (Throwable) {
+                $storedEditorial = [];
+            }
+        }
+
+        $payload = $this->preserveEditorialField(
+            $payload,
+            'teacher_comment',
+            'teacherComment',
+            ['teacher_comment', 'comentarioProfessor'],
+            (string) ($storedEditorial['teacher_comment']
+                ?? $data['teacherComment']
                 ?? $data['teacher_comment']
                 ?? $data['comentarioProfessor']
-                ?? ''
-            );
-        }
-        if ($needsDetailed) {
-            $payload['detailedComment'] = (string) (
-                $data['detailedComment']
+                ?? '')
+        );
+        $payload = $this->preserveEditorialField(
+            $payload,
+            'detailed_analysis',
+            'detailedComment',
+            ['detailed_comment', 'analiseDetalhada'],
+            (string) ($storedEditorial['detailed_analysis']
+                ?? $data['detailedComment']
                 ?? $data['detailed_comment']
                 ?? $data['analiseDetalhada']
-                ?? ''
-            );
+                ?? '')
+        );
+
+        return $payload;
+    }
+
+    /**
+     * Materializa um campo editorial no contrato canonico. Corpos vazios
+     * presentes como placeholders nao podem prevalecer sobre texto gerado ou
+     * sobre um editorial ja salvo. Remocao exige a flag explicita `remove`.
+     */
+    private function preserveEditorialField(
+        array $payload,
+        string $type,
+        string $canonicalField,
+        array $legacyFields,
+        string $storedValue
+    ): array {
+        $editorials = is_array($payload['editorial'] ?? null) ? $payload['editorial'] : [];
+        $matchingIndex = null;
+        $explicitRemoval = false;
+        $editorialValue = '';
+        foreach ($editorials as $index => $editorial) {
+            if (!is_array($editorial) || (string) ($editorial['type'] ?? '') !== $type) {
+                continue;
+            }
+            $matchingIndex = $index;
+            $explicitRemoval = !empty($editorial['remove'] ?? $editorial['_delete'] ?? false);
+            $editorialValue = (string) ($editorial['body'] ?? '');
+            break;
         }
+
+        $grouped = is_array($payload['editorialComments'] ?? null) ? $payload['editorialComments'] : [];
+        $candidates = [$payload[$canonicalField] ?? null, $grouped[$canonicalField] ?? null];
+        foreach ($legacyFields as $field) {
+            $candidates[] = $payload[$field] ?? null;
+            $candidates[] = $grouped[$field] ?? null;
+        }
+        $candidates[] = $editorialValue;
+
+        $incomingValue = '';
+        foreach ($candidates as $candidate) {
+            $candidateText = (string) ($candidate ?? '');
+            if (trim($candidateText) !== '') {
+                $incomingValue = $candidateText;
+                break;
+            }
+        }
+
+        $resolvedValue = $explicitRemoval ? '' : ($incomingValue !== '' ? $incomingValue : $storedValue);
+        $payload[$canonicalField] = $resolvedValue;
+        if ($matchingIndex === null) {
+            $editorials[] = [
+                'type' => $type,
+                'title' => '',
+                'body' => $resolvedValue,
+                'status' => 'draft',
+            ];
+        } else {
+            $editorials[$matchingIndex]['body'] = $resolvedValue;
+        }
+        $payload['editorial'] = array_values($editorials);
 
         return $payload;
     }
@@ -853,6 +938,7 @@ class QuestionsService
                 $contextData['source_external_id'] = $contextData['source_provider'] !== ''
                     ? $this->scopeImportedContextExternalId($examId, $rawContextExternalId)
                     : '';
+                $contextData['prova_id'] = $examId;
                 $contextData['created_by_user_id'] = $authenticatedUserId;
                 $contextData['updated_by_user_id'] = $authenticatedUserId;
                 $groupIdByTempId[$tempId] = $this->repository->saveQuestionGroup($contextData);
@@ -861,6 +947,7 @@ class QuestionsService
                 // única dentro da prova. Escopá-la evita que um novo lote
                 // sobrescreva um contexto canônico de outro autor/prova.
                 $canonicalContext['tempId'] = 'prova_' . $examId . '_' . $tempId;
+                $canonicalContext['provaId'] = $examId;
                 $canonicalContext['body'] = $contextData['texto'];
                 $canonicalContext['assets'] = $contextData['assets'];
                 if ($contextData['source_provider'] !== '' && $contextData['source_external_id'] !== '') {
@@ -1366,6 +1453,11 @@ class QuestionsService
         $data['assets'] = $this->persistQuestionContextAssets($data['assets']);
         $data['created_by_user_id'] = $authenticatedUserId;
         $data['updated_by_user_id'] = $authenticatedUserId;
+        $data['prova_id'] = $this->repository->resolveQuestionGroupProvaId(
+            $data['prova_id'],
+            $data['question_ids'],
+            $data['id']
+        );
 
         $this->repository->listQuestionGroups('', 1);
 
@@ -1380,6 +1472,7 @@ class QuestionsService
             // próprio registro. Não aceite tempIds arbitrários que possam
             // coincidir com o contexto de outro usuário.
             $canonicalContext['tempId'] = 'legacy_group_' . $groupId;
+            $canonicalContext['provaId'] = $data['prova_id'];
             $canonicalContext['assets'] = $data['assets'];
             $canonicalContextId = $this->canonicalRepository->saveContext($canonicalContext, $authenticatedUserId);
             foreach (is_array($data['question_ids']) ? $data['question_ids'] : [] as $questionId) {
@@ -1552,6 +1645,11 @@ class QuestionsService
                 'order' => 1,
             ];
         }
+        $editorial = $this->resolveEditorialForV2($aggregate, $legacy);
+        $editorialAvailability = [
+            'hasTeacherComment' => $this->editorialBodyByType($editorial, 'teacher_comment') !== null,
+            'hasDetailedAnalysis' => $this->editorialBodyByType($editorial, 'detailed_analysis') !== null,
+        ];
 
         $attempts = max(0, (int) ($stats['totalAttempts'] ?? $stats['total_attempts'] ?? 0));
         $correct = max(0, (int) ($stats['correctCount'] ?? $stats['correct_count'] ?? 0));
@@ -1604,6 +1702,9 @@ class QuestionsService
             'engagement' => [
                 'commentsCount' => max(0, $commentsCount),
             ],
+            // A disponibilidade e segura para o DTO público. Os corpos
+            // permanecem protegidos pela política editorial logo abaixo.
+            'editorialAvailability' => $editorialAvailability,
         ];
 
         if ($userAnswer !== null) {
@@ -1628,7 +1729,7 @@ class QuestionsService
         }
 
         if ($canViewTeacherComments || $canViewDetailedAnalysis) {
-            $question['editorial'] = $this->resolveEditorialForV2($aggregate, $legacy);
+            $question['editorial'] = $editorial;
         }
 
         return $this->outputPolicy->forRead(
@@ -1722,30 +1823,38 @@ class QuestionsService
 
     private function resolveEditorialForV2(?array $aggregate, array $legacy): array
     {
-        $editorials = is_array($aggregate['editorial'] ?? null) ? $aggregate['editorial'] : [];
-        if ($editorials !== []) {
-            return array_values(array_map(static fn (array $editorial): array => [
-                'type' => (string) ($editorial['type'] ?? ''),
-                'title' => (string) ($editorial['title'] ?? ''),
-                'body' => (string) ($editorial['body'] ?? ''),
-                'status' => (string) ($editorial['status'] ?? 'draft'),
-            ], $editorials));
+        $legacyBodies = [
+            'teacher_comment' => $this->normalizeEditorialText(
+                $legacy['teacherComment'] ?? $legacy['teacher_comment'] ?? $legacy['comentarioProfessor'] ?? ''
+            ),
+            'detailed_analysis' => $this->normalizeEditorialText(
+                $legacy['detailedComment'] ?? $legacy['detailed_comment'] ?? $legacy['analiseDetalhada'] ?? ''
+            ),
+        ];
+        $canonicalByType = [];
+        foreach (is_array($aggregate['editorial'] ?? null) ? $aggregate['editorial'] : [] as $editorial) {
+            if (!is_array($editorial)) {
+                continue;
+            }
+            $type = (string) ($editorial['type'] ?? '');
+            if (in_array($type, ['teacher_comment', 'detailed_analysis'], true)) {
+                $canonicalByType[$type] = $editorial;
+            }
         }
 
-        return [
-            [
-                'type' => 'teacher_comment',
-                'title' => '',
-                'body' => (string) ($legacy['teacherComment'] ?? ''),
-                'status' => 'draft',
-            ],
-            [
-                'type' => 'detailed_analysis',
-                'title' => '',
-                'body' => (string) ($legacy['detailedComment'] ?? ''),
-                'status' => 'draft',
-            ],
-        ];
+        return array_map(function (string $type) use ($canonicalByType, $legacyBodies): array {
+            $canonical = $canonicalByType[$type] ?? [];
+            $body = $this->normalizeEditorialText($canonical['body'] ?? '');
+
+            return [
+                'type' => $type,
+                'title' => (string) ($canonical['title'] ?? ''),
+                // Um placeholder canônico vazio jamais pode ocultar o
+                // conteúdo editorial já persistido no snapshot legado.
+                'body' => $body !== '' ? $body : $legacyBodies[$type],
+                'status' => (string) ($canonical['status'] ?? 'draft'),
+            ];
+        }, ['teacher_comment', 'detailed_analysis']);
     }
 
     private function normalizeContextsV2(array $contexts): array
@@ -1940,9 +2049,19 @@ class QuestionsService
             throw new OutOfBoundsException('Questao nao encontrada.');
         }
 
-        if ($this->repository->hasSavedQuestion($userId, $data['questionId'])) {
-            $this->repository->removeSavedQuestion($userId, $data['questionId']);
+        $currentlySaved = $this->repository->hasSavedQuestion($userId, $data['questionId']);
+        $desiredSavedState = $data['desiredSavedState'] ?? !$currentlySaved;
+
+        if (!$desiredSavedState) {
+            if ($currentlySaved) {
+                $this->repository->removeSavedQuestion($userId, $data['questionId']);
+            }
+
             return ['isSaved' => false, 'message' => 'Questao removida dos salvos.'];
+        }
+
+        if ($currentlySaved) {
+            return ['isSaved' => true, 'message' => 'Questao ja estava salva.'];
         }
 
         if (!$isAdmin) {
@@ -2218,7 +2337,8 @@ class QuestionsService
     {
         foreach ($editorials as $editorial) {
             if (is_array($editorial) && (string) ($editorial['type'] ?? '') === $type) {
-                return (string) ($editorial['body'] ?? '');
+                $body = $this->normalizeEditorialText($editorial['body'] ?? '');
+                return $body !== '' ? $body : null;
             }
         }
         return null;
@@ -2244,10 +2364,17 @@ class QuestionsService
                 $byType[(string) $editorial['type']] = $editorial;
             }
         }
-        return [
-            $byType['teacher_comment'] ?? ['type' => 'teacher_comment', 'title' => '', 'body' => $teacher, 'status' => 'draft'],
-            $byType['detailed_analysis'] ?? ['type' => 'detailed_analysis', 'title' => '', 'body' => $detailed, 'status' => 'draft'],
-        ];
+        return array_map(function (string $type, string $fallback) use ($byType): array {
+            $editorial = $byType[$type] ?? [];
+            $body = $this->normalizeEditorialText($editorial['body'] ?? '');
+
+            return [
+                'type' => $type,
+                'title' => (string) ($editorial['title'] ?? ''),
+                'body' => $body !== '' ? $body : $fallback,
+                'status' => (string) ($editorial['status'] ?? 'draft'),
+            ];
+        }, ['teacher_comment', 'detailed_analysis'], [$teacher, $detailed]);
     }
 
     private function filterItemsByTaxonomyLevel(array $items, string $level): array
@@ -3354,6 +3481,7 @@ class QuestionsService
             if (trim((string) ($asset['url'] ?? '')) === '') {
                 continue;
             }
+            $this->assertGranAssetWasMaterialized((string) $asset['url']);
             $persisted[] = $asset;
         }
 
@@ -3481,9 +3609,23 @@ class QuestionsService
             if (trim((string) ($asset['url'] ?? '')) === '') {
                 continue;
             }
+            $this->assertGranAssetWasMaterialized((string) $asset['url']);
             $persisted[] = $asset;
         }
         return $persisted;
+    }
+
+    private function assertGranAssetWasMaterialized(string $url): void
+    {
+        $parts = parse_url(trim($url));
+        if (
+            strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+            && strtolower((string) ($parts['host'] ?? '')) === 'arquivos.infra-questoes.grancursosonline.com.br'
+        ) {
+            throw new InvalidArgumentException(
+                'A imagem da Gran nao foi copiada para o armazenamento da plataforma antes da publicacao.'
+            );
+        }
     }
 
     private function persistInlineQuestionAssetImages(string $html): string
@@ -3651,6 +3793,31 @@ class QuestionsService
     private function partitionFilters(array $filters): array
     {
         $buckets = ['bancas' => [], 'orgaos' => [], 'cargos' => [], 'assuntos' => [], 'anos' => [], 'carreiras' => [], 'niveis' => [], 'tiposProva' => []];
+        $subjectLevels = [];
+        $subjectParentIds = [];
+        foreach ($filters as $filter) {
+            if (!is_array($filter) || strtolower(trim((string) ($filter['type'] ?? ''))) !== 'assunto') {
+                continue;
+            }
+            $filterId = is_numeric($filter['id'] ?? null) ? (int) $filter['id'] : null;
+            if ($filterId === null) {
+                continue;
+            }
+            $parentId = is_numeric($filter['parent_id'] ?? null) ? (int) $filter['parent_id'] : null;
+            $subjectParentIds[$filterId] = $parentId;
+            if (!empty($filter['meta_materia']) || !empty($filter['materia']) || $parentId === null) {
+                $subjectLevels[$filterId] = 'materia';
+            }
+        }
+        foreach ($subjectParentIds as $filterId => $parentId) {
+            if (isset($subjectLevels[$filterId])) {
+                continue;
+            }
+            $subjectLevels[$filterId] = $parentId !== null && ($subjectLevels[$parentId] ?? null) === 'materia'
+                ? 'topico'
+                : 'assunto';
+        }
+
         foreach ($filters as $filter) {
             if (!is_array($filter)) {
                 continue;
@@ -3681,8 +3848,16 @@ class QuestionsService
             } elseif ($type === 'carreira') {
                 $buckets['carreiras'][] = $base + ['description' => $name, 'pai' => $parentId];
             } elseif ($type === 'assunto') {
-                $isMateria = !empty($filter['meta_materia']) || !empty($filter['materia']);
-                $buckets['assuntos'][] = $base + ['materia' => $isMateria, 'assunto_raiz' => $parentId, 'pai' => $parentId];
+                $taxonomyLevel = $id !== null
+                    ? ($subjectLevels[$id] ?? ($parentId === null ? 'materia' : 'assunto'))
+                    : ($parentId === null ? 'materia' : 'assunto');
+                $buckets['assuntos'][] = $base + [
+                    'materia' => $taxonomyLevel === 'materia',
+                    'taxonomyLevel' => $taxonomyLevel,
+                    'taxonomy_level' => $taxonomyLevel,
+                    'assunto_raiz' => $parentId,
+                    'pai' => $parentId,
+                ];
             } elseif ($type === 'ano') {
                 $buckets['anos'][] = ctype_digit($name) ? (int) $name : $name;
             } elseif ($type === 'nivel') {
@@ -3740,6 +3915,8 @@ class QuestionsService
 
         return [
             'id' => (int) ($row['id'] ?? 0),
+            'provaId' => isset($row['prova_id']) && (int) $row['prova_id'] > 0 ? (int) $row['prova_id'] : null,
+            'provaTitle' => trim((string) ($row['prova_title'] ?? '')),
             'texto' => $text,
             'assets' => $assets,
             'questionIds' => $ids,

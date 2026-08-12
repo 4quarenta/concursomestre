@@ -2,9 +2,9 @@ import type { ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
 
 export const metadata = buildPublicPageMetadata({
-  title: 'Changelog',
-  description: 'Acompanhe as principais mudancas, melhorias e correcoes publicadas na plataforma ConcursoMestre.',
-  path: '/changelog',
+  title: 'Novidades',
+  description: 'Veja o que chegou recentemente ao ConcursoMestre.',
+  path: '/novidades',
 });
 
 export default function ChangelogLayout({ children }: Readonly<{ children: ReactNode }>) {

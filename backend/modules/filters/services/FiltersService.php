@@ -45,6 +45,24 @@ class FiltersService
      */
     public function list(): array
     {
+        return $this->groupRows($this->repository->fetchAll());
+    }
+
+    /**
+     * Contrato leve usado pelos seletores da pagina de pratica.
+     */
+    public function listPracticeCatalog(): array
+    {
+        return $this->groupRows($this->repository->fetchPracticeCatalog());
+    }
+
+    /**
+     * Converte registros canonicos para o contrato historico de taxonomias.
+     * O agrupamento e compartilhado para evitar divergencia entre o catalogo
+     * administrativo completo e o catalogo publico reduzido.
+     */
+    private function groupRows(array $rows): array
+    {
         $result = [
             'bancas' => [],
             'orgaos' => [],
@@ -55,7 +73,6 @@ class FiltersService
             'areas' => [],
         ];
 
-        $rows = $this->repository->fetchAll();
         $rowsById = [];
         foreach ($rows as $entry) {
             $rowsById[(int) ($entry['id'] ?? 0)] = $entry;
@@ -170,6 +187,159 @@ class FiltersService
             'perPage' => $pageData['perPage'],
             'pages' => $pageData['pages'],
             'usage' => $this->repository->fetchUsageSummary(),
+        ];
+    }
+
+    /**
+     * Contrato publico minimo para as bibliotecas de disciplinas e bancas.
+     */
+    public function listPublicDirectory(
+        string $directoryType,
+        int $page,
+        int $perPage,
+        string $search = '',
+        string $letter = ''
+    ): array {
+        if (!in_array($directoryType, ['subjects', 'boards'], true)) {
+            throw new InvalidArgumentException('Tipo de diretorio publico invalido.');
+        }
+
+        $pageData = $this->repository->fetchPublicDirectory(
+            $directoryType,
+            $page,
+            $perPage,
+            $search,
+            $letter
+        );
+
+        return [
+            'items' => array_map(static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'name' => (string) $row['name'],
+                'slug' => (string) $row['slug'],
+                'acronym' => $row['acronym'] ?: null,
+                'description' => $row['description'] ?: null,
+                'imageUrl' => $row['asset_url'] ?: null,
+                'questionCount' => (int) $row['question_count'],
+                'examCount' => (int) ($row['exam_count'] ?? 0),
+            ], $pageData['rows']),
+            'pageInfo' => [
+                'page' => (int) $pageData['page'],
+                'perPage' => (int) $pageData['perPage'],
+                'pages' => (int) $pageData['pages'],
+                'total' => (int) $pageData['total'],
+                'hasPrevious' => (int) $pageData['page'] > 1,
+                'hasMore' => (int) $pageData['page'] < (int) $pageData['pages'],
+            ],
+        ];
+    }
+
+    public function getPublicBoardDetail(string $slug, int $page, int $perPage, string $status = 'all'): ?array
+    {
+        $slug = strtolower(trim($slug));
+        if ($slug === '' || strlen($slug) > 190 || preg_match('/^[a-z0-9-]+$/', $slug) !== 1) {
+            throw new InvalidArgumentException('Banca invalida.');
+        }
+        if (!in_array($status, ['all', 'open', 'upcoming', 'completed', 'unknown'], true)) {
+            throw new InvalidArgumentException('Status de concurso invalido.');
+        }
+
+        $data = $this->repository->fetchPublicBoardDetail($slug, $page, $perPage, $status);
+        if ($data === null) {
+            return null;
+        }
+
+        $board = $data['board'];
+        $profile = [];
+        foreach ($data['questionProfile'] as $row) {
+            $profile[] = [
+                'modality' => (string) ($row['modality'] ?? 'nao_informado'),
+                'difficulty' => (int) ($row['difficulty'] ?? 0),
+                'questionCount' => (int) ($row['question_count'] ?? 0),
+            ];
+        }
+
+        return [
+            'board' => [
+                'id' => (int) $board['id'],
+                'name' => (string) $board['name'],
+                'slug' => (string) $board['slug'],
+                'acronym' => $board['acronym'] ?: null,
+                'description' => $board['description'] ?: null,
+                'website' => $board['website'] ?: null,
+                'imageUrl' => $board['asset_url'] ?: null,
+                'questionCount' => (int) ($board['question_count'] ?? 0),
+                'examCount' => (int) ($board['exam_count'] ?? 0),
+            ],
+            'examSummary' => [
+                'total' => (int) ($data['examSummary']['total'] ?? 0),
+                'open' => (int) ($data['examSummary']['open_count'] ?? 0),
+                'upcoming' => (int) ($data['examSummary']['upcoming_count'] ?? 0),
+                'completed' => (int) ($data['examSummary']['completed_count'] ?? 0),
+                'unknown' => (int) ($data['examSummary']['unknown_count'] ?? 0),
+            ],
+            'topSubjects' => array_map(static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'name' => (string) $row['name'],
+                'slug' => (string) $row['slug'],
+                'questionCount' => (int) ($row['question_count'] ?? 0),
+            ], $data['topSubjects']),
+            'questionProfile' => $profile,
+            'exams' => array_map(static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'title' => (string) $row['nome'],
+                'slug' => (string) $row['slug'],
+                'year' => (int) ($row['ano'] ?? 0),
+                'registrationStart' => $row['inscricoes_inicio'] ?? null,
+                'registrationEnd' => $row['inscricoes_fim'] ?? null,
+                'examDate' => $row['data_prova'] ?? null,
+                'resultDate' => $row['resultado_data'] ?? null,
+                'questionCount' => (int) ($row['question_count'] ?? 0),
+                'organizations' => array_values(array_filter(explode('||', (string) ($row['organizations'] ?? '')))),
+                'status' => (string) ($row['public_status'] ?? 'unknown'),
+            ], $data['exams']),
+            'pageInfo' => [
+                'page' => (int) $data['page'],
+                'perPage' => (int) $data['perPage'],
+                'pages' => (int) $data['pages'],
+                'total' => (int) $data['total'],
+                'hasPrevious' => (int) $data['page'] > 1,
+                'hasMore' => (int) $data['page'] < (int) $data['pages'],
+            ],
+        ];
+    }
+
+    /**
+     * Contrato publico paginado para expansao progressiva da arvore.
+     */
+    public function listPublicTaxonomyChildren(int $parentId, int $page, int $perPage): array
+    {
+        if ($parentId <= 0) {
+            throw new InvalidArgumentException('Taxonomia pai invalida.');
+        }
+
+        if (!$this->repository->publicKnowledgeTaxonomyExists($parentId)) {
+            throw new InvalidArgumentException('Taxonomia pai nao encontrada.');
+        }
+
+        $pageData = $this->repository->fetchPublicTaxonomyChildren($parentId, $page, $perPage);
+
+        return [
+            'items' => array_map(static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'name' => (string) $row['name'],
+                'slug' => (string) $row['slug'],
+                'taxonomyLevel' => (string) ($row['taxonomy_level'] ?: 'assunto'),
+                'questionCount' => (int) $row['question_count'],
+                'hasChildren' => (bool) $row['has_children'],
+            ], $pageData['rows']),
+            'pageInfo' => [
+                'page' => (int) $pageData['page'],
+                'perPage' => (int) $pageData['perPage'],
+                'pages' => (int) $pageData['pages'],
+                'total' => (int) $pageData['total'],
+                'hasMore' => (int) $pageData['page'] < (int) $pageData['pages'],
+            ],
         ];
     }
 

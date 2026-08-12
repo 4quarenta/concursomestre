@@ -42,9 +42,34 @@ class FiltersController
         return $this->service->list();
     }
 
+    public function listPracticeCatalog(): array
+    {
+        return $this->service->listPracticeCatalog();
+    }
+
     public function listPage(int $page, int $perPage, string $type = 'all', string $search = ''): array
     {
         return $this->service->listPage($page, $perPage, $type, $search);
+    }
+
+    public function listPublicDirectory(
+        string $directoryType,
+        int $page,
+        int $perPage,
+        string $search = '',
+        string $letter = ''
+    ): array {
+        return $this->service->listPublicDirectory($directoryType, $page, $perPage, $search, $letter);
+    }
+
+    public function getPublicBoardDetail(string $slug, int $page, int $perPage, string $status = 'all'): ?array
+    {
+        return $this->service->getPublicBoardDetail($slug, $page, $perPage, $status);
+    }
+
+    public function listPublicTaxonomyChildren(int $parentId, int $page, int $perPage): array
+    {
+        return $this->service->listPublicTaxonomyChildren($parentId, $page, $perPage);
     }
 
     public function getAdminDetail(int $id): array

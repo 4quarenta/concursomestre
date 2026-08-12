@@ -30,6 +30,8 @@ export type PublicSuggestionVote = 'like' | 'dislike';
 
 export type PublicSuggestion = SupportThread & {
   user_name?: string | null;
+  product_status?: 'pending' | 'under_review' | 'approved' | 'planned' | 'in_progress' | 'completed';
+  platform_version?: string | null;
   likes: number;
   dislikes: number;
   score: number;

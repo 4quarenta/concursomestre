@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ConcursoMestre - Coletor Gran",
   "description": "Coleta questoes e documentos oficiais das provas Gran para importacao administrativa no ConcursoMestre.",
-  "version": "1.0.16",
+  "version": "1.0.21",
   "minimum_chrome_version": "102",
   "permissions": [
     "declarativeNetRequest",
@@ -14,6 +14,7 @@
   ],
   "host_permissions": [
     "https://rota-api.grancursosonline.com.br/*",
+    "https://arquivos.infra-questoes.grancursosonline.com.br/*",
     "https://questoes.grancursosonline.com.br/*",
     "https://concursomestre.com/*",
     "http://localhost:3000/*"
@@ -28,8 +29,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://concursomestre.com/*",
-        "http://localhost:3000/*"
+        "https://concursomestre.com/admin/operation/gran-crawler*",
+        "http://localhost:3000/admin/operation/gran-crawler*"
       ],
       "js": [
         "content-script.js"

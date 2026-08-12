@@ -235,7 +235,7 @@ export const adminService = {
    * Envia uma imagem de identidade visual pelo endpoint administrativo dedicado.
    * @since v1.0.0
    */
-  async uploadBrandAsset(file: File, purpose: 'email-logo' | 'og-image' | 'taxonomy-logo' | 'blog-cover'): Promise<AdminBrandAsset> {
+  async uploadBrandAsset(file: File, purpose: 'email-logo' | 'og-image' | 'taxonomy-logo' | 'blog-cover' | 'blog-content'): Promise<AdminBrandAsset> {
     const formData = new FormData();
     formData.append('purpose', purpose);
     formData.append('asset', file);
@@ -1076,6 +1076,7 @@ export const adminService = {
     const envelope = assertApiSuccess<AdminQuestionGroupItem>(response, 'Não foi possível salvar o contexto de questões.');
     return readApiData<AdminQuestionGroupItem>(envelope.raw, {
       id: Number(payload.id || 0),
+      provaId: payload.provaId,
       texto: payload.texto,
       assets: payload.assets,
       question_count: 0,

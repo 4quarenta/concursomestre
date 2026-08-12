@@ -9,7 +9,7 @@
 *
 */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { BookOpen, DollarSign, LayoutDashboard, Megaphone, MessageSquare, Settings, ShoppingBag } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
@@ -43,7 +43,6 @@ import {
   resolveSupportLandingSection,
   TAB_DESCRIPTIONS,
   buildAdminPath,
-  resolveAdminRoute,
   resolveAdminRouteForRole,
   type AdminFinanceSection,
   type AdminMarketingSection,
@@ -97,6 +96,7 @@ export const useAdminPageController = () => {
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const router = useRouter();
+  const [, startNavigationTransition] = useTransition();
   const pathname = usePathname() || '/admin';
   const searchParams = useSearchParams();
   const location = useMemo(() => {
@@ -322,7 +322,7 @@ export const useAdminPageController = () => {
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => filterAdminTabsForRole([
     { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, group: 'Conteúdo', description: 'Visão geral e saúde operacional' },
-    { key: 'operation', label: 'Conteúdo', icon: BookOpen, group: 'Conteúdo', description: 'Questões, provas, importação, taxonomias, lei comentada e usuários' },
+    { key: 'operation', label: 'Conteúdo', icon: BookOpen, group: 'Conteúdo', description: 'Questões, provas, blog, importação, taxonomias, lei comentada e usuários' },
     { key: 'marketplace', label: 'Marketplace', icon: ShoppingBag, group: 'Comercial', description: 'Vendedores, materiais publicados e revisão bloqueada' },
     { key: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Comercial', description: 'Transações, planos, cupons, analytics e automação' },
     { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: 'Landing pages, campanhas, temas visuais e redes sociais' },
@@ -392,11 +392,16 @@ export const useAdminPageController = () => {
   const syncAdminUrl = (tab: AdminPageTab, section?: string, options?: { replace?: boolean; hash?: string }) => {
     const resolved = resolveAdminRouteForRole(tab, section, adminUserRole);
     const nextPath = buildAdminPath(resolved.tab, resolved.section, options?.hash);
-    if (options?.replace ?? true) {
-      router.replace(nextPath);
-    } else {
-      router.push(nextPath);
-    }
+    setActiveTabState(resolved.tab);
+    setGroupSection(resolved.tab, resolved.section);
+
+    startNavigationTransition(() => {
+      if (options?.replace ?? true) {
+        router.replace(nextPath, { scroll: false });
+      } else {
+        router.push(nextPath, { scroll: false });
+      }
+    });
   };
 
   const setGroupSection = (tab: AdminPageTab, section: string) => {
@@ -452,7 +457,7 @@ export const useAdminPageController = () => {
     );
     const shouldPrefetchTaxonomies = (
       route.tab === 'operation'
-      && route.section !== 'users'
+      && !['users', 'files', 'blog', 'novidades'].includes(route.section)
     );
     const shouldPrefetchRankings = route.tab === 'support' && route.section === 'rankings';
     const shouldPrefetchReports = (

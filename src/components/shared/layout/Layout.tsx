@@ -830,7 +830,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   >
                     <item.icon size={19} className="shrink-0" />
                     <span className={`min-w-0 truncate ${hasRightAccessory ? 'pr-8' : ''}`}>{item.label}</span>
-                    {item.path === '/changelog' && unreadCount > 0 && (
+                    {item.path === '/novidades' && unreadCount > 0 && (
                       <span className="absolute left-7 top-2.5 h-2 w-2 rounded-full bg-red-500 shadow-sm shadow-red-500/50 animate-pulse" />
                     )}
                     {hasBadge && !isLocked && !shouldShowDevBadge && (

@@ -1299,6 +1299,7 @@ class AdminSettingsService
             'annotatedLawsEnabled',
             'flashcardsEnabled',
             'communityEnabled',
+            'supportDonationsEnabled',
             'aiCommentsEnabled',
             'bulkImportEnabled',
             'reportsEnabled',

@@ -60,6 +60,50 @@ class FiltersRepository
     }
 
     /**
+     * Carrega somente taxonomias que podem aparecer nos filtros publicos da pratica.
+     *
+     * A lista completa ultrapassa dezenas de milhares de registros e nao deve ser
+     * materializada durante a hidratacao da pagina. Os ancestrais sao mantidos
+     * para que materia, topico e assunto continuem formando uma arvore valida.
+     */
+    public function fetchPracticeCatalog(): array
+    {
+        $publishedQuestionClause = "q.publish_status IN ('published', 'scheduled')
+            AND q.visibility_status = 'public'
+            AND q.published_sort_at IS NOT NULL
+            AND q.published_sort_at <= NOW()";
+
+        $stmt = $this->db->prepare(
+            "WITH RECURSIVE practice_filters AS (
+                SELECT DISTINCT f.id, f.parent_id, 0 AS depth,
+                       CAST(CONCAT(',', f.id, ',') AS CHAR(512)) AS visited
+                FROM filters f
+                INNER JOIN question_filters qf ON qf.filter_id = f.id
+                INNER JOIN questions q ON q.id = qf.question_id
+                    AND {$publishedQuestionClause}
+
+                UNION ALL
+
+                SELECT parent.id, parent.parent_id, child.depth + 1,
+                       CONCAT(child.visited, parent.id, ',')
+                FROM practice_filters child
+                INNER JOIN filters parent ON parent.id = child.parent_id
+                WHERE child.depth < 8
+                  AND child.visited NOT LIKE CONCAT('%,', parent.id, ',%')
+            )
+            SELECT DISTINCT f.id, f.type, f.name, f.slug, f.acronym, f.parent_id,
+                   f.description, f.website, f.asset_url, f.icon_key, f.keywords_json,
+                   f.meta_materia, f.taxonomy_level, f.meta_carreira
+            FROM filters f
+            INNER JOIN practice_filters selected ON selected.id = f.id
+            ORDER BY f.name ASC, f.id ASC"
+        );
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
      * Retorna o uso editorial de cada taxonomia em consultas agregadas.
      *
      * Os contadores representam vinculos existentes, independentemente do
@@ -239,6 +283,319 @@ class FiltersRepository
         $store->set($cacheKey, json_encode($summary), 15);
 
         return $summary;
+    }
+
+    /**
+     * Lista taxonomias publicas com a quantidade real de questoes publicadas.
+     * A consulta e deliberadamente separada do contrato administrativo: nao
+     * expoe metadados internos, aliases, identidades externas ou relacoes.
+     */
+    public function fetchPublicDirectory(
+        string $directoryType,
+        int $page,
+        int $perPage,
+        string $search = '',
+        string $letter = ''
+    ): array {
+        $isSubject = $directoryType === 'subjects';
+        $taxonomyClause = $isSubject
+            ? "f.type = 'assunto' AND (f.taxonomy_level = 'materia' OR f.meta_materia = 1)"
+            : "f.type = 'banca'";
+        $params = [];
+        $filterClauses = [$taxonomyClause];
+
+        if ($search !== '') {
+            $filterClauses[] = '(f.name LIKE :search OR f.acronym LIKE :search)';
+            $params[':search'] = '%' . $search . '%';
+        }
+        if ($letter !== '') {
+            $filterClauses[] = 'f.name LIKE :letter';
+            $params[':letter'] = $letter . '%';
+        }
+
+        $where = implode(' AND ', $filterClauses);
+        $publishedQuestionClause = "q.publish_status IN ('published', 'scheduled')
+            AND q.visibility_status = 'public'
+            AND q.published_sort_at IS NOT NULL
+            AND q.published_sort_at <= NOW()";
+        $publicExamJoin = $isSubject ? '' : "
+             LEFT JOIN prova_filters pf ON pf.filter_id = f.id
+             LEFT JOIN provas p ON p.id = pf.prova_id
+                AND p.status_editorial = 'published'
+                AND p.visibility_status = 'public'
+                AND p.archived_at IS NULL
+                AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())";
+        $examCountSelect = $isSubject
+            ? '0 AS exam_count'
+            : 'COUNT(DISTINCT p.id) AS exam_count';
+
+        $count = $this->db->prepare(
+            "SELECT COUNT(*)
+             FROM (
+                SELECT f.id
+                FROM filters f
+                INNER JOIN question_filters qf ON qf.filter_id = f.id
+                INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+                WHERE {$where}
+                GROUP BY f.id
+             ) public_taxonomies"
+        );
+        $count->execute($params);
+        $total = (int) $count->fetchColumn();
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min(max(1, $page), $pages);
+        $offset = ($page - 1) * $perPage;
+
+        $query = $this->db->prepare(
+            "SELECT f.id, f.name, f.slug, f.acronym, f.description, f.asset_url,
+                    COUNT(DISTINCT q.id) AS question_count,
+                    {$examCountSelect}
+             FROM filters f
+             INNER JOIN question_filters qf ON qf.filter_id = f.id
+             INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+             {$publicExamJoin}
+             WHERE {$where}
+             GROUP BY f.id, f.name, f.slug, f.acronym, f.description, f.asset_url
+             ORDER BY f.name ASC, f.id ASC
+             LIMIT :limit OFFSET :offset"
+        );
+        foreach ($params as $name => $value) {
+            $query->bindValue($name, $value, PDO::PARAM_STR);
+        }
+        $query->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $query->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $query->execute();
+
+        return [
+            'rows' => $query->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'pages' => $pages,
+        ];
+    }
+
+    /**
+     * Agrega o perfil publico de uma banca sem expor metadados administrativos.
+     * Os status dos concursos sao calculados somente a partir das datas canonicas.
+     */
+    public function fetchPublicBoardDetail(string $slug, int $page, int $perPage, string $status = 'all'): ?array
+    {
+        $publishedQuestionClause = "q.publish_status IN ('published', 'scheduled')
+            AND q.visibility_status = 'public'
+            AND q.published_sort_at IS NOT NULL
+            AND q.published_sort_at <= NOW()";
+        $publicExamClause = "p.archived_at IS NULL
+            AND p.status_editorial = 'published'
+            AND p.visibility_status = 'public'
+            AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())";
+
+        $boardStmt = $this->db->prepare(
+            "SELECT f.id, f.name, f.slug, f.acronym, f.description, f.website, f.asset_url,
+                    (SELECT COUNT(DISTINCT q.id)
+                       FROM question_filters qf
+                       INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+                      WHERE qf.filter_id = f.id) AS question_count,
+                    (SELECT COUNT(DISTINCT p.id)
+                       FROM prova_filters pf
+                       INNER JOIN provas p ON p.id = pf.prova_id AND {$publicExamClause}
+                      WHERE pf.filter_id = f.id) AS exam_count
+               FROM filters f
+              WHERE f.type = 'banca' AND f.slug = :slug
+              LIMIT 1"
+        );
+        $boardStmt->execute([':slug' => $slug]);
+        $board = $boardStmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($board)) {
+            return null;
+        }
+
+        $boardId = (int) $board['id'];
+        $openCondition = "p.inscricoes_inicio IS NOT NULL
+            AND p.inscricoes_fim IS NOT NULL
+            AND CURDATE() BETWEEN DATE(p.inscricoes_inicio) AND DATE(p.inscricoes_fim)";
+        $completedCondition = "NOT ({$openCondition}) AND (
+            (p.resultado_data IS NOT NULL AND DATE(p.resultado_data) <= CURDATE())
+            OR (p.data_prova IS NOT NULL AND DATE(p.data_prova) < CURDATE())
+        )";
+        $upcomingCondition = "NOT ({$openCondition}) AND NOT ({$completedCondition}) AND (
+            (p.inscricoes_inicio IS NOT NULL AND DATE(p.inscricoes_inicio) > CURDATE())
+            OR (p.data_prova IS NOT NULL AND DATE(p.data_prova) >= CURDATE())
+        )";
+        $unknownCondition = "NOT ({$openCondition}) AND NOT ({$completedCondition}) AND NOT ({$upcomingCondition})";
+        $statusConditions = [
+            'open' => $openCondition,
+            'upcoming' => $upcomingCondition,
+            'completed' => $completedCondition,
+            'unknown' => $unknownCondition,
+        ];
+        $statusClause = isset($statusConditions[$status]) ? ' AND ' . $statusConditions[$status] : '';
+
+        $examSummaryStmt = $this->db->prepare(
+            "SELECT COUNT(*) AS total,
+                    COALESCE(SUM(CASE WHEN {$openCondition} THEN 1 ELSE 0 END), 0) AS open_count,
+                    COALESCE(SUM(CASE WHEN {$upcomingCondition} THEN 1 ELSE 0 END), 0) AS upcoming_count,
+                    COALESCE(SUM(CASE WHEN {$completedCondition} THEN 1 ELSE 0 END), 0) AS completed_count,
+                    COALESCE(SUM(CASE WHEN {$unknownCondition} THEN 1 ELSE 0 END), 0) AS unknown_count
+               FROM provas p
+              WHERE {$publicExamClause}
+                AND EXISTS (
+                    SELECT 1 FROM prova_filters pf_board
+                     WHERE pf_board.prova_id = p.id AND pf_board.filter_id = :board_id
+                )"
+        );
+        $examSummaryStmt->execute([':board_id' => $boardId]);
+        $examSummary = $examSummaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $totalForStatus = $status === 'all'
+            ? (int) ($examSummary['total'] ?? 0)
+            : (int) ($examSummary[$status . '_count'] ?? 0);
+        $pages = max(1, (int) ceil($totalForStatus / max(1, $perPage)));
+        $page = min(max(1, $page), $pages);
+        $offset = ($page - 1) * $perPage;
+
+        $examsStmt = $this->db->prepare(
+            "SELECT p.id, p.nome, p.slug, p.ano, p.inscricoes_inicio, p.inscricoes_fim,
+                    p.data_prova, p.resultado_data,
+                    COUNT(DISTINCT q_exam.id) AS question_count,
+                    GROUP_CONCAT(DISTINCT CASE WHEN f.type = 'orgao' THEN COALESCE(NULLIF(f.acronym, ''), f.name) END ORDER BY f.name SEPARATOR '||') AS organizations,
+                    CASE
+                        WHEN {$openCondition} THEN 'open'
+                        WHEN {$completedCondition} THEN 'completed'
+                        WHEN {$upcomingCondition} THEN 'upcoming'
+                        ELSE 'unknown'
+                    END AS public_status
+               FROM provas p
+               LEFT JOIN question_provas qp ON qp.prova_id = p.id
+               LEFT JOIN questions q_exam ON q_exam.id = qp.question_id
+                    AND q_exam.publish_status IN ('published', 'scheduled')
+                    AND q_exam.visibility_status = 'public'
+                    AND q_exam.published_sort_at IS NOT NULL
+                    AND q_exam.published_sort_at <= NOW()
+               LEFT JOIN prova_filters pf ON pf.prova_id = p.id
+               LEFT JOIN filters f ON f.id = pf.filter_id
+              WHERE {$publicExamClause}
+                AND EXISTS (
+                    SELECT 1 FROM prova_filters pf_board
+                     WHERE pf_board.prova_id = p.id AND pf_board.filter_id = :board_id
+                )
+                {$statusClause}
+              GROUP BY p.id, p.nome, p.slug, p.ano, p.inscricoes_inicio, p.inscricoes_fim,
+                       p.data_prova, p.resultado_data
+              ORDER BY CASE public_status WHEN 'open' THEN 1 WHEN 'upcoming' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END,
+                       COALESCE(p.data_prova, p.inscricoes_inicio, CONCAT(COALESCE(p.ano, 0), '-01-01')) DESC,
+                       p.id DESC
+              LIMIT :limit OFFSET :offset"
+        );
+        $examsStmt->bindValue(':board_id', $boardId, PDO::PARAM_INT);
+        $examsStmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $examsStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $examsStmt->execute();
+
+        $subjectsStmt = $this->db->prepare(
+            "SELECT subject.id, subject.name, subject.slug, COUNT(DISTINCT q.id) AS question_count
+               FROM question_filters qf_board
+               INNER JOIN questions q ON q.id = qf_board.question_id AND {$publishedQuestionClause}
+               INNER JOIN question_filters qf_subject ON qf_subject.question_id = q.id
+               INNER JOIN filters subject ON subject.id = qf_subject.filter_id
+                    AND subject.type = 'assunto'
+                    AND (subject.taxonomy_level = 'materia' OR subject.meta_materia = 1)
+              WHERE qf_board.filter_id = :board_id
+              GROUP BY subject.id, subject.name, subject.slug
+              ORDER BY question_count DESC, subject.name ASC
+              LIMIT 10"
+        );
+        $subjectsStmt->execute([':board_id' => $boardId]);
+
+        $profileStmt = $this->db->prepare(
+            "SELECT COALESCE(NULLIF(LOWER(TRIM(q.tipo)), ''), 'nao_informado') AS modality,
+                    COALESCE(q.dificuldade, 0) AS difficulty,
+                    COUNT(DISTINCT q.id) AS question_count
+               FROM question_filters qf_board
+               INNER JOIN questions q ON q.id = qf_board.question_id AND {$publishedQuestionClause}
+              WHERE qf_board.filter_id = :board_id
+              GROUP BY modality, difficulty
+              ORDER BY question_count DESC"
+        );
+        $profileStmt->execute([':board_id' => $boardId]);
+
+        return [
+            'board' => $board,
+            'exams' => $examsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'examSummary' => $examSummary,
+            'topSubjects' => $subjectsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'questionProfile' => $profileStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'page' => $page,
+            'perPage' => $perPage,
+            'pages' => $pages,
+            'total' => $totalForStatus,
+            'status' => $status,
+        ];
+    }
+
+    /**
+     * Lista somente o proximo nivel de uma taxonomia de conhecimento.
+     * A arvore publica e expandida sob demanda para evitar payloads gigantes.
+     */
+    public function fetchPublicTaxonomyChildren(int $parentId, int $page, int $perPage): array
+    {
+        $publishedQuestionClause = "q.publish_status IN ('published', 'scheduled')
+            AND q.visibility_status = 'public'
+            AND q.published_sort_at IS NOT NULL
+            AND q.published_sort_at <= NOW()";
+        $baseFrom = "FROM filters f
+             INNER JOIN question_filters qf ON qf.filter_id = f.id
+             INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+             WHERE f.type = 'assunto' AND f.parent_id = :parent_id";
+
+        $count = $this->db->prepare(
+            "SELECT COUNT(*) FROM (
+                SELECT f.id {$baseFrom} GROUP BY f.id
+             ) public_taxonomy_children"
+        );
+        $count->bindValue(':parent_id', $parentId, PDO::PARAM_INT);
+        $count->execute();
+        $total = (int) $count->fetchColumn();
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min(max(1, $page), $pages);
+        $offset = ($page - 1) * $perPage;
+
+        $query = $this->db->prepare(
+            "SELECT f.id, f.name, f.slug, f.taxonomy_level,
+                    COUNT(DISTINCT q.id) AS question_count,
+                    EXISTS(
+                        SELECT 1 FROM filters child
+                        WHERE child.type = 'assunto' AND child.parent_id = f.id
+                        LIMIT 1
+                    ) AS has_children
+             {$baseFrom}
+             GROUP BY f.id, f.name, f.slug, f.taxonomy_level
+             ORDER BY f.name ASC, f.id ASC
+             LIMIT :limit OFFSET :offset"
+        );
+        $query->bindValue(':parent_id', $parentId, PDO::PARAM_INT);
+        $query->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $query->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $query->execute();
+
+        return [
+            'rows' => $query->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'pages' => $pages,
+        ];
+    }
+
+    public function publicKnowledgeTaxonomyExists(int $id): bool
+    {
+        $query = $this->db->prepare(
+            "SELECT 1 FROM filters WHERE id = :id AND type = 'assunto' LIMIT 1"
+        );
+        $query->bindValue(':id', $id, PDO::PARAM_INT);
+        $query->execute();
+
+        return (bool) $query->fetchColumn();
     }
 
     /**

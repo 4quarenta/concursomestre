@@ -511,9 +511,69 @@ class QuestionsValidator
             $this->normalizeCanonicalFilterItems($filters['topics'] ?? $filters['topicos'] ?? [], ['materia' => false, 'taxonomyLevel' => 'topico', 'taxonomy_level' => 'topico']),
             $this->normalizeCanonicalFilterItems($filters['subtopics'] ?? $filters['assuntos'] ?? [], ['materia' => false, 'taxonomyLevel' => 'assunto', 'taxonomy_level' => 'assunto'])
         ));
+        // O editor pode enviar a forma canônica `editorial` ou o agrupamento
+        // usado pela tela legada (`editorialComments`). Antes de persistir o
+        // agregado, materializamos sempre a lista canônica. Assim, a presença
+        // de comentário usada pelos filtros não depende de aliases no DTO.
+        $canonicalContract['editorial'] = $this->normalizeCanonicalEditorialEntries(
+            $editorials,
+            $payload['teacherComment'],
+            $payload['detailedComment']
+        );
+        unset($canonicalContract['editorialComments']);
+
         $payload['_canonical_contract'] = $canonicalContract;
 
         return $payload;
+    }
+
+    /**
+     * @param array<int, mixed> $editorials
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeCanonicalEditorialEntries(
+        array $editorials,
+        string $teacherComment,
+        string $detailedComment
+    ): array {
+        $byType = [];
+        foreach ($editorials as $editorial) {
+            if (!is_array($editorial)) {
+                continue;
+            }
+            $type = trim((string) ($editorial['type'] ?? ''));
+            if (!in_array($type, ['teacher_comment', 'detailed_analysis'], true)) {
+                continue;
+            }
+            $byType[$type] = [
+                'type' => $type,
+                'title' => (string) ($editorial['title'] ?? ''),
+                'body' => (string) ($editorial['body'] ?? ''),
+                'status' => (string) ($editorial['status'] ?? 'draft'),
+                'generatedBy' => $editorial['generatedBy'] ?? $editorial['generated_by'] ?? null,
+                'metadata' => is_array($editorial['metadata'] ?? null) ? $editorial['metadata'] : [],
+            ];
+        }
+
+        foreach ([
+            'teacher_comment' => $teacherComment,
+            'detailed_analysis' => $detailedComment,
+        ] as $type => $body) {
+            if (trim($body) === '') {
+                continue;
+            }
+            $entry = $byType[$type] ?? [
+                'type' => $type,
+                'title' => '',
+                'status' => 'draft',
+                'generatedBy' => null,
+                'metadata' => [],
+            ];
+            $entry['body'] = $body;
+            $byType[$type] = $entry;
+        }
+
+        return array_values($byType);
     }
 
     /**
@@ -788,6 +848,10 @@ class QuestionsValidator
 
         return [
             'id' => is_numeric($id) && (int) $id > 0 ? (int) $id : null,
+            'prova_id' => is_numeric($payload['provaId'] ?? $payload['prova_id'] ?? null)
+                && (int) ($payload['provaId'] ?? $payload['prova_id']) > 0
+                ? (int) ($payload['provaId'] ?? $payload['prova_id'])
+                : null,
             'texto' => $text,
             'assets' => $assets,
             'question_ids' => $questionIdsKey === null ? null : $this->normalizeQuestionGroupIds($payload[$questionIdsKey]),
@@ -927,9 +991,30 @@ class QuestionsValidator
      */
     public function validateScopedUserMutationPayload(array $payload, bool $requiresQuestionId = false): array
     {
+        $desiredSavedState = null;
+        $savedStateKey = null;
+        foreach (['is_saved', 'isSaved', 'desired_state', 'desiredState'] as $candidateKey) {
+            if (array_key_exists($candidateKey, $payload)) {
+                $savedStateKey = $candidateKey;
+                break;
+            }
+        }
+
+        if ($savedStateKey !== null) {
+            $rawSavedState = $payload[$savedStateKey];
+            if (in_array($rawSavedState, [true, 1, '1', 'true'], true)) {
+                $desiredSavedState = true;
+            } elseif (in_array($rawSavedState, [false, 0, '0', 'false'], true)) {
+                $desiredSavedState = false;
+            } else {
+                throw new InvalidArgumentException('Estado de salvamento invalido.');
+            }
+        }
+
         $normalized = [
             'requestedUserId' => $this->extractRequestedUserId($payload),
             'questionId' => null,
+            'desiredSavedState' => $desiredSavedState,
         ];
 
         if ($requiresQuestionId) {

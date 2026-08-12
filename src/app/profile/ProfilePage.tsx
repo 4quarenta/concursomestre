@@ -17,7 +17,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
    User, Star, Book, Shield,
    CreditCard, StickyNote, Zap, TrendingUp,
@@ -30,10 +30,6 @@ import {
    BookmarkCheck,
    type LucideIcon,
 } from 'lucide-react';
-import {
-   AreaChart, Area, XAxis, YAxis,
-} from 'recharts';
-import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import UserAvatar from '@/components/shared/ui/UserAvatar';
 import { useAuth } from '@providers/AuthProvider';
 import { useTheme } from '@providers/ThemeProvider';
@@ -98,6 +94,7 @@ import StudyFocusModal, { type StudyFocusLoadStatus } from './components/StudyFo
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
 import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
 import { normalizeGoogleClientId } from '@/config/googleAuth';
+import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 
 const StripeSetupCardForm = dynamic(() => import('./components/StripeSetupCardForm'), {
     ssr: false,
@@ -108,6 +105,21 @@ const StripeSetupCardForm = dynamic(() => import('./components/StripeSetupCardFo
         </div>
     ),
 });
+
+const ProfileEvolutionChart = dynamic(() => import('./components/ProfileEvolutionChart'), {
+    ssr: false,
+    loading: () => <div className="h-24 w-full animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />,
+});
+
+const scheduleProfileBackgroundTask = (task: () => void): (() => void) => {
+    if (typeof window.requestIdleCallback === 'function') {
+        const requestId = window.requestIdleCallback(task, { timeout: 1200 });
+        return () => window.cancelIdleCallback(requestId);
+    }
+
+    const timeoutId = window.setTimeout(task, 180);
+    return () => window.clearTimeout(timeoutId);
+};
 
 const parseFeatureFlag = (value: unknown): boolean => {
     if (typeof value === 'boolean') return value;
@@ -458,6 +470,7 @@ const Profile: React.FC = () => {
     const { currentUser, logout, refreshUser, updateUser, toggleSavedQuestion } = useAuth();
     const { setTheme } = useTheme();
     const systemSettings = useAppConfigStore((store) => store.systemSettings);
+    const isSystemSettingsLoaded = useAppConfigStore((store) => store.isSystemSettingsLoaded);
     const { questions, ensureQuestionsLoaded } = useQuestionBankActions();
     const { userNotes, userAnswers, saveNote, ensureUserProgressLoaded } = useUserProgressActions();
     const { ensureTaxonomiesLoaded } = useTaxonomyActions();
@@ -481,6 +494,8 @@ const Profile: React.FC = () => {
     const isElitePlan = isPlanAtLeast(currentUser, 'Elite');
     const referralEnabled = parseFeatureFlag(systemSettings?.features?.referralEnabled);
     const canAccessReferralTab = referralEnabled;
+    const annotatedLawsEnabled = isSystemSettingsLoaded
+        && resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled', false);
     const marketplaceEnabled = systemSettings?.features?.marketplaceEnabled === undefined
         ? true
         : parseFeatureFlag(systemSettings.features.marketplaceEnabled);
@@ -500,7 +515,9 @@ const Profile: React.FC = () => {
     const isGoogleConnected = Boolean(currentUser?.hasGoogleLinked || currentUser?.googleId);
     const isFacebookConnected = Boolean(currentUser?.hasFacebookLinked || currentUser?.facebookId);
 
-    const [activeTab, setActiveTab] = useState<ProfileTab>('personal');
+    const [activeTab, setActiveTab] = useState<ProfileTab>(() => resolveProfileTab(
+        params.tab || searchParams?.get('tab'),
+    ));
     const [evolutionRange, setEvolutionRange] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month');
     const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
     const [showGoalModal, setShowGoalModal] = useState(false);
@@ -583,15 +600,33 @@ const Profile: React.FC = () => {
     const [materialNotes, setMaterialNotes] = useState<MaterialNotebookNote[]>([]);
     const [favoriteLaws, setFavoriteLaws] = useState<ProfileLegalFavoriteItem[]>([]);
     const [isLoadingFavoriteLaws, setIsLoadingFavoriteLaws] = useState(false);
-    const [savedQuestionDetails, setSavedQuestionDetails] = useState<Question[]>([]);
-    const [isLoadingSavedQuestions, setIsLoadingSavedQuestions] = useState(false);
     const [profileNowMs, setProfileNowMs] = useState(() => Date.now());
-    const shouldLoadQuestionBankForProfile = activeTab === 'notebook' || activeTab === 'saved-questions';
+    const shouldLoadQuestionBankForProfile = activeTab === 'notebook' || activeTab === 'evolution';
+    const shouldLoadUserAnswersForProfile = activeTab === 'saved-questions' || activeTab === 'evolution';
+    const shouldLoadUserNotesForProfile = activeTab === 'notebook';
 
     const currentUserKey = React.useMemo(() => {
         const legacyUserId = (currentUser as (UserProfile & { userId?: string }) | null)?.userId;
         return String(currentUser?.id || legacyUserId || currentUser?.email || '');
     }, [currentUser]);
+    const savedQuestionsQuery = useInfiniteQuery({
+        queryKey: ['profile', 'saved-questions', currentUserKey],
+        initialPageParam: null as string | null,
+        queryFn: ({ pageParam }) => questionService.getQuestionPage({
+            onlySaved: true,
+            content_scope: 'list',
+            limit: 50,
+            cursor: typeof pageParam === 'string' && pageParam ? pageParam : undefined,
+        }),
+        getNextPageParam: (lastPage) => (
+            lastPage.pageInfo?.hasMore && lastPage.pageInfo.nextCursor
+                ? lastPage.pageInfo.nextCursor
+                : undefined
+        ),
+        enabled: Boolean(currentUserKey) && activeTab === 'saved-questions',
+        staleTime: 30_000,
+        refetchOnWindowFocus: false,
+    });
     const billingTransactionsQueryKey = React.useMemo(
         () => ['profile', 'billing-transactions', currentUserKey] as const,
         [currentUserKey],
@@ -678,7 +713,7 @@ const Profile: React.FC = () => {
 
     React.useEffect(() => {
         const preferences = (currentUser?.preferences || {}) as Partial<UserProfile['preferences']>;
-        const frameId = window.requestAnimationFrame(() => {
+        const cancelTask = scheduleProfileBackgroundTask(() => {
             setPrivacyPreferencesDraft({
                 isPublic: preferences.isPublic !== false,
                 notifications: preferences.notifications !== false,
@@ -692,7 +727,7 @@ const Profile: React.FC = () => {
             });
         });
 
-        return () => window.cancelAnimationFrame(frameId);
+        return cancelTask;
     }, [currentUser?.preferences]);
 
     React.useEffect(() => {
@@ -707,6 +742,10 @@ const Profile: React.FC = () => {
     }, [currentUserKey]);
 
     React.useEffect(() => {
+        if (!showGoalModal) {
+            return;
+        }
+
         let isActive = true;
 
         void ensureTaxonomiesLoaded()
@@ -721,7 +760,7 @@ const Profile: React.FC = () => {
         return () => {
             isActive = false;
         };
-    }, [ensureTaxonomiesLoaded]);
+    }, [ensureTaxonomiesLoaded, showGoalModal]);
 
     const primarySavedCard = useMemo(() => {
         return userCards.find((card) => Number(card.is_default) === 1) || userCards[0] || null;
@@ -742,11 +781,28 @@ const Profile: React.FC = () => {
         return planName ? `Aluno ${planName}` : 'Estudante da plataforma';
     }, [effectivePlanDisplayName]);
 
-    const savedQuestionIds = React.useMemo(() => (
+    const sessionSavedQuestionIds = React.useMemo(() => (
         Array.from(new Set((currentUser?.savedQuestionIds || [])
             .map((questionId) => String(questionId).trim())
             .filter(Boolean)))
     ), [currentUser?.savedQuestionIds]);
+
+    const savedQuestionDetails = React.useMemo(() => (
+        savedQuestionsQuery.data?.pages.flatMap((page) => page.rows) || []
+    ), [savedQuestionsQuery.data?.pages]);
+
+    const savedQuestionIds = React.useMemo(() => {
+        if (!savedQuestionsQuery.data) {
+            return sessionSavedQuestionIds;
+        }
+
+        return Array.from(new Set(savedQuestionDetails
+            .map((question) => String(question.id || '').trim())
+            .filter(Boolean)));
+    }, [savedQuestionDetails, savedQuestionsQuery.data, sessionSavedQuestionIds]);
+
+    const savedQuestionTotal = savedQuestionsQuery.data?.pages[0]?.total ?? savedQuestionIds.length;
+    const isLoadingSavedQuestions = savedQuestionsQuery.isPending || savedQuestionsQuery.isFetchingNextPage;
 
     const savedQuestionsById = React.useMemo(() => {
         const questionMap = new Map<string, Question>();
@@ -767,118 +823,79 @@ const Profile: React.FC = () => {
         }))
     ), [savedQuestionIds, savedQuestionsById]);
 
-    const missingSavedQuestionIds = React.useMemo(() => (
-        savedQuestionIds.filter((questionId) => !savedQuestionsById.has(questionId))
-    ), [savedQuestionIds, savedQuestionsById]);
-
     const savedAnsweredCount = React.useMemo(() => {
+        if (activeTab !== 'saved-questions') {
+            return 0;
+        }
+
         const answeredQuestionIds = new Set(userAnswers.map((answer) => String(answer.questionId)));
         return savedQuestionIds.filter((questionId) => answeredQuestionIds.has(questionId)).length;
-    }, [savedQuestionIds, userAnswers]);
+    }, [activeTab, savedQuestionIds, userAnswers]);
 
     React.useEffect(() => {
-        if (!currentUser?.id) return;
-        void ensureUserProgressLoaded();
-    }, [currentUser?.id, ensureUserProgressLoaded]);
+        if (!currentUser?.id || (!shouldLoadUserAnswersForProfile && !shouldLoadUserNotesForProfile)) return;
+
+        return scheduleProfileBackgroundTask(() => {
+            void ensureUserProgressLoaded(false, {
+                includeAnswers: shouldLoadUserAnswersForProfile,
+                includeComments: false,
+                includeNotes: shouldLoadUserNotesForProfile,
+            });
+        });
+    }, [
+        currentUser?.id,
+        ensureUserProgressLoaded,
+        shouldLoadUserAnswersForProfile,
+        shouldLoadUserNotesForProfile,
+    ]);
 
     React.useEffect(() => {
         if (!shouldLoadQuestionBankForProfile) {
             return;
         }
 
-        void ensureQuestionsLoaded();
+        return scheduleProfileBackgroundTask(() => {
+            void ensureQuestionsLoaded();
+        });
     }, [ensureQuestionsLoaded, shouldLoadQuestionBankForProfile]);
 
     React.useEffect(() => {
-        if (activeTab !== 'saved-questions' || missingSavedQuestionIds.length === 0) {
-            return;
-        }
-
-        let isMounted = true;
-        let hasFinished = false;
-        const loadingFrameId = window.requestAnimationFrame(() => {
-            if (isMounted && !hasFinished) {
-                setIsLoadingSavedQuestions(true);
-            }
-        });
-
-        Promise.all(
-            missingSavedQuestionIds.map(async (questionId) => {
-                try {
-                    return await questionService.getQuestionById(questionId);
-                } catch (error) {
-                    clientLog.warn(`Failed to load saved question ${questionId}`, error);
-                    return null;
-                }
-            }),
-        ).then((loadedQuestions) => {
-            if (!isMounted) return;
-
-            const validQuestions = loadedQuestions.filter(Boolean) as Question[];
-            if (validQuestions.length === 0) {
-                return;
-            }
-
-            setSavedQuestionDetails((currentQuestions) => {
-                const nextQuestions = new Map<string, Question>();
-                currentQuestions.forEach((question) => {
-                    if (question?.id !== undefined && question?.id !== null) {
-                        nextQuestions.set(String(question.id), question);
-                    }
-                });
-                validQuestions.forEach((question) => {
-                    if (question?.id !== undefined && question?.id !== null) {
-                        nextQuestions.set(String(question.id), question);
-                    }
-                });
-
-                return Array.from(nextQuestions.values());
-            });
-        }).finally(() => {
-            hasFinished = true;
-            window.cancelAnimationFrame(loadingFrameId);
-            if (isMounted) {
-                setIsLoadingSavedQuestions(false);
-            }
-        });
-
-        return () => {
-            isMounted = false;
-            window.cancelAnimationFrame(loadingFrameId);
-        };
-    }, [activeTab, missingSavedQuestionIds]);
-
-    React.useEffect(() => {
         let isMounted = true;
 
-        if (!currentUserKey) {
-            setLawNotes([]);
+        if (!currentUserKey || activeTab !== 'notebook') {
             return () => {
                 isMounted = false;
             };
         }
 
-        void legalCommentaryApiService.listUserNotes()
-            .then((notes) => {
-                if (isMounted) {
-                    setLawNotes(notes);
-                }
-            })
-            .catch((error) => {
-                clientLog.warn('profile.legal_notes.load_failed', {
-                    message: error instanceof Error ? error.message : String(error),
+        const cancelTask = scheduleProfileBackgroundTask(() => {
+            void legalCommentaryApiService.listUserNotes()
+                .then((notes) => {
+                    if (isMounted) {
+                        setLawNotes(notes);
+                    }
+                })
+                .catch((error) => {
+                    clientLog.warn('profile.legal_notes.load_failed', {
+                        message: error instanceof Error ? error.message : String(error),
+                    });
+                    if (isMounted) {
+                        setLawNotes([]);
+                    }
                 });
-                if (isMounted) {
-                    setLawNotes([]);
-                }
-            });
+        });
 
         return () => {
             isMounted = false;
+            cancelTask();
         };
-    }, [currentUserKey]);
+    }, [activeTab, currentUserKey]);
 
     const notebookEntries = React.useMemo<NotebookEntry[]>(() => {
+        if (activeTab !== 'notebook') {
+            return [];
+        }
+
         const questionEntries = userNotes.map((note) => {
             const question = questions.find((item) => Number(item.id) === Number(note.questionId));
             const questionLabel = question
@@ -927,7 +944,7 @@ const Profile: React.FC = () => {
         }));
 
         return [...questionEntries, ...legalEntries, ...materialEntries].sort((left, right) => right.timestamp - left.timestamp);
-    }, [lawNotes, materialNotes, questions, userNotes]);
+    }, [activeTab, lawNotes, materialNotes, questions, userNotes]);
 
     const handleRemoveLawNote = React.useCallback(async (articleId: string) => {
         if (!currentUserKey) return;
@@ -942,7 +959,7 @@ const Profile: React.FC = () => {
     }, [addToast, currentUserKey]);
 
     const fetchFavoriteLaws = React.useCallback(async () => {
-        if (!currentUserKey) {
+        if (!currentUserKey || !annotatedLawsEnabled) {
             setFavoriteLaws([]);
             return;
         }
@@ -978,7 +995,7 @@ const Profile: React.FC = () => {
         } finally {
             setIsLoadingFavoriteLaws(false);
         }
-    }, [addToast, currentUserKey]);
+    }, [addToast, annotatedLawsEnabled, currentUserKey]);
 
     const handleRemoveFavoriteLaw = React.useCallback(async (law: ProfileLegalFavoriteItem) => {
         if (!currentUserKey) return;
@@ -997,10 +1014,15 @@ const Profile: React.FC = () => {
         }
     }, [addToast, currentUserKey, fetchFavoriteLaws]);
 
-    const handleRemoveSavedQuestion = React.useCallback((questionId: string) => {
-        toggleSavedQuestion(questionId);
+    const handleRemoveSavedQuestion = React.useCallback(async (questionId: string) => {
+        const succeeded = await toggleSavedQuestion(questionId, false);
+        if (!succeeded) {
+            return;
+        }
+
+        await queryClient.invalidateQueries({ queryKey: ['profile', 'saved-questions', currentUserKey] });
         addToast('Questão removida dos salvos.', 'success');
-    }, [addToast, toggleSavedQuestion]);
+    }, [addToast, currentUserKey, queryClient, toggleSavedQuestion]);
 
     const formatSavedCardLabel = React.useCallback((card: SavedCard | null | undefined) => {
         if (!card) return '';
@@ -1026,8 +1048,9 @@ const Profile: React.FC = () => {
     const normalizeProfileTabForAccess = React.useCallback((tab: Exclude<ProfileTab, 'evolution'>) => {
         if (tab === 'referral' && !canAccessReferralTab) return 'personal';
         if (tab === 'materials' && !marketplaceEnabled) return 'personal';
+        if (tab === 'favorite-laws' && isSystemSettingsLoaded && !annotatedLawsEnabled) return 'personal';
         return tab;
-    }, [canAccessReferralTab, marketplaceEnabled]);
+    }, [annotatedLawsEnabled, canAccessReferralTab, isSystemSettingsLoaded, marketplaceEnabled]);
 
     const changeActiveTab = React.useCallback((nextTab: ProfileTab, options?: { replace?: boolean }) => {
         const resolvedTab = resolveProfileTab(nextTab);
@@ -3719,7 +3742,7 @@ const Profile: React.FC = () => {
             return () => window.cancelAnimationFrame(frameId);
         }
 
-        const frameId = window.requestAnimationFrame(() => {
+        const cancelTask = scheduleProfileBackgroundTask(() => {
             if (activeTab === 'billing' || activeTab === 'personal') {
                 void fetchUserCards();
             }
@@ -3734,7 +3757,7 @@ const Profile: React.FC = () => {
             if (activeTab === 'notebook' && marketplaceEnabled) {
                 void fetchUserMaterials();
             }
-            if (activeTab === 'favorite-laws') {
+            if (activeTab === 'favorite-laws' && annotatedLawsEnabled) {
                 void fetchFavoriteLaws();
             }
             if (activeTab === 'referral' && canAccessReferralTab) {
@@ -3745,9 +3768,10 @@ const Profile: React.FC = () => {
             }
         });
 
-        return () => window.cancelAnimationFrame(frameId);
+        return cancelTask;
     }, [
         activeTab,
+        annotatedLawsEnabled,
         canAccessReferralTab,
         currentUser?.id,
         fetchReferralStats,
@@ -3811,7 +3835,11 @@ const Profile: React.FC = () => {
    }, [ensureTaxonomiesLoaded]);
 
    const timelineData = useMemo(() => {
-      const data: Record<string, { date: string, taxa: number, total: number }> = {};
+      if (activeTab !== 'evolution') {
+         return [];
+      }
+
+      const data: Record<string, { date: string, taxa: number, total: number, correct: number }> = {};
       const now = new Date();
       let steps = 30;
       let format: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit' };
@@ -3836,28 +3864,41 @@ const Profile: React.FC = () => {
             ? `${d.getHours().toString().padStart(2, '0')}:00`
             : d.toLocaleDateString('pt-BR', format);
 
-         data[label] = { date: label, taxa: 0, total: 0 };
+         data[label] = { date: label, taxa: 0, total: 0, correct: 0 };
       }
 
       userAnswers.forEach(ans => {
          const d = new Date(ans.timestamp);
          const label = evolutionRange === 'today' ? `${d.getHours().toString().padStart(2, '0')}:00` : d.toLocaleDateString('pt-BR', format);
          if (data[label]) {
-            const periodEntries = userAnswers.filter(a => {
-               const ad = new Date(a.timestamp);
-               const al = evolutionRange === 'today' ? `${ad.getHours().toString().padStart(2, '0')}:00` : ad.toLocaleDateString('pt-BR', format);
-               return al === label;
-            });
-            const correct = periodEntries.filter(a => a.isCorrect).length;
-            data[label].taxa = Math.round((correct / periodEntries.length) * 100);
-            data[label].total = periodEntries.length;
+            data[label].total += 1;
+            if (ans.isCorrect) data[label].correct += 1;
          }
       });
-      return Object.values(data);
-   }, [userAnswers, evolutionRange]);
+      return Object.values(data).map(({ correct, ...entry }) => ({
+         ...entry,
+         taxa: entry.total > 0 ? Math.round((correct / entry.total) * 100) : 0,
+      }));
+   }, [activeTab, userAnswers, evolutionRange]);
 
 
    const generalStats = useMemo(() => {
+      if (activeTab !== 'evolution') {
+         return {
+            total: 0,
+            correct: 0,
+            wrong: 0,
+            accuracy: 0,
+            xp: 0,
+            diffStats: {
+    'Fácil': { total: 0, correct: 0 },
+    'Médio': { total: 0, correct: 0 },
+    'Difícil': { total: 0, correct: 0 },
+            },
+            topicsProgress: 0,
+         };
+      }
+
       const total = userAnswers.length;
       const correct = userAnswers.filter(a => a.isCorrect).length;
       const wrong = total - correct;
@@ -3869,8 +3910,9 @@ const Profile: React.FC = () => {
          'Difícil': { total: 0, correct: 0 }
       };
 
+      const questionById = new Map(questions.map((question) => [String(question.id), question]));
       userAnswers.forEach(ans => {
-         const q = questions.find(item => item.id === ans.questionId);
+         const q = questionById.get(String(ans.questionId));
          if (q) {
             const label = q.difficulty === 'Fácil' ? 'Fácil' : q.difficulty === 'Médio' ? 'Médio' : 'Difícil';
             if (diffStats[label as keyof typeof diffStats]) {
@@ -3881,12 +3923,12 @@ const Profile: React.FC = () => {
       });
 
       // Topics progress
-      const uniqueTopics = new Set(userAnswers.map(ans => questions.find(q => q.id === ans.questionId)?.topic).filter(Boolean));
+      const uniqueTopics = new Set(userAnswers.map(ans => questionById.get(String(ans.questionId))?.topic).filter(Boolean));
       const allPossibleTopics = new Set(questions.map(q => q.topic).filter(Boolean));
       const topicsProgress = allPossibleTopics.size > 0 ? Math.round((uniqueTopics.size / allPossibleTopics.size) * 100) : 0;
 
       return { total, correct, wrong, accuracy, xp: total * 10, diffStats, topicsProgress };
-   }, [userAnswers, questions]);
+   }, [activeTab, userAnswers, questions]);
 
    if (!currentUser) {
       return (
@@ -4022,7 +4064,7 @@ const Profile: React.FC = () => {
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Menu</div>
                         {renderSidebarItem({ id: 'notebook', label: 'Minhas Anotações', icon: StickyNote })}
                         {renderSidebarItem({ id: 'saved-questions', label: 'Questões salvas', icon: BookmarkCheck })}
-                        {renderSidebarItem({ id: 'favorite-laws', label: 'Lei Comentada salva', icon: BookOpen })}
+                        {annotatedLawsEnabled && renderSidebarItem({ id: 'favorite-laws', label: 'Lei Comentada salva', icon: BookOpen })}
                         {marketplaceEnabled && renderSidebarItem({ id: 'materials', label: 'Meus Materiais', icon: Package })}
                         
                         <div className="h-px bg-slate-50 dark:bg-slate-800 my-2 transition-colors" />
@@ -4194,20 +4236,7 @@ const Profile: React.FC = () => {
                               <div className="pt-4 space-y-2">
                                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 leading-relaxed uppercase tracking-widest">Desempenho por Período</p>
                                  <div className="h-24 w-full min-w-0">
-                                    <StableResponsiveContainer height={96}>
-                                       <AreaChart data={timelineData}>
-                                          <defs>
-                                             <linearGradient id="colorTotalProfile" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#f97316" stopOpacity={0.1} />
-                                                <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                                             </linearGradient>
-                                          </defs>
-                                          <XAxis dataKey="date" hide />
-                                          <YAxis tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={20} />
-                                          <Area type="monotone" dataKey="total" stroke="#f97316" strokeWidth={2} fill="url(#colorTotalProfile)" name="Quantidade" fillOpacity={1} />
-                                          <Area type="monotone" dataKey="taxa" stroke="#6366f1" strokeWidth={1} fillOpacity={0} name="Precisão (%)" />
-                                       </AreaChart>
-                                    </StableResponsiveContainer>
+                                    <ProfileEvolutionChart data={timelineData} />
                                  </div>
                               </div>
                            </div>
@@ -4330,14 +4359,14 @@ const Profile: React.FC = () => {
                            </p>
                         </div>
                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">
-                           {savedQuestionIds.length} salvas
+                           {savedQuestionTotal} salvas
                         </span>
                      </div>
 
                      <div className="grid gap-3 md:grid-cols-3">
                         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Total salvo</p>
-                           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{savedQuestionIds.length}</p>
+                           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{savedQuestionTotal}</p>
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Carregadas</p>
@@ -4351,7 +4380,12 @@ const Profile: React.FC = () => {
                         </div>
                      </div>
 
-                     {savedQuestionIds.length > 0 ? (
+                     {isLoadingSavedQuestions && savedQuestionRows.length === 0 ? (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-slate-900">
+                           <Loader2 size={36} className="mx-auto mb-3 animate-spin text-indigo-400" />
+                           <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Carregando questÃµes salvas...</p>
+                        </div>
+                     ) : savedQuestionRows.length > 0 ? (
                         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
                               <span>Questão</span>
@@ -4453,10 +4487,23 @@ const Profile: React.FC = () => {
                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Use o botão de salvar nas questões para montar sua lista de revisão.</p>
                         </div>
                      )}
+                     {savedQuestionsQuery.hasNextPage && (
+                        <div className="flex justify-center">
+                           <button
+                              type="button"
+                              onClick={() => { void savedQuestionsQuery.fetchNextPage(); }}
+                              disabled={savedQuestionsQuery.isFetchingNextPage}
+                              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                           >
+                              {savedQuestionsQuery.isFetchingNextPage && <Loader2 size={14} className="animate-spin" />}
+                              Carregar mais
+                           </button>
+                        </div>
+                     )}
                   </div>
                )}
 
-               {activeTab === 'favorite-laws' && (
+               {annotatedLawsEnabled && activeTab === 'favorite-laws' && (
                   <div className="space-y-6">
                      <div className="flex justify-between items-center">
                         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Itens salvos da Lei Comentada</h2>

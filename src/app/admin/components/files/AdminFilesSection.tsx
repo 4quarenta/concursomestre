@@ -10,7 +10,7 @@
 
 'use client';
 
-import React, { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ExternalLink,
@@ -19,7 +19,6 @@ import {
   Image as ImageIcon,
   Loader2,
   RefreshCw,
-  Search,
   Trash2,
 } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
@@ -33,11 +32,14 @@ import {
 } from '@services/api';
 import {
   ADMIN_FIELD_CLASS,
-  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_COLLECTION_TABLE_CLASS,
+  ADMIN_COLLECTION_TABLE_HEAD_CLASS,
+  ADMIN_COLLECTION_TABLE_ROW_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
-  ADMIN_SURFACE_CLASS,
-  ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
+import AdminCollectionPagination from '../shared/AdminCollectionPagination';
+import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
+import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
 type FileType = 'image' | 'pdf' | 'file';
@@ -141,10 +143,10 @@ const AdminFilesSection = () => {
     return () => window.clearTimeout(timer);
   }, [loadFiles]);
 
-  const onSearch = (event: FormEvent) => {
-    event.preventDefault();
-    setSearch(draftSearch.trim());
-  };
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(draftSearch.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [draftSearch]);
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
@@ -161,37 +163,18 @@ const AdminFilesSection = () => {
     }
   };
 
-  const resultLabel = useMemo(
-    () => `${pageInfo.total} arquivo${pageInfo.total === 1 ? '' : 's'}`,
-    [pageInfo.total],
-  );
-
   return (
     <section className="space-y-5" aria-labelledby="admin-files-title">
-      <div className={ADMIN_SURFACE_CLASS}>
-        <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-wrap items-start justify-between gap-4`}>
-          <div>
-            <h2 id="admin-files-title" className="text-lg font-semibold text-slate-950 dark:text-white">Arquivos</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Modere imagens, PDFs e uploads vinculados à plataforma.
-            </p>
-          </div>
-          <span className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-            {resultLabel}
-          </span>
-        </div>
-
-        <form onSubmit={onSearch} className="grid gap-3 p-4 lg:grid-cols-[minmax(260px,1fr)_180px_220px_180px_auto]">
-          <label className="relative">
-            <span className="sr-only">Buscar arquivos</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input
-              value={draftSearch}
-              onChange={(event) => setDraftSearch(event.target.value)}
-              className={`${ADMIN_FIELD_CLASS} w-full pl-9`}
-              placeholder="Nome ou caminho do arquivo"
-            />
-          </label>
+      <AdminCollectionToolbar
+        title="Arquivos"
+        description="Modere imagens, PDFs e uploads vinculados à plataforma."
+        itemCount={pageInfo.total}
+        itemCountLabel="arquivos"
+        searchValue={draftSearch}
+        onSearchChange={setDraftSearch}
+        searchPlaceholder="Buscar por nome ou caminho..."
+        actions={(
+          <>
           <select value={type} onChange={(event) => setType(event.target.value)} className={ADMIN_FIELD_CLASS} aria-label="Filtrar por tipo">
             <option value="">Todos os tipos</option>
             <option value="image">Imagens</option>
@@ -207,21 +190,17 @@ const AdminFilesSection = () => {
             <option value="linked">Vinculados</option>
             <option value="orphan">Sem vínculo</option>
           </select>
-          <div className="flex gap-2">
-            <button type="submit" className={ADMIN_PRIMARY_BUTTON_CLASS}><Search size={15} /> Buscar</button>
-            <button type="button" onClick={() => void loadFiles(pageInfo.page)} className={ADMIN_SECONDARY_BUTTON_CLASS} title="Atualizar lista">
-              <RefreshCw size={15} />
-              <span className="sr-only">Atualizar</span>
-            </button>
-          </div>
-        </form>
-      </div>
+          <button type="button" onClick={() => void loadFiles(pageInfo.page)} className={ADMIN_SECONDARY_BUTTON_CLASS} title="Atualizar lista">
+            <RefreshCw size={15} /> Atualizar
+          </button>
+          </>
+        )}
+      />
 
-      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+      <AdminCollectionTablePanel title="Arquivos da plataforma">
         {error ? <div className="border-b border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{error}</div> : null}
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
+        <table className={ADMIN_COLLECTION_TABLE_CLASS}>
+            <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
               <tr>
                 <th className="w-24 px-5 py-3">Prévia</th>
                 <th className="px-4 py-3">Arquivo</th>
@@ -240,7 +219,7 @@ const AdminFilesSection = () => {
                 const ownerPath = item.ownerType && item.ownerId !== null ? OWNER_PATHS[item.ownerType]?.(item.ownerId) : null;
                 const imageUnavailable = item.availability === 'missing' || brokenImages.has(item.id);
                 return (
-                  <tr key={item.id} className="align-middle hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <tr key={item.id} className={ADMIN_COLLECTION_TABLE_ROW_CLASS}>
                     <td className="px-5 py-3">
                       <div className="flex h-14 w-16 items-center justify-center overflow-hidden rounded-sm border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
                         {item.type === 'image' && fileUrl && !imageUnavailable ? (
@@ -273,7 +252,7 @@ const AdminFilesSection = () => {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-2">
-                        {ownerPath ? <Link href={ownerPath} className={ADMIN_SECONDARY_BUTTON_CLASS}>Moderar</Link> : null}
+                        {ownerPath ? <Link href={ownerPath} prefetch={false} className={ADMIN_SECONDARY_BUTTON_CLASS}>Moderar</Link> : null}
                         {fileUrl ? <a href={fileUrl} target="_blank" rel="noopener noreferrer" className={ADMIN_SECONDARY_BUTTON_CLASS} title="Abrir arquivo"><ExternalLink size={15} /><span className="sr-only">Abrir</span></a> : null}
                         {item.deletable ? <button type="button" onClick={() => setPendingDelete(item)} className="inline-flex items-center rounded-sm border border-red-300 p-2 text-red-600 hover:bg-red-50" title="Excluir arquivo"><Trash2 size={15} /><span className="sr-only">Excluir</span></button> : null}
                       </div>
@@ -282,16 +261,17 @@ const AdminFilesSection = () => {
                 );
               })}
             </tbody>
-          </table>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 text-sm text-slate-500 dark:border-slate-800">
-          <span>Página {pageInfo.page} de {pageInfo.pages}</span>
-          <div className="flex gap-2">
-            <button type="button" disabled={loading || pageInfo.page <= 1} onClick={() => void loadFiles(pageInfo.page - 1)} className={ADMIN_SECONDARY_BUTTON_CLASS}>Anterior</button>
-            <button type="button" disabled={loading || pageInfo.page >= pageInfo.pages} onClick={() => void loadFiles(pageInfo.page + 1)} className={ADMIN_SECONDARY_BUTTON_CLASS}>Próxima</button>
-          </div>
-        </div>
-      </div>
+        </table>
+      </AdminCollectionTablePanel>
+
+      <AdminCollectionPagination
+        visibleCount={items.length}
+        totalCount={pageInfo.total}
+        itemLabel="arquivos"
+        page={pageInfo.page}
+        totalPages={pageInfo.pages}
+        onPageChange={(page) => void loadFiles(page)}
+      />
 
       <AdminConfirmDialog
         isOpen={pendingDelete !== null}

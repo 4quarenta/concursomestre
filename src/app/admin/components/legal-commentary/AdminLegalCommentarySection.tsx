@@ -40,11 +40,10 @@ import {
   ADMIN_COLLECTION_TABLE_ROW_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
-  ADMIN_SURFACE_CLASS,
-  ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
 import AdminCollectionActionBar from '../shared/AdminCollectionActionBar';
 import AdminCollectionPagination from '../shared/AdminCollectionPagination';
+import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import { buildAdminLawEditPath } from '../../config/adminPageNavigationConfig';
 
@@ -672,12 +671,8 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         </button>
       </AdminCollectionActionBar>
 
-      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-        <div className={ADMIN_SURFACE_HEADER_CLASS}>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Leis cadastradas</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className={ADMIN_COLLECTION_TABLE_CLASS}>
+      <AdminCollectionTablePanel title="Leis cadastradas">
+        <table className={ADMIN_COLLECTION_TABLE_CLASS}>
             <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
               <tr>
                 <th className="w-12 p-4">
@@ -763,6 +758,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                     <div className="flex flex-wrap justify-center gap-x-2 gap-y-1 text-[11px]">
                       <Link
                         href={`/lei-comentada/${law.slug}`}
+                        prefetch={false}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
@@ -772,6 +768,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                       <span className="text-slate-300 dark:text-slate-700">|</span>
                       <Link
                         href={getLawEditPath(law.id)}
+                        prefetch={false}
                         className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
                       >
                         Editar
@@ -815,9 +812,8 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                 </tr>
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+        </table>
+      </AdminCollectionTablePanel>
 
       <AdminCollectionPagination
         visibleCount={visibleLaws.length}

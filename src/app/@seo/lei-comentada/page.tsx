@@ -39,7 +39,7 @@ export default async function LegalCommentarySeoSnapshot() {
               <ul className="grid gap-3 md:grid-cols-2">
                 {laws.map((law) => (
                   <li key={String(law.id)} className="rounded-lg border border-slate-200 bg-white p-4">
-                    <Link href={`/lei-comentada/${law.slug}`} className="text-lg font-semibold text-indigo-700">
+                    <Link href={`/lei-comentada/${law.slug}`} prefetch={false} className="text-lg font-semibold text-indigo-700">
                       {law.title}
                     </Link>
                     {law.summary ? <p className="mt-2 line-clamp-3 text-sm text-slate-600">{law.summary}</p> : null}

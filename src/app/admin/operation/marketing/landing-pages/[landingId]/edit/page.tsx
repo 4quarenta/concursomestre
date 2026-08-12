@@ -12,7 +12,6 @@
 */
 
 import React from 'react';
-import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import type { MarketingLandingPage } from '@types';
 import { useAuth } from '@providers/AuthProvider';
@@ -21,7 +20,7 @@ import { useSystemSettingsActions } from '@/state/app-config/useSystemSettingsAc
 import AdminLandingPagesManager from '../../../../../components/marketing/AdminLandingPagesManager';
 import AdminStandaloneShell from '../../../../../components/shared/AdminStandaloneShell';
 import { buildAdminLandingPageEditPath, buildAdminPath } from '../../../../../config/adminPageNavigationConfig';
-import { ADMIN_SURFACE_CLASS } from '../../../../../components/shared/adminPanelStyles';
+import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
 
 const resolveLandingId = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -63,11 +62,7 @@ const AdminLandingPageEditRoute = () => {
   );
 
   if (isAuthLoading || !isSystemSettingsLoaded) {
-    return renderShell(
-      <div className={`${ADMIN_SURFACE_CLASS} flex min-h-[360px] items-center justify-center p-12 text-slate-500 dark:text-slate-400`}>
-        <Loader2 className="mr-3 animate-spin" size={18} /> Carregando editor da landing page...
-      </div>,
-    );
+    return renderShell(<RouteContentSkeleton variant="admin" />);
   }
 
   if (!canAccessAdminPanel(currentUser)) {

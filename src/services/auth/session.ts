@@ -18,6 +18,10 @@ import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from './
 const AUTH_CHANNEL_NAME = 'cm-auth-session';
 const AUTH_STORAGE_EVENT_KEY = 'cm-auth-event';
 const AUTH_SESSION_HINT_KEY = 'cm-auth-session-present';
+const AUTH_SESSION_HINT_COOKIE_NAME = (
+    process.env.NEXT_PUBLIC_AUTH_SESSION_HINT_COOKIE_NAME
+    || 'cm_session_hint'
+).trim();
 const REFRESH_LOCK_KEY = 'cm-auth-refresh-lock';
 const REFRESH_LOCK_TTL_MS = 15000;
 const EXTERNAL_REFRESH_WAIT_MS = 8000;
@@ -520,14 +524,45 @@ const broadcastAuthEvent = (event: Omit<AuthBroadcastEvent, 'sourceTabId' | 'at'
 };
 
 const hasAuthSessionHint = (): boolean => {
-    if (typeof localStorage === 'undefined') {
-        return Boolean(accessToken || currentUser);
+    const hasCookieHint = typeof document !== 'undefined'
+        && document.cookie.split(';').some((entry) => (
+            entry.trim() === `${AUTH_SESSION_HINT_COOKIE_NAME}=1`
+        ));
+
+    if (hasCookieHint || accessToken || currentUser) {
+        return true;
     }
+
+    if (typeof localStorage === 'undefined') return false;
 
     try {
         return localStorage.getItem(AUTH_SESSION_HINT_KEY) === '1';
     } catch {
         return Boolean(accessToken || currentUser);
+    }
+};
+
+/**
+ * Confirma uma sessao antiga que ainda nao possui o cookie de presenca. A
+ * resposta nao contem token ou perfil; apenas autoriza a tentativa de refresh.
+ */
+const hasBackendRefreshSession = async (signal: AbortSignal): Promise<boolean> => {
+    try {
+        const response = await authHttp.get('auth/session-route-access.php', {
+            headers: {
+                'X-ConcursoMestre-Session-Route-Check': '1',
+            },
+            withCredentials: true,
+            signal,
+        });
+
+        return response.status === 204;
+    } catch (error: unknown) {
+        const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+        if (status === 401 || status === 403 || status === 404) {
+            return false;
+        }
+        throw error;
     }
 };
 
@@ -1074,7 +1109,8 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
         const bootstrapGeneration = sessionGeneration;
         bootstrapAbortController = activeBootstrapController;
 
-        if (!getCsrfToken() || !hasAuthSessionHint()) {
+        const csrfToken = getCsrfToken();
+        if (!csrfToken) {
             isBootstrapped = true;
             sessionStatus = 'anonymous';
             notifyListeners();
@@ -1082,6 +1118,15 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
         }
 
         try {
+            const shouldRestoreSession = hasAuthSessionHint()
+                || await hasBackendRefreshSession(activeBootstrapController.signal);
+            if (!shouldRestoreSession) {
+                isBootstrapped = true;
+                sessionStatus = 'anonymous';
+                notifyListeners();
+                return getSnapshot();
+            }
+
             await refreshAuthSession({
                 reason: 'bootstrap',
                 allowAnonymousFailure: true,
@@ -1092,7 +1137,9 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
         } catch (error) {
             if ((error as Error)?.name !== 'AbortError' && bootstrapGeneration === sessionGeneration) {
                 clientLog.warn('Auth bootstrap failed:', error);
-                clearAuthenticatedSession('bootstrap_failed', false);
+                // Falhas transitorias nao revogam uma sessao valida. O hint e
+                // preservado para permitir nova restauracao no proximo bootstrap.
+                sessionStatus = currentUser ? 'authenticated' : 'anonymous';
             }
         } finally {
             if (!activeBootstrapController.signal.aborted && bootstrapGeneration === sessionGeneration) {

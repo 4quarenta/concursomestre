@@ -5,7 +5,10 @@ import { filtersService } from '@services/filters';
 import { useAppConfigStore } from './appConfigStore';
 import { mergeSystemSettings } from './systemSettings';
 
-let taxonomyLoadPromise: Promise<void> | null = null;
+type TaxonomyCatalogScope = 'full' | 'practice';
+
+const taxonomyLoadPromises: Partial<Record<TaxonomyCatalogScope, Promise<void>>> = {};
+let loadedTaxonomyScope: TaxonomyCatalogScope | null = null;
 const TAXONOMY_LOAD_TIMEOUT_MS = 10000;
 
 const hasTaxonomyPayload = (taxonomies: unknown): boolean => {
@@ -39,25 +42,34 @@ const withTaxonomyLoadTimeout = async <T,>(promise: Promise<T>): Promise<T> => (
 export const useTaxonomyActions = () => {
   const replaceSystemSettings = useAppConfigStore((store) => store.replaceSystemSettings);
 
-  const ensureTaxonomiesLoaded = useCallback(async (force = false) => {
+  const ensureTaxonomiesLoaded = useCallback(async (
+    force = false,
+    scope: TaxonomyCatalogScope = 'full',
+  ) => {
     const snapshot = useAppConfigStore.getState().systemSettings;
-    if (!force && hasTaxonomyPayload(snapshot.taxonomies)) {
+    const scopeAlreadyLoaded = loadedTaxonomyScope === 'full' || loadedTaxonomyScope === scope;
+    if (!force && scopeAlreadyLoaded && hasTaxonomyPayload(snapshot.taxonomies)) {
       return;
     }
 
-    if (taxonomyLoadPromise && !force) {
-      return taxonomyLoadPromise;
+    if (taxonomyLoadPromises[scope] && !force) {
+      return taxonomyLoadPromises[scope];
     }
 
-    taxonomyLoadPromise = (async () => {
-      const taxonomies = await withTaxonomyLoadTimeout(filtersService.listTaxonomies(force));
+    taxonomyLoadPromises[scope] = (async () => {
+      const taxonomies = await withTaxonomyLoadTimeout(
+        scope === 'practice'
+          ? filtersService.listPracticeTaxonomies(force)
+          : filtersService.listTaxonomies(force),
+      );
       const latestSettings = useAppConfigStore.getState().systemSettings;
       replaceSystemSettings(mergeSystemSettings(latestSettings, { taxonomies }));
+      loadedTaxonomyScope = scope;
     })().finally(() => {
-      taxonomyLoadPromise = null;
+      delete taxonomyLoadPromises[scope];
     });
 
-    return taxonomyLoadPromise;
+    return taxonomyLoadPromises[scope];
   }, [replaceSystemSettings]);
 
   return {

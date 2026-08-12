@@ -332,7 +332,7 @@ import {
   isPlanUsageUnlimitedForPlanName,
 } from '@services/plans/planAccess';
 import { incrementDailyUsageCount, readDailyUsageCount } from '@services/plans/clientUsageQuota';
-import { buildQuestionPath } from '@services/seo';
+import { buildBoardPath, buildQuestionPath } from '@services/seo';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
 
@@ -365,6 +365,7 @@ type QuestionCardTaxonomyLike = {
   name?: string;
   descricao?: string;
   descrição?: string;
+  slug?: string;
 } | null | undefined;
 
 const getQuestionCardTaxonomyLabel = (item: QuestionCardTaxonomyLike): string => String(
@@ -525,6 +526,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const canShowStudyMaterialsButton = hasRelatedMaterials;
   const teacherCommentContent = resolveTeacherCommentContent(question);
   const hasTeacherCommentContent = teacherCommentContent !== '';
+  const detailedCommentContent = String(question.detailedComment || '').trim();
+  const hasTeacherCommentAvailable = Boolean(question.hasTeacherComment) || hasTeacherCommentContent;
+  const hasDetailedCommentAvailable = Boolean(question.hasDetailedComment) || detailedCommentContent !== '';
 
   const [showTeacherComment, setShowTeacherComment] = useState(false);
   const [showDetailedComment, setShowDetailedComment] = useState(false);
@@ -1256,12 +1260,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   };
 
   const cardContent = (
-    <div id={String(question.id)} className={`bg-white dark:bg-slate-900 rounded-2xl border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
+    <div id={String(question.id)} className={`question-card ${mode === 'practice' ? 'question-card--practice' : ''} bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
 
       {/* Header Compacto */}
-      <div className="bg-slate-50/70 dark:bg-slate-800/50 p-4 border-b border-slate-100 dark:border-slate-800">
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="bg-slate-50/70 dark:bg-slate-800/50 p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex justify-between items-start gap-2 mb-3">
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500">#{indexDisplay}</span>
             <Link
               href={buildQuestionPath(question)}
@@ -1285,7 +1289,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             <button
               onClick={handleToggleSaveLocal}
               className={`p-2 rounded-lg transition-all ${isSaved ? 'text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-700 border border-indigo-100 dark:border-indigo-900 shadow-sm' : canSaveQuestion ? 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700' : 'text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800'}`}
@@ -1333,7 +1337,19 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 animate-slide-down dark:border-slate-800 sm:grid-cols-3 xl:grid-cols-6">
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Banca</span>
-              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Building2 size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.bancas?.map(getQuestionCardTaxonomyLabel).filter(Boolean).join(' / ') || '---'}</div>
+              <div className="flex min-w-0 items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                <Building2 size={10} className="shrink-0 text-indigo-300 dark:text-indigo-600" />
+                <span className="min-w-0 truncate">
+                  {question.bancas?.length ? question.bancas.map((board, index) => (
+                    <React.Fragment key={`${board.id || board.slug || index}`}>
+                      {index > 0 ? ' / ' : null}
+                      <Link href={buildBoardPath(board)} prefetch={false} onClick={(event) => event.stopPropagation()} className="hover:text-[#615fff] hover:underline">
+                        {getQuestionCardTaxonomyLabel(board)}
+                      </Link>
+                    </React.Fragment>
+                  )) : '---'}
+                </span>
+              </div>
             </div>
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Ano</span>
@@ -1359,7 +1375,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         )}
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 space-y-4 sm:p-6 sm:space-y-6">
         {isReporting && (
           <div className="bg-red-50/50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-5 rounded-2xl animate-slide-down space-y-4 shadow-inner">
             <h4 className="text-[10px] font-black text-red-700 dark:text-red-400 uppercase flex items-center gap-2"><AlertTriangle size={14} /> Reportar Problema na Questão</h4>
@@ -1467,7 +1483,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 {question.grupoQuestao.image_url
                   && !hasQuestionFigureMarker(question.grupoQuestao.enunciado)
                   && !hasQuestionFigureMarker(question.grupoQuestao.texto) && (
-                  <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1">
+                  <div className="question-image-frame rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1">
                     <Image
                       src={getAssetUrl(question.grupoQuestao.image_url)}
                       alt="Texto de apoio"
@@ -1510,7 +1526,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             <div className="question-rich-html" dangerouslySetInnerHTML={{ __html: renderQuestionContentWithAssets(question.enunciado, statementAssets) }} />
           </div>
           {question.imageUrl && statementAssets.length === 0 && (
-            <div className="my-4 rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800">
+            <div className="question-image-frame my-4 rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800">
               <Image src={getAssetUrl(question.imageUrl)} alt="Anexo" width={900} height={420} unoptimized className="max-w-full h-auto mx-auto max-h-[400px]" />
             </div>
           )}
@@ -1564,11 +1580,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             }
 
             return (
-              <div key={index} className="flex gap-2 items-stretch group">
+              <div key={index} className="flex gap-1.5 items-stretch group sm:gap-2">
                 {!isCanceledQuestion && !isSubmitted && mode === 'practice' && (
                   <button
                     onClick={() => setEliminatedOptionIds(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id])}
-                    className={`px-2 transition-all flex items-center justify-center rounded-xl ${isEliminated ? 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800' : 'text-slate-200 dark:text-slate-700 hover:text-indigo-400 group-hover:bg-slate-50 dark:group-hover:bg-slate-800'}`}
+                    className={`px-1.5 sm:px-2 transition-all flex items-center justify-center rounded-lg sm:rounded-xl ${isEliminated ? 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800' : 'text-slate-200 dark:text-slate-700 hover:text-indigo-400 group-hover:bg-slate-50 dark:group-hover:bg-slate-800'}`}
                     title="Eliminar"
                   >
                     {isEliminated ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -1578,14 +1594,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <button
                     disabled={isCanceledQuestion || (isSubmitted && !hideFeedback)}
                     onClick={() => !isEliminated && handleOptionClick(item.id)}
-                    className={`flex flex-col gap-2 p-4 rounded-xl border transition-all text-left relative overflow-hidden disabled:cursor-not-allowed ${isCanceledQuestion ? 'opacity-80' : ''} ${btnClass}`}
+                    className={`flex flex-col gap-2 p-3 sm:p-4 rounded-xl border transition-all text-left relative overflow-hidden disabled:cursor-not-allowed ${isCanceledQuestion ? 'opacity-80' : ''} ${btnClass}`}
                   >
-                    <div className="flex items-center gap-4 z-10 relative">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs border transition-all flex-shrink-0 ${circleClass}`}>
+                    <div className="flex items-center gap-2.5 sm:gap-4 z-10 relative">
+                      <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-xs border transition-all flex-shrink-0 ${circleClass}`}>
                         {item.rotulo.trim() || String.fromCharCode(65 + index)}
                       </div>
                       {isImg ? (
-                        <div className="max-w-[200px] rounded-lg overflow-hidden border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-1">
+                        <div className="question-image-frame max-w-[200px] rounded-lg overflow-hidden border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-1">
                           <Image src={item.corpo} className="w-full h-auto" alt="" width={320} height={180} unoptimized />
                         </div>
                       ) : (
@@ -1604,9 +1620,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           })}
         </div>
 
-        <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between transition-colors duration-300">
+        <div className="px-3 py-3 sm:px-6 sm:py-4 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between transition-colors duration-300">
           <div className="flex gap-2 items-center flex-wrap">
-            {/* Gabarito Comentado - sempre visível, bloqueado por plano */}
+            {hasTeacherCommentAvailable ? (
               <button
                 onClick={() => {
                   if (!canSeeTeacher) {
@@ -1627,8 +1643,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 {canOpenTeacherComment ? <GraduationCap size={14} /> : <Lock size={12} />}
                 Gabarito Comentado
               </button>
+            ) : null}
 
-            {/* Análise Detalhada - sempre visível, bloqueado por plano */}
+            {hasDetailedCommentAvailable ? (
               <button
                 onClick={() => {
                   if (!canSeeDetailed) {
@@ -1643,12 +1660,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                     void loadEditorialFeedback();
                   }
                 }}
-                title={!question.detailedComment ? 'Analise detalhada ainda nao disponivel para esta questao.' : undefined}
-                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment && canSeeDetailed ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed && question.detailedComment ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
+                title={canSeeDetailed && !detailedCommentContent ? 'Analise detalhada ainda nao disponivel para esta questao.' : undefined}
+                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment && canSeeDetailed ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed && detailedCommentContent ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
               >
-                {canSeeDetailed && question.detailedComment ? <BookOpen size={14} /> : <Lock size={12} />}
+                {canSeeDetailed && detailedCommentContent ? <BookOpen size={14} /> : <Lock size={12} />}
                 Análise Detalhada
               </button>
+            ) : null}
 
             {canShowAnnotatedLawsButton && (
               <button
@@ -1715,7 +1733,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           <div className="bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 animate-fade-in divide-y divide-slate-100 dark:divide-slate-800">
 
             {showStats && (
-              <div className="p-6 bg-slate-50 dark:bg-slate-800/50 animate-slide-down">
+              <div className="p-4 sm:p-6 bg-slate-50 dark:bg-slate-800/50 animate-slide-down">
                 <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-400 font-bold text-[9px] uppercase tracking-widest mb-4">
                   <BarChart3 size={14} /> Estatísticas da Questão
                 </div>
@@ -1770,7 +1788,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
             {showTeacherComment && (
-              <div className="p-6 bg-amber-50/30 dark:bg-amber-900/10 animate-slide-down">
+              <div className="p-4 sm:p-6 bg-amber-50/30 dark:bg-amber-900/10 animate-slide-down">
                 <div className="flex items-center gap-2 text-amber-800 dark:text-amber-400 font-bold text-[9px] uppercase tracking-widest mb-3">
                   <GraduationCap size={14} /> Comentário do Professor
                 </div>
@@ -1792,16 +1810,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
             {showDetailedComment && (
-              <div className="p-6 bg-indigo-50/30 dark:bg-indigo-900/10 animate-slide-down">
+              <div className="p-4 sm:p-6 bg-indigo-50/30 dark:bg-indigo-900/10 animate-slide-down">
                 <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-400 font-bold text-[9px] uppercase tracking-widest mb-3">
                   <BookOpen size={14} /> Análise Detalhada
                 </div>
-                {question.detailedComment ? (
+                {detailedCommentContent ? (
                   <>
                     <MathRichText
-                      content={question.detailedComment}
+                      content={detailedCommentContent}
                       disableCallouts
-                      className="prose prose-indigo prose-sm max-w-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/30 shadow-sm"
+                      className="prose prose-indigo prose-sm max-w-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/30 shadow-sm"
                     />
                     {renderEditorialFeedbackControls('detailed')}
                   </>
@@ -1827,7 +1845,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
             {showMaterials && <RelatedMaterialsSection question={question} currentUser={currentUser} />}
             {showAnnotatedLaws && <RelatedAnnotatedLawsSection question={annotatedLawLookupQuestion} onClose={() => setShowAnnotatedLaws(false)} initialMatches={relatedAnnotatedLaws} />}
-            <div className="px-6 py-4">
+            <div className="px-3 py-4 sm:px-6">
               <AdBanner type="bottom" />
             </div>
           </div>

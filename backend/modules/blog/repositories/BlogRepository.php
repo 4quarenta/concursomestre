@@ -6,6 +6,9 @@ require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
 final class BlogRepository
 {
+    private const DEFAULT_COVER_IMAGE = '/blog/default-cover.webp';
+    private const DEFAULT_COVER_ALT = 'Caderno de estudos e notícias do ConcursoMestre.';
+
     public function __construct(private readonly PDO $db)
     {
     }
@@ -28,12 +31,26 @@ final class BlogRepository
             $conditions[] = 'c.slug = :category_slug';
             $params[':category_slug'] = $filters['categorySlug'];
         }
+        if (!empty($filters['tagSlug'])) {
+            $conditions[] = 'EXISTS ('
+                . 'SELECT 1 FROM blog_article_tags bat_filter '
+                . 'INNER JOIN blog_tags t_filter ON t_filter.id = bat_filter.tag_id '
+                . 'WHERE bat_filter.article_id = a.id AND t_filter.slug = :tag_slug)';
+            $params[':tag_slug'] = $filters['tagSlug'];
+        }
         if (!empty($filters['authorId'])) {
             $conditions[] = 'a.author_id = :author_id';
             $params[':author_id'] = $filters['authorId'];
         }
         if (!empty($filters['featured'])) {
             $conditions[] = 'a.featured = 1';
+        }
+        if (!empty($filters['search'])) {
+            $search = '%' . $filters['search'] . '%';
+            $conditions[] = '(a.title LIKE :public_search_title OR a.excerpt LIKE :public_search_excerpt OR a.body_text LIKE :public_search_body)';
+            $params[':public_search_title'] = $search;
+            $params[':public_search_excerpt'] = $search;
+            $params[':public_search_body'] = $search;
         }
         if (is_array($cursor)) {
             $conditions[] = '(a.published_at < :cursor_published_at OR (a.published_at = :cursor_published_at AND a.id < :cursor_id))';
@@ -112,8 +129,40 @@ final class BlogRepository
         return array_map(
             static fn (array $row): array => [
                 'id' => (int) $row['id'],
-                'name' => (string) $row['name'],
+                'label' => (string) $row['name'],
                 'slug' => (string) $row['slug'],
+                'description' => $row['description'] ?: null,
+                'imageUrl' => $row['image_url'] ?: null,
+                'articleCount' => (int) $row['article_count'],
+            ],
+            $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []
+        );
+    }
+
+    public function listTags(bool $publicOnly = true): array
+    {
+        $having = $publicOnly ? ' HAVING COUNT(DISTINCT a.id) > 0' : '';
+        $stmt = $this->db->query(
+            "SELECT t.id, t.name, t.slug, t.kind, t.description, t.image_url,
+                    COUNT(DISTINCT a.id) AS article_count
+             FROM blog_tags t
+             LEFT JOIN blog_article_tags bat ON bat.tag_id = t.id
+             LEFT JOIN blog_articles a
+               ON a.id = bat.article_id
+              AND a.deleted_at IS NULL
+              AND a.status IN ('published', 'scheduled')
+              AND a.published_at IS NOT NULL
+              AND a.published_at <= NOW()
+             GROUP BY t.id
+             {$having}
+             ORDER BY t.kind ASC, t.name ASC, t.id ASC"
+        );
+        return array_map(
+            static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'label' => (string) $row['name'],
+                'slug' => (string) $row['slug'],
+                'kind' => (string) ($row['kind'] ?: 'general'),
                 'description' => $row['description'] ?: null,
                 'imageUrl' => $row['image_url'] ?: null,
                 'articleCount' => (int) $row['article_count'],
@@ -127,15 +176,27 @@ final class BlogRepository
         $limit = (int) $filters['limit'];
         $cursor = SignedKeysetCursor::decodePayload($filters['cursor'] ?? null, 'blog.admin');
         $conditions = ['a.deleted_at IS NULL'];
-        $params = [':viewer_user_id_empty' => '', ':viewer_user_id_exists' => ''];
+        $filterParams = [];
         if (!empty($filters['status'])) {
             $conditions[] = 'a.status = :status';
-            $params[':status'] = $filters['status'];
+            $filterParams[':status'] = $filters['status'];
         }
         if (!empty($filters['search'])) {
-            $conditions[] = '(a.title LIKE :search OR a.excerpt LIKE :search)';
-            $params[':search'] = '%' . $filters['search'] . '%';
+            $conditions[] = '(a.title LIKE :search_title OR a.excerpt LIKE :search_excerpt)';
+            $filterParams[':search_title'] = '%' . $filters['search'] . '%';
+            $filterParams[':search_excerpt'] = '%' . $filters['search'] . '%';
         }
+
+        $countStmt = $this->db->prepare(
+            'SELECT COUNT(*) FROM blog_articles a WHERE ' . implode(' AND ', $conditions)
+        );
+        $countStmt->execute($filterParams);
+        $total = (int) $countStmt->fetchColumn();
+
+        $params = array_merge([
+            ':viewer_user_id_empty' => '',
+            ':viewer_user_id_exists' => '',
+        ], $filterParams);
         if (is_array($cursor)) {
             $conditions[] = '(a.updated_at < :cursor_updated_at OR (a.updated_at = :cursor_updated_at AND a.id < :cursor_id))';
             $params[':cursor_updated_at'] = (string) ($cursor['updatedAt'] ?? '');
@@ -157,6 +218,7 @@ final class BlogRepository
             'items' => $this->hydrateArticles($rows),
             'pageInfo' => [
                 'limit' => $limit,
+                'total' => $total,
                 'hasMore' => $hasMore,
                 'nextCursor' => $hasMore && is_array($last)
                     ? SignedKeysetCursor::encodePayload([
@@ -200,15 +262,18 @@ final class BlogRepository
     {
         $this->db->beginTransaction();
         try {
-            $categoryId = $article['categoryId'] ?? null;
+            $category = $article['taxonomy']['category'];
+            $categoryId = $category['id'] ?? null;
             if (!$categoryId) {
-                $categoryId = $this->upsertCategory((string) $article['categoryName'], $authorId);
+                $categoryId = $this->upsertCategory((string) $category['label'], $authorId);
+            } elseif (!$this->categoryExists((int) $categoryId)) {
+                throw new InvalidArgumentException('A categoria selecionada nao existe mais.');
             }
 
             $publishedAt = null;
             if ($article['status'] === 'published') {
                 $publishedAt = $article['id'] ? $this->currentPublishedAt((int) $article['id']) : null;
-                $publishedAt = $publishedAt ?: gmdate('Y-m-d H:i:s');
+                $publishedAt = $publishedAt ?: $this->databaseNow();
             }
             if ($article['status'] === 'scheduled') {
                 $publishedAt = $article['scheduledAt'];
@@ -288,7 +353,7 @@ final class BlogRepository
                 $articleId = (int) $this->db->lastInsertId();
             }
 
-            $this->syncTags($articleId, $article['tags']);
+            $this->syncTags($articleId, $article['taxonomy']['tags']);
             $this->db->commit();
             return $this->findAdminById($articleId) ?? ['id' => $articleId];
         } catch (Throwable $e) {
@@ -362,7 +427,53 @@ final class BlogRepository
             'SELECT id, name, slug, description, image_url FROM blog_categories WHERE slug = :slug LIMIT 1'
         );
         $find->execute([':slug' => $category['slug']]);
-        return $find->fetch(PDO::FETCH_ASSOC) ?: [];
+        $row = $find->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return [];
+        }
+        return [
+            'id' => (int) $row['id'],
+            'label' => (string) $row['name'],
+            'slug' => (string) $row['slug'],
+            'description' => $row['description'] ?: null,
+            'imageUrl' => $row['image_url'] ?: null,
+        ];
+    }
+
+    public function createTag(array $tag, string $userId): array
+    {
+        $stmt = $this->db->prepare(
+            "INSERT INTO blog_tags (name, slug, kind, description, image_url, created_by)
+             VALUES (:name, :slug, :kind, :description, :image_url, :created_by)
+             ON DUPLICATE KEY UPDATE
+                name = VALUES(name), kind = VALUES(kind),
+                description = COALESCE(VALUES(description), description),
+                image_url = COALESCE(VALUES(image_url), image_url), updated_at = NOW()"
+        );
+        $stmt->execute([
+            ':name' => $tag['name'],
+            ':slug' => $tag['slug'],
+            ':kind' => $tag['kind'],
+            ':description' => $tag['description'],
+            ':image_url' => $tag['imageUrl'],
+            ':created_by' => $userId !== '' ? $userId : null,
+        ]);
+        $find = $this->db->prepare(
+            'SELECT id, name, slug, kind, description, image_url FROM blog_tags WHERE slug = :slug LIMIT 1'
+        );
+        $find->execute([':slug' => $tag['slug']]);
+        $row = $find->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return [];
+        }
+        return [
+            'id' => (int) $row['id'],
+            'label' => (string) $row['name'],
+            'slug' => (string) $row['slug'],
+            'kind' => (string) ($row['kind'] ?: 'general'),
+            'description' => $row['description'] ?: null,
+            'imageUrl' => $row['image_url'] ?: null,
+        ];
     }
 
     private function articleSelect(): string
@@ -403,8 +514,8 @@ final class BlogRepository
                 'slug' => (string) $row['slug'],
                 'excerpt' => (string) $row['excerpt'],
                 'readingMinutes' => max(1, (int) $row['reading_minutes']),
-                'coverImageUrl' => (string) $row['cover_image_url'],
-                'coverImageAlt' => (string) $row['cover_image_alt'],
+                'coverImageUrl' => trim((string) $row['cover_image_url']) ?: self::DEFAULT_COVER_IMAGE,
+                'coverImageAlt' => trim((string) $row['cover_image_alt']) ?: self::DEFAULT_COVER_ALT,
                 'status' => (string) $row['status'],
                 'featured' => (bool) $row['featured'],
                 'allowComments' => (bool) $row['allow_comments'],
@@ -417,10 +528,13 @@ final class BlogRepository
                 'publishedAt' => self::isoDate($row['published_at'] ?? null),
                 'createdAt' => self::isoDate($row['created_at'] ?? null),
                 'updatedAt' => self::isoDate($row['updated_at'] ?? null),
-                'category' => [
-                    'id' => (int) $row['category_id'],
-                    'name' => (string) $row['category_name'],
-                    'slug' => (string) $row['category_slug'],
+                'taxonomy' => [
+                    'category' => [
+                        'id' => (int) $row['category_id'],
+                        'label' => (string) $row['category_name'],
+                        'slug' => (string) $row['category_slug'],
+                    ],
+                    'tags' => $tags[$id] ?? [],
                 ],
                 'author' => [
                     'id' => (string) $row['author_id'],
@@ -428,7 +542,6 @@ final class BlogRepository
                     'avatarUrl' => $row['author_avatar_url'] ?: null,
                     'role' => (string) $row['resolved_author_role'],
                 ],
-                'tags' => $tags[$id] ?? [],
                 'engagement' => [
                     'likesCount' => (int) $row['likes_count'],
                     'commentsCount' => (int) $row['comments_count'],
@@ -447,7 +560,7 @@ final class BlogRepository
     {
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $this->db->prepare(
-            "SELECT bat.article_id, t.id, t.name, t.slug
+            "SELECT bat.article_id, t.id, t.name, t.slug, t.kind, t.description, t.image_url
              FROM blog_article_tags bat
              INNER JOIN blog_tags t ON t.id = bat.tag_id
              WHERE bat.article_id IN ({$placeholders})
@@ -458,8 +571,11 @@ final class BlogRepository
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
             $grouped[(int) $row['article_id']][] = [
                 'id' => (int) $row['id'],
-                'name' => (string) $row['name'],
+                'label' => (string) $row['name'],
                 'slug' => (string) $row['slug'],
+                'kind' => (string) ($row['kind'] ?: 'general'),
+                'description' => $row['description'] ?: null,
+                'imageUrl' => $row['image_url'] ?: null,
             ];
         }
         return $grouped;
@@ -477,26 +593,56 @@ final class BlogRepository
         return (int) ($category['id'] ?? 0);
     }
 
-    private function syncTags(int $articleId, array $tagNames): void
+    private function syncTags(int $articleId, array $tags): void
     {
         $this->db->prepare('DELETE FROM blog_article_tags WHERE article_id = :article_id')
             ->execute([':article_id' => $articleId]);
-        foreach ($tagNames as $name) {
+        foreach ($tags as $tag) {
+            if (!is_array($tag)) {
+                continue;
+            }
+            $existingId = isset($tag['id']) ? (int) $tag['id'] : 0;
+            if ($existingId > 0) {
+                $existing = $this->db->prepare('SELECT id FROM blog_tags WHERE id = :id LIMIT 1');
+                $existing->execute([':id' => $existingId]);
+                if ((int) $existing->fetchColumn() > 0) {
+                    $this->db->prepare('UPDATE blog_tags SET kind = :kind WHERE id = :id')->execute([
+                        ':id' => $existingId,
+                        ':kind' => (string) ($tag['kind'] ?? 'general'),
+                    ]);
+                    $this->db->prepare(
+                        'INSERT IGNORE INTO blog_article_tags (article_id, tag_id) VALUES (:article_id, :tag_id)'
+                    )->execute([':article_id' => $articleId, ':tag_id' => $existingId]);
+                    continue;
+                }
+            }
+            $name = trim((string) ($tag['label'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
             $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
             $slug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower((string) ($converted ?: $name))) ?? '', '-');
-            $this->db->prepare(
-                'INSERT INTO blog_tags (name, slug) VALUES (:name, :slug) '
-                . 'ON DUPLICATE KEY UPDATE name = VALUES(name)'
-            )->execute([':name' => $name, ':slug' => $slug]);
-            $tagIdStmt = $this->db->prepare('SELECT id FROM blog_tags WHERE slug = :slug LIMIT 1');
-            $tagIdStmt->execute([':slug' => $slug]);
-            $tagId = (int) $tagIdStmt->fetchColumn();
+            $savedTag = $this->createTag([
+                'name' => $name,
+                'slug' => $slug,
+                'kind' => (string) ($tag['kind'] ?? 'general'),
+                'description' => null,
+                'imageUrl' => null,
+            ], '');
+            $tagId = (int) ($savedTag['id'] ?? 0);
             if ($tagId > 0) {
                 $this->db->prepare(
                     'INSERT IGNORE INTO blog_article_tags (article_id, tag_id) VALUES (:article_id, :tag_id)'
                 )->execute([':article_id' => $articleId, ':tag_id' => $tagId]);
             }
         }
+    }
+
+    private function categoryExists(int $id): bool
+    {
+        $stmt = $this->db->prepare('SELECT 1 FROM blog_categories WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        return (bool) $stmt->fetchColumn();
     }
 
     private function currentPublishedAt(int $articleId): ?string
@@ -507,14 +653,26 @@ final class BlogRepository
         return is_string($value) && $value !== '' ? $value : null;
     }
 
+    private function databaseNow(): string
+    {
+        $value = $this->db->query("SELECT DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')")->fetchColumn();
+        if (!is_string($value) || $value === '') {
+            throw new RuntimeException('Nao foi possivel determinar a data de publicacao.');
+        }
+        return $value;
+    }
+
     private static function isoDate(mixed $value): ?string
     {
         $normalized = trim((string) ($value ?? ''));
         if ($normalized === '') {
             return null;
         }
-        $hasTimezone = preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/', $normalized) === 1;
-        $timestamp = strtotime($normalized . ($hasTimezone ? '' : ' UTC'));
-        return $timestamp !== false ? gmdate('c', $timestamp) : null;
+        try {
+            $timezone = new DateTimeZone(function_exists('getAppTimezone') ? getAppTimezone() : 'America/Sao_Paulo');
+            return (new DateTimeImmutable($normalized, $timezone))->format(DATE_ATOM);
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

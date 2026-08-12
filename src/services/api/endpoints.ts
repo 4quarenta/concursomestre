@@ -35,6 +35,11 @@ export const ENDPOINTS = {
 
     changelog: {
         list: 'changelog/list.php',
+        adminList: 'changelog/admin/list.php',
+        adminDetail: 'changelog/admin/detail.php',
+        adminSave: 'changelog/admin/save.php',
+        adminArchive: 'changelog/admin/archive.php',
+        adminSuggestions: 'changelog/admin/suggestions.php',
     },
 
     setup: {
@@ -71,6 +76,8 @@ export const ENDPOINTS = {
 
     exams: {
         list: 'exams/list.php',
+        directory: 'exams/directory.php',
+        publicDetail: 'exams/detail.php',
         show: 'exams/show.php',
         save: 'exams/save.php',
         delete: 'exams/delete.php',
@@ -97,12 +104,14 @@ export const ENDPOINTS = {
         list: 'blog/list.php',
         detail: 'blog/detail.php',
         categories: 'blog/categories.php',
+        tags: 'blog/tags.php',
         like: 'blog/like.php',
         adminList: 'blog/admin/list.php',
         adminDetail: 'blog/admin/detail.php',
         adminSave: 'blog/admin/save.php',
         adminDelete: 'blog/admin/delete.php',
         adminCategories: 'blog/admin/categories.php',
+        adminTags: 'blog/admin/tags.php',
     },
 
     notifications: {

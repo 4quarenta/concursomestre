@@ -18,10 +18,11 @@ $popup = (string) file_get_contents($extension . '/popup.js');
 
 granExtensionAssert(is_array($manifest), 'Manifesto da extensao deve ser JSON valido.');
 granExtensionAssert(($manifest['manifest_version'] ?? null) === 3, 'Extensao deve usar Manifest V3.');
-granExtensionAssert(($manifest['version'] ?? null) === '1.0.16', 'Pacote corrigido deve usar a versao 1.0.16.');
+granExtensionAssert(($manifest['version'] ?? null) === '1.0.21', 'Pacote corrigido deve usar a versao 1.0.21.');
 granExtensionAssert(
     ($manifest['host_permissions'] ?? []) === [
         'https://rota-api.grancursosonline.com.br/*',
+        'https://arquivos.infra-questoes.grancursosonline.com.br/*',
         'https://questoes.grancursosonline.com.br/*',
         'https://concursomestre.com/*',
         'http://localhost:3000/*',
@@ -56,6 +57,9 @@ foreach ([
     'normalizeExamFileLinks',
     'cadernoDeProva',
     'arquivoGabarito',
+    'urlProva',
+    'gabaritoUrl',
+    'readFileUrl(value[nestedKey])',
     'examFiles: examFiles.files',
     'TAXONOMY_ENDPOINTS',
     "['_source[]', 'nome_completo']",
@@ -85,10 +89,21 @@ granExtensionAssert(
 );
 granExtensionAssert(
     str_contains($worker, 'MAX_EXAM_FILE_REQUESTS')
+    && str_contains($worker, 'MAX_EXAM_FILE_REQUESTS = 1000')
     && str_contains($worker, 'EXAM_FILE_REQUEST_CONCURRENCY')
     && str_contains($worker, 'examFilesCache')
     && str_contains($worker, 'encodeURIComponent(examId)'),
     'Coleta de documentos deve ser limitada, deduplicada e formada somente por IDs numericos.'
+);
+granExtensionAssert(
+    str_contains($worker, "GRAN_ASSET_ORIGIN = 'https://arquivos.infra-questoes.grancursosonline.com.br'")
+    && str_contains($worker, 'collectGranImageData')
+    && str_contains($worker, 'fetchGranImage')
+    && str_contains($worker, "credentials: 'include'")
+    && str_contains($worker, 'MAX_IMAGE_BYTES_PER_COLLECTION')
+    && str_contains($worker, 'assetData: images.assetData')
+    && str_contains($worker, 'ASSET_HEADER_RULE_ID'),
+    'Imagens protegidas da Gran devem ser capturadas no navegador e entregues como base64 limitado.'
 );
 granExtensionAssert(
     str_contains($worker, 'collectTaxonomyPage(message.kind, message.page, message.rootExternalIds)')
@@ -106,8 +121,11 @@ granExtensionAssert(
     && str_contains($content, 'announceReady')
     && str_contains($content, 'previousBridge.cleanup()')
     && str_contains($content, 'event.stopImmediatePropagation()')
-    && in_array('https://concursomestre.com/*', $manifest['content_scripts'][0]['matches'] ?? [], true),
-    'Content script deve acompanhar navegacao SPA, mas aceitar comandos somente na rota do crawler.'
+    && ($manifest['content_scripts'][0]['matches'] ?? []) === [
+        'https://concursomestre.com/admin/operation/gran-crawler*',
+        'http://localhost:3000/admin/operation/gran-crawler*',
+    ],
+    'Content script deve ser injetado somente na rota do crawler e aceitar comandos apenas nessa rota.'
 );
 granExtensionAssert(
     str_contains($worker, 'sender?.url || sender?.tab?.url')

@@ -14,7 +14,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Bell, BookOpen, CalendarDays, Clock, Copy, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
-  CheckCircle2, Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Save, Settings, ShieldAlert, ShieldCheck,
+  CheckCircle2, Heart, Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Save, Settings, ShieldAlert, ShieldCheck,
   ShoppingBag, ShoppingCart, Sparkles, Terminal, Trash2, Trophy, Upload, Users, XCircle, Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
@@ -154,6 +154,7 @@ const featureItems = [
   { id: 'xRayEnabled', label: 'Raio-X', icon: Zap },
   { id: 'landingPagePromoEnabled', label: 'Promo na home', icon: Megaphone },
   { id: 'communityEnabled', label: 'Comunidade', icon: MessageSquare },
+  { id: 'supportDonationsEnabled', label: 'Apoiar a plataforma', icon: Heart },
   { id: 'aiCommentsEnabled', label: 'Comentários com IA', icon: Sparkles },
   { id: 'bulkImportEnabled', label: 'Importador', icon: Upload },
   { id: 'reportsEnabled', label: 'Denúncias', icon: Flag },
@@ -791,6 +792,10 @@ const AdminSettings = ({
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
                 <label className={labelClassName}>Nome do site</label>
                 <input value={localSettings.siteName || ''} onChange={(e) => setField('siteName', e.target.value)} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>Vers&atilde;o da plataforma</label>
+                <input value={localSettings.platformVersion || ''} onChange={(e) => setField('platformVersion', e.target.value)} className={inputClassName} placeholder="1.0.0" />
               </div>
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
                 <label className={labelClassName}>WhatsApp</label>

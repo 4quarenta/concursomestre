@@ -252,6 +252,13 @@ $imageOnlyResult = $service->mapBrowserResponse([
             ]],
         ],
     ],
+    'granAssetData' => [
+        'https://arquivos.infra-questoes.grancursosonline.com.br/imagens_provas/2563/imagemp.bmp.gif' => [
+            'base64' => 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',
+            'mimeType' => 'image/gif',
+            'size' => 35,
+        ],
+    ],
     'granRequestUrl' => 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?perPage=1&page=1&anos%5B%5D=1999',
 ]);
 $imageOnlyQuestion = $imageOnlyResult['payloads'][0]['questions'][0] ?? [];
@@ -261,7 +268,9 @@ granCrawlerAssert(
     && count($imageOnlyQuestion['assets'] ?? []) === 1
     && ($imageOnlyQuestion['assets'][0]['usage'] ?? null) === 'statement'
     && ($imageOnlyQuestion['assets'][0]['url'] ?? null)
-        === 'https://arquivos.infra-questoes.grancursosonline.com.br/imagens_provas/2563/imagemp.bmp.gif',
+        === 'https://arquivos.infra-questoes.grancursosonline.com.br/imagens_provas/2563/imagemp.bmp.gif'
+    && str_starts_with((string) ($imageOnlyQuestion['assets'][0]['base64'] ?? ''), 'data:image/gif;base64,')
+    && ($imageOnlyQuestion['assets'][0]['captureStatus'] ?? null) === 'captured',
     'Questao visual com IMG maiusculo e src sem aspas deve preservar imagem e marcador canonicos.'
 );
 granCrawlerAssert(
@@ -375,7 +384,7 @@ $browserResult = $service->mapBrowserResponse([
             'gabarito' => 'https://arquivos.infra-questoes.grancursosonline.com.br/provas/501/gabarito.pdf',
         ],
         '601' => [
-            'folhaDeProva' => 'https://arquivos.infra-questoes.grancursosonline.com.br/provas/601/prova.pdf',
+            'urlProva' => 'https://arquivos.infra-questoes.grancursosonline.com.br/folha-de-prova/F_601.rtf',
         ],
         'unsafe' => [
             'edital' => 'https://example.org/edital.pdf',
@@ -412,19 +421,27 @@ granCrawlerAssert(
     'Folha de prova deve virar documento prova pendente de materializacao no storage proprio.'
 );
 
-$emptyBrowserResponseRejected = false;
-try {
-    $service->mapBrowserResponse([
-        'granResponse' => ['data' => ['rows' => []]],
-        'page' => 1,
-        'perPage' => 20,
-    ]);
-} catch (InvalidArgumentException) {
-    $emptyBrowserResponseRejected = true;
-}
+$paginationPayload = $remotePayload;
+unset($paginationPayload['data']['total'], $paginationPayload['data']['pages']);
+$paginationPayload['pagination'] = ['total' => 241, 'lastPage' => 13];
+$paginationResult = $service->mapBrowserResponse([
+    'granResponse' => $paginationPayload,
+    'page' => 1,
+    'perPage' => 20,
+]);
 granCrawlerAssert(
-    $emptyBrowserResponseRejected,
-    'JSON sem questoes nao deve criar lote vazio.'
+    $paginationResult['total'] === 241 && $paginationResult['pages'] === 13,
+    'A quantidade de paginas deve vir do contrato pagination retornado pela Gran.'
+);
+
+$emptyBrowserResult = $service->mapBrowserResponse([
+    'granResponse' => ['data' => ['rows' => []], 'pagination' => ['total' => 0, 'lastPage' => 0]],
+    'page' => 1,
+    'perPage' => 20,
+]);
+granCrawlerAssert(
+    $emptyBrowserResult['questionCount'] === 0 && $emptyBrowserResult['payloads'] === [],
+    'Pagina sem questoes deve sinalizar o fim do ano para o modo automatico.'
 );
 
 $directUrl = 'https://rota-api.grancursosonline.com.br/v1/elastic/questao'

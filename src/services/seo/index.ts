@@ -23,5 +23,6 @@ export {
   summarizeSeoText,
 } from './slug';
 export { seoService } from './seoService';
+export { buildBoardPath } from './taxonomyPaths';
 export type { DocumentSeoPayload } from './documentSeo';
 export type { SitemapStatusPayload } from './seoService';

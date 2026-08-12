@@ -1,17 +1,19 @@
 import React from 'react';
 
-export type AdminPublishState = 'published' | 'draft' | 'scheduled';
+export type AdminPublishState = 'published' | 'draft' | 'scheduled' | 'archived';
 
 const STATE_LABEL: Record<AdminPublishState, string> = {
   published: 'Publicado',
   draft: 'Rascunho',
   scheduled: 'Programado',
+  archived: 'Arquivado',
 };
 
 const STATE_CLASS: Record<AdminPublishState, string> = {
   published: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300',
   draft: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300',
   scheduled: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300',
+  archived: 'border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
 };
 
 const normalizeStateToken = (value: unknown) => String(value || '').trim().toLowerCase();
@@ -52,6 +54,10 @@ export const resolveAdminPublishState = (item: Record<string, unknown>): AdminPu
 
   if (['scheduled', 'programado'].includes(rawState)) {
     return 'scheduled';
+  }
+
+  if (['archived', 'arquivado'].includes(rawState)) {
+    return 'archived';
   }
 
   if (['draft', 'rascunho', 'pending', 'pendente', 'inactive', 'inativo', 'blocked', 'bloqueado', 'private', 'privado'].includes(rawState)) {

@@ -15,7 +15,6 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Bug,
-  CheckCircle2,
   ChevronRight,
   Coffee,
   CreditCard,
@@ -23,7 +22,6 @@ import {
   Info,
   MessageSquare,
   Send,
-  Shield,
   ThumbsDown,
   ThumbsUp,
 } from 'lucide-react';
@@ -40,6 +38,8 @@ import {
 } from '@constants/layout';
 import { readApiErrorMessage } from '@services/api';
 import { clientLog } from '@services/monitoring/clientLog';
+import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
+import { isSupportCategoryEnabled } from '@services/support/supportFeature';
 import { supportService, type PublicSuggestion, type PublicSuggestionVote, type SupportThread } from '@services/support/supportService';
 
 type SupportTab = 'bug' | 'feedback' | 'info' | 'donation';
@@ -125,11 +125,10 @@ const STATUS_META: Record<SupportThread['status'], { label: string; className: s
 
 const mergeSupportThreads = (officialThreads: SupportThread[], localThreads: SupportThread[]) => {
   const officialIds = new Set(officialThreads.map((thread) => thread.id));
-  const localOnlyThreads = localThreads.filter((thread) => !officialIds.has(thread.id));
-
-  return [...localOnlyThreads, ...officialThreads].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
+  return [
+    ...localThreads.filter((thread) => !officialIds.has(thread.id)),
+    ...officialThreads,
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 };
 
 const applyPublicSuggestionVote = (
@@ -173,9 +172,12 @@ const SupportContent: React.FC = () => {
   const { addToast } = useToast();
   const searchParams = useSearchParams();
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const supportDonationsEnabled = isSystemSettingsLoaded
+    && resolveSystemFeatureFlag(systemSettings, 'supportDonationsEnabled', false);
   const pixKey = systemSettings?.pixKey || 'pix@concursomestre.com.br';
   const [activeTab, setActiveTab] = useState<SupportTab>('bug');
-  const [composeStep, setComposeStep] = useState<1 | 2>(1);
+  const [composeStep, setComposeStep] = useState<1 | 2>(2);
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -184,27 +186,43 @@ const SupportContent: React.FC = () => {
   const [isLoadingPublicSuggestions, setIsLoadingPublicSuggestions] = useState(false);
   const [votingSuggestionId, setVotingSuggestionId] = useState<number | null>(null);
 
+  const visibleSupportCategories = useMemo(
+    () => SUPPORT_CATEGORIES.filter((category) => isSupportCategoryEnabled(category.id, supportDonationsEnabled)),
+    [supportDonationsEnabled],
+  );
   const activeCategory = useMemo(
-    () => SUPPORT_CATEGORIES.find((category) => category.id === activeTab) ?? SUPPORT_CATEGORIES[0],
-    [activeTab],
+    () => visibleSupportCategories.find((category) => category.id === activeTab) ?? visibleSupportCategories[0],
+    [activeTab, visibleSupportCategories],
   );
   const canSubmitThread = Boolean(currentUser && !isLoading && activeCategory.serviceType);
 
   useEffect(() => {
+    if (!isSystemSettingsLoaded) {
+      return;
+    }
+
     const requestedCategory = String(searchParams?.get('category') || searchParams?.get('tab') || '').trim();
     if (!['bug', 'feedback', 'info', 'donation'].includes(requestedCategory)) {
       return;
     }
 
+    if (!isSupportCategoryEnabled(requestedCategory, supportDonationsEnabled)) {
+      setActiveTab('bug');
+      return;
+    }
+
     const categoryFrame = window.requestAnimationFrame(() => {
       setActiveTab(requestedCategory as SupportTab);
-      if (requestedCategory !== 'donation') {
-        setComposeStep(2);
-      }
     });
 
     return () => window.cancelAnimationFrame(categoryFrame);
-  }, [searchParams]);
+  }, [isSystemSettingsLoaded, searchParams, supportDonationsEnabled]);
+
+  useEffect(() => {
+    if (isSystemSettingsLoaded && !supportDonationsEnabled && activeTab === 'donation') {
+      setActiveTab('bug');
+    }
+  }, [activeTab, isSystemSettingsLoaded, supportDonationsEnabled]);
 
   /**
    * Busca o histórico oficial do usuário ao trocar de contexto.
@@ -261,18 +279,6 @@ const SupportContent: React.FC = () => {
       setIsLoadingPublicSuggestions(false);
     }
   }, [addToast, currentUser]);
-
-  useEffect(() => {
-    if (activeTab === 'donation') {
-      return;
-    }
-
-    const historyTimer = window.setTimeout(() => {
-      void fetchHistory(false);
-    }, 0);
-
-    return () => window.clearTimeout(historyTimer);
-  }, [activeTab, fetchHistory]);
 
   useEffect(() => {
     if (activeTab !== 'feedback') {
@@ -347,8 +353,6 @@ const SupportContent: React.FC = () => {
       );
       setSubject('');
       setDetails('');
-      setComposeStep(1);
-      void fetchHistory(true, true);
       if (activeCategory.serviceType === 'suggestion') {
         void fetchPublicSuggestions(false);
       }
@@ -433,88 +437,45 @@ const SupportContent: React.FC = () => {
 
   return (
     <div className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 animate-fade-in`}>
-      <section className="overflow-hidden rounded-[2.2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-6 py-8 text-white md:px-8">
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-indigo-200">
-              Central do usuario
-            </p>
-            <div className="mt-4 flex items-start gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-indigo-100">
-                <Shield size={24} />
-              </div>
-              <div className="min-w-0">
-                <h1 className={`${PLATFORM_PAGE_TITLE_CLASS} text-white`}>
-                  Central de Suporte e Feedback
-                </h1>
-                <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-slate-300">
-                  Um lugar unico para reportar problemas, enviar sugestoes, pedir ajuda e iniciar conversas com o time.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-8 grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Chamados</p>
-                <p className="mt-2 text-2xl font-black text-white">{supportStats.total}</p>
-              </div>
-              <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-100">Abertos</p>
-                <p className="mt-2 text-2xl font-black text-white">{supportStats.open}</p>
-              </div>
-              <div className="rounded-2xl border border-sky-400/20 bg-sky-400/10 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-100">Em analise</p>
-                <p className="mt-2 text-2xl font-black text-white">{supportStats.inProgress}</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">Resolvidos</p>
-                <p className="mt-2 text-2xl font-black text-white">{supportStats.resolved}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col justify-between bg-slate-50 px-6 py-8 dark:bg-slate-950/80 md:px-8">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
-                Como funciona
-              </p>
-              <div className="mt-4 space-y-4">
-                {[
-                  'Escolha a categoria certa para evitar retrabalho.',
-                  'Descreva o contexto com clareza.',
-                  'Acompanhe as respostas em Meu Perfil.',
-                ].map((step, index) => (
-                  <div key={step} className="flex items-start gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-black text-white dark:bg-indigo-500">
-                      {index + 1}
-                    </div>
-                    <p className="pt-1 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{step}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+      <section className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between md:p-8`}>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Atendimento</p>
+          <h1 className={PLATFORM_PAGE_TITLE_CLASS}>Como podemos ajudar?</h1>
+          <p className={`${PLATFORM_PAGE_DESCRIPTION_CLASS} mt-2`}>Informe o assunto e descreva o que aconteceu. A resposta fica salva no seu perfil.</p>
         </div>
+        <Link
+          href="/profile/support-history"
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-slate-200 px-4 text-sm font-bold text-slate-700 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200"
+        >
+          <MessageSquare size={16} />
+          Meus atendimentos
+        </Link>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="space-y-4">
-          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4`}>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Guia rapido</p>
-            <h2 className="mt-2 text-base font-black text-slate-900 dark:text-slate-100">O que ajuda mais</h2>
-            <div className="mt-4 space-y-3">
-              {topGuides.map((tip) => (
-                <div key={tip} className="flex items-start gap-3 rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
-                  <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-indigo-500" />
-                  <p className="text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">{tip}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        </aside>
+      <nav aria-label="Tipo de atendimento" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {visibleSupportCategories.map((category) => {
+          const Icon = category.icon;
+          const isSelected = category.id === activeTab;
+          return (
+            <button
+              key={category.id}
+              type="button"
+              onClick={() => setActiveTab(category.id)}
+              aria-pressed={isSelected}
+              className={`flex min-h-20 items-center gap-3 rounded-md border px-4 py-3 text-left transition-colors ${isSelected ? category.surfaceClassName : 'border-slate-200 bg-white hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900'}`}
+            >
+              <Icon size={19} className={isSelected ? category.accentClassName : 'text-slate-400'} />
+              <span>
+                <span className="block text-sm font-black text-slate-900 dark:text-slate-100">{category.title}</span>
+                <span className="mt-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{category.eyebrow}</span>
+              </span>
+            </button>
+          );
+        })}
+      </nav>
 
-        <div className="space-y-6">
-          {activeTab === 'donation' ? (
+      <div className="space-y-6">
+          {activeTab === 'donation' && supportDonationsEnabled ? (
             <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
               <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
                 <div className="bg-gradient-to-br from-emerald-50 via-white to-teal-50 px-6 py-8 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/40 md:px-8">
@@ -567,7 +528,7 @@ const SupportContent: React.FC = () => {
               </div>
               <form onSubmit={handleSubmit} className="grid gap-6 px-6 py-6 md:px-8 xl:grid-cols-[minmax(0,1fr)_260px]">
                 <div className="space-y-4">
-                  <div className="inline-flex w-full rounded-2xl bg-slate-100 p-1 dark:bg-slate-800">
+                  <div className="hidden">
                     <div className={`flex-1 rounded-xl px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.18em] transition-all ${composeStep === 1 ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'}`}>
                       1. Categoria
                     </div>
@@ -576,7 +537,7 @@ const SupportContent: React.FC = () => {
                     </div>
                   </div>
 
-                  {composeStep === 1 ? (
+                  {false ? (
                     <div className="space-y-4">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Escolha a categoria</p>
@@ -654,7 +615,7 @@ const SupportContent: React.FC = () => {
                       Aguarde a sessão carregar para enviar.
                     </p>
                   ) : null}
-                  {composeStep === 1 ? (
+                  {false ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -679,7 +640,7 @@ const SupportContent: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setComposeStep(1)}
-                        className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+                        className="hidden"
                       >
                         Voltar para a categoria
                       </button>
@@ -788,7 +749,6 @@ const SupportContent: React.FC = () => {
               </Link>
             </div>
           </section>
-        </div>
       </div>
     </div>
   );

@@ -55,13 +55,9 @@ class FeedbackService
      *
      * @since 1.0.0
      */
-    public function listPublicSuggestions(array $authenticatedUserPayload, int $limit = 80): array
+    public function listPublicSuggestions(?array $authenticatedUserPayload, int $limit = 80): array
     {
         $userId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
-        if ($userId === '') {
-            throw new RuntimeException('Sessão inválida. Faça login novamente.');
-        }
-
         return $this->repository->listPublicSuggestions($userId, $limit);
     }
 
@@ -231,6 +227,10 @@ class FeedbackService
             }
         }
 
+        $platformVersion = $normalized['type'] === 'suggestion'
+            ? $this->repository->resolveCurrentPlatformVersion()
+            : null;
+
         $feedbackId = $this->repository->createFeedback([
             'user_id' => $userId,
             'parent_id' => null,
@@ -238,6 +238,7 @@ class FeedbackService
             'reason' => $normalized['reason'],
             'details' => $normalized['details'],
             'status' => 'new',
+            'platform_version' => $platformVersion,
             'public_rating' => $normalized['publicRating'],
             'public_display_name' => $normalized['publicDisplayName'],
             'public_headline' => $normalized['publicHeadline'],
@@ -263,6 +264,7 @@ class FeedbackService
             'id' => $feedbackId,
             'parent_id' => null,
             'type' => $normalized['type'],
+            'platform_version' => $platformVersion,
         ];
     }
 

@@ -323,6 +323,10 @@ export interface Prova {
   publishStatus?: 'published' | 'draft' | 'scheduled';
   visibilityStatus?: 'public' | 'elite' | 'internal';
   scheduledAt?: string;
+  publishedAt?: string;
+  questionCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
   pdfUrl?: string;
   proofUrl?: string;
   editalUrl?: string;
@@ -1369,6 +1373,7 @@ export interface NotificationSettings {
 
 export interface SystemSettings {
   appName?: string;
+  platformVersion?: string;
   activeTheme: AppPromotionTheme;
   paymentProvider?: 'stripe';
   paymentCheckoutMode?: 'internal' | 'redirect';
@@ -1402,6 +1407,7 @@ export interface SystemSettings {
     annotatedLawsEnabled: boolean;
     flashcardsEnabled: boolean;
     communityEnabled: boolean;
+    supportDonationsEnabled: boolean;
     aiCommentsEnabled: boolean;
     bulkImportEnabled: boolean;
     reportsEnabled: boolean;

@@ -1,21 +1,6 @@
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
-
 import React from 'react';
 import AdminDatabaseManager from '../database/AdminDatabaseManager';
-import AdminFinanceSection from '../finance/AdminFinance';
-import AdminMarketingSection from '../marketing/AdminMarketingSection';
-import AdminPanelSection from '../panel/AdminPanelSection';
-import AdminSettingsSection from '../settings/AdminSettings';
-import AdminSupportSection from '../support/AdminSupportSection';
+import { AdminFinanceSection, AdminMarketingSection, AdminPanelSection, AdminSettingsSection, AdminSupportSection } from '../AdminPageDynamicSections';
 import type { AdminPageTab } from './useAdminPageController';
 
 interface AdminPageContentProps {
@@ -44,7 +29,7 @@ const AdminPageContent = (props: AdminPageContentProps) => {
     case 'panel':
       return <AdminPanelSection key={props.panelSectionKey} {...props.panelSectionProps} />;
     case 'operation':
-      return <AdminDatabaseManager key={props.databaseSectionKey} {...props.databaseSectionProps} />;
+      return <AdminDatabaseManager {...props.databaseSectionProps} />;
     case 'marketplace':
       if (marketplaceUsesDatabaseSurface) {
         return (

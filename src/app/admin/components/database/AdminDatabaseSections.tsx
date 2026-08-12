@@ -1,3 +1,5 @@
+'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -10,24 +12,29 @@
 */
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import { CheckCircle2, ListChecks, Loader2, RotateCcw, X } from 'lucide-react';
 import type { Material, Prova, Question, Ranking, SystemSettings, UserProfile } from '@types';
 import { apiClient } from '@services/api';
 import type { ImportedQuestionBatchPayload } from '@services/questions';
 import { useToast } from '@providers/ToastProvider';
-import FiltersManagementSection from './FiltersManagementSection';
-import AdminMaterialsSection from '../materials/AdminMaterialsSection';
-import BlockedMaterialsSection from '../materials/BlockedMaterialsSection';
-import AdminExamBankSection from '../exams/AdminExamBankSection';
-import AdminFilesSection from '../files/AdminFilesSection';
-import AdminImportSection from '../import/AdminImportSection';
-import AdminGranCrawlerSection, {
-  type GranImportPayload,
-  type GranPublicationBatch,
+import type FiltersManagementSectionType from './FiltersManagementSection';
+import type AdminMaterialsSectionType from '../materials/AdminMaterialsSection';
+import type BlockedMaterialsSectionType from '../materials/BlockedMaterialsSection';
+import type AdminExamBankSectionType from '../exams/AdminExamBankSection';
+import type AdminUsersSectionType from '../users/AdminUsersSection';
+import type AdminQuestionsSectionType from '../questions/AdminQuestionsSection';
+import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
+import type AdminReportsSectionType from '../reports/AdminReportsSection';
+import type AdminRankingsSectionType from '../rankings/AdminRankingsSection';
+import type AdminImportSectionType from '../import/AdminImportSection';
+import type {
+  GranImportPayload,
+  GranPublicationBatch,
 } from '../import/AdminGranCrawlerSection';
-import AdminGranCrawlerReviewBatch, {
-  type GranQuestionIndexAvailability,
-  type GranReviewBatchPublisher,
+import type {
+  GranQuestionIndexAvailability,
+  GranReviewBatchPublisher,
 } from '../import/AdminGranCrawlerReviewBatch';
 import {
   countGranReviewStatuses,
@@ -36,26 +43,38 @@ import {
   getGranReviewQueueOffsets,
   type GranReviewDisplayStatus,
 } from '../import/granCrawlerReviewUtils';
-import AdminLegalCommentarySection from '../legal-commentary/AdminLegalCommentarySection';
-import AdminQuestionGroupsSection from '../questions/AdminQuestionGroupsSection';
-import AdminQuestionsSection from '../questions/AdminQuestionsSection';
-import AdminRankingsSection from '../rankings/AdminRankingsSection';
-import AdminReportsSection from '../reports/AdminReportsSection';
 import {
   getReportTargetBadgeClass,
   getReportTargetLabel,
 } from '../reports/reportModeration';
-import AdminUsersSection from '../users/AdminUsersSection';
+const AdminSectionLoading = () => <RouteContentSkeleton variant="admin" />;
 
-type AdminQuestionsSectionProps = React.ComponentProps<typeof AdminQuestionsSection>;
-type AdminExamBankSectionProps = React.ComponentProps<typeof AdminExamBankSection>;
-type AdminUsersSectionProps = React.ComponentProps<typeof AdminUsersSection>;
-type AdminMaterialsSectionProps = React.ComponentProps<typeof AdminMaterialsSection>;
-type AdminReportsSectionProps = React.ComponentProps<typeof AdminReportsSection>;
-type AdminRankingsSectionProps = React.ComponentProps<typeof AdminRankingsSection>;
-type BlockedMaterialsSectionProps = React.ComponentProps<typeof BlockedMaterialsSection>;
-type FiltersManagementSectionProps = React.ComponentProps<typeof FiltersManagementSection>;
-type AdminImportSectionProps = React.ComponentProps<typeof AdminImportSection>;
+const FiltersManagementSection = dynamic(() => import('./FiltersManagementSection'), { loading: AdminSectionLoading });
+const AdminMaterialsSection = dynamic(() => import('../materials/AdminMaterialsSection'), { loading: AdminSectionLoading });
+const BlockedMaterialsSection = dynamic(() => import('../materials/BlockedMaterialsSection'), { loading: AdminSectionLoading });
+const AdminExamBankSection = dynamic(() => import('../exams/AdminExamBankSection'), { loading: AdminSectionLoading });
+const AdminFilesSection = dynamic(() => import('../files/AdminFilesSection'), { loading: AdminSectionLoading });
+const AdminBlogSection = dynamic(() => import('../blog/AdminBlogSection'), { loading: AdminSectionLoading });
+const AdminChangelogSection = dynamic(() => import('../changelog/AdminChangelogSection'), { loading: AdminSectionLoading });
+const AdminImportSection = dynamic(() => import('../import/AdminImportSection'), { loading: AdminSectionLoading });
+const AdminGranCrawlerSection = dynamic(() => import('../import/AdminGranCrawlerSection'), { loading: AdminSectionLoading });
+const AdminGranCrawlerReviewBatch = dynamic(() => import('../import/AdminGranCrawlerReviewBatch'), { loading: AdminSectionLoading });
+const AdminLegalCommentarySection = dynamic(() => import('../legal-commentary/AdminLegalCommentarySection'), { loading: AdminSectionLoading });
+const AdminQuestionGroupsSection = dynamic(() => import('../questions/AdminQuestionGroupsSection'), { loading: AdminSectionLoading });
+const AdminQuestionsSection = dynamic(() => import('../questions/AdminQuestionsSection'), { loading: AdminSectionLoading });
+const AdminRankingsSection = dynamic(() => import('../rankings/AdminRankingsSection'), { loading: AdminSectionLoading });
+const AdminReportsSection = dynamic(() => import('../reports/AdminReportsSection'), { loading: AdminSectionLoading });
+const AdminUsersSection = dynamic(() => import('../users/AdminUsersSection'), { loading: AdminSectionLoading });
+
+type AdminQuestionsSectionProps = React.ComponentProps<typeof AdminQuestionsSectionType>;
+type AdminExamBankSectionProps = React.ComponentProps<typeof AdminExamBankSectionType>;
+type AdminUsersSectionProps = React.ComponentProps<typeof AdminUsersSectionType>;
+type AdminMaterialsSectionProps = React.ComponentProps<typeof AdminMaterialsSectionType>;
+type AdminReportsSectionProps = React.ComponentProps<typeof AdminReportsSectionType>;
+type AdminRankingsSectionProps = React.ComponentProps<typeof AdminRankingsSectionType>;
+type BlockedMaterialsSectionProps = React.ComponentProps<typeof BlockedMaterialsSectionType>;
+type FiltersManagementSectionProps = React.ComponentProps<typeof FiltersManagementSectionType>;
+type AdminImportSectionProps = React.ComponentProps<typeof AdminImportSectionType>;
 
 const getGranPayloadKey = (payload: GranImportPayload) => {
   const examKey = payload.exam.sourceKey || payload.exam.externalId || payload.exam.title || 'proof';
@@ -596,6 +615,14 @@ const AdminDatabaseSections = ({
 
   if (activeSubTab === 'files') {
     return <AdminFilesSection />;
+  }
+
+  if (activeSubTab === 'blog') {
+    return <AdminBlogSection />;
+  }
+
+  if (activeSubTab === 'novidades') {
+    return <AdminChangelogSection />;
   }
 
   if (activeSubTab === 'users') {

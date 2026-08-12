@@ -39,6 +39,16 @@ assertSessionRouteAccessContains(
     'The root route must be resolved from the authenticated server session.'
 );
 assertSessionRouteAccessContains(
+    $base . '/shared/auth/AuthCookies.php',
+    "setcookie(getAuthSessionHintCookieName(), '1'",
+    'Issuing a refresh cookie must also publish a non-sensitive session hint.'
+);
+assertSessionRouteAccessContains(
+    $base . '/shared/auth/AuthCookies.php',
+    "setcookie(getAuthSessionHintCookieName(), '',",
+    'Logout must clear the non-sensitive session hint.'
+);
+assertSessionRouteAccessContains(
     $proxyPath,
     "dashboardUrl.pathname = '/dashboard'",
     'An authenticated root request must be redirected before rendering.'

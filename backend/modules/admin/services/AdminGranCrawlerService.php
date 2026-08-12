@@ -21,6 +21,7 @@ final class AdminGranCrawlerService
     private const MAX_REMOTE_RESPONSE_BYTES = 8_000_000;
     private const MAX_REQUEST_URL_BYTES = 8_000;
     private const MAX_QUESTIONS_PER_PAGE = 1000;
+    private const MAX_CAPTURED_ASSET_DATA_BYTES = 12_000_000;
 
     /** @var null|Closure(string,string,string):array{status:int,body:string} */
     private ?Closure $httpClient;
@@ -71,32 +72,25 @@ final class AdminGranCrawlerService
             $fallbackYear
         );
         $rows = $this->extractRows($remotePayload);
-        if ($rows === []) {
-            throw new InvalidArgumentException('A resposta Gran nao contem questoes para esta pagina.');
-        }
         $granExamFiles = $this->normalizeGranExamFiles($input['granExamFiles'] ?? []);
+        $granAssetData = $this->normalizeGranAssetData($input['granAssetData'] ?? []);
 
         $payloads = $this->mapQuestionImportPayloads($rows, [
             'year' => $request['year'] !== '' ? (int) $request['year'] : null,
             'extractionMode' => 'gran_browser_extension',
             'granExamFiles' => $granExamFiles,
+            'granAssetData' => $granAssetData,
             'collectionPage' => $request['page'],
             'collectionPerPage' => $request['perPage'],
             'collectionRequestUrl' => $request['url'],
         ]);
+        $pagination = $this->readPagination($remotePayload, $request['perPage']);
 
         return [
             'page' => $request['page'],
             'perPage' => $request['perPage'],
-            'total' => $this->readPositiveInt(
-                $remotePayload['data']['total'] ?? $remotePayload['total'] ?? 0
-            ),
-            'pages' => $this->readPositiveInt(
-                $remotePayload['data']['pages']
-                ?? $remotePayload['data']['totalPaginas']
-                ?? $remotePayload['pages']
-                ?? 0
-            ),
+            'total' => $pagination['total'],
+            'pages' => $pagination['pages'],
             'requestUrl' => $request['url'],
             'tokenExpiresAt' => null,
             'questionCount' => $this->countPayloadQuestions($payloads),
@@ -163,17 +157,13 @@ final class AdminGranCrawlerService
         $payloads = $this->mapQuestionImportPayloads($rows, [
             'year' => $year !== '' ? (int) $year : null,
         ]);
+        $pagination = $this->readPagination($decoded, $perPage);
 
         return [
             'page' => $page,
             'perPage' => $perPage,
-            'total' => $this->readPositiveInt($decoded['data']['total'] ?? $decoded['total'] ?? 0),
-            'pages' => $this->readPositiveInt(
-                $decoded['data']['pages']
-                ?? $decoded['data']['totalPaginas']
-                ?? $decoded['pages']
-                ?? 0
-            ),
+            'total' => $pagination['total'],
+            'pages' => $pagination['pages'],
             'requestUrl' => $url,
             'tokenExpiresAt' => $expiration !== null ? gmdate('c', $expiration) : null,
             'questionCount' => $this->countPayloadQuestions($payloads),
@@ -370,6 +360,35 @@ final class AdminGranCrawlerService
         return $this->enqueuePublication($input, $actorUserId);
     }
 
+    /**
+     * O modo automatico nao precisa devolver o payload canonico ao navegador
+     * para que ele o envie novamente em enqueue_publication. Mapeamos e
+     * enfileiramos na mesma requisicao administrativa, preservando a chave de
+     * idempotencia por pagina para retomadas seguras.
+     *
+     * @return array<string,mixed>
+     */
+    public function mapAndEnqueuePublication(array $input, string $actorUserId): array
+    {
+        $mapped = $this->mapBrowserResponse($input);
+        $batch = $this->enqueuePublication([
+            'payloads' => $mapped['payloads'] ?? [],
+            'focus' => $input['focus'] ?? null,
+            'idempotencyKey' => $input['idempotencyKey'] ?? '',
+        ], $actorUserId);
+
+        return [
+            'page' => (int) ($mapped['page'] ?? 1),
+            'perPage' => (int) ($mapped['perPage'] ?? 0),
+            'total' => (int) ($mapped['total'] ?? 0),
+            'pages' => (int) ($mapped['pages'] ?? 0),
+            'requestUrl' => (string) ($mapped['requestUrl'] ?? ''),
+            'questionCount' => (int) ($mapped['questionCount'] ?? 0),
+            'fileCount' => (int) ($mapped['fileCount'] ?? 0),
+            'batch' => $batch,
+        ];
+    }
+
     public function enqueuePublication(array $input, string $actorUserId): array
     {
         $payloads = is_array($input['payloads'] ?? null) && array_is_list($input['payloads'])
@@ -415,11 +434,6 @@ final class AdminGranCrawlerService
                     ]];
                     $question['filters'] = $filters;
                     $questions[$questionIndex] = $question;
-                } elseif (!is_array($questionFocuses) || $questionFocuses === []) {
-                    $number = $question['source']['questionNumber'] ?? ($questionIndex + 1);
-                    throw new InvalidArgumentException(
-                        'A questao ' . (string) $number . ' nao possui area/foco. Revise o item ou informe um foco de fallback.'
-                    );
                 }
             }
             $payload['questions'] = $questions;
@@ -443,8 +457,210 @@ final class AdminGranCrawlerService
         $ingestion = new PrivateQuestionIngestionService($this->db);
         return [
             'currentBatch' => $ingestion->getCurrentProcessingBatch($actorUserId),
+            'automaticCheckpoint' => $this->getAutomaticCheckpoint($actorUserId),
+            'failureHistory' => $ingestion->listGranQuestionFailures('active', 50),
+            'failureRetention' => $ingestion->previewGranQuestionFailureRetention(),
             'taxonomyStatus' => (new AdminGranTaxonomySyncService($this->db))->getStatus(),
         ];
+    }
+
+    /** @return array<string,mixed>|null */
+    public function getAutomaticCheckpoint(string $actorUserId): ?array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT actor_user_id, run_key, request_url, per_page, current_year, current_page,
+                        total_pages, status, last_batch_public_id, last_error, updated_at
+                 FROM gran_automatic_crawler_checkpoints
+                 WHERE actor_user_id = :actor_user_id
+                 LIMIT 1'
+            );
+            $stmt->execute([':actor_user_id' => $actorUserId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                return null;
+            }
+            return [
+                'runKey' => (string) $row['run_key'],
+                'requestUrl' => (string) $row['request_url'],
+                'perPage' => (int) $row['per_page'],
+                'year' => (int) $row['current_year'],
+                'page' => (int) $row['current_page'],
+                'totalPages' => $row['total_pages'] !== null ? (int) $row['total_pages'] : null,
+                'status' => (string) $row['status'],
+                'lastBatchId' => $row['last_batch_public_id'] !== null ? (string) $row['last_batch_public_id'] : null,
+                'lastError' => $row['last_error'] !== null ? (string) $row['last_error'] : null,
+                'updatedAt' => $row['updated_at'] !== null ? (string) $row['updated_at'] : null,
+            ];
+        } catch (Throwable) {
+            // O bootstrap continua funcional durante o deploy que cria a tabela.
+            return null;
+        }
+    }
+
+    /** @return array<string,mixed> */
+    public function saveAutomaticCheckpoint(array $input, string $actorUserId): array
+    {
+        $requestUrl = trim((string) ($input['requestUrl'] ?? ''));
+        if ($requestUrl === '' || strlen($requestUrl) > self::MAX_REQUEST_URL_BYTES) {
+            throw new InvalidArgumentException('A URL do checkpoint automatico e invalida.');
+        }
+        $parts = parse_url($requestUrl);
+        if (!is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || strtolower(rtrim((string) ($parts['host'] ?? ''), '.')) !== self::API_HOST
+            || (string) ($parts['path'] ?? '') !== self::API_PATH
+            || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment'])) {
+            throw new InvalidArgumentException('A URL do checkpoint automatico deve usar a rota oficial de questoes da Gran.');
+        }
+
+        $perPage = max(1, min(self::MAX_QUESTIONS_PER_PAGE, (int) ($input['perPage'] ?? 20)));
+        $year = (int) ($input['year'] ?? 0);
+        $page = (int) ($input['page'] ?? 0);
+        $totalPages = isset($input['totalPages']) && is_numeric($input['totalPages'])
+            ? max(1, min(1_000_000, (int) $input['totalPages']))
+            : null;
+        if ($year < 1900 || $year > 2200 || $page < 1 || $page > 1_000_000) {
+            throw new InvalidArgumentException('Ano ou pagina do checkpoint automatico e invalido.');
+        }
+        $status = strtolower(trim((string) ($input['status'] ?? 'paused')));
+        if (!in_array($status, ['running', 'paused', 'error'], true)) {
+            throw new InvalidArgumentException('Status do checkpoint automatico e invalido.');
+        }
+        $runKey = trim((string) ($input['runKey'] ?? ''));
+        if ($runKey === '') {
+            $existing = $this->getAutomaticCheckpoint($actorUserId);
+            $runKey = is_array($existing) ? (string) ($existing['runKey'] ?? '') : '';
+        }
+        if (!preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $runKey)) {
+            $runKey = $this->createCheckpointRunKey();
+        }
+        $lastBatchId = trim((string) ($input['lastBatchId'] ?? ''));
+        $lastError = trim((string) ($input['lastError'] ?? ''));
+        $stmt = $this->db->prepare(
+            'INSERT INTO gran_automatic_crawler_checkpoints
+                (actor_user_id, run_key, request_url, per_page, current_year, current_page,
+                 total_pages, status, last_batch_public_id, last_error)
+             VALUES
+                (:actor_user_id, :run_key, :request_url, :per_page, :current_year, :current_page,
+                 :total_pages, :status, :last_batch_id, :last_error)
+             ON DUPLICATE KEY UPDATE
+                run_key = VALUES(run_key), request_url = VALUES(request_url), per_page = VALUES(per_page),
+                current_year = VALUES(current_year), current_page = VALUES(current_page),
+                total_pages = VALUES(total_pages), status = VALUES(status),
+                last_batch_public_id = VALUES(last_batch_public_id), last_error = VALUES(last_error),
+                updated_at = CURRENT_TIMESTAMP'
+        );
+        $stmt->execute([
+            ':actor_user_id' => $actorUserId,
+            ':run_key' => $runKey,
+            ':request_url' => $requestUrl,
+            ':per_page' => $perPage,
+            ':current_year' => $year,
+            ':current_page' => $page,
+            ':total_pages' => $totalPages,
+            ':status' => $status,
+            ':last_batch_id' => $lastBatchId !== '' ? $lastBatchId : null,
+            ':last_error' => $lastError !== '' ? mb_substr($lastError, 0, 1000) : null,
+        ]);
+        $checkpoint = $this->getAutomaticCheckpoint($actorUserId);
+        if ($checkpoint === null) {
+            throw new RuntimeException('Nao foi possivel salvar o checkpoint automatico.');
+        }
+        return $checkpoint;
+    }
+
+    public function clearAutomaticCheckpoint(string $actorUserId): void
+    {
+        $stmt = $this->db->prepare('DELETE FROM gran_automatic_crawler_checkpoints WHERE actor_user_id = :actor_user_id');
+        $stmt->execute([':actor_user_id' => $actorUserId]);
+    }
+
+    private function createCheckpointRunKey(): string
+    {
+        $bytes = bin2hex(random_bytes(16));
+        return substr($bytes, 0, 8) . '-' . substr($bytes, 8, 4) . '-' . substr($bytes, 12, 4)
+            . '-' . substr($bytes, 16, 4) . '-' . substr($bytes, 20, 12);
+    }
+
+    /** @return array{items:array<int,array<string,mixed>>,total:int,nextCursor:?int} */
+    public function listPublicationFailures(array $input): array
+    {
+        $status = trim((string) ($input['status'] ?? 'active')) ?: 'active';
+        $limit = max(1, min(100, (int) ($input['limit'] ?? 50)));
+        $cursor = isset($input['cursor']) && is_numeric($input['cursor'])
+            ? (int) $input['cursor']
+            : null;
+        return (new PrivateQuestionIngestionService($this->db))
+            ->listGranQuestionFailures($status, $limit, $cursor);
+    }
+
+    /** @return array<string,mixed> */
+    public function getPublicationFailure(array $input): array
+    {
+        return (new PrivateQuestionIngestionService($this->db))
+            ->getGranQuestionFailure((int) ($input['failureId'] ?? 0));
+    }
+
+    /** @return array<string,mixed> */
+    public function retryPublicationFailure(array $input, string $actorUserId): array
+    {
+        return (new PrivateQuestionIngestionService($this->db))
+            ->retryGranQuestionFailure((int) ($input['failureId'] ?? 0), $actorUserId);
+    }
+
+    /** @return array<string,mixed> */
+    public function retryPublicationFailures(array $input, string $actorUserId): array
+    {
+        $failureIds = is_array($input['failureIds'] ?? null) ? $input['failureIds'] : [];
+        return (new PrivateQuestionIngestionService($this->db))
+            ->retryGranQuestionFailures($failureIds, $actorUserId);
+    }
+
+    /** @return array{failureId:int,status:string} */
+    public function ignorePublicationFailure(array $input): array
+    {
+        return (new PrivateQuestionIngestionService($this->db))
+            ->ignoreGranQuestionFailure((int) ($input['failureId'] ?? 0));
+    }
+
+    /** @return array{failureIds:array<int,int>,ignoredCount:int,status:string} */
+    public function ignoreAllPublicationFailures(): array
+    {
+        return (new PrivateQuestionIngestionService($this->db))
+            ->ignoreAllGranQuestionFailures();
+    }
+
+    /** @return array<string,mixed> */
+    public function previewPublicationFailureRetention(): array
+    {
+        return (new PrivateQuestionIngestionService($this->db))
+            ->previewGranQuestionFailureRetention();
+    }
+
+    /** @return array<string,mixed> */
+    public function purgePublicationFailureRetention(): array
+    {
+        return (new PrivateQuestionIngestionService($this->db))
+            ->purgeExpiredGranQuestionFailureDiagnostics();
+    }
+
+    /** @return array<string,mixed> */
+    public function getPublicationBatch(array $input, string $actorUserId): array
+    {
+        return (new PrivateQuestionIngestionService($this->db))->getBatchByPublicId(
+            (string) ($input['batchId'] ?? ''),
+            $actorUserId
+        );
+    }
+
+    /** @return array<string,mixed> */
+    public function getPublicationBatchProgress(array $input, string $actorUserId): array
+    {
+        return (new PrivateQuestionIngestionService($this->db))->getBatchProgressByPublicId(
+            (string) ($input['batchId'] ?? ''),
+            $actorUserId
+        );
     }
 
     private function requestGran(string $url, string $token, string $clientId): array
@@ -1136,7 +1352,7 @@ final class AdminGranCrawlerService
         unset($context);
 
         $exam = $this->inferExam($questions, $metadata);
-        return [
+        $payload = [
             'schemaVersion' => 'question-import.v2',
             'import' => [
                 'sourceType' => 'authorized_admin_collection',
@@ -1157,6 +1373,10 @@ final class AdminGranCrawlerService
             'contexts' => $contexts,
             'questions' => $questions,
         ];
+        return $this->hydrateCapturedGranAssets(
+            $payload,
+            is_array($metadata['granAssetData'] ?? null) ? $metadata['granAssetData'] : []
+        );
     }
 
     private function mapAlternatives(array $row, string $questionTempId, ?int $sourcePage): array
@@ -2049,7 +2269,10 @@ final class AdminGranCrawlerService
             'edital' => [
                 'kind' => 'edital',
                 'name' => 'Edital',
-                'aliases' => ['edital', 'arquivoEdital', 'arquivo_edital'],
+                'aliases' => [
+                    'edital', 'arquivoEdital', 'arquivo_edital', 'urlEdital',
+                    'url_edital', 'editalUrl', 'edital_url',
+                ],
             ],
             'folhaDeProva' => [
                 'kind' => 'prova',
@@ -2062,12 +2285,21 @@ final class AdminGranCrawlerService
                     'caderno_de_prova',
                     'arquivoProva',
                     'arquivo_prova',
+                    'urlProva',
+                    'url_prova',
+                    'provaUrl',
+                    'prova_url',
+                    'folhaProva',
+                    'folha_prova',
                 ],
             ],
             'gabarito' => [
                 'kind' => 'gabarito',
                 'name' => 'Gabarito',
-                'aliases' => ['gabarito', 'arquivoGabarito', 'arquivo_gabarito'],
+                'aliases' => [
+                    'gabarito', 'arquivoGabarito', 'arquivo_gabarito',
+                    'urlGabarito', 'url_gabarito', 'gabaritoUrl', 'gabarito_url',
+                ],
             ],
         ];
         $normalized = [];
@@ -2094,7 +2326,11 @@ final class AdminGranCrawlerService
                         $remoteValue['download'] ?? null,
                         $remoteValue['downloadUrl'] ?? null,
                         $remoteValue['download_url'] ?? null,
-                        $remoteValue['arquivo'] ?? null
+                        $remoteValue['arquivo'] ?? null,
+                        $remoteValue['file'] ?? null,
+                        $remoteValue['caminho'] ?? null,
+                        $remoteValue['path'] ?? null,
+                        $remoteValue['uri'] ?? null
                     )
                     : trim((string) $remoteValue);
                 if (!$this->isAllowedGranFileUrl($sourceUrl)) {
@@ -2111,6 +2347,132 @@ final class AdminGranCrawlerService
             }
         }
         return $normalized;
+    }
+
+    /**
+     * The extension fetches protected Gran images inside the authenticated
+     * browser session. The server only receives an already captured data URL,
+     * never the Gran credential or browser cookies.
+     *
+     * @return array<string,array{base64?:string,mimeType?:string,size?:int,error?:string}>
+     */
+    private function normalizeGranAssetData(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $normalized = [];
+        $totalBytes = 0;
+        foreach ($value as $sourceUrl => $entry) {
+            $candidateUrl = is_array($entry)
+                ? $this->readText($entry['sourceUrl'] ?? null, $entry['url'] ?? null, $sourceUrl)
+                : trim((string) $sourceUrl);
+            if (!$this->isAllowedGranFileUrl($candidateUrl)) {
+                continue;
+            }
+            $base64 = is_array($entry) ? trim((string) ($entry['base64'] ?? '')) : '';
+            $error = is_array($entry) ? trim((string) ($entry['error'] ?? '')) : '';
+            if ($base64 === '' && $error === '') {
+                continue;
+            }
+            if ($base64 !== '') {
+                if (
+                    strlen($base64) > self::MAX_CAPTURED_ASSET_DATA_BYTES
+                    || preg_match('#^data:image/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$#i', $base64) !== 1
+                ) {
+                    throw new InvalidArgumentException('Imagem capturada pela extensao possui formato ou tamanho invalido.');
+                }
+                $totalBytes += strlen($base64);
+                if ($totalBytes > self::MAX_CAPTURED_ASSET_DATA_BYTES) {
+                    throw new InvalidArgumentException('As imagens capturadas excedem o limite seguro de 12 MB por coleta.');
+                }
+                $normalized[$candidateUrl] = [
+                    'base64' => $base64,
+                    'mimeType' => trim((string) ($entry['mimeType'] ?? '')),
+                    'size' => max(0, (int) ($entry['size'] ?? 0)),
+                ];
+                continue;
+            }
+            $normalized[$candidateUrl] = [
+                'error' => substr($error, 0, 500),
+            ];
+        }
+        return $normalized;
+    }
+
+    private function hydrateCapturedGranAssets(array $payload, array $capturedAssets): array
+    {
+        if ($capturedAssets === []) {
+            return $payload;
+        }
+        foreach (is_array($payload['contexts'] ?? null) ? $payload['contexts'] : [] as $index => $context) {
+            if (!is_array($context)) {
+                continue;
+            }
+            $context['assets'] = $this->hydrateCapturedGranAssetCollection(
+                $context['assets'] ?? [],
+                $capturedAssets
+            );
+            $payload['contexts'][$index] = $context;
+        }
+        foreach (is_array($payload['questions'] ?? null) ? $payload['questions'] : [] as $questionIndex => $question) {
+            if (!is_array($question)) {
+                continue;
+            }
+            $question['assets'] = $this->hydrateCapturedGranAssetCollection(
+                $question['assets'] ?? [],
+                $capturedAssets
+            );
+            foreach (['alternatives', 'options', 'itens'] as $alternativesKey) {
+                if (!is_array($question[$alternativesKey] ?? null)) {
+                    continue;
+                }
+                foreach ($question[$alternativesKey] as $alternativeIndex => $alternative) {
+                    if (!is_array($alternative)) {
+                        continue;
+                    }
+                    $alternative['assets'] = $this->hydrateCapturedGranAssetCollection(
+                        $alternative['assets'] ?? [],
+                        $capturedAssets
+                    );
+                    $question[$alternativesKey][$alternativeIndex] = $alternative;
+                }
+            }
+            $payload['questions'][$questionIndex] = $question;
+        }
+        return $payload;
+    }
+
+    private function hydrateCapturedGranAssetCollection(mixed $assets, array $capturedAssets): array
+    {
+        if (!is_array($assets)) {
+            return [];
+        }
+        foreach ($assets as $index => $asset) {
+            if (!is_array($asset)) {
+                continue;
+            }
+            $sourceUrl = trim((string) ($asset['url'] ?? $asset['sourceUrl'] ?? ''));
+            $capture = $capturedAssets[$sourceUrl] ?? null;
+            if (!is_array($capture)) {
+                continue;
+            }
+            if (!empty($capture['base64'])) {
+                $asset['base64'] = $capture['base64'];
+                $asset['captureStatus'] = 'captured';
+                if (!empty($capture['mimeType'])) {
+                    $asset['mimeType'] = $capture['mimeType'];
+                }
+                if (!empty($capture['size'])) {
+                    $asset['size'] = (int) $capture['size'];
+                }
+            } elseif (!empty($capture['error'])) {
+                $asset['captureStatus'] = 'failed';
+                $asset['captureError'] = (string) $capture['error'];
+            }
+            $assets[$index] = $asset;
+        }
+        return $assets;
     }
 
     private function isAllowedGranFileUrl(string $url): bool
@@ -2634,6 +2996,67 @@ final class AdminGranCrawlerService
     private function readPositiveInt(mixed $value): int
     {
         return max(0, (int) $value);
+    }
+
+    /** @return array{pages:int,total:int} */
+    private function readPagination(array $payload, int $perPage): array
+    {
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $pagination = is_array($payload['pagination'] ?? null) ? $payload['pagination'] : [];
+        if (is_array($data['pagination'] ?? null)) {
+            $pagination = array_merge($pagination, $data['pagination']);
+        }
+        $meta = is_array($payload['meta'] ?? null) ? $payload['meta'] : [];
+        if (is_array($data['meta'] ?? null)) {
+            $meta = array_merge($meta, $data['meta']);
+        }
+
+        $pages = 0;
+        foreach ([
+            $pagination['pages'] ?? null,
+            $pagination['totalPages'] ?? null,
+            $pagination['total_pages'] ?? null,
+            $pagination['totalPaginas'] ?? null,
+            $pagination['lastPage'] ?? null,
+            $pagination['last_page'] ?? null,
+            $pagination['pageCount'] ?? null,
+            $data['pages'] ?? null,
+            $data['totalPages'] ?? null,
+            $data['total_pages'] ?? null,
+            $data['totalPaginas'] ?? null,
+            $meta['pages'] ?? null,
+            $meta['totalPages'] ?? null,
+            $meta['total_pages'] ?? null,
+            $payload['pages'] ?? null,
+            $payload['totalPages'] ?? null,
+            $payload['totalPaginas'] ?? null,
+        ] as $candidate) {
+            $pages = $this->readPositiveInt($candidate);
+            if ($pages > 0) break;
+        }
+
+        $total = 0;
+        foreach ([
+            $pagination['total'] ?? null,
+            $pagination['totalItems'] ?? null,
+            $pagination['total_items'] ?? null,
+            $pagination['totalElements'] ?? null,
+            $data['total'] ?? null,
+            $data['totalItems'] ?? null,
+            $data['total_itens'] ?? null,
+            $meta['total'] ?? null,
+            $meta['totalItems'] ?? null,
+            $payload['total'] ?? null,
+        ] as $candidate) {
+            $total = $this->readPositiveInt($candidate);
+            if ($total > 0) break;
+        }
+
+        if ($pages === 0 && $total > 0) {
+            $pages = (int) ceil($total / max(1, $perPage));
+        }
+
+        return ['pages' => $pages, 'total' => $total];
     }
 
     private function resolveDifficulty(mixed $value): string

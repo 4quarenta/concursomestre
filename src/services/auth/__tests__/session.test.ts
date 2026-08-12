@@ -73,6 +73,9 @@ vi.mock('axios', () => {
         post: mockPost,
         get: mockGet,
       })),
+      isAxiosError: vi.fn((error: unknown) => Boolean(
+        error && typeof error === 'object' && 'isAxiosError' in error
+      )),
     },
   };
 });
@@ -221,15 +224,85 @@ describe('auth session manager', () => {
     expect(session.getAccessToken()).toBe(refreshedToken);
   });
 
-  it('não tenta bootstrap refresh quando existe apenas CSRF publico sem sinal de sessão', async () => {
+  it('confirma no backend um CSRF sem sinal local antes de declarar a sessão anônima', async () => {
     cookieJar = 'cm_csrf=test-csrf';
+    mockGet.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 404 },
+    });
     const session = await importSessionModule();
 
     const snapshot = await session.bootstrapAuthSession();
 
     expect(snapshot.isBootstrapped).toBe(true);
     expect(snapshot.isAuthenticated).toBe(false);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(mockGet).toHaveBeenCalledWith(
+      'auth/session-route-access.php',
+      expect.objectContaining({
+        withCredentials: true,
+        headers: { 'X-ConcursoMestre-Session-Route-Check': '1' },
+      }),
+    );
     expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it('restaura uma sessão antiga confirmada pelo backend mesmo sem hint local', async () => {
+    cookieJar = 'cm_csrf=test-csrf';
+    mockGet.mockResolvedValue({ status: 204 });
+    const futureExp = Math.floor(Date.now() / 1000) + 1800;
+    const refreshedToken = `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64url')}.signature`;
+    mockPost.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          token: refreshedToken,
+          ...createCanonicalSession({ id: 'legacy-session-user' }),
+        },
+      },
+    });
+
+    const session = await importSessionModule();
+    const snapshot = await session.bootstrapAuthSession();
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(snapshot.isAuthenticated).toBe(true);
+    expect(snapshot.currentUser?.id).toBe('legacy-session-user');
+  });
+
+  it('usa o cookie de presença e evita a verificação adicional no backend', async () => {
+    cookieJar = 'cm_csrf=test-csrf; cm_session_hint=1';
+    const futureExp = Math.floor(Date.now() / 1000) + 1800;
+    const refreshedToken = `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64url')}.signature`;
+    mockPost.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          token: refreshedToken,
+          ...createCanonicalSession({ id: 'cookie-hint-user' }),
+        },
+      },
+    });
+
+    const session = await importSessionModule();
+    const snapshot = await session.bootstrapAuthSession();
+
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(snapshot.currentUser?.id).toBe('cookie-hint-user');
+  });
+
+  it('preserva o sinal de sessão quando o refresh falha por rede', async () => {
+    cookieJar = 'cm_csrf=test-csrf';
+    storageState.set('cm-auth-session-present', '1');
+    mockPost.mockRejectedValue(new Error('network unavailable'));
+
+    const session = await importSessionModule();
+    const snapshot = await session.bootstrapAuthSession();
+
+    expect(snapshot.isAuthenticated).toBe(false);
+    expect(storageState.get('cm-auth-session-present')).toBe('1');
   });
 
   it('faz bootstrap só com refresh quando a API já devolve o usuário', async () => {

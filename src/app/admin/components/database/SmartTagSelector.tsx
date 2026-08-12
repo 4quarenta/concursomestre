@@ -14,6 +14,7 @@ import { PlusCircle, X } from 'lucide-react';
 
 type SmartTagOptionObject = {
   id?: string | number;
+  label?: string;
   name?: string;
   nome?: string;
   sigla?: string;
@@ -64,7 +65,8 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
     if (value && typeof value === 'object') {
       const sigla = String(value.sigla ?? '').trim();
       const name = String(
-        value.name
+        value.label
+        ?? value.name
         ?? value.nome
         ?? value.descricao
         ?? value['descrição']
@@ -89,6 +91,7 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
 
     return [
       label,
+      value.label,
       value.name,
       value.nome,
       value.sigla,

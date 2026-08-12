@@ -35,6 +35,7 @@ const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/terms',
   '/privacy',
   '/changelog',
+  '/novidades',
   '/planos',
   '/elite',
   '/checkout',

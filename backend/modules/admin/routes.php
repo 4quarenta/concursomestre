@@ -762,7 +762,7 @@ function handleAdminBrandAssetUploadRoute(PDO $db): void
         }
 
         $purpose = trim((string) ($_POST['purpose'] ?? ''));
-        $context = $purpose === 'blog-cover'
+        $context = in_array($purpose, ['blog-cover', 'blog-content'], true)
             ? requireAdminSessionContext($db)
             : requirePlatformAdminSessionContext($db);
         $file = $_FILES['asset'] ?? null;

@@ -34,6 +34,7 @@ import {
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
 } from '../../../../components/shared/adminPanelStyles';
+import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
 
 const resolveQuestionId = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -455,14 +456,7 @@ const AdminQuestionEditPage = () => {
   ) : null;
 
   if (isAuthLoading || isQuestionLoading) {
-    return renderAdminShell(
-      <div className="flex min-h-[360px] items-center justify-center text-slate-500 dark:text-slate-400">
-        <div className="inline-flex items-center gap-3 rounded-sm border border-slate-300 bg-white px-5 py-4 text-sm font-bold shadow-none dark:border-slate-700 dark:bg-slate-900">
-          <Loader2 className="animate-spin" size={18} />
-          Carregando editor da questão...
-        </div>
-      </div>,
-    );
+    return renderAdminShell(<RouteContentSkeleton variant="admin" />);
   }
 
   if (!canAccessAdminPanel(currentUser)) {
@@ -470,14 +464,7 @@ const AdminQuestionEditPage = () => {
   }
 
   if (!loadError && (isNewQuestion || question) && !editor.isManualQuestionModalOpen) {
-    return renderAdminShell(
-      <div className="flex min-h-[360px] items-center justify-center text-slate-500 dark:text-slate-400">
-        <div className="inline-flex items-center gap-3 rounded-sm border border-slate-300 bg-white px-5 py-4 text-sm font-bold shadow-none dark:border-slate-700 dark:bg-slate-900">
-          <Loader2 className="animate-spin" size={18} />
-          Preparando editor da questão...
-        </div>
-      </div>,
-    );
+    return renderAdminShell(<RouteContentSkeleton variant="admin" />);
   }
 
   if (loadError || (!isNewQuestion && !question)) {

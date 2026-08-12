@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
+require_once __DIR__ . '/ExamLocationClassifier.php';
 
 class ExamsService
 {
@@ -72,6 +73,189 @@ class ExamsService
                 'nextCursor' => $nextCursor,
             ],
         ];
+    }
+
+    public function listPublicDirectory(array $query = []): array
+    {
+        $limit = max(1, min(48, (int) ($query['limit'] ?? 12)));
+        $page = max(1, (int) ($query['page'] ?? 1));
+        $year = preg_match('/^\d{4}$/', (string) ($query['year'] ?? '')) === 1
+            ? (int) $query['year']
+            : 0;
+        $state = strtoupper(trim((string) ($query['state'] ?? '')));
+        $state = preg_match('/^[A-Z]{2}$/', $state) === 1 ? $state : '';
+        $region = trim((string) ($query['region'] ?? ''));
+        $stateCodes = $state !== '' ? [$state] : ExamLocationClassifier::stateCodesForRegion($region);
+        $result = $this->repository->listPublicDirectory([
+            'limit' => $limit,
+            'offset' => ($page - 1) * $limit,
+            'year' => $year,
+            'state_codes' => $stateCodes,
+        ]);
+        $rows = is_array($result['rows'] ?? null) ? $result['rows'] : [];
+
+        $items = array_map(fn (array $row): array => $this->publicDirectoryItemFromRow($row), $rows);
+
+        $total = (int) ($result['total'] ?? 0);
+        $totalPages = max(1, (int) ceil($total / $limit));
+        $states = array_values(array_filter(array_map(static function (string $stateCode): ?array {
+            return ExamLocationClassifier::locationForStateCode($stateCode);
+        }, is_array($result['states'] ?? null) ? $result['states'] : [])));
+        usort($states, static fn (array $left, array $right): int => strcmp(
+            (string) ($left['stateName'] ?? ''),
+            (string) ($right['stateName'] ?? '')
+        ));
+        $regions = array_values(array_unique(array_column($states, 'region')));
+        sort($regions, SORT_STRING);
+
+        return [
+            'items' => $items,
+            'pageInfo' => [
+                'page' => min($page, $totalPages),
+                'limit' => $limit,
+                'totalItems' => $total,
+                'totalPages' => $totalPages,
+                'hasPrevious' => $page > 1,
+                'hasNext' => $page < $totalPages,
+            ],
+            'facets' => [
+                'years' => is_array($result['years'] ?? null) ? $result['years'] : [],
+                'regions' => $regions,
+                'states' => array_map(static fn (array $location): array => [
+                    'code' => $location['stateCode'],
+                    'name' => $location['stateName'],
+                ], $states),
+            ],
+        ];
+    }
+
+    public function showPublic(string $slug): ?array
+    {
+        $slug = trim($slug);
+        if ($slug === '' || strlen($slug) > 190 || preg_match('/^[a-z0-9-]+$/', $slug) !== 1) {
+            return null;
+        }
+
+        $exam = $this->repository->findPublicBySlug($slug);
+        if (!$exam) {
+            return null;
+        }
+
+        $taxonomies = is_array($exam['taxonomies'] ?? null) ? $exam['taxonomies'] : [];
+        $organizations = $this->publicTaxonomyList($taxonomies['orgao'] ?? []);
+        $boards = $this->publicTaxonomyList($taxonomies['banca'] ?? []);
+        $location = ExamLocationClassifier::classify([
+            $exam['nome'] ?? '',
+            ...array_column($organizations, 'name'),
+        ], $this->firstTaxonomyMetadataValue($taxonomies['orgao'] ?? [], 'metaUf'));
+        $files = array_values(array_filter(array_map(static function (array $file): ?array {
+            if (($file['visibilityStatus'] ?? 'public') !== 'public') {
+                return null;
+            }
+            return [
+                'id' => (int) ($file['id'] ?? 0),
+                'kind' => (string) ($file['kind'] ?? 'outro'),
+                'label' => (string) ($file['label'] ?? 'Arquivo'),
+                'name' => (string) ($file['name'] ?? 'Arquivo'),
+                'url' => (string) ($file['url'] ?? ''),
+                'mimeType' => (string) ($file['mimeType'] ?? ''),
+                'size' => isset($file['size']) ? (int) $file['size'] : null,
+            ];
+        }, is_array($exam['files'] ?? null) ? $exam['files'] : [])));
+        $relatedTaxonomyIds = array_map(
+            'intval',
+            array_column(array_merge(
+                $taxonomies['banca'] ?? [],
+                $taxonomies['orgao'] ?? [],
+                $taxonomies['cargo'] ?? [],
+                $taxonomies['carreira'] ?? [],
+                $taxonomies['area'] ?? [],
+                $taxonomies['foco'] ?? [],
+                $taxonomies['materia'] ?? []
+            ), 'id')
+        );
+        $relatedExams = array_map(
+            fn (array $row): array => $this->publicDirectoryItemFromRow($row),
+            $this->repository->listRelatedPublic(
+                (int) $exam['id'],
+                (int) ($exam['ano'] ?? 0),
+                $relatedTaxonomyIds,
+                6
+            )
+        );
+
+        return [
+            'id' => (int) $exam['id'],
+            'title' => (string) $exam['nome'],
+            'officialTitle' => trim((string) ($exam['tituloOficial'] ?? '')) ?: null,
+            'shortTitle' => trim((string) ($exam['nomeCurto'] ?? '')) ?: null,
+            'slug' => (string) $exam['slug'],
+            'noticeNumber' => trim((string) ($exam['editalNumero'] ?? '')) ?: null,
+            'year' => (int) ($exam['ano'] ?? 0),
+            'level' => trim((string) ($exam['nivel'] ?? '')) ?: null,
+            'questionCount' => (int) ($exam['questionCount'] ?? 0),
+            'registrationStart' => $exam['inscricoesInicio'] ?? null,
+            'registrationEnd' => $exam['inscricoesFim'] ?? null,
+            'examDate' => $exam['dataProva'] ?? null,
+            'resultDate' => $exam['resultadoData'] ?? null,
+            'vacancies' => $exam['vagasTotal'] ?? null,
+            'reserveVacancies' => $exam['cadastroReservaTotal'] ?? null,
+            'officialUrl' => trim((string) ($exam['urlOficial'] ?? '')) ?: null,
+            'board' => $boards[0] ?? null,
+            'organizations' => $organizations,
+            'roles' => $this->publicTaxonomyList($taxonomies['cargo'] ?? []),
+            'careers' => $this->publicTaxonomyList($taxonomies['carreira'] ?? []),
+            'areas' => $this->publicTaxonomyList(array_merge($taxonomies['area'] ?? [], $taxonomies['foco'] ?? [])),
+            'subjects' => $this->publicTaxonomyList($taxonomies['materia'] ?? []),
+            'examTypes' => $this->publicTaxonomyList($taxonomies['tipo_prova'] ?? []),
+            'files' => $files,
+            'relatedExams' => $relatedExams,
+            ...$location,
+        ];
+    }
+
+    private function publicDirectoryItemFromRow(array $row): array
+    {
+        $organizations = array_values(array_filter(explode('||', (string) ($row['organization_names'] ?? ''))));
+        $acronyms = array_values(array_filter(explode('||', (string) ($row['organization_acronyms'] ?? ''))));
+        $location = ExamLocationClassifier::classify([
+            $row['nome'] ?? '',
+            ...$organizations,
+            ...$acronyms,
+        ], $row['state_code'] ?? null);
+
+        return [
+            'id' => (int) $row['id'],
+            'title' => (string) $row['nome'],
+            'slug' => (string) $row['slug'],
+            'year' => (int) ($row['ano'] ?? 0),
+            'board' => trim((string) ($row['board_name'] ?? '')) ?: null,
+            'boardSlug' => trim((string) ($row['board_slug'] ?? '')) ?: null,
+            'organizations' => $organizations,
+            'questionCount' => (int) ($row['question_count'] ?? 0),
+            'proofUrl' => trim((string) ($row['proof_url'] ?? '')) ?: null,
+            'answerKeyUrl' => trim((string) ($row['answer_key_url'] ?? '')) ?: null,
+            ...$location,
+        ];
+    }
+
+    private function publicTaxonomyList(array $items): array
+    {
+        return array_values(array_map(static fn (array $item): array => [
+            'id' => (int) ($item['id'] ?? 0),
+            'name' => (string) ($item['nome'] ?? $item['name'] ?? ''),
+            'slug' => (string) ($item['slug'] ?? ''),
+        ], array_filter($items, 'is_array')));
+    }
+
+    private function firstTaxonomyMetadataValue(array $items, string $key): ?string
+    {
+        foreach ($items as $item) {
+            if (is_array($item) && trim((string) ($item[$key] ?? '')) !== '') {
+                return trim((string) $item[$key]);
+            }
+        }
+        return null;
     }
 
     public function show(int $id): ?array

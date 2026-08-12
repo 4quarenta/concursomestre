@@ -197,7 +197,7 @@ interface AuthContextType extends AuthState {
   logout: () => Promise<void>;
   updateUser: (updates: Partial<UserProfile>) => Promise<void>;
   addXp: (amount: number) => void;
-  toggleSavedQuestion: (id: string) => Promise<boolean>;
+  toggleSavedQuestion: (id: string, desiredSavedState?: boolean) => Promise<boolean>;
   addSimulation: (sim: SimulationSession, persist?: boolean) => void;
   purchaseMaterial: (id: string) => void;
   removeMaterialAccess: (id: string) => void;
@@ -362,17 +362,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * Mantem o app responsivo enquanto sincroniza o favorito no backend.
    * @since 1.0.0
    */
-  const toggleSavedQuestion = React.useCallback(async (questionId: string): Promise<boolean> => {
+  const toggleSavedQuestion = React.useCallback(async (
+    questionId: string,
+    desiredSavedState?: boolean,
+  ): Promise<boolean> => {
     const currentUser = state.currentUser;
     if (!currentUser) {
       return false;
     }
 
     const wasSaved = currentUser.savedQuestionIds.includes(questionId);
-    dispatch({ type: 'SET_SAVED', payload: { questionId, isSaved: !wasSaved } });
+    const nextSavedState = desiredSavedState ?? !wasSaved;
+    dispatch({ type: 'SET_SAVED', payload: { questionId, isSaved: nextSavedState } });
 
     try {
-      const result = await questionService.toggleSavedQuestion(currentUser.id, questionId);
+      const result = await questionService.toggleSavedQuestion(currentUser.id, questionId, nextSavedState);
       if (!result.success || result.isSaved === undefined) {
         dispatch({ type: 'SET_SAVED', payload: { questionId, isSaved: wasSaved } });
         addToast(result.message || 'Não foi possível atualizar a questão salva.', 'error');

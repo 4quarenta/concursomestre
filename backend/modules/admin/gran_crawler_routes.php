@@ -88,7 +88,7 @@ function handleAdminGranCrawlerRoute(PDO $db): void
         }
 
         if ($action === 'map') {
-            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            RateLimiter::enforceProfile('admin_crawler_mapping', $actorUserId);
             $result = $service->mapBrowserResponse($input);
             logAdminAudit($db, $actorUserId, 'gran_crawler.map', 'question_ingestion', null, [
                 'page' => (int) ($result['page'] ?? 0),
@@ -97,6 +97,38 @@ function handleAdminGranCrawlerRoute(PDO $db): void
                 'question_count' => (int) ($result['questionCount'] ?? 0),
             ]);
             Response::success($result, 'JSON da extensao carregado para revisao.');
+        }
+
+        if ($action === 'map_and_enqueue_publication') {
+            RateLimiter::enforceProfile('admin_crawler_mapping', $actorUserId);
+            $result = $service->mapAndEnqueuePublication($input, $actorUserId);
+            $batch = is_array($result['batch'] ?? null) ? $result['batch'] : [];
+            logAdminAudit($db, $actorUserId, 'gran_crawler.map_and_enqueue_publication', 'question_ingestion',
+                isset($batch['batchId']) ? (string) $batch['batchId'] : null, [
+                    'page' => (int) ($result['page'] ?? 0),
+                    'per_page' => (int) ($result['perPage'] ?? 0),
+                    'question_count' => (int) ($result['questionCount'] ?? 0),
+                ]);
+            Response::success($result, 'Pagina Gran mapeada e enfileirada para publicacao.');
+        }
+
+        if ($action === 'save_automatic_checkpoint') {
+            RateLimiter::enforceProfile('admin_crawler_checkpoint', $actorUserId);
+            $result = $service->saveAutomaticCheckpoint($input, $actorUserId);
+            logAdminAudit($db, $actorUserId, 'gran_crawler.automatic_checkpoint_saved', 'question_ingestion', null, [
+                'year' => (int) ($result['year'] ?? 0),
+                'page' => (int) ($result['page'] ?? 0),
+                'total_pages' => $result['totalPages'] ?? null,
+                'status' => (string) ($result['status'] ?? ''),
+            ]);
+            Response::success($result, 'Progresso do modo automatico salvo.');
+        }
+
+        if ($action === 'clear_automatic_checkpoint') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            $service->clearAutomaticCheckpoint($actorUserId);
+            logAdminAudit($db, $actorUserId, 'gran_crawler.automatic_checkpoint_cleared', 'question_ingestion');
+            Response::success([], 'Progresso salvo do modo automatico removido.');
         }
 
         if ($action === 'sync_taxonomy_chunk') {
@@ -264,10 +296,116 @@ function handleAdminGranCrawlerRoute(PDO $db): void
             Response::success($result, 'Publicacao enfileirada para processamento assincrono.');
         }
 
+        if ($action === 'list_publication_failures') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            Response::success($service->listPublicationFailures($input));
+        }
+
+        if ($action === 'get_publication_failure') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            Response::success($service->getPublicationFailure($input));
+        }
+
+        if ($action === 'retry_publication_failure') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            $result = $service->retryPublicationFailure($input, $actorUserId);
+            logAdminAudit(
+                $db,
+                $actorUserId,
+                'gran_crawler.retry_publication_failure',
+                'question_ingestion',
+                isset($result['batchId']) ? (string) $result['batchId'] : null,
+                ['failure_id' => (int) ($input['failureId'] ?? 0)]
+            );
+            http_response_code(202);
+            Response::success($result, 'Questao reenviada para publicacao.');
+        }
+
+        if ($action === 'retry_publication_failures') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            $result = $service->retryPublicationFailures($input, $actorUserId);
+            logAdminAudit(
+                $db,
+                $actorUserId,
+                'gran_crawler.retry_publication_failures',
+                'question_ingestion',
+                isset($result['batchId']) ? (string) $result['batchId'] : null,
+                [
+                    'failure_ids' => array_values(array_filter(
+                        array_map('intval', is_array($input['failureIds'] ?? null) ? $input['failureIds'] : []),
+                        static fn (int $id): bool => $id > 0
+                    )),
+                ]
+            );
+            http_response_code(202);
+            Response::success($result, 'Falhas selecionadas reenviadas para publicacao.');
+        }
+
+        if ($action === 'ignore_publication_failure') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            $result = $service->ignorePublicationFailure($input);
+            logAdminAudit(
+                $db,
+                $actorUserId,
+                'gran_crawler.ignore_publication_failure',
+                'question_ingestion',
+                (string) ($result['failureId'] ?? ''),
+                ['failure_id' => (int) ($input['failureId'] ?? 0)]
+            );
+            Response::success($result, 'Falha ignorada e removida da fila operacional.');
+        }
+
+        if ($action === 'ignore_all_publication_failures') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            $result = $service->ignoreAllPublicationFailures();
+            logAdminAudit(
+                $db,
+                $actorUserId,
+                'gran_crawler.ignore_all_publication_failures',
+                'question_ingestion',
+                null,
+                ['ignored_count' => (int) ($result['ignoredCount'] ?? 0)]
+            );
+            Response::success($result, 'Falhas ignoradas e removidas da fila operacional.');
+        }
+
+        if ($action === 'publication_failure_retention_preview') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            Response::success($service->previewPublicationFailureRetention());
+        }
+
+        if ($action === 'purge_publication_failure_diagnostics') {
+            RateLimiter::enforceProfile('admin_crawler', $actorUserId);
+            $result = $service->purgePublicationFailureRetention();
+            logAdminAudit(
+                $db,
+                $actorUserId,
+                'gran_crawler.purge_publication_failure_diagnostics',
+                'question_ingestion',
+                null,
+                $result
+            );
+            Response::success($result, 'Diagnosticos encerrados fora da janela de retencao foram removidos.');
+        }
+
+        if ($action === 'publication_batch_status') {
+            Response::success($service->getPublicationBatch($input, $actorUserId));
+        }
+
+        if ($action === 'publication_batch_progress') {
+            Response::success($service->getPublicationBatchProgress($input, $actorUserId));
+        }
+
         Response::badRequest('Acao invalida.');
     } catch (InvalidArgumentException $exception) {
         Response::badRequest($exception->getMessage());
     } catch (DomainException $exception) {
+        // Uma chave de idempotencia reutilizada com outro conteudo e um
+        // conflito de submissao, nao uma falha de permissao. Isso tambem
+        // preserva o 403 exclusivamente para sessao/RBAC de fato invalidos.
+        if (str_contains(strtolower($exception->getMessage()), 'chave de idempotencia')) {
+            Response::error($exception->getMessage(), 409, null, 'idempotency_conflict');
+        }
         Response::forbidden($exception->getMessage());
     } catch (RuntimeException $exception) {
         if (str_contains($exception->getMessage(), 'Rate limit compartilhado indisponivel')) {

@@ -53,10 +53,13 @@ import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
-import { landingSocialIconMap } from '../landingContent';
+import LandingCommercialFooter from './LandingCommercialFooter';
+import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 
 const NAV_ITEMS = [
   { label: 'Recursos', href: '#recursos' },
+  { label: 'Disciplinas', href: '/disciplinas' },
+  { label: 'Bancas', href: '/bancas' },
   { label: 'Planos', href: '#planos' },
   { label: 'Depoimentos', href: '#depoimentos' },
   { label: 'Blog', href: '/blog' },
@@ -78,16 +81,19 @@ const FEATURES = [
     title: 'Plano de estudos',
     text: 'Plano personalizado de acordo com seu tempo, edital e objetivo.',
     icon: BookOpenCheck,
+    featureKey: 'studyScheduleEnabled' as const,
   },
   {
     title: 'Raio-X da banca',
     text: 'Veja assuntos mais cobrados, perfil da banca e prioridades de estudo.',
     icon: Zap,
+    featureKey: 'xRayEnabled' as const,
   },
   {
     title: 'Simulados',
     text: 'Simulados inéditos com correção automática e rankings.',
     icon: Target,
+    featureKey: 'simulationsEnabled' as const,
   },
   {
     title: 'Revisões',
@@ -103,11 +109,13 @@ const FEATURES = [
     title: 'Lei comentada',
     text: 'Estude a legislação com comentários objetivos e contexto para concursos.',
     icon: FileText,
+    featureKey: 'annotatedLawsEnabled' as const,
   },
   {
     title: 'Cronograma Elite',
     text: 'Monte sua rotina semanal com metas, revisões e blocos de questões.',
     icon: CalendarDays,
+    featureKey: 'studyScheduleEnabled' as const,
   },
 ];
 
@@ -209,32 +217,6 @@ const FAQ_ITEMS = [
   },
 ];
 
-const FOOTER_COLUMNS = [
-  {
-    title: 'Navegação',
-    links: [
-      { label: 'Recursos', href: '#recursos' },
-      { label: 'Planos', href: '#planos' },
-      { label: 'Depoimentos', href: '#depoimentos' },
-      { label: 'Blog', href: '/blog' },
-    ],
-  },
-  {
-    title: 'Suporte',
-    links: [
-      { label: 'Central de ajuda', href: '/support' },
-      { label: 'Fale conosco', href: '/support' },
-    ],
-  },
-  {
-    title: 'Legal',
-    links: [
-      { label: 'Termos de uso', href: '/terms' },
-      { label: 'Política de privacidade', href: '/privacy' },
-    ],
-  },
-];
-
 const SectionTitle = ({
   children,
   className = '',
@@ -257,17 +239,17 @@ export const Header = () => {
 
         <nav className="hidden items-center gap-10 text-sm font-semibold text-[#1d284f] lg:flex" aria-label="Navegação principal">
           {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className="transition-colors hover:text-[#684cff]">
+            <Link key={item.href} href={item.href} prefetch={false} className="transition-colors hover:text-[#684cff]">
               {item.label}
             </Link>
           ))}
         </nav>
 
         <div className="hidden items-center gap-5 lg:flex">
-          <Link href="/auth?mode=login" className="text-sm font-bold text-[#07103a] transition-colors hover:text-[#684cff]">
+          <Link href="/auth?mode=login" prefetch={false} className="text-sm font-bold text-[#07103a] transition-colors hover:text-[#684cff]">
             Entrar
           </Link>
-          <Link href="/auth?mode=signup" className="rounded-xl bg-[#07103a] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#111d52]">
+          <Link href="/auth?mode=signup" prefetch={false} className="rounded-xl bg-[#07103a] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#111d52]">
             Começar grátis
           </Link>
         </div>
@@ -287,15 +269,15 @@ export const Header = () => {
         <div className="border-t border-slate-100 bg-white px-5 py-5 shadow-lg lg:hidden">
           <nav className="mx-auto flex max-w-7xl flex-col gap-4 text-sm font-bold text-[#07103a]" aria-label="Navegação mobile">
             {NAV_ITEMS.map((item) => (
-              <Link key={item.href} href={item.href} onClick={() => setIsMenuOpen(false)}>
+              <Link key={item.href} href={item.href} prefetch={false} onClick={() => setIsMenuOpen(false)}>
                 {item.label}
               </Link>
             ))}
             <div className="mt-2 grid grid-cols-2 gap-3">
-              <Link href="/auth?mode=login" className="rounded-xl border border-slate-200 px-4 py-3 text-center">
+              <Link href="/auth?mode=login" prefetch={false} className="rounded-xl border border-slate-200 px-4 py-3 text-center">
                 Entrar
               </Link>
-              <Link href="/auth?mode=signup" className="rounded-xl bg-[#07103a] px-4 py-3 text-center text-white">
+              <Link href="/auth?mode=signup" prefetch={false} className="rounded-xl bg-[#07103a] px-4 py-3 text-center text-white">
                 Começar grátis
               </Link>
             </div>
@@ -442,10 +424,10 @@ export const HeroSection = () => (
       </div>
 
       <div className="mt-9 flex flex-col gap-4 sm:flex-row">
-        <Link href="/auth?mode=signup" className="inline-flex h-12 items-center justify-center rounded-xl bg-[#07103a] px-7 text-sm font-bold text-white shadow-sm transition hover:bg-[#111d52]">
+        <Link href="/auth?mode=signup" prefetch={false} className="inline-flex h-12 items-center justify-center rounded-xl bg-[#07103a] px-7 text-sm font-bold text-white shadow-sm transition hover:bg-[#111d52]">
           Começar grátis
         </Link>
-        <Link href="#planos" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-200 bg-white px-7 text-sm font-bold text-[#07103a] transition hover:border-[#684cff] hover:text-[#684cff]">
+        <Link href="#planos" prefetch={false} className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-200 bg-white px-7 text-sm font-bold text-[#07103a] transition hover:border-[#684cff] hover:text-[#684cff]">
           Ver planos
         </Link>
       </div>
@@ -474,16 +456,26 @@ export const FeatureCard = ({
   </article>
 );
 
-const FeaturesSection = () => (
-  <section id="recursos" className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
-    <SectionTitle>Tudo que você precisa em um só lugar</SectionTitle>
-    <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      {FEATURES.map((feature) => (
-        <FeatureCard key={feature.title} {...feature} />
-      ))}
-    </div>
-  </section>
-);
+const FeaturesSection = () => {
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const settingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const visibleFeatures = FEATURES.filter((feature) => (
+    !('featureKey' in feature) || (
+      settingsLoaded && resolveSystemFeatureFlag(systemSettings, feature.featureKey, false)
+    )
+  ));
+
+  return (
+    <section id="recursos" className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
+      <SectionTitle>Tudo que você precisa em um só lugar</SectionTitle>
+      <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {visibleFeatures.map((feature) => (
+          <FeatureCard key={feature.title} {...feature} />
+        ))}
+      </div>
+    </section>
+  );
+};
 
 const ApprovalContextSection = () => (
   <section className="mx-auto w-full max-w-7xl px-5 py-12 sm:px-8">
@@ -882,6 +874,7 @@ export const PricingSection = () => {
 
                 <Link
                   href={ctaHref}
+                  prefetch={false}
                   className={`mt-8 inline-flex h-12 w-full items-center justify-center rounded-xl text-sm font-bold transition ${
                     isFeatured
                       ? 'bg-[#684cff] text-white shadow-lg shadow-indigo-200 hover:bg-[#563fe0]'
@@ -941,7 +934,7 @@ export const FinalCTA = () => (
         <p className="mt-4 max-w-xl text-sm font-medium leading-6 text-indigo-100">
           Crie sua conta e tenha acesso liberado para explorar a plataforma completa.
         </p>
-        <Link href="/auth?mode=signup" className="mt-7 inline-flex h-12 items-center justify-center rounded-xl bg-[#684cff] px-7 text-sm font-bold text-white transition hover:bg-[#563fe0]">
+        <Link href="/auth?mode=signup" prefetch={false} className="mt-7 inline-flex h-12 items-center justify-center rounded-xl bg-[#684cff] px-7 text-sm font-bold text-white transition hover:bg-[#563fe0]">
           Começar grátis
         </Link>
       </div>
@@ -960,62 +953,7 @@ export const FinalCTA = () => (
   </section>
 );
 
-export const Footer = () => {
-  const socialLinks = useAppConfigStore((state) => state.systemSettings.landingPageContent?.socialLinks ?? [])
-    .filter((link) => link.enabled && /^https?:\/\//i.test(link.url));
-
-  return (
-  <footer id="blog" className="mx-auto w-full max-w-7xl px-5 pb-10 pt-6 sm:px-8">
-    <div className="grid gap-10 border-t border-slate-100 pt-10 lg:grid-cols-[1.4fr_2fr_0.8fr]">
-      <div>
-        <PublicBrandLink width={205} surface="light" />
-        <p className="mt-5 max-w-xs text-sm font-medium leading-6 text-slate-500">
-          Estude com estratégia. Aprove com consistência.
-        </p>
-      </div>
-
-      <div className="grid gap-8 sm:grid-cols-3">
-        {FOOTER_COLUMNS.map((column) => (
-          <div key={column.title}>
-            <h3 className="text-sm font-black text-[#07103a]">{column.title}</h3>
-            <ul className="mt-4 space-y-3">
-              {column.links.map((link) => (
-                <li key={`${column.title}-${link.label}`}>
-                  <Link href={link.href} className="text-sm font-medium text-slate-500 transition hover:text-[#684cff]">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-
-      <div>
-        <h3 className="text-sm font-black text-[#07103a]">Siga a gente</h3>
-        <div className="mt-4 flex gap-3">
-          {socialLinks.map(({ id, label, iconKey, url }) => {
-            const Icon = landingSocialIconMap[iconKey];
-            return (
-            <Link
-              key={id}
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-[#07103a] transition hover:border-[#684cff] hover:text-[#684cff]"
-              aria-label={label}
-            >
-              <Icon size={17} />
-            </Link>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-    <p className="mt-10 text-center text-xs font-medium text-slate-400">© 2026 ConcursoMestre. Todos os direitos reservados.</p>
-  </footer>
-  );
-};
+export const Footer = LandingCommercialFooter;
 
 const LandingCommercialPage: React.FC = () => (
   <div className="min-h-screen bg-white text-[#07103a]">

@@ -18,8 +18,14 @@ import {
   getAdminUserStatusBadgeClass,
   getAdminUserStatusLabel,
 } from './userAdminOptions';
-import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import {
+  ADMIN_COLLECTION_TABLE_CLASS,
+  ADMIN_COLLECTION_TABLE_HEAD_CLASS,
+  ADMIN_COLLECTION_TABLE_ROW_CLASS,
+} from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import AdminCollectionPagination from '../shared/AdminCollectionPagination';
+import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
 import { buildAdminUserEditPath } from '../../config/adminPageNavigationConfig';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
@@ -41,6 +47,8 @@ interface AdminUsersSectionProps {
   onDeleteUser: (user: UserProfile) => Promise<unknown> | unknown;
 }
 
+const COLLECTION_PAGE_SIZE = 20;
+
 /**
  * Lista operacional de usuarios do admin.
  * A tabela resume papel, status, plano e atividade antes de abrir o modal completo.
@@ -57,6 +65,13 @@ const AdminUsersSection = ({
 }: AdminUsersSectionProps) => {
   const [pendingDeleteUser, setPendingDeleteUser] = React.useState<UserProfile | null>(null);
   const [isDeletingUser, setIsDeletingUser] = React.useState(false);
+  const [page, setPage] = React.useState(1);
+  const totalPages = Math.max(1, Math.ceil(users.length / COLLECTION_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const visibleUsers = React.useMemo(
+    () => users.slice((currentPage - 1) * COLLECTION_PAGE_SIZE, currentPage * COLLECTION_PAGE_SIZE),
+    [currentPage, users],
+  );
 
   const requestDeleteUser = (user: UserProfile) => {
     setPendingDeleteUser(user);
@@ -96,19 +111,18 @@ const AdminUsersSection = ({
         itemCount={users.length}
         itemCountLabel="usuarios"
         searchValue={filter}
-        onSearchChange={onFilterChange}
+        onSearchChange={(value) => {
+          setPage(1);
+          onFilterChange(value);
+        }}
         searchPlaceholder="Buscar usuarios..."
         primaryActionLabel="Adicionar usuario"
         primaryActionHref={buildAdminUserEditPath('new')}
       />
 
-      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden transition-colors duration-300`}>
-        <div className={ADMIN_SURFACE_HEADER_CLASS}>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Usuarios da plataforma</p>
-        </div>
-        <div className="overflow-x-auto">
-      <table className="w-full min-w-[960px] text-left text-xs">
-        <thead className="border-b border-slate-100 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
+      <AdminCollectionTablePanel title="Usuarios da plataforma" className="transition-colors duration-300">
+      <table className={ADMIN_COLLECTION_TABLE_CLASS}>
+        <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
           <tr>
             {renderSortableHeader('Usuario', 'name')}
             {renderSortableHeader('Papel e status', 'role')}
@@ -117,11 +131,11 @@ const AdminUsersSection = ({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-          {users.map((user) => {
+          {visibleUsers.map((user) => {
             const progressWidth = Math.min(100, ((Number(user.xp || 0) % 1000) / 1000) * 100);
 
             return (
-              <tr key={user.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+              <tr key={user.id} className={ADMIN_COLLECTION_TABLE_ROW_CLASS}>
                 <td className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-xs font-black text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
@@ -142,6 +156,7 @@ const AdminUsersSection = ({
                         <span className="text-slate-300 dark:text-slate-700">|</span>
                         <Link
                           href={buildAdminUserEditPath(user.id)}
+                          prefetch={false}
                           className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
                         >
                           Editar
@@ -204,8 +219,16 @@ const AdminUsersSection = ({
           )}
         </tbody>
       </table>
-        </div>
-      </div>
+      </AdminCollectionTablePanel>
+
+      <AdminCollectionPagination
+        visibleCount={visibleUsers.length}
+        totalCount={users.length}
+        itemLabel="usuarios"
+        page={currentPage}
+        totalPages={totalPages}
+        onPageChange={setPage}
+      />
 
       <AdminConfirmDialog
         isOpen={Boolean(pendingDeleteUser)}

@@ -188,6 +188,24 @@ describe('filtersService', () => {
     expect(payload.bancas?.[0].nome).toBe('CESPE');
   });
 
+  it('loads the reduced practice catalog without materializing every taxonomy', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        bancas: [{ id: 1, nome: 'CESPE' }],
+        assuntos: [{ id: 2, nome: 'Direito Penal', materia: true, taxonomy_level: 'materia' }],
+      },
+    });
+
+    const taxonomies = await filtersService.listPracticeTaxonomies();
+
+    expect(mockGet).toHaveBeenCalledWith('filtersList', {
+      params: { scope: 'practice' },
+    });
+    expect(taxonomies.agencies[0]?.name).toBe('CESPE');
+    expect(taxonomies.subjects[0]?.name).toBe('Direito Penal');
+  });
+
   it('loads one administrative taxonomy page instead of the full public tree', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,

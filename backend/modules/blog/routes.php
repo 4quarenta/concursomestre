@@ -63,6 +63,15 @@ function handleBlogCategoriesRoute(PDO $db): void
     }
 }
 
+function handleBlogTagsRoute(PDO $db): void
+{
+    try {
+        Response::success(['items' => buildBlogController($db)->tags()]);
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel listar as tags.', $e);
+    }
+}
+
 function handleBlogLikeRoute(PDO $db): void
 {
     try {
@@ -178,5 +187,23 @@ function handleBlogAdminCategoriesRoute(PDO $db): void
         Response::validationError($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel salvar a categoria.', $e);
+    }
+}
+
+function handleBlogAdminTagsRoute(PDO $db): void
+{
+    try {
+        $context = requireAdminSessionContext($db);
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET') {
+            Response::success(['items' => buildBlogController($db)->tags(false)]);
+        }
+        Response::success(
+            buildBlogController($db)->createTag(readBlogJsonBody(), $context['payload']),
+            'Tag salva.'
+        );
+    } catch (InvalidArgumentException $e) {
+        Response::validationError($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel salvar a tag.', $e);
     }
 }

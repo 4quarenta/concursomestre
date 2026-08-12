@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ADMIN_PAGE_PANEL_CLASS } from './adminPanelStyles';
 
 interface AdminCollectionPaginationProps {
@@ -33,27 +34,29 @@ const AdminCollectionPagination = ({
     <span className="text-sm text-slate-500 dark:text-slate-400">
       Mostrando {visibleCount} de {totalCount} {itemLabel}
     </span>
-    <div className="flex flex-wrap gap-2">
+    <nav className="flex flex-wrap items-center gap-2" aria-label={`Paginacao de ${itemLabel}`}>
       <button
         type="button"
         disabled={page <= 1}
         onClick={() => onPageChange(page - 1)}
-        className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-30 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        className="inline-flex h-9 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
       >
+        <ChevronLeft size={14} />
         Anterior
       </button>
-      <span className="flex items-center px-4 text-sm font-semibold text-blue-600 dark:text-blue-300">
-        Pagina {page} de {totalPages}
+      <span className="flex min-h-9 items-center px-3 text-sm font-semibold text-sky-700 dark:text-sky-300" aria-current="page">
+        Pagina {page} de {Math.max(1, totalPages)}
       </span>
       <button
         type="button"
         disabled={page >= totalPages}
         onClick={() => onPageChange(page + 1)}
-        className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-30 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        className="inline-flex h-9 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
       >
         Proxima
+        <ChevronRight size={14} />
       </button>
-    </div>
+    </nav>
   </div>
 );
 

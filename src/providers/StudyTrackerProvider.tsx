@@ -348,7 +348,6 @@ export const StudyTrackerBridge: React.FC = () => {
       const result = await statisticsService.recordStudySession(payload);
       syncPersistedStudyTotals(result.statistics);
       resetStudyTrackerSession();
-      addToast('Tempo de estudo registrado com sucesso.', 'success');
     } catch (error: unknown) {
       addToast(error instanceof Error ? error.message : 'Não foi possível registrar o tempo de estudo.', 'error');
     } finally {

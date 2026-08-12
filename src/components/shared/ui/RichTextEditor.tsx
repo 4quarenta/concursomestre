@@ -22,6 +22,7 @@ import {
   Pilcrow,
   Quote,
   RotateCcw,
+  Table2,
   Type,
   Underline,
   type LucideIcon,
@@ -37,6 +38,8 @@ interface RichTextEditorProps {
   disabled?: boolean;
   stickyToolbar?: boolean;
   allowImages?: boolean;
+  allowTables?: boolean;
+  onImageUpload?: (file: File) => Promise<{ url: string; alt?: string }>;
   contentClassName?: string;
 }
 
@@ -100,6 +103,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   disabled = false,
   stickyToolbar = true,
   allowImages = false,
+  allowTables = false,
+  onImageUpload,
   contentClassName = '',
 }) => {
   const editorShellRef = useRef<HTMLDivElement>(null);
@@ -229,14 +234,28 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       return;
     }
 
-    const dataUrl = await readImageFileAsDataUrl(file);
+    const uploadedAsset = onImageUpload
+      ? await onImageUpload(file)
+      : { url: await readImageFileAsDataUrl(file), alt: file.name || 'Figura de apoio' };
+    if (!uploadedAsset.url) {
+      throw new Error('O envio da imagem nao retornou uma URL valida.');
+    }
     const imageHtml = [
       '<figure class="cm-editor-image">',
-      `<img src="${escapeHtmlAttribute(dataUrl)}" alt="${escapeHtmlAttribute(file.name || 'Figura de apoio')}" loading="lazy" />`,
+      `<img src="${escapeHtmlAttribute(uploadedAsset.url)}" alt="${escapeHtmlAttribute(uploadedAsset.alt || file.name || 'Figura de apoio')}" loading="lazy" />`,
       '</figure>',
       '<p><br /></p>',
     ].join('');
     insertHtmlAtSelection(imageHtml);
+  };
+
+  const insertTable = () => {
+    insertHtmlAtSelection([
+      '<table>',
+      '<thead><tr><th>Coluna 1</th><th>Coluna 2</th></tr></thead>',
+      '<tbody><tr><td>Conteúdo</td><td>Conteúdo</td></tr><tr><td>Conteúdo</td><td>Conteúdo</td></tr></tbody>',
+      '</table><p><br /></p>',
+    ].join(''));
   };
 
   const handleColorChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -401,6 +420,26 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               className="hidden"
               onChange={handleImageInputChange}
             />
+            <div className="mx-0.5 h-4 w-px shrink-0 bg-slate-300 transition-colors dark:bg-slate-700 sm:mx-1" />
+          </>
+        )}
+
+        {allowTables && (
+          <>
+            <button
+              type="button"
+              disabled={disabled}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                saveCurrentSelection();
+              }}
+              onClick={insertTable}
+              title="Inserir tabela"
+              aria-label="Inserir tabela"
+              className="shrink-0 rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 sm:p-1.5"
+            >
+              <Table2 size={16} />
+            </button>
             <div className="mx-0.5 h-4 w-px shrink-0 bg-slate-300 transition-colors dark:bg-slate-700 sm:mx-1" />
           </>
         )}

@@ -4,14 +4,28 @@ declare(strict_types=1);
 
 final class BlogValidator
 {
+    private const DEFAULT_COVER_IMAGE = '/blog/default-cover.webp';
+    private const DEFAULT_COVER_ALT = 'Caderno de estudos e notícias do ConcursoMestre.';
+    private const TAG_KINDS = [
+        'general',
+        'topic',
+        'region',
+        'state',
+        'career',
+        'organization',
+        'exam_board',
+    ];
+
     public function validatePublicList(array $query): array
     {
         return [
             'limit' => max(1, min(30, (int) ($query['limit'] ?? 12))),
             'cursor' => $this->optionalString($query['cursor'] ?? null),
             'categorySlug' => $this->optionalString($query['category'] ?? null),
+            'tagSlug' => $this->optionalString($query['tag'] ?? null),
             'authorId' => $this->optionalString($query['author'] ?? null),
             'featured' => filter_var($query['featured'] ?? false, FILTER_VALIDATE_BOOL),
+            'search' => $this->limitedOptionalString($query['search'] ?? $query['q'] ?? null, 160),
         ];
     }
 
@@ -39,13 +53,11 @@ final class BlogValidator
         $bodyHtml = $this->sanitizeHtml((string) ($payload['bodyHtml'] ?? $payload['body_html'] ?? ''));
         $bodyText = trim(html_entity_decode(strip_tags($bodyHtml), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
         $wordCount = count(preg_split('/\s+/u', $bodyText, -1, PREG_SPLIT_NO_EMPTY) ?: []);
-        $categoryId = isset($payload['categoryId']) && (int) $payload['categoryId'] > 0
-            ? (int) $payload['categoryId']
-            : null;
-        $categoryName = trim((string) ($payload['categoryName'] ?? ''));
+        $taxonomy = is_array($payload['taxonomy'] ?? null) ? $payload['taxonomy'] : [];
+        $category = $this->normalizeTaxonomyReference($taxonomy['category'] ?? null, 120);
         $status = strtolower(trim((string) ($payload['status'] ?? 'draft')));
-        $coverImageUrl = trim((string) ($payload['coverImageUrl'] ?? ''));
-        $coverImageAlt = trim((string) ($payload['coverImageAlt'] ?? ''));
+        $coverImageUrl = trim((string) ($payload['coverImageUrl'] ?? '')) ?: self::DEFAULT_COVER_IMAGE;
+        $coverImageAlt = trim((string) ($payload['coverImageAlt'] ?? '')) ?: self::DEFAULT_COVER_ALT;
 
         if ($title === '' || mb_strlen($title) > 220) {
             throw new InvalidArgumentException('Informe um titulo com ate 220 caracteres.');
@@ -53,22 +65,22 @@ final class BlogValidator
         if ($slug === '') {
             throw new InvalidArgumentException('Nao foi possivel gerar o slug do artigo.');
         }
-        if ($excerpt === '' || mb_strlen($excerpt) > 600) {
-            throw new InvalidArgumentException('Informe um resumo com ate 600 caracteres.');
-        }
         if ($bodyText === '') {
             throw new InvalidArgumentException('O conteudo do artigo e obrigatorio.');
         }
-        if ($categoryId === null && $categoryName === '') {
+        if ($excerpt === '') {
+            $excerpt = mb_substr($bodyText, 0, 600);
+        }
+        if (mb_strlen($excerpt) > 600) {
+            throw new InvalidArgumentException('Informe um resumo com ate 600 caracteres.');
+        }
+        if ($category === null) {
             throw new InvalidArgumentException('Selecione ou crie uma categoria.');
         }
         if (!in_array($status, ['draft', 'scheduled', 'published', 'archived'], true)) {
             throw new InvalidArgumentException('Status editorial invalido.');
         }
-        if (in_array($status, ['published', 'scheduled'], true) && ($coverImageUrl === '' || $coverImageAlt === '')) {
-            throw new InvalidArgumentException('Imagem de capa e texto alternativo sao obrigatorios para publicar.');
-        }
-        if ($coverImageUrl !== '' && !$this->isAllowedAssetUrl($coverImageUrl)) {
+        if (!$this->isAllowedAssetUrl($coverImageUrl)) {
             throw new InvalidArgumentException('URL da imagem de capa invalida.');
         }
 
@@ -77,15 +89,11 @@ final class BlogValidator
             throw new InvalidArgumentException('Informe a data de agendamento.');
         }
 
-        $tags = $payload['tags'] ?? [];
-        if (is_string($tags)) {
-            $tags = preg_split('/[\r\n,]+/', $tags) ?: [];
-        }
         $normalizedTags = [];
-        foreach (is_array($tags) ? $tags : [] as $tag) {
-            $name = trim((string) (is_array($tag) ? ($tag['name'] ?? '') : $tag));
-            if ($name !== '' && mb_strlen($name) <= 100) {
-                $normalizedTags[mb_strtolower($name)] = $name;
+        foreach (is_array($taxonomy['tags'] ?? null) ? $taxonomy['tags'] : [] as $tag) {
+            $reference = $this->normalizeTagReference($tag);
+            if ($reference !== null) {
+                $normalizedTags[mb_strtolower($reference['label'])] = $reference;
             }
         }
 
@@ -97,8 +105,10 @@ final class BlogValidator
             'bodyHtml' => $bodyHtml,
             'bodyText' => $bodyText,
             'readingMinutes' => max(1, (int) ceil($wordCount / 220)),
-            'categoryId' => $categoryId,
-            'categoryName' => $categoryName,
+            'taxonomy' => [
+                'category' => $category,
+                'tags' => array_values($normalizedTags),
+            ],
             'coverImageUrl' => $coverImageUrl,
             'coverImageAlt' => $coverImageAlt,
             'status' => $status,
@@ -107,9 +117,9 @@ final class BlogValidator
                 || filter_var($payload['allowComments'], FILTER_VALIDATE_BOOL),
             'sourceName' => $this->limitedOptionalString($payload['sourceName'] ?? null, 180),
             'sourceUrl' => $this->validatedOptionalUrl($payload['sourceUrl'] ?? null),
-            'seoTitle' => $this->limitedOptionalString($payload['seoTitle'] ?? null, 180),
-            'seoDescription' => $this->limitedOptionalString($payload['seoDescription'] ?? null, 320),
-            'canonicalUrl' => $this->validatedOptionalUrl($payload['canonicalUrl'] ?? null),
+            'seoTitle' => mb_substr($title, 0, 180),
+            'seoDescription' => mb_substr($excerpt, 0, 320),
+            'canonicalUrl' => null,
             'scheduledAt' => $scheduledAt,
             'tags' => array_values($normalizedTags),
         ];
@@ -117,7 +127,7 @@ final class BlogValidator
 
     public function validateCategory(array $payload): array
     {
-        $name = trim((string) ($payload['name'] ?? ''));
+        $name = trim((string) ($payload['label'] ?? ''));
         if ($name === '' || mb_strlen($name) > 120) {
             throw new InvalidArgumentException('Informe o nome da categoria.');
         }
@@ -126,6 +136,22 @@ final class BlogValidator
             'name' => $name,
             'slug' => $this->slugify((string) ($payload['slug'] ?? $name)),
             'description' => $this->limitedOptionalString($payload['description'] ?? null, 500),
+        ];
+    }
+
+    public function validateTag(array $payload): array
+    {
+        $reference = $this->normalizeTagReference($payload);
+        if ($reference === null || $reference['label'] === '') {
+            throw new InvalidArgumentException('Informe o nome da tag.');
+        }
+
+        return [
+            'name' => $reference['label'],
+            'slug' => $reference['slug'],
+            'kind' => $reference['kind'],
+            'description' => $this->limitedOptionalString($payload['description'] ?? null, 500),
+            'imageUrl' => $this->validatedOptionalUrl($payload['imageUrl'] ?? $payload['image_url'] ?? null),
         ];
     }
 
@@ -164,6 +190,7 @@ final class BlogValidator
     private function isAllowedAssetUrl(string $url): bool
     {
         return str_starts_with($url, '/uploads/')
+            || str_starts_with($url, '/blog/')
             || str_starts_with($url, 'https://')
             || str_starts_with($url, 'http://');
     }
@@ -172,6 +199,41 @@ final class BlogValidator
     {
         $normalized = trim((string) ($value ?? ''));
         return $normalized !== '' ? $normalized : null;
+    }
+
+    /** @return array{id:?int,label:string,slug:string}|null */
+    private function normalizeTaxonomyReference(mixed $value, int $maxLabelLength): ?array
+    {
+        if (!is_array($value)) {
+            return null;
+        }
+        $id = isset($value['id']) && (int) $value['id'] > 0 ? (int) $value['id'] : null;
+        $label = trim((string) ($value['label'] ?? ''));
+        if ($label === '' && $id === null) {
+            return null;
+        }
+        if ($label !== '' && mb_strlen($label) > $maxLabelLength) {
+            throw new InvalidArgumentException('Nome de taxonomia excede o limite permitido.');
+        }
+        return [
+            'id' => $id,
+            'label' => $label,
+            'slug' => $this->slugify((string) ($value['slug'] ?? $label)),
+        ];
+    }
+
+    /** @return array{id:?int,label:string,slug:string,kind:string}|null */
+    private function normalizeTagReference(mixed $value): ?array
+    {
+        $reference = $this->normalizeTaxonomyReference($value, 100);
+        if ($reference === null) {
+            return null;
+        }
+        $kind = strtolower(trim((string) (is_array($value) ? ($value['kind'] ?? 'general') : 'general')));
+        if (!in_array($kind, self::TAG_KINDS, true)) {
+            throw new InvalidArgumentException('Tipo de tag editorial invalido.');
+        }
+        return [...$reference, 'kind' => $kind];
     }
 
     private function limitedOptionalString(mixed $value, int $max): ?string

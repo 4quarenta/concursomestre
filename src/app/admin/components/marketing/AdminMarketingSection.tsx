@@ -10,7 +10,7 @@
 */
 
 import React, { useEffect, useState } from 'react';
-import { LayoutTemplate, Link2, Megaphone, Newspaper, Palette } from 'lucide-react';
+import { LayoutTemplate, Link2, Megaphone, Palette } from 'lucide-react';
 import type { SystemSettings } from '@types';
 import type { AdminMarketingSection as AdminMarketingSectionKey } from '../shared/useAdminPageController';
 import {
@@ -23,7 +23,6 @@ import {
 import AdminMarketing from '../finance/AdminMarketing';
 import AdminLandingPagesManager from './AdminLandingPagesManager';
 import AdminSocialLinksManager from './AdminSocialLinksManager';
-import AdminBlogManager from './AdminBlogManager';
 
 interface AdminMarketingSectionProps {
   systemSettings: SystemSettings;
@@ -39,11 +38,6 @@ const SECTIONS: Array<{
   label: string;
   description: string;
 }> = [
-  {
-    key: 'blog',
-    label: 'Blog',
-    description: 'Noticias, categorias, autores, SEO e publicacao editorial.',
-  },
   {
     key: 'landing-pages',
     label: 'Landing Pages',
@@ -134,9 +128,7 @@ const AdminMarketingSection = ({
         <div className={`mt-5 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
           <div className="flex items-start gap-3">
             <div className="rounded-md bg-indigo-50 p-3 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
-              {activeSection === 'blog' ? (
-                <Newspaper size={18} />
-              ) : activeSection === 'landing-pages' ? (
+              {activeSection === 'landing-pages' ? (
                 <LayoutTemplate size={18} />
               ) : activeSection === 'campaigns' ? (
                 <Megaphone size={18} />
@@ -165,8 +157,6 @@ const AdminMarketingSection = ({
           saveSystemSettingsNow={saveSystemSettingsNow}
         />
       ) : null}
-
-      {activeSection === 'blog' ? <AdminBlogManager /> : null}
 
       {activeSection === 'campaigns' ? (
         <AdminMarketing

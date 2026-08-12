@@ -57,7 +57,7 @@ $buildUrlSet = static function (array $entries) use ($escape): string {
     return implode("\n", $lines) . "\n";
 };
 $files = [];
-$counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0];
+$counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'taxonomies' => 0];
 $institutionalSources = [
     '/' => 'src/app/page.tsx',
     '/planos' => 'src/app/planos/page.tsx',
@@ -66,9 +66,12 @@ $institutionalSources = [
     '/faq' => 'src/app/faq/page.tsx',
     '/lei-comentada' => 'src/app/lei-comentada/page.tsx',
     '/blog' => 'src/app/blog/page.tsx',
+    '/blog/provas' => 'src/app/blog/provas/page.tsx',
+    '/disciplinas' => 'src/app/disciplinas/page.tsx',
+    '/bancas' => 'src/app/bancas/page.tsx',
+    '/novidades' => 'src/app/novidades/page.tsx',
     '/elite' => 'src/app/elite/page.tsx',
     '/marketplace' => 'src/app/marketplace/page.tsx',
-    '/changelog' => 'src/app/changelog/page.tsx',
     '/privacy' => 'src/app/privacy/page.tsx',
     '/terms' => 'src/app/terms/page.tsx',
 ];
@@ -165,6 +168,91 @@ while (true) {
     if (count($rows) < $batchSize) {
         break;
     }
+}
+
+$examCursor = 0;
+$examPage = 0;
+while (true) {
+    $stmt = $db->prepare(
+        "SELECT id, slug, COALESCE(updated_at, created_at, NOW()) AS last_modified
+         FROM provas
+         WHERE id > :cursor
+           AND archived_at IS NULL
+           AND status_editorial = 'published'
+           AND visibility_status = 'public'
+           AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+           AND slug IS NOT NULL
+           AND slug <> ''
+         ORDER BY id
+         LIMIT {$batchSize}"
+    );
+    $stmt->execute([':cursor' => $examCursor]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    if ($rows === []) {
+        break;
+    }
+    $entries = [];
+    foreach ($rows as $row) {
+        $id = (int) ($row['id'] ?? 0);
+        $slug = trim((string) ($row['slug'] ?? ''));
+        if ($id <= 0 || $slug === '') {
+            continue;
+        }
+        $entries[] = [
+            'loc' => $baseUrl . '/blog/provas/' . rawurlencode($slug),
+            'lastmod' => $safeDate($row['last_modified'] ?? null),
+        ];
+        $examCursor = $id;
+    }
+    $examPage++;
+    $filename = sprintf('exams-%05d.xml', $examPage);
+    $atomicWrite($outputDir . '/' . $filename, $buildUrlSet($entries));
+    $files[] = ['name' => $filename, 'lastmod' => $generatedAt];
+$counts['exams'] += count($entries);
+    if (count($rows) < $batchSize) {
+        break;
+    }
+}
+
+$taxonomyStmt = $db->query(
+    "SELECT f.id, f.type, f.slug, NOW() AS last_modified
+       FROM filters f
+      WHERE f.slug IS NOT NULL
+        AND f.slug <> ''
+        AND (
+            f.type = 'banca'
+            OR (f.type = 'assunto' AND (f.taxonomy_level = 'materia' OR f.meta_materia = 1))
+        )
+        AND EXISTS (
+            SELECT 1
+              FROM question_filters qf
+              INNER JOIN questions q ON q.id = qf.question_id
+             WHERE qf.filter_id = f.id
+               AND q.publish_status IN ('published', 'scheduled')
+               AND q.visibility_status = 'public'
+               AND q.published_sort_at IS NOT NULL
+               AND q.published_sort_at <= NOW()
+        )
+      ORDER BY f.id"
+);
+$taxonomyRows = $taxonomyStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$taxonomyEntries = [];
+foreach ($taxonomyRows as $row) {
+    $slug = trim((string) ($row['slug'] ?? ''));
+    if ($slug === '') {
+        continue;
+    }
+    $directory = (string) ($row['type'] ?? '') === 'banca' ? 'bancas' : 'disciplinas';
+    $taxonomyEntries[] = [
+        'loc' => $baseUrl . '/' . $directory . '/' . rawurlencode($slug),
+        'lastmod' => $safeDate($row['last_modified'] ?? null),
+    ];
+}
+foreach (array_chunk($taxonomyEntries, $batchSize) as $index => $entries) {
+    $filename = sprintf('taxonomies-%05d.xml', $index + 1);
+    $atomicWrite($outputDir . '/' . $filename, $buildUrlSet($entries));
+    $files[] = ['name' => $filename, 'lastmod' => $generatedAt];
+    $counts['taxonomies'] += count($entries);
 }
 
 $indexLines = [

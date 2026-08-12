@@ -13,4 +13,13 @@
  * Fachada oficial do changelog público.
  */
 export { changelogService } from './changelogService';
-export type { ChangelogCategory, ChangelogVersion } from './changelogService';
+export type {
+  ChangelogDraft,
+  ChangelogEntry,
+  ChangelogPage,
+  ChangelogSection,
+  ChangelogStatus,
+  ChangelogSuggestion,
+  ChangelogSuggestionPage,
+  SuggestionProductStatus,
+} from './changelogService';

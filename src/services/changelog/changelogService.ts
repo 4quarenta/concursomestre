@@ -1,149 +1,178 @@
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
+import { apiClient, assertApiSuccess, ENDPOINTS, readApiData } from '@services/api';
+import type { ApiResponse } from '@services/api';
 
-import { apiClient, ENDPOINTS, readApiData } from '@services/api';
-
-export type ChangelogCategory = {
+export type ChangelogSection = {
   title: string;
   icon: string;
   items: string[];
 };
 
-export type ChangelogVersion = {
+export type ChangelogStatus = 'draft' | 'published' | 'archived';
+
+export type ChangelogEntry = {
   id: number;
   version: string;
-  release_date: string;
+  slug: string;
+  releaseDate: string;
+  publishedAt: string | null;
   title: string;
   description: string;
-  content_json: ChangelogCategory[];
+  content: ChangelogSection[];
+  status: ChangelogStatus;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  createdBy?: { id: string | null; name: string | null };
+  updatedBy?: { id: string | null; name: string | null };
 };
 
-type ChangelogListPayload = {
-  versions?: ChangelogVersion[];
+export type ChangelogDraft = Pick<
+  ChangelogEntry,
+  'title' | 'slug' | 'releaseDate' | 'description' | 'content' | 'status'
+> & { id: number | null; version?: string };
+
+export type ChangelogPage = {
+  items: ChangelogEntry[];
+  pageInfo: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
 };
 
-const CHANGELOG_DEV_MARKER_PATTERN = /(?:\[\s*dev\s*\]|\(\s*dev\s*\)|\bdev\b)/i;
+export type SuggestionProductStatus =
+  | 'pending'
+  | 'under_review'
+  | 'approved'
+  | 'planned'
+  | 'in_progress'
+  | 'completed'
+  | 'declined';
 
-export const BASELINE_1_0_0_CHANGELOG: ChangelogVersion = {
+export type ChangelogSuggestion = {
+  id: number;
+  title: string;
+  details: string;
+  supportStatus: 'new' | 'read' | 'resolved';
+  status: SuggestionProductStatus;
+  platformVersion: string;
+  adminNote: string | null;
+  changelogId: number | null;
+  changelogTitle: string | null;
+  likes: number;
+  dislikes: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+  reviewedAt: string | null;
+  user: { id: string | null; name: string | null; email: string | null };
+};
+
+export type ChangelogSuggestionPage = Omit<ChangelogPage, 'items'> & {
+  items: ChangelogSuggestion[];
+};
+
+const emptyPage = (limit = 8): ChangelogPage => ({
+  items: [],
+  pageInfo: { page: 1, limit, total: 0, totalPages: 1, hasMore: false },
+});
+
+const DEV_MARKER_PATTERN = /(?:\[\s*dev\s*\]|\(\s*dev\s*\)|\bdev\b)/i;
+
+export const BASELINE_1_0_0_CHANGELOG: ChangelogEntry = {
   id: 100000,
   version: '1.0.0',
-  release_date: '2026-06-05',
-  title: 'ConcursoMestre 1.0.0',
-  description: 'Baseline publica da plataforma com pratica de questoes, simulados, lei comentada, marketplace, suporte, assinaturas, gamificacao e painel administrativo operacional.',
-  content_json: [
+  slug: 'concurso-mestre-1-0-0',
+  releaseDate: '2026-06-05',
+  publishedAt: '2026-06-05T12:00:00-03:00',
+  title: 'O ConcursoMestre está no ar',
+  description: 'A primeira versão pública reúne as principais ferramentas para organizar seus estudos e acompanhar seu desempenho.',
+  status: 'published',
+  content: [
     {
-      title: 'Estudo e pratica',
+      title: 'Estudo mais completo',
       icon: 'BookOpen',
       items: [
-        'Banco de questoes com filtros por materia, assunto, banca, orgao, cargo, ano, prova, dificuldade e historico de acerto.',
-        'Comentarios do professor, analise detalhada e suporte a feedback editorial nas questoes.',
-        'Simulados em modo lista ou foco, com revisao, tempo, desempenho e ranking pos-prova separado.',
-        'Lei comentada com leitura, destaques, progresso, comentarios e solicitacao de explicacao por dispositivo.',
+        'Questões, simulados e Lei Comentada reunidos em uma experiência de estudo única.',
+        'Filtros e estatísticas ajudam a encontrar o conteúdo certo e acompanhar a evolução.',
       ],
     },
     {
-      title: 'Analise e desempenho',
-      icon: 'BarChart2',
-      items: [
-        'Dashboard com evolucao de desempenho, sequencia semanal, materias e estatisticas de estudo.',
-        'Raio-X da banca com leitura por materia, assuntos recorrentes, dificuldade, contexto e recomendacao estrategica.',
-        'Ranking de XP e nivel do usuario separado dos rankings pos-prova.',
-        'Historico de respostas, anotacoes e questoes salvas no perfil do aluno.',
-      ],
-    },
-    {
-      title: 'Comunidade e suporte',
-      icon: 'Trophy',
-      items: [
-        'Suporte com categorias de problema, sugestao e ajuda.',
-        'Sugestoes publicas dos alunos com votos de like e dislike.',
-        'Comentarios em questoes com perfil, plano, foto e moderacao.',
-        'Avaliacoes da plataforma separadas de sugestoes no painel administrativo.',
-      ],
-    },
-    {
-      title: 'Conta e operacao',
-      icon: 'Shield',
-      items: [
-        'Perfil com dados pessoais, privacidade, preferencias, seguranca, assinatura e historico financeiro.',
-        'Checkout e assinaturas com Stripe, cartoes salvos, renovacao, cancelamento e auditoria operacional.',
-        'Painel admin para configuracoes, taxonomias, provas, importador, usuarios, suporte, email, cache e financeiro.',
-        'Paginas publicas de FAQ, termos, privacidade, changelog, planos e landing comercial.',
-      ],
+      title: 'Conta e comunidade',
+      icon: 'Users',
+      items: ['Perfil, suporte, comentários e sugestões integrados à plataforma.'],
     },
   ],
 };
 
-const hasPrivateDevMarker = (value: unknown): boolean => {
-  return CHANGELOG_DEV_MARKER_PATTERN.test(String(value ?? ''));
-};
-
-const sanitizePublicChangelogVersion = (version: ChangelogVersion): ChangelogVersion | null => {
-  if (!version || typeof version !== 'object') {
-    return null;
-  }
-
-  const text = `${version.version} ${version.title} ${version.description}`;
-  if (hasPrivateDevMarker(text)) {
-    return null;
-  }
-
-  const contentJson = Array.isArray(version.content_json) ? version.content_json : [];
-  const content_json = contentJson
-    .filter((category) => !hasPrivateDevMarker(`${category.title} ${category.icon}`))
-    .map((category) => ({
-      ...category,
-      items: Array.isArray(category.items)
-        ? category.items.filter((item) => !hasPrivateDevMarker(item))
-        : [],
-    }))
-    .filter((category) => category.items.length > 0);
-
+const sanitizePublicEntry = (entry: ChangelogEntry): ChangelogEntry | null => {
+  if (!entry || DEV_MARKER_PATTERN.test(`${entry.version} ${entry.title} ${entry.description}`)) return null;
   return {
-    ...version,
-    content_json,
+    ...entry,
+    content: (Array.isArray(entry.content) ? entry.content : [])
+      .filter((section) => !DEV_MARKER_PATTERN.test(`${section.title} ${section.icon}`))
+      .map((section) => ({
+        ...section,
+        items: (Array.isArray(section.items) ? section.items : []).filter((item) => !DEV_MARKER_PATTERN.test(item)),
+      }))
+      .filter((section) => section.items.length > 0),
   };
 };
 
-export const normalizePublicChangelogVersions = (versions: ChangelogVersion[]) => {
-  const publicVersions = versions
-    .map(sanitizePublicChangelogVersion)
-    .filter((version): version is ChangelogVersion => Boolean(version));
-
-  const hasBaseline = publicVersions.some((version) => version.version === BASELINE_1_0_0_CHANGELOG.version);
-  return hasBaseline ? publicVersions : [BASELINE_1_0_0_CHANGELOG, ...publicVersions];
+export const normalizePublicChangelogPage = (page: ChangelogPage): ChangelogPage => {
+  const items = (page.items || [])
+    .map(sanitizePublicEntry)
+    .filter((entry): entry is ChangelogEntry => Boolean(entry));
+  if (page.pageInfo.page === 1 && !items.some((entry) => entry.version === '1.0.0')) {
+    items.push(BASELINE_1_0_0_CHANGELOG);
+  }
+  return { ...page, items };
 };
 
-/**
- * Centraliza a leitura do changelog público da plataforma.
- * @since 1.0.0
- */
 export const changelogService = {
-  /**
-   * Lista as versoes publicadas ordenadas pelo backend.
-   * @since 1.0.0
-   */
-  async listVersions(): Promise<ChangelogVersion[]> {
-    const response = await apiClient.get(ENDPOINTS.changelog.list) as unknown;
-    const payload = readApiData<ChangelogVersion[] | ChangelogListPayload>(response, []);
+  async list(params: Record<string, string | number | undefined> = {}): Promise<ChangelogPage> {
+    const response = await apiClient.get<ApiResponse<ChangelogPage>>(ENDPOINTS.changelog.list, { params });
+    return normalizePublicChangelogPage(readApiData(response, emptyPage()));
+  },
 
-    if (Array.isArray(payload)) {
-      return normalizePublicChangelogVersions(payload);
-    }
+  async adminList(params: Record<string, string | number | undefined> = {}): Promise<ChangelogPage> {
+    const response = await apiClient.get<ApiResponse<ChangelogPage>>(ENDPOINTS.changelog.adminList, { params });
+    assertApiSuccess(response, 'Não foi possível listar as novidades.');
+    return readApiData(response, emptyPage(20));
+  },
 
-    if (Array.isArray(payload?.versions)) {
-      return normalizePublicChangelogVersions(payload.versions);
-    }
+  async adminDetail(id: number): Promise<ChangelogEntry> {
+    const response = await apiClient.get<ApiResponse<ChangelogEntry>>(ENDPOINTS.changelog.adminDetail, { params: { id } });
+    assertApiSuccess(response, 'Não foi possível carregar a novidade.');
+    return readApiData(response, {} as ChangelogEntry);
+  },
 
-    return [BASELINE_1_0_0_CHANGELOG];
+  async save(input: ChangelogDraft): Promise<ChangelogEntry> {
+    const response = await apiClient.post<ApiResponse<ChangelogEntry>>(ENDPOINTS.changelog.adminSave, input);
+    assertApiSuccess(response, 'Não foi possível salvar a novidade.');
+    return readApiData(response, {} as ChangelogEntry);
+  },
+
+  async archive(id: number): Promise<void> {
+    const response = await apiClient.post<ApiResponse>(ENDPOINTS.changelog.adminArchive, { id });
+    assertApiSuccess(response, 'Não foi possível arquivar a novidade.');
+  },
+
+  async listSuggestions(params: Record<string, string | number | undefined> = {}): Promise<ChangelogSuggestionPage> {
+    const response = await apiClient.get<ApiResponse<ChangelogSuggestionPage>>(ENDPOINTS.changelog.adminSuggestions, { params });
+    assertApiSuccess(response, 'Não foi possível listar as sugestões.');
+    return readApiData(response, { ...emptyPage(20), items: [] });
+  },
+
+  async updateSuggestion(input: {
+    id: number;
+    status: SuggestionProductStatus;
+    adminNote?: string;
+    changelogId?: number | null;
+  }): Promise<ChangelogSuggestion> {
+    const response = await apiClient.put<ApiResponse<ChangelogSuggestion>>(ENDPOINTS.changelog.adminSuggestions, input);
+    assertApiSuccess(response, 'Não foi possível atualizar a sugestão.');
+    return readApiData(response, {} as ChangelogSuggestion);
   },
 };
 

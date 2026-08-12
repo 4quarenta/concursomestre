@@ -31,7 +31,7 @@ export default async function LegalCommentaryDetailSeoSnapshot({ params }: Legal
     <main className="min-h-screen bg-slate-50 px-5 py-10 text-slate-900">
       <article className="mx-auto max-w-4xl rounded-lg border border-slate-200 bg-white p-6 sm:p-10">
         <nav aria-label="Breadcrumb" className="mb-6 text-sm text-slate-500">
-          <Link href="/lei-comentada" className="text-indigo-700">Lei comentada</Link>
+          <Link href="/lei-comentada" prefetch={false} className="text-indigo-700">Lei comentada</Link>
           <span aria-hidden="true"> / </span>
           <span>{law.shortTitle || law.title}</span>
         </nav>

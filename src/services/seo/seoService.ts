@@ -25,11 +25,13 @@ export interface SitemapStatusPayload {
   coverage: {
     institutional: SitemapCoverageBucket;
     questions: SitemapCoverageBucket;
+    boards: SitemapCoverageBucket;
     rankings: SitemapCoverageBucket;
     materials: SitemapCoverageBucket;
   };
   missingSamples: {
     questions: string[];
+    boards: string[];
     rankings: string[];
     materials: string[];
   };

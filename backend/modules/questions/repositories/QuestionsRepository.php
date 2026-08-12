@@ -1289,6 +1289,8 @@ class QuestionsRepository
         $this->ensureQuestionGroupInfrastructure();
 
         $sql = "SELECT g.id,
+                       g.prova_id,
+                       p.nome AS prova_title,
                        g.enunciado,
                        g.enunciado_clean,
                        g.texto,
@@ -1297,6 +1299,7 @@ class QuestionsRepository
                        COUNT(q.id) AS question_count,
                        GROUP_CONCAT(q.id ORDER BY q.id SEPARATOR ',') AS question_ids
                 FROM questions_groups g
+                LEFT JOIN provas p ON p.id = g.prova_id
                 LEFT JOIN questions q ON q.grupo_questao_id = g.id";
 
         if ($keyword !== '') {
@@ -1306,7 +1309,7 @@ class QuestionsRepository
                        OR g.id = :id_keyword";
         }
 
-        $sql .= " GROUP BY g.id, g.enunciado, g.enunciado_clean, g.texto, g.image_url, g.assets_json
+        $sql .= " GROUP BY g.id, g.prova_id, p.nome, g.enunciado, g.enunciado_clean, g.texto, g.image_url, g.assets_json
                   ORDER BY g.id DESC
                   LIMIT :limit";
 
@@ -1331,6 +1334,8 @@ class QuestionsRepository
 
         $stmt = $this->db->prepare(
             "SELECT g.id,
+                    g.prova_id,
+                    p.nome AS prova_title,
                     g.enunciado,
                     g.enunciado_clean,
                     g.texto,
@@ -1339,9 +1344,10 @@ class QuestionsRepository
                     COUNT(q.id) AS question_count,
                        GROUP_CONCAT(q.id ORDER BY q.id SEPARATOR ',') AS question_ids
              FROM questions_groups g
+             LEFT JOIN provas p ON p.id = g.prova_id
              LEFT JOIN questions q ON q.grupo_questao_id = g.id
              WHERE g.id = :group_id
-             GROUP BY g.id, g.enunciado, g.enunciado_clean, g.texto, g.image_url, g.assets_json
+             GROUP BY g.id, g.prova_id, p.nome, g.enunciado, g.enunciado_clean, g.texto, g.image_url, g.assets_json
              LIMIT 1"
         );
         $stmt->bindValue(':group_id', $groupId, PDO::PARAM_INT);
@@ -1361,10 +1367,13 @@ class QuestionsRepository
 
         $sourceProvider = trim((string) ($payload['source_provider'] ?? $payload['sourceProvider'] ?? ''));
         $sourceExternalId = trim((string) ($payload['source_external_id'] ?? $payload['sourceExternalId'] ?? ''));
+        $requestedProvaId = is_numeric($payload['prova_id'] ?? $payload['provaId'] ?? null)
+            ? (int) ($payload['prova_id'] ?? $payload['provaId'])
+            : 0;
         $reusedExternalSource = false;
         if (empty($payload['id']) && $sourceProvider !== '' && $sourceExternalId !== '') {
             $find = $this->db->prepare(
-                'SELECT id FROM questions_groups
+                'SELECT id, prova_id FROM questions_groups
                  WHERE source_provider = :source_provider AND source_external_id = :source_external_id
                  LIMIT 1'
             );
@@ -1372,9 +1381,21 @@ class QuestionsRepository
                 ':source_provider' => $sourceProvider,
                 ':source_external_id' => $sourceExternalId,
             ]);
-            $existingId = $find->fetchColumn();
-            if ($existingId !== false) {
-                $payload['id'] = (int) $existingId;
+            $existing = $find->fetch(PDO::FETCH_ASSOC);
+            if (is_array($existing)) {
+                $existingId = (int) ($existing['id'] ?? 0);
+                $existingProvaId = is_numeric($existing['prova_id'] ?? null) ? (int) $existing['prova_id'] : 0;
+                if ($requestedProvaId <= 0) {
+                    throw new InvalidArgumentException('Vincule o contexto importado a uma prova antes de salvar.');
+                }
+                if ($existingProvaId > 0 && $existingProvaId !== $requestedProvaId) {
+                    throw new InvalidArgumentException('O contexto importado ja pertence a outra prova.');
+                }
+                if ($existingProvaId <= 0) {
+                    $this->db->prepare('UPDATE questions_groups SET prova_id = :prova_id WHERE id = :id')
+                        ->execute([':prova_id' => $requestedProvaId, ':id' => $existingId]);
+                }
+                $payload['id'] = $existingId;
                 $reusedExternalSource = true;
             }
         }
@@ -1391,6 +1412,7 @@ class QuestionsRepository
                  SET enunciado = :enunciado,
                      enunciado_clean = :enunciado_clean,
                      texto = :texto,
+                     prova_id = :prova_id,
                      image_url = :image_url,
                      assets_json = :assets_json,
                      source_provider = :source_provider,
@@ -1406,6 +1428,7 @@ class QuestionsRepository
                     enunciado,
                     enunciado_clean,
                     texto,
+                    prova_id,
                     image_url,
                     assets_json,
                     source_provider,
@@ -1418,6 +1441,7 @@ class QuestionsRepository
                     :enunciado,
                     :enunciado_clean,
                     :texto,
+                    :prova_id,
                     :image_url,
                     :assets_json,
                     :source_provider,
@@ -1445,6 +1469,11 @@ class QuestionsRepository
         $stmt->bindValue(':enunciado', $text);
         $stmt->bindValue(':enunciado_clean', trim(strip_tags($text)));
         $stmt->bindValue(':texto', $text);
+        $provaId = max(0, $requestedProvaId);
+        if ($provaId <= 0) {
+            throw new InvalidArgumentException('Vincule o contexto a uma prova antes de salvar.');
+        }
+        $stmt->bindValue(':prova_id', $provaId, PDO::PARAM_INT);
         $stmt->bindValue(
             ':image_url',
             $firstAssetUrl !== '' ? $firstAssetUrl : null,
@@ -1557,6 +1586,81 @@ class QuestionsRepository
             $stmt->bindValue($key, $questionId, PDO::PARAM_INT);
         }
         $stmt->execute();
+    }
+
+    /**
+     * Resolve a prova do contexto e impede que ele conecte questoes de provas
+     * distintas. O vinculo explicito e preferido; IDs de questao servem para
+     * inferencia segura no editor legado.
+     */
+    public function resolveQuestionGroupProvaId(?int $requestedProvaId, ?array $questionIds, ?int $groupId = null): int
+    {
+        $this->ensureQuestionGroupInfrastructure();
+        $candidateIds = [];
+        foreach ($questionIds ?? [] as $questionId) {
+            $normalized = (int) $questionId;
+            if ($normalized > 0) {
+                $candidateIds[$normalized] = $normalized;
+            }
+        }
+        $questionProvaId = null;
+        if ($candidateIds !== []) {
+            $placeholders = [];
+            $params = [];
+            foreach (array_values($candidateIds) as $index => $questionId) {
+                $placeholder = ':question_id_' . $index;
+                $placeholders[] = $placeholder;
+                $params[$placeholder] = $questionId;
+            }
+            $stmt = $this->db->prepare(
+                'SELECT id, prova_id FROM questions WHERE id IN (' . implode(', ', $placeholders) . ')'
+            );
+            $stmt->execute($params);
+            $questionRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            if (count($questionRows) !== count($candidateIds)) {
+                throw new InvalidArgumentException('Uma ou mais questoes vinculadas ao contexto nao foram encontradas.');
+            }
+
+            $provaIds = [];
+            foreach ($questionRows as $questionRow) {
+                $provaId = (int) ($questionRow['prova_id'] ?? 0);
+                if ($provaId <= 0) {
+                    throw new InvalidArgumentException('Todas as questoes vinculadas precisam estar associadas a uma prova.');
+                }
+                $provaIds[$provaId] = $provaId;
+            }
+            $provaIds = array_values($provaIds);
+            if (count($provaIds) !== 1) {
+                throw new InvalidArgumentException('As questoes vinculadas ao contexto devem pertencer a uma unica prova.');
+            }
+            $questionProvaId = $provaIds[0];
+        }
+
+        $existingProvaId = null;
+        if (($groupId ?? 0) > 0) {
+            $stmt = $this->db->prepare('SELECT prova_id FROM questions_groups WHERE id = :group_id LIMIT 1');
+            $stmt->execute([':group_id' => $groupId]);
+            $value = $stmt->fetchColumn();
+            $existingProvaId = is_numeric($value) && (int) $value > 0 ? (int) $value : null;
+        }
+
+        $requested = ($requestedProvaId ?? 0) > 0 ? (int) $requestedProvaId : null;
+        $resolved = $requested ?? $existingProvaId ?? $questionProvaId;
+        if ($resolved === null) {
+            throw new InvalidArgumentException('Selecione a prova a que este contexto pertence.');
+        }
+        foreach ([$requested, $existingProvaId, $questionProvaId] as $candidate) {
+            if ($candidate !== null && $candidate !== $resolved) {
+                throw new InvalidArgumentException('O contexto e as questoes vinculadas devem pertencer a mesma prova.');
+            }
+        }
+
+        $exists = $this->db->prepare('SELECT id FROM provas WHERE id = :prova_id LIMIT 1');
+        $exists->execute([':prova_id' => $resolved]);
+        if ($exists->fetchColumn() === false) {
+            throw new InvalidArgumentException('A prova vinculada ao contexto nao foi encontrada.');
+        }
+        return $resolved;
     }
     /**
      * Carrega os agregados de estatistica para varias questes em uma unica consulta.
@@ -2097,6 +2201,7 @@ class QuestionsRepository
                 visibility_status,
                 scheduled_at,
                 published_at,
+                published_sort_at,
                 created_by_user_id,
                 updated_by_user_id,
                 published_by_user_id,
@@ -2123,6 +2228,7 @@ class QuestionsRepository
                 :visibility_status,
                 :scheduled_at,
                 :published_at,
+                :published_sort_at,
                 :created_by_user_id,
                 :updated_by_user_id,
                 :published_by_user_id,
@@ -2169,6 +2275,7 @@ class QuestionsRepository
                  visibility_status = :visibility_status,
                  scheduled_at = :scheduled_at,
                  published_at = :published_at,
+                 published_sort_at = :published_sort_at,
                  updated_by_user_id = :updated_by_user_id,
                  published_by_user_id = COALESCE(:published_by_user_id, published_by_user_id),
                  updated_at = NOW()
@@ -2802,6 +2909,50 @@ class QuestionsRepository
         }
     }
 
+    /**
+     * Persists official files materialized outside the regular question import.
+     * Used by the idempotent Gran backfill for exams that already exist.
+     */
+    public function attachMaterializedExamFiles(int $examId, array $files): int
+    {
+        if ($examId <= 0 || $files === []) {
+            return 0;
+        }
+        $this->ensureExamInfrastructure();
+        $before = $this->db->prepare('SELECT COUNT(*) FROM prova_arquivos WHERE prova_id = :prova_id AND archived_at IS NULL');
+        $before->execute([':prova_id' => $examId]);
+        $beforeCount = (int) $before->fetchColumn();
+
+        $metadata = json_encode(
+            ['files' => array_values(array_filter($files, 'is_array'))],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+        );
+        $this->syncImportedExamFiles($examId, [
+            'metadata_json' => is_string($metadata) ? $metadata : '{"files":[]}',
+        ]);
+
+        foreach ($files as $file) {
+            if (!is_array($file) || ($file['kind'] ?? '') !== 'prova') {
+                continue;
+            }
+            $url = trim((string) ($file['url'] ?? ''));
+            if ($url === '') {
+                continue;
+            }
+            $updatePdf = $this->db->prepare(
+                "UPDATE provas
+                 SET pdf_url = :pdf_url, updated_at = NOW()
+                 WHERE id = :id AND (pdf_url IS NULL OR pdf_url = '')"
+            );
+            $updatePdf->execute([':pdf_url' => $url, ':id' => $examId]);
+            break;
+        }
+
+        $after = $this->db->prepare('SELECT COUNT(*) FROM prova_arquivos WHERE prova_id = :prova_id AND archived_at IS NULL');
+        $after->execute([':prova_id' => $examId]);
+        return max(0, (int) $after->fetchColumn() - $beforeCount);
+    }
+
     private function bindImportedExamRecord(PDOStatement $stmt, array $record): void
     {
         $stmt->bindValue(':nome', $record['nome']);
@@ -2988,10 +3139,14 @@ class QuestionsRepository
         );
         $canonicalEditorial->execute([':question_id' => $questionId]);
         foreach ($canonicalEditorial->fetchAll(PDO::FETCH_ASSOC) ?: [] as $editorial) {
+            $body = trim((string) ($editorial['body'] ?? ''));
+            if ($body === '') {
+                continue;
+            }
             if (($editorial['editorial_type'] ?? '') === 'teacher_comment') {
-                $teacherComment = trim((string) ($editorial['body'] ?? $teacherComment));
+                $teacherComment = $body;
             } elseif (($editorial['editorial_type'] ?? '') === 'detailed_analysis') {
-                $detailedComment = trim((string) ($editorial['body'] ?? $detailedComment));
+                $detailedComment = $body;
             }
         }
 
@@ -3066,6 +3221,27 @@ class QuestionsRepository
     }
 
     /**
+     * The public cursor uses this value as its ordering key. It must be
+     * persisted with the question itself, independently from optional read
+     * model flags, otherwise imported publications can become invisible.
+     */
+    private function resolvePublishedSortAt(array $record): ?string
+    {
+        $status = strtolower(trim((string) ($record['publish_status'] ?? 'draft')));
+        if ($status === 'published') {
+            $publishedAt = trim((string) ($record['published_at'] ?? ''));
+            return $publishedAt !== '' ? $publishedAt : date('Y-m-d H:i:s');
+        }
+
+        if ($status === 'scheduled') {
+            $scheduledAt = trim((string) ($record['scheduled_at'] ?? ''));
+            return $scheduledAt !== '' ? $scheduledAt : null;
+        }
+
+        return null;
+    }
+
+    /**
      * Aplica o bind do registro principal da questo nas operaes de insert/update.
       * @since 1.0.0
      */
@@ -3116,6 +3292,12 @@ class QuestionsRepository
         $stmt->bindValue(':visibility_status', $record['visibility_status']);
         $stmt->bindValue(':scheduled_at', $record['scheduled_at']);
         $stmt->bindValue(':published_at', $record['published_at']);
+        $publishedSortAt = $this->resolvePublishedSortAt($record);
+        $stmt->bindValue(
+            ':published_sort_at',
+            $publishedSortAt,
+            $publishedSortAt === null ? PDO::PARAM_NULL : PDO::PARAM_STR
+        );
         if (str_starts_with(ltrim($stmt->queryString), 'INSERT')) {
             $stmt->bindValue(
                 ':created_by_user_id',
@@ -3150,6 +3332,7 @@ class QuestionsRepository
         SchemaReadiness::assertTablesAndColumns($this->db, 'publicacao de questoes', [
             'questions' => [
                 'reference_text', 'publish_status', 'visibility_status', 'scheduled_at', 'published_at',
+                'published_sort_at',
                 'created_by_user_id', 'updated_by_user_id', 'published_by_user_id', 'grupo_questao_id',
                 'import_fingerprint', 'source_exam_key', 'source_question_number', 'prova_id',
             ],
@@ -3184,7 +3367,7 @@ class QuestionsRepository
     {
         SchemaReadiness::assertTablesAndColumns($this->db, 'grupos legados de questoes', [
             'questions_groups' => [
-                'id', 'texto', 'assets_json', 'source_provider', 'source_external_id', 'created_by_user_id', 'updated_by_user_id',
+                'id', 'texto', 'prova_id', 'assets_json', 'source_provider', 'source_external_id', 'created_by_user_id', 'updated_by_user_id',
             ],
             'questions' => ['grupo_questao_id'],
         ]);
@@ -3290,4 +3473,3 @@ class QuestionsRepository
         return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
     }
 }
-

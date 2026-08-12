@@ -9,19 +9,32 @@
 *
 */
 
-export type BlogCategory = {
-  id: number;
-  name: string;
+export type BlogTaxonomyReference = {
+  id: number | null;
+  label: string;
   slug: string;
+};
+
+export type BlogCategory = BlogTaxonomyReference & {
   description?: string | null;
   imageUrl?: string | null;
   articleCount?: number;
 };
 
-export type BlogTag = {
-  id: number;
-  name: string;
-  slug: string;
+export type BlogTagKind =
+  | 'general'
+  | 'topic'
+  | 'region'
+  | 'state'
+  | 'career'
+  | 'organization'
+  | 'exam_board';
+
+export type BlogTag = BlogTaxonomyReference & {
+  kind: BlogTagKind;
+  description?: string | null;
+  imageUrl?: string | null;
+  articleCount?: number;
 };
 
 export type BlogAuthor = {
@@ -53,9 +66,11 @@ export type BlogArticle = {
   publishedAt?: string | null;
   createdAt: string;
   updatedAt: string;
-  category: BlogCategory;
+  taxonomy: {
+    category: BlogCategory;
+    tags: BlogTag[];
+  };
   author: BlogAuthor;
-  tags: BlogTag[];
   engagement: {
     likesCount: number;
     commentsCount: number;
@@ -69,6 +84,7 @@ export type BlogPage = {
     limit: number;
     hasMore: boolean;
     nextCursor: string | null;
+    total?: number;
   };
 };
 
@@ -78,8 +94,10 @@ export type BlogArticleInput = {
   slug?: string;
   excerpt: string;
   bodyHtml: string;
-  categoryId?: number | null;
-  categoryName?: string;
+  taxonomy: {
+    category: BlogTaxonomyReference | null;
+    tags: BlogTag[];
+  };
   coverImageUrl: string;
   coverImageAlt: string;
   status: BlogArticle['status'];
@@ -87,9 +105,5 @@ export type BlogArticleInput = {
   allowComments: boolean;
   sourceName?: string;
   sourceUrl?: string;
-  seoTitle?: string;
-  seoDescription?: string;
-  canonicalUrl?: string;
   scheduledAt?: string | null;
-  tags: string[];
 };

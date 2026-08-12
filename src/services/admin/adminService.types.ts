@@ -730,6 +730,10 @@ export interface AdminQuestionListPayload {
 
 export interface AdminQuestionGroupItem {
   id: number;
+  provaId?: number | string | null;
+  prova_id?: number | string | null;
+  provaTitle?: string | null;
+  prova_title?: string | null;
   texto: string;
   assets?: QuestionAsset[];
   questionIds?: Array<number | string> | string | null;
@@ -746,6 +750,7 @@ export interface AdminQuestionGroupItem {
 
 export interface AdminQuestionGroupPayload {
   id?: number | string | null;
+  provaId: number | string;
   texto: string;
   assets: QuestionAsset[];
   questionIds: Array<number | string>;

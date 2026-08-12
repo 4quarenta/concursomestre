@@ -12,6 +12,7 @@
 */
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Briefcase,
   Building2,
@@ -30,6 +31,7 @@ import {
   PLATFORM_PAGE_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
+import { buildBoardPath } from '@services/seo';
 
 type ConcursoCard = {
   id: string;
@@ -252,10 +254,10 @@ const ConcursosPage: React.FC = () => {
                         <Building2 size={14} className="text-slate-400" />
                         {concurso.orgao}
                       </div>
-                      <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
+                      <Link href={buildBoardPath({ name: concurso.banca })} prefetch={false} className="inline-flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:text-indigo-600 hover:underline dark:bg-slate-800/70 dark:text-slate-300">
                         <ShieldCheck size={14} className="text-slate-400" />
                         {concurso.banca}
-                      </div>
+                      </Link>
                       <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                         <Target size={14} className="text-slate-400" />
                         {concurso.cargo}

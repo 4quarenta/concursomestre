@@ -12,7 +12,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Heart, Share2 } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import CommentsSection from '@/components/shared/feedback/CommentsSection';
 import { useAuth } from '@/providers/AuthProvider';
 import { useToast } from '@/providers/ToastProvider';
@@ -93,26 +93,6 @@ export default function BlogArticleEngagement({
           }`}
         >
           <Heart size={17} className={displayLiked ? 'fill-current' : ''} /> {likesCount}
-        </button>
-        <button
-          type="button"
-          onClick={async () => {
-            const shareData = { title: document.title, url: window.location.href };
-            try {
-              if (navigator.share) {
-                await navigator.share(shareData);
-              } else {
-                await navigator.clipboard.writeText(window.location.href);
-                addToast('Link copiado.', 'success');
-              }
-            } catch (error) {
-              if (error instanceof DOMException && error.name === 'AbortError') return;
-              addToast('Não foi possível compartilhar agora.', 'error');
-            }
-          }}
-          className="inline-flex h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-        >
-          <Share2 size={17} /> Compartilhar
         </button>
       </div>
 

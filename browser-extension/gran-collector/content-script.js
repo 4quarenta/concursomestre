@@ -4,6 +4,7 @@
   const ALLOWED_TYPES = new Set([
     'PING',
     'COLLECT',
+    'COLLECT_QUESTION',
     'COLLECT_TAXONOMY_PAGE',
     'COLLECT_TAXONOMY_BATCH',
     'CHECK_TAXONOMY_UPDATES',
@@ -58,6 +59,8 @@
       chrome.runtime.sendMessage({
         action,
         url: action === 'COLLECT' ? String(event.data.url || '') : undefined,
+        externalId: action === 'COLLECT_QUESTION' ? String(event.data.externalId || '') : undefined,
+        subjectSlug: action === 'COLLECT_QUESTION' ? String(event.data.subjectSlug || '') : undefined,
         kind: action === 'COLLECT_TAXONOMY_PAGE' || action === 'COLLECT_TAXONOMY_BATCH'
           ? String(event.data.kind || '')
           : undefined,

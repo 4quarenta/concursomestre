@@ -6,8 +6,8 @@ describe('public settings contract adapter', () => {
   it('adapts the versioned domain contract only at the frontend boundary', () => {
     const settings = adaptPublicSystemSettings({
       contractVersion: 'public-settings.v1',
-      branding: { appName: 'ConcursoMestre' },
-      features: { practiceEnabled: true },
+      branding: { appName: 'ConcursoMestre', platformVersion: '1.2.3' },
+      features: { practiceEnabled: true, supportDonationsEnabled: false },
       commerce: { paymentProvider: 'stripe' },
       authentication: {
         recaptcha: { enabled: true, siteKey: 'site-key' },
@@ -19,12 +19,17 @@ describe('public settings contract adapter', () => {
 
     expect(settings).toMatchObject({
       appName: 'ConcursoMestre',
+      platformVersion: '1.2.3',
       paymentProvider: 'stripe',
       recaptchaEnabled: true,
       recaptchaSiteKey: 'site-key',
       googleAuthClientId: 'google-client-id',
       hasGoogleAuthClientConfigured: true,
       hasFacebookAuthConfigured: false,
+      features: {
+        practiceEnabled: true,
+        supportDonationsEnabled: false,
+      },
     });
   });
 

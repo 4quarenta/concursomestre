@@ -144,6 +144,29 @@ if ($tableExists('blog_articles')) {
         }
     }
 
+    if ($tableExists('blog_tags') && $tableExists('blog_article_tags')) {
+        $tagStmt = $db->query(
+            "SELECT t.slug, COALESCE(MAX(a.updated_at), MAX(t.updated_at), MAX(t.created_at)) AS last_modified
+             FROM blog_tags t
+             INNER JOIN blog_article_tags bat ON bat.tag_id = t.id
+             INNER JOIN blog_articles a ON a.id = bat.article_id
+                AND a.deleted_at IS NULL
+                AND a.status IN ('published', 'scheduled')
+                AND a.published_at IS NOT NULL
+                AND a.published_at <= NOW()
+             GROUP BY t.id, t.slug"
+        );
+        foreach ($tagStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $slug = trim((string) ($row['slug'] ?? ''));
+            if ($slug !== '') {
+                $taxonomyEntries[] = [
+                    'loc' => $baseUrl . '/blog/tag/' . rawurlencode($slug),
+                    'lastmod' => $safeDate($row['last_modified'] ?? null),
+                ];
+            }
+        }
+    }
+
     $authorStmt = $db->query(
         "SELECT author_id, MAX(updated_at) AS last_modified
          FROM blog_articles

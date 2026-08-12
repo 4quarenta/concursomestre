@@ -13,14 +13,13 @@
 
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Difficulty } from '../../types';
 import type { UserAnswer } from '../../types';
 import { ChevronRight, ChevronLeft, ChevronDown, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp } from 'lucide-react';
-import QuestionCard from '../questions/components/QuestionCard';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
-import AuthModal from '../../components/shared/overlays/AuthModal';
 import AdBanner from '../../components/shared/feedback/AdBanner';
 import {
   getAccessPlanName,
@@ -56,8 +55,18 @@ import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
 import { useUserProgressActions } from '@/state/user-progress/useUserProgressActions';
 import { useUserProgressStore } from '@/state/user-progress/userProgressStore';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
-import UpgradeModal from '@/components/shared/overlays/UpgradeModal';
 import type { PracticeInitialQuestionPage } from './practiceTypes';
+
+const QuestionCard = dynamic(() => import('../questions/components/QuestionCard'), {
+  loading: () => (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none min-h-72 animate-pulse rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+    />
+  ),
+});
+const AuthModal = dynamic(() => import('../../components/shared/overlays/AuthModal'), { ssr: false });
+const UpgradeModal = dynamic(() => import('@/components/shared/overlays/UpgradeModal'), { ssr: false });
 
 const PAGE_SIZE = 10;
 const PRACTICE_PROGRESS_BOOTSTRAP_DELAY_MS = 3200;
@@ -379,6 +388,8 @@ const SearchableFilterSelect = ({
   disabledText,
   onDisabledClick,
   multiple = true,
+  variant = 'default',
+  popoverAlign = 'auto',
 }: {
   label: string;
   value: SearchableFilterValue;
@@ -391,9 +402,12 @@ const SearchableFilterSelect = ({
   disabledText?: string;
   onDisabledClick?: () => void;
   multiple?: boolean;
+  variant?: 'default' | 'taxonomy-tree';
+  popoverAlign?: 'auto' | 'start' | 'end';
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [resolvedPopoverAlign, setResolvedPopoverAlign] = useState<'start' | 'end'>('start');
   const containerRef = useRef<HTMLDivElement>(null);
   const selectedValues = useMemo(() => toFilterValues(value), [value]);
   const allOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
@@ -407,6 +421,17 @@ const SearchableFilterSelect = ({
     : selectedValues.length === 1
       ? selectedLabelMap.get(selectedValues[0]) || selectedValues[0]
       : `${selectedValues.length} selecionados`;
+
+  const openMenu = () => {
+    if (popoverAlign !== 'auto') {
+      setResolvedPopoverAlign(popoverAlign);
+    } else {
+      const rect = containerRef.current?.getBoundingClientRect();
+      const panelWidth = Math.min(544, window.innerWidth - 32);
+      setResolvedPopoverAlign(rect && rect.left + panelWidth > window.innerWidth - 16 ? 'end' : 'start');
+    }
+    setIsOpen(true);
+  };
 
   const filteredGroups = useMemo(() => {
     const normalizedQuery = normalizePracticeText(query);
@@ -503,19 +528,28 @@ const SearchableFilterSelect = ({
             onDisabledClick?.();
             return;
           }
-          setIsOpen((current) => !current);
+          if (isOpen) {
+            setIsOpen(false);
+          } else {
+            openMenu();
+          }
         }}
-        className={`flex h-11 w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-sm font-medium outline-none transition-all ${disabled ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 opacity-70 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-500' : 'cursor-pointer border-slate-200 bg-white text-slate-700 hover:border-indigo-200 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-800'}`}
+        className={`flex h-11 w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-sm font-medium outline-none transition-all ${disabled ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 opacity-70 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-500' : 'cursor-pointer border-slate-200 bg-white text-slate-700 hover:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-800'}`}
       >
-        <span className="truncate">{disabled ? (disabledText || selectedLabel) : selectedLabel}</span>
-        <ChevronDown size={16} className={`shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="min-w-0 flex-1 truncate">{disabled ? (disabledText || selectedLabel) : selectedLabel}</span>
+        {!disabled && multiple && selectedValues.length > 0 ? (
+          <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[10px] font-black tabular-nums text-white">
+            {selectedValues.length}
+          </span>
+        ) : null}
+        <ChevronDown size={16} className={`shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {helperText ? (
         <p className="px-1 text-[10px] font-medium leading-4 text-slate-400 dark:text-slate-500">{helperText}</p>
       ) : null}
 
       {isOpen && !disabled ? (
-        <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/70 dark:border-slate-700 dark:bg-slate-950 dark:shadow-black/40">
+        <div className={`absolute top-full z-50 mt-2 w-[min(34rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/70 dark:border-slate-700 dark:bg-slate-950 dark:shadow-black/40 ${resolvedPopoverAlign === 'end' ? 'right-0' : 'left-0'}`}>
           <div className="relative border-b border-slate-100 dark:border-slate-800">
             <input
               autoFocus
@@ -527,11 +561,11 @@ const SearchableFilterSelect = ({
             <Search size={17} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
           </div>
 
-          <div className="max-h-80 overflow-y-auto py-2">
+          <div className="max-h-[min(32rem,60vh)] overflow-y-auto py-2">
             <button
               type="button"
               onClick={() => handleSelect('All')}
-              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+              className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
             >
               <span className={`flex h-4 w-4 items-center justify-center rounded border ${selectedValues.length === 0 ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700'}`}>
                 {selectedValues.length === 0 ? <Check size={11} /> : null}
@@ -540,12 +574,12 @@ const SearchableFilterSelect = ({
             </button>
 
             {filteredGroups.length > 0 ? filteredGroups.map((group) => (
-              <div key={group.label} className="py-1">
+              <div key={group.label} className={variant === 'taxonomy-tree' ? 'px-2 py-1.5' : 'py-1'}>
                 {group.selectable ? (
                   <button
                     type="button"
                     onClick={() => handleGroupSelect(group)}
-                    className={`flex w-full items-center gap-3 px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.18em] transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 ${
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 ${variant === 'taxonomy-tree' ? 'text-sm font-bold tracking-normal' : 'text-[10px] font-black uppercase tracking-[0.18em]'} ${
                       group.options.every((option) => selectedValues.includes(option.value))
                         ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
                         : group.options.some((option) => selectedValues.includes(option.value))
@@ -565,24 +599,26 @@ const SearchableFilterSelect = ({
                     {group.label}
                   </button>
                 ) : (
-                  <p className="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{group.label}</p>
+                  <p className={`px-3 py-2 text-slate-400 dark:text-slate-500 ${variant === 'taxonomy-tree' ? 'text-sm font-bold tracking-normal text-slate-700 dark:text-slate-200' : 'text-[10px] font-black uppercase tracking-[0.18em]'}`}>{group.label}</p>
                 )}
-                {group.options.map((option) => (
-                  <button
-                    key={`${group.label}-${option.value}`}
-                    type="button"
-                    onClick={() => handleSelect(option.value)}
-                    className={`flex w-full items-start gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 ${selectedValues.includes(option.value) ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-300'}`}
-                  >
-                    <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selectedValues.includes(option.value) ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700'}`}>
-                      {selectedValues.includes(option.value) ? <Check size={11} /> : null}
-                    </span>
-                    <span>
-                      <span className="block font-semibold leading-5">{option.label}</span>
-                      {option.helper ? <span className="mt-0.5 block text-[10px] font-medium text-slate-400 dark:text-slate-500">{option.helper}</span> : null}
-                    </span>
-                  </button>
-                ))}
+                <div className={variant === 'taxonomy-tree' && group.options.length > 0 ? 'ml-5 border-l border-slate-200 py-0.5 dark:border-slate-700' : ''}>
+                  {group.options.map((option) => (
+                    <button
+                      key={`${group.label}-${option.value}`}
+                      type="button"
+                      onClick={() => handleSelect(option.value)}
+                      className={`flex w-full items-start gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-900 ${variant === 'taxonomy-tree' ? 'relative rounded-lg before:absolute before:left-0 before:top-1/2 before:h-px before:w-3 before:bg-slate-200 before:content-[\'\'] dark:before:bg-slate-700' : ''} ${selectedValues.includes(option.value) ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-300'}`}
+                    >
+                      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selectedValues.includes(option.value) ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700'}`}>
+                        {selectedValues.includes(option.value) ? <Check size={11} /> : null}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block break-normal font-semibold leading-5">{option.label}</span>
+                        {option.helper ? <span className="mt-0.5 block text-[10px] font-medium leading-4 text-slate-400 dark:text-slate-500">{option.helper}</span> : null}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )) : (
               <p className="px-3 py-5 text-center text-xs font-semibold text-slate-400 dark:text-slate-500">Nenhum item encontrado.</p>
@@ -1076,14 +1112,51 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
   } | null>(null);
   const [lastFetchedPage, setLastFetchedPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState('');
+  const [savedQuestionOverrides, setSavedQuestionOverrides] = useState<Record<string, boolean>>({});
   const hasBootstrappedQuestionsRef = useRef('');
+  const bootstrapRequestIdRef = useRef(0);
   const hasHydratedInitialPageRef = useRef(false);
   const hasAppliedPreferredViewRef = useRef(false);
   const loaderRef = useRef<HTMLDivElement>(null);
+  const loadMoreRequestRef = useRef(false);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const focusQuestionRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<HTMLElement | Window | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+
+  const resolveQuestionSavedState = useCallback((question: Question): boolean => {
+    const questionId = String(question.id);
+    if (Object.prototype.hasOwnProperty.call(savedQuestionOverrides, questionId)) {
+      return savedQuestionOverrides[questionId];
+    }
+
+    return Boolean(
+      question.isSaved
+      || currentUser?.savedQuestionIds?.includes(questionId),
+    );
+  }, [currentUser?.savedQuestionIds, savedQuestionOverrides]);
+
+  const handleToggleQuestionSave = useCallback(async (question: Question): Promise<void> => {
+    if (!currentUser) {
+      setAuthModalConfig({
+        title: 'Salve para Depois',
+        description: 'Crie seu próprio banco de questões favoritas para revisar quando quiser.',
+      });
+      setShowAuthModal(true);
+      return;
+    }
+
+    const questionId = String(question.id);
+    const previousSavedState = resolveQuestionSavedState(question);
+    const desiredSavedState = !previousSavedState;
+    setSavedQuestionOverrides((current) => ({ ...current, [questionId]: desiredSavedState }));
+
+    const succeeded = await toggleSavedQuestion(questionId, desiredSavedState);
+    if (!succeeded) {
+      setSavedQuestionOverrides((current) => ({ ...current, [questionId]: previousSavedState }));
+    }
+  }, [currentUser, resolveQuestionSavedState, toggleSavedQuestion]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -1140,7 +1213,18 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
     [systemSettings.taxonomies],
   );
 
-  // Removido declarção duplicada do searchParams
+  const questionQueryParams = useMemo(() => ({
+    ...buildPracticeQuestionQueryParams(filters),
+    ...(scopedQuestionIds.length > 0 ? { questionIds: scopedQuestionIds.join(',') } : {}),
+  }), [filters, scopedQuestionIds]);
+  const questionQueryKey = useMemo(() => JSON.stringify(questionQueryParams), [questionQueryParams]);
+  const questionBootstrapKey = useMemo(
+    () => `${currentUser?.id || 'guest'}:${currentUser?.role || 'guest'}:${questionQueryKey}`,
+    [currentUser?.id, currentUser?.role, questionQueryKey],
+  );
+  useEffect(() => {
+    setLoadMoreError('');
+  }, [questionBootstrapKey]);
   const filteredQuestions = useMemo(() => {
     let filtered = questions.filter(q => {
       const enemQuestion = isEnemQuestion(q);
@@ -1148,12 +1232,16 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
       const selectedSubjects = toFilterValues(filters.subject);
       const selectedCareers = toFilterValues(filters.career);
       const isEnemFocus = filterHasValue(selectedCareers, ENEM_FOCUS_NAME);
-      const matchSubject = selectedSubjects.length === 0
-        || (
-          isEnemFocus
-            ? selectedSubjects.some((subjectName) => enemSubjectAreas.includes(subjectName as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number]))
-            : questionMatchesSubjects(q, selectedSubjects)
-        );
+      // Taxonomy, editorial, publication and server-supported state filters
+      // are authoritative in the API response. Reapplying them in the client
+      // can discard valid rows while a newly fetched page is being reconciled
+      // with the store. ENEM is the only local predicate because it is a
+      // virtual focus assembled from multiple canonical taxonomies.
+      const applyLocalServerPredicates = isEnemFocus;
+      const matchSubject = !applyLocalServerPredicates || selectedSubjects.length === 0
+        || (isEnemFocus
+          ? selectedSubjects.some((subjectName) => enemSubjectAreas.includes(subjectName as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number]))
+          : questionMatchesSubjects(q, selectedSubjects));
       
       const difficultyMap: Record<string, number> = {
         'Muito Fácil': 1,
@@ -1163,32 +1251,32 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
         'Muito Difícil': 5
       };
       
-      const matchDifficulty = filterMatchesAny(filters.difficulty, (difficulty) => q.dificuldade === difficultyMap[difficulty]);
-      const matchAgency = isEnemFocus || filterMatchesAny(filters.agency, (agency) => Boolean(q.bancas?.some(b => b.sigla === agency || b.nome === agency)));
-      const matchOrganization = isEnemFocus || filterMatchesAny(filters.organization, (organization) => Boolean(q.orgaos?.some(o => o.sigla === organization || o.nome === organization)));
-      const matchYear = filterMatchesAny(filters.year, (year) => Boolean(q.anos?.some(y => String(y) === year)));
-      const matchLevel = isEnemFocus || filterMatchesAny(filters.level, (level) => q.level === level);
-      const matchTopic = filterMatchesAny(filters.topic, (topic) => Boolean(q.assuntos?.some(a => getPracticeTaxonomyName(a) === topic)));
+      const matchDifficulty = !applyLocalServerPredicates || filterMatchesAny(filters.difficulty, (difficulty) => q.dificuldade === difficultyMap[difficulty]);
+      const matchAgency = !applyLocalServerPredicates || isEnemFocus || filterMatchesAny(filters.agency, (agency) => Boolean(q.bancas?.some(b => b.sigla === agency || b.nome === agency)));
+      const matchOrganization = !applyLocalServerPredicates || isEnemFocus || filterMatchesAny(filters.organization, (organization) => Boolean(q.orgaos?.some(o => o.sigla === organization || o.nome === organization)));
+      const matchYear = !applyLocalServerPredicates || filterMatchesAny(filters.year, (year) => Boolean(q.anos?.some(y => String(y) === year)));
+      const matchLevel = !applyLocalServerPredicates || isEnemFocus || filterMatchesAny(filters.level, (level) => q.level === level);
+      const matchTopic = !applyLocalServerPredicates || filterMatchesAny(filters.topic, (topic) => Boolean(q.assuntos?.some(a => getPracticeTaxonomyName(a) === topic)));
       const selectedNonEnemCareers = selectedCareers.filter((career) => !filterHasValue([career], ENEM_FOCUS_NAME));
-      const matchRoleMulti = isEnemFocus || filterMatchesAny(filters.role, (role) => Boolean(q.cargos?.some((cargo) => getPracticeTaxonomyName(cargo) === role)));
-      const matchCareerMulti = selectedCareers.length === 0
+      const matchRoleMulti = !applyLocalServerPredicates || isEnemFocus || filterMatchesAny(filters.role, (role) => Boolean(q.cargos?.some((cargo) => getPracticeTaxonomyName(cargo) === role)));
+      const matchCareerMulti = !applyLocalServerPredicates || selectedCareers.length === 0
         || (isEnemFocus && enemQuestion)
         || q.carreiras?.some(c => selectedNonEnemCareers.includes(normalizeCareerSelectorLabel(c?.nome)));
-      const matchModality = isEnemFocus || filterMatchesAny(filters.modality, (modality) => q.tipo === (modality === 'Certo/Errado' ? 'certo ou errado' : 'multipla escolha'));
-      const matchKeyword = !filters.keyword || (q.enunciado_clean || q.enunciado || '').toLowerCase().includes(filters.keyword.toLowerCase());
-      const matchScopedQuestion = scopedQuestionIdSet.size === 0
+      const matchModality = !applyLocalServerPredicates || isEnemFocus || filterMatchesAny(filters.modality, (modality) => q.tipo === (modality === 'Certo/Errado' ? 'certo ou errado' : 'multipla escolha'));
+      const matchKeyword = !applyLocalServerPredicates || !filters.keyword || (q.enunciado_clean || q.enunciado || '').toLowerCase().includes(filters.keyword.toLowerCase());
+      const matchScopedQuestion = !applyLocalServerPredicates || scopedQuestionIdSet.size === 0
         || scopedQuestionIdSet.has(String(q.id || ''))
         || scopedQuestionIdSet.has(String(q.hashId || ''))
         || scopedQuestionIdSet.has(String(q.hash || ''));
-      const matchSaved = !filters.onlySaved || currentUser?.savedQuestionIds.includes(String(q.id));
+      const matchSaved = !applyLocalServerPredicates || !filters.onlySaved || currentUser?.savedQuestionIds.includes(String(q.id));
 
-      const matchTeacher = !filters.hasTeacherComment || !!q.hasTeacherComment || !!q.teacherComment;
-      const matchDetailed = !filters.hasDetailedComment || !!q.hasDetailedComment || !!q.detailedComment;
+      const matchTeacher = !applyLocalServerPredicates || !filters.hasTeacherComment || !!q.hasTeacherComment || !!q.teacherComment;
+      const matchDetailed = !applyLocalServerPredicates || !filters.hasDetailedComment || !!q.hasDetailedComment || !!q.detailedComment;
 
-      const matchCanceled = !(q.anulada || q.isCanceled) || !filters.excludeCanceled;
-      const matchOutdated = !(q.desatualizada || q.isOutdated) || !filters.excludeOutdated;
+      const matchCanceled = !applyLocalServerPredicates || !(q.anulada || q.isCanceled) || !filters.excludeCanceled;
+      const matchOutdated = !applyLocalServerPredicates || !(q.desatualizada || q.isOutdated) || !filters.excludeOutdated;
       const previousAnswer = userAnswers.find(a => Number(a.questionId) === Number(q.id));
-      const matchExcludeAnswered = !filters.excludeAnswered || !previousAnswer;
+      const matchExcludeAnswered = !applyLocalServerPredicates || !filters.excludeAnswered || !previousAnswer;
       const matchExcludeCorrect = !filters.excludeCorrect || previousAnswer?.isCorrect !== true;
       const matchExcludeWrong = !filters.excludeWrong || previousAnswer?.isCorrect !== false;
       const matchOnlyCorrect = !filters.onlyCorrect || previousAnswer?.isCorrect === true;
@@ -1209,11 +1297,6 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
   }, [filters, questions, currentUser?.savedQuestionIds, userAnswers, highlightedQuestionId, scopedQuestionIdSet]);
 
   const hasActiveFilters = useMemo(() => hasVisiblePracticeFilters(filters) || scopedQuestionIds.length > 0, [filters, scopedQuestionIds.length]);
-  const questionQueryParams = useMemo(() => ({
-    ...buildPracticeQuestionQueryParams(filters),
-    ...(scopedQuestionIds.length > 0 ? { questionIds: scopedQuestionIds.join(',') } : {}),
-  }), [filters, scopedQuestionIds]);
-  const questionQueryKey = useMemo(() => JSON.stringify(questionQueryParams), [questionQueryParams]);
 
   const resolvedQuestions = useMemo(() => {
     if (highlightedQuestionId) {
@@ -1240,14 +1323,26 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
   }, [highlightedQuestionId, resolvedQuestions.length, scopedQuestionIds.length, totalQuestions]);
 
   const loadNextPage = useCallback(async () => {
-    if (isLoadingMore || !hasMoreQuestions) return;
-    
+    if (loadMoreRequestRef.current || !hasMoreQuestions) return;
+
+    loadMoreRequestRef.current = true;
     setIsLoadingMore(true);
-    const nextPage = lastFetchedPage + 1;
-    await fetchMoreQuestions(nextPage, questionQueryParams);
-    setLastFetchedPage(nextPage);
-    setIsLoadingMore(false);
-  }, [fetchMoreQuestions, hasMoreQuestions, isLoadingMore, lastFetchedPage, questionQueryParams]);
+    setLoadMoreError('');
+    try {
+      const nextPage = lastFetchedPage + 1;
+      const loadedCount = await fetchMoreQuestions(nextPage, questionQueryParams);
+      if (loadedCount > 0) {
+        setLastFetchedPage(nextPage);
+        setVisibleCount((current) => current + PAGE_SIZE);
+      }
+    } catch (error) {
+      clientLog.warn('Failed to load the next practice page', error);
+      setLoadMoreError('Não foi possível carregar mais questões.');
+    } finally {
+      loadMoreRequestRef.current = false;
+      setIsLoadingMore(false);
+    }
+  }, [fetchMoreQuestions, hasMoreQuestions, lastFetchedPage, questionQueryParams]);
 
   const paginatedList = useMemo(() => resolvedQuestions.slice(0, visibleCount), [resolvedQuestions, visibleCount]);
 
@@ -1257,16 +1352,16 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
         if (viewMode === 'list') {
             if (visibleCount < resolvedQuestions.length) {
               setVisibleCount(prev => prev + PAGE_SIZE);
-            } else if (hasMoreQuestions) {
+            } else if (hasMoreQuestions && !loadMoreError) {
               // Trigger backend fetch for more
-              loadNextPage();
+              void loadNextPage();
             }
         }
       }
     }, { threshold: 0.1 });
     if (loaderRef.current) observer.observe(loaderRef.current);
     return () => observer.disconnect();
-  }, [hasMoreQuestions, loadNextPage, resolvedQuestions.length, viewMode, visibleCount]);
+  }, [hasMoreQuestions, loadMoreError, loadNextPage, resolvedQuestions.length, viewMode, visibleCount]);
 
   // Load more when reaching end of cards in focus mode
   useEffect(() => {
@@ -1294,7 +1389,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
   }, [currentQuestionIndex, resolvedQuestions.length]);
 
   useEffect(() => {
-    ensureTaxonomiesLoaded();
+    void ensureTaxonomiesLoaded(false, 'practice');
   }, [ensureTaxonomiesLoaded]);
 
   useEffect(() => {
@@ -1338,7 +1433,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
   ]);
 
   useEffect(() => {
-    if (isLoadingMore || hasBootstrappedQuestionsRef.current === questionQueryKey) {
+    if (hasBootstrappedQuestionsRef.current === questionBootstrapKey) {
       return;
     }
 
@@ -1351,7 +1446,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
       && !hasHydratedInitialPageRef.current
     ) {
       hasHydratedInitialPageRef.current = true;
-      hasBootstrappedQuestionsRef.current = questionQueryKey;
+      hasBootstrappedQuestionsRef.current = questionBootstrapKey;
       replaceQuestionBank('guest:guest', {
         questions: initialQuestionPage.questions,
         totalQuestions: initialQuestionPage.total || initialQuestionPage.questions.length,
@@ -1364,39 +1459,35 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
       return;
     }
 
-    hasBootstrappedQuestionsRef.current = questionQueryKey;
-    let active = true;
+    hasBootstrappedQuestionsRef.current = questionBootstrapKey;
+    const requestId = bootstrapRequestIdRef.current + 1;
+    bootstrapRequestIdRef.current = requestId;
 
     const bootstrapQuestions = async () => {
       setIsLoadingMore(true);
 
       try {
         await ensureQuestionsLoaded(false, questionQueryParams);
-        if (active) {
+        if (bootstrapRequestIdRef.current === requestId) {
           setLastFetchedPage(1);
           setVisibleCount(PAGE_SIZE);
           setCurrentQuestionIndex(0);
         }
       } finally {
-        if (active) {
+        if (bootstrapRequestIdRef.current === requestId) {
           setIsLoadingMore(false);
         }
       }
     };
 
     void bootstrapQuestions();
-
-    return () => {
-      active = false;
-    };
   }, [
     authIsLoading,
     currentUser?.id,
     ensureQuestionsLoaded,
     hasActiveFilters,
     initialQuestionPage,
-    isLoadingMore,
-    questionQueryKey,
+    questionBootstrapKey,
     questionQueryParams,
     replaceQuestionBank,
   ]);
@@ -1985,6 +2076,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
               value={pendingFilters.subject}
               onChange={(v) => handleFilterChange('subject', v)}
               groups={subjectOptionGroups}
+              variant="taxonomy-tree"
               disabled={isPracticeFilterLocked('subject')}
               helperText={getLockedFilterHelperText('subject', isEnemPendingFocus ? 'No foco ENEM, a matéria usa as áreas oficiais de conhecimento.' : undefined)}
               onDisabledClick={() => openLockedFilterUpgrade('subject')}
@@ -2015,6 +2107,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
               value={pendingFilters.topic}
               onChange={(v) => handleFilterChange('topic', v)}
               groups={topicOptionGroups}
+              variant="taxonomy-tree"
               disabled={!hasAnyFilterValue(pendingFilters.subject) || isPracticeFilterLocked('topic')}
               helperText={getLockedFilterHelperText('topic', !hasAnyFilterValue(pendingFilters.subject) ? 'Selecione uma matéria antes de filtrar por assunto.' : undefined)}
               onDisabledClick={() => openLockedFilterUpgrade('topic', !hasAnyFilterValue(pendingFilters.subject) ? 'Selecione uma matéria antes de filtrar por assunto.' : undefined)}
@@ -2268,44 +2361,48 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
                   existingNote={userNotes.find(n => String(n.questionId) === String(resolvedQuestions[currentQuestionIndex].id))}
                   onSaveNote={(qId, text) => saveNote(Number(qId), text)}
                   onOpenNote={handleOpenQuestionNote}
-                  onToggleSave={(id) => {
-                    if (!currentUser) {
-                      setAuthModalConfig({
-                        title: "Salve para Depois",
-                        description: "Crie seu próprio banco de questões favoritas para revisar quando quiser."
-                      });
-                      setShowAuthModal(true);
-                      return;
-                    }
-                    toggleSavedQuestion(id);
+                  onToggleSave={() => {
+                    void handleToggleQuestionSave(resolvedQuestions[currentQuestionIndex]);
                   }}
-                  isSaved={currentUser?.savedQuestionIds?.includes(String(resolvedQuestions[currentQuestionIndex].id)) || false}
+                  isSaved={resolveQuestionSavedState(resolvedQuestions[currentQuestionIndex])}
                   currentUserId={currentUser?.id || ''}
                   currentUserName={currentUser?.name || 'Visitante'}
                 />
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 px-0 sm:px-2">
+                <nav
+                  aria-label="Navegação entre questões"
+                  className="mt-4 grid grid-cols-2 items-center gap-2 px-0 sm:mt-6 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-2"
+                >
                   <button
+                    type="button"
+                    aria-label="Ir para a questão anterior"
                     onClick={() => {
                       setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1));
                       scrollToFocusQuestion();
                     }}
                     disabled={currentQuestionIndex === 0}
-                    className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-[10px] sm:text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all shadow-sm"
+                    className="col-start-1 row-start-2 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold uppercase tracking-wider text-slate-600 shadow-sm transition-colors hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-400 sm:row-start-1 sm:h-12 sm:w-auto sm:gap-2 sm:px-6 sm:text-xs sm:tracking-widest"
                   >
                     <ChevronLeft size={16} /> Anterior
                   </button>
-                  <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em]">Questão {currentQuestionIndex + 1} / {displayedQuestionTotal}</span>
+                  <span
+                    aria-live="polite"
+                    className="col-span-2 col-start-1 row-start-1 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 sm:col-span-1 sm:col-start-2 sm:tracking-[0.24em]"
+                  >
+                    Questão {currentQuestionIndex + 1} de {displayedQuestionTotal}
+                  </span>
                   <button
+                    type="button"
+                    aria-label="Ir para a próxima questão"
                     onClick={() => {
                       setCurrentQuestionIndex(Math.min(resolvedQuestions.length - 1, currentQuestionIndex + 1));
                       scrollToFocusQuestion();
                     }}
                     disabled={currentQuestionIndex === resolvedQuestions.length - 1}
-                    className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-bold text-[10px] sm:text-xs uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg shadow-slate-200 dark:shadow-none"
+                    className="col-start-2 row-start-2 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-35 dark:bg-indigo-600 dark:hover:bg-indigo-700 sm:col-start-3 sm:row-start-1 sm:h-12 sm:w-auto sm:gap-2 sm:px-6 sm:text-xs sm:tracking-widest"
                   >
                     Próxima <ChevronRight size={16} />
                   </button>
-                </div>
+                </nav>
               </div>
 
             </div>
@@ -2374,18 +2471,10 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
                 onLikeComment={(qId, cId) => likeComment(Number(qId), cId)}
                 onSaveNote={(qId, text) => saveNote(Number(qId), text)}
                 onOpenNote={handleOpenQuestionNote}
-                onToggleSave={(id) => {
-                  if (!currentUser) {
-                    setAuthModalConfig({
-                      title: "Salve para Depois",
-                      description: "Crie seu próprio banco de questões favoritas para revisar quando quiser."
-                    });
-                    setShowAuthModal(true);
-                    return;
-                  }
-                  toggleSavedQuestion(id);
+                onToggleSave={() => {
+                  void handleToggleQuestionSave(q);
                 }}
-                isSaved={currentUser?.savedQuestionIds?.includes(String(q.id)) || false}
+                isSaved={resolveQuestionSavedState(q)}
                 existingAnswer={userAnswers.find(a => a.questionId === q.id)}
                 existingNote={userNotes.find(n => String(n.questionId) === String(q.id))}
                 isAlreadyReported={reports.some(r => r.questionId === q.id && r.status === 'pending')}
@@ -2394,8 +2483,18 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
                 currentUserName={currentUser?.name || 'Visitante'}
               />
             ))}
-            <div ref={loaderRef} className="h-10 flex items-center justify-center">
-              {(visibleCount < resolvedQuestions.length || hasMoreQuestions) && <Loader2 className="animate-spin text-indigo-400" size={24} />}
+            <div ref={loaderRef} className="flex min-h-12 items-center justify-center py-1" aria-live="polite">
+              {isLoadingMore ? (
+                <Loader2 aria-label="Carregando mais questões" className="animate-spin text-indigo-500" size={24} />
+              ) : loadMoreError ? (
+                <button
+                  type="button"
+                  onClick={() => void loadNextPage()}
+                  className="inline-flex h-10 items-center justify-center rounded-lg border border-indigo-200 bg-white px-4 text-xs font-bold text-indigo-600 transition-colors hover:border-indigo-400 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300"
+                >
+                  Tentar carregar novamente
+                </button>
+              ) : null}
             </div>
           </div>
         )}

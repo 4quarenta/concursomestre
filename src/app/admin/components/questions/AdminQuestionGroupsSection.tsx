@@ -15,7 +15,8 @@ import { createPortal } from 'react-dom';
 import { Image as ImageIcon, Link2, Loader2, Pencil, Save, Trash2, Upload, X } from 'lucide-react';
 import { readApiErrorMessage, resolveApiResourceUrl } from '@services/api';
 import { adminService, type AdminQuestionGroupItem } from '@services/admin/adminService';
-import type { QuestionAsset } from '@types';
+import { examService } from '@services/exams/examService';
+import type { Prova, QuestionAsset } from '@types';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_FOOTER_CLASS,
@@ -38,6 +39,7 @@ import {
 
 interface QuestionContextDraft {
   id?: number | null;
+  provaId: string;
   texto: string;
   assets: QuestionAsset[];
   questionIds: string[];
@@ -50,6 +52,7 @@ type PendingDelete =
 
 const EMPTY_DRAFT: QuestionContextDraft = {
   id: null,
+  provaId: '',
   texto: '',
   assets: [],
   questionIds: [],
@@ -108,6 +111,7 @@ const getContextAssetUrl = (asset?: QuestionAsset) => {
 
 const buildDraftFromContext = (context: AdminQuestionGroupItem): QuestionContextDraft => ({
   id: context.id,
+  provaId: String(context.provaId ?? context.prova_id ?? ''),
   texto: context.texto || context.enunciado || '',
   assets: Array.isArray(context.assets)
     ? context.assets
@@ -127,6 +131,7 @@ const buildDraftFromContext = (context: AdminQuestionGroupItem): QuestionContext
 
 const AdminQuestionGroupsSection = () => {
   const [contexts, setContexts] = React.useState<AdminQuestionGroupItem[]>([]);
+  const [provas, setProvas] = React.useState<Prova[]>([]);
   const [filter, setFilter] = React.useState('');
   const [draft, setDraft] = React.useState<QuestionContextDraft>(EMPTY_DRAFT);
   const [isEditorOpen, setIsEditorOpen] = React.useState(false);
@@ -163,6 +168,16 @@ const AdminQuestionGroupsSection = () => {
 
     return () => window.clearTimeout(timeoutId);
   }, [loadContexts]);
+
+  React.useEffect(() => {
+    let active = true;
+    void examService.list({ limit: 500 }).then((items) => {
+      if (active) setProvas(items);
+    }).catch(() => {
+      if (active) setProvas([]);
+    });
+    return () => { active = false; };
+  }, []);
 
   const visibleIds = React.useMemo(() => contexts.map((context) => Number(context.id)), [contexts]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
@@ -283,11 +298,16 @@ const AdminQuestionGroupsSection = () => {
       setNotice({ type: 'error', message: 'Informe um texto ou imagem para o contexto.' });
       return;
     }
+    if (!draft.provaId) {
+      setNotice({ type: 'error', message: 'Selecione a prova a que este contexto pertence.' });
+      return;
+    }
 
     setIsSaving(true);
     try {
       await adminService.saveQuestionGroup({
         id: draft.id,
+        provaId: draft.provaId,
         texto: draft.texto,
         assets: draft.assets,
         questionIds: draft.questionIds.map(Number),
@@ -392,6 +412,24 @@ const AdminQuestionGroupsSection = () => {
             </div>
 
             <div className="space-y-5">
+              <div className="rounded-sm border border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Prova vinculada *</label>
+                <select
+                  value={draft.provaId}
+                  onChange={(event) => setDraft((previous) => ({ ...previous, provaId: event.target.value }))}
+                  className={`${ADMIN_FIELD_CLASS} mt-2 w-full`}
+                >
+                  <option value="">Selecione a prova</option>
+                  {provas.map((prova) => (
+                    <option key={prova.id} value={String(prova.id)}>
+                      {prova.nome || `Prova #${prova.id}`}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  Um contexto pertence a uma unica prova. As questoes vinculadas devem pertencer a ela.
+                </p>
+              </div>
               <div className="rounded-sm border border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/40">
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Imagens</label>
@@ -575,7 +613,7 @@ const AdminQuestionGroupsSection = () => {
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Biblioteca de contextos</p>
         </div>
-        <table className="w-full min-w-[860px] table-fixed border-separate border-spacing-0 text-left text-sm">
+        <table className="w-full min-w-[1020px] table-fixed border-separate border-spacing-0 text-left text-sm">
           <thead className="bg-slate-100 text-xs font-semibold uppercase text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
             <tr>
               <th className="w-12 border-b border-slate-300 px-4 py-3 dark:border-slate-700">
@@ -587,6 +625,7 @@ const AdminQuestionGroupsSection = () => {
                 />
               </th>
               <th className="w-[42%] border-b border-slate-300 px-4 py-3 dark:border-slate-700">Contexto</th>
+              <th className="w-[20%] border-b border-slate-300 px-4 py-3 dark:border-slate-700">Prova</th>
               <th className="w-[30%] border-b border-slate-300 px-4 py-3 dark:border-slate-700">Imagem</th>
               <th className="w-[16%] border-b border-slate-300 px-4 py-3 text-center dark:border-slate-700">Questões vinculadas</th>
             </tr>
@@ -594,7 +633,7 @@ const AdminQuestionGroupsSection = () => {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
                   <Loader2 size={18} className="mx-auto mb-2 animate-spin" />
                   Carregando contextos...
                 </td>
@@ -616,6 +655,9 @@ const AdminQuestionGroupsSection = () => {
                       onChange={(event) => toggleContextSelection(Number(context.id), event.target.checked)}
                       aria-label={`Selecionar contexto ${context.id}`}
                     />
+                  </td>
+                  <td className="border-b border-slate-200 px-4 py-3 align-top text-xs font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300">
+                    {context.provaTitle || context.prova_title || (context.provaId || context.prova_id ? `Prova #${context.provaId ?? context.prova_id}` : 'Pendente de migracao')}
                   </td>
                   <td className="border-b border-slate-200 px-4 py-3 align-top dark:border-slate-800">
                     <div className="min-w-0">
@@ -672,7 +714,7 @@ const AdminQuestionGroupsSection = () => {
               );
             }) : (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
                   Nenhum contexto cadastrado.
                 </td>
               </tr>

@@ -35,6 +35,11 @@ if (!function_exists('setRefreshTokenCookie')) {
         }
 
         setcookie(getAuthRefreshCookieName(), $token, $options);
+
+        $hintOptions = $options;
+        $hintOptions['path'] = '/';
+        $hintOptions['httponly'] = false;
+        setcookie(getAuthSessionHintCookieName(), '1', $hintOptions);
     }
 }
 
@@ -88,10 +93,19 @@ if (!function_exists('clearAuthCookies')) {
             'samesite' => getAuthSameSite(),
         ];
 
+        $hintOptions = [
+            'expires' => $expiredAt,
+            'path' => '/',
+            'secure' => shouldUseSecureAuthCookies(),
+            'httponly' => false,
+            'samesite' => getAuthSameSite(),
+        ];
+
         $domain = getAuthCookieDomain();
         if ($domain !== '') {
             $refreshOptions['domain'] = $domain;
             $csrfOptions['domain'] = $domain;
+            $hintOptions['domain'] = $domain;
         }
 
         $refreshCookiePaths = array_values(array_unique(array_filter([
@@ -107,6 +121,7 @@ if (!function_exists('clearAuthCookies')) {
         }
 
         setcookie(getAuthCsrfCookieName(), '', $csrfOptions);
+        setcookie(getAuthSessionHintCookieName(), '', $hintOptions);
     }
 }
 

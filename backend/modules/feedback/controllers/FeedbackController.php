@@ -43,7 +43,7 @@ class FeedbackController
      *
      * @since 1.0.0
      */
-    public function listPublicSuggestions(array $authenticatedUserPayload, int $limit = 80): array
+    public function listPublicSuggestions(?array $authenticatedUserPayload, int $limit = 80): array
     {
         return $this->service->listPublicSuggestions($authenticatedUserPayload, $limit);
     }

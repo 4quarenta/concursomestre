@@ -21,11 +21,10 @@ import {
   ADMIN_COLLECTION_TABLE_CLASS,
   ADMIN_COLLECTION_TABLE_HEAD_CLASS,
   ADMIN_COLLECTION_TABLE_ROW_CLASS,
-  ADMIN_SURFACE_CLASS,
-  ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
 import AdminCollectionActionBar from '../shared/AdminCollectionActionBar';
 import AdminCollectionPagination from '../shared/AdminCollectionPagination';
+import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
@@ -1260,11 +1259,7 @@ const AdminQuestionsSection = ({
           </button>
       </AdminCollectionActionBar>
 
-      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden transition-colors duration-300`}>
-        <div className={ADMIN_SURFACE_HEADER_CLASS}>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Banco principal de questões</p>
-        </div>
-        <div className="overflow-x-auto">
+      <AdminCollectionTablePanel title="Banco principal de questões" className="transition-colors duration-300">
         <table className={ADMIN_COLLECTION_TABLE_CLASS}>
           <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
             <tr>
@@ -1358,6 +1353,7 @@ const AdminQuestionsSection = ({
                         <>
                           <Link
                             href={questionViewPath}
+                            prefetch={false}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
@@ -1474,8 +1470,7 @@ const AdminQuestionsSection = ({
             })}
           </tbody>
         </table>
-        </div>
-      </div>
+      </AdminCollectionTablePanel>
 
       <AdminCollectionPagination
         visibleCount={questions.length}

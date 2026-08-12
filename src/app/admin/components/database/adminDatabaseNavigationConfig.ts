@@ -35,9 +35,9 @@ export const ADMIN_DATABASE_CATEGORIES: AdminDatabaseCategoryConfig[] = [
   {
     id: 'content',
     label: 'Conteúdo',
-    description: 'Banco de questões, importação e taxonomias.',
+    description: 'Questões, provas, blog, importação e taxonomias.',
     icon: BookOpen,
-    tabs: ['questions', 'question-groups', 'exams', 'files', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
+    tabs: ['questions', 'question-groups', 'exams', 'files', 'blog', 'novidades', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
   },
   {
     id: 'people',
@@ -82,6 +82,16 @@ export const ADMIN_DATABASE_SUBTAB_META: Record<string, AdminDatabaseSubTabMeta>
   files: {
     label: 'Arquivos',
     description: 'Imagens, PDFs e uploads vinculados aos recursos da plataforma.',
+    category: 'content',
+  },
+  blog: {
+    label: 'Blog',
+    description: 'Notícias, categorias, autoria, SEO e publicação editorial.',
+    category: 'content',
+  },
+  novidades: {
+    label: 'Novidades',
+    description: 'Comunicados simples sobre melhorias da plataforma e sugestões dos usuários.',
     category: 'content',
   },
   filters: {

@@ -1,0 +1,2 @@
+-- A migration 20260809_161000 apenas recalcula flags derivadas.
+-- Nao ha estrutura nem conteudo editorial a remover no rollback.

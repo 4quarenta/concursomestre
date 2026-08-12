@@ -1,7 +1,10 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 import {
+  AlertTriangle,
+  Ban,
+  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -9,6 +12,8 @@ import {
   ChevronUp,
   Download,
   Loader2,
+  Pencil,
+  Play,
   PlugZap,
   RefreshCw,
   Search,
@@ -24,6 +29,7 @@ import {
 import {
   collectGranTaxonomyBatch,
   collectGranQuestions,
+  collectGranQuestionById,
   checkGranTaxonomyUpdates,
   detectGranCollector,
   verifyGranCollector,
@@ -32,6 +38,7 @@ import type { GranCollectorStatus, GranTaxonomyCollectorResult } from './granExt
 import { partitionGranReviewPayloads } from './granCrawlerReviewUtils';
 import { splitGranTaxonomyResponses } from './granTaxonomySyncUtils';
 import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from './granCrawlerUrl';
+import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
 type GranQuestion = {
   tempId: string;
@@ -141,18 +148,121 @@ type CollectorState = 'checking' | 'ready' | 'disconnected' | 'missing';
 type GranCrawlerBootstrapData = {
   taxonomyStatus?: Record<string, GranTaxonomyStatus>;
   currentBatch?: GranPublicationBatch | null;
+  automaticCheckpoint?: GranAutomaticCheckpoint | null;
+  failureHistory?: GranFailureHistoryPage;
+  failureRetention?: GranFailureRetention;
 };
 
+type GranPublicationFailure = {
+  failureId: number;
+  sourceKey: string;
+  provider: string;
+  externalQuestionId?: string | null;
+  questionNumber?: string | null;
+  examTitle?: string | null;
+  subjectSlug?: string | null;
+  batchId?: number | null;
+  code: string;
+  message: string;
+  status: 'open' | 'retrying' | 'resolved' | 'ignored';
+  attemptCount: number;
+  firstFailedAt?: string | null;
+  lastFailedAt?: string | null;
+  resolvedAt?: string | null;
+};
+
+type GranFailureHistoryPage = {
+  items: GranPublicationFailure[];
+  total: number;
+  openCount: number;
+  retryingCount: number;
+  nextCursor?: number | null;
+};
+
+type GranFailureRetention = {
+  payloadRetentionDays: number;
+  recordRetentionDays: number;
+  payloadsEligible: number;
+  recordsEligible: number;
+  totalEligible: number;
+  payloadCutoff?: string;
+  recordCutoff?: string;
+};
+
+type AutomaticCrawlerProgress = {
+  phase: 'idle' | 'collecting' | 'publishing' | 'waiting' | 'completed' | 'error';
+  year: number;
+  page: number;
+  totalPages: number | null;
+  questionsCollected: number;
+  message: string;
+};
+
+type GranAutomaticCheckpoint = {
+  runKey: string;
+  requestUrl: string;
+  perPage: number;
+  year: number;
+  page: number;
+  totalPages?: number | null;
+  status: 'running' | 'paused' | 'error';
+  lastBatchId?: string | null;
+  lastError?: string | null;
+  updatedAt?: string | null;
+};
+
+type AutomaticPublicationFlight = {
+  batch: GranPublicationBatch;
+  year: number;
+  page: number;
+  totalPages: number | null;
+};
+
+type GranAutomaticEnqueueResult = {
+  page: number;
+  perPage: number;
+  total: number;
+  pages: number;
+  requestUrl: string;
+  questionCount: number;
+  fileCount: number;
+  batch: GranPublicationBatch;
+};
+
+type GranPublicationProgress = Pick<GranPublicationBatch,
+  'batchId' | 'status' | 'questionCount' | 'jobCount' | 'pending' | 'processing'
+  | 'published' | 'duplicates' | 'failures' | 'error' | 'completedAt'>;
+
 const ENDPOINT = 'admin/gran_crawler.php';
-const EXTENSION_DOWNLOAD_URL = '/downloads/concursomestre-coletor-gran-v1.0.16.zip';
+const EXTENSION_DOWNLOAD_URL = '/downloads/concursomestre-coletor-gran-v1.0.21.zip';
 const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
 const GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear';
 const BOOTSTRAP_CACHE_MS = 60_000;
 const COLLECTOR_STATUS_CACHE_MS = 30_000;
+const AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000;
+const ACTIVE_BATCH_STATUS_REFRESH_MS = 15_000;
 const TAXONOMY_CHECK_FRESH_MS = 6 * 60 * 60 * 1000;
+const MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2;
+
+/**
+ * A mesma pagina da Gran pode ser retomada depois de uma atualizacao do
+ * coletor, por exemplo quando uma imagem protegida passou a ser capturada em
+ * base64. A chave precisa representar o conteudo enviado, nao apenas pagina e
+ * ano, para que o lote antigo nao bloqueie a retomada com um payload novo.
+ */
+function fingerprintAutomaticInput(input: unknown): string {
+  const source = JSON.stringify(input);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
 
 let bootstrapCache: { data: GranCrawlerBootstrapData; fetchedAt: number } | null = null;
 let bootstrapRequest: Promise<GranCrawlerBootstrapData> | null = null;
+let bootstrapAbortController: AbortController | null = null;
 let collectorStatusCache: { status: GranCollectorStatus; checkedAt: number } | null = null;
 
 const GRAN_TAXONOMY_STEPS: Array<{ kind: GranTaxonomyCollectorResult['kind']; label: string }> = [
@@ -214,7 +324,7 @@ type TaxonomyCheckSummary = {
 };
 
 const statusLabel: Record<string, string> = {
-  pending: 'Na fila',
+  pending: 'Aguardando worker',
   processing: 'Processando',
   done: 'Concluído',
   failed: 'Falhou',
@@ -243,21 +353,38 @@ const readApiData = <T,>(response: { data?: unknown }): T => {
   return body as T;
 };
 
-const fetchGranCrawlerBootstrap = async (force = false): Promise<GranCrawlerBootstrapData> => {
+const cancelGranCrawlerBootstrap = () => {
+  bootstrapAbortController?.abort();
+  bootstrapAbortController = null;
+  bootstrapRequest = null;
+};
+
+const fetchGranCrawlerBootstrap = async (
+  force = false,
+  signal?: AbortSignal,
+): Promise<GranCrawlerBootstrapData> => {
   const now = Date.now();
   if (!force && bootstrapCache && now - bootstrapCache.fetchedAt < BOOTSTRAP_CACHE_MS) {
     return bootstrapCache.data;
   }
   if (bootstrapRequest) return bootstrapRequest;
 
-  bootstrapRequest = apiClient.get(ENDPOINT)
+  const controller = new AbortController();
+  bootstrapAbortController = controller;
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  bootstrapRequest = apiClient.get(ENDPOINT, { signal: controller.signal })
     .then((response) => {
       const data = readApiData<GranCrawlerBootstrapData>(response) || {};
       bootstrapCache = { data, fetchedAt: Date.now() };
       return data;
     })
     .finally(() => {
-      bootstrapRequest = null;
+      signal?.removeEventListener('abort', abort);
+      if (bootstrapAbortController === controller) {
+        bootstrapAbortController = null;
+        bootstrapRequest = null;
+      }
     });
   return bootstrapRequest;
 };
@@ -284,6 +411,59 @@ const formatCollectionPages = (pages?: number[]) => {
     .sort((left, right) => left - right);
   if (normalized.length === 0) return 'Página não registrada';
   return normalized.length === 1 ? `Página ${normalized[0]}` : `Páginas ${normalized.join(', ')}`;
+};
+
+const countGranPayloadQuestions = (payloads: GranImportPayload[]) => payloads.reduce(
+  (total, payload) => total + (Array.isArray(payload.questions) ? payload.questions.length : 0),
+  0,
+);
+
+const mergeGranPayloadsByQuestion = (
+  current: GranImportPayload[],
+  incoming: GranImportPayload[],
+): GranImportPayload[] => {
+  const seen = new Set<string>();
+  const merged: GranImportPayload[] = [];
+  [...incoming, ...current].forEach((payload) => {
+    const questions = payload.questions.filter((question) => {
+      const externalId = String(question.source?.externalId || '').trim();
+      const key = externalId ? `gran:${externalId}` : String(question.tempId || '').trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (questions.length > 0) merged.push({ ...payload, questions });
+  });
+  return merged;
+};
+
+const delayWithSignal = (milliseconds: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
+  const timer = window.setTimeout(resolve, milliseconds);
+  signal.addEventListener('abort', () => {
+    window.clearTimeout(timer);
+    reject(new DOMException('Operacao cancelada.', 'AbortError'));
+  }, { once: true });
+});
+
+const readRateLimitRetryDelay = (error: unknown, fallbackMilliseconds = 15_000) => {
+  const response = (error as {
+    response?: {
+      status?: number;
+      headers?: Record<string, string | number | undefined>;
+      data?: { retry_after?: unknown; message?: unknown };
+    };
+    message?: unknown;
+  })?.response;
+  const message = String(response?.data?.message || (error as { message?: unknown })?.message || '');
+  const isRateLimited = response?.status === 429 || /\b429\b|too many requests|limitou temporariamente/i.test(message);
+  if (!isRateLimited) return null;
+  const headerValue = response?.headers?.['retry-after'];
+  const bodyValue = response?.data?.retry_after;
+  const seconds = Number(headerValue ?? bodyValue);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(120_000, Math.max(3_000, Math.ceil(seconds) * 1_000));
+  }
+  return fallbackMilliseconds;
 };
 
 const describeCollectorCaptureStatus = (status: GranCollectorStatus | null) => {
@@ -323,8 +503,29 @@ const AdminGranCrawlerSection = ({
   const [page, setPage] = React.useState(1);
   const [perPage, setPerPage] = React.useState(20);
   const [year, setYear] = React.useState('');
+  const [automaticMode, setAutomaticMode] = React.useState(false);
+  const [automaticProgress, setAutomaticProgress] = React.useState<AutomaticCrawlerProgress>({
+    phase: 'idle',
+    year: 0,
+    page: 1,
+    totalPages: null,
+    questionsCollected: 0,
+    message: 'Modo automatico desativado.',
+  });
+  const [automaticCheckpoint, setAutomaticCheckpoint] = React.useState<GranAutomaticCheckpoint | null>(null);
   const [result, setResult] = React.useState<GranFetchResult | null>(null);
   const [currentBatch, setCurrentBatch] = React.useState<GranPublicationBatch | null>(null);
+  const [failureHistory, setFailureHistory] = React.useState<GranFailureHistoryPage>({
+    items: [],
+    total: 0,
+    openCount: 0,
+    retryingCount: 0,
+    nextCursor: null,
+  });
+  const [failureRetention, setFailureRetention] = React.useState<GranFailureRetention | null>(null);
+  const [purgeDiagnosticsConfirmOpen, setPurgeDiagnosticsConfirmOpen] = React.useState(false);
+  const [isLoadingFailures, setIsLoadingFailures] = React.useState(false);
+  const [failureActionId, setFailureActionId] = React.useState<number | 'all' | 'retention' | null>(null);
   const [showProcessingDetails, setShowProcessingDetails] = React.useState(false);
   const [taxonomyExpanded, setTaxonomyExpanded] = React.useState(false);
   const [isCheckingTaxonomyUpdates, setIsCheckingTaxonomyUpdates] = React.useState(false);
@@ -337,10 +538,11 @@ const AdminGranCrawlerSection = ({
   const [taxonomySummary, setTaxonomySummary] = React.useState<TaxonomySyncSummary | null>(null);
   const [taxonomyCheckSummary, setTaxonomyCheckSummary] = React.useState<TaxonomyCheckSummary | null>(null);
   const [error, setError] = React.useState('');
-  const [isPageVisible, setIsPageVisible] = React.useState(
-    () => typeof document === 'undefined' || document.visibilityState === 'visible',
-  );
   const fetchAbortRef = React.useRef<AbortController | null>(null);
+  const bootstrapAbortRef = React.useRef<AbortController | null>(null);
+  const automaticAbortRef = React.useRef<AbortController | null>(null);
+  const automaticCheckpointRef = React.useRef<GranAutomaticCheckpoint | null>(null);
+  const isMountedRef = React.useRef(false);
   const publicationBatches = React.useMemo(() => currentBatch ? [currentBatch] : [], [currentBatch]);
   const hasActiveJobs = currentBatch !== null && ['pending', 'processing'].includes(currentBatch.status);
   const currentBatchQuestionDetails = React.useMemo(() => {
@@ -401,23 +603,61 @@ const AdminGranCrawlerSection = ({
     silent = false,
     hydrateTaxonomies = false,
     force = false,
+    signal?: AbortSignal,
   ): Promise<GranCrawlerBootstrapData | null> => {
-    if (!silent) setIsLoadingProcessing(true);
+    if (!silent && isMountedRef.current) setIsLoadingProcessing(true);
     try {
-      const data = await fetchGranCrawlerBootstrap(force);
+      const data = await fetchGranCrawlerBootstrap(force, signal);
+      if (signal?.aborted || !isMountedRef.current) return null;
       setCurrentBatch(data?.currentBatch && typeof data.currentBatch === 'object' ? data.currentBatch : null);
+      const checkpoint = data?.automaticCheckpoint && typeof data.automaticCheckpoint === 'object'
+        ? data.automaticCheckpoint
+        : null;
+      setAutomaticCheckpoint(checkpoint);
+      automaticCheckpointRef.current = checkpoint;
+      if (checkpoint && !automaticAbortRef.current) {
+        setGranRequestUrl(checkpoint.requestUrl);
+        setPerPage(checkpoint.perPage);
+        setYear(String(checkpoint.year));
+        setPage(checkpoint.page);
+        setAutomaticProgress({
+          phase: checkpoint.status === 'error' ? 'error' : 'idle',
+          year: checkpoint.year,
+          page: checkpoint.page,
+          totalPages: checkpoint.totalPages || null,
+          questionsCollected: 0,
+          message: checkpoint.status === 'error' && checkpoint.lastError
+            ? `Interrompido na pagina ${checkpoint.page}${checkpoint.totalPages ? ` de ${checkpoint.totalPages}` : ''} de ${checkpoint.year}: ${checkpoint.lastError}`
+            : `Progresso salvo: pagina ${checkpoint.page}${checkpoint.totalPages ? ` de ${checkpoint.totalPages}` : ''} de ${checkpoint.year}. Ative para continuar.`,
+        });
+      }
+      if (data?.failureHistory && Array.isArray(data.failureHistory.items)) {
+        const activeItems = data.failureHistory.items.filter((failure) => (
+          failure.status === 'open' || failure.status === 'retrying'
+        ));
+        setFailureHistory({
+          ...data.failureHistory,
+          items: activeItems,
+          total: data.failureHistory.total || activeItems.length,
+          openCount: data.failureHistory.openCount || activeItems.filter((failure) => failure.status === 'open').length,
+          retryingCount: data.failureHistory.retryingCount || activeItems.filter((failure) => failure.status === 'retrying').length,
+        });
+      }
+      if (data?.failureRetention && typeof data.failureRetention === 'object') {
+        setFailureRetention(data.failureRetention);
+      }
       if (hydrateTaxonomies && data?.taxonomyStatus && typeof data.taxonomyStatus === 'object') {
         setTaxonomyStatuses(data.taxonomyStatus);
         setIsLoadingTaxonomyStatus(false);
       }
       return data;
     } catch (requestError) {
-      if (!silent) {
+      if (!silent && !signal?.aborted && isMountedRef.current) {
         setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar a fila.');
       }
       return null;
     } finally {
-      if (!silent) setIsLoadingProcessing(false);
+      if (!silent && !signal?.aborted && isMountedRef.current) setIsLoadingProcessing(false);
     }
   }, []);
 
@@ -429,32 +669,27 @@ const AdminGranCrawlerSection = ({
   }, [loadBootstrap]);
 
   React.useEffect(() => {
-    const savedYear = window.localStorage.getItem(GRAN_LAST_YEAR_STORAGE_KEY)?.trim() || '';
-    if (/^\d{4}$/.test(savedYear) && Number(savedYear) >= 1900 && Number(savedYear) <= 2200) {
-      setYear(savedYear);
-    }
-    void Promise.resolve().then(() => loadBootstrap(true, true));
+    isMountedRef.current = true;
+    const bootstrapController = new AbortController();
+    bootstrapAbortRef.current = bootstrapController;
+    const hydrationTimer = window.setTimeout(() => {
+      const savedYear = window.localStorage.getItem(GRAN_LAST_YEAR_STORAGE_KEY)?.trim() || '';
+      if (/^\d{4}$/.test(savedYear) && Number(savedYear) >= 1900 && Number(savedYear) <= 2200) {
+        setYear(savedYear);
+      }
+    }, 0);
+    void Promise.resolve().then(() => loadBootstrap(true, true, false, bootstrapController.signal));
     void Promise.resolve().then(() => checkCollector());
-    return () => fetchAbortRef.current?.abort();
-  }, [checkCollector, loadBootstrap]);
-
-  React.useEffect(() => {
-    const handleVisibility = () => {
-      const visible = document.visibilityState === 'visible';
-      setIsPageVisible(visible);
-      if (visible && hasActiveJobs) void loadBootstrap(true, false, true);
+    return () => {
+      isMountedRef.current = false;
+      window.clearTimeout(hydrationTimer);
+      bootstrapController.abort();
+      bootstrapAbortRef.current = null;
+      cancelGranCrawlerBootstrap();
+      fetchAbortRef.current?.abort();
+      automaticAbortRef.current?.abort();
     };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [hasActiveJobs, loadBootstrap]);
-
-  React.useEffect(() => {
-    if (!hasActiveJobs || !isPageVisible) return undefined;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadBootstrap(true, false, true);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [hasActiveJobs, isPageVisible, loadBootstrap]);
+  }, [checkCollector, loadBootstrap]);
 
   const refreshCurrentProcessing = React.useCallback(async () => {
     await loadBootstrap(false, false, true);
@@ -487,6 +722,83 @@ const AdminGranCrawlerSection = ({
     });
   }, [page, perPage, year]);
 
+  const collectMappedPage = React.useCallback(async (
+    targetPage: number,
+    targetYear: string,
+    signal: AbortSignal,
+  ): Promise<GranFetchResult> => {
+    const requestUrl = buildGranQuestionQueryUrl(granRequestUrl, {
+      page: targetPage,
+      perPage,
+      year: targetYear,
+    });
+    const collection = await collectGranQuestions(requestUrl, signal);
+    const response = await apiClient.post(ENDPOINT, {
+      action: 'map',
+      granResponse: collection.json,
+      granExamFiles: collection.examFiles,
+      granAssetData: collection.assetData || {},
+      granRequestUrl: collection.requestUrl,
+      page: targetPage,
+      perPage,
+      year: targetYear,
+    }, { signal });
+    return readApiData<GranFetchResult>(response);
+  }, [granRequestUrl, perPage]);
+
+  const collectAndEnqueueAutomaticPage = React.useCallback(async (
+    targetPage: number,
+    targetYear: string,
+    runKey: string,
+    signal: AbortSignal,
+  ): Promise<GranAutomaticEnqueueResult> => {
+    const requestUrl = buildGranQuestionQueryUrl(granRequestUrl, {
+      page: targetPage,
+      perPage,
+      year: targetYear,
+    });
+    const collection = await collectGranQuestions(requestUrl, signal);
+    const idempotencyKey = `gran-auto-${runKey}-${targetYear}-${targetPage}-${fingerprintAutomaticInput({
+      response: collection.json,
+      assets: collection.assetData || {},
+      files: collection.examFiles || {},
+    })}`;
+    const response = await apiClient.post(ENDPOINT, {
+      action: 'map_and_enqueue_publication',
+      granResponse: collection.json,
+      granExamFiles: collection.examFiles,
+      granAssetData: collection.assetData || {},
+      granRequestUrl: collection.requestUrl,
+      page: targetPage,
+      perPage,
+      year: targetYear,
+      idempotencyKey,
+    }, { signal });
+    return readApiData<GranAutomaticEnqueueResult>(response);
+  }, [granRequestUrl, perPage]);
+
+  const saveAutomaticCheckpoint = React.useCallback(async (
+    checkpoint: Omit<GranAutomaticCheckpoint, 'runKey' | 'updatedAt'> & { runKey?: string },
+    signal?: AbortSignal,
+  ): Promise<GranAutomaticCheckpoint> => {
+    const response = await apiClient.post(ENDPOINT, {
+      action: 'save_automatic_checkpoint',
+      ...checkpoint,
+    }, signal ? { signal } : undefined);
+    const saved = readApiData<GranAutomaticCheckpoint>(response);
+    setAutomaticCheckpoint(saved);
+    automaticCheckpointRef.current = saved;
+    bootstrapCache = null;
+    return saved;
+  }, []);
+
+  const clearAutomaticCheckpoint = React.useCallback(async () => {
+    await apiClient.post(ENDPOINT, { action: 'clear_automatic_checkpoint' });
+    setAutomaticCheckpoint(null);
+    automaticCheckpointRef.current = null;
+    bootstrapCache = null;
+  }, []);
+
   const handleFetch = React.useCallback(async (requestedPage?: number) => {
     if (collectorState !== 'ready') {
       const ready = await checkCollector(true);
@@ -494,31 +806,13 @@ const AdminGranCrawlerSection = ({
     }
 
     const targetPage = requestedPage ?? page;
-    let requestUrl = '';
-    try {
-      requestUrl = buildGranQuestionQueryUrl(granRequestUrl, { page: targetPage, perPage, year });
-      setGranRequestUrl(requestUrl);
-    } catch (urlError) {
-      setError(urlError instanceof Error ? urlError.message : 'A URL da consulta e invalida.');
-      return;
-    }
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
     setIsFetching(true);
     setError('');
     try {
-      const collection = await collectGranQuestions(requestUrl);
-      const response = await apiClient.post(ENDPOINT, {
-        action: 'map',
-        granResponse: collection.json,
-        granExamFiles: collection.examFiles,
-        granRequestUrl: collection.requestUrl,
-        page: targetPage,
-        perPage,
-        year: year.trim(),
-      }, { signal: controller.signal });
-      const data = readApiData<GranFetchResult>(response);
+      const data = await collectMappedPage(targetPage, year.trim(), controller.signal);
       setResult(data);
       setPage(data.page);
       setPerPage(data.perPage);
@@ -537,7 +831,516 @@ const AdminGranCrawlerSection = ({
     } finally {
       if (!controller.signal.aborted) setIsFetching(false);
     }
-  }, [checkCollector, collectorState, granRequestUrl, page, perPage, year]);
+  }, [checkCollector, collectMappedPage, collectorState, page, year]);
+
+  const loadFailureHistory = React.useCallback(async (
+    cursor?: number | null,
+  ) => {
+    setIsLoadingFailures(true);
+    try {
+      const response = await apiClient.post(ENDPOINT, {
+        action: 'list_publication_failures',
+        status: 'active',
+        limit: 50,
+        cursor: cursor || undefined,
+      });
+      const data = readApiData<GranFailureHistoryPage>(response);
+      const activeItems = (data.items || []).filter((failure) => (
+        failure.status === 'open' || failure.status === 'retrying'
+      ));
+      setFailureHistory((current) => ({
+        items: cursor ? [...current.items, ...activeItems] : activeItems,
+        total: data.total || 0,
+        openCount: data.openCount || 0,
+        retryingCount: data.retryingCount || 0,
+        nextCursor: data.nextCursor || null,
+      }));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel carregar as falhas.');
+    } finally {
+      setIsLoadingFailures(false);
+    }
+  }, []);
+
+  const handleModerateFailure = React.useCallback(async (failure: GranPublicationFailure) => {
+    setFailureActionId(failure.failureId);
+    setError('');
+    try {
+      const response = await apiClient.post(ENDPOINT, {
+        action: 'get_publication_failure',
+        failureId: failure.failureId,
+      });
+      const detail = readApiData<GranPublicationFailure & { payload?: GranImportPayload | null }>(response);
+      let payload = detail.payload || null;
+      if (!payload && failure.externalQuestionId) {
+        const ready = collectorState === 'ready' || await checkCollector(true, true);
+        if (!ready) throw new Error('Conecte a extensao Gran para recuperar esta questao antiga.');
+        const collection = await collectGranQuestionById(
+          failure.externalQuestionId,
+          failure.subjectSlug || '',
+        );
+        const mappedResponse = await apiClient.post(ENDPOINT, {
+          action: 'map',
+          granResponse: collection.json,
+          granExamFiles: collection.examFiles,
+          granAssetData: collection.assetData || {},
+          page: 1,
+          perPage: 1,
+        });
+        payload = readApiData<GranFetchResult>(mappedResponse).payloads?.[0] || null;
+      }
+      if (!payload) {
+        throw new Error('O rascunho desta falha nao esta disponivel para moderacao.');
+      }
+      setResult((current) => {
+        const payloads = mergeGranPayloadsByQuestion(current?.payloads || [], [payload as GranImportPayload]);
+        return {
+          page: current?.page || page,
+          perPage: current?.perPage || perPage,
+          total: current?.total || 0,
+          pages: current?.pages || 0,
+          questionCount: countGranPayloadQuestions(payloads),
+          fileCount: current?.fileCount || 0,
+          payloads,
+        };
+      });
+      window.requestAnimationFrame(() => {
+        document.querySelector('[aria-label="Fila unificada de revisao do Gran"]')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel abrir a questao para moderacao.');
+    } finally {
+      setFailureActionId(null);
+    }
+  }, [checkCollector, collectorState, page, perPage]);
+
+  const handleRetryFailures = React.useCallback(async (failures: GranPublicationFailure[]) => {
+    const failureIds = Array.from(new Set(failures
+      .filter((failure) => failure.status === 'open')
+      .map((failure) => failure.failureId)));
+    if (failureIds.length === 0) return;
+    const actionId = failureIds.length === 1 ? failureIds[0] : 'all';
+    setFailureActionId(actionId);
+    setError('');
+    try {
+      const response = await apiClient.post(ENDPOINT, {
+        action: 'retry_publication_failures',
+        failureIds,
+      });
+      const batch = readApiData<GranPublicationBatch>(response);
+      setCurrentBatch(batch);
+      setFailureHistory((current) => ({
+        ...current,
+        items: current.items.map((item) => failureIds.includes(item.failureId)
+          ? { ...item, status: 'retrying' }
+          : item),
+        openCount: Math.max(0, current.openCount - failureIds.length),
+        retryingCount: current.retryingCount + failureIds.length,
+      }));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel reenviar as questoes selecionadas.');
+    } finally {
+      setFailureActionId(null);
+    }
+  }, []);
+
+  const handleRetryFailure = React.useCallback(async (failure: GranPublicationFailure) => {
+    await handleRetryFailures([failure]);
+  }, [handleRetryFailures]);
+
+  const handleRetryAllFailures = React.useCallback(async () => {
+    await handleRetryFailures(failureHistory.items);
+  }, [failureHistory.items, handleRetryFailures]);
+
+  const handleIgnoreFailure = React.useCallback(async (failure: GranPublicationFailure) => {
+    setFailureActionId(failure.failureId);
+    setError('');
+    try {
+      await apiClient.post(ENDPOINT, {
+        action: 'ignore_publication_failure',
+        failureId: failure.failureId,
+      });
+      setFailureHistory((current) => ({
+        ...current,
+        items: current.items.filter((item) => item.failureId !== failure.failureId),
+        total: Math.max(0, current.total - 1),
+        openCount: Math.max(0, current.openCount - (failure.status === 'open' ? 1 : 0)),
+        retryingCount: Math.max(0, current.retryingCount - (failure.status === 'retrying' ? 1 : 0)),
+      }));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel ignorar a falha.');
+    } finally {
+      setFailureActionId(null);
+    }
+  }, []);
+
+  const handleIgnoreAllFailures = React.useCallback(async () => {
+    const activeFailureCount = failureHistory.items.filter((failure) => (
+      failure.status === 'open' || failure.status === 'retrying'
+    )).length;
+    if (activeFailureCount === 0) return;
+
+    setFailureActionId('all');
+    setError('');
+    try {
+      await apiClient.post(ENDPOINT, { action: 'ignore_all_publication_failures' });
+      setFailureHistory({
+        items: [],
+        total: 0,
+        openCount: 0,
+        retryingCount: 0,
+        nextCursor: null,
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel ignorar as falhas pendentes.');
+    } finally {
+      setFailureActionId(null);
+    }
+  }, [failureHistory.items]);
+
+  const refreshFailureRetention = React.useCallback(async () => {
+    const response = await apiClient.post(ENDPOINT, {
+      action: 'publication_failure_retention_preview',
+    });
+    setFailureRetention(readApiData<GranFailureRetention>(response));
+  }, []);
+
+  const handlePurgeFailureDiagnostics = React.useCallback(async () => {
+    const totalEligible = failureRetention?.totalEligible || 0;
+    if (totalEligible === 0) return;
+    const payloadDays = failureRetention?.payloadRetentionDays || 30;
+    const recordDays = failureRetention?.recordRetentionDays || 90;
+
+    setFailureActionId('retention');
+    setError('');
+    try {
+      const response = await apiClient.post(ENDPOINT, {
+        action: 'purge_publication_failure_diagnostics',
+      });
+      const result = readApiData<{
+        payloadsPurged?: number;
+        recordsPurged?: number;
+        payloadRetentionDays?: number;
+        recordRetentionDays?: number;
+      }>(response);
+      setFailureRetention({
+        payloadRetentionDays: result.payloadRetentionDays || payloadDays,
+        recordRetentionDays: result.recordRetentionDays || recordDays,
+        payloadsEligible: 0,
+        recordsEligible: 0,
+        totalEligible: 0,
+      });
+      await loadFailureHistory();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel limpar os diagnosticos encerrados.');
+    } finally {
+      setFailureActionId(null);
+      setPurgeDiagnosticsConfirmOpen(false);
+    }
+  }, [failureRetention, loadFailureHistory]);
+
+  const waitForPublicationBatch = React.useCallback(async (
+    initialBatch: GranPublicationBatch,
+    signal: AbortSignal,
+  ): Promise<GranPublicationBatch> => {
+    let batch = initialBatch;
+    while (['pending', 'processing'].includes(batch.status)) {
+      await delayWithSignal(AUTOMATIC_BATCH_STATUS_POLL_MS, signal);
+      const response = await apiClient.post(ENDPOINT, {
+        action: 'publication_batch_progress',
+        batchId: batch.batchId,
+      }, { signal });
+      batch = {
+        ...batch,
+        ...readApiData<GranPublicationProgress>(response),
+      };
+      setCurrentBatch(batch);
+    }
+    return batch;
+  }, []);
+
+  React.useEffect(() => {
+    if (!currentBatch || automaticMode || !['pending', 'processing'].includes(currentBatch.status)) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let timer: number | null = null;
+    const refreshProgress = async () => {
+      if (controller.signal.aborted || document.visibilityState !== 'visible') return;
+      try {
+        const response = await apiClient.post(ENDPOINT, {
+          action: 'publication_batch_progress',
+          batchId: currentBatch.batchId,
+        }, { signal: controller.signal });
+        const progress = readApiData<GranPublicationProgress>(response);
+        if (!controller.signal.aborted) {
+          setCurrentBatch((existing) => (
+            existing?.batchId === currentBatch.batchId
+              ? { ...existing, ...progress }
+              : existing
+          ));
+        }
+      } catch {
+        // O worker continua independente da tela; uma falha de observacao nao pode interromper a fila.
+      } finally {
+        if (!controller.signal.aborted && document.visibilityState === 'visible') {
+          timer = window.setTimeout(refreshProgress, ACTIVE_BATCH_STATUS_REFRESH_MS);
+        }
+      }
+    };
+
+    timer = window.setTimeout(refreshProgress, ACTIVE_BATCH_STATUS_REFRESH_MS);
+    return () => {
+      controller.abort();
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [automaticMode, currentBatch?.batchId, currentBatch?.status]);
+
+  const stopAutomaticMode = React.useCallback((message = 'Modo automatico interrompido pelo administrador.') => {
+    const checkpoint = automaticCheckpointRef.current;
+    automaticAbortRef.current?.abort();
+    automaticAbortRef.current = null;
+    setAutomaticMode(false);
+    setAutomaticProgress((current) => ({ ...current, phase: 'idle', message }));
+    if (checkpoint) {
+      void saveAutomaticCheckpoint({
+        requestUrl: checkpoint.requestUrl,
+        runKey: checkpoint.runKey,
+        perPage: checkpoint.perPage,
+        year: checkpoint.year,
+        page: checkpoint.page,
+        totalPages: checkpoint.totalPages || null,
+        status: 'paused',
+        lastBatchId: checkpoint.lastBatchId || null,
+        lastError: null,
+      }).catch(() => {
+        // O checkpoint ja existe; uma falha de atualizacao nao pode impedir a interrupcao local.
+      });
+    }
+  }, [saveAutomaticCheckpoint]);
+
+  const startAutomaticMode = React.useCallback(async () => {
+    if (automaticAbortRef.current) return;
+    const startYear = automaticCheckpoint?.year ?? Number(year);
+    if (!Number.isInteger(startYear) || startYear < 1900 || startYear > new Date().getFullYear()) {
+      setError('Informe um ano entre 1900 e o ano atual para iniciar o modo automatico.');
+      return;
+    }
+    const ready = collectorState === 'ready' || await checkCollector(true, true);
+    if (!ready) return;
+
+    const controller = new AbortController();
+    automaticAbortRef.current = controller;
+    setAutomaticMode(true);
+    setError('');
+    let checkpoint: GranAutomaticCheckpoint | null = automaticCheckpoint;
+    let cursorYear = checkpoint?.year || startYear;
+    let cursorPage = checkpoint?.page || Math.max(1, page);
+    const inFlightBatches: AutomaticPublicationFlight[] = [];
+    let failedFlight: AutomaticPublicationFlight | null = null;
+    const finalYear = new Date().getFullYear();
+
+    try {
+      checkpoint = checkpoint || await saveAutomaticCheckpoint({
+        requestUrl: buildGranQuestionQueryUrl(granRequestUrl, {
+          page: cursorPage,
+          perPage,
+          year: String(cursorYear),
+        }),
+        perPage,
+        year: cursorYear,
+        page: cursorPage,
+        totalPages: null,
+        status: 'running',
+        lastBatchId: null,
+        lastError: null,
+      }, controller.signal);
+      const waitForOldestPublication = async () => {
+        const flight = inFlightBatches.shift();
+        if (!flight) return;
+        setAutomaticProgress({
+          phase: 'waiting',
+          year: flight.year,
+          page: flight.page,
+          totalPages: flight.totalPages,
+          questionsCollected: flight.batch.questionCount,
+          message: `Confirmando publicacao da pagina ${flight.page} de ${flight.totalPages || '?'} (ano ${flight.year}).`,
+        });
+        const processedBatch = await waitForPublicationBatch(flight.batch, controller.signal);
+        if (processedBatch.status === 'failed') {
+          failedFlight = flight;
+          throw new Error(processedBatch.error || `A publicacao da pagina ${flight.page} falhou.`);
+        }
+        await loadFailureHistory();
+      };
+      while (!controller.signal.aborted && cursorYear <= finalYear) {
+        const displayedTotal = checkpoint.totalPages || null;
+        setAutomaticProgress({
+          phase: 'collecting',
+          year: cursorYear,
+          page: cursorPage,
+          totalPages: displayedTotal,
+          questionsCollected: 0,
+          message: `Coletando pagina ${cursorPage} de ${displayedTotal || '?'} (ano ${cursorYear}).`,
+        });
+        let data: GranAutomaticEnqueueResult | null = null;
+        for (let attempt = 1; !controller.signal.aborted && attempt <= 5; attempt += 1) {
+          try {
+            data = await collectAndEnqueueAutomaticPage(
+              cursorPage,
+              String(cursorYear),
+              checkpoint.runKey,
+              controller.signal,
+            );
+            break;
+          } catch (requestError) {
+            const retryDelay = readRateLimitRetryDelay(requestError);
+            if (retryDelay === null || attempt === 5) throw requestError;
+            const retrySeconds = Math.ceil(retryDelay / 1_000);
+            setAutomaticProgress({
+              phase: 'waiting',
+              year: cursorYear,
+              page: cursorPage,
+              totalPages: displayedTotal,
+              questionsCollected: 0,
+              message: `Limite temporario recebido na pagina ${cursorPage} de ${displayedTotal || '?'} (ano ${cursorYear}). Nova tentativa em ${retrySeconds}s (${attempt}/5).`,
+            });
+            await delayWithSignal(retryDelay, controller.signal);
+          }
+        }
+        if (!data) break;
+        const pageQuestionCount = data.questionCount;
+        const knownPageCount = data.pages > 0
+          ? data.pages
+          : data.total > 0
+            ? Math.ceil(data.total / Math.max(1, data.perPage || checkpoint.perPage))
+            : 0;
+        const exhaustedYear = pageQuestionCount === 0
+          || (knownPageCount > 0 && cursorPage >= knownPageCount)
+          || (knownPageCount === 0 && pageQuestionCount < checkpoint.perPage);
+
+        if (pageQuestionCount > 0) {
+          setAutomaticProgress({
+            phase: 'publishing',
+            year: cursorYear,
+            page: cursorPage,
+            totalPages: knownPageCount || null,
+            questionsCollected: pageQuestionCount,
+            message: `Publicando pagina ${cursorPage} de ${knownPageCount || '?'} (ano ${cursorYear}): ${pageQuestionCount} questoes.`,
+          });
+          const batch = data.batch;
+          setCurrentBatch(batch);
+          inFlightBatches.push({
+            batch,
+            year: cursorYear,
+            page: cursorPage,
+            totalPages: knownPageCount || null,
+          });
+          setAutomaticProgress((current) => ({
+            ...current,
+            phase: 'publishing',
+            message: `Pagina ${cursorPage} de ${knownPageCount || '?'} enviada. Coletando a proxima enquanto esta publica.`,
+          }));
+        }
+
+        const nextYear = exhaustedYear ? cursorYear + 1 : cursorYear;
+        const nextPage = exhaustedYear ? 1 : cursorPage + 1;
+        checkpoint = await saveAutomaticCheckpoint({
+          requestUrl: buildGranQuestionQueryUrl(checkpoint.requestUrl, {
+            page: nextPage,
+            perPage: checkpoint.perPage,
+            year: String(nextYear),
+          }),
+          runKey: checkpoint.runKey,
+          perPage: checkpoint.perPage,
+          year: nextYear,
+          page: nextPage,
+          totalPages: exhaustedYear ? null : knownPageCount || null,
+          status: 'running',
+          lastBatchId: data.batch.batchId,
+          lastError: null,
+        }, controller.signal);
+        cursorYear = nextYear;
+        cursorPage = nextPage;
+        if (exhaustedYear) {
+          setYear(String(cursorYear));
+        }
+        if (cursorYear <= finalYear) {
+          setYear(String(cursorYear));
+          setPage(cursorPage);
+          window.localStorage.setItem(GRAN_LAST_YEAR_STORAGE_KEY, String(cursorYear));
+          if (inFlightBatches.length >= MAX_AUTOMATIC_IN_FLIGHT_BATCHES) {
+            await waitForOldestPublication();
+          }
+          await delayWithSignal(400, controller.signal);
+        }
+      }
+
+      if (!controller.signal.aborted) {
+        while (inFlightBatches.length > 0) {
+          await waitForOldestPublication();
+        }
+        await clearAutomaticCheckpoint();
+        setAutomaticMode(false);
+        setAutomaticProgress({
+          phase: 'completed',
+          year: Math.min(cursorYear, finalYear),
+          page: cursorPage,
+          totalPages: null,
+          questionsCollected: 0,
+          message: `Coleta automatica concluida ate ${finalYear}.`,
+        });
+      }
+    } catch (requestError) {
+      if (!controller.signal.aborted) {
+        const message = requestError instanceof Error ? requestError.message : 'O modo automatico foi interrompido.';
+        const checkpointYear = failedFlight?.year || cursorYear;
+        const checkpointPage = failedFlight?.page || cursorPage;
+        const checkpointTotalPages = failedFlight?.totalPages || checkpoint?.totalPages || null;
+        if (checkpoint) try {
+          await saveAutomaticCheckpoint({
+            requestUrl: buildGranQuestionQueryUrl(checkpoint.requestUrl, {
+              page: checkpointPage,
+              perPage: checkpoint.perPage,
+              year: String(checkpointYear),
+            }),
+            runKey: checkpoint.runKey,
+            perPage: checkpoint.perPage,
+            year: checkpointYear,
+            page: checkpointPage,
+            totalPages: checkpointTotalPages,
+            status: 'error',
+            lastBatchId: checkpoint.lastBatchId || null,
+            lastError: message,
+          });
+        } catch {
+          // A mensagem primária de falha não pode ser escondida por uma falha de checkpoint.
+        }
+        setError(message);
+        setAutomaticMode(false);
+        setAutomaticProgress((current) => ({ ...current, phase: 'error', message }));
+      }
+    } finally {
+      if (automaticAbortRef.current === controller) automaticAbortRef.current = null;
+    }
+  }, [
+    checkCollector,
+    automaticCheckpoint,
+    clearAutomaticCheckpoint,
+    collectAndEnqueueAutomaticPage,
+    collectorState,
+    granRequestUrl,
+    loadFailureHistory,
+    page,
+    perPage,
+    saveAutomaticCheckpoint,
+    waitForPublicationBatch,
+    year,
+  ]);
 
   const finalizeCargoRelationsInChunks = React.useCallback(async (pendingOnly = false) => {
     let cursor = 0;
@@ -901,7 +1704,7 @@ const AdminGranCrawlerSection = ({
             </div>
           </div>
           <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-            Remova a versão anterior, baixe a v1.0.16 e carregue a nova pasta em
+            Remova a versão anterior, baixe a v1.0.21 e carregue a nova pasta em
             {' '}
             <strong>chrome://extensions</strong>
             . O botão Verificar reconhece a extensão sem recarregar esta página. A sessão Gran precisa estar válida.
@@ -1115,11 +1918,68 @@ const AdminGranCrawlerSection = ({
           </label>
         </div>
 
+        <div className="rounded-md border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900/60 dark:bg-sky-950/20">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-slate-100">
+                <Bot size={18} className="text-sky-600" />
+                Modo automatico
+              </div>
+              <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">
+                Publica enquanto coleta a pagina seguinte, mantendo no maximo duas paginas em processamento.
+                Ao terminar um ano, continua na pagina 1 do ano seguinte; o proximo ponto fica salvo no servidor.
+              </p>
+              <p className="mt-2 text-xs font-semibold text-sky-800 dark:text-sky-300">
+                {automaticProgress.message}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <p className="max-w-xs text-xs leading-5 text-slate-500 dark:text-slate-400">
+                A quantidade total de paginas vem da resposta da Gran. Cada pagina gera seu proprio lote, sem acumular uma fila ilimitada.
+              </p>
+              {automaticCheckpoint && !automaticMode ? (
+                <button
+                  type="button"
+                  className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-11 px-4 text-xs`}
+                  onClick={() => void clearAutomaticCheckpoint().then(() => {
+                    setAutomaticProgress({
+                      phase: 'idle',
+                      year: 0,
+                      page: 1,
+                      totalPages: null,
+                      questionsCollected: 0,
+                      message: 'Progresso automatico descartado.',
+                    });
+                  }).catch((requestError) => {
+                    setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel descartar o progresso salvo.');
+                  })}
+                >
+                  Descartar progresso
+                </button>
+              ) : null}
+              <label className={`${automaticMode ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-700 hover:bg-sky-800'} inline-flex h-11 min-w-44 cursor-pointer items-center justify-center gap-2 rounded-md px-4 text-xs font-black text-white transition-colors`}>
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={automaticMode}
+                  onChange={() => {
+                    if (automaticMode) stopAutomaticMode();
+                    else void startAutomaticMode();
+                  }}
+                  aria-label="Ativar ou desativar modo automatico"
+                />
+                {automaticMode ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                {automaticMode ? 'Interromper automatico' : automaticCheckpoint ? 'Retomar automatico' : 'Ativar automatico'}
+              </label>
+            </div>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => void handleFetch()}
-            disabled={isFetching}
+            disabled={isFetching || automaticMode}
             className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-5 py-2.5 text-xs disabled:opacity-50`}
           >
             {isFetching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
@@ -1304,6 +2164,194 @@ const AdminGranCrawlerSection = ({
           </div>
         </section>
       ) : null}
+
+      <section className={`${ADMIN_PAGE_PANEL_CLASS} space-y-4`} data-testid="gran-publication-failure-history">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-500">
+              Falhas de publicacao
+            </p>
+            <h3 className="mt-1 text-base font-black text-slate-900 dark:text-slate-100">
+              Questoes com erro pendente ({failureHistory.total})
+            </h3>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Abra o rascunho para editar ou tente publicar novamente sem refazer a coleta inteira.
+              Depois de publicada, a questao e removida automaticamente desta lista.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleRetryAllFailures()}
+              disabled={failureHistory.openCount === 0 || failureActionId !== null}
+              className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-3 py-2 text-[10px] disabled:opacity-50`}
+            >
+              {failureActionId === 'all' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              Tentar todas ({failureHistory.openCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleIgnoreAllFailures()}
+              disabled={failureHistory.total === 0 || failureActionId !== null}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] text-slate-500 disabled:opacity-50`}
+              title="Remove todas as falhas abertas da fila operacional, sem apagar diagnosticos ou questoes."
+            >
+              {failureActionId === 'all' ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
+              Ignorar todas ({failureHistory.total})
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadFailureHistory()}
+              disabled={isLoadingFailures}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] disabled:opacity-50`}
+            >
+              <RefreshCw size={13} className={isLoadingFailures ? 'animate-spin' : ''} />
+              Atualizar
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-xs dark:border-slate-700 dark:bg-slate-950/30 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-bold text-slate-700 dark:text-slate-200">Higiene do historico</p>
+            <p className="mt-1 text-slate-500 dark:text-slate-400">
+              Falhas abertas e em nova tentativa ficam preservadas. Rascunhos resolvidos/ignorados perdem o JSON completo apos {failureRetention?.payloadRetentionDays || 30} dias;
+              o registro resumido e removido apos {failureRetention?.recordRetentionDays || 90} dias.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+              {failureRetention?.totalEligible || 0} elegivel(is)
+            </span>
+            <button
+              type="button"
+              onClick={() => setPurgeDiagnosticsConfirmOpen(true)}
+              disabled={!failureRetention?.totalEligible || failureActionId !== null}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] text-slate-600 disabled:opacity-50`}
+              title="Remove apenas diagnosticos resolvidos ou ignorados que passaram da retencao."
+            >
+              {failureActionId === 'retention' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              Limpar diagnosticos antigos
+            </button>
+            <button
+              type="button"
+              onClick={() => void refreshFailureRetention()}
+              disabled={failureActionId !== null}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] disabled:opacity-50`}
+              title="Atualiza somente a contagem de diagnosticos elegiveis."
+            >
+              <RefreshCw size={13} />
+              Verificar
+            </button>
+          </div>
+        </div>
+
+        {failureHistory.items.length === 0 ? (
+          <div className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-xs font-semibold text-slate-500 dark:border-slate-700">
+            Nenhuma falha de publicacao registrada neste filtro.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
+            {failureHistory.items.map((failure) => {
+              const isActing = failureActionId === failure.failureId;
+              return (
+                <article
+                  key={failure.failureId}
+                  className="border-b border-slate-100 p-4 last:border-b-0 dark:border-slate-800"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <AlertTriangle size={15} className="text-rose-600" />
+                        <strong className="text-sm text-slate-900 dark:text-slate-100">
+                          {failure.externalQuestionId ? `Q${failure.externalQuestionId}` : failure.sourceKey}
+                        </strong>
+                        <span className={`rounded-sm px-2 py-1 text-[10px] font-black uppercase ${failure.status === 'retrying'
+                          ? 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300'
+                          : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'}`}
+                        >
+                          {failure.status === 'retrying' ? 'Nova tentativa' : 'Pendente'}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400">
+                          {failure.attemptCount} tentativa(s)
+                        </span>
+                      </div>
+                      {failure.examTitle ? (
+                        <p className="mt-2 truncate text-xs font-bold text-slate-600 dark:text-slate-300">
+                          {failure.examTitle}
+                        </p>
+                      ) : null}
+                      <p className="mt-1 text-xs leading-5 text-rose-700 dark:text-rose-300">
+                        {failure.message}
+                      </p>
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        Codigo: {failure.code} · ultima falha em {formatDateTime(failure.lastFailedAt)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleModerateFailure(failure)}
+                        disabled={isActing}
+                        className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] disabled:opacity-50`}
+                      >
+                        {isActing ? <Loader2 size={13} className="animate-spin" /> : <Pencil size={13} />}
+                        Moderar e editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRetryFailure(failure)}
+                        disabled={isActing || failure.status === 'retrying'}
+                        className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-3 py-2 text-[10px] disabled:opacity-50`}
+                      >
+                        {isActing || failure.status === 'retrying'
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : <RefreshCw size={13} />}
+                        Tentar novamente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleIgnoreFailure(failure)}
+                        disabled={isActing}
+                        className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] text-slate-500 disabled:opacity-50`}
+                        title="Remove apenas esta falha da lista operacional; a questao e o diagnostico continuam preservados."
+                      >
+                        {isActing ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
+                        Ignorar
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+          <span>{failureHistory.items.length} de {failureHistory.total} falha(s) exibida(s)</span>
+          {failureHistory.nextCursor ? (
+            <button
+              type="button"
+              onClick={() => void loadFailureHistory(failureHistory.nextCursor)}
+              disabled={isLoadingFailures}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] disabled:opacity-50`}
+            >
+              {isLoadingFailures ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} />}
+              Carregar mais
+            </button>
+          ) : null}
+        </div>
+      </section>
+
+      <AdminConfirmDialog
+        isOpen={purgeDiagnosticsConfirmOpen}
+        title="Limpar diagnósticos antigos"
+        description={`Serão removidos ${failureRetention?.totalEligible || 0} diagnóstico(s) encerrado(s): snapshots com mais de ${failureRetention?.payloadRetentionDays || 30} dias e registros com mais de ${failureRetention?.recordRetentionDays || 90} dias. Falhas abertas, novas tentativas e questões publicadas não serão alteradas.`}
+        confirmLabel="Limpar diagnósticos"
+        loading={failureActionId === 'retention'}
+        onCancel={() => setPurgeDiagnosticsConfirmOpen(false)}
+        onConfirm={() => void handlePurgeFailureDiagnostics()}
+      />
     </div>
   );
 };

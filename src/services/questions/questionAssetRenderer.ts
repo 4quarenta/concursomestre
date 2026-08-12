@@ -1,5 +1,5 @@
 import type { QuestionAsset } from '@types';
-import { getAssetUrl } from '@services/api';
+import { getAssetUrl, getVersionedAssetUrl } from '@services/api';
 import { normalizeQuestionRichHtml } from './questionHtmlSanitizer';
 
 const escapeHtmlAttribute = (value: unknown): string => String(value ?? '')
@@ -25,11 +25,14 @@ const getAssetId = (asset: QuestionAsset): string => String(asset.tempId || asse
 const getAssetSource = (asset: QuestionAsset): string => {
   const source = String(asset.url || asset.base64 || '').trim();
   if (!source || /^(?:javascript|vbscript):/i.test(source) || isTransientBlobUrl(source)) return '';
-  if (/^(?:https?:|data:image\/)/i.test(source)) return source;
+  if (/^data:image\//i.test(source)) return source;
+  if (/^https?:/i.test(source)) {
+    return getVersionedAssetUrl(source, getAssetId(asset) || source);
+  }
   if (asset.base64 && source === asset.base64) {
     return `data:image/png;base64,${source.replace(/\s+/g, '')}`;
   }
-  return getAssetUrl(source);
+  return getVersionedAssetUrl(source, getAssetId(asset) || source);
 };
 
 const renderAsset = (asset: QuestionAsset, source: string): string => [
@@ -55,8 +58,9 @@ export const renderQuestionContentWithAssets = (
 
   const withMarkers = safeHtml.replace(/\[image:([^\]\s]+)\]/gi, (marker, rawAssetId) => {
     const assetId = String(rawAssetId || '').trim();
-    const match = availableAssets.find((entry) => entry.id === assetId);
-    if (!match) return marker;
+    const match = availableAssets.find((entry) => entry.id === assetId)
+      ?? availableAssets.find((entry) => !renderedAssetIds.has(entry.id));
+    if (!match) return '';
     renderedAssetIds.add(match.id);
     return renderAsset(match.asset, match.src);
   });

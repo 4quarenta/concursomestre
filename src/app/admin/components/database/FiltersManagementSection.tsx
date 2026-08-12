@@ -10,11 +10,19 @@
 */
 
 import React from 'react';
-import { ChevronDown, Edit3, Loader2, Plus, PlusCircle, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, Edit3, Loader2, PlusCircle, Trash2, X } from 'lucide-react';
 import type { TaxonomyItem, TaxonomyUsage, TaxonomyUsageSummary } from '@types';
 import { filtersService, type AdminFilterListItem } from '@services/filters';
-import { ADMIN_FIELD_CLASS, ADMIN_PAGE_PANEL_CLASS, ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import {
+  ADMIN_COLLECTION_TABLE_CLASS,
+  ADMIN_COLLECTION_TABLE_HEAD_CLASS,
+  ADMIN_COLLECTION_TABLE_ROW_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+} from '../shared/adminPanelStyles';
+import AdminCollectionActionBar from '../shared/AdminCollectionActionBar';
 import AdminCollectionPagination from '../shared/AdminCollectionPagination';
+import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
+import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
 interface FilterTypeOption {
@@ -215,7 +223,20 @@ const FiltersManagementSection = ({
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-6 animate-slide-up md:grid-cols-4">
+    <div className="space-y-4">
+      <AdminCollectionToolbar
+        title="Taxonomias e filtros"
+        description="Cadastre e organize as taxonomias usadas por questoes, provas e leis."
+        itemCount={pagination.total}
+        itemCountLabel="taxonomias"
+        searchValue={filterSearch}
+        onSearchChange={changeSearch}
+        searchPlaceholder="Pesquisar taxonomias..."
+        primaryActionLabel="Novo filtro"
+        onPrimaryAction={onCreate}
+      />
+
+      <div className="grid grid-cols-1 gap-4 animate-slide-up md:grid-cols-4">
       <div className={`${ADMIN_PAGE_PANEL_CLASS} h-fit md:col-span-1`}>
         <h3 className="mb-4 ml-2 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Filtrar por tipo</h3>
         <div className="space-y-1">
@@ -244,58 +265,31 @@ const FiltersManagementSection = ({
       </div>
 
       <div className="space-y-4 md:col-span-3">
-        <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col items-center justify-between gap-4 md:flex-row`}>
-          <div className="relative w-full flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={16} />
-            <input
-              type="text"
-              placeholder="Pesquisar em todas as taxonomias..."
-              value={filterSearch}
-              onChange={(event) => changeSearch(event.target.value)}
-              className={`${ADMIN_FIELD_CLASS} w-full pl-10 pr-4`}
-            />
-          </div>
+        <AdminCollectionActionBar
+          summary={selectedIds.size > 0 ? `${selectedIds.size} taxonomia(s) selecionada(s)` : 'Selecione itens para executar acoes em massa.'}
+        >
           <button
             type="button"
-            onClick={onCreate}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 md:w-auto"
+            onClick={() => setSelectedIds(new Set())}
+            disabled={selectedIds.size === 0 || isDeleting}
+            className="inline-flex h-9 items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            <Plus size={18} /> Novo filtro
+            <X size={14} /> Limpar selecao
           </button>
-        </div>
+          <button
+            type="button"
+            onClick={() => setIsBulkDeleteOpen(true)}
+            disabled={selectedIds.size === 0 || isDeleting}
+            className="inline-flex h-9 items-center gap-2 rounded-sm border border-red-300 bg-white px-3 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-45 dark:border-red-900/70 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30"
+          >
+            {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            Excluir selecionadas
+          </button>
+        </AdminCollectionActionBar>
 
-        <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden overflow-x-auto no-scrollbar`}>
-          <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex min-h-[57px] flex-wrap items-center justify-between gap-3`}>
-            <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Taxonomias e filtros</p>
-              {selectedIds.size > 0 && (
-                <p className="mt-1 text-xs text-indigo-600 dark:text-indigo-300">{selectedIds.size} selecionada(s) nesta pagina</p>
-              )}
-            </div>
-            {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedIds(new Set())}
-                  disabled={isDeleting}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  <X size={14} /> Limpar selecao
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsBulkDeleteOpen(true)}
-                  disabled={isDeleting}
-                  className="inline-flex h-9 items-center gap-2 rounded-md bg-red-700 px-3 text-xs font-semibold text-white hover:bg-red-800 disabled:opacity-50"
-                >
-                  {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  Excluir selecionadas
-                </button>
-              </div>
-            )}
-          </div>
-          <table className="min-w-[800px] w-full text-left text-xs">
-            <thead className="border-b border-slate-100 bg-slate-50 font-bold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
+        <AdminCollectionTablePanel title="Biblioteca de taxonomias" className="no-scrollbar">
+          <table className={ADMIN_COLLECTION_TABLE_CLASS}>
+            <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
               <tr>
                 <th className="w-12 p-4 text-center">
                   <input
@@ -333,7 +327,7 @@ const FiltersManagementSection = ({
                 const usage = item.usage || EMPTY_USAGE;
                 const hasParent = Boolean(item.parentId || item.parent_id);
                 return (
-                  <tr key={`${item.type}-${item.id}`} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800">
+                  <tr key={`${item.type}-${item.id}`} className={ADMIN_COLLECTION_TABLE_ROW_CLASS}>
                     <td className="p-4 text-center">
                       <input
                         type="checkbox"
@@ -395,7 +389,7 @@ const FiltersManagementSection = ({
               })}
             </tbody>
           </table>
-        </div>
+        </AdminCollectionTablePanel>
         <AdminCollectionPagination
           visibleCount={visibleItems.length}
           totalCount={pagination.total}
@@ -404,6 +398,7 @@ const FiltersManagementSection = ({
           totalPages={pagination.pages}
           onPageChange={changePage}
         />
+      </div>
       </div>
     </div>
     <AdminConfirmDialog

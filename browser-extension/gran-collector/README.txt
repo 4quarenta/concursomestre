@@ -1,5 +1,5 @@
 CONCURSOMESTRE - COLETOR GRAN
-VERSAO 1.0.16
+VERSAO 1.0.21
 
 Instalacao privada no Google Chrome:
 
@@ -24,5 +24,6 @@ Seguranca:
 - Fechar o Chrome encerra a sessao da extensao.
 - A extensao observa apenas a API oficial da Gran para reconhecer a sessao.
 - A coleta de dados permanece limitada a rotas oficiais predefinidas de questoes e taxonomias.
+- Imagens protegidas das questoes sao capturadas pela propria extensao e enviadas como dados temporarios; o backend salva apenas a copia no storage do ConcursoMestre.
 - O ConcursoMestre recebe apenas o JSON coletado, nunca a credencial.
 - Remova a extensao em chrome://extensions quando nao precisar mais dela.

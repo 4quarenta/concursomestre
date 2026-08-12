@@ -171,6 +171,11 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: '/changelog',
+        destination: '/novidades',
+        permanent: true,
+      },
+      {
         source: '/questions',
         destination: '/practice',
         permanent: false,

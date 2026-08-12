@@ -58,6 +58,10 @@ class AdminSettingsValidator
             $payload['siteName'] = $this->sanitizeString($payload['siteName'], 120, 'Nome do site');
         }
 
+        if (isset($payload['platformVersion'])) {
+            $payload['platformVersion'] = $this->sanitizeString($payload['platformVersion'], 40, 'Versao da plataforma');
+        }
+
         if (isset($payload['supportPhone'])) {
             $payload['supportPhone'] = $this->sanitizeString($payload['supportPhone'], 40, 'Telefone de suporte', true);
         }

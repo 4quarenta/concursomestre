@@ -106,15 +106,17 @@ function resolveFeedbackCreateSuccessMessage(array $payload, array $requestBody)
 function handleFeedbackListRoute(PDO $db): void
 {
     try {
-        $authenticatedUserPayload = verifyAuthenticatedUserPayload();
         $controller = buildFeedbackController($db);
 
         if (isset($_GET['public_suggestions'])) {
+            $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
             $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 80;
             $suggestions = $controller->listPublicSuggestions($authenticatedUserPayload, $limit);
             Response::success(['suggestions' => $suggestions], 'Sugestões carregadas.');
             return;
         }
+
+        $authenticatedUserPayload = verifyAuthenticatedUserPayload();
 
         if (isset($_GET['id'])) {
             $threadId = (int) $_GET['id'];

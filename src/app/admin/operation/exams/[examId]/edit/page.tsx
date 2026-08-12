@@ -12,7 +12,7 @@
 */
 
 import React from 'react';
-import { AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import type { ExamFileKind, Prova, Question } from '@types';
 import { useAuth } from '@providers/AuthProvider';
@@ -35,6 +35,7 @@ import {
 } from '../../../../components/exams/examBankUtils';
 import { buildAdminExamEditPath, buildAdminPath } from '../../../../config/adminPageNavigationConfig';
 import { ADMIN_PRIMARY_BUTTON_CLASS, ADMIN_SECONDARY_BUTTON_CLASS, ADMIN_SURFACE_CLASS } from '../../../../components/shared/adminPanelStyles';
+import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
 
 const resolveExamId = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -591,6 +592,7 @@ const AdminExamEditPage = () => {
       publishStatus: draft.publishStatus,
       visibilityStatus: draft.visibilityStatus,
       scheduledAt: draft.scheduledAt,
+      publishedAt: draft.publishedAt,
       banca: {
         id: resolvedAgency?.id || draft.bancaId || undefined,
         sigla: readTaxonomySigla(resolvedAgency) || draft.bancaSigla || draft.bancaNome,
@@ -768,10 +770,13 @@ const AdminExamEditPage = () => {
       return 0;
     }
 
-    return questions.reduce((count, question) => (
+    const loadedQuestionCount = questions.reduce((count, question) => (
       isQuestionLinkedToProva(question, linkedQuestionProbeId) ? count + 1 : count
     ), 0);
-  }, [linkedQuestionProbeId, questions]);
+    const persistedQuestionCount = Number(existingExam?.questionCount || 0);
+    const draftQuestionCount = splitExamIdValues(draft?.questoesVinculadasText || '').length;
+    return Math.max(persistedQuestionCount, loadedQuestionCount, draftQuestionCount);
+  }, [draft?.questoesVinculadasText, existingExam?.questionCount, linkedQuestionProbeId, questions]);
 
   const renderAdminShell = (children: React.ReactNode) => (
     <AdminStandaloneShell
@@ -785,11 +790,7 @@ const AdminExamEditPage = () => {
   );
 
   if (isAuthLoading || !isSystemSettingsLoaded || isExamLoading || (isSaving && !draft)) {
-    return renderAdminShell(
-      <div className={`${ADMIN_SURFACE_CLASS} flex min-h-[360px] items-center justify-center p-12 text-slate-500 dark:text-slate-400`}>
-        <Loader2 className="mr-3 animate-spin" size={18} /> Carregando editor da prova...
-      </div>,
-    );
+    return renderAdminShell(<RouteContentSkeleton variant="admin" />);
   }
 
   if (!isNew && !existingExam) {

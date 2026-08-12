@@ -29,6 +29,24 @@ class ExamsController
         }
     }
 
+    public function publicDirectory(): void
+    {
+        try {
+            Response::success($this->service->listPublicDirectory($_GET), 'Diretório público de provas carregado.');
+        } catch (InvalidArgumentException $exception) {
+            Response::badRequest($exception->getMessage());
+        }
+    }
+
+    public function publicDetail(string $slug): void
+    {
+        $exam = $this->service->showPublic($slug);
+        if (!$exam) {
+            Response::notFound('Prova não encontrada.');
+        }
+        Response::success(['exam' => $exam], 'Prova pública carregada.');
+    }
+
     public function show(int $id): void
     {
         $exam = $this->service->show($id);

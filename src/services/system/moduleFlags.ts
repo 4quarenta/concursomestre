@@ -13,6 +13,18 @@ import type { SystemSettings } from '@types';
 
 type FeatureKey = keyof NonNullable<SystemSettings['features']>;
 
+const MODULE_PATH_FEATURES: ReadonlyArray<{ prefix: string; key: FeatureKey }> = [
+  { prefix: '/practice', key: 'practiceEnabled' },
+  { prefix: '/questions', key: 'practiceEnabled' },
+  { prefix: '/lei-comentada', key: 'annotatedLawsEnabled' },
+  { prefix: '/flashcards', key: 'flashcardsEnabled' },
+  { prefix: '/simulation', key: 'simulationsEnabled' },
+  { prefix: '/cronograma', key: 'studyScheduleEnabled' },
+  { prefix: '/x-ray', key: 'xRayEnabled' },
+  { prefix: '/ranking', key: 'rankingsEnabled' },
+  { prefix: '/marketplace', key: 'marketplaceEnabled' },
+];
+
 const normalizeBooleanLike = (value: unknown): boolean | null => {
   if (typeof value === 'boolean') {
     return value;
@@ -53,4 +65,20 @@ export const resolveSystemFeatureFlag = (
   }
 
   return fallback;
+};
+
+export const getModuleFeatureKeyForPath = (path: string): FeatureKey | null => {
+  const normalizedPath = String(path || '').trim().split(/[?#]/, 1)[0];
+  return MODULE_PATH_FEATURES.find(({ prefix }) => (
+    normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
+  ))?.key ?? null;
+};
+
+export const isModulePathEnabled = (
+  settings: Partial<SystemSettings> | null | undefined,
+  path: string,
+  fallback = true,
+): boolean => {
+  const featureKey = getModuleFeatureKeyForPath(path);
+  return featureKey ? resolveSystemFeatureFlag(settings, featureKey, fallback) : true;
 };

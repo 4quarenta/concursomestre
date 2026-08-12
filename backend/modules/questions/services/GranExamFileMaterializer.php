@@ -68,10 +68,11 @@ final class GranExamFileMaterializer
                 $download = $this->download($sourceUrl, $kind);
                 $temporaryPath = $download['temporaryPath'];
                 $storageKey = sprintf(
-                    'exams/gran/%s/%s-%s.pdf',
+                    'exams/gran/%s/%s-%s.%s',
                     $externalExamId,
                     $kind,
-                    substr($download['sha256'], 0, 20)
+                    substr($download['sha256'], 0, 20),
+                    $download['extension']
                 );
                 $stored = $this->store(
                     $temporaryPath,
@@ -89,6 +90,7 @@ final class GranExamFileMaterializer
                     'sourceProvider' => 'gran',
                     'sourceExternalExamId' => (string) ($exam['externalId'] ?? ''),
                     'sourceUrlHash' => hash('sha256', $sourceUrl),
+                    'status' => 'materialized',
                     'importedAt' => gmdate('c'),
                 ];
             } catch (RuntimeException $exception) {
@@ -133,7 +135,7 @@ final class GranExamFileMaterializer
         }
     }
 
-    /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string} */
+    /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string,extension:string} */
     private function download(string $sourceUrl, string $kind): array
     {
         if ($this->downloader !== null) {
@@ -167,7 +169,7 @@ final class GranExamFileMaterializer
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_TIMEOUT => 120,
             CURLOPT_FAILONERROR => false,
-            CURLOPT_HTTPHEADER => ['Accept: application/pdf, application/zip, application/octet-stream'],
+            CURLOPT_HTTPHEADER => ['Accept: application/pdf, application/rtf, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.oasis.opendocument.text, application/zip, application/octet-stream'],
             CURLOPT_USERAGENT => 'ConcursoMestre-ExamImporter/1.0',
             CURLOPT_WRITEFUNCTION => static function ($curl, string $chunk) use (
                 $stream,
@@ -213,7 +215,7 @@ final class GranExamFileMaterializer
         }
     }
 
-    /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string} */
+    /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string,extension:string} */
     private function validateDownloadedFile(array $result, string $kind): array
     {
         $temporaryPath = (string) ($result['temporaryPath'] ?? '');
@@ -226,27 +228,72 @@ final class GranExamFileMaterializer
         ) {
             throw new RuntimeException('Documento Gran baixado e invalido.');
         }
-        $magic = (string) file_get_contents($temporaryPath, false, null, 0, 5);
+        $magic = (string) file_get_contents($temporaryPath, false, null, 0, 16);
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $detectedMime = strtolower((string) $finfo->file($temporaryPath));
-        if ($magic === '%PDF-' && $detectedMime === 'application/pdf') {
-            return [
-                'temporaryPath' => $temporaryPath,
-                'mimeType' => 'application/pdf',
-                'size' => $size,
-                'sha256' => (string) ($result['sha256'] ?? hash_file('sha256', $temporaryPath)),
-            ];
+        $validated = [
+            'temporaryPath' => $temporaryPath,
+            'size' => $size,
+            'sha256' => (string) ($result['sha256'] ?? hash_file('sha256', $temporaryPath)),
+        ];
+        if (str_starts_with($magic, '%PDF-') && $detectedMime === 'application/pdf') {
+            return $validated + ['mimeType' => 'application/pdf', 'extension' => 'pdf'];
         }
 
-        if ($kind === 'gabarito' && str_starts_with($magic, "PK\x03\x04")) {
-            return $this->extractAnswerKeyPdf($temporaryPath);
+        if (preg_match('/^(?:\xEF\xBB\xBF)?\{\\\\rtf/i', $magic) === 1) {
+            return $validated + ['mimeType' => 'application/rtf', 'extension' => 'rtf'];
         }
 
-        throw new RuntimeException('O arquivo remoto nao e um PDF valido.');
+        if (str_starts_with($magic, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1")) {
+            return $validated + ['mimeType' => 'application/msword', 'extension' => 'doc'];
+        }
+
+        if (str_starts_with($magic, "PK\x03\x04")) {
+            $officeType = $this->detectZipDocumentType($temporaryPath);
+            if ($officeType !== null) {
+                return $validated + $officeType;
+            }
+            if ($kind === 'gabarito') {
+                return $this->extractAnswerKeyDocument($temporaryPath);
+            }
+        }
+
+        throw new RuntimeException('O arquivo remoto nao e um documento oficial valido (PDF, RTF, DOC, DOCX ou ODT).');
     }
 
-    /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string} */
-    private function extractAnswerKeyPdf(string $zipPath): array
+    /** @return null|array{mimeType:string,extension:string} */
+    private function detectZipDocumentType(string $zipPath): ?array
+    {
+        if (!class_exists(ZipArchive::class)) {
+            return null;
+        }
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath) !== true) {
+            return null;
+        }
+        try {
+            if ($zip->locateName('[Content_Types].xml', ZipArchive::FL_NOCASE) !== false
+                && $zip->locateName('word/document.xml', ZipArchive::FL_NOCASE) !== false) {
+                return [
+                    'mimeType' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'extension' => 'docx',
+                ];
+            }
+            $mimetype = $zip->getFromName('mimetype');
+            if (is_string($mimetype) && trim($mimetype) === 'application/vnd.oasis.opendocument.text') {
+                return [
+                    'mimeType' => 'application/vnd.oasis.opendocument.text',
+                    'extension' => 'odt',
+                ];
+            }
+        } finally {
+            $zip->close();
+        }
+        return null;
+    }
+
+    /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string,extension:string} */
+    private function extractAnswerKeyDocument(string $zipPath): array
     {
         if (!class_exists(ZipArchive::class)) {
             throw new RuntimeException('Extensao ZIP obrigatoria para materializar o gabarito oficial.');
@@ -267,7 +314,7 @@ final class GranExamFileMaterializer
                 $name = str_replace('\\', '/', trim((string) ($entry['name'] ?? '')));
                 $size = (int) ($entry['size'] ?? 0);
                 $encryptionMethod = (int) ($entry['encryption_method'] ?? 0);
-                if ($encryptionMethod !== 0 || !$this->isSafePdfArchiveEntry($name, $size)) {
+                if ($encryptionMethod !== 0 || !$this->isSafeDocumentArchiveEntry($name, $size)) {
                     continue;
                 }
                 $normalizedName = strtolower(basename($name));
@@ -278,6 +325,8 @@ final class GranExamFileMaterializer
                 if (str_contains($normalizedName, 'gabarito')) {
                     $score += 80;
                 }
+                $extension = strtolower((string) pathinfo($normalizedName, PATHINFO_EXTENSION));
+                $score += ['pdf' => 40, 'docx' => 30, 'odt' => 20, 'rtf' => 10, 'doc' => 5][$extension] ?? 0;
                 if (str_contains($normalizedName, 'preliminar')) {
                     $score -= 20;
                 }
@@ -293,17 +342,17 @@ final class GranExamFileMaterializer
             );
             $selected = $candidates[0] ?? null;
             if (!is_array($selected)) {
-                throw new RuntimeException('O ZIP do gabarito nao contem um PDF seguro.');
+                throw new RuntimeException('O ZIP do gabarito nao contem um documento oficial seguro.');
             }
 
             $input = $zip->getStream((string) $selected['name']);
-            $temporaryPath = tempnam(sys_get_temp_dir(), 'cm-gran-key-pdf-');
+            $temporaryPath = tempnam(sys_get_temp_dir(), 'cm-gran-key-document-');
             $output = $temporaryPath !== false ? fopen($temporaryPath, 'wb') : false;
             if ($input === false || $temporaryPath === false || $output === false) {
                 if (is_resource($input)) fclose($input);
                 if (is_resource($output)) fclose($output);
                 if (is_string($temporaryPath) && is_file($temporaryPath)) @unlink($temporaryPath);
-                throw new RuntimeException('Nao foi possivel extrair o PDF do gabarito.');
+                throw new RuntimeException('Nao foi possivel extrair o documento do gabarito.');
             }
 
             $bytes = 0;
@@ -315,7 +364,7 @@ final class GranExamFileMaterializer
                     }
                     $bytes += strlen($chunk);
                     if ($bytes > self::MAX_FILE_BYTES) {
-                        throw new RuntimeException('O PDF do gabarito excede o limite de 100 MB.');
+                        throw new RuntimeException('O documento do gabarito excede o limite de 100 MB.');
                     }
                     if ($chunk !== '' && fwrite($output, $chunk) === false) {
                         throw new RuntimeException('Falha durante a gravacao temporaria do gabarito.');
@@ -333,10 +382,10 @@ final class GranExamFileMaterializer
             try {
                 return $this->validateDownloadedFile([
                     'temporaryPath' => $temporaryPath,
-                    'mimeType' => 'application/pdf',
+                    'mimeType' => 'application/octet-stream',
                     'size' => $bytes,
                     'sha256' => (string) hash_file('sha256', $temporaryPath),
-                ], 'gabarito_pdf');
+                ], 'gabarito_extraido');
             } catch (Throwable $exception) {
                 @unlink($temporaryPath);
                 throw $exception;
@@ -347,7 +396,7 @@ final class GranExamFileMaterializer
         }
     }
 
-    private function isSafePdfArchiveEntry(string $name, int $size): bool
+    private function isSafeDocumentArchiveEntry(string $name, int $size): bool
     {
         if ($name === '' || $size < 5 || $size > self::MAX_FILE_BYTES) {
             return false;
@@ -359,7 +408,11 @@ final class GranExamFileMaterializer
         ) {
             return false;
         }
-        return strtolower((string) pathinfo($name, PATHINFO_EXTENSION)) === 'pdf';
+        return in_array(
+            strtolower((string) pathinfo($name, PATHINFO_EXTENSION)),
+            ['pdf', 'rtf', 'doc', 'docx', 'odt'],
+            true
+        );
     }
 
     private function appendDiagnostic(array &$payload, string $diagnostic): void

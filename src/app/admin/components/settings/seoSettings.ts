@@ -24,7 +24,7 @@ export const SEO_PAGE_LABELS: Record<(typeof SEO_PAGE_ORDER)[number], string> = 
   landing: 'Landing',
   plans: 'Planos',
   faq: 'FAQ',
-  changelog: 'Changelog',
+  changelog: 'Novidades',
   privacy: 'Privacidade',
   terms: 'Termos',
 };

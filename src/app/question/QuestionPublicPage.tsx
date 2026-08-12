@@ -27,7 +27,7 @@ import {
   PLATFORM_SECTION_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import { buildAbsoluteUrl, buildQuestionPath, buildQuestionSlug, summarizeSeoText, useDocumentSeo } from '@services/seo';
+import { buildAbsoluteUrl, buildBoardPath, buildQuestionPath, buildQuestionSlug, summarizeSeoText, useDocumentSeo } from '@services/seo';
 import {
   buildQuestionKeywordPills,
   buildQuestionKeywords,
@@ -292,7 +292,16 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
               {metadataItems.map((item) => (
                 <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item.label}</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{item.value}</p>
+                  {item.label === 'Banca' && question.bancas?.length ? (
+                    <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {question.bancas.map((board, index) => (
+                        <React.Fragment key={`${board.id || board.slug || index}`}>
+                          {index > 0 ? ', ' : null}
+                          <Link href={buildBoardPath(board)} prefetch={false} className="hover:text-[#615fff] hover:underline">{board.sigla || board.nome}</Link>
+                        </React.Fragment>
+                      ))}
+                    </p>
+                  ) : <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{item.value}</p>}
                 </div>
               ))}
             </div>
@@ -377,7 +386,9 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
                   </div>
                   <div className="flex items-center gap-2">
                     <Building2 size={16} className="text-indigo-600 dark:text-indigo-300" />
-                    <span>{question.bancas?.[0]?.sigla || question.bancas?.[0]?.nome || 'Banca não informada'}</span>
+                    {question.bancas?.[0] ? (
+                      <Link href={buildBoardPath(question.bancas[0])} prefetch={false} className="hover:text-[#615fff] hover:underline">{question.bancas[0].sigla || question.bancas[0].nome}</Link>
+                    ) : <span>Banca não informada</span>}
                   </div>
                   <div className="flex items-center gap-2">
                     <GraduationCap size={16} className="text-amber-600 dark:text-amber-300" />

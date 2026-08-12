@@ -47,7 +47,7 @@ export default function FaqSeoSnapshot() {
           </section>
         ))}
 
-        <Link href="/support?category=info" className="font-semibold text-indigo-700 underline">
+        <Link href="/support?category=info" prefetch={false} className="font-semibold text-indigo-700 underline">
           Abrir a central de suporte
         </Link>
       </div>

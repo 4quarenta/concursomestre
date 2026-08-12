@@ -90,6 +90,7 @@ describe('system settings coupons', () => {
     const { DEFAULT_SYSTEM_SETTINGS } = systemSettingsModule;
 
     expect(DEFAULT_SYSTEM_SETTINGS.coupons).toEqual([]);
+    expect(DEFAULT_SYSTEM_SETTINGS.features.supportDonationsEnabled).toBe(true);
   });
 
   it('preserves an explicit empty coupons list during merges', () => {

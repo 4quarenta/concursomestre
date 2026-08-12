@@ -107,6 +107,207 @@ class ExamsRepository
         return $this->hydrateMany($rows);
     }
 
+    /**
+     * Retorna somente os campos publicos usados pelo diretorio editorial.
+     */
+    public function listPublicDirectory(array $options): array
+    {
+        $this->ensureSchema();
+        $limit = max(1, min(48, (int) ($options['limit'] ?? 12)));
+        $offset = max(0, (int) ($options['offset'] ?? 0));
+        $year = (int) ($options['year'] ?? 0);
+        $stateCodes = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $value): string => strtoupper(trim((string) $value)),
+            is_array($options['state_codes'] ?? null) ? $options['state_codes'] : []
+        ), static fn (string $value): bool => preg_match('/^[A-Z]{2}$/', $value) === 1)));
+        $where = [
+            'p.archived_at IS NULL',
+            "p.status_editorial = 'published'",
+            "p.visibility_status = 'public'",
+            '(p.scheduled_at IS NULL OR p.scheduled_at <= NOW())',
+        ];
+        $params = [];
+        if ($year >= 1900 && $year <= 2200) {
+            $where[] = 'p.ano = :directory_year';
+            $params[':directory_year'] = $year;
+        }
+        if ($stateCodes !== []) {
+            $placeholders = [];
+            foreach ($stateCodes as $index => $stateCode) {
+                $placeholder = ':directory_state_' . $index;
+                $placeholders[] = $placeholder;
+                $params[$placeholder] = $stateCode;
+            }
+            $where[] = "EXISTS (
+                SELECT 1
+                FROM prova_filters pf_location
+                INNER JOIN filters f_location ON f_location.id = pf_location.filter_id
+                WHERE pf_location.prova_id = p.id
+                  AND f_location.type = 'orgao'
+                  AND UPPER(f_location.meta_uf) IN (" . implode(', ', $placeholders) . ')
+            )';
+        }
+        $whereSql = implode(' AND ', $where);
+        $query = "SELECT
+                p.id,
+                p.nome,
+                p.slug,
+                p.ano,
+                COUNT(DISTINCT qp.question_id) AS question_count,
+                GROUP_CONCAT(DISTINCT CASE WHEN f.type = 'orgao' THEN f.name END ORDER BY f.name SEPARATOR '||') AS organization_names,
+                GROUP_CONCAT(DISTINCT CASE WHEN f.type = 'orgao' THEN f.acronym END ORDER BY f.acronym SEPARATOR '||') AS organization_acronyms,
+                MAX(CASE WHEN f.type = 'orgao' THEN f.meta_uf END) AS state_code,
+                MAX(CASE WHEN f.type = 'banca' THEN COALESCE(NULLIF(f.acronym, ''), f.name) END) AS board_name,
+                MAX(CASE WHEN f.type = 'banca' THEN f.slug END) AS board_slug,
+                MAX(CASE WHEN pa.tipo = 'prova' THEN pa.caminho END) AS proof_url,
+                MAX(CASE WHEN pa.tipo = 'gabarito' THEN pa.caminho END) AS answer_key_url
+            FROM provas p
+            LEFT JOIN question_provas qp ON qp.prova_id = p.id
+            LEFT JOIN prova_filters pf ON pf.prova_id = p.id
+            LEFT JOIN filters f ON f.id = pf.filter_id
+            LEFT JOIN prova_arquivos pa ON pa.prova_id = p.id
+                AND pa.archived_at IS NULL
+                AND pa.visibility_status = 'public'
+            WHERE {$whereSql}
+            GROUP BY p.id, p.nome, p.slug, p.ano
+            ORDER BY COALESCE(p.ano, 0) DESC, p.id DESC
+            LIMIT {$limit} OFFSET {$offset}";
+
+        $stmt = $this->db->prepare($query);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $countStmt = $this->db->prepare("SELECT COUNT(*) FROM provas p WHERE {$whereSql}");
+        $countStmt->execute($params);
+        $total = (int) $countStmt->fetchColumn();
+
+        $publicWhere = "p.archived_at IS NULL
+            AND p.status_editorial = 'published'
+            AND p.visibility_status = 'public'
+            AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())";
+        $years = $this->db->query("SELECT DISTINCT p.ano
+            FROM provas p
+            WHERE {$publicWhere} AND p.ano IS NOT NULL
+            ORDER BY p.ano DESC")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $states = $this->db->query("SELECT DISTINCT UPPER(f.meta_uf) AS state_code
+            FROM provas p
+            INNER JOIN prova_filters pf ON pf.prova_id = p.id
+            INNER JOIN filters f ON f.id = pf.filter_id AND f.type = 'orgao'
+            WHERE {$publicWhere}
+              AND f.meta_uf IS NOT NULL
+              AND f.meta_uf <> ''
+            ORDER BY state_code")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
+        return [
+            'rows' => $rows,
+            'total' => $total,
+            'years' => array_map('intval', $years),
+            'states' => array_values(array_map('strval', $states)),
+        ];
+    }
+
+    public function listRelatedPublic(
+        int $examId,
+        int $year,
+        array $taxonomyIds,
+        int $limit = 6
+    ): array {
+        $this->ensureSchema();
+        $limit = max(1, min(12, $limit));
+        $taxonomyIds = array_slice(array_values(array_unique(array_filter(array_map(
+            'intval',
+            $taxonomyIds
+        ), static fn (int $value): bool => $value > 0))), 0, 100);
+        $params = [
+            ':related_exam_id' => $examId,
+            ':related_year_match' => $year,
+            ':related_year_distance' => $year,
+        ];
+        $relationScoreSql = '0';
+
+        if ($taxonomyIds !== []) {
+            $placeholders = [];
+            foreach ($taxonomyIds as $index => $taxonomyId) {
+                $placeholder = ':related_taxonomy_' . $index;
+                $placeholders[] = $placeholder;
+                $params[$placeholder] = $taxonomyId;
+            }
+            $relationScoreSql = "(
+                SELECT COALESCE(SUM(CASE f_relation.type
+                    WHEN 'banca' THEN 12
+                    WHEN 'orgao' THEN 10
+                    WHEN 'cargo' THEN 8
+                    WHEN 'carreira' THEN 6
+                    WHEN 'area' THEN 4
+                    WHEN 'foco' THEN 4
+                    WHEN 'materia' THEN 3
+                    ELSE 1
+                END), 0)
+                FROM prova_filters pf_relation
+                INNER JOIN filters f_relation ON f_relation.id = pf_relation.filter_id
+                WHERE pf_relation.prova_id = p.id
+                  AND pf_relation.filter_id IN (" . implode(', ', $placeholders) . ')
+            )';
+        }
+
+        $query = "SELECT
+                p.id,
+                p.nome,
+                p.slug,
+                p.ano,
+                COUNT(DISTINCT qp.question_id) AS question_count,
+                GROUP_CONCAT(DISTINCT CASE WHEN f.type = 'orgao' THEN f.name END ORDER BY f.name SEPARATOR '||') AS organization_names,
+                GROUP_CONCAT(DISTINCT CASE WHEN f.type = 'orgao' THEN f.acronym END ORDER BY f.acronym SEPARATOR '||') AS organization_acronyms,
+                MAX(CASE WHEN f.type = 'orgao' THEN f.meta_uf END) AS state_code,
+                MAX(CASE WHEN f.type = 'banca' THEN COALESCE(NULLIF(f.acronym, ''), f.name) END) AS board_name,
+                MAX(CASE WHEN f.type = 'banca' THEN f.slug END) AS board_slug,
+                MAX(CASE WHEN pa.tipo = 'prova' THEN pa.caminho END) AS proof_url,
+                MAX(CASE WHEN pa.tipo = 'gabarito' THEN pa.caminho END) AS answer_key_url,
+                {$relationScoreSql} AS relation_score
+            FROM provas p
+            LEFT JOIN question_provas qp ON qp.prova_id = p.id
+            LEFT JOIN prova_filters pf ON pf.prova_id = p.id
+            LEFT JOIN filters f ON f.id = pf.filter_id
+            LEFT JOIN prova_arquivos pa ON pa.prova_id = p.id
+                AND pa.archived_at IS NULL
+                AND pa.visibility_status = 'public'
+            WHERE p.id <> :related_exam_id
+              AND p.archived_at IS NULL
+              AND p.status_editorial = 'published'
+              AND p.visibility_status = 'public'
+              AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())
+            GROUP BY p.id, p.nome, p.slug, p.ano
+            ORDER BY relation_score DESC,
+                CASE WHEN p.ano = :related_year_match THEN 0 ELSE 1 END ASC,
+                ABS(COALESCE(p.ano, 0) - :related_year_distance) ASC,
+                question_count DESC,
+                p.id DESC
+            LIMIT {$limit}";
+
+        $stmt = $this->db->prepare($query);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function findPublicBySlug(string $slug): ?array
+    {
+        $this->ensureSchema();
+        $stmt = $this->db->prepare("SELECT p.*, COUNT(DISTINCT qp.question_id) AS question_count
+            FROM provas p
+            LEFT JOIN question_provas qp ON qp.prova_id = p.id
+            WHERE p.slug = :slug
+              AND p.archived_at IS NULL
+              AND p.status_editorial = 'published'
+              AND p.visibility_status = 'public'
+              AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())
+            GROUP BY p.id
+            LIMIT 1");
+        $stmt->execute([':slug' => $slug]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row ? ($this->hydrateMany([$row])[0] ?? null) : null;
+    }
+
     public function find(int $id): ?array
     {
         $this->ensureSchema();
@@ -163,6 +364,14 @@ class ExamsRepository
             $id
         );
         $ano = $this->normalizeInt($payload['ano'] ?? $payload['year'] ?? null);
+        $publishStatus = $this->limitString((string) ($payload['publishStatus'] ?? $payload['statusEditorial'] ?? $payload['status_editorial'] ?? 'published'), 30);
+        $currentRow = $id !== null ? $this->findRawById($id) : null;
+        $currentMetadata = $this->decodeJson($currentRow['metadata_json'] ?? null);
+        if ($publishStatus === 'published' && trim((string) ($payload['publishedAt'] ?? '')) === '') {
+            $payload['publishedAt'] = $currentMetadata['publishedAt']
+                ?? $currentRow['created_at']
+                ?? date('Y-m-d H:i:s');
+        }
 
         $fields = [
             'nome' => $nome,
@@ -185,9 +394,11 @@ class ExamsRepository
             'vagas_total' => $this->normalizeInt($payload['vagasTotal'] ?? $payload['vagas_total'] ?? null),
             'cadastro_reserva_total' => $this->normalizeInt($payload['cadastroReservaTotal'] ?? $payload['cadastro_reserva_total'] ?? null),
             'url_oficial' => $this->nullableString($payload['urlOficial'] ?? $payload['url_oficial'] ?? null, 500),
-            'status_editorial' => $this->limitString((string) ($payload['publishStatus'] ?? $payload['statusEditorial'] ?? $payload['status_editorial'] ?? 'published'), 30),
+            'status_editorial' => $publishStatus,
             'visibility_status' => $this->limitString((string) ($payload['visibilityStatus'] ?? $payload['visibility_status'] ?? 'public'), 30),
-            'scheduled_at' => $this->nullableDate($payload['scheduledAt'] ?? $payload['scheduled_at'] ?? null),
+            'scheduled_at' => $publishStatus === 'scheduled'
+                ? $this->nullableDate($payload['scheduledAt'] ?? $payload['scheduled_at'] ?? null)
+                : null,
             'metadata_json' => json_encode($this->buildMetadata($payload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ];
 
@@ -365,7 +576,7 @@ class ExamsRepository
             return [];
         }
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $this->db->prepare("SELECT pf.prova_id, pf.role, f.id, f.type, f.name, f.slug, f.parent_id, f.taxonomy_level, f.meta_materia
+        $stmt = $this->db->prepare("SELECT pf.prova_id, pf.role, f.id, f.type, f.name, f.slug, f.parent_id, f.taxonomy_level, f.meta_materia, f.meta_uf
             FROM prova_filters pf
             INNER JOIN filters f ON f.id = pf.filter_id
             WHERE pf.prova_id IN ({$placeholders})
@@ -542,6 +753,7 @@ class ExamsRepository
                 'type' => $filter['type'],
                 'parentId' => $filter['parent_id'] !== null ? (int) $filter['parent_id'] : null,
                 'taxonomyLevel' => $filter['taxonomy_level'],
+                'metaUf' => $filter['meta_uf'] ?? null,
             ];
         }
 
@@ -573,7 +785,15 @@ class ExamsRepository
             'tituloOficial' => $row['titulo_oficial'] ?? null,
             'nomeCurto' => $row['nome_curto'] ?? null,
             'slug' => $row['slug'],
+            'editalNumero' => $row['edital_numero'] ?? null,
             'ano' => $row['ano'] !== null ? (int) $row['ano'] : 0,
+            'inscricoesInicio' => $row['inscricoes_inicio'] ?? null,
+            'inscricoesFim' => $row['inscricoes_fim'] ?? null,
+            'dataProva' => $row['data_prova'] ?? null,
+            'resultadoData' => $row['resultado_data'] ?? null,
+            'vagasTotal' => $row['vagas_total'] !== null ? (int) $row['vagas_total'] : null,
+            'cadastroReservaTotal' => $row['cadastro_reserva_total'] !== null ? (int) $row['cadastro_reserva_total'] : null,
+            'urlOficial' => $row['url_oficial'] ?? null,
             'tipo' => (int) ($row['tipo_prova_id'] ?? 0),
             'index' => (string) ($metadata['index'] ?? ''),
             'nivel' => $grouped['nivel'][0]['nome'] ?? (string) ($metadata['nivel'] ?? ''),
@@ -585,6 +805,8 @@ class ExamsRepository
             'publishStatus' => $row['status_editorial'] ?? 'published',
             'visibilityStatus' => $row['visibility_status'] ?? 'public',
             'scheduledAt' => $row['scheduled_at'] ?? null,
+            'publishedAt' => $metadata['publishedAt']
+                ?? (($row['status_editorial'] ?? '') === 'published' ? ($row['created_at'] ?? null) : null),
             'pdfUrl' => $this->firstFileUrl($files, 'prova'),
             'proofUrl' => $this->firstFileUrl($files, 'prova'),
             'editalUrl' => $this->firstFileUrl($files, 'edital'),
@@ -1240,6 +1462,7 @@ class ExamsRepository
             'programmaticContent',
             'editalInsights',
             'extractionStatus',
+            'publishedAt',
         ];
         $metadata = [];
         foreach ($allowed as $key) {

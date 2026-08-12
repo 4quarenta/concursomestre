@@ -18,10 +18,9 @@ import {
   ADMIN_COLLECTION_TABLE_CLASS,
   ADMIN_COLLECTION_TABLE_HEAD_CLASS,
   ADMIN_COLLECTION_TABLE_ROW_CLASS,
-  ADMIN_SURFACE_CLASS,
-  ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
 import AdminCollectionPagination from '../shared/AdminCollectionPagination';
+import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 import { buildAdminExamEditPath } from '../../config/adminPageNavigationConfig';
@@ -43,6 +42,30 @@ interface AdminExamBankSectionProps {
 }
 
 const COLLECTION_PAGE_SIZE = 20;
+
+const readBookletValue = (value: unknown): string => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+  if (!value || typeof value !== 'object') return '';
+
+  const record = value as Record<string, unknown>;
+  const name = String(record.name ?? record.nome ?? record.label ?? '').trim();
+  if (name) return name;
+  return [record.type ?? record.tipo, record.color ?? record.cor]
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean)
+    .join(' - ');
+};
+
+export const resolveExamBookletLabel = (exam: Prova): string => {
+  const direct = readBookletValue((exam as Prova & { caderno?: unknown }).caderno);
+  if (direct) return direct;
+  return [exam.tipoCaderno || exam.bookletType, exam.corCaderno || exam.bookletColor]
+    .map(readBookletValue)
+    .filter(Boolean)
+    .join(' - ');
+};
 
 /**
  * Lista e edita o banco de provas da operação.
@@ -90,13 +113,8 @@ const AdminExamBankSection = ({
         primaryActionHref={buildAdminExamEditPath('new')}
       />
 
-      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-        <div className={ADMIN_SURFACE_HEADER_CLASS}>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Banco principal de provas</p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className={ADMIN_COLLECTION_TABLE_CLASS}>
+      <AdminCollectionTablePanel title="Banco principal de provas">
+        <table className={ADMIN_COLLECTION_TABLE_CLASS}>
             <thead className={ADMIN_COLLECTION_TABLE_HEAD_CLASS}>
               <tr>
                 <th className="p-4">Prova</th>
@@ -116,14 +134,15 @@ const AdminExamBankSection = ({
                       <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                         #{exam.id} {exam.ano ? `- ${exam.ano}` : ''} {exam.nivel ? `- ${exam.nivel}` : ''}
                       </span>
-                      {(exam.caderno || exam.tipoCaderno || exam.corCaderno || exam.bookletType || exam.bookletColor) ? (
+                      {resolveExamBookletLabel(exam) ? (
                         <span className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
-                          {exam.caderno || [exam.tipoCaderno || exam.bookletType, exam.corCaderno || exam.bookletColor].filter(Boolean).join(' - ')}
+                          {resolveExamBookletLabel(exam)}
                         </span>
                       ) : null}
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                         <Link
                           href={buildAdminExamEditPath(exam.id)}
+                          prefetch={false}
                           className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
                         >
                           Editar
@@ -166,9 +185,8 @@ const AdminExamBankSection = ({
                 </tr>
               ) : null}
             </tbody>
-          </table>
-        </div>
-      </div>
+        </table>
+      </AdminCollectionTablePanel>
 
       <AdminCollectionPagination
         visibleCount={visibleExams.length}

@@ -70,6 +70,7 @@ export interface ExamDraftState {
   publishStatus: 'published' | 'draft' | 'scheduled';
   visibilityStatus: 'public' | 'elite' | 'internal';
   scheduledAt: string;
+  publishedAt: string;
   bancaId: string;
   bancaSigla: string;
   bancaNome: string;
@@ -112,6 +113,17 @@ interface UseAdminExamBankWorkflowOptions {
   addToast: ToastHandler;
 }
 
+export const normalizeExamDateTimeLocalValue = (value: unknown): string => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const mysqlOrIso = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+  if (mysqlOrIso) return `${mysqlOrIso[1]}T${mysqlOrIso[2]}`;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const local = new Date(parsed.getTime() - (parsed.getTimezoneOffset() * 60_000));
+  return local.toISOString().slice(0, 16);
+};
+
 export const createDraftFromProva = (prova: Prova): ExamDraftState => ({
   id: String(prova.id),
   nome: prova.nome || '',
@@ -123,7 +135,8 @@ export const createDraftFromProva = (prova: Prova): ExamDraftState => ({
   corCaderno: prova.corCaderno || prova.bookletColor || '',
   publishStatus: prova.publishStatus || 'published',
   visibilityStatus: prova.visibilityStatus || 'public',
-  scheduledAt: prova.scheduledAt || '',
+  scheduledAt: normalizeExamDateTimeLocalValue(prova.scheduledAt),
+  publishedAt: normalizeExamDateTimeLocalValue(prova.publishedAt || prova.createdAt),
   bancaId: String(prova.banca?.id || ''),
   bancaSigla: prova.banca?.sigla || '',
   bancaNome: prova.banca?.nome || prova.banca?.name || '',
@@ -204,6 +217,7 @@ export const createEmptyExamDraft = (): ExamDraftState => ({
   publishStatus: 'published',
   visibilityStatus: 'public',
   scheduledAt: '',
+  publishedAt: '',
   bancaId: '',
   bancaSigla: '',
   bancaNome: '',
@@ -512,6 +526,7 @@ export const useAdminExamBankWorkflow = ({
       publishStatus: examDraft.publishStatus,
       visibilityStatus: examDraft.visibilityStatus,
       scheduledAt: examDraft.scheduledAt,
+      publishedAt: examDraft.publishedAt,
     });
 
     if (!nextExam) {

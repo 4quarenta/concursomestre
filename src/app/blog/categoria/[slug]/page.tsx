@@ -26,8 +26,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const categories = await fetchBlogCategoriesForServer();
   const category = categories.find((item) => item.slug === slug);
   return {
-    title: category ? `${category.name}: notícias e editais` : 'Categoria do blog',
-    description: category?.description || `Notícias e atualizações sobre ${category?.name || 'concursos públicos'}.`,
+    title: category ? `${category.label}: notícias e editais` : 'Categoria do blog',
+    description: category?.description || `Notícias e atualizações sobre ${category?.label || 'concursos públicos'}.`,
     alternates: { canonical: `/blog/categoria/${slug}` },
   };
 }
@@ -47,7 +47,7 @@ export default async function BlogCategoryPage({ params, searchParams }: PagePro
       <BlogHeader />
       <main className="mx-auto max-w-7xl px-5 py-10 lg:px-8">
         <p className="text-xs font-black uppercase tracking-[0.16em] text-indigo-600">Categoria</p>
-        <h1 className="mt-2 text-4xl font-black text-slate-950 dark:text-white">{category.name}</h1>
+        <h1 className="mt-2 text-4xl font-black text-slate-950 dark:text-white">{category.label}</h1>
         {category.description ? <p className="mt-3 max-w-3xl text-slate-600 dark:text-slate-300">{category.description}</p> : null}
         <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {page.items.map((article) => <BlogArticleCard key={article.id} article={article} />)}

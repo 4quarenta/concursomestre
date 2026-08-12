@@ -6,6 +6,8 @@ import { useAuth } from '@providers/AuthProvider';
 import type { Question } from '@types';
 import {
   buildQuestionBankQueryKey,
+  buildQuestionBankFilterSignature,
+  canAdvanceQuestionBankCursor,
   fetchQuestionBankPage,
   type QuestionBankPageParams,
 } from './questionBankQuery';
@@ -37,6 +39,7 @@ export const useQuestionBankActions = () => {
   const nextQuestionCursor = useQuestionBankStore((store) => store.nextQuestionCursor);
   const isQuestionsLoaded = useQuestionBankStore((store) => store.isQuestionsLoaded);
   const loadedQuestionBankOwnerKey = useQuestionBankStore((store) => store.loadedOwnerKey);
+  const loadedQuestionBankFilterSignature = useQuestionBankStore((store) => store.loadedFilterSignature);
   const replaceQuestionBank = useQuestionBankStore((store) => store.replaceQuestionBank);
   const appendQuestions = useQuestionBankStore((store) => store.appendQuestions);
 
@@ -60,6 +63,7 @@ export const useQuestionBankActions = () => {
     }
 
     const params: QuestionBankPageParams = { ...paramsOverride };
+    const filterSignature = buildQuestionBankFilterSignature(params);
 
     try {
       const result = await queryClient.fetchQuery({
@@ -81,6 +85,7 @@ export const useQuestionBankActions = () => {
         totalQuestions: result.total || sanitized.length,
         hasMoreQuestions: result.pageInfo?.hasMore,
         nextQuestionCursor: result.pageInfo?.nextCursor,
+        filterSignature,
       });
     } catch (error) {
       clientLog.warn('Failed to load initial questions:', error);
@@ -96,16 +101,23 @@ export const useQuestionBankActions = () => {
     replaceQuestionBank,
   ]);
 
-  const fetchMoreQuestions = useCallback(async (_page: number, paramsOverride: QuestionBankPageParams = {}) => {
-    if (authIsLoading || !hasMoreQuestions || !nextQuestionCursor) {
-      return;
+  const fetchMoreQuestions = useCallback(async (_page: number, paramsOverride: QuestionBankPageParams = {}): Promise<number> => {
+    if (authIsLoading || !hasMoreQuestions) {
+      return 0;
     }
 
+    if (!nextQuestionCursor) {
+      appendQuestions(currentDataOwnerKey, [], undefined, false, null, buildQuestionBankFilterSignature(paramsOverride));
+      return 0;
+    }
+
+    const requestedCursor = nextQuestionCursor;
     const params: QuestionBankPageParams = {
-      cursor: nextQuestionCursor,
-      limit: 50,
       ...paramsOverride,
+      cursor: requestedCursor,
+      limit: Number(paramsOverride.limit || 20),
     };
+    const filterSignature = buildQuestionBankFilterSignature(params);
 
     try {
       const result = await queryClient.fetchQuery({
@@ -120,15 +132,30 @@ export const useQuestionBankActions = () => {
 
       const questionRows = Array.isArray(result.rows) ? result.rows : [];
       const sanitized = questionRows.map((question) => ({ ...question, comments: null as Question['comments'] }));
+      const existingQuestionIds = new Set(questions.map((question) => String(question.id ?? '')));
+      const uniqueLoadedCount = sanitized.filter((question) => {
+        const questionId = String(question.id ?? '');
+        return questionId !== '' && !existingQuestionIds.has(questionId);
+      }).length;
+      const responseCursor = result.pageInfo?.nextCursor || null;
+      const canContinue = canAdvanceQuestionBankCursor({
+        requestedCursor,
+        nextCursor: responseCursor,
+        hasMore: Boolean(result.pageInfo?.hasMore),
+        uniqueLoadedCount,
+      });
       appendQuestions(
         currentDataOwnerKey,
         sanitized,
-        undefined,
-        result.pageInfo?.hasMore,
-        result.pageInfo?.nextCursor,
+        result.total,
+        canContinue,
+        responseCursor,
+        filterSignature,
       );
+      return uniqueLoadedCount;
     } catch (error) {
       clientLog.warn('Failed to fetch more questions:', error);
+      throw error;
     }
   }, [
     appendQuestions,
@@ -138,6 +165,7 @@ export const useQuestionBankActions = () => {
     hasMoreQuestions,
     nextQuestionCursor,
     queryClient,
+    questions,
   ]);
 
   return {
@@ -145,6 +173,7 @@ export const useQuestionBankActions = () => {
     totalQuestions,
     hasMoreQuestions,
     isQuestionsLoaded,
+    loadedQuestionBankFilterSignature,
     ensureQuestionsLoaded,
     fetchMoreQuestions,
   };

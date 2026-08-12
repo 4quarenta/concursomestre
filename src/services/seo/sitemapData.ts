@@ -6,7 +6,7 @@ import { isQuestionPubliclyVisible } from '../questions/questionPublication';
 import { buildMarketingLandingPath, mergeMarketingLandingPages, normalizeLandingSlug } from '../marketing/landingPages';
 import { adaptPublicSystemSettings } from '../admin/publicSettingsContract';
 
-type SitemapCategory = 'institutional' | 'questions' | 'rankings' | 'materials' | 'landings';
+type SitemapCategory = 'institutional' | 'questions' | 'boards' | 'rankings' | 'materials' | 'landings';
 type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
 
 export interface SeoSitemapEntry {
@@ -60,12 +60,14 @@ export const SEO_PUBLIC_ROUTES = [
   { path: '/', changeFrequency: 'daily', priority: 1 },
   { path: '/planos', changeFrequency: 'weekly', priority: 0.9 },
   { path: '/practice', changeFrequency: 'daily', priority: 0.9 },
+  { path: '/disciplinas', changeFrequency: 'daily', priority: 0.85 },
+  { path: '/bancas', changeFrequency: 'daily', priority: 0.85 },
   { path: '/concursos', changeFrequency: 'weekly', priority: 0.85 },
   { path: '/faq', changeFrequency: 'monthly', priority: 0.75 },
   { path: '/lei-comentada', changeFrequency: 'weekly', priority: 0.75 },
   { path: '/elite', changeFrequency: 'weekly', priority: 0.7 },
   { path: '/marketplace', changeFrequency: 'weekly', priority: 0.7 },
-  { path: '/changelog', changeFrequency: 'monthly', priority: 0.45 },
+  { path: '/novidades', changeFrequency: 'weekly', priority: 0.55 },
   { path: '/privacy', changeFrequency: 'yearly', priority: 0.35 },
   { path: '/terms', changeFrequency: 'yearly', priority: 0.35 },
   { path: '/checkout/termos-de-adesao', changeFrequency: 'yearly', priority: 0.25 },
@@ -261,6 +263,35 @@ const fetchAllQuestions = async (): Promise<Question[]> => {
   }
 };
 
+type PublicBoardSitemapItem = { id: number; name: string; slug: string };
+
+const fetchPublicBoards = async (): Promise<PublicBoardSitemapItem[]> => {
+  try {
+    const firstUrl = new URL('filters/directory.php', getApiBaseUrl());
+    firstUrl.searchParams.set('type', 'boards');
+    firstUrl.searchParams.set('page', '1');
+    firstUrl.searchParams.set('per_page', '60');
+    const first = readEnvelopeData<{ items?: PublicBoardSitemapItem[]; pageInfo?: { pages?: number } }>(
+      await fetchJson(firstUrl.toString()),
+      { items: [], pageInfo: { pages: 1 } },
+    );
+    const boards = Array.isArray(first.items) ? [...first.items] : [];
+    const pages = Math.min(100, Math.max(1, Number(first.pageInfo?.pages || 1)));
+    for (let page = 2; page <= pages; page += 1) {
+      const url = new URL(firstUrl);
+      url.searchParams.set('page', String(page));
+      const result = readEnvelopeData<{ items?: PublicBoardSitemapItem[] }>(
+        await fetchJson(url.toString()),
+        { items: [] },
+      );
+      if (Array.isArray(result.items)) boards.push(...result.items);
+    }
+    return boards;
+  } catch {
+    return [];
+  }
+};
+
 const createCoverageBucket = (total: number, indexed: number): SitemapCoverageBucket => ({
   total,
   indexed,
@@ -356,8 +387,9 @@ const buildDynamicEntries = <TItem,>(
 
 const buildSeoSitemapEntriesUncached = async (): Promise<SeoSitemapBuildResult> => {
   const now = new Date();
-  const [questions, rankings, materials, landingPages] = await Promise.all([
+  const [questions, boards, rankings, materials, landingPages] = await Promise.all([
     fetchAllQuestions(),
+    fetchPublicBoards(),
     fetchList<Ranking>('rankingsList'),
     fetchList<Material>('materialsList'),
     fetchMarketingLandingPages(),
@@ -375,6 +407,14 @@ const buildSeoSitemapEntriesUncached = async (): Promise<SeoSitemapBuildResult> 
     buildQuestionPath,
     (question) => stripHtml(question.enunciado_clean || question.enunciado || `questao-sem-id`),
     'questions',
+    now,
+  );
+  const boardResult = buildDynamicEntries(
+    boards.filter((board) => Number(board.id || 0) > 0 && String(board.slug || '').trim() !== ''),
+    (board) => board.id,
+    (board) => `/bancas/${encodeURIComponent(board.slug)}`,
+    (board) => board.name || board.slug || 'banca-sem-nome',
+    'boards',
     now,
   );
   const rankingResult = buildDynamicEntries(
@@ -406,6 +446,7 @@ const buildSeoSitemapEntriesUncached = async (): Promise<SeoSitemapBuildResult> 
     entries: [
       ...institutionalEntries,
       ...questionResult.indexedEntries,
+      ...boardResult.indexedEntries,
       ...rankingResult.indexedEntries,
       ...materialResult.indexedEntries,
       ...landingResult.indexedEntries,
@@ -413,12 +454,14 @@ const buildSeoSitemapEntriesUncached = async (): Promise<SeoSitemapBuildResult> 
     coverage: {
       institutional: createCoverageBucket(SEO_PUBLIC_ROUTES.length, institutionalEntries.length),
       questions: createCoverageBucket(questionResult.total, questionResult.indexedEntries.length),
+      boards: createCoverageBucket(boardResult.total, boardResult.indexedEntries.length),
       rankings: createCoverageBucket(rankingResult.total, rankingResult.indexedEntries.length),
       materials: createCoverageBucket(materialResult.total, materialResult.indexedEntries.length),
       landings: createCoverageBucket(landingResult.total, landingResult.indexedEntries.length),
     },
     missingSamples: {
       questions: questionResult.missingLabels.slice(0, 10),
+      boards: boardResult.missingLabels.slice(0, 10),
       rankings: rankingResult.missingLabels.slice(0, 10),
       materials: materialResult.missingLabels.slice(0, 10),
       landings: landingResult.missingLabels.slice(0, 10),

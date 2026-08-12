@@ -1,5 +1,7 @@
 const GRAN_API_ORIGIN = 'https://rota-api.grancursosonline.com.br';
+const GRAN_ASSET_ORIGIN = 'https://arquivos.infra-questoes.grancursosonline.com.br';
 const GRAN_API_PATH = '/v1/elastic/questao';
+const GRAN_SINGLE_QUESTION_PATH = '/open/elastic/questao';
 const GRAN_EXAM_FILES_PATH_PREFIX = '/v1/provas/';
 const GRAN_WEB_ORIGIN = 'https://questoes.grancursosonline.com.br';
 const MAX_URL_LENGTH = 8000;
@@ -8,9 +10,15 @@ const REQUEST_TIMEOUT_MS = 45_000;
 const SESSION_TOKEN_KEY = 'granSession';
 const CAPTURE_STATUS_KEY = 'granCaptureStatus';
 const HEADER_RULE_ID = 44001;
-const MAX_EXAM_FILE_REQUESTS = 50;
+const ASSET_HEADER_RULE_ID = 44002;
+const MAX_EXAM_FILE_REQUESTS = 1000;
 const EXAM_FILE_REQUEST_CONCURRENCY = 4;
+const MAX_IMAGE_BYTES = 6_291_456;
+const MAX_IMAGE_BYTES_PER_COLLECTION = 9_000_000;
+const MAX_IMAGE_REQUESTS_PER_COLLECTION = 250;
+const IMAGE_REQUEST_CONCURRENCY = 3;
 const examFilesCache = new Map();
+const imageDataCache = new Map();
 const TAXONOMY_PAGE_SIZE = 1000;
 const MAX_TAXONOMY_ROOTS_PER_REQUEST = 25;
 const MAX_TAXONOMY_ROOTS_PER_BATCH = 5000;
@@ -159,22 +167,38 @@ const isAllowedSender = (sender) => {
 
 const installHeaderRule = async () => {
   await chrome.declarativeNetRequest.updateSessionRules({
-    removeRuleIds: [HEADER_RULE_ID],
-    addRules: [{
-      id: HEADER_RULE_ID,
-      priority: 1,
-      action: {
-        type: 'modifyHeaders',
-        requestHeaders: [
-          { header: 'Origin', operation: 'set', value: GRAN_WEB_ORIGIN },
-          { header: 'Referer', operation: 'set', value: `${GRAN_WEB_ORIGIN}/` },
-        ],
+    removeRuleIds: [HEADER_RULE_ID, ASSET_HEADER_RULE_ID],
+    addRules: [
+      {
+        id: HEADER_RULE_ID,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [
+            { header: 'Origin', operation: 'set', value: GRAN_WEB_ORIGIN },
+            { header: 'Referer', operation: 'set', value: `${GRAN_WEB_ORIGIN}/` },
+          ],
+        },
+        condition: {
+          urlFilter: `|${GRAN_API_ORIGIN}/`,
+          resourceTypes: ['xmlhttprequest'],
+        },
       },
-      condition: {
-        urlFilter: `|${GRAN_API_ORIGIN}/`,
-        resourceTypes: ['xmlhttprequest'],
+      {
+        id: ASSET_HEADER_RULE_ID,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [
+            { header: 'Referer', operation: 'set', value: `${GRAN_WEB_ORIGIN}/` },
+          ],
+        },
+        condition: {
+          urlFilter: `|${GRAN_ASSET_ORIGIN}/`,
+          resourceTypes: ['xmlhttprequest'],
+        },
       },
-    }],
+    ],
   });
 };
 
@@ -257,6 +281,149 @@ const fetchGranJson = async (requestUrl, session) => {
   }
 };
 
+const normalizeGranImageUrl = (value) => {
+  let raw = String(value || '').trim();
+  if (!raw || raw.length > MAX_URL_LENGTH || /[\r\n]/.test(raw)) return '';
+  if (raw.startsWith('//')) raw = `https:${raw}`;
+  if (raw.startsWith('/')) raw = `${GRAN_ASSET_ORIGIN}${raw}`;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return '';
+  }
+  if (
+    url.protocol !== 'https:'
+    || url.origin !== GRAN_ASSET_ORIGIN
+    || url.username
+    || url.password
+    || url.hash
+    || !url.pathname
+  ) return '';
+  const path = url.pathname.toLowerCase();
+  if (!/\.(?:avif|bmp|gif|jpe?g|png|webp)(?:$|\?)/i.test(path) && !/(?:imagem|image|figura|foto|questao)/i.test(path)) {
+    return '';
+  }
+  return url.toString();
+};
+
+const imageUrlsFromValue = (value, urls, depth = 0) => {
+  if (depth > 10 || value === null || value === undefined) return;
+  if (typeof value === 'string') {
+    const direct = normalizeGranImageUrl(value);
+    if (direct) urls.add(direct);
+    const matches = value.matchAll(/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))[^>]*>/gi);
+    for (const match of matches) {
+      const imageUrl = normalizeGranImageUrl(match[1] || match[2] || match[3] || '');
+      if (imageUrl) urls.add(imageUrl);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => imageUrlsFromValue(item, urls, depth + 1));
+    return;
+  }
+  if (typeof value === 'object') {
+    Object.values(value).forEach((item) => imageUrlsFromValue(item, urls, depth + 1));
+  }
+};
+
+const bytesToBase64 = (bytes) => {
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+};
+
+const fetchGranImage = async (sourceUrl, session) => {
+  const cached = imageDataCache.get(sourceUrl);
+  if (cached) return cached;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(sourceUrl, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'include',
+      redirect: 'error',
+      referrer: `${GRAN_WEB_ORIGIN}/`,
+      referrerPolicy: 'strict-origin-when-cross-origin',
+      headers: {
+        accept: 'image/avif,image/webp,image/png,image/jpeg,image/gif,image/bmp,*/*;q=0.8',
+        'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        authorization: `Bearer ${session.token}`,
+        'x-client-id': session.clientId,
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`A Gran recusou a imagem (HTTP ${response.status}).`);
+    }
+    const declaredSize = Number(response.headers.get('content-length') || 0);
+    if (declaredSize > MAX_IMAGE_BYTES) {
+      throw new Error('A imagem Gran excede o limite de 6 MB.');
+    }
+    const mimeType = String(response.headers.get('content-type') || '').split(';', 1)[0].trim().toLowerCase();
+    if (!/^image\/(avif|bmp|gif|jpe?g|png|webp)$/.test(mimeType)) {
+      throw new Error('A Gran retornou um arquivo que nao e uma imagem valida.');
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length < 16 || bytes.length > MAX_IMAGE_BYTES) {
+      throw new Error('A imagem Gran possui tamanho invalido.');
+    }
+    const result = {
+      sourceUrl,
+      base64: `data:${mimeType};base64,${bytesToBase64(bytes)}`,
+      mimeType,
+      size: bytes.length,
+    };
+    imageDataCache.set(sourceUrl, result);
+    return result;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('A imagem Gran excedeu o tempo limite de captura.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const collectGranImageData = async (payload, session) => {
+  const urls = new Set();
+  imageUrlsFromValue(payload, urls);
+  const candidates = [...urls].slice(0, MAX_IMAGE_REQUESTS_PER_COLLECTION);
+  const assetData = {};
+  const warnings = [];
+  let usedBytes = 0;
+  for (let start = 0; start < candidates.length; start += IMAGE_REQUEST_CONCURRENCY) {
+    const batch = candidates.slice(start, start + IMAGE_REQUEST_CONCURRENCY);
+    const results = await Promise.all(batch.map(async (sourceUrl) => {
+      try {
+        return { sourceUrl, image: await fetchGranImage(sourceUrl, session), error: null };
+      } catch (error) {
+        return { sourceUrl, image: null, error: error instanceof Error ? error.message : 'Nao foi possivel capturar a imagem Gran.' };
+      }
+    }));
+    for (const result of results) {
+      if (result.image && usedBytes + result.image.base64.length <= MAX_IMAGE_BYTES_PER_COLLECTION) {
+        usedBytes += result.image.base64.length;
+        assetData[result.sourceUrl] = result.image;
+      } else {
+        const error = result.error || 'As imagens desta coleta excedem o limite seguro de 9 MB.';
+        assetData[result.sourceUrl] = { sourceUrl: result.sourceUrl, error };
+        warnings.push(`Imagem Gran ${result.sourceUrl}: ${error}`);
+      }
+    }
+  }
+  if (urls.size > MAX_IMAGE_REQUESTS_PER_COLLECTION) {
+    warnings.push(`A coleta possui mais de ${MAX_IMAGE_REQUESTS_PER_COLLECTION} imagens; as demais ficaram pendentes para moderacao.`);
+  }
+  return { assetData, warnings };
+};
+
 const extractRows = (payload) => {
   const candidates = [
     payload?.data?.rows,
@@ -315,7 +482,7 @@ const extractExamIds = (payload) => {
       ?? row?.examId,
     );
   }
-  return [...ids].slice(0, MAX_EXAM_FILE_REQUESTS);
+  return [...ids];
 };
 
 const normalizeFileKind = (value) => {
@@ -340,7 +507,7 @@ const normalizeFileKind = (value) => {
 const readFileUrl = (value) => {
   if (typeof value === 'string') return value.trim();
   if (!value || typeof value !== 'object') return '';
-  return String(
+  const direct = String(
     value.url
     || value.href
     || value.link
@@ -349,8 +516,19 @@ const readFileUrl = (value) => {
     || value.download_url
     || value.arquivo
     || value.file
+    || value.caminho
+    || value.path
+    || value.uri
     || '',
   ).trim();
+  if (direct) return direct;
+  for (const nestedKey of ['arquivo', 'file', 'documento', 'document']) {
+    if (value[nestedKey] && typeof value[nestedKey] === 'object') {
+      const nested = readFileUrl(value[nestedKey]);
+      if (nested) return nested;
+    }
+  }
+  return '';
 };
 
 const normalizeExamFileLinks = (payload) => {
@@ -359,7 +537,10 @@ const normalizeExamFileLinks = (payload) => {
   if (!data || typeof data !== 'object') return {};
   const links = {};
   const aliases = {
-    edital: ['edital', 'arquivoEdital', 'arquivo_edital'],
+    edital: [
+      'edital', 'arquivoEdital', 'arquivo_edital', 'urlEdital', 'url_edital',
+      'editalUrl', 'edital_url',
+    ],
     folhaDeProva: [
       'folhaDeProva',
       'folha_de_prova',
@@ -368,8 +549,17 @@ const normalizeExamFileLinks = (payload) => {
       'caderno_de_prova',
       'arquivoProva',
       'arquivo_prova',
+      'urlProva',
+      'url_prova',
+      'provaUrl',
+      'prova_url',
+      'folhaProva',
+      'folha_prova',
     ],
-    gabarito: ['gabarito', 'arquivoGabarito', 'arquivo_gabarito'],
+    gabarito: [
+      'gabarito', 'arquivoGabarito', 'arquivo_gabarito', 'urlGabarito',
+      'url_gabarito', 'gabaritoUrl', 'gabarito_url',
+    ],
   };
   for (const [kind, keys] of Object.entries(aliases)) {
     for (const key of keys) {
@@ -401,6 +591,23 @@ const normalizeExamFileLinks = (payload) => {
     const url = readFileUrl(entry);
     if (kind && url && !links[kind]) links[kind] = url;
   }
+  const queue = [{ value: data, path: '', depth: 0 }];
+  let inspected = 0;
+  while (queue.length && inspected < 150) {
+    const current = queue.shift();
+    if (!current || current.depth > 4 || !current.value || typeof current.value !== 'object') continue;
+    inspected += 1;
+    for (const [key, child] of Object.entries(current.value)) {
+      const path = `${current.path}.${key}`;
+      const url = readFileUrl(child);
+      const descriptor = `${path} ${url} ${child?.tipo || ''} ${child?.nome || ''}`;
+      const kind = normalizeFileKind(descriptor);
+      if (kind && url && !links[kind]) links[kind] = url;
+      if (child && typeof child === 'object') {
+        queue.push({ value: child, path, depth: current.depth + 1 });
+      }
+    }
+  }
   return links;
 };
 
@@ -414,9 +621,15 @@ const fetchExamFiles = async (examId, session) => {
 };
 
 const collectExamFiles = async (payload, session) => {
-  const examIds = extractExamIds(payload);
+  const allExamIds = extractExamIds(payload);
+  const examIds = allExamIds.slice(0, MAX_EXAM_FILE_REQUESTS);
   const files = {};
   const warnings = [];
+  if (allExamIds.length > MAX_EXAM_FILE_REQUESTS) {
+    warnings.push(
+      `A resposta possui ${allExamIds.length} provas; os arquivos oficiais foram limitados a ${MAX_EXAM_FILE_REQUESTS} por coleta.`,
+    );
+  }
   for (let start = 0; start < examIds.length; start += EXAM_FILE_REQUEST_CONCURRENCY) {
     const batch = examIds.slice(start, start + EXAM_FILE_REQUEST_CONCURRENCY);
     const results = await Promise.all(batch.map(async (examId) => {
@@ -509,13 +722,49 @@ const collect = async (urlValue) => {
   if (!session) throw new Error('Abra a extensao e conecte uma sessao Gran valida.');
   const requestUrl = validateGranUrl(urlValue);
   const response = await fetchGranJson(requestUrl, session);
-  const examFiles = await collectExamFiles(response.json, session);
+  const [examFiles, images] = await Promise.all([
+    collectExamFiles(response.json, session),
+    collectGranImageData(response.json, session),
+  ]);
   return {
     status: response.status,
     requestUrl,
     json: response.json,
     examFiles: examFiles.files,
-    warnings: examFiles.warnings,
+    assetData: images.assetData,
+    warnings: [...examFiles.warnings, ...images.warnings],
+  };
+};
+
+const collectQuestionById = async (externalIdValue, subjectSlugValue = '') => {
+  const session = await getSession();
+  if (!session) throw new Error('Abra a extensao e conecte uma sessao Gran valida.');
+  const externalId = String(externalIdValue || '').trim();
+  const subjectSlug = String(subjectSlugValue || '').trim();
+  if (!/^\d{1,18}$/.test(externalId)) {
+    throw new Error('O identificador da questao Gran e invalido.');
+  }
+  if (subjectSlug && !/^[a-z0-9-]{1,255}$/i.test(subjectSlug)) {
+    throw new Error('O slug de assunto da questao Gran e invalido.');
+  }
+  const url = new URL(`${GRAN_API_ORIGIN}${GRAN_SINGLE_QUESTION_PATH}`);
+  if (subjectSlug) url.searchParams.set('slugAssunto', subjectSlug);
+  url.searchParams.set('shouldId', externalId);
+  url.searchParams.set('perPage', '1');
+  url.searchParams.set('page', '1');
+  const requestUrl = url.toString();
+  const response = await fetchGranJson(requestUrl, session);
+  const [examFiles, images] = await Promise.all([
+    collectExamFiles(response.json, session),
+    collectGranImageData(response.json, session),
+  ]);
+  return {
+    status: response.status,
+    requestUrl,
+    json: response.json,
+    examFiles: examFiles.files,
+    assetData: images.assetData,
+    warnings: [...examFiles.warnings, ...images.warnings],
   };
 };
 
@@ -747,7 +996,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     && sender?.id === chrome.runtime.id
     && !sender?.tab;
   const pageAction = [
-    'PING', 'COLLECT', 'COLLECT_TAXONOMY_PAGE', 'COLLECT_TAXONOMY_BATCH', 'CHECK_TAXONOMY_UPDATES',
+    'PING', 'COLLECT', 'COLLECT_QUESTION', 'COLLECT_TAXONOMY_PAGE', 'COLLECT_TAXONOMY_BATCH', 'CHECK_TAXONOMY_UPDATES',
   ].includes(action)
     && isAllowedSender(sender);
   if (!popupAction && !pageAction) {
@@ -758,6 +1007,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       ? clearSession()
       : action === 'COLLECT'
         ? collect(message.url)
+        : action === 'COLLECT_QUESTION'
+          ? collectQuestionById(message.externalId, message.subjectSlug)
         : action === 'COLLECT_TAXONOMY_PAGE'
           ? collectTaxonomyPage(message.kind, message.page, message.rootExternalIds)
           : action === 'COLLECT_TAXONOMY_BATCH'

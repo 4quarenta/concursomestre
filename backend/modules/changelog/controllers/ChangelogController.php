@@ -1,45 +1,47 @@
 <?php
 
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
+declare(strict_types=1);
 
 require_once __DIR__ . '/../services/ChangelogService.php';
 
-/**
- * Controller fino do dominio de changelog.
- * Apenas encaminha a leitura publica para o service oficial.
- *
- * @since 1.0.0
- */
-class ChangelogController
+final class ChangelogController
 {
-    private ChangelogService $service;
-
-    /**
-     * Inicializa o controller de changelog.
-     *
-     * @since 1.0.0
-     */
-    public function __construct(ChangelogService $service)
+    public function __construct(private readonly ChangelogService $service)
     {
-        $this->service = $service;
     }
 
-    /**
-     * Lista as versoes publicadas da plataforma.
-     *
-     * @since 1.0.0
-     */
-    public function listEntries(): array
+    public function listPublic(array $query): array
     {
-        return $this->service->listEntries();
+        return $this->service->listPublic($query);
+    }
+
+    public function listAdmin(array $query): array
+    {
+        return $this->service->listAdmin($query);
+    }
+
+    public function detailAdmin(int $id): array
+    {
+        return $this->service->detailAdmin($id);
+    }
+
+    public function save(array $payload, array $actor): array
+    {
+        return $this->service->save($payload, $actor);
+    }
+
+    public function archive(int $id, array $actor): void
+    {
+        $this->service->archive($id, $actor);
+    }
+
+    public function listSuggestions(array $query): array
+    {
+        return $this->service->listSuggestions($query);
+    }
+
+    public function updateSuggestion(array $payload, array $actor): array
+    {
+        return $this->service->updateSuggestion($payload, $actor);
     }
 }

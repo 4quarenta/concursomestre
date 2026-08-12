@@ -146,6 +146,22 @@ if (!function_exists('getAuthCsrfCookieName')) {
     }
 }
 
+if (!function_exists('getAuthSessionHintCookieName')) {
+    /**
+     * Cookie sem dados sensiveis que indica ao frontend quando deve restaurar
+     * uma sessao pelo refresh cookie HttpOnly.
+     *
+     * Este valor nao autentica o usuario e pode apenas disparar uma verificacao
+     * autoritativa no backend.
+     *
+     * @since 1.0.0
+     */
+    function getAuthSessionHintCookieName(): string
+    {
+        return trim((string) authConfig('AUTH_SESSION_HINT_COOKIE_NAME', 'cm_session_hint'));
+    }
+}
+
 if (!function_exists('getAuthCookieDomain')) {
     /**
      * Dominio configurado para cookies de auth quando ha multi-subdominio.

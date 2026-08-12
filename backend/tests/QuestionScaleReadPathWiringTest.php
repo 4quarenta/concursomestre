@@ -29,6 +29,17 @@ try {
 
     questionScaleAssert(str_contains($repository, 'listQuestionListRowsByCursor'), 'Listagem por cursor nao foi implementada.');
     questionScaleAssert(
+        str_contains($repository, 'published_sort_at,')
+        && str_contains($repository, 'published_sort_at = :published_sort_at')
+        && str_contains($repository, 'resolvePublishedSortAt($record)'),
+        'A publicacao nao persiste published_sort_at no INSERT/UPDATE canonico.'
+    );
+    questionScaleAssert(
+        str_contains($repository, "if (\$status === 'published')")
+        && str_contains($repository, "return \$publishedAt !== '' ? \$publishedAt : date('Y-m-d H:i:s');"),
+        'Publicacoes sem timestamp nao recebem uma chave de ordenacao estavel.'
+    );
+    questionScaleAssert(
         str_contains($repository, "\$sortExpression = \$scaleReady ? 'q.published_sort_at' : 'COALESCE(q.published_at, q.created_at)'")
         && str_contains($repository, 'ORDER BY {$sortExpression} DESC, q.id DESC'),
         'Ordenacao keyset nao e estavel.'

@@ -28,6 +28,8 @@ $batchMetadataMigration = (string) file_get_contents($backend . '/database/migra
 $batchMetadataRollback = (string) file_get_contents($backend . '/database/rollbacks/20260802_020000_gran_batch_collection_metadata.sql');
 $failureMigration = (string) file_get_contents($backend . '/database/migrations/20260804_010000_gran_question_failure_diagnostics.php');
 $failureRollback = (string) file_get_contents($backend . '/database/rollbacks/20260804_010000_gran_question_failure_diagnostics.sql');
+$failureHistoryMigration = (string) file_get_contents($backend . '/database/migrations/20260804_020000_gran_question_failure_history.php');
+$failureHistoryRollback = (string) file_get_contents($backend . '/database/rollbacks/20260804_020000_gran_question_failure_history.sql');
 $legacyEntry = (string) file_get_contents($backend . '/scripts/importers/questions/gran/index.php');
 
 foreach ([
@@ -43,6 +45,75 @@ foreach ([
 adminGranCrawlerWiringAssert(
     str_contains($endpoint, 'handleAdminGranCrawlerRoute'),
     'Admin endpoint does not delegate to the protected route.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($failureHistoryMigration, 'gran_question_publication_failures')
+    && str_contains($failureHistoryMigration, 'canonical_payload_json')
+    && str_contains($failureHistoryMigration, 'failure_history_synced_at')
+    && str_contains($failureHistoryRollback, 'DROP TABLE IF EXISTS gran_question_publication_failures')
+    && str_contains($queue, 'listGranQuestionFailures')
+    && str_contains($queue, 'retryGranQuestionFailure')
+    && str_contains($queue, 'retryGranQuestionFailures')
+    && str_contains($queue, 'ignoreGranQuestionFailure')
+    && str_contains($queue, 'ignoreAllGranQuestionFailures')
+    && str_contains($queue, 'syncGranFailureHistory')
+    && str_contains($route, "\$action === 'list_publication_failures'")
+    && str_contains($route, "\$action === 'retry_publication_failure'")
+    && str_contains($route, "\$action === 'ignore_all_publication_failures'")
+    && str_contains($route, "\$action === 'retry_publication_failures'")
+    && str_contains($route, "\$action === 'ignore_publication_failure'")
+    && str_contains($component, 'data-testid="gran-publication-failure-history"'),
+    'Falhas do crawler precisam permanecer moderaveis depois da retencao dos jobs.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($queue, "['active', 'all', 'open', 'retrying', 'resolved', 'ignored']")
+    && str_contains($queue, "status IN ('open', 'retrying')")
+    && str_contains($service, "listGranQuestionFailures('active', 50)")
+    && str_contains($service, "(\$input['status'] ?? 'active')"),
+    'A lista operacional de falhas deve excluir questoes ja resolvidas.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($component, "action: 'retry_publication_failures'")
+    && str_contains($component, 'failureIds,')
+    && str_contains($component, 'Tentar todas ({failureHistory.openCount})')
+    && str_contains($component, "action: 'ignore_publication_failure'")
+    && str_contains($component, 'Questoes com erro pendente ({failureHistory.total})')
+    && str_contains($queue, "status = 'ignored'")
+    && str_contains($queue, "WHERE id IN (")
+    && str_contains($service, 'retryPublicationFailures')
+    && str_contains($service, 'ignorePublicationFailure')
+    && str_contains($service, 'ignoreAllPublicationFailures'),
+    'Falhas devem permitir nova tentativa individual, repeticao em massa e baixa operacional auditavel.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($component, 'Modo automatico')
+    && str_contains($component, 'MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2')
+    && str_contains($component, 'waitForOldestPublication')
+    && str_contains($component, 'inFlightBatches.push({')
+    && str_contains($component, 'const nextYear = exhaustedYear ? cursorYear + 1 : cursorYear;')
+    && str_contains($component, "action: 'map_and_enqueue_publication'")
+    && str_contains($component, 'fingerprintAutomaticInput({')
+    && !str_contains($component, 'payloads: pagePayloads')
+    && str_contains($component, "action: 'publication_batch_progress'")
+    && str_contains($component, 'AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000')
+    && str_contains($component, 'ACTIVE_BATCH_STATUS_REFRESH_MS = 15_000')
+    && str_contains($component, "document.visibilityState !== 'visible'")
+    && str_contains($service, 'mapAndEnqueuePublication')
+    && str_contains($route, "\$action === 'map_and_enqueue_publication'")
+    && str_contains($bridge, 'collectGranQuestionById'),
+    'Modo automatico deve mapear e enfileirar uma pagina na mesma requisicao, sem devolver e reenviar o payload canonico.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($service, 'getPublicationBatchProgress')
+    && str_contains($service, 'getBatchProgressByPublicId')
+    && str_contains($queue, 'public function getBatchProgressByPublicId')
+    && str_contains($route, "\$action === 'publication_batch_progress'"),
+    'O acompanhamento do modo automatico deve usar um contrato resumido de progresso do lote.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($route, "'idempotency_conflict'")
+    && str_contains($route, 'Response::error($exception->getMessage(), 409'),
+    'Colisao de idempotencia precisa retornar conflito, nunca falso erro de permissao.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($queue, 'question_errors_json')
@@ -62,16 +133,24 @@ adminGranCrawlerWiringAssert(
     && str_contains($service, "\$host !== self::API_HOST")
     && str_contains($service, "\$path !== self::API_PATH")
     && !str_contains($service, 'HTTP_COOKIE')
-    && !str_contains($service, 'INSERT INTO gran'),
-    'Gran client must be restricted to HTTPS and the known official endpoint.'
+    && !str_contains($service, 'INSERT INTO gran_responses'),
+    'Cliente Gran deve ser restrito a HTTPS e ao endpoint oficial, sem persistir respostas remotas brutas.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($queue, 'enqueueFromAdminSession')
     && str_contains($queue, "'admin-browser:' . \$actorUserId")
     && str_contains($worker, "\$job['actor_user_id']")
     && str_contains($worker, 'GranExamFileMaterializer.php')
-    && str_contains($worker, '$granExamFileMaterializer->materialize($payload)'),
-    'Queue and worker must preserve the administrative actor and materialize official files.'
+    && str_contains($worker, '$granExamFileMaterializer->materialize($payload)')
+    && str_contains($worker, 'GranQuestionAssetMaterializer.php')
+    && str_contains($worker, '$granQuestionAssetMaterializer->materializeForIngestion($payload)')
+    && str_contains($worker, "'itemFailures'"),
+    'Queue and worker must preserve the actor and materialize official files and question assets.'
+);
+adminGranCrawlerWiringAssert(
+    str_contains($questionsService, 'assertGranAssetWasMaterialized')
+    && str_contains($questionsService, 'A imagem da Gran nao foi copiada'),
+    'Canonical persistence must reject Gran image URLs that bypassed materialization.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($questionsService, "'files' => array_values(array_filter(")
@@ -87,8 +166,11 @@ adminGranCrawlerWiringAssert(
     && str_contains($component, "GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear'")
     && str_contains($component, "action: 'map'")
     && str_contains($component, 'granExamFiles: collection.examFiles')
+    && str_contains($component, 'granAssetData: collection.assetData || {}')
+    && str_contains($service, 'normalizeGranAssetData')
+    && str_contains($service, 'hydrateCapturedGranAssets')
     && str_contains($component, 'collectGranQuestions'),
-    'Frontend must collect through the extension without receiving Gran credentials.'
+    'Frontend deve coletar pela extensao sem receber credenciais Gran e entregar somente imagens capturadas em base64.'
 );
 adminGranCrawlerWiringAssert(
     str_contains($service, 'MAX_QUESTIONS_PER_PAGE = 1000')
@@ -160,7 +242,8 @@ adminGranCrawlerWiringAssert(
 );
 adminGranCrawlerWiringAssert(
     str_contains($component, 'fetchGranCrawlerBootstrap')
-    && substr_count($component, 'apiClient.get(ENDPOINT)') === 1
+    && str_contains($component, 'bootstrapRequest = apiClient.get(ENDPOINT, { signal: controller.signal })')
+    && str_contains($component, 'if (bootstrapRequest) return bootstrapRequest;')
     && str_contains($component, 'BOOTSTRAP_CACHE_MS = 60_000')
     && str_contains($component, 'isTaxonomyVerificationFresh')
     && str_contains($component, 'renderReviewQueue(result?.payloads || []')

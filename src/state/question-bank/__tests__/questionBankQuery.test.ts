@@ -8,7 +8,11 @@ vi.mock('@services/questions', () => ({
   questionService: { getQuestionPage },
 }));
 
-import { fetchQuestionBankPage } from '../questionBankQuery';
+import {
+  buildQuestionBankFilterSignature,
+  canAdvanceQuestionBankCursor,
+  fetchQuestionBankPage,
+} from '../questionBankQuery';
 
 describe('question bank query', () => {
   beforeEach(() => {
@@ -32,5 +36,45 @@ describe('question bank query', () => {
     });
     expect(result.rows).toHaveLength(1);
     expect(result.total).toBe(1);
+  });
+
+  it('keeps a stable server-filter signature while pagination changes', () => {
+    const firstPage = buildQuestionBankFilterSignature({
+      subject: 'Informática',
+      hasTeacherComment: true,
+      limit: 20,
+      cursor: 'first-cursor',
+    });
+    const nextPage = buildQuestionBankFilterSignature({
+      hasTeacherComment: true,
+      subject: 'Informática',
+      limit: 50,
+      cursor: 'next-cursor',
+    });
+
+    expect(nextPage).toBe(firstPage);
+    expect(buildQuestionBankFilterSignature({ subject: 'Informática' })).not.toBe(firstPage);
+  });
+  it('only advances pagination when the response adds rows and changes the cursor', () => {
+    expect(canAdvanceQuestionBankCursor({
+      requestedCursor: 'cursor-1',
+      nextCursor: 'cursor-2',
+      hasMore: true,
+      uniqueLoadedCount: 20,
+    })).toBe(true);
+
+    expect(canAdvanceQuestionBankCursor({
+      requestedCursor: 'cursor-1',
+      nextCursor: 'cursor-1',
+      hasMore: true,
+      uniqueLoadedCount: 20,
+    })).toBe(false);
+
+    expect(canAdvanceQuestionBankCursor({
+      requestedCursor: 'cursor-1',
+      nextCursor: 'cursor-2',
+      hasMore: true,
+      uniqueLoadedCount: 0,
+    })).toBe(false);
   });
 });

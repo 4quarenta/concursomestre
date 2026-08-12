@@ -19,7 +19,7 @@ foreach (['UploadSecurity::validate', 'ObjectStorage', 'storeUploadedFile', 'ima
         throw new RuntimeException("Admin asset upload must enforce {$needle}.");
     }
 }
-foreach (['taxonomy-logo', 'blog-cover'] as $purpose) {
+foreach (['taxonomy-logo', 'blog-cover', 'blog-content'] as $purpose) {
     if (!str_contains($service, $purpose)) {
         throw new RuntimeException("Admin asset upload must support protected {$purpose} assets.");
     }

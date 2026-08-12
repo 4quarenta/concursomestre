@@ -231,6 +231,10 @@ export type QuestionV2Detail = {
   engagement?: {
     commentsCount?: number;
   };
+  editorialAvailability?: {
+    hasTeacherComment?: boolean;
+    hasDetailedAnalysis?: boolean;
+  };
   editorial?: QuestionEditorialPayload[];
 };
 
@@ -290,6 +294,17 @@ const toRecord = (value: unknown): Record<string, unknown> | null => (
 const readText = (value: unknown): string => (
   value === undefined || value === null ? '' : String(value)
 );
+
+const readFirstNonEmptyText = (...values: unknown[]): string => {
+  for (const value of values) {
+    const text = readText(value);
+    if (text.trim() !== '') {
+      return text;
+    }
+  }
+
+  return '';
+};
 
 const readSourceScalar = (value: unknown): string | number | null => (
   typeof value === 'string' || typeof value === 'number' ? value : null
@@ -566,13 +581,21 @@ const buildCanonicalQuestionPayload = (question: Question): QuestionPayload => {
       {
         type: 'teacher_comment',
         title: '',
-        body: readText(normalizedQuestion.editorial?.find?.((item) => item.type === 'teacher_comment')?.body ?? normalizedQuestion.editorialComments?.teacherComment ?? normalizedQuestion.teacherComment),
+        body: readFirstNonEmptyText(
+          normalizedQuestion.teacherComment,
+          normalizedQuestion.editorialComments?.teacherComment,
+          normalizedQuestion.editorial?.find?.((item) => item.type === 'teacher_comment')?.body,
+        ),
         status: 'draft',
       },
       {
         type: 'detailed_analysis',
         title: '',
-        body: readText(normalizedQuestion.editorial?.find?.((item) => item.type === 'detailed_analysis')?.body ?? normalizedQuestion.editorialComments?.detailedComment ?? normalizedQuestion.detailedComment),
+        body: readFirstNonEmptyText(
+          normalizedQuestion.detailedComment,
+          normalizedQuestion.editorialComments?.detailedComment,
+          normalizedQuestion.editorial?.find?.((item) => item.type === 'detailed_analysis')?.body,
+        ),
         status: 'draft',
       },
     ],
@@ -887,6 +910,8 @@ export const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
   const exams = mapV2ExamSummaryToLegacy(detail.examSummary);
   const teacherComment = readV2EditorialBody(detail.editorial, 'teacher_comment');
   const detailedComment = readV2EditorialBody(detail.editorial, 'detailed_analysis');
+  const hasTeacherComment = Boolean(detail.editorialAvailability?.hasTeacherComment) || teacherComment !== '';
+  const hasDetailedComment = Boolean(detail.editorialAvailability?.hasDetailedAnalysis) || detailedComment !== '';
   const firstAssetUrl = Array.isArray(detail.assets)
     ? detail.assets.find((asset) => readText(asset.url).trim())?.url || ''
     : '';
@@ -946,8 +971,8 @@ export const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
     comments: null,
     teacherComment,
     detailedComment,
-    hasTeacherComment: teacherComment !== '',
-    hasDetailedComment: detailedComment !== '',
+    hasTeacherComment,
+    hasDetailedComment,
     isSaved: Boolean(detail.userState?.isSaved),
   } as unknown as Question;
 
@@ -1603,14 +1628,23 @@ export const questionService = {
    * Alterna o estado salvo de uma questão para o usuário atual.
    * @since v1.0.0
    */
-  async toggleSavedQuestion(userId: string, questionId: string | number): Promise<ToggleSavedQuestionResult> {
+  async toggleSavedQuestion(
+    userId: string,
+    questionId: string | number,
+    desiredSavedState?: boolean,
+  ): Promise<ToggleSavedQuestionResult> {
     try {
+      const requestPayload: Record<string, string | number | boolean> = {
+        user_id: userId,
+        question_id: questionId,
+      };
+      if (typeof desiredSavedState === 'boolean') {
+        requestPayload.is_saved = desiredSavedState;
+      }
+
       const response = await apiClient.post<ToggleSavedQuestionResponse>(
         ENDPOINTS.questions.toggleSave,
-        {
-          user_id: userId,
-          question_id: questionId,
-        },
+        requestPayload,
       );
 
       const envelope = assertApiSuccess<ToggleSavedQuestionResponse>(response, 'Não foi possível atualizar os salvos.');

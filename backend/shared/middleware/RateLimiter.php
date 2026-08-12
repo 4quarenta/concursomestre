@@ -40,6 +40,13 @@ class RateLimiter
         'upload' => ['max' => 20, 'window' => 900],
         'analytics_track' => ['max' => 120, 'window' => 60],
         'admin_crawler' => ['max' => 30, 'window' => 300],
+        // O mapeamento automatico recebe uma pagina por vez da extensao e pode
+        // percorrer centenas de paginas. Ele continua administrativo/RBAC, mas
+        // nao pode compartilhar o limite curto de acoes manuais do crawler.
+        'admin_crawler_mapping' => ['max' => 600, 'window' => 900],
+        // Checkpoints sao uma unica linha por administrador e sao gravados a
+        // cada pagina para permitir retomada segura apos interrupcao.
+        'admin_crawler_checkpoint' => ['max' => 1200, 'window' => 900],
         // A sincronizacao canonica percorre diversos catalogos paginados da
         // Gran de forma sequencial. Ela e uma operacao administrativa
         // autenticada, mas nao pode compartilhar o limite curto da consulta

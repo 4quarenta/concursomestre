@@ -32,6 +32,11 @@ final class BlogService
         return $this->repository->listCategories($publicOnly);
     }
 
+    public function tags(bool $publicOnly = true): array
+    {
+        return $this->repository->listTags($publicOnly);
+    }
+
     public function listAdmin(array $query): array
     {
         return $this->repository->listAdmin($this->validator->validateAdminList($query));
@@ -85,6 +90,14 @@ final class BlogService
     {
         return $this->repository->createCategory(
             $this->validator->validateCategory($payload),
+            $this->userId($actor)
+        );
+    }
+
+    public function createTag(array $payload, array $actor): array
+    {
+        return $this->repository->createTag(
+            $this->validator->validateTag($payload),
             $this->userId($actor)
         );
     }

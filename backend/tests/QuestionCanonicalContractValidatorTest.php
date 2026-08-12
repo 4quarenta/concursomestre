@@ -62,6 +62,16 @@ assertCanonicalQuestionContract($result['detailedComment'] === 'Analise detalhad
 assertCanonicalQuestionContract($result['resposta'] === 2, 'correctAlternativeTempIds deve resolver a alternativa correta.');
 assertCanonicalQuestionContract($result['canonical_context_id'] === null, 'Contexto temporario nao deve ser tratado como ID numerico.');
 assertCanonicalQuestionContract(is_array($result['canonical']) && ($result['canonical']['source']['contextTempId'] ?? null) === 'ctx_7', 'Contrato canonico completo deve ser preservado.');
+assertCanonicalQuestionContract(
+    ($result['canonical']['editorial'][0]['type'] ?? '') === 'teacher_comment'
+    && ($result['canonical']['editorial'][0]['body'] ?? '') === 'Comentario do professor.',
+    'O contrato canonico deve materializar o comentario do professor para a persistencia canonica.'
+);
+assertCanonicalQuestionContract(
+    ($result['canonical']['editorial'][1]['type'] ?? '') === 'detailed_analysis'
+    && ($result['canonical']['editorial'][1]['body'] ?? '') === 'Analise detalhada.',
+    'O contrato canonico deve materializar a analise detalhada para a persistencia canonica.'
+);
 assertCanonicalQuestionContract(count($result['taxonomies']['banca']) === 1, 'examBoards deve ser normalizado para taxonomia de banca.');
 
 fwrite(STDOUT, "Question canonical contract validator assertions passed.\n");

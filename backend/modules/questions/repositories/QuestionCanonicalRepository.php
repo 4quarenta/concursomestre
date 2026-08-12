@@ -26,7 +26,7 @@ final class QuestionCanonicalRepository
         SchemaReadiness::assertTablesAndColumns($this->db, 'agregado canonico de questoes', [
             'question_options' => ['id', 'question_id', 'display_order', 'label', 'body', 'is_correct'],
             'question_contexts' => [
-                'id', 'external_key', 'context_type', 'body', 'source_provider', 'source_external_id',
+                'id', 'external_key', 'context_type', 'body', 'prova_id', 'source_provider', 'source_external_id',
             ],
             'question_context_questions' => ['context_id', 'question_id', 'relation_role'],
             'question_assets' => ['id', 'question_id', 'context_id', 'option_id', 'usage_type'],
@@ -249,7 +249,7 @@ final class QuestionCanonicalRepository
              VALUES
                 (:question_id, :editorial_type, :title, :body, :status, :generated_by, :metadata_json)'
         );
-        foreach (is_array($question['editorial'] ?? null) ? $question['editorial'] : [] as $editorial) {
+        foreach ($this->normalizeEditorialEntries($question) as $editorial) {
             if (!is_array($editorial)) {
                 continue;
             }
@@ -269,6 +269,44 @@ final class QuestionCanonicalRepository
         }
     }
 
+    /**
+     * Accept only the canonical list internally. The temporary
+     * `editorialComments` reader exists so records saved before the contract
+     * consolidation retain their authored content during the migration.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeEditorialEntries(array $question): array
+    {
+        $entries = is_array($question['editorial'] ?? null) ? $question['editorial'] : [];
+        $byType = [];
+        foreach ($entries as $editorial) {
+            if (!is_array($editorial)) {
+                continue;
+            }
+            $type = trim((string) ($editorial['type'] ?? ''));
+            if (!in_array($type, ['teacher_comment', 'detailed_analysis'], true)) {
+                continue;
+            }
+            $byType[$type] = $editorial;
+        }
+
+        $legacy = is_array($question['editorialComments'] ?? null) ? $question['editorialComments'] : [];
+        foreach ([
+            'teacher_comment' => $legacy['teacherComment'] ?? $question['teacherComment'] ?? null,
+            'detailed_analysis' => $legacy['detailedComment'] ?? $question['detailedComment'] ?? null,
+        ] as $type => $body) {
+            if (trim((string) $body) === '') {
+                continue;
+            }
+            $entry = is_array($byType[$type] ?? null) ? $byType[$type] : ['type' => $type];
+            $entry['body'] = (string) $body;
+            $byType[$type] = $entry;
+        }
+
+        return array_values($byType);
+    }
+
     public function saveContext(array $context, string $actorUserId = ''): int
     {
         $this->assertSchemaReady();
@@ -284,10 +322,16 @@ final class QuestionCanonicalRepository
         $sourceExternalId = $this->normalizeSourceExternalId(
             $source['externalId'] ?? $context['sourceExternalId'] ?? $context['source_external_id'] ?? null
         );
+        $provaId = $this->positiveIntOrNull(
+            $context['provaId'] ?? $context['prova_id'] ?? $source['examId'] ?? $source['exam_id'] ?? null
+        );
+        if ($provaId === null) {
+            throw new InvalidArgumentException('Todo contexto de questoes precisa estar vinculado a uma prova.');
+        }
 
         if ($sourceProvider !== '' && $sourceExternalId !== '') {
             $find = $this->db->prepare(
-                'SELECT id FROM question_contexts
+                'SELECT id, prova_id FROM question_contexts
                  WHERE source_provider = :source_provider AND source_external_id = :source_external_id
                  LIMIT 1'
             );
@@ -296,20 +340,30 @@ final class QuestionCanonicalRepository
                 ':source_external_id' => $sourceExternalId,
             ]);
         } else {
-            $find = $this->db->prepare('SELECT id FROM question_contexts WHERE external_key = :external_key LIMIT 1');
+            $find = $this->db->prepare('SELECT id, prova_id FROM question_contexts WHERE external_key = :external_key LIMIT 1');
             $find->execute([':external_key' => $externalKey]);
         }
-        $contextId = $find->fetchColumn();
-        if ($contextId !== false && $sourceProvider !== '' && $sourceExternalId !== '') {
+        $existing = $find->fetch(PDO::FETCH_ASSOC);
+        $contextId = is_array($existing) ? (int) ($existing['id'] ?? 0) : 0;
+        $existingProvaId = is_array($existing) ? $this->positiveIntOrNull($existing['prova_id'] ?? null) : null;
+        if ($existingProvaId !== null && $existingProvaId !== $provaId) {
+            throw new InvalidArgumentException('O contexto ja pertence a outra prova e nao pode ser reutilizado entre provas.');
+        }
+        if ($contextId > 0 && $sourceProvider !== '' && $sourceExternalId !== '') {
             // Reviewed Gran contexts are authoritative; a repeated collection
             // only points at the same canonical record.
-            return (int) $contextId;
+            if ($existingProvaId === null) {
+                $this->db->prepare('UPDATE question_contexts SET prova_id = :prova_id WHERE id = :id')
+                    ->execute([':prova_id' => $provaId, ':id' => $contextId]);
+            }
+            return $contextId;
         }
         $params = [
             ':external_key' => $externalKey,
             ':source_provider' => $sourceProvider !== '' ? $sourceProvider : null,
             ':source_external_id' => $sourceExternalId !== '' ? $sourceExternalId : null,
             ':context_type' => trim((string) ($context['type'] ?? 'shared')) ?: 'shared',
+            ':prova_id' => $provaId,
             ':body' => (string) ($context['body'] ?? $context['texto'] ?? $context['text'] ?? ''),
             ':body_clean' => (string) ($context['bodyClean'] ?? $context['textoClean'] ?? ''),
             ':reference_text' => (string) ($context['reference'] ?? ''),
@@ -320,23 +374,24 @@ final class QuestionCanonicalRepository
             ':created_by_actor' => $actorUserId !== '' ? $actorUserId : null,
             ':updated_by_actor' => $actorUserId !== '' ? $actorUserId : null,
         ];
-        if ($contextId === false) {
+        if ($contextId <= 0) {
             $insert = $this->db->prepare(
                 'INSERT INTO question_contexts
-                    (external_key, source_provider, source_external_id, context_type, body, body_clean, reference_text, source_page, metadata_json, created_by_user_id, updated_by_user_id)
+                    (external_key, source_provider, source_external_id, context_type, prova_id, body, body_clean, reference_text, source_page, metadata_json, created_by_user_id, updated_by_user_id)
                  VALUES
-                    (:external_key, :source_provider, :source_external_id, :context_type, :body, :body_clean, :reference_text, :source_page, :metadata_json, :created_by_actor, :updated_by_actor)'
+                    (:external_key, :source_provider, :source_external_id, :context_type, :prova_id, :body, :body_clean, :reference_text, :source_page, :metadata_json, :created_by_actor, :updated_by_actor)'
             );
             $insert->execute($params);
             $id = (int) $this->db->lastInsertId();
         } else {
-            $id = (int) $contextId;
+            $id = $contextId;
             $update = $this->db->prepare(
                 'UPDATE question_contexts
                  SET external_key = :external_key,
                      source_provider = :source_provider,
                      source_external_id = :source_external_id,
                      context_type = :context_type,
+                     prova_id = :prova_id,
                      body = :body,
                      body_clean = :body_clean,
                      reference_text = :reference_text,
@@ -471,7 +526,7 @@ final class QuestionCanonicalRepository
             ];
         }
         $contextsStmt = $this->db->prepare(
-            'SELECT c.id, c.external_key, c.context_type, c.body, c.body_clean, c.reference_text, c.source_page
+            'SELECT c.id, c.prova_id, c.external_key, c.context_type, c.body, c.body_clean, c.reference_text, c.source_page
              FROM question_context_questions cq
              INNER JOIN question_contexts c ON c.id = cq.context_id
              WHERE cq.question_id = :question_id
@@ -493,6 +548,7 @@ final class QuestionCanonicalRepository
             'editorial' => $editorial,
             'contexts' => array_map(static fn (array $row): array => [
                 'id' => (int) $row['id'],
+                'provaId' => isset($row['prova_id']) ? (int) $row['prova_id'] : null,
                 'tempId' => (string) ($row['external_key'] ?? ''),
                 'type' => (string) $row['context_type'],
                 'body' => (string) $row['body'],
@@ -502,6 +558,35 @@ final class QuestionCanonicalRepository
                 'assets' => $contextAssets[(int) $row['id']] ?? [],
             ], $contexts),
         ];
+    }
+
+    /**
+     * Carrega os campos editoriais sem depender da existencia de alternativas.
+     * Updates parciais usam esta fonte para nao apagar um campo ja publicado.
+     *
+     * @return array<string, string>
+     */
+    public function loadQuestionEditorialBodies(int $questionId): array
+    {
+        $this->assertSchemaReady();
+        $stmt = $this->db->prepare(
+            "SELECT editorial_type, body
+             FROM question_editorials
+             WHERE question_id = :question_id
+               AND editorial_type IN ('teacher_comment', 'detailed_analysis')"
+        );
+        $stmt->execute([':question_id' => $questionId]);
+
+        $bodies = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $type = trim((string) ($row['editorial_type'] ?? ''));
+            $body = (string) ($row['body'] ?? '');
+            if ($type !== '' && trim($body) !== '') {
+                $bodies[$type] = $body;
+            }
+        }
+
+        return $bodies;
     }
 
     /**
@@ -536,7 +621,7 @@ final class QuestionCanonicalRepository
         $optionAssets = $this->loadAssets('option_id', $optionIds);
 
         $contextsStmt = $this->db->prepare(
-            "SELECT cq.question_id, c.id, c.external_key, c.context_type, c.body, c.body_clean, c.reference_text, c.source_page
+            "SELECT cq.question_id, c.id, c.prova_id, c.external_key, c.context_type, c.body, c.body_clean, c.reference_text, c.source_page
              FROM question_context_questions cq
              INNER JOIN question_contexts c ON c.id = cq.context_id
              WHERE cq.question_id IN ({$placeholders})
@@ -596,6 +681,7 @@ final class QuestionCanonicalRepository
             $contextId = (int) $row['id'];
             $aggregates[$questionId]['contexts'][] = [
                 'id' => $contextId,
+                'provaId' => isset($row['prova_id']) ? (int) $row['prova_id'] : null,
                 'tempId' => (string) ($row['external_key'] ?? ''),
                 'type' => (string) $row['context_type'],
                 'body' => (string) $row['body'],
@@ -680,9 +766,18 @@ final class QuestionCanonicalRepository
                 ':caption' => trim((string) ($asset['caption'] ?? '')) ?: null,
                 ':source_page' => $this->positiveIntOrNull($asset['sourcePage'] ?? $asset['source_page'] ?? null),
                 ':display_order' => max(0, (int) ($asset['order'] ?? $index + 1)),
-                ':metadata_json' => $this->encodeJson([
+                ':metadata_json' => $this->encodeJson(array_filter([
                     'manualCropApplied' => !empty($asset['manualCropApplied'] ?? false),
-                ]),
+                    'mimeType' => trim((string) ($asset['mimeType'] ?? '')) ?: null,
+                    'size' => is_numeric($asset['size'] ?? null) ? max(0, (int) $asset['size']) : null,
+                    'storageDriver' => trim((string) ($asset['storageDriver'] ?? '')) ?: null,
+                    'sourceProvider' => trim((string) ($asset['sourceProvider'] ?? '')) ?: null,
+                    'sourceUrlHash' => preg_match('/^[a-f0-9]{64}$/', (string) ($asset['sourceUrlHash'] ?? '')) === 1
+                        ? (string) $asset['sourceUrlHash']
+                        : null,
+                    'status' => trim((string) ($asset['status'] ?? '')) ?: null,
+                    'materializedAt' => trim((string) ($asset['materializedAt'] ?? '')) ?: null,
+                ], static fn (mixed $value): bool => $value !== null)),
             ]);
         }
     }

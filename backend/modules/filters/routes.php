@@ -33,9 +33,97 @@ function handleFiltersListRoute(PDO $db): void
             )
         );
 
-        Response::success($controller->list());
+        $scope = strtolower(trim((string) ($_GET['scope'] ?? 'full')));
+        Response::success(
+            $scope === 'practice'
+                ? $controller->listPracticeCatalog()
+                : $controller->list()
+        );
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel carregar os filtros.', $e);
+    }
+}
+
+/**
+ * Diretorio publico paginado de disciplinas ou bancas.
+ */
+function handlePublicTaxonomyDirectoryRoute(PDO $db): void
+{
+    try {
+        $type = strtolower(trim((string) ($_GET['type'] ?? '')));
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+        $perPage = min(60, max(10, (int) ($_GET['per_page'] ?? 30)));
+        $search = mb_substr(trim((string) ($_GET['search'] ?? '')), 0, 100, 'UTF-8');
+        $letter = strtoupper(trim((string) ($_GET['letter'] ?? '')));
+        if ($letter !== '' && preg_match('/^[A-Z]$/', $letter) !== 1) {
+            throw new InvalidArgumentException('Letra de filtro invalida.');
+        }
+
+        $controller = new FiltersController(
+            new FiltersService(
+                new FiltersRepository($db),
+                new FiltersValidator()
+            )
+        );
+
+        Response::success($controller->listPublicDirectory($type, $page, $perPage, $search, $letter));
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar o diretorio de taxonomias.', $e);
+    }
+}
+
+/**
+ * Perfil publico agregado de uma banca, com concursos e estatisticas verificaveis.
+ */
+function handlePublicBoardDetailRoute(PDO $db): void
+{
+    try {
+        $slug = strtolower(trim((string) ($_GET['slug'] ?? '')));
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+        $perPage = min(24, max(6, (int) ($_GET['per_page'] ?? 12)));
+        $status = strtolower(trim((string) ($_GET['status'] ?? 'all')));
+        $controller = new FiltersController(
+            new FiltersService(
+                new FiltersRepository($db),
+                new FiltersValidator()
+            )
+        );
+        $payload = $controller->getPublicBoardDetail($slug, $page, $perPage, $status);
+        if ($payload === null) {
+            Response::notFound('Banca nao encontrada.');
+        }
+        Response::success($payload);
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar a banca.', $e);
+    }
+}
+
+/**
+ * Expande um unico ramo de disciplina por vez.
+ */
+function handlePublicTaxonomyHierarchyRoute(PDO $db): void
+{
+    try {
+        $parentId = (int) ($_GET['parent_id'] ?? 0);
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+        $perPage = min(100, max(10, (int) ($_GET['per_page'] ?? 50)));
+
+        $controller = new FiltersController(
+            new FiltersService(
+                new FiltersRepository($db),
+                new FiltersValidator()
+            )
+        );
+
+        Response::success($controller->listPublicTaxonomyChildren($parentId, $page, $perPage));
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar a hierarquia da disciplina.', $e);
     }
 }
 

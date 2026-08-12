@@ -77,6 +77,22 @@ function handleExamsListRoute(PDO $db): void
     buildExamsController($db)->list();
 }
 
+function handlePublicExamsDirectoryRoute(PDO $db): void
+{
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+        Response::error('Método não permitido.', 405, null, 'method_not_allowed');
+    }
+    buildExamsController($db)->publicDirectory();
+}
+
+function handlePublicExamDetailRoute(PDO $db): void
+{
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+        Response::error('Método não permitido.', 405, null, 'method_not_allowed');
+    }
+    buildExamsController($db)->publicDetail((string) ($_GET['slug'] ?? ''));
+}
+
 function handleExamsShowRoute(PDO $db): void
 {
     requireExamBankAdminUser();

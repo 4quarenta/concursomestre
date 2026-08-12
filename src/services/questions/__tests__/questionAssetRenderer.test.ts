@@ -35,6 +35,24 @@ describe('question asset renderer', () => {
     expect(html).toContain('alt.png');
   });
 
+  it('uses the assigned asset when a legacy marker id differs from the canonical asset id', () => {
+    const html = renderQuestionContentWithAssets(
+      '<p>Observe a figura: [image:gran_ctx_152460_img_1]</p>',
+      [{
+        tempId: 'img_context_1',
+        type: 'image',
+        usage: 'context',
+        url: '/uploads/question-assets/gran/context.jpg',
+        alt: 'Figura do contexto',
+      }],
+    );
+
+    expect(html).toContain('<img');
+    expect(html).toContain('context.jpg');
+    expect(html).not.toContain('[image:');
+    expect((html.match(/<img/g) || [])).toHaveLength(1);
+  });
+
   it('does not render unsafe asset protocols', () => {
     const html = renderQuestionContentWithAssets('[image:bad]', [{
       tempId: 'bad',

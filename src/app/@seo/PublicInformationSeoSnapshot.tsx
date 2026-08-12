@@ -61,7 +61,7 @@ export default function PublicInformationSeoSnapshot({
         {links.length ? (
           <nav aria-label="Links relacionados" className="flex flex-wrap gap-3">
             {links.map((link) => (
-              <Link key={link.href} href={link.href} className="font-semibold text-indigo-700 underline">
+              <Link key={link.href} href={link.href} prefetch={false} className="font-semibold text-indigo-700 underline">
                 {link.label}
               </Link>
             ))}

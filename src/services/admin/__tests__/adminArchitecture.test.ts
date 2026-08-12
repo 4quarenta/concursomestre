@@ -240,6 +240,7 @@ describe('admin architecture', () => {
     expect(sharedFiles).toEqual([
       'AdminCollectionActionBar.tsx',
       'AdminCollectionPagination.tsx',
+      'AdminCollectionTablePanel.tsx',
       'AdminCollectionToolbar.tsx',
       'AdminPageContent.tsx',
       'AdminPageHeader.tsx',

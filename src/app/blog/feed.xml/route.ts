@@ -28,7 +28,7 @@ export async function GET() {
       <guid isPermaLink="true">${escapeXml(buildSiteUrl(`/blog/${article.slug}`))}</guid>
       <description>${escapeXml(article.excerpt)}</description>
       <pubDate>${new Date(article.publishedAt || article.createdAt).toUTCString()}</pubDate>
-      <category>${escapeXml(article.category.name)}</category>
+      <category>${escapeXml(article.taxonomy.category.label)}</category>
       <author>${escapeXml(article.author.name)}</author>
     </item>`).join('');
 

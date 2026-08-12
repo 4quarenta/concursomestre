@@ -75,6 +75,55 @@ granExamFileAssert(
     'URL temporaria remota nao deve ser persistida no registro canonico.'
 );
 
+$rtfFixture = tempnam(sys_get_temp_dir(), 'cm-gran-rtf-fixture-');
+if ($rtfFixture === false) {
+    throw new RuntimeException('Nao foi possivel preparar fixture RTF.');
+}
+file_put_contents($rtfFixture, "{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Arial;}} Prova oficial Gran.}");
+$rtfMaterializer = new GranExamFileMaterializer(
+    static function (string $url, int $maxBytes) use ($rtfFixture): array {
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'cm-gran-rtf-copy-');
+        if ($temporaryPath === false || !copy($rtfFixture, $temporaryPath)) {
+            throw new RuntimeException('Falha ao copiar fixture RTF.');
+        }
+        return [
+            'temporaryPath' => $temporaryPath,
+            'mimeType' => 'application/rtf',
+            'size' => (int) filesize($temporaryPath),
+            'sha256' => (string) hash_file('sha256', $temporaryPath),
+        ];
+    },
+    static function (string $temporaryPath, string $storageKey, string $mimeType) use ($storageRoot): array {
+        $target = $storageRoot . '/' . str_replace('/', '-', $storageKey);
+        if (!copy($temporaryPath, $target)) {
+            throw new RuntimeException('Falha ao gravar fixture RTF.');
+        }
+        return [
+            'storageKey' => $storageKey,
+            'url' => '/uploads/' . $storageKey,
+            'driver' => 'local',
+            'size' => (int) filesize($target),
+        ];
+    }
+);
+$rtfPayload = $rtfMaterializer->materialize([
+    'exam' => [
+        'externalId' => '2630',
+        'files' => [[
+            'kind' => 'prova',
+            'name' => 'Prova oficial',
+            'sourceUrl' => 'https://arquivos.infra-questoes.grancursosonline.com.br/folha-de-prova/F_2630.rtf',
+        ]],
+    ],
+]);
+$rtfFile = $rtfPayload['exam']['files'][0] ?? [];
+granExamFileAssert(
+    ($rtfFile['mimeType'] ?? null) === 'application/rtf'
+    && str_ends_with((string) ($rtfFile['storageKey'] ?? ''), '.rtf')
+    && ($rtfFile['status'] ?? null) === 'materialized',
+    'RTF oficial deve ser validado por assinatura e armazenado com extensao correta.'
+);
+
 granExamFileAssert(class_exists(ZipArchive::class), 'Extensao ZIP deve estar disponivel no runtime.');
 $zipFixture = tempnam(sys_get_temp_dir(), 'cm-gran-key-zip-');
 if ($zipFixture === false) {
@@ -197,6 +246,7 @@ granExamFileAssert($unsafeRejected, 'Host arbitrario deve ser rejeitado antes do
 granExamFileAssert($downloadCount === 1, 'URL rejeitada nao pode acionar o downloader.');
 
 @unlink($fixture);
+@unlink($rtfFixture);
 @unlink($zipFixture);
 @unlink($invalidRemoteFixture);
 foreach (glob($storageRoot . '/*') ?: [] as $storedFixture) {

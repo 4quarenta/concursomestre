@@ -33,6 +33,29 @@ class FeedbackRepository
         return $this->db;
     }
 
+    /**
+     * Resolve a versao editorial vigente sem aceitar valor informado pelo cliente.
+     */
+    public function resolveCurrentPlatformVersion(): string
+    {
+        $stmt = $this->db->prepare(
+            "SELECT value_json FROM system_settings WHERE key_name = 'platformVersion' LIMIT 1"
+        );
+        $stmt->execute();
+        $rawValue = $stmt->fetchColumn();
+        if (!is_string($rawValue) || trim($rawValue) === '') {
+            return '1.0.0';
+        }
+
+        $decoded = json_decode($rawValue, true);
+        $candidate = is_string($decoded)
+            ? $decoded
+            : (is_array($decoded) ? (string) ($decoded['platformVersion'] ?? $decoded['value'] ?? '') : '');
+        $candidate = trim($candidate);
+
+        return $candidate !== '' ? mb_substr($candidate, 0, 40) : '1.0.0';
+    }
+
     public function findFirstAdmin(): ?array
     {
         $stmt = $this->db->prepare("
@@ -178,6 +201,7 @@ class FeedbackRepository
                 reason,
                 details,
                 status,
+                platform_version,
                 public_rating,
                 public_display_name,
                 public_headline,
@@ -190,6 +214,7 @@ class FeedbackRepository
                 :reason,
                 :details,
                 :status,
+                :platform_version,
                 :public_rating,
                 :public_display_name,
                 :public_headline,
@@ -204,6 +229,7 @@ class FeedbackRepository
             ':reason' => $payload['reason'],
             ':details' => $payload['details'],
             ':status' => $payload['status'],
+            ':platform_version' => $payload['platform_version'] ?? null,
             ':public_rating' => $payload['public_rating'] ?? null,
             ':public_display_name' => $payload['public_display_name'] ?? null,
             ':public_headline' => $payload['public_headline'] ?? null,
@@ -268,14 +294,14 @@ class FeedbackRepository
                 f.reason,
                 f.details,
                 f.status,
+                COALESCE(f.suggestion_status, 'pending') AS suggestion_status,
+                f.platform_version,
                 f.created_at,
-                u.name AS user_name,
                 COALESCE(votes.likes, 0) AS likes,
                 COALESCE(votes.dislikes, 0) AS dislikes,
                 (COALESCE(votes.likes, 0) - COALESCE(votes.dislikes, 0)) AS score,
                 viewer.vote_value AS user_vote
              FROM user_feedback f
-             LEFT JOIN users u ON u.id = f.user_id
              LEFT JOIN (
                 SELECT
                     feedback_id,
@@ -291,6 +317,7 @@ class FeedbackRepository
                AND f.type = 'suggestion'
                AND f.public_rating IS NULL
                AND f.reason NOT LIKE 'Avaliar plataforma%'
+               AND COALESCE(f.suggestion_status, 'pending') IN ('pending', 'under_review', 'approved', 'planned', 'in_progress', 'completed')
              ORDER BY score DESC, f.created_at DESC
              LIMIT :limit"
         );
@@ -317,14 +344,14 @@ class FeedbackRepository
                 f.reason,
                 f.details,
                 f.status,
+                COALESCE(f.suggestion_status, 'pending') AS suggestion_status,
+                f.platform_version,
                 f.created_at,
-                u.name AS user_name,
                 COALESCE(votes.likes, 0) AS likes,
                 COALESCE(votes.dislikes, 0) AS dislikes,
                 (COALESCE(votes.likes, 0) - COALESCE(votes.dislikes, 0)) AS score,
                 viewer.vote_value AS user_vote
              FROM user_feedback f
-             LEFT JOIN users u ON u.id = f.user_id
              LEFT JOIN (
                 SELECT
                     feedback_id,
@@ -340,6 +367,7 @@ class FeedbackRepository
                AND f.type = 'suggestion'
                AND f.public_rating IS NULL
                AND f.reason NOT LIKE 'Avaliar plataforma%'
+               AND COALESCE(f.suggestion_status, 'pending') IN ('pending', 'under_review', 'approved', 'planned', 'in_progress', 'completed')
                AND f.id = :id
              LIMIT 1"
         );
@@ -458,8 +486,10 @@ class FeedbackRepository
             'reason' => trim((string) ($row['reason'] ?? '')),
             'details' => trim((string) ($row['details'] ?? '')),
             'status' => (string) ($row['status'] ?? 'new'),
+            'product_status' => (string) ($row['suggestion_status'] ?? 'approved'),
+            'platform_version' => trim((string) ($row['platform_version'] ?? '')),
             'created_at' => $row['created_at'] ?? null,
-            'user_name' => trim((string) ($row['user_name'] ?? 'Aluno')),
+            'user_name' => 'Comunidade',
             'likes' => (int) ($row['likes'] ?? 0),
             'dislikes' => (int) ($row['dislikes'] ?? 0),
             'score' => (int) ($row['score'] ?? 0),
@@ -540,6 +570,7 @@ class FeedbackRepository
                 reason VARCHAR(255) NOT NULL,
                 details TEXT,
                 status ENUM('new', 'read', 'resolved') DEFAULT 'new',
+                platform_version VARCHAR(40) NULL,
                 public_rating TINYINT NULL,
                 public_display_name VARCHAR(120) NULL,
                 public_headline VARCHAR(180) NULL,

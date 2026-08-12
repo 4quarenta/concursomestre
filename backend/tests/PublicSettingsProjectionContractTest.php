@@ -25,6 +25,7 @@ function collectPublicSettingsKeys(array $value, array &$keys): void
 
 $projection = PublicSettingsProjection::project([
     'appName' => 'ConcursoMestre',
+    'platformVersion' => '1.0.0',
     'stripePublishableKey' => 'pk_test_public',
     'stripeSecretKey' => 'sk_live_secret',
     'geminiApiKey' => 'gemini-secret',
@@ -35,6 +36,7 @@ $projection = PublicSettingsProjection::project([
     'features' => [
         'practiceEnabled' => true,
         'marketplaceEnabled' => false,
+        'supportDonationsEnabled' => false,
         'futureSecretFlag' => 'must-not-cross-the-boundary',
     ],
     'landingPages' => [
@@ -77,8 +79,16 @@ assertPublicSettingsContract(
     'Public settings top-level contract changed unexpectedly.'
 );
 assertPublicSettingsContract($projection['contractVersion'] === 'public-settings.v1', 'Contract version is invalid.');
+assertPublicSettingsContract(($projection['branding']['platformVersion'] ?? null) === '1.0.0', 'Platform version is missing.');
 assertPublicSettingsContract(($projection['features']['practiceEnabled'] ?? null) === true, 'Allowed feature is missing.');
+assertPublicSettingsContract(($projection['features']['supportDonationsEnabled'] ?? null) === false, 'Support donations feature is missing.');
 assertPublicSettingsContract(!array_key_exists('futureSecretFlag', $projection['features']), 'Unknown feature leaked.');
+
+$defaultProjection = PublicSettingsProjection::project([]);
+assertPublicSettingsContract(
+    ($defaultProjection['features']['supportDonationsEnabled'] ?? null) === true,
+    'Support donations must remain enabled for installations without the persisted setting.'
+);
 assertPublicSettingsContract(count($projection['marketing']['landingPages'] ?? []) === 1, 'Draft landing page leaked.');
 assertPublicSettingsContract(count($projection['marketing']['coupons'] ?? []) === 1, 'Private coupon leaked.');
 assertPublicSettingsContract(($projection['marketing']['coupons'][0]['code'] ?? null) === 'PUBLIC20', 'Public coupon is missing.');

@@ -19,10 +19,10 @@ import type { LucideIcon } from 'lucide-react';
 
 export type AdminPageTab = 'panel' | 'operation' | 'marketplace' | 'finance' | 'marketing' | 'support' | 'settings';
 export type AdminPanelSection = 'dashboard' | 'alerts' | 'billing-health';
-export type AdminOperationSection = 'questions' | 'question-groups' | 'exams' | 'files' | 'import' | 'gran-crawler' | 'filters' | 'lei-comentada' | 'users';
+export type AdminOperationSection = 'questions' | 'question-groups' | 'exams' | 'files' | 'blog' | 'novidades' | 'import' | 'gran-crawler' | 'filters' | 'lei-comentada' | 'users';
 export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'automation' | 'analytics';
-export type AdminMarketingSection = 'blog' | 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
+export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
 export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments';
 export type AdminSettingsSection = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
 
@@ -42,11 +42,10 @@ export type AdminNavigationSection = {
 
 export type SupportPendingCounts = Partial<Record<'feedback' | 'threads' | 'reports' | 'comments' | 'refunds', number>>;
 
-export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['operation', 'marketing', 'support'];
+export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['operation', 'support'];
 
 const STAFF_ADMIN_ALLOWED_SECTIONS: Partial<Record<AdminPageTab, string[]>> = {
-  operation: ['questions', 'question-groups', 'exams', 'files', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
-  marketing: ['blog'],
+  operation: ['questions', 'question-groups', 'exams', 'files', 'blog', 'novidades', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
   support: ['feedback', 'threads', 'reports', 'rankings', 'comments'],
 };
 
@@ -145,7 +144,7 @@ export const resolveSupportLandingSection = (counts: SupportPendingCounts = {}):
 
 export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
   panel: 'Visão executiva, alertas operacionais e saúde do billing.',
-  operation: 'Questões, provas, importação, taxonomias e Lei Comentada.',
+  operation: 'Questões, provas, blog, importação, taxonomias e Lei Comentada.',
   marketplace: 'Vendedores, catálogo publicado e revisões bloqueadas do marketplace.',
   finance: 'Transações, planos, cupons, analytics e automação financeira.',
   marketing: 'Landing pages, campanhas, temas visuais e redes sociais da homepage.',
@@ -154,10 +153,10 @@ export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
 };
 
 export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as const;
-export const OPERATION_SECTION_KEYS = ['questions', 'question-groups', 'exams', 'files', 'import', 'gran-crawler', 'filters', 'lei-comentada', 'users'] as const;
+export const OPERATION_SECTION_KEYS = ['questions', 'question-groups', 'exams', 'files', 'blog', 'novidades', 'import', 'gran-crawler', 'filters', 'lei-comentada', 'users'] as const;
 export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as const;
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'automation', 'analytics'] as const;
-export const MARKETING_SECTION_KEYS = ['blog', 'landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
+export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
 export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments'] as const;
 export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'gamification', 'notifications', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs'] as const;
 
@@ -262,8 +261,10 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   analytics: { tab: 'finance', section: 'analytics' },
   'finance-analytics': { tab: 'finance', section: 'analytics' },
   marketing: { tab: 'marketing', section: 'landing-pages' },
-  blog: { tab: 'marketing', section: 'blog' },
-  news: { tab: 'marketing', section: 'blog' },
+  blog: { tab: 'operation', section: 'blog' },
+  news: { tab: 'operation', section: 'blog' },
+  novidades: { tab: 'operation', section: 'novidades' },
+  changelog: { tab: 'operation', section: 'novidades' },
   'landing-pages': { tab: 'marketing', section: 'landing-pages' },
   campaigns: { tab: 'marketing', section: 'campaigns' },
   campaign: { tab: 'marketing', section: 'campaigns' },
@@ -314,6 +315,8 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'question-groups', label: 'Contextos de questões' },
     { key: 'exams', label: 'Banco de provas' },
     { key: 'files', label: 'Arquivos' },
+    { key: 'blog', label: 'Blog' },
+    { key: 'novidades', label: 'Novidades' },
     { key: 'import', label: 'Importador' },
     { key: 'gran-crawler', label: 'Crawler Gran' },
     { key: 'filters', label: 'Filtros' },
@@ -333,7 +336,6 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'automation', label: 'Automação' },
   ],
   marketing: [
-    { key: 'blog', label: 'Blog' },
     { key: 'landing-pages', label: 'Landing Pages' },
     { key: 'campaigns', label: 'Campanhas' },
     { key: 'visual-themes', label: 'Temas visuais' },
@@ -397,6 +399,12 @@ export const buildAdminLawEditPath = (lawId: string | number) =>
 export const buildAdminExamEditPath = (examId: string | number) =>
   `/admin/operation/exams/${encodeURIComponent(String(examId))}/edit`;
 
+export const buildAdminBlogEditPath = (articleId: string | number) =>
+  `/admin/operation/blog/${encodeURIComponent(String(articleId))}/edit`;
+
+export const buildAdminChangelogEditPath = (entryId: string | number) =>
+  `/admin/operation/novidades/${encodeURIComponent(String(entryId))}/edit`;
+
 export const buildAdminUserEditPath = (userId: string | number) =>
   `/admin/operation/users/${encodeURIComponent(String(userId))}/edit`;
 
@@ -444,6 +452,10 @@ const resolveSectionByTab = (tab: AdminPageTab, rawSection?: string | null) => {
 export const resolveAdminRoute = (rawTab?: string | null, rawSection?: string | null) => {
   const normalizedTab = normalizeAdminRouteSegment(rawTab);
   const normalizedSection = normalizeAdminRouteSegment(rawSection);
+
+  if (normalizedTab === 'marketing' && normalizedSection === 'blog') {
+    return { tab: 'operation' as const, section: 'blog' as const };
+  }
 
   if (normalizedTab === 'operation' && ['materials', 'blocked'].includes(normalizedSection)) {
     return {

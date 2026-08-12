@@ -37,7 +37,7 @@ const AdminCollectionToolbar = ({
 }: AdminCollectionToolbarProps) => {
   const primaryAction = primaryActionLabel ? (
     primaryActionHref ? (
-      <Link href={primaryActionHref} className={ADMIN_PRIMARY_BUTTON_CLASS}>
+      <Link href={primaryActionHref} prefetch={false} className={ADMIN_PRIMARY_BUTTON_CLASS}>
         <Plus size={14} />
         {primaryActionLabel}
       </Link>

@@ -12,7 +12,7 @@
 */
 
 import React from 'react';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -30,6 +30,7 @@ import {
   ADMIN_SECONDARY_BUTTON_CLASS,
   ADMIN_SURFACE_CLASS,
 } from '../../../../components/shared/adminPanelStyles';
+import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
 
 const resolveUserId = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -312,11 +313,7 @@ const AdminUserEditPage = () => {
   );
 
   if (isAuthLoading || isLoadingDetail) {
-    return renderShell(
-      <div className={`${ADMIN_SURFACE_CLASS} flex min-h-[360px] items-center justify-center p-12 text-slate-500 dark:text-slate-400`}>
-        <Loader2 className="mr-3 animate-spin" size={18} /> Carregando editor do usuario...
-      </div>,
-    );
+    return renderShell(<RouteContentSkeleton variant="admin" />);
   }
 
   if (!canAccessAdminPanel(currentUser)) {

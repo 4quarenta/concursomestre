@@ -506,6 +506,26 @@ export const filtersService = {
     return normalizeFiltersToTaxonomies(payload);
   },
 
+  async listPracticeTaxonomies(force = false) {
+    const cacheKey = buildRequestCacheKey('filters:list:practice');
+    if (force) {
+      clearRequestCoalescing(cacheKey);
+    }
+
+    const payload = await withRequestCoalescing(
+      cacheKey,
+      async () => {
+        const response = await apiClient.get<FiltersApiPayload>(ENDPOINTS.filters.list, {
+          params: { scope: 'practice' },
+        });
+        return readApiData<FiltersApiPayload>(response, {});
+      },
+      60_000,
+    );
+
+    return normalizeFiltersToTaxonomies(payload);
+  },
+
   async listAdminPage(params: {
     page?: number;
     perPage?: number;

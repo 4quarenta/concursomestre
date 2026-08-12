@@ -55,6 +55,14 @@
     transition: none !important;
     animation: none !important;
   }
+
+  @media (max-width: 767px) {
+    button,
+    a,
+    [role='button'] {
+      touch-action: manipulation;
+    }
+  }
 }
 
 @layer utilities {
@@ -122,6 +130,21 @@
   .dark .question-rich-html img {
     border-color: rgb(51 65 85);
     background: rgb(15 23 42);
+  }
+
+  /* Na pratica, a imagem e parte do enunciado: nao deve parecer um card
+     secundario nem receber uma moldura visual adicional. */
+  .question-card--practice .question-rich-html img {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .question-card--practice .question-image-frame {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
   }
 
   .question-rich-html figure {

@@ -20,6 +20,8 @@ final class PrivateQuestionIngestionService
     private const DEFAULT_STALE_LOCK_MINUTES = 15;
     private const MAX_CLOCK_SKEW_SECONDS = 300;
     private const MAX_QUESTIONS_PER_BATCH = 5000;
+    private const GRAN_FAILURE_PAYLOAD_RETENTION_DAYS = 30;
+    private const GRAN_FAILURE_RECORD_RETENTION_DAYS = 90;
 
     public function __construct(private readonly PDO $db)
     {
@@ -410,6 +412,383 @@ final class PrivateQuestionIngestionService
             : $this->formatBatchRow($row);
     }
 
+    /** @return array{items:array<int,array<string,mixed>>,total:int,openCount:int,retryingCount:int,nextCursor:?int} */
+    public function listGranQuestionFailures(string $status = 'all', int $limit = 50, ?int $cursor = null): array
+    {
+        $this->assertFailureHistorySchemaReady();
+        $status = strtolower(trim($status));
+        if (!in_array($status, ['active', 'all', 'open', 'retrying', 'resolved', 'ignored'], true)) {
+            throw new InvalidArgumentException('Status de falha invalido.');
+        }
+        $limit = max(1, min(100, $limit));
+        $cursor = $cursor !== null && $cursor > 0 ? $cursor : null;
+        $where = [];
+        $params = [];
+        if ($status === 'active') {
+            $where[] = "status IN ('open', 'retrying')";
+        } elseif ($status !== 'all') {
+            $where[] = 'status = :status';
+            $params[':status'] = $status;
+        }
+        if ($cursor !== null) {
+            $where[] = 'id < :cursor';
+            $params[':cursor'] = $cursor;
+        }
+        $whereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
+        $stmt = $this->db->prepare(
+            'SELECT id, source_key, provider, external_question_id, question_number, exam_title, '
+            . 'subject_slug, batch_id, failure_code, failure_message, status, attempt_count, '
+            . 'first_failed_at, last_failed_at, resolved_at '
+            . 'FROM gran_question_publication_failures' . $whereSql
+            . ' ORDER BY CASE WHEN status IN (\'open\', \'retrying\') THEN 0 ELSE 1 END, id DESC '
+            . 'LIMIT ' . ($limit + 1)
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $hasMore = count($rows) > $limit;
+        if ($hasMore) array_pop($rows);
+
+        $countWhere = $status === 'all'
+            ? ''
+            : ($status === 'active' ? " WHERE status IN ('open', 'retrying')" : ' WHERE status = :status');
+        $countStmt = $this->db->prepare(
+            'SELECT COUNT(*) FROM gran_question_publication_failures' . $countWhere
+        );
+        $countStmt->execute(in_array($status, ['all', 'active'], true) ? [] : [':status' => $status]);
+        $activeCountStmt = $this->db->query(
+            "SELECT\n"
+            . "  SUM(status = 'open') AS open_count,\n"
+            . "  SUM(status = 'retrying') AS retrying_count\n"
+            . 'FROM gran_question_publication_failures'
+        );
+        $activeCounts = $activeCountStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $items = array_map(fn (array $row): array => $this->formatGranFailureRow($row), $rows);
+
+        return [
+            'items' => $items,
+            'total' => (int) $countStmt->fetchColumn(),
+            'openCount' => (int) ($activeCounts['open_count'] ?? 0),
+            'retryingCount' => (int) ($activeCounts['retrying_count'] ?? 0),
+            'nextCursor' => $hasMore && $rows !== [] ? (int) end($rows)['id'] : null,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function getGranQuestionFailure(int $failureId): array
+    {
+        $this->assertFailureHistorySchemaReady();
+        if ($failureId < 1) throw new InvalidArgumentException('Falha de publicacao invalida.');
+        $stmt = $this->db->prepare(
+            'SELECT * FROM gran_question_publication_failures WHERE id = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $failureId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) throw new InvalidArgumentException('Falha de publicacao nao encontrada.');
+        $payload = json_decode((string) ($row['canonical_payload_json'] ?? ''), true);
+        return $this->formatGranFailureRow($row) + [
+            'payload' => is_array($payload) ? $payload : null,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function retryGranQuestionFailure(int $failureId, string $actorUserId): array
+    {
+        return $this->retryGranQuestionFailures([$failureId], $actorUserId);
+    }
+
+    /**
+     * Reenvia apenas as falhas informadas em um unico lote. A selecao e feita
+     * no servidor para impedir que um card individual reenvie todo o historico.
+     *
+     * @param array<int,int|string> $failureIds
+     * @return array<string,mixed>
+     */
+    public function retryGranQuestionFailures(array $failureIds, string $actorUserId): array
+    {
+        $this->assertFailureHistorySchemaReady();
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $failureIds),
+            static fn (int $id): bool => $id > 0
+        )));
+        if ($ids === []) {
+            throw new InvalidArgumentException('Selecione ao menos uma falha para tentar novamente.');
+        }
+        if (count($ids) > self::MAX_QUESTIONS_PER_BATCH) {
+            throw new InvalidArgumentException('Envie no maximo 5000 falhas por nova tentativa.');
+        }
+
+        $params = [];
+        $placeholders = [];
+        foreach ($ids as $index => $id) {
+            $placeholder = ':failure_id_' . $index;
+            $placeholders[] = $placeholder;
+            $params[$placeholder] = $id;
+        }
+        $stmt = $this->db->prepare(
+            'SELECT * FROM gran_question_publication_failures '
+            . 'WHERE id IN (' . implode(', ', $placeholders) . ") AND status = 'open'"
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if (count($rows) !== count($ids)) {
+            throw new InvalidArgumentException('Uma ou mais falhas ja foram resolvidas, ignoradas ou estao em nova tentativa. Atualize a lista antes de reenviar.');
+        }
+
+        $payloads = [];
+        $attemptFingerprint = [];
+        foreach ($rows as $row) {
+            $payload = json_decode((string) ($row['canonical_payload_json'] ?? ''), true);
+            if (!is_array($payload) || ($payload['schemaVersion'] ?? null) !== 'question-import.v2') {
+                throw new InvalidArgumentException(
+                    'Um dos rascunhos originais nao esta disponivel. Abra o item para moderacao antes de tentar novamente.'
+                );
+            }
+            $payloads[] = $payload;
+            $attemptFingerprint[] = [
+                'id' => (int) $row['id'],
+                'attempt' => max(1, (int) ($row['attempt_count'] ?? 1)) + 1,
+            ];
+        }
+        usort($attemptFingerprint, static fn (array $left, array $right): int => $left['id'] <=> $right['id']);
+        $result = $this->enqueueBatchFromAdminSession(
+            $payloads,
+            $actorUserId,
+            'gran-failure-retry-' . substr(hash('sha256', json_encode($attemptFingerprint)), 0, 64)
+        );
+
+        $this->db->prepare(
+            "UPDATE gran_question_publication_failures SET status = 'retrying', resolved_at = NULL "
+            . 'WHERE id IN (' . implode(', ', $placeholders) . ") AND status = 'open'"
+        )->execute($params);
+
+        return $result + [
+            'failureIds' => $ids,
+            'retriedCount' => count($ids),
+        ];
+    }
+
+    /** @return array{failureId:int,status:string} */
+    public function ignoreGranQuestionFailure(int $failureId): array
+    {
+        $result = $this->ignoreGranQuestionFailures([$failureId]);
+        return ['failureId' => $failureId, 'status' => 'ignored'];
+    }
+
+    /**
+     * Remove falhas operacionais selecionadas da fila sem excluir seus diagnosticos.
+     *
+     * @param array<int,int|string> $failureIds
+     * @return array{failureIds:array<int,int>,ignoredCount:int,status:string}
+     */
+    public function ignoreGranQuestionFailures(array $failureIds): array
+    {
+        $this->assertFailureHistorySchemaReady();
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $failureIds),
+            static fn (int $id): bool => $id > 0
+        )));
+        if ($ids === []) {
+            throw new InvalidArgumentException('Selecione ao menos uma falha para ignorar.');
+        }
+        if (count($ids) > self::MAX_QUESTIONS_PER_BATCH) {
+            throw new InvalidArgumentException('Envie no maximo 5000 falhas por operacao.');
+        }
+
+        $params = [];
+        $placeholders = [];
+        foreach ($ids as $index => $id) {
+            $placeholder = ':failure_id_' . $index;
+            $placeholders[] = $placeholder;
+            $params[$placeholder] = $id;
+        }
+        $stmt = $this->db->prepare(
+            "UPDATE gran_question_publication_failures\n"
+            . "SET status = 'ignored', resolved_at = UTC_TIMESTAMP()\n"
+            . "WHERE id IN (" . implode(', ', $placeholders) . ") AND status IN ('open', 'retrying')"
+        );
+        $stmt->execute($params);
+        if ($stmt->rowCount() !== count($ids)) {
+            throw new InvalidArgumentException('Uma ou mais falhas ja foram resolvidas, ignoradas ou nao existem mais. Atualize a lista.');
+        }
+
+        return [
+            'failureIds' => $ids,
+            'ignoredCount' => count($ids),
+            'status' => 'ignored',
+        ];
+    }
+
+    /** @return array{failureIds:array<int,int>,ignoredCount:int,status:string} */
+    public function ignoreAllGranQuestionFailures(): array
+    {
+        $this->assertFailureHistorySchemaReady();
+        $stmt = $this->db->prepare(
+            "UPDATE gran_question_publication_failures\n"
+            . "SET status = 'ignored', resolved_at = UTC_TIMESTAMP()\n"
+            . "WHERE status IN ('open', 'retrying')"
+        );
+        $stmt->execute();
+        return [
+            'failureIds' => [],
+            'ignoredCount' => $stmt->rowCount(),
+            'status' => 'ignored',
+        ];
+    }
+
+    /**
+     * Falhas abertas e em nova tentativa nunca entram na retencao. O snapshot
+     * completo e apagado primeiro; o registro resumido permanece por mais 60
+     * dias para auditoria antes de ser removido definitivamente.
+     *
+     * @return array{payloadRetentionDays:int,recordRetentionDays:int,payloadsEligible:int,recordsEligible:int,totalEligible:int,payloadCutoff:string,recordCutoff:string}
+     */
+    public function previewGranQuestionFailureRetention(): array
+    {
+        $this->assertFailureHistorySchemaReady();
+        $payloadCutoff = $this->granFailureRetentionCutoff(self::GRAN_FAILURE_PAYLOAD_RETENTION_DAYS);
+        $recordCutoff = $this->granFailureRetentionCutoff(self::GRAN_FAILURE_RECORD_RETENTION_DAYS);
+
+        $payloadsEligible = $this->countGranFailureRetentionCandidates(
+            'canonical_payload_json IS NOT NULL AND resolved_at IS NOT NULL AND resolved_at < :cutoff',
+            $payloadCutoff
+        );
+        $recordsEligible = $this->countGranFailureRetentionCandidates(
+            'resolved_at IS NOT NULL AND resolved_at < :cutoff',
+            $recordCutoff
+        );
+
+        return [
+            'payloadRetentionDays' => self::GRAN_FAILURE_PAYLOAD_RETENTION_DAYS,
+            'recordRetentionDays' => self::GRAN_FAILURE_RECORD_RETENTION_DAYS,
+            'payloadsEligible' => $payloadsEligible,
+            'recordsEligible' => $recordsEligible,
+            'totalEligible' => $payloadsEligible + $recordsEligible,
+            'payloadCutoff' => $payloadCutoff,
+            'recordCutoff' => $recordCutoff,
+        ];
+    }
+
+    /**
+     * Expurga somente diagnosticos encerrados. Nenhuma questao publicada,
+     * falha aberta, nova tentativa ou job em andamento e removido aqui.
+     *
+     * @return array{payloadsPurged:int,recordsPurged:int,payloadRetentionDays:int,recordRetentionDays:int}
+     */
+    public function purgeExpiredGranQuestionFailureDiagnostics(): array
+    {
+        $this->assertFailureHistorySchemaReady();
+        $payloadCutoff = $this->granFailureRetentionCutoff(self::GRAN_FAILURE_PAYLOAD_RETENTION_DAYS);
+        $recordCutoff = $this->granFailureRetentionCutoff(self::GRAN_FAILURE_RECORD_RETENTION_DAYS);
+        $lock = $this->db->query("SELECT GET_LOCK('gran_failure_diagnostics_retention', 0)");
+        if ((int) $lock->fetchColumn() !== 1) {
+            throw new RuntimeException('A limpeza de diagnosticos ja esta em execucao. Tente novamente em instantes.');
+        }
+
+        try {
+            $this->db->beginTransaction();
+            $purgePayloads = $this->db->prepare(
+                "UPDATE gran_question_publication_failures\n"
+                . "SET canonical_payload_json = NULL\n"
+                . "WHERE status IN ('resolved', 'ignored')\n"
+                . '  AND canonical_payload_json IS NOT NULL\n'
+                . '  AND resolved_at IS NOT NULL\n'
+                . '  AND resolved_at < :cutoff'
+            );
+            $purgePayloads->execute([':cutoff' => $payloadCutoff]);
+            $payloadsPurged = $purgePayloads->rowCount();
+
+            $purgeRecords = $this->db->prepare(
+                "DELETE FROM gran_question_publication_failures\n"
+                . "WHERE status IN ('resolved', 'ignored')\n"
+                . '  AND resolved_at IS NOT NULL\n'
+                . '  AND resolved_at < :cutoff'
+            );
+            $purgeRecords->execute([':cutoff' => $recordCutoff]);
+            $recordsPurged = $purgeRecords->rowCount();
+            $this->db->commit();
+
+            return [
+                'payloadsPurged' => $payloadsPurged,
+                'recordsPurged' => $recordsPurged,
+                'payloadRetentionDays' => self::GRAN_FAILURE_PAYLOAD_RETENTION_DAYS,
+                'recordRetentionDays' => self::GRAN_FAILURE_RECORD_RETENTION_DAYS,
+            ];
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        } finally {
+            $this->db->query("SELECT RELEASE_LOCK('gran_failure_diagnostics_retention')");
+        }
+    }
+
+    /** @return array<string,mixed> */
+    public function getBatchByPublicId(string $publicId, string $actorUserId): array
+    {
+        $this->assertBatchSchemaReady();
+        $publicId = trim($publicId);
+        if ($publicId === '' || strlen($publicId) > 40) {
+            throw new InvalidArgumentException('Lote de publicacao invalido.');
+        }
+        $stmt = $this->db->prepare(
+            'SELECT * FROM private_ingestion_batches '
+            . 'WHERE public_id = :public_id AND actor_user_id = :actor_user_id LIMIT 1'
+        );
+        $stmt->execute([':public_id' => $publicId, ':actor_user_id' => $actorUserId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) throw new InvalidArgumentException('Lote de publicacao nao encontrado.');
+        $status = (string) ($row['status'] ?? '');
+        return in_array($status, ['pending', 'processing'], true)
+            ? $this->refreshBatch((int) $row['id'])
+            : $this->formatBatchRow($row);
+    }
+
+    /**
+     * Versao enxuta para o modo automatico. Ele apenas precisa saber quando
+     * pode liberar capacidade para coletar a proxima pagina; listas de
+     * questoes, diagnosticos e chaves ficam para a tela de revisao.
+     *
+     * @return array<string,mixed>
+     */
+    public function getBatchProgressByPublicId(string $publicId, string $actorUserId): array
+    {
+        $batch = $this->getBatchByPublicId($publicId, $actorUserId);
+        return [
+            'batchId' => (string) ($batch['batchId'] ?? ''),
+            'status' => (string) ($batch['status'] ?? ''),
+            'questionCount' => (int) ($batch['questionCount'] ?? 0),
+            'jobCount' => (int) ($batch['jobCount'] ?? 0),
+            'pending' => (int) ($batch['pending'] ?? 0),
+            'processing' => (int) ($batch['processing'] ?? 0),
+            'published' => (int) ($batch['published'] ?? 0),
+            'duplicates' => (int) ($batch['duplicates'] ?? 0),
+            'failures' => (int) ($batch['failures'] ?? 0),
+            'error' => $batch['error'] ?? null,
+            'completedAt' => $batch['completedAt'] ?? null,
+        ];
+    }
+
+    public function backfillGranQuestionFailureHistory(int $limit = 25): int
+    {
+        $this->assertFailureHistorySchemaReady();
+        $limit = max(1, min(100, $limit));
+        $stmt = $this->db->query(
+            "SELECT id FROM private_ingestion_batches
+             WHERE failure_history_synced_at IS NULL
+               AND status IN ('done', 'failed', 'partial')
+             ORDER BY id DESC LIMIT {$limit}"
+        );
+        $batchIds = array_values(array_filter(array_map(
+            'intval',
+            $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []
+        ), static fn (int $id): bool => $id > 0));
+        foreach ($batchIds as $batchId) {
+            $this->refreshBatch($batchId);
+        }
+        return count($batchIds);
+    }
+
     /** @return array{batches:int,jobs:int,requests:int} */
     public function pruneCompletedProcessingRecords(int $retentionDays = 1, int $limit = 500): array
     {
@@ -731,9 +1110,35 @@ final class PrivateQuestionIngestionService
                 'public_id', 'actor_user_id', 'idempotency_key', 'payload_hash', 'status',
                 'question_count', 'job_count', 'question_keys_json', 'question_statuses_json',
                 'question_errors_json', 'collection_pages_json',
-                'collection_years_json',
+                'collection_years_json', 'failure_history_synced_at',
             ],
             'private_ingestion_jobs' => ['batch_id'],
+        ]);
+    }
+
+    private function granFailureRetentionCutoff(int $retentionDays): string
+    {
+        return gmdate('Y-m-d H:i:s', time() - ($retentionDays * 86_400));
+    }
+
+    private function countGranFailureRetentionCandidates(string $criteria, string $cutoff): int
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM gran_question_publication_failures\n"
+            . "WHERE status IN ('resolved', 'ignored')\n"
+            . '  AND ' . $criteria
+        );
+        $stmt->execute([':cutoff' => $cutoff]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    private function assertFailureHistorySchemaReady(): void
+    {
+        SchemaReadiness::assertTablesAndColumns($this->db, 'historico de falhas do crawler Gran', [
+            'gran_question_publication_failures' => [
+                'source_key', 'external_question_id', 'failure_code', 'failure_message',
+                'canonical_payload_json', 'status', 'attempt_count', 'last_failed_at',
+            ],
         ]);
     }
 
@@ -973,6 +1378,8 @@ final class PrivateQuestionIngestionService
         $errors = [];
         $questionStatuses = [];
         $questionErrors = [];
+        $questionPayloads = [];
+        $questionMetadata = [];
         foreach ($jobsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $job) {
             $status = (string) ($job['status'] ?? 'pending');
             if (isset($counts[$status])) $counts[$status]++;
@@ -995,6 +1402,22 @@ final class PrivateQuestionIngestionService
                     if (!is_array($question)) continue;
                     $key = $this->questionSourceKey($question, $position++);
                     $jobQuestionKeys[$key] = true;
+                    $questionPayloads[$key] = $this->payloadWithQuestions($batchPayload, [$question]);
+                    $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+                    $subject = is_array($question['filters']['subtopics'][0] ?? null)
+                        ? $question['filters']['subtopics'][0]
+                        : (is_array($question['filters']['topics'][0] ?? null)
+                            ? $question['filters']['topics'][0]
+                            : (is_array($question['filters']['subjects'][0] ?? null)
+                                ? $question['filters']['subjects'][0]
+                                : []));
+                    $questionMetadata[$key] = [
+                        'provider' => trim((string) ($source['provider'] ?? 'gran')) ?: 'gran',
+                        'externalQuestionId' => trim((string) ($source['externalId'] ?? '')) ?: null,
+                        'questionNumber' => trim((string) ($source['questionNumber'] ?? '')) ?: null,
+                        'examTitle' => trim((string) ($batchPayload['exam']['title'] ?? '')) ?: null,
+                        'subjectSlug' => trim((string) ($subject['slug'] ?? '')) ?: null,
+                    ];
                     $tempId = trim((string) ($question['tempId'] ?? ''));
                     $number = trim((string) ($question['source']['questionNumber'] ?? ''));
                     if ($tempId !== '') $questionKeysByTempId[$tempId] = $key;
@@ -1102,9 +1525,104 @@ final class PrivateQuestionIngestionService
             ':is_complete' => ($jobCount > 0 && $counts['pending'] === 0 && $counts['processing'] === 0) ? 1 : 0,
             ':id' => $batchId,
         ]);
+        $this->syncGranFailureHistory(
+            (string) ($batch['actor_user_id'] ?? ''),
+            $batchId,
+            $questionStatuses,
+            $questionErrors,
+            $questionPayloads,
+            $questionMetadata
+        );
+        $this->db->prepare(
+            'UPDATE private_ingestion_batches SET failure_history_synced_at = UTC_TIMESTAMP() WHERE id = :id'
+        )->execute([':id' => $batchId]);
         $batchStmt->execute([':id' => $batchId]);
         $row = $batchStmt->fetch(PDO::FETCH_ASSOC) ?: $batch;
         return $this->formatBatchRow($row);
+    }
+
+    /**
+     * @param array<string,string> $statuses
+     * @param array<string,array{code?:string,message?:string}> $errors
+     * @param array<string,array<string,mixed>> $payloads
+     * @param array<string,array<string,mixed>> $metadata
+     */
+    private function syncGranFailureHistory(
+        string $actorUserId,
+        int $batchId,
+        array $statuses,
+        array $errors,
+        array $payloads,
+        array $metadata
+    ): void {
+        if ($actorUserId === '') return;
+        $this->assertFailureHistorySchemaReady();
+        $upsert = $this->db->prepare(
+            'INSERT INTO gran_question_publication_failures '
+            . '(actor_user_id, source_key, provider, external_question_id, question_number, exam_title, '
+            . 'subject_slug, batch_id, failure_code, failure_message, canonical_payload_json, status) '
+            . 'VALUES (:actor_user_id, :source_key, :provider, :external_question_id, :question_number, '
+            . ':exam_title, :subject_slug, :batch_id, :failure_code, :failure_message, :payload_json, \'open\') '
+            . 'ON DUPLICATE KEY UPDATE '
+            . 'attempt_count = attempt_count + IF(batch_id <=> VALUES(batch_id), 0, 1), '
+            . 'actor_user_id = VALUES(actor_user_id), batch_id = VALUES(batch_id), '
+            . 'provider = VALUES(provider), external_question_id = VALUES(external_question_id), '
+            . 'question_number = VALUES(question_number), exam_title = VALUES(exam_title), '
+            . 'subject_slug = VALUES(subject_slug), failure_code = VALUES(failure_code), '
+            . 'failure_message = VALUES(failure_message), '
+            . 'canonical_payload_json = COALESCE(VALUES(canonical_payload_json), canonical_payload_json), '
+            . "status = 'open', last_failed_at = UTC_TIMESTAMP(), resolved_at = NULL"
+        );
+        $resolve = $this->db->prepare(
+            "UPDATE gran_question_publication_failures SET status = 'resolved', resolved_at = UTC_TIMESTAMP() "
+            . 'WHERE source_key = :source_key AND status <> \'resolved\''
+        );
+        foreach ($statuses as $sourceKey => $status) {
+            if ($status === 'failed') {
+                $diagnostic = $errors[$sourceKey] ?? $this->publicQuestionFailure([]);
+                $meta = $metadata[$sourceKey] ?? [];
+                $payloadJson = isset($payloads[$sourceKey])
+                    ? json_encode($payloads[$sourceKey], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : null;
+                $upsert->execute([
+                    ':actor_user_id' => $actorUserId,
+                    ':source_key' => mb_substr((string) $sourceKey, 0, 255),
+                    ':provider' => mb_substr((string) ($meta['provider'] ?? 'gran'), 0, 40),
+                    ':external_question_id' => $meta['externalQuestionId'] ?? null,
+                    ':question_number' => $meta['questionNumber'] ?? null,
+                    ':exam_title' => isset($meta['examTitle']) ? mb_substr((string) $meta['examTitle'], 0, 500) : null,
+                    ':subject_slug' => isset($meta['subjectSlug']) ? mb_substr((string) $meta['subjectSlug'], 0, 255) : null,
+                    ':batch_id' => $batchId,
+                    ':failure_code' => (string) ($diagnostic['code'] ?? 'publication_failed'),
+                    ':failure_message' => (string) ($diagnostic['message'] ?? 'Falha ao publicar esta questao.'),
+                    ':payload_json' => $payloadJson,
+                ]);
+            } elseif (in_array($status, ['published', 'duplicate'], true)) {
+                $resolve->execute([':source_key' => (string) $sourceKey]);
+            }
+        }
+    }
+
+    /** @param array<string,mixed> $row @return array<string,mixed> */
+    private function formatGranFailureRow(array $row): array
+    {
+        return [
+            'failureId' => (int) $row['id'],
+            'sourceKey' => (string) $row['source_key'],
+            'provider' => (string) $row['provider'],
+            'externalQuestionId' => trim((string) ($row['external_question_id'] ?? '')) ?: null,
+            'questionNumber' => trim((string) ($row['question_number'] ?? '')) ?: null,
+            'examTitle' => trim((string) ($row['exam_title'] ?? '')) ?: null,
+            'subjectSlug' => trim((string) ($row['subject_slug'] ?? '')) ?: null,
+            'batchId' => isset($row['batch_id']) ? (int) $row['batch_id'] : null,
+            'code' => (string) $row['failure_code'],
+            'message' => (string) $row['failure_message'],
+            'status' => (string) $row['status'],
+            'attemptCount' => (int) $row['attempt_count'],
+            'firstFailedAt' => $row['first_failed_at'] ?? null,
+            'lastFailedAt' => $row['last_failed_at'] ?? null,
+            'resolvedAt' => $row['resolved_at'] ?? null,
+        ];
     }
 
     /** @param array<string,mixed> $row @return array<string,mixed> */
