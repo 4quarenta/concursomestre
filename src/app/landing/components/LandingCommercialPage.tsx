@@ -778,7 +778,7 @@ export const PricingSection = () => {
             >
               {option.label}
               {discountBadgesByCycle[option.key] > 0 && (
-                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-black text-emerald-600">
+                <span className="rounded-full bg-emerald-100 px-2 py-1 text-[9px] font-black text-emerald-800">
                   {discountBadgesByCycle[option.key]}% OFF
                 </span>
               )}
@@ -840,14 +840,14 @@ export const PricingSection = () => {
                 <div className="mt-7 text-center">
                   {showOffer ? (
                     <>
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400 line-through">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-600 line-through">
                         De {formatCurrency(offer.originalMonthlyAmount)}/mês
                       </p>
                       <p className="mt-1 text-3xl font-black text-[#07103a]">
                         {formatCurrency(offer.discountedMonthlyAmount)}
                         <span className="ml-1 text-sm font-semibold text-slate-500">/mês</span>
                       </p>
-                      <span className="mt-3 inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">
+                      <span className="mt-3 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-800">
                         {offer.effectiveDiscountPercent}% OFF
                       </span>
                     </>
