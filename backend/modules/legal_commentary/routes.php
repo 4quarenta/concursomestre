@@ -20,6 +20,7 @@ require_once __DIR__ . '/validators/LegalCommentaryAiEditorialValidator.php';
 require_once __DIR__ . '/../ai/services/AiService.php';
 require_once __DIR__ . '/../ai/repositories/AiRepository.php';
 require_once __DIR__ . '/../ai/validators/AiValidator.php';
+require_once __DIR__ . '/../seo/services/PublicSeoEnvelopeService.php';
 require_once __DIR__ . '/../../shared/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../../shared/security/AdminSecurity.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
@@ -189,11 +190,10 @@ function handleLegalCommentaryDetailRoute(PDO $db): void
 
         $controller = createLegalCommentaryController($db);
         $optionalUserId = resolveLegalCommentaryOptionalUserId();
-        Response::success(
-            $outlineOnly
-                ? $controller->detailOutline($identifier, $optionalUserId)
-                : $controller->detail($identifier, $optionalUserId, true)
-        );
+        $law = $outlineOnly
+            ? $controller->detailOutline($identifier, $optionalUserId)
+            : $controller->detail($identifier, $optionalUserId, true);
+        Response::success((new PublicSeoEnvelopeService())->attachLaw($law));
     } catch (RuntimeException $e) {
         if ((int) $e->getCode() === 404) {
             Response::notFound($e->getMessage());

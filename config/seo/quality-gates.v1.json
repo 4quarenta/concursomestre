@@ -1,0 +1,193 @@
+{
+  "version": "quality-gates.v1",
+  "enforcement": false,
+  "resources": {
+    "question": {
+      "enabled": true,
+      "hardChecks": [
+        {
+          "id": "statement_or_visual",
+          "reasonCode": "quality.question.missing_statement"
+        },
+        {
+          "id": "no_placeholder_content",
+          "reasonCode": "quality.question.placeholder_content"
+        },
+        {
+          "id": "alternatives_consistent_with_type",
+          "reasonCode": "quality.question.invalid_alternatives"
+        },
+        {
+          "id": "taxonomy_hierarchy_valid",
+          "reasonCode": "quality.question.invalid_taxonomy"
+        },
+        {
+          "id": "referenced_assets_resolvable",
+          "reasonCode": "quality.question.invalid_assets"
+        },
+        {
+          "id": "exam_context_coherent",
+          "reasonCode": "quality.question.incoherent_context"
+        }
+      ],
+      "softChecks": [
+        {
+          "id": "distinct_content",
+          "reasonCode": "quality.insufficient_distinct_content"
+        },
+        {
+          "id": "duplicate_candidate_reviewed",
+          "reasonCode": "quality.question.duplicate_exact"
+        }
+      ],
+      "thresholds": {
+        "minimumStatementCharacters": null,
+        "minimumDistinctiveCharacters": null
+      }
+    },
+    "exam": {
+      "enabled": true,
+      "hardChecks": [
+        {
+          "id": "stable_identity",
+          "reasonCode": "quality.exam.incomplete_identity"
+        },
+        {
+          "id": "board_identity",
+          "reasonCode": "quality.exam.missing_board"
+        },
+        {
+          "id": "required_relations",
+          "reasonCode": "quality.exam.missing_required_relations"
+        }
+      ],
+      "softChecks": [
+        {
+          "id": "official_files_or_public_questions",
+          "reasonCode": "quality.exam.missing_public_content"
+        }
+      ],
+      "thresholds": {
+        "minimumPublicQuestions": null,
+        "minimumOfficialFiles": null
+      }
+    },
+    "taxonomy": {
+      "enabled": true,
+      "hardChecks": [
+        {
+          "id": "stable_identity",
+          "reasonCode": "quality.taxonomy.incomplete_identity"
+        },
+        {
+          "id": "hierarchy_valid",
+          "reasonCode": "quality.taxonomy.invalid_hierarchy"
+        }
+      ],
+      "softChecks": [
+        {
+          "id": "distinct_public_content",
+          "reasonCode": "quality.taxonomy.missing_public_content"
+        },
+        {
+          "id": "editorial_context_when_required",
+          "reasonCode": "quality.missing_editorial_context"
+        }
+      ],
+      "thresholds": {
+        "minimumPublicItems": null,
+        "minimumEditorialCharacters": null
+      }
+    },
+    "board": {
+      "enabled": true,
+      "hardChecks": [
+        {
+          "id": "consolidated_identity",
+          "reasonCode": "quality.board.incomplete_identity"
+        }
+      ],
+      "softChecks": [
+        {
+          "id": "public_exams_or_questions",
+          "reasonCode": "quality.board.missing_public_content"
+        },
+        {
+          "id": "editorial_context_when_required",
+          "reasonCode": "quality.missing_editorial_context"
+        }
+      ],
+      "thresholds": {
+        "minimumPublicQuestions": null,
+        "minimumPublicExams": null
+      }
+    },
+    "law": {
+      "enabled": true,
+      "hardChecks": [
+        {
+          "id": "legal_identity",
+          "reasonCode": "quality.law.incomplete_identity"
+        },
+        {
+          "id": "public_legal_text",
+          "reasonCode": "quality.law.missing_legal_text"
+        }
+      ],
+      "softChecks": [
+        {
+          "id": "distinct_editorial_value",
+          "reasonCode": "quality.law.missing_editorial_context"
+        }
+      ],
+      "thresholds": {
+        "minimumPublicArticles": null,
+        "minimumEditorialCharacters": null
+      }
+    },
+    "contest": {
+      "enabled": true,
+      "hardChecks": [
+        {
+          "id": "contest_identity",
+          "reasonCode": "quality.incomplete_identity"
+        },
+        {
+          "id": "required_relations",
+          "reasonCode": "quality.missing_required_relations"
+        }
+      ],
+      "softChecks": [
+        {
+          "id": "distinct_public_information",
+          "reasonCode": "quality.insufficient_distinct_content"
+        }
+      ],
+      "thresholds": {
+        "minimumDistinctiveCharacters": null
+      }
+    },
+    "article": {
+      "enabled": true,
+      "hardChecks": [
+        {
+          "id": "headline_and_body",
+          "reasonCode": "quality.missing_required_content"
+        },
+        {
+          "id": "author_and_dates",
+          "reasonCode": "quality.incomplete_identity"
+        }
+      ],
+      "softChecks": [
+        {
+          "id": "distinct_editorial_value",
+          "reasonCode": "quality.insufficient_distinct_content"
+        }
+      ],
+      "thresholds": {
+        "minimumBodyCharacters": null
+      }
+    }
+  }
+}

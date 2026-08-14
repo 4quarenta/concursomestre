@@ -1,4 +1,5 @@
 import PublicInformationSeoSnapshot from '../PublicInformationSeoSnapshot';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import { buildSiteUrl } from '@/config/siteUrl';
 
 export default function PlansSeoSnapshot() {
@@ -20,7 +21,7 @@ export default function PlansSeoSnapshot() {
           paragraphs: ['A plataforma oferece opções para começar gratuitamente e ampliar os recursos conforme sua preparação evolui.'],
         },
       ]}
-      links={[{ href: '/practice', label: 'Conhecer as questões' }]}
+      links={[{ href: publicRoutes.questions.index(), label: 'Conhecer as questões' }]}
     />
   );
 }

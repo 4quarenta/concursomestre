@@ -105,7 +105,7 @@ assertBlogPlatform(
     'Blog comment notifications must use an article deep link.'
 );
 
-$sitemap = (string) file_get_contents($backend . '/scripts/seo/generate_static_blog_sitemaps.php');
+$sitemap = (string) file_get_contents($backend . '/modules/seo/sitemaps/StaticBlogSitemapGenerator.php');
 foreach (['google-news.xml', 'INTERVAL 2 DAY', 'LIMIT 1000', 'blog-sitemap.xml', 'blog-articles-%05d.xml'] as $needle) {
     assertBlogPlatform(str_contains($sitemap, $needle), 'Blog sitemap generator is missing ' . $needle . '.');
 }
@@ -175,7 +175,7 @@ foreach (['fetchBlogTagsForServer', 'fetchBlogPageForServer({ tag:', 'alternates
 }
 
 $cta = (string) file_get_contents($root . '/src/app/blog/BlogConversionCta.tsx');
-foreach (['hasActivePlanAccess', '/auth?mode=signup', '/plans', '/practice'] as $needle) {
+foreach (['hasActivePlanAccess', '/auth?mode=signup', '/plans', 'publicRoutes.questions.index()'] as $needle) {
     assertBlogPlatform(str_contains($cta, $needle), 'Contextual blog CTA is missing ' . $needle . '.');
 }
 

@@ -46,6 +46,7 @@ import { useNotificationsActions } from '@/state/notifications/useNotificationsA
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 import { clientLog } from '@services/monitoring/clientLog';
 import UserAvatar from '../ui/UserAvatar';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -422,7 +423,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const navItems: SidebarNavItem[] = ([
     { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', enabled: !!user, benefitKey: 'module.dashboard' },
-    { label: 'Quest\u00F5es', icon: BookOpen, path: '/practice', enabled: practiceEnabled, benefitKey: 'module.practice' },
+    { label: 'Quest\u00F5es', icon: BookOpen, path: publicRoutes.questions.index(), enabled: practiceEnabled, benefitKey: 'module.practice' },
     { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled, benefitKey: 'module.lei_comentada' },
     { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled, benefitKey: 'module.flashcards' },
     { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled, benefitKey: 'module.simulations' },

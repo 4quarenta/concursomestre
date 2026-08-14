@@ -20,6 +20,7 @@ import { useToast } from '@providers/ToastProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import CommentsSection from '../feedback/CommentsSection';
 import type { QuestaoComentario } from '@types';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocumentProxy = import('pdfjs-dist/legacy/build/pdf.mjs').PDFDocumentProxy;
@@ -653,9 +654,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                     {materialSubject && (
                         <button
                             onClick={() => {
-                                const subjectParam = encodeURIComponent(materialSubject);
-                                const topicParam = material?.topic ? `&topic=${encodeURIComponent(material.topic)}` : '';
-                                window.open(`/practice?subject=${subjectParam}${topicParam}`, '_blank');
+                                window.open(publicRoutes.questions.index({
+                                    subject: materialSubject,
+                                    ...(material?.topic ? { topic: material.topic } : {}),
+                                }), '_blank');
                             }}
                             className="p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold uppercase bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
                             title="Resolver Questões"

@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -237,7 +239,7 @@ class AdminCommentsModerationRepository
                     : (string) ($row['question_label'] ?? 'Questao'),
                 'targetPath' => $origin === 'material'
                     ? '/marketplace?openMaterial=' . urlencode($resolvedMaterialId)
-                    : '/practice?questionId=' . urlencode($targetId),
+                    : (new PublicRouteBuilder())->questionsIndex(['questionId' => $targetId]),
                 'status' => (string) ($row['moderation_status'] ?? 'approved'),
                 'createdAt' => (string) ($row['created_at'] ?? ''),
             ];
@@ -612,7 +614,7 @@ class AdminCommentsModerationRepository
             return '/marketplace?openMaterial=' . rawurlencode($materialId) . '&comment=' . rawurlencode($commentId);
         }
 
-        return '/practice?questionId=' . rawurlencode($targetId) . '#comment-' . rawurlencode($commentId);
+        return (new PublicRouteBuilder())->questionsIndex(['questionId' => $targetId]) . '#comment-' . rawurlencode($commentId);
     }
 
     private function buildLawCommentPath(array $source): string

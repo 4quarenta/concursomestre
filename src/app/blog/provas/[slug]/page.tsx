@@ -8,6 +8,7 @@ import BlogHeader from '../../BlogHeader';
 import { fetchPublicExamDetailForServer, type PublicExamFile, type PublicExamTaxonomy } from '../../blogServerData';
 import { serializeStructuredData } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 export const revalidate = 300;
 
@@ -30,8 +31,8 @@ export async function generateMetadata({ params }: PublicExamPageProps): Promise
   return {
     title: exam.title,
     description,
-    alternates: { canonical: `/blog/provas/${exam.slug}` },
-    openGraph: { title: exam.title, description, url: `/blog/provas/${exam.slug}`, type: 'article' },
+    alternates: { canonical: publicRoutes.exams.detail(exam.slug) },
+    openGraph: { title: exam.title, description, url: publicRoutes.exams.detail(exam.slug), type: 'article' },
   };
 }
 
@@ -49,7 +50,7 @@ export default async function PublicExamPage({ params }: PublicExamPageProps) {
     '@context': 'https://schema.org',
     '@type': 'LearningResource',
     name: exam.title,
-    url: buildSiteUrl(`/blog/provas/${exam.slug}`),
+    url: buildSiteUrl(publicRoutes.exams.detail(exam.slug)),
     inLanguage: 'pt-BR',
     educationalLevel: exam.level || undefined,
     provider: { '@type': 'Organization', name: exam.board?.name || 'ConcursoMestre' },
@@ -63,7 +64,7 @@ export default async function PublicExamPage({ params }: PublicExamPageProps) {
       <main>
         <section className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
-            <Link href="/blog/provas" className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline"><ArrowLeft size={16} /> Acervo de provas</Link>
+            <Link href={publicRoutes.exams.index()} className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline"><ArrowLeft size={16} /> Acervo de provas</Link>
             <div className="mt-5 flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.08em]">
               {exam.year ? <span className="rounded-md bg-indigo-50 px-3 py-2 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-200">{exam.year}</span> : null}
               <span className="rounded-md bg-slate-100 px-3 py-2 text-slate-600 dark:bg-slate-800 dark:text-slate-200">{exam.region} · {exam.stateName}</span>
@@ -114,7 +115,7 @@ export default async function PublicExamPage({ params }: PublicExamPageProps) {
               <Building2 size={22} />
               <h2 className="mt-3 text-xl font-black">Prepare-se com questões</h2>
               <p className="mt-2 text-sm leading-6 text-slate-300 dark:text-slate-600">Use os filtros da plataforma para praticar conteúdos desta banca, órgão e carreira.</p>
-              <Link href="/practice" className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-500"><BriefcaseBusiness size={17} /> Ir para questões</Link>
+              <Link href={publicRoutes.questions.index()} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-500"><BriefcaseBusiness size={17} /> Ir para questões</Link>
             </section>
           </aside>
         </section>
@@ -129,7 +130,7 @@ export default async function PublicExamPage({ params }: PublicExamPageProps) {
                     Selecionadas por banca, órgão, cargo, carreira, disciplina e proximidade de ano.
                   </p>
                 </div>
-                <Link href="/blog/provas" className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline">
+                <Link href={publicRoutes.exams.index()} className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline">
                   Ver acervo completo <ArrowRight size={15} />
                 </Link>
               </div>
@@ -144,7 +145,7 @@ export default async function PublicExamPage({ params }: PublicExamPageProps) {
                           </Link>
                         ) : null}
                         <h3 className="mt-2 line-clamp-3 text-base font-black leading-6 text-slate-950 dark:text-white">
-                          <Link href={`/blog/provas/${relatedExam.slug}`} className="hover:text-indigo-600">{relatedExam.title}</Link>
+                          <Link href={publicRoutes.exams.detail(relatedExam.slug)} className="hover:text-indigo-600">{relatedExam.title}</Link>
                         </h3>
                       </div>
                       {relatedExam.year ? <span className="shrink-0 rounded-md bg-slate-200 px-2 py-1 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">{relatedExam.year}</span> : null}
@@ -153,7 +154,7 @@ export default async function PublicExamPage({ params }: PublicExamPageProps) {
                       <span className="inline-flex items-center gap-1"><MapPin size={13} /> {relatedExam.region} · {relatedExam.stateName}</span>
                       <span className="inline-flex items-center gap-1"><CheckCircle2 size={13} /> {relatedExam.questionCount} questões</span>
                     </div>
-                    <Link href={`/blog/provas/${relatedExam.slug}`} className="mt-auto inline-flex items-center gap-1 pt-5 text-sm font-black text-indigo-600 hover:underline">
+                    <Link href={publicRoutes.exams.detail(relatedExam.slug)} className="mt-auto inline-flex items-center gap-1 pt-5 text-sm font-black text-indigo-600 hover:underline">
                       Ver prova <ArrowRight size={14} />
                     </Link>
                   </article>

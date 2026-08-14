@@ -7,6 +7,7 @@ import { buildSiteUrl } from '@/config/siteUrl';
 import { serializeStructuredData } from '@services/seo/structuredData';
 import PublicSuggestionsBoard from './PublicSuggestionsBoard';
 import { fetchPublicSuggestionsForServer } from './novidadesSuggestionServerData';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 export const revalidate = 300;
 
@@ -52,7 +53,7 @@ export default async function NovidadesPage({ searchParams }: NovidadesPageProps
             <BrandLogo width={180} priority variant="adaptive" alt="ConcursoMestre" />
           </Link>
           <nav className="flex items-center gap-1 text-sm font-bold" aria-label="Navegação principal">
-            <Link href="/practice" className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 sm:inline-flex">Questões</Link>
+            <Link href={publicRoutes.questions.index()} className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 sm:inline-flex">Questões</Link>
             <Link href="/blog" className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 sm:inline-flex">Blog</Link>
             <BlogAccountAction />
           </nav>

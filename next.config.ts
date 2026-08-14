@@ -140,6 +140,7 @@ const buildFrontendSecurityHeaders = (apiBaseUrl?: string) => [
 
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
+  skipTrailingSlashRedirect: true,
   turbopack: {
     root: path.join(__dirname),
   },
@@ -180,11 +181,6 @@ const nextConfig: NextConfig = {
         source: '/changelog',
         destination: '/novidades',
         permanent: true,
-      },
-      {
-        source: '/questions',
-        destination: '/practice',
-        permanent: false,
       },
     ];
   },

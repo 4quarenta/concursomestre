@@ -10,12 +10,11 @@
 */
 
 import type { SystemSettings } from '@types';
+import { isQuestionsIndexPath } from '@services/routes/publicRoutes';
 
 type FeatureKey = keyof NonNullable<SystemSettings['features']>;
 
 const MODULE_PATH_FEATURES: ReadonlyArray<{ prefix: string; key: FeatureKey }> = [
-  { prefix: '/practice', key: 'practiceEnabled' },
-  { prefix: '/questions', key: 'practiceEnabled' },
   { prefix: '/lei-comentada', key: 'annotatedLawsEnabled' },
   { prefix: '/flashcards', key: 'flashcardsEnabled' },
   { prefix: '/simulation', key: 'simulationsEnabled' },
@@ -69,6 +68,9 @@ export const resolveSystemFeatureFlag = (
 
 export const getModuleFeatureKeyForPath = (path: string): FeatureKey | null => {
   const normalizedPath = String(path || '').trim().split(/[?#]/, 1)[0];
+  if (isQuestionsIndexPath(normalizedPath)) {
+    return 'practiceEnabled';
+  }
   return MODULE_PATH_FEATURES.find(({ prefix }) => (
     normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
   ))?.key ?? null;

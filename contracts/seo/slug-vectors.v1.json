@@ -1,0 +1,125 @@
+{
+  "version": "slug-contract.v1",
+  "maxLength": 80,
+  "fallbackTemplate": "{type}-{id}",
+  "vectors": [
+    {
+      "id": "accent-constitution",
+      "input": "Constitui\u00e7\u00e3o Federal",
+      "expected": "constituicao-federal"
+    },
+    {
+      "id": "plain-words",
+      "input": "Direito Administrativo",
+      "expected": "direito-administrativo"
+    },
+    {
+      "id": "ordinal-masculine",
+      "input": "Art. 5\u00ba",
+      "expected": "art-5o"
+    },
+    {
+      "id": "law-number",
+      "input": "Lei n\u00ba 11.340/2006",
+      "expected": "lei-no-11-340-2006"
+    },
+    {
+      "id": "slash",
+      "input": "CEBRASPE/CESPE",
+      "expected": "cebraspe-cespe"
+    },
+    {
+      "id": "existing-hyphen",
+      "input": "PM-PB",
+      "expected": "pm-pb"
+    },
+    {
+      "id": "ampersand",
+      "input": "A\u00e7\u00e3o & Controle",
+      "expected": "acao-e-controle"
+    },
+    {
+      "id": "accent-person-place",
+      "input": "Jo\u00e3o Pessoa",
+      "expected": "joao-pessoa"
+    },
+    {
+      "id": "html-entity",
+      "input": "Direito &amp; Processo",
+      "expected": "direito-e-processo"
+    },
+    {
+      "id": "html-tags",
+      "input": "<strong>Direito</strong> Constitucional",
+      "expected": "direito-constitucional"
+    },
+    {
+      "id": "angle-bracket-text-is-not-html",
+      "input": "Elementos (< e >) exemplos",
+      "expected": "elementos-e-exemplos"
+    },
+    {
+      "id": "multiple-spaces",
+      "input": "Direito     Penal",
+      "expected": "direito-penal"
+    },
+    {
+      "id": "multiple-hyphens",
+      "input": "PM---PB",
+      "expected": "pm-pb"
+    },
+    {
+      "id": "quotes-parentheses",
+      "input": "\"Controle\" (Interno)",
+      "expected": "controle-interno"
+    },
+    {
+      "id": "symbols",
+      "input": "C# + C++",
+      "expected": "c-c"
+    },
+    {
+      "id": "unicode-decomposition",
+      "input": "\u00dcberpr\u00fcfung S\u00e3o Tom\u00e9",
+      "expected": "uberprufung-sao-tome"
+    },
+    {
+      "id": "ordinal-feminine",
+      "input": "1\u00aa Regi\u00e3o",
+      "expected": "1a-regiao"
+    },
+    {
+      "id": "long-word-boundary",
+      "input": "Uma descri\u00e7\u00e3o suficientemente longa para validar o corte pr\u00f3ximo ao limite m\u00e1ximo de oitenta caracteres sem quebrar palavras",
+      "expected": "uma-descricao-suficientemente-longa-para-validar-o-corte-proximo-ao-limite"
+    },
+    {
+      "id": "long-single-token",
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "exact-word-boundary-at-limit",
+      "input": "No departamento X de uma grande empresa estao lotados cinco gerentes os quais no desempenho",
+      "expected": "no-departamento-x-de-uma-grande-empresa-estao-lotados-cinco-gerentes-os-quais-no"
+    },
+    {
+      "id": "empty-fallback",
+      "input": "",
+      "fallback": {
+        "type": "question",
+        "id": "123"
+      },
+      "expected": "question-123"
+    },
+    {
+      "id": "symbols-fallback",
+      "input": "*** !!!",
+      "fallback": {
+        "type": "exam",
+        "id": "456"
+      },
+      "expected": "exam-456"
+    }
+  ]
+}

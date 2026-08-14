@@ -56,6 +56,7 @@ import { useUserProgressActions } from '@/state/user-progress/useUserProgressAct
 import { useUserProgressStore } from '@/state/user-progress/userProgressStore';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 import type { PracticeInitialQuestionPage } from './practiceTypes';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 const QuestionCard = dynamic(() => import('../questions/components/QuestionCard'), {
   loading: () => (
@@ -1041,7 +1042,7 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
 
   // URL query parameter for highlighting specific question or setting filters
   const searchParams = useSearchParams();
-  const pathname = usePathname() || '/practice';
+  const pathname = usePathname() || publicRoutes.questions.index();
   const router = useRouter();
   const setSearchParams = useCallback((nextSearchParams: URLSearchParams | Record<string, string> | ((current: URLSearchParams) => URLSearchParams)) => {
     const nextParams = typeof nextSearchParams === 'function'

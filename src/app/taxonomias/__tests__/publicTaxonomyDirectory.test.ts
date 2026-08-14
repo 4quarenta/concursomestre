@@ -63,7 +63,7 @@ describe('public taxonomy directories', () => {
     expect(boardPage).toContain('Inscrições abertas');
     expect(boardPage).toContain('Características na base');
     expect(boardPage).toContain('examSummary.completed');
-    expect(boardPage).toContain("query: { agency: board.acronym || board.name }");
+    expect(boardPage).toContain("publicRoutes.questions.index({ agency: board.acronym || board.name })");
     expect(questionCard).toContain('buildBoardPath(board)');
     expect(examPage).toContain('buildBoardPath(exam.board)');
   });

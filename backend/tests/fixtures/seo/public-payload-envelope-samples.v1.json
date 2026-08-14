@@ -1,0 +1,141 @@
+{
+  "version": "public-seo-envelope-samples.v1",
+  "samples": [
+    {
+      "resourceType": "question",
+      "legacySeo": {
+        "indexability": "INDEX",
+        "canonicalPath": "/question/101/questao-101",
+        "slug": "questao-101",
+        "publicationStatus": "published",
+        "qualityStatus": null
+      },
+      "payload": {
+        "id": 101,
+        "content": {
+          "statement": "Assinale a alternativa correta sobre atos administrativos.",
+          "statementClean": "Assinale a alternativa correta sobre atos administrativos.",
+          "supportText": "Considere a legislacao vigente.",
+          "reference": ""
+        },
+        "assets": [],
+        "contexts": [],
+        "filters": {
+          "subjects": [{ "id": 10, "label": "Direito Administrativo", "slug": "direito-administrativo" }],
+          "topics": [{ "id": 11, "label": "Atos administrativos", "slug": "atos-administrativos" }],
+          "subtopics": [],
+          "examBoards": [{ "id": 12, "label": "CEBRASPE", "slug": "cebraspe" }],
+          "organizations": [],
+          "roles": [],
+          "years": [2026]
+        },
+        "type": "single_choice",
+        "alternatives": [
+          { "id": "alt_a", "label": "A", "text": "Alternativa A", "assets": [] },
+          { "id": "alt_b", "label": "B", "text": "Alternativa B", "assets": [] }
+        ],
+        "publication": {
+          "status": "published",
+          "visibility": "public",
+          "publishedAt": "2026-08-12T12:00:00Z"
+        }
+      }
+    },
+    {
+      "resourceType": "exam",
+      "legacySeo": {
+        "indexability": "INDEX",
+        "canonicalPath": "/blog/provas/prova-pm-pb-2026",
+        "slug": "prova-pm-pb-2026",
+        "publicationStatus": "published",
+        "qualityStatus": null
+      },
+      "payload": {
+        "id": 201,
+        "title": "Prova PM-PB 2026",
+        "shortTitle": "PM-PB 2026",
+        "officialTitle": "Concurso Publico da Policia Militar da Paraiba",
+        "slug": "prova-pm-pb-2026",
+        "year": 2026,
+        "level": "Medio",
+        "questionCount": 80,
+        "board": { "id": 12, "name": "CEBRASPE", "slug": "cebraspe" },
+        "organizations": [{ "id": 13, "name": "PM-PB", "slug": "pm-pb" }],
+        "roles": [{ "id": 14, "name": "Soldado", "slug": "soldado" }],
+        "files": [{ "id": 1, "kind": "prova", "url": "/uploads/provas/201.pdf" }]
+      }
+    },
+    {
+      "resourceType": "board",
+      "legacySeo": {
+        "indexability": "INDEX",
+        "canonicalPath": "/bancas/cebraspe",
+        "slug": "cebraspe",
+        "publicationStatus": "published",
+        "qualityStatus": null
+      },
+      "payload": {
+        "board": {
+          "id": 301,
+          "name": "CEBRASPE",
+          "slug": "cebraspe",
+          "acronym": "CEBRASPE",
+          "description": "Informacoes publicas da banca.",
+          "website": "https://www.cebraspe.org.br",
+          "imageUrl": null,
+          "questionCount": 120,
+          "examCount": 15
+        },
+        "examSummary": { "total": 15, "open": 1, "upcoming": 1, "completed": 13, "unknown": 0 },
+        "topSubjects": [],
+        "questionProfile": [],
+        "exams": [],
+        "pageInfo": { "page": 1, "perPage": 12, "pages": 1, "total": 0, "hasPrevious": false, "hasMore": false }
+      }
+    },
+    {
+      "resourceType": "taxonomy",
+      "legacySeo": {
+        "indexability": "INDEX",
+        "canonicalPath": "/disciplinas/direito-administrativo",
+        "slug": "direito-administrativo",
+        "publicationStatus": "published",
+        "qualityStatus": null
+      },
+      "payload": {
+        "id": 401,
+        "name": "Direito Administrativo",
+        "slug": "direito-administrativo",
+        "taxonomyLevel": "materia",
+        "description": "Questoes de Direito Administrativo.",
+        "imageUrl": null,
+        "questionCount": 150,
+        "examCount": 20
+      }
+    },
+    {
+      "resourceType": "law",
+      "legacySeo": {
+        "indexability": "INDEX",
+        "canonicalPath": "/lei-comentada/lei-maria-da-penha",
+        "slug": "lei-maria-da-penha",
+        "publicationStatus": "published",
+        "qualityStatus": null
+      },
+      "payload": {
+        "id": 501,
+        "title": "Lei Maria da Penha",
+        "shortTitle": "Lei Maria da Penha",
+        "slug": "lei-maria-da-penha",
+        "lawNumber": "Lei 11.340",
+        "lawYear": 2006,
+        "description": "Texto legal organizado para estudo.",
+        "status": "published",
+        "publishedAt": "2026-08-12T12:00:00Z",
+        "articles": [{ "id": 1, "number": "1", "text": "Texto legal publico." }],
+        "teacherComments": [{ "body": "conteudo editorial protegido" }],
+        "detailedComment": "conteudo editorial protegido"
+      }
+    }
+  ]
+}

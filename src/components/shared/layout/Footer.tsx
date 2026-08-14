@@ -16,12 +16,13 @@ import Link from 'next/link';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { isModulePathEnabled } from '@services/system/moduleFlags';
 import PublicBrandLink from './PublicBrandLink';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 const FOOTER_COLUMNS = [
   {
     title: 'Explorar',
     links: [
-      { label: 'Quest\u00f5es', path: '/questions' },
+      { label: 'Quest\u00f5es', path: publicRoutes.questions.index() },
       { label: 'Disciplinas', path: '/disciplinas' },
       { label: 'Bancas', path: '/bancas' },
       { label: 'Simulados', path: '/simulation' },

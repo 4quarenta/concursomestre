@@ -9,6 +9,8 @@
 *
 */
 
+import type { SeoEnvelopeCarrier } from '@services/seo/seoEnvelope';
+
 export type LegalAreaSlug =
   | 'constitucional'
   | 'penal'
@@ -431,7 +433,7 @@ export interface LawSectionEditorial extends LegalContentReactionState {
   }>;
 }
 
-export interface LawDetail extends LawSummary {
+export interface LawDetail extends LawSummary, SeoEnvelopeCarrier {
   area: LegalArea;
   ementa: string;
   sections?: LawSection[];

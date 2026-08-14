@@ -15,6 +15,7 @@ import type {
   NotificationRuleSettings,
   NotificationSettings,
 } from '@types';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 const normalizeBoolean = (value: unknown, fallback: boolean): boolean => {
   if (typeof value === 'boolean') return value;
@@ -463,7 +464,7 @@ export const DEFAULT_NOTIFICATION_RULES: NotificationRuleSettings[] = [
     title: 'Questão salva',
     message: 'Você ganhou +3 XP por salvar uma questão para revisar.',
     type: 'success',
-    link: '/practice',
+    link: publicRoutes.questions.index(),
     enabled: true,
   },
   {

@@ -11,6 +11,11 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
+import {
+  parseSeoEnvelopeShadow,
+  seoEnvelopeFields,
+  type SeoEnvelopeCarrier,
+} from '@services/seo/seoEnvelope';
 import type {
   ExamFileAttachment,
   ExamFileKind,
@@ -169,7 +174,7 @@ type QuestionV2Alternative = {
   assets?: QuestionV2Asset[];
 };
 
-export type QuestionV2Detail = {
+export type QuestionV2Detail = SeoEnvelopeCarrier & {
   id?: string | number;
   source?: {
     origin?: string;
@@ -904,6 +909,11 @@ const readV2EditorialBody = (
 };
 
 export const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
+  const seoEnvelope = parseSeoEnvelopeShadow(detail, {
+    expectedResourceType: 'question',
+    expectedResourceId: detail.id,
+    source: 'questionService.mapV2DetailToQuestion',
+  });
   const filters = mapV2FiltersToLegacy(detail.filters);
   const alternatives = Array.isArray(detail.alternatives) ? detail.alternatives : [];
   const contexts = mapV2Contexts(detail.contexts);
@@ -974,6 +984,7 @@ export const mapV2DetailToQuestion = (detail: QuestionV2Detail): Question => {
     hasTeacherComment,
     hasDetailedComment,
     isSaved: Boolean(detail.userState?.isSaved),
+    ...seoEnvelopeFields(seoEnvelope.envelope),
   } as unknown as Question;
 
   return withQuestionPublicationAliases(legacyQuestion);

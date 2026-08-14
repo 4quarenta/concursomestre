@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../repositories/FiltersRepository.php';
 require_once __DIR__ . '/../validators/FiltersValidator.php';
+require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 
 /**
  * Service do dominio de filtros/taxonomias.
@@ -24,6 +25,7 @@ class FiltersService
 {
     private FiltersRepository $repository;
     private FiltersValidator $validator;
+    private PublicSeoEnvelopeService $publicSeoEnvelope;
 
     /**
      * Inicializa o service de filtros.
@@ -36,6 +38,7 @@ class FiltersService
     ) {
         $this->repository = $repository;
         $this->validator = $validator;
+        $this->publicSeoEnvelope = new PublicSeoEnvelopeService();
     }
 
     /**
@@ -212,8 +215,8 @@ class FiltersService
             $letter
         );
 
-        return [
-            'items' => array_map(static fn (array $row): array => [
+        $items = array_map(function (array $row) use ($directoryType): array {
+            $item = [
                 'id' => (int) $row['id'],
                 'name' => (string) $row['name'],
                 'slug' => (string) $row['slug'],
@@ -222,7 +225,19 @@ class FiltersService
                 'imageUrl' => $row['asset_url'] ?: null,
                 'questionCount' => (int) $row['question_count'],
                 'examCount' => (int) ($row['exam_count'] ?? 0),
-            ], $pageData['rows']),
+            ];
+
+            if ($directoryType === 'boards') {
+                return $this->publicSeoEnvelope->attachBoard($item);
+            }
+
+            $taxonomyPayload = $this->publicSeoEnvelope->attachTaxonomy($item + ['taxonomyLevel' => 'materia']);
+            unset($taxonomyPayload['taxonomyLevel']);
+            return $taxonomyPayload;
+        }, $pageData['rows']);
+
+        return [
+            'items' => $items,
             'pageInfo' => [
                 'page' => (int) $pageData['page'],
                 'perPage' => (int) $pageData['perPage'],
@@ -259,7 +274,7 @@ class FiltersService
             ];
         }
 
-        return [
+        $payload = [
             'board' => [
                 'id' => (int) $board['id'],
                 'name' => (string) $board['name'],
@@ -307,6 +322,8 @@ class FiltersService
                 'hasMore' => (int) $data['page'] < (int) $data['pages'],
             ],
         ];
+
+        return $this->publicSeoEnvelope->attachBoard($payload);
     }
 
     /**
@@ -325,14 +342,17 @@ class FiltersService
         $pageData = $this->repository->fetchPublicTaxonomyChildren($parentId, $page, $perPage);
 
         return [
-            'items' => array_map(static fn (array $row): array => [
-                'id' => (int) $row['id'],
-                'name' => (string) $row['name'],
-                'slug' => (string) $row['slug'],
-                'taxonomyLevel' => (string) ($row['taxonomy_level'] ?: 'assunto'),
-                'questionCount' => (int) $row['question_count'],
-                'hasChildren' => (bool) $row['has_children'],
-            ], $pageData['rows']),
+            'items' => array_map(function (array $row) use ($parentId): array {
+                return $this->publicSeoEnvelope->attachTaxonomy([
+                    'id' => (int) $row['id'],
+                    'name' => (string) $row['name'],
+                    'slug' => (string) $row['slug'],
+                    'taxonomyLevel' => (string) ($row['taxonomy_level'] ?: 'assunto'),
+                    'questionCount' => (int) $row['question_count'],
+                    'hasChildren' => (bool) $row['has_children'],
+                    'parentId' => $parentId,
+                ]);
+            }, $pageData['rows']),
             'pageInfo' => [
                 'page' => (int) $pageData['page'],
                 'perPage' => (int) $pageData['perPage'],

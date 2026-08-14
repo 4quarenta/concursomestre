@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://concursomestre.com/contracts/seo/reason-codes.v1.json",
+  "version": "reason-codes.v1",
+  "definitions": {
+    "publicationReasonCode": {
+      "type": "string",
+      "enum": [
+        "publication.unpublished",
+        "publication.scheduled",
+        "publication.blocked",
+        "publication.visibility_authenticated",
+        "publication.visibility_restricted",
+        "publication.access_denied",
+        "publication.embargo_active",
+        "publication.moderation_blocked",
+        "publication.provenance_unknown",
+        "publication.rights_unknown",
+        "publication.rights_not_evaluable",
+        "publication.rights_denied"
+      ]
+    },
+    "qualityReasonCode": {
+      "type": "string",
+      "enum": [
+        "quality.not_evaluated",
+        "quality.missing_required_content",
+        "quality.invalid_statement",
+        "quality.invalid_alternatives",
+        "quality.invalid_taxonomy",
+        "quality.invalid_assets",
+        "quality.incomplete_identity",
+        "quality.insufficient_distinct_content",
+        "quality.duplicate_candidate",
+        "quality.missing_editorial_context",
+        "quality.missing_required_relations",
+        "quality.check_not_evaluable",
+        "quality.question.missing_statement",
+        "quality.question.placeholder_content",
+        "quality.question.invalid_alternatives",
+        "quality.question.invalid_taxonomy",
+        "quality.question.incoherent_context",
+        "quality.question.invalid_assets",
+        "quality.question.duplicate_exact",
+        "quality.exam.incomplete_identity",
+        "quality.exam.missing_board",
+        "quality.exam.missing_required_relations",
+        "quality.exam.missing_public_content",
+        "quality.taxonomy.incomplete_identity",
+        "quality.taxonomy.invalid_hierarchy",
+        "quality.taxonomy.missing_public_content",
+        "quality.board.incomplete_identity",
+        "quality.board.missing_public_content",
+        "quality.law.incomplete_identity",
+        "quality.law.missing_legal_text",
+        "quality.law.missing_editorial_context"
+      ]
+    },
+    "indexabilityReasonCode": {
+      "type": "string",
+      "enum": [
+        "indexability.quality_failed",
+        "indexability.structural_noindex",
+        "indexability.non_public",
+        "indexability.editorial_promotion_required",
+        "indexability.non_canonical_environment",
+        "indexability.quality_not_evaluated",
+        "indexability.missing_canonical_identity",
+        "indexability.non_canonical_request"
+      ]
+    },
+    "resolutionReasonCode": {
+      "type": "string",
+      "enum": [
+        "resolution.slug_mismatch",
+        "resolution.alias",
+        "resolution.missing",
+        "resolution.removed",
+        "resolution.replacement_available"
+      ]
+    }
+  }
+}

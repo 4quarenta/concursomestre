@@ -23,7 +23,7 @@ const DEFAULT_ROUTE_BUDGETS = {
     maxXhrFetchRequests: 3,
     maxLoadMs: 1500,
   },
-  '/practice': {
+  '/questoes': {
     maxXhrFetchRequests: 4,
     maxLoadMs: 1800,
   },

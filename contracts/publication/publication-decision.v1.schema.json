@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://concursomestre.com/contracts/publication/publication-decision.v1.schema.json",
+  "title": "PublicationDecision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["policyVersion", "status", "visibility", "access", "reasonCodes"],
+  "properties": {
+    "policyVersion": {
+      "const": "publication-policy.v1"
+    },
+    "status": {
+      "enum": ["published", "unpublished", "scheduled", "blocked"]
+    },
+    "visibility": {
+      "enum": ["public", "authenticated", "restricted"]
+    },
+    "access": {
+      "enum": ["allowed", "denied"]
+    },
+    "reasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://concursomestre.com/contracts/seo/reason-codes.v1.json#/definitions/publicationReasonCode"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "blocked"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "access": {
+            "const": "denied"
+          }
+        }
+      }
+    }
+  ]
+}

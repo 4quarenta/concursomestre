@@ -116,14 +116,26 @@ assertContainsProductionSmoke(
 
 assertContainsProductionSmoke(
     $script,
+    '/questoes',
+    'Production smoke must check the canonical public questions route'
+);
+
+assertContainsProductionSmoke(
+    $script,
     '/practice',
-    'Production smoke must check the public practice route'
+    'Production smoke must check the legacy /practice alias'
 );
 
 assertContainsProductionSmoke(
     $script,
     '/questions',
     'Production smoke must check the /questions alias route'
+);
+
+assertContainsProductionSmoke(
+    $script,
+    "'expected_status' => 308",
+    'Production smoke must require permanent redirects for legacy aliases'
 );
 
 assertContainsProductionSmoke(

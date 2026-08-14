@@ -38,7 +38,8 @@
     "check:release-local": "npm run check:release-repos -- --report-file=.tmp/release-repos-status-latest.json && node scripts/checks/production-readiness-local.mjs --with-build --with-backend-readiness --web-base-url= --backend-readiness-report=.tmp/backend-readiness-suite-latest.json",
     "crawler:gran": "node tools/local-question-crawler/gran_capture.mjs",
     "test:crawler:gran": "node --test tools/local-question-crawler/__tests__/gran_mapper.node.mjs",
-    "seo:generate-static": "php backend/scripts/seo/generate_static_sitemaps.php"
+    "seo:generate-static": "php backend/scripts/seo/generate_static_sitemaps.php",
+    "seo:validate-static": "php backend/scripts/seo/validate_static_sitemaps.php"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
@@ -71,6 +72,7 @@
     "@types/react-dom": "^19",
     "@types/react-google-recaptcha": "^2.1.9",
     "@types/styled-components": "^5.1.36",
+    "ajv": "^6.14.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "jsdom": "^27.0.0",

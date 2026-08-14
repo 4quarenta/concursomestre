@@ -22,7 +22,7 @@ describe('blog editorial experience', () => {
     expect(source).toContain('hasActivePlanAccess');
     expect(source).toContain("'/auth?mode=signup'");
     expect(source).toContain("'/plans'");
-    expect(source).toContain("'/practice'");
+    expect(source).toContain('publicRoutes.questions.index()');
   });
 
   it('exposes navigable tags and regional discovery on public pages', () => {

@@ -70,6 +70,7 @@ import { supportService } from '@services/support';
 import { reportsService } from '@services/reports';
 import { questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import {
   getAccessPlanName,
@@ -1568,7 +1569,7 @@ const RelatedQuestionPreviewCard: React.FC<{ question: Question; index: number }
           </h3>
         </div>
         <Link
-          href={questionId ? `/practice?questionId=${encodeURIComponent(questionId)}` : '/practice'}
+          href={publicRoutes.questions.index(questionId ? { questionId } : undefined)}
           className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 px-3 text-xs font-black text-white transition-colors hover:bg-[#615fff] dark:bg-slate-100 dark:text-slate-950"
         >
           Resolver
@@ -2900,7 +2901,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
       }
     }
 
-    return `/practice?${params.toString()}`;
+    return publicRoutes.questions.index(params);
   }, [activeSection, law, relatedQuestionScope, relatedQuestionsState.rows]);
 
   const visibleArticles = React.useMemo(() => {

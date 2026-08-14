@@ -3,6 +3,7 @@ import { ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText
 import type { PublicExamDirectoryItem, PublicExamDirectoryPage } from './blogServerData';
 import { examDirectoryFacets, filterExamDirectory, groupExamDirectoryByYear, paginateExamDirectory, type ExamDirectoryFilters } from './examDirectory';
 import { buildBoardPath } from '@services/seo';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 interface BlogExamDirectoryProps {
   items: PublicExamDirectoryItem[];
@@ -33,14 +34,11 @@ export default function BlogExamDirectory({
   } : paginateExamDirectory(filtered, filters.page || 1, compact ? 8 : 12);
   const visible = pagination.items;
   const groups = groupExamDirectoryByYear(visible);
-  const pageHref = (page: number) => ({
-    pathname: '/blog/provas',
-    query: {
+  const pageHref = (page: number) => publicRoutes.exams.index({
       ...(filters.year ? { ano: filters.year } : {}),
       ...(filters.region ? { regiao: filters.region } : {}),
       ...(filters.state ? { estado: filters.state } : {}),
       ...(page > 1 ? { pagina: String(page) } : {}),
-    },
   });
 
   if (items.length === 0) return null;
@@ -57,7 +55,7 @@ export default function BlogExamDirectory({
             </p>
           </div>
           {compact ? (
-            <Link href="/blog/provas" className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline">
+            <Link href={publicRoutes.exams.index()} className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline">
               Ver todas <ArrowRight size={15} />
             </Link>
           ) : null}
@@ -66,13 +64,13 @@ export default function BlogExamDirectory({
         {compact ? (
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Anos com provas">
             {facets.years.slice(0, 8).map((year) => (
-              <Link key={year} href={`/blog/provas?ano=${year}`} className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
+              <Link key={year} href={publicRoutes.exams.index({ ano: year })} className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
                 {year}
               </Link>
             ))}
           </div>
         ) : (
-          <form action="/blog/provas" method="get" className="mt-6 grid gap-4 border-b border-slate-200 pb-6 sm:grid-cols-3 lg:grid-cols-[1fr_1fr_1fr_auto] dark:border-slate-800">
+          <form action={publicRoutes.exams.index()} method="get" className="mt-6 grid gap-4 border-b border-slate-200 pb-6 sm:grid-cols-3 lg:grid-cols-[1fr_1fr_1fr_auto] dark:border-slate-800">
             <label className="text-xs font-black uppercase text-slate-500">
               Ano
               <select name="ano" defaultValue={filters.year} className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
@@ -96,7 +94,7 @@ export default function BlogExamDirectory({
             </label>
             <div className="flex items-end gap-2">
               <button type="submit" className="inline-flex h-11 items-center justify-center rounded-md bg-slate-950 px-5 text-sm font-bold text-white hover:bg-indigo-700 dark:bg-white dark:text-slate-950">Filtrar</button>
-              <Link href="/blog/provas" className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">Limpar</Link>
+              <Link href={publicRoutes.exams.index()} className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">Limpar</Link>
             </div>
           </form>
         )}
@@ -111,7 +109,7 @@ export default function BlogExamDirectory({
                     <article key={exam.id} className="rounded-md border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          <Link href={`/blog/provas/${exam.slug}`} className="line-clamp-2 text-sm font-black leading-5 text-slate-950 hover:text-indigo-600 dark:text-white">
+                          <Link href={publicRoutes.exams.detail(exam.slug)} className="line-clamp-2 text-sm font-black leading-5 text-slate-950 hover:text-indigo-600 dark:text-white">
                             {exam.title}
                           </Link>
                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -132,7 +130,7 @@ export default function BlogExamDirectory({
                           {exam.answerKeyUrl ? <a href={exam.answerKeyUrl} target="_blank" rel="noreferrer" className={fileLinkClass}><Download size={14} /> Gabarito</a> : null}
                         </div>
                       ) : null}
-                      <Link href={`/blog/provas/${exam.slug}`} className="mt-4 inline-flex items-center gap-1 text-xs font-black text-indigo-600 hover:underline">
+                      <Link href={publicRoutes.exams.detail(exam.slug)} className="mt-4 inline-flex items-center gap-1 text-xs font-black text-indigo-600 hover:underline">
                         Ver detalhes <ArrowRight size={14} />
                       </Link>
                     </article>

@@ -3,6 +3,7 @@
 import { BookmarkCheck, ExternalLink, Loader2, Target, Trash2 } from 'lucide-react';
 import type { Question } from '../../../types';
 import { buildQuestionPath } from '@services/seo';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 type SavedQuestionRow = { id: string; question: Question | null };
 type AnswerSummary = { questionId: string | number; isCorrect?: boolean };
@@ -68,7 +69,7 @@ export default function SavedQuestionsPanel({ rows, total, answeredCount, isLoad
         </div> : rows.length > 0 ? <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500"><span>Questão</span><span>Ação</span></div>
             <div className="divide-y divide-slate-100 dark:divide-slate-800">{rows.map(({ id, question }) => {
-                const publicHref = question ? buildQuestionPath(question) : `/practice?questionId=${id}`;
+                const publicHref = question ? buildQuestionPath(question) : publicRoutes.questions.index({ questionId: id });
                 const answer = answers.find((item) => String(item.questionId) === id);
                 return <article key={id} className="grid grid-cols-1 gap-4 px-4 py-4 transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/30 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                     <div className="min-w-0">
@@ -83,7 +84,7 @@ export default function SavedQuestionsPanel({ rows, total, answeredCount, isLoad
                         <div className="mt-3 flex flex-wrap gap-2">{[board(question), year(question), difficulty(question)].map((label) => <span key={label} className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">{label}</span>)}</div>
                     </div>
                     <div className="flex items-center justify-end gap-2">
-                        <button type="button" onClick={() => navigate(`/practice?questionId=${id}`)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-700"><Target size={13} />Resolver</button>
+                        <button type="button" onClick={() => navigate(publicRoutes.questions.index({ questionId: id }))} className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-700"><Target size={13} />Resolver</button>
                         <button type="button" onClick={() => navigate(publicHref)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"><ExternalLink size={13} />Abrir</button>
                         <button type="button" onClick={() => remove(id)} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-100 bg-rose-50 text-rose-500 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300" title="Remover dos salvos" aria-label="Remover dos salvos"><Trash2 size={14} /></button>
                     </div>

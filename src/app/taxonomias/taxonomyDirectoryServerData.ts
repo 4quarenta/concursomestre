@@ -1,8 +1,12 @@
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
+import {
+  withValidatedSeoEnvelopeShadow,
+  type SeoEnvelopeCarrier,
+} from '@services/seo/seoEnvelope';
 
 export type PublicTaxonomyDirectoryKind = 'subjects' | 'boards';
 
-export type PublicTaxonomyDirectoryItem = {
+export type PublicTaxonomyDirectoryItem = SeoEnvelopeCarrier & {
   id: number;
   name: string;
   slug: string;
@@ -27,7 +31,7 @@ export type PublicTaxonomyDirectoryPage = {
 
 export type PublicBoardExamStatus = 'open' | 'upcoming' | 'completed' | 'unknown';
 
-export type PublicBoardDetail = {
+export type PublicBoardDetail = SeoEnvelopeCarrier & {
   board: PublicTaxonomyDirectoryItem & { website: string | null };
   examSummary: {
     total: number;
@@ -108,16 +112,27 @@ export const fetchPublicTaxonomyDirectory = async ({
     const pageInfo = record.pageInfo || EMPTY_PAGE.pageInfo;
 
     return {
-      items: Array.isArray(record.items) ? record.items.map((item) => ({
-        id: Number(item.id || 0),
-        name: String(item.name || '').trim(),
-        slug: String(item.slug || '').trim(),
-        acronym: item.acronym ? String(item.acronym).trim() : null,
-        description: item.description ? String(item.description).trim() : null,
-        imageUrl: item.imageUrl ? String(item.imageUrl).trim() : null,
-        questionCount: Math.max(0, Number(item.questionCount || 0)),
-        examCount: Math.max(0, Number(item.examCount || 0)),
-      })).filter((item) => item.id > 0 && item.name !== '') : [],
+      items: Array.isArray(record.items) ? record.items.map((item) => {
+        const expectedResourceType = type === 'boards' ? 'board' : 'taxonomy';
+        const validated = withValidatedSeoEnvelopeShadow(item as PublicTaxonomyDirectoryItem & Record<string, unknown>, {
+          expectedResourceType,
+          expectedResourceId: item.id,
+          source: `taxonomyDirectory.${type}`,
+        });
+        return {
+          id: Number(item.id || 0),
+          name: String(item.name || '').trim(),
+          slug: String(item.slug || '').trim(),
+          acronym: item.acronym ? String(item.acronym).trim() : null,
+          description: item.description ? String(item.description).trim() : null,
+          imageUrl: item.imageUrl ? String(item.imageUrl).trim() : null,
+          questionCount: Math.max(0, Number(item.questionCount || 0)),
+          examCount: Math.max(0, Number(item.examCount || 0)),
+          ...(validated.publicationDecision ? { publicationDecision: validated.publicationDecision } : {}),
+          ...(validated.seoDecision ? { seoDecision: validated.seoDecision } : {}),
+          ...(validated.seoFacts ? { seoFacts: validated.seoFacts } : {}),
+        };
+      }).filter((item) => item.id > 0 && item.name !== '') : [],
       pageInfo: {
         page: Math.max(1, Number(pageInfo.page || 1)),
         perPage: Math.max(1, Number(pageInfo.perPage || 30)),
@@ -161,8 +176,14 @@ export const fetchPublicBoardDetail = async ({
     const record = data as PublicBoardDetail;
     if (!record.board || Number(record.board.id || 0) <= 0) return null;
 
+    const validated = withValidatedSeoEnvelopeShadow(record as PublicBoardDetail & Record<string, unknown>, {
+      expectedResourceType: 'board',
+      expectedResourceId: record.board.id,
+      source: 'taxonomyDirectory.fetchPublicBoardDetail',
+    });
+
     return {
-      ...record,
+      ...validated,
       board: {
         ...record.board,
         id: Number(record.board.id),

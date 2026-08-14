@@ -65,6 +65,7 @@ import type {
   BankIntelLink,
   BankXrayPayload,
 } from '@services/bank-analysis/bankAnalysisService';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 type TaxonomyOption = {
   name?: string;
@@ -1309,7 +1310,7 @@ const BankAnalysis: React.FC = () => {
                 </div>
               </div>
               <a
-                href={`/practice?agency=${encodeURIComponent(selectedAgency)}`}
+                href={publicRoutes.questions.index({ agency: selectedAgency })}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700"
               >
                 Treinar essa banca <ChevronRight size={15} />

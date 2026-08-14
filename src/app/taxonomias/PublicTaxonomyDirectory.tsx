@@ -3,6 +3,7 @@ import { BookOpen, ChevronLeft, ChevronRight, FileText, Landmark, ListChecks, Se
 import { buildSiteUrl } from '@/config/siteUrl';
 import { serializeStructuredData } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import {
   PLATFORM_PAGE_DESCRIPTION_CLASS,
   PLATFORM_PAGE_TITLE_CLASS,
@@ -82,7 +83,7 @@ export default async function PublicTaxonomyDirectory({
         name: item.name,
         url: buildSiteUrl(type === 'boards'
           ? buildBoardPath(item)
-          : `/practice?${config.practiceQueryKey}=${encodeURIComponent(item.name)}`),
+          : publicRoutes.questions.index({ [config.practiceQueryKey]: item.name })),
       })),
     },
   };

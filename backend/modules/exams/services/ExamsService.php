@@ -14,18 +14,21 @@
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
 require_once __DIR__ . '/ExamLocationClassifier.php';
+require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 
 class ExamsService
 {
     private ExamsRepository $repository;
     private ExamsValidator $validator;
     private PDO $db;
+    private PublicSeoEnvelopeService $publicSeoEnvelope;
 
     public function __construct(ExamsRepository $repository, ExamsValidator $validator, PDO $db)
     {
         $this->repository = $repository;
         $this->validator = $validator;
         $this->db = $db;
+        $this->publicSeoEnvelope = new PublicSeoEnvelopeService();
     }
 
     public function list(array $query = []): array
@@ -184,7 +187,7 @@ class ExamsService
             )
         );
 
-        return [
+        $payload = [
             'id' => (int) $exam['id'],
             'title' => (string) $exam['nome'],
             'officialTitle' => trim((string) ($exam['tituloOficial'] ?? '')) ?: null,
@@ -212,6 +215,8 @@ class ExamsService
             'relatedExams' => $relatedExams,
             ...$location,
         ];
+
+        return $this->publicSeoEnvelope->attachExam($payload);
     }
 
     private function publicDirectoryItemFromRow(array $row): array

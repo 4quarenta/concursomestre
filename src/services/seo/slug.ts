@@ -11,11 +11,13 @@
 
 import type { Material, Question, Ranking } from '@types';
 import { getConfiguredSiteUrl } from '../../config/siteUrl';
+import { publicRoutes } from '@services/routes/publicRoutes';
+import { buildContractSlugV1 } from './slugContract';
 
 const MAX_SLUG_LENGTH = 80;
 const DEFAULT_CANONICAL_BASE_URL = getConfiguredSiteUrl().toString();
 
-const stripHtml = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+const stripHtml = (value: string) => value.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
 
 export const slugifyContent = (value: string) =>
   value
@@ -32,7 +34,10 @@ export const getQuestionSeoLabel = (question: Partial<Question>) => {
   return baseText || `questao-${question.id || 'publica'}`;
 };
 
-export const buildQuestionSlug = (question: Partial<Question>) => slugifyContent(getQuestionSeoLabel(question));
+export const buildQuestionSlug = (question: Partial<Question>) => buildContractSlugV1(
+  getQuestionSeoLabel(question),
+  { type: 'questao', id: question.id || 'publica' },
+);
 
 export const buildRankingSlug = (ranking: Partial<Ranking>) =>
   slugifyContent([ranking.name, ranking.institution].filter(Boolean).join(' '));
@@ -41,7 +46,7 @@ export const buildMaterialSlug = (material: Partial<Material>) =>
   slugifyContent(material.title || material.description || `material-${material.id || 'publico'}`);
 
 export const buildQuestionPath = (question: Partial<Question>) =>
-  `/question/${question.id}/${buildQuestionSlug(question)}`;
+  publicRoutes.questions.detail(String(question.id || ''), buildQuestionSlug(question));
 
 export const buildRankingPath = (ranking: Partial<Ranking>) =>
   `/ranking/${ranking.id}/${buildRankingSlug(ranking)}`;

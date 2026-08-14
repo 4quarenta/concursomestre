@@ -9,6 +9,7 @@
 *
 */
 
+import type { SeoEnvelopeCarrier } from '@services/seo/seoEnvelope';
 
 export enum Difficulty {
   VERY_EASY = 'Muito Fácil',
@@ -491,7 +492,7 @@ export interface GrupoQuestao {
   question_ids?: Array<number | string> | string;
 }
 
-export interface Question {
+export interface Question extends SeoEnvelopeCarrier {
   id?: number;
   hashId?: string;
   hash?: string;

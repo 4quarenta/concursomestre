@@ -1,0 +1,550 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://concursomestre.com/contracts/seo/seo-decision.v1.schema.json",
+  "title": "SeoDecision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policyVersion",
+    "resource",
+    "existence",
+    "quality",
+    "indexability",
+    "resolution",
+    "robots",
+    "sitemap"
+  ],
+  "properties": {
+    "policyVersion": {
+      "const": "seo-policy.v1"
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "enum": ["question", "exam", "taxonomy", "board", "law", "contest", "article", "page"]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 191
+        }
+      }
+    },
+    "existence": {
+      "enum": ["exists", "missing", "removed"]
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasonCodes"],
+      "properties": {
+        "status": {
+          "enum": ["PASS", "FAIL", "NOT_EVALUATED"]
+        },
+        "reasonCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://concursomestre.com/contracts/seo/reason-codes.v1.json#/definitions/qualityReasonCode"
+          }
+        }
+      }
+    },
+    "indexability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasonCodes"],
+      "properties": {
+        "status": {
+          "enum": ["INDEX", "NOINDEX"]
+        },
+        "reasonCodes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://concursomestre.com/contracts/seo/reason-codes.v1.json#/definitions/indexabilityReasonCode"
+          }
+        }
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "httpStatus", "target"],
+      "properties": {
+        "action": {
+          "enum": ["render", "redirect", "not_found", "gone"]
+        },
+        "httpStatus": {
+          "enum": [200, 301, 308, 404, 410]
+        },
+        "target": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      }
+    },
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "url", "slug"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/[^?#]*$",
+          "maxLength": 2048
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 80
+        }
+      }
+    },
+    "robots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "follow", "archive", "imageIndex"],
+      "properties": {
+        "index": {
+          "type": "boolean"
+        },
+        "follow": {
+          "type": "boolean"
+        },
+        "archive": {
+          "type": "boolean"
+        },
+        "imageIndex": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sitemap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eligible", "section", "lastModified"],
+      "properties": {
+        "eligible": {
+          "type": "boolean"
+        },
+        "section": {
+          "type": ["string", "null"],
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "maxLength": 80
+        },
+        "lastModified": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "indexability": {
+            "properties": {
+              "status": {
+                "const": "INDEX"
+              }
+            },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "required": ["canonical"],
+        "properties": {
+          "quality": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "resolution": {
+            "properties": {
+              "action": {
+                "const": "render"
+              },
+              "httpStatus": {
+                "const": 200
+              }
+            }
+          },
+          "robots": {
+            "properties": {
+              "index": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "indexability": {
+            "properties": {
+              "status": {
+                "const": "NOINDEX"
+              }
+            },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "robots": {
+            "properties": {
+              "index": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "quality": {
+            "properties": {
+              "status": {
+                "enum": ["FAIL", "NOT_EVALUATED"]
+              }
+            },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "indexability": {
+            "properties": {
+              "status": {
+                "const": "NOINDEX"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "robots": {
+            "properties": {
+              "index": {
+                "const": true
+              }
+            },
+            "required": ["index"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "indexability": {
+            "properties": {
+              "status": {
+                "const": "INDEX"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "sitemap": {
+            "properties": {
+              "eligible": {
+                "const": true
+              }
+            },
+            "required": ["eligible"]
+          }
+        }
+      },
+      "then": {
+        "required": ["canonical"],
+        "properties": {
+          "indexability": {
+            "properties": {
+              "status": {
+                "const": "INDEX"
+              }
+            }
+          },
+          "resolution": {
+            "properties": {
+              "action": {
+                "const": "render"
+              },
+              "httpStatus": {
+                "const": 200
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "existence": {
+            "const": "missing"
+          }
+        },
+        "required": ["existence"]
+      },
+      "then": {
+        "not": {
+          "required": ["canonical"]
+        },
+        "properties": {
+          "quality": {
+            "properties": {
+              "status": {
+                "const": "NOT_EVALUATED"
+              }
+            }
+          },
+          "indexability": {
+            "properties": {
+              "status": {
+                "const": "NOINDEX"
+              }
+            }
+          },
+          "resolution": {
+            "properties": {
+              "action": {
+                "const": "not_found"
+              },
+              "httpStatus": {
+                "const": 404
+              },
+              "target": {
+                "type": "null"
+              }
+            }
+          },
+          "sitemap": {
+            "properties": {
+              "eligible": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "existence": {
+            "const": "removed"
+          }
+        },
+        "required": ["existence"]
+      },
+      "then": {
+        "not": {
+          "required": ["canonical"]
+        },
+        "properties": {
+          "quality": {
+            "properties": {
+              "status": {
+                "const": "NOT_EVALUATED"
+              }
+            }
+          },
+          "indexability": {
+            "properties": {
+              "status": {
+                "const": "NOINDEX"
+              }
+            }
+          },
+          "resolution": {
+            "properties": {
+              "action": {
+                "enum": ["redirect", "gone"]
+              },
+              "httpStatus": {
+                "enum": [301, 308, 410]
+              }
+            }
+          },
+          "sitemap": {
+            "properties": {
+              "eligible": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolution": {
+            "properties": {
+              "action": {
+                "const": "render"
+              }
+            },
+            "required": ["action"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resolution": {
+            "properties": {
+              "httpStatus": {
+                "const": 200
+              },
+              "target": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolution": {
+            "properties": {
+              "action": {
+                "const": "redirect"
+              }
+            },
+            "required": ["action"]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": ["canonical"]
+        },
+        "properties": {
+          "resolution": {
+            "properties": {
+              "httpStatus": {
+                "enum": [301, 308]
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "sitemap": {
+            "properties": {
+              "eligible": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolution": {
+            "properties": {
+              "action": {
+                "const": "not_found"
+              }
+            },
+            "required": ["action"]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": ["canonical"]
+        },
+        "properties": {
+          "resolution": {
+            "properties": {
+              "httpStatus": {
+                "const": 404
+              },
+              "target": {
+                "type": "null"
+              }
+            }
+          },
+          "sitemap": {
+            "properties": {
+              "eligible": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolution": {
+            "properties": {
+              "action": {
+                "const": "gone"
+              }
+            },
+            "required": ["action"]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": ["canonical"]
+        },
+        "properties": {
+          "resolution": {
+            "properties": {
+              "httpStatus": {
+                "const": 410
+              },
+              "target": {
+                "type": "null"
+              }
+            }
+          },
+          "sitemap": {
+            "properties": {
+              "eligible": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

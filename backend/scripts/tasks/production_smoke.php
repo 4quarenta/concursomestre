@@ -562,22 +562,44 @@ function smokeWebChecks(?string $webBaseUrl, ?int $publicQuestionId, int $timeou
             ],
         ],
         [
-            'name' => 'practice',
-            'path' => '/practice',
+            'name' => 'questions_public',
+            'path' => '/questoes',
             'body_must_not_contain_any' => ['NEXT_REDIRECT'],
         ],
         [
-            'name' => 'questions_alias',
+            'name' => 'practice_alias',
+            'path' => '/practice',
+            'allow_redirect' => true,
+            'expected_status' => 308,
+            'body_must_not_contain_any' => ['NEXT_REDIRECT'],
+        ],
+        [
+            'name' => 'questions_english_alias',
             'path' => '/questions',
             'allow_redirect' => true,
+            'expected_status' => 308,
+            'body_must_not_contain_any' => ['NEXT_REDIRECT'],
+        ],
+        [
+            'name' => 'exams_public',
+            'path' => '/provas',
+            'body_must_not_contain_any' => ['NEXT_REDIRECT'],
+        ],
+        [
+            'name' => 'exams_legacy_alias',
+            'path' => '/blog/provas',
+            'allow_redirect' => true,
+            'expected_status' => 308,
             'body_must_not_contain_any' => ['NEXT_REDIRECT'],
         ],
     ];
 
     if ($publicQuestionId !== null && $publicQuestionId > 0) {
         $checks[] = [
-            'name' => 'question_public',
+            'name' => 'question_legacy_alias',
             'path' => '/question/' . $publicQuestionId,
+            'allow_redirect' => true,
+            'expected_status' => 308,
             'body_must_not_contain_any' => ['NEXT_REDIRECT'],
         ];
     }
@@ -595,8 +617,11 @@ function smokeWebChecks(?string $webBaseUrl, ?int $publicQuestionId, int $timeou
 
         $statusCode = (int) $result['status_code'];
         $allowsRedirect = !empty($check['allow_redirect']);
-        $statusOk = ($statusCode >= 200 && $statusCode < 300)
-            || ($allowsRedirect && in_array($statusCode, [301, 302, 303, 307, 308], true));
+        $expectedStatus = isset($check['expected_status']) ? (int) $check['expected_status'] : null;
+        $statusOk = $expectedStatus !== null
+            ? $statusCode === $expectedStatus
+            : (($statusCode >= 200 && $statusCode < 300)
+                || ($allowsRedirect && in_array($statusCode, [301, 302, 303, 307, 308], true)));
 
         $ok = $statusOk
             && $result['error'] === null

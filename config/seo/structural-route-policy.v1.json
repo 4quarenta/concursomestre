@@ -1,0 +1,422 @@
+{
+  "version": "structural-route-policy.v1",
+  "enforcement": false,
+  "parameterCatalog": {
+    "pagina": {
+      "classification": "pagination",
+      "multiValue": false
+    },
+    "q": {
+      "classification": "search",
+      "multiValue": false
+    },
+    "keyword": {
+      "classification": "search",
+      "multiValue": false
+    },
+    "subject": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "materia": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "difficulty": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "agency": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "organization": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "year": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "level": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "topic": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "topico": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "assunto": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "banca": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "orgao": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "cargo": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "role": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "career": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "modality": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "ano": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "ordenacao": {
+      "classification": "sort",
+      "multiValue": false
+    },
+    "sort": {
+      "classification": "sort",
+      "multiValue": false
+    },
+    "view": {
+      "classification": "ui_state",
+      "multiValue": false
+    },
+    "mode": {
+      "classification": "ui_state",
+      "multiValue": false
+    },
+    "tab": {
+      "classification": "ui_state",
+      "multiValue": false
+    },
+    "questionId": {
+      "classification": "ui_state",
+      "multiValue": false
+    },
+    "questionIds": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "question_ids": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "ids": {
+      "classification": "facet",
+      "multiValue": true
+    },
+    "articleId": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "hasTeacherComment": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "hasDetailedComment": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "excludeCanceled": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "excludeOutdated": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "onlySaved": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "excludeAnswered": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "excludeCorrect": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "excludeWrong": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "onlyCorrect": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "onlyWrong": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "regiao": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "estado": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "utm_*": {
+      "classification": "tracking",
+      "multiValue": false
+    },
+    "gclid": {
+      "classification": "tracking",
+      "multiValue": false
+    },
+    "fbclid": {
+      "classification": "tracking",
+      "multiValue": false
+    }
+  },
+  "families": [
+    {
+      "id": "home",
+      "patterns": ["/"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "questions_hub",
+      "patterns": ["/questoes"],
+      "legacyPatterns": ["/practice", "/questions"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["keyword", "q", "subject", "materia", "difficulty", "agency", "organization", "year", "level", "topic", "topico", "assunto", "banca", "orgao", "cargo", "role", "career", "modality", "ano", "questionId", "questionIds", "question_ids", "ids", "articleId", "hasTeacherComment", "hasDetailedComment", "excludeCanceled", "excludeOutdated", "onlySaved", "excludeAnswered", "excludeCorrect", "excludeWrong", "onlyCorrect", "onlyWrong", "ordenacao", "sort", "view", "mode", "tab", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "question_detail",
+      "patterns": ["/questoes/{id}/{slug}"],
+      "legacyPatterns": ["/question/{id}/{slug}", "/question/{id}"],
+      "audience": "public",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "discipline_hub",
+      "patterns": ["/disciplinas"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "discipline_detail",
+      "patterns": ["/disciplinas/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "topic_detail",
+      "patterns": ["/topicos/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "subject_detail",
+      "patterns": ["/assuntos/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "board_hub",
+      "patterns": ["/bancas"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "board_detail",
+      "patterns": ["/bancas/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "exam_hub",
+      "patterns": ["/provas"],
+      "legacyPatterns": ["/blog/provas"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "ano", "year", "banca", "orgao", "cargo", "regiao", "estado", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "exam_detail",
+      "patterns": ["/provas/{slug}"],
+      "legacyPatterns": ["/blog/provas/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "contest_hub",
+      "patterns": ["/concursos"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["pagina", "ano", "orgao", "cargo", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "contest_detail",
+      "patterns": ["/concursos/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "law_hub",
+      "patterns": ["/lei-comentada"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "law_detail",
+      "patterns": ["/lei-comentada/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "blog_hub",
+      "patterns": ["/blog"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "blog_article",
+      "patterns": ["/blog/{slug}"],
+      "audience": "public",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "search",
+      "patterns": ["/questoes?q={query}"],
+      "audience": "public",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["q", "pagina", "ordenacao", "view", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "facet",
+      "patterns": ["/questoes?{facets}"],
+      "audience": "public",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["materia", "topico", "assunto", "banca", "orgao", "cargo", "ano", "pagina", "ordenacao", "view", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "auth",
+      "patterns": ["/auth", "/recover", "/reset", "/verify-email"],
+      "audience": "public",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": [],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "private",
+      "patterns": ["/dashboard", "/profile/{*path}", "/simulation", "/cronograma", "/notifications"],
+      "audience": "authenticated",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": [],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "admin",
+      "patterns": ["/admin/{*path}"],
+      "audience": "admin",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": [],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "api",
+      "patterns": ["/api/{*path}"],
+      "audience": "api",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": [],
+      "paginationPolicy": "none"
+    }
+  ]
+}

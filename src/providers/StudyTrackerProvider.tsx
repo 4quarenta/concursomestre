@@ -31,6 +31,7 @@ import {
   syncPersistedStudyTotals,
 } from '@services/statistics/studyTrackerStore';
 import StudySessionWidget from '../components/shared/feedback/StudySessionWidget';
+import { resolveQuestionCollectionRouteCompatibility } from './questionRouteCompatibility';
 
 const IDLE_TIMEOUT_MS = 60_000;
 const AUTO_STOP_IDLE_MS = 5 * 60_000;
@@ -51,13 +52,13 @@ const isLegalCommentaryReadingPath = (pathname: string): boolean => {
 };
 
 const shouldRenderStudyWidget = (pathname: string): boolean => (
-  pathname.startsWith('/practice')
+  resolveQuestionCollectionRouteCompatibility(pathname)?.studyMode === 'practice'
   || pathname.startsWith('/simulation')
   || isLegalCommentaryReadingPath(pathname)
 );
 
 const resolveTrackedStudyMode = (pathname: string): 'practice' | 'reading' | null => {
-  if (pathname.startsWith('/practice')) {
+  if (resolveQuestionCollectionRouteCompatibility(pathname)?.studyMode === 'practice') {
     return 'practice';
   }
 

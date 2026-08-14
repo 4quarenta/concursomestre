@@ -14,6 +14,7 @@ import { MapPin, Search } from 'lucide-react';
 import BrandLogo from '@/components/shared/layout/BrandLogo';
 import BlogAccountAction from './BlogAccountAction';
 import { fetchBlogCategoriesForServer, fetchBlogTagsForServer } from './blogServerData';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 export default async function BlogHeader() {
   const [categories, tags] = await Promise.all([
@@ -37,10 +38,10 @@ export default async function BlogHeader() {
           </span>
         </div>
         <nav className="flex shrink-0 items-center gap-1 text-sm font-bold sm:gap-2" aria-label="Navegação principal do blog">
-          <Link href="/practice" className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 md:inline-flex">
+          <Link href={publicRoutes.questions.index()} className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 md:inline-flex">
             Questões
           </Link>
-          <Link href="/blog/provas" className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 md:inline-flex">
+          <Link href={publicRoutes.exams.index()} className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 md:inline-flex">
             Provas
           </Link>
           <Link href="/blog" className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 sm:inline-flex">

@@ -13,6 +13,10 @@ import { cache } from 'react';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { ENDPOINTS } from '@services/api/endpoints';
 import type { BlogArticle, BlogCategory, BlogPage, BlogTag } from '@services/blog';
+import {
+  withValidatedSeoEnvelopeShadow,
+  type SeoEnvelopeCarrier,
+} from '@services/seo/seoEnvelope';
 
 export interface PublicExamDirectoryItem {
   id: number;
@@ -63,7 +67,7 @@ export interface PublicExamFile {
   size: number | null;
 }
 
-export interface PublicExamDetail extends Omit<PublicExamDirectoryItem, 'board' | 'organizations'> {
+export interface PublicExamDetail extends Omit<PublicExamDirectoryItem, 'board' | 'organizations'>, SeoEnvelopeCarrier {
   officialTitle: string | null;
   shortTitle: string | null;
   noticeNumber: string | null;
@@ -192,5 +196,11 @@ export const fetchPublicExamDirectoryForServer = cache(async (limit = 24): Promi
 
 export const fetchPublicExamDetailForServer = cache(async (slug: string): Promise<PublicExamDetail | null> => {
   const payload = await fetchPublic<{ exam?: PublicExamDetail }>(ENDPOINTS.exams.publicDetail, { slug });
-  return payload?.exam && typeof payload.exam === 'object' ? payload.exam : null;
+  if (!payload?.exam || typeof payload.exam !== 'object') return null;
+
+  return withValidatedSeoEnvelopeShadow(payload.exam as PublicExamDetail & Record<string, unknown>, {
+    expectedResourceType: 'exam',
+    expectedResourceId: payload.exam.id,
+    source: 'blogServerData.fetchPublicExamDetailForServer',
+  });
 });

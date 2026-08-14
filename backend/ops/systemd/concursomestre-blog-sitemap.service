@@ -1,5 +1,5 @@
 [Unit]
-Description=Materialize ConcursoMestre blog and Google News sitemaps
+Description=Trigger the authoritative ConcursoMestre sitemap materialization
 After=network-online.target mysql.service
 
 [Service]
@@ -8,6 +8,6 @@ User=concursomestre
 Group=concursomestre
 WorkingDirectory=/home/concursomestre/htdocs/concursomestre.com
 EnvironmentFile=/etc/concursomestre/backend.env.production
-ExecStart=/usr/bin/php backend/scripts/seo/generate_static_blog_sitemaps.php
+ExecStart=/usr/bin/php backend/scripts/seo/generate_static_sitemaps.php
 NoNewPrivileges=true
 PrivateTmp=true

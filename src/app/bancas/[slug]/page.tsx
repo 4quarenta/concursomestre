@@ -21,6 +21,7 @@ import {
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import { serializeStructuredData } from '@services/seo/structuredData';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import {
   fetchPublicBoardDetail,
   type PublicBoardExamStatus,
@@ -167,7 +168,7 @@ export default async function PublicBoardPage({ params, searchParams }: BoardPag
               {board.description || 'Banca cadastrada no acervo público do ConcursoMestre. Os dados abaixo são calculados a partir das questões e provas publicadas.'}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link href={{ pathname: '/practice', query: { agency: board.acronym || board.name } }} className="inline-flex h-10 items-center gap-2 rounded-md bg-[#615fff] px-4 text-xs font-black text-white hover:bg-[#514dff]">
+              <Link href={publicRoutes.questions.index({ agency: board.acronym || board.name })} className="inline-flex h-10 items-center gap-2 rounded-md bg-[#615fff] px-4 text-xs font-black text-white hover:bg-[#514dff]">
                 <BookOpenCheck size={15} /> Resolver questões
               </Link>
               {board.website ? (
@@ -196,7 +197,7 @@ export default async function PublicBoardPage({ params, searchParams }: BoardPag
               {detail.topSubjects.map((subject) => (
                 <div key={subject.id}>
                   <div className="flex items-center justify-between gap-3 text-xs">
-                    <Link href={{ pathname: '/practice', query: { agency: board.acronym || board.name, materia: subject.name } }} className="min-w-0 truncate font-bold text-slate-700 hover:text-[#615fff] dark:text-slate-200">{subject.name}</Link>
+                    <Link href={publicRoutes.questions.index({ agency: board.acronym || board.name, materia: subject.name })} className="min-w-0 truncate font-bold text-slate-700 hover:text-[#615fff] dark:text-slate-200">{subject.name}</Link>
                     <span className="shrink-0 font-black text-slate-500">{subject.questionCount.toLocaleString('pt-BR')}</span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-[#615fff]" style={{ width: `${Math.max(4, (subject.questionCount / maxSubjectCount) * 100)}%` }} /></div>
@@ -248,7 +249,7 @@ export default async function PublicBoardPage({ params, searchParams }: BoardPag
                     <span className={`rounded-md border px-2 py-1 text-[10px] font-black uppercase ${STATUS_CLASSES[exam.status]}`}>{STATUS_LABELS[exam.status]}</span>
                     {exam.year ? <span className="text-xs font-black text-slate-400">{exam.year}</span> : null}
                   </div>
-                  <h3 className="mt-2 text-sm font-black leading-6 text-slate-950 dark:text-white"><Link href={`/blog/provas/${exam.slug}`} className="hover:text-[#615fff]">{exam.title}</Link></h3>
+                  <h3 className="mt-2 text-sm font-black leading-6 text-slate-950 dark:text-white"><Link href={publicRoutes.exams.detail(exam.slug)} className="hover:text-[#615fff]">{exam.title}</Link></h3>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                     {exam.organizations.length ? <span className="inline-flex items-center gap-1"><Building2 size={13} /> {exam.organizations.join(' / ')}</span> : null}
                     {exam.registrationStart && exam.registrationEnd ? <span>Inscrições: {formatDate(exam.registrationStart)} a {formatDate(exam.registrationEnd)}</span> : null}
@@ -256,7 +257,7 @@ export default async function PublicBoardPage({ params, searchParams }: BoardPag
                     <span>{exam.questionCount.toLocaleString('pt-BR')} questões</span>
                   </div>
                 </div>
-                <Link href={`/blog/provas/${exam.slug}`} className="inline-flex h-10 shrink-0 items-center justify-center gap-1 rounded-md border border-slate-200 px-4 text-xs font-black text-slate-600 hover:border-[#615fff]/40 hover:text-[#615fff] dark:border-slate-700 dark:text-slate-200">Ver prova <ArrowRight size={14} /></Link>
+                <Link href={publicRoutes.exams.detail(exam.slug)} className="inline-flex h-10 shrink-0 items-center justify-center gap-1 rounded-md border border-slate-200 px-4 text-xs font-black text-slate-600 hover:border-[#615fff]/40 hover:text-[#615fff] dark:border-slate-700 dark:text-slate-200">Ver prova <ArrowRight size={14} /></Link>
               </article>
             ))}
           </div>

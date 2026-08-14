@@ -28,6 +28,7 @@ import {
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import { buildAbsoluteUrl, buildBoardPath, buildQuestionPath, buildQuestionSlug, summarizeSeoText, useDocumentSeo } from '@services/seo';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import {
   buildQuestionKeywordPills,
   buildQuestionKeywords,
@@ -59,9 +60,10 @@ const getQuestionRoleLabel = (item: unknown) => {
 
 type QuestionPublicPageProps = {
   initialQuestion?: Question | null;
+  routeFamily?: 'legacy' | 'future';
 };
 
-const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion = null }) => {
+const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion = null, routeFamily = 'legacy' }) => {
   const params = useParams<{ id?: string; slug?: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const routeSlug = Array.isArray(params.slug) ? params.slug.join('/') : params.slug;
@@ -130,7 +132,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
   }, [question]);
 
   React.useEffect(() => {
-    if (!question?.id || !canonicalPath) {
+    if (routeFamily !== 'legacy' || !question?.id || !canonicalPath) {
       return;
     }
 
@@ -138,7 +140,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
     if (routeSlug !== canonicalSlug) {
       router.replace(canonicalPath);
     }
-  }, [canonicalPath, question, routeSlug, router]);
+  }, [canonicalPath, question, routeFamily, routeSlug, router]);
 
   const questionContext = React.useMemo(() => question ? getQuestionContextLabels(question) : null, [question]);
   const questionKeywords = React.useMemo(() => question ? buildQuestionKeywords(question) : [], [question]);
@@ -147,7 +149,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
   useDocumentSeo(question ? {
     title: `${buildQuestionMetaTitle(question)} | ConcursoMestre`,
     description: buildQuestionMetaDescription(question),
-    canonical: buildAbsoluteUrl(canonicalPath || `/question/${question.id}`),
+    canonical: buildAbsoluteUrl(canonicalPath || buildQuestionPath(question)),
     ogTitle: summarizeSeoText(buildQuestionMetaTitle(question), 95),
     ogDescription: summarizeSeoText(buildQuestionMetaDescription(question), 180),
   } : null);
@@ -169,7 +171,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
       '@type': 'Quiz',
       name: buildQuestionMetaTitle(question),
       description: buildQuestionMetaDescription(question),
-      url: buildAbsoluteUrl(canonicalPath || `/question/${question.id}`),
+      url: buildAbsoluteUrl(canonicalPath || buildQuestionPath(question)),
       educationalLevel: questionContext?.nivel || 'Concursos públicos',
       about: keywordPills,
       assesses: questionContext?.assuntos?.join(', ') || questionContext?.assunto || 'Conhecimentos para concursos',
@@ -199,7 +201,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
       return;
     }
 
-    router.push(`/practice?questionId=${encodeURIComponent(questionId)}`);
+    router.push(publicRoutes.questions.index({ questionId }));
   }, [currentUser, isAuthLoading, isCanceledQuestion, questionId, router]);
 
   if (isLoading) {
@@ -223,7 +225,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
           <h1 className={PLATFORM_PAGE_TITLE_CLASS}>Não foi possível abrir esta questão</h1>
           <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>{error || 'A questão solicitada não está disponível no momento.'}</p>
           <Link
-            href="/practice"
+            href={publicRoutes.questions.index()}
             className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700"
           >
             Ir para a prática <ArrowRight size={14} />
@@ -273,7 +275,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
               )}
             </div>
             <Link
-              href={`/practice?questionId=${question.id}`}
+              href={publicRoutes.questions.index({ questionId: question.id })}
               onClick={(event) => {
                 event.preventDefault();
                 handleOpenPractice();
@@ -452,7 +454,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
                 </p>
                 <div className="mt-5 flex flex-col gap-3">
                   <Link
-                    href={`/practice?questionId=${question.id}`}
+                    href={publicRoutes.questions.index({ questionId: question.id })}
                     onClick={(event) => {
                       event.preventDefault();
                       handleOpenPractice();

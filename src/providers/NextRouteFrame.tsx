@@ -27,6 +27,8 @@ import {
 import { subscriptionsService } from '@/services/subscriptions';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import type { PlanBenefitKey } from '@types';
+import { resolveExamPublicRouteCompatibility } from './examRouteCompatibility';
+import { resolveQuestionCollectionRouteCompatibility } from './questionRouteCompatibility';
 
 const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/auth',
@@ -47,12 +49,13 @@ const ROUTES_WITHOUT_PLATFORM_SHELL = [
 
 const isWithoutPlatformShell = (pathname: string) => (
   ROUTES_WITHOUT_PLATFORM_SHELL.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+  || resolveExamPublicRouteCompatibility(pathname)?.withoutPlatformShell === true
   || pathname.startsWith('/l/')
 );
 
 const followsGlobalLoginRequirement = (pathname: string) => (
-  pathname.startsWith('/concursos')
-  || pathname.startsWith('/practice')
+  resolveQuestionCollectionRouteCompatibility(pathname)?.requiresGlobalLoginWhenEnabled === true
+  || pathname.startsWith('/concursos')
   || pathname.startsWith('/lei-comentada')
   || pathname.startsWith('/flashcards')
   || pathname.startsWith('/simulation')
@@ -70,13 +73,14 @@ const alwaysRequiresAuthenticatedUser = (pathname: string) => (
 );
 
 const allowsPublicServerRender = (pathname: string) => (
-  pathname.startsWith('/practice')
+  resolveQuestionCollectionRouteCompatibility(pathname)?.allowsPublicServerRender === true
   || pathname.startsWith('/lei-comentada')
   || pathname.startsWith('/support')
 );
 
 const featureGateForPath = (pathname: string): { key: Parameters<typeof resolveSystemFeatureFlag>[1]; label: string } | null => {
-  if (pathname.startsWith('/practice')) return { key: 'practiceEnabled', label: 'Questoes' };
+  const questionCompatibility = resolveQuestionCollectionRouteCompatibility(pathname);
+  if (questionCompatibility) return { key: questionCompatibility.featureKey, label: questionCompatibility.featureLabel };
   if (pathname.startsWith('/lei-comentada')) return { key: 'annotatedLawsEnabled', label: 'Lei comentada' };
   if (pathname.startsWith('/flashcards')) return { key: 'flashcardsEnabled', label: 'Flashcards' };
   if (pathname.startsWith('/simulation')) return { key: 'simulationsEnabled', label: 'Simulados' };
@@ -93,8 +97,15 @@ type RoutePlanGate = {
 };
 
 const planGateForPath = (pathname: string): RoutePlanGate | null => {
+  const questionCompatibility = resolveQuestionCollectionRouteCompatibility(pathname);
+  if (questionCompatibility) {
+    return {
+      keys: [...questionCompatibility.planBenefitKeys],
+      copyKey: questionCompatibility.planCopyKey,
+      label: questionCompatibility.planLabel,
+    };
+  }
   if (pathname.startsWith('/dashboard')) return { keys: ['module.dashboard'], copyKey: 'module.dashboard', label: 'Dashboard premium' };
-  if (pathname.startsWith('/practice')) return { keys: ['module.practice'], copyKey: 'module.practice', label: 'Prática de questões' };
   if (pathname.startsWith('/lei-comentada')) return { keys: ['module.lei_comentada'], copyKey: 'module.lei_comentada', label: 'Lei comentada' };
   if (pathname.startsWith('/flashcards')) return { keys: ['module.flashcards'], copyKey: 'module.flashcards', label: 'Flashcards' };
   if (pathname.startsWith('/simulation')) return { keys: ['module.simulations'], copyKey: 'module.simulations', label: 'Simulados' };

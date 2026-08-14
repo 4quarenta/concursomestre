@@ -1,0 +1,75 @@
+{
+  "version": "seo-shadow-projections.v1",
+  "projections": [
+    {
+      "resourceType": "question",
+      "resourceId": "101",
+      "existence": "exists",
+      "routeFamily": "question_detail",
+      "routeParameters": {},
+      "publicationInput": {"status": "published", "visibility": "public", "provenanceStatus": "unknown", "rightsStatus": "not_evaluable"},
+      "publicData": {"id": "101", "statement": "Assinale a alternativa correta.", "subjectName": "Direito Administrativo", "boardName": "CEBRASPE", "year": 2026, "breadcrumbs": []},
+      "qualityEvidence": {"hasVisual": false, "alternativesValid": true, "taxonomyValid": true, "assetsValid": true, "contextCoherent": true, "distinctContentValid": true, "exactDuplicateCount": 1}
+    },
+    {
+      "resourceType": "question",
+      "resourceId": "102",
+      "existence": "exists",
+      "routeFamily": "question_detail",
+      "routeParameters": {},
+      "publicationInput": {"status": "published", "visibility": "public", "provenanceStatus": "known", "rightsStatus": "allowed"},
+      "publicData": {"id": "102", "statement": "Enunciado ainda nao preenchido.", "breadcrumbs": []},
+      "qualityEvidence": {"hasVisual": false, "alternativesValid": false, "taxonomyValid": false, "assetsValid": true, "contextCoherent": true, "distinctContentValid": true, "exactDuplicateCount": 1}
+    },
+    {
+      "resourceType": "question",
+      "resourceId": "103",
+      "existence": "exists",
+      "routeFamily": "question_detail",
+      "routeParameters": {},
+      "publicationInput": {"status": "published", "visibility": "public", "provenanceStatus": "unknown", "rightsStatus": "not_evaluable"},
+      "publicData": {"id": "103", "statement": "Questao valida sem evidencias estruturais suficientes.", "breadcrumbs": []},
+      "qualityEvidence": {}
+    },
+    {
+      "resourceType": "exam",
+      "resourceId": "201",
+      "existence": "exists",
+      "routeFamily": "exam_detail",
+      "routeParameters": {},
+      "publicationInput": {"status": "published", "visibility": "public", "provenanceStatus": "known", "rightsStatus": "allowed"},
+      "publicData": {"id": "201", "displayName": "CEBRASPE - 2026 - PM-PB - Soldado", "boardName": "CEBRASPE", "organizationNames": ["PM-PB"], "roleNames": ["Soldado"], "year": 2026, "breadcrumbs": []},
+      "qualityEvidence": {"relationsValid": true, "officialFileCount": 1, "publicQuestionCount": 20}
+    },
+    {
+      "resourceType": "taxonomy",
+      "resourceId": "301",
+      "existence": "exists",
+      "routeFamily": "discipline_detail",
+      "routeParameters": {},
+      "publicationInput": {"status": "published", "visibility": "public", "provenanceStatus": "known", "rightsStatus": "allowed"},
+      "publicData": {"id": "301", "displayName": "Direito Administrativo", "taxonomyKind": "discipline", "publicDescription": "Questoes de Direito Administrativo.", "editorialIntroduction": "Apresentacao editorial publica.", "publicItemCount": 120, "breadcrumbs": []},
+      "qualityEvidence": {"hierarchyValid": true, "publicContentValid": true, "editorialContextValid": true}
+    },
+    {
+      "resourceType": "board",
+      "resourceId": "401",
+      "existence": "exists",
+      "routeFamily": "board_detail",
+      "routeParameters": {},
+      "publicationInput": {"status": "published", "visibility": "public", "provenanceStatus": "known", "rightsStatus": "allowed"},
+      "publicData": {"id": "401", "displayName": "CEBRASPE", "acronym": "CEBRASPE", "fullName": "Centro Brasileiro de Pesquisa em Avaliacao e Selecao", "publicDescription": "Informacoes publicas.", "editorialIntroduction": "Caracteristicas da banca.", "publicQuestionCount": 500, "publicExamCount": 30, "breadcrumbs": []},
+      "qualityEvidence": {"editorialContextValid": true}
+    },
+    {
+      "resourceType": "law",
+      "resourceId": "501",
+      "existence": "exists",
+      "routeFamily": "law_detail",
+      "routeParameters": {},
+      "publicationInput": {"status": "published", "visibility": "public", "provenanceStatus": "known", "rightsStatus": "not_evaluable"},
+      "publicData": {"id": "501", "displayName": "Lei Maria da Penha", "identifier": "Lei 11.340/2006", "jurisdiction": "Brasil", "articleCount": 46, "publicDescription": "Texto legal publico.", "commentaryExcerpt": "Comentario editorial publico.", "breadcrumbs": []},
+      "qualityEvidence": {"editorialContextValid": true}
+    }
+  ]
+}

@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 
 /**
  * Service oficial do dominio de comentarios.
@@ -364,7 +365,7 @@ class CommentsService
             return '/marketplace?openMaterial=' . $this->resolveMaterialId($targetId);
         }
 
-        return '/practice?questionId=' . $targetId;
+        return (new PublicRouteBuilder())->questionsIndex(['questionId' => $targetId]);
     }
 
     private function enforceCommentQuota(string $userId, string $role): void

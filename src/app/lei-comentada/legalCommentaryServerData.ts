@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { ENDPOINTS } from '@services/api/endpoints';
 import type { LawDetail, LegalHomeSnapshot } from '@types';
+import { withValidatedSeoEnvelopeShadow } from '@services/seo/seoEnvelope';
 
 type FetchLike = typeof fetch;
 
@@ -98,7 +99,12 @@ const fetchLawDetailUncached = async (
 
   try {
     const payload = await fetchPublicJson(buildLawDetailServerUrl(normalizedSlug, apiBaseUrl), fetchImpl);
-    return isLawDetail(payload) ? payload : null;
+    if (!isLawDetail(payload)) return null;
+    return withValidatedSeoEnvelopeShadow(payload as LawDetail & Record<string, unknown>, {
+      expectedResourceType: 'law',
+      expectedResourceId: payload.id,
+      source: 'legalCommentaryServerData.fetchLawDetail',
+    });
   } catch {
     return null;
   }

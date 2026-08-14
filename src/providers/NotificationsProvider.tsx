@@ -9,6 +9,8 @@ import { clientLog } from '@services/monitoring/clientLog';
 import { getAccessToken, isAccessTokenExpired } from '@services/auth/session';
 import { createVisibilityAwarePoller } from '@services/api';
 import { usePathname } from 'next/navigation';
+import { resolveExamPublicRouteCompatibility } from './examRouteCompatibility';
+import { resolveQuestionCollectionRouteCompatibility } from './questionRouteCompatibility';
 
 interface NotificationsProviderProps {
   children: React.ReactNode;
@@ -23,7 +25,7 @@ const INITIAL_FETCH_DELAY_HEAVY_ROUTE_MS = 8000;
 
 const shouldUseHeavyBootstrapDelay = (pathname: string) => (
   pathname.startsWith('/dashboard')
-  || pathname.startsWith('/practice')
+  || resolveQuestionCollectionRouteCompatibility(pathname)?.heavyNotificationBootstrap === true
   || pathname.startsWith('/admin/panel')
 );
 
@@ -35,7 +37,9 @@ const ROUTES_WITHOUT_NOTIFICATION_BOOTSTRAP = [
 const shouldBootstrapNotificationsForPath = (pathname: string) => !(
   ROUTES_WITHOUT_NOTIFICATION_BOOTSTRAP.some((route) => (
     pathname === route || (route !== '/' && pathname.startsWith(`${route}/`))
-  )) || pathname.startsWith('/l/')
+  ))
+  || resolveExamPublicRouteCompatibility(pathname)?.skipNotificationBootstrap === true
+  || pathname.startsWith('/l/')
 );
 
 const scheduleNotificationsBootstrapFetch = (task: () => void): (() => void) => {

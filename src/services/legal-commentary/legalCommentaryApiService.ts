@@ -12,6 +12,7 @@
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import { getCurrentUserSnapshot } from '@services/auth/session';
+import { withValidatedSeoEnvelopeShadow } from '@services/seo/seoEnvelope';
 import type { AxiosRequestConfig } from 'axios';
 import type {
   ArticleExamTip,
@@ -190,6 +191,15 @@ export interface LegalEditorialGenerationInput {
 }
 
 const unwrap = <T>(response: unknown, fallback: T): T => readApiData<T>(response, fallback);
+
+const validatePublicLawSeoEnvelope = (law: LawDetail | null, source: string): LawDetail | null => {
+  if (!law || typeof law !== 'object') return null;
+  return withValidatedSeoEnvelopeShadow(law as LawDetail & Record<string, unknown>, {
+    expectedResourceType: 'law',
+    expectedResourceId: law.id,
+    source,
+  });
+};
 
 type LegalMutationProgress = {
   xpGain?: number;
@@ -639,7 +649,10 @@ export const legalCommentaryApiService = {
       const response = await apiClient.get(ENDPOINTS.legalCommentary.detail, publicReadRequestConfig({
         params: { slug: normalizedSlug },
       }));
-      const lawDetail = unwrap<LawDetail | null>(response, null);
+      const lawDetail = validatePublicLawSeoEnvelope(
+        unwrap<LawDetail | null>(response, null),
+        'legalCommentaryApiService.getLawDetail',
+      );
       if (lawDetail) {
         lawDetailCache.set(cacheKey, lawDetail);
       } else {
@@ -682,7 +695,10 @@ export const legalCommentaryApiService = {
         params: { slug: normalizedSlug, outline: 1 },
         timeout: OUTLINE_REQUEST_TIMEOUT_MS,
       }));
-      const lawDetail = unwrap<LawDetail | null>(response, null);
+      const lawDetail = validatePublicLawSeoEnvelope(
+        unwrap<LawDetail | null>(response, null),
+        'legalCommentaryApiService.getLawOutline',
+      );
       if (lawDetail) {
         lawOutlineCache.set(cacheKey, lawDetail);
       } else {

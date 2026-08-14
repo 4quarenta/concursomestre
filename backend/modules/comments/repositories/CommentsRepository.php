@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 
 /*
 * ----------------------------------------------------
@@ -586,7 +587,7 @@ class CommentsRepository
                 'social',
                 $targetType === 'material'
                     ? '/marketplace?openMaterial=' . rawurlencode(str_replace(['-qa', '-reviews'], '', $targetId)) . '&comment=' . rawurlencode($commentId)
-                    : '/practice?questionId=' . rawurlencode($targetId) . '#comment-' . rawurlencode($commentId),
+                    : (new PublicRouteBuilder())->questionsIndex(['questionId' => $targetId]) . '#comment-' . rawurlencode($commentId),
                 'comment_published'
             );
         }

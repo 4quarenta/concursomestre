@@ -16,6 +16,7 @@ require_once __DIR__ . '/LegalCommentaryAiGenerationService.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../config/gamification_helper.php';
+require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 
 /**
  * Regras de negocio do Vade Mecum comentado.
@@ -727,7 +728,9 @@ class LegalCommentaryService
         return [
             'title' => 'Questoes relacionadas',
             'count' => $relatedQuestionCount,
-            'ctaUrl' => '/practice?articleId=' . urlencode((string) ($article['id'] ?? '')),
+            'ctaUrl' => (new PublicRouteBuilder())->questionsIndex([
+                'articleId' => (string) ($article['id'] ?? ''),
+            ]),
             'preview' => sprintf('%d questoes disponiveis para praticar este artigo.', max(0, $relatedQuestionCount)),
         ];
     }

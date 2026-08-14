@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowRight, BookOpenCheck, Sparkles } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasActivePlanAccess } from '@services/plans/planAccess';
+import { publicRoutes } from '@services/routes/publicRoutes';
 
 type BlogConversionCtaProps = {
   tone?: 'light' | 'dark';
@@ -39,7 +40,7 @@ export default function BlogConversionCta({ tone = 'dark', compact = false }: Bl
           eyebrow: 'Continue estudando',
           title: 'Leu a notícia? Agora consolide o conteúdo na prática.',
           description: 'Resolva questões relacionadas e use seu desempenho para decidir o próximo passo.',
-          primaryHref: '/practice',
+          primaryHref: publicRoutes.questions.index(),
           primaryLabel: 'Resolver questões',
           secondaryHref: '/dashboard',
           secondaryLabel: 'Ver meu desempenho',
@@ -50,7 +51,7 @@ export default function BlogConversionCta({ tone = 'dark', compact = false }: Bl
           description: 'Compare os planos e escolha os recursos adequados ao seu objetivo de aprovação.',
           primaryHref: '/plans',
           primaryLabel: 'Ver planos',
-          secondaryHref: '/practice',
+          secondaryHref: publicRoutes.questions.index(),
           secondaryLabel: 'Praticar agora',
         };
 

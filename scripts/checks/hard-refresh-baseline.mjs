@@ -27,7 +27,7 @@ const LOGIN_PASSWORD_CANDIDATES = Array.from(new Set([
   '123456',
   'Admin@123456',
 ])).filter(Boolean);
-const DEFAULT_TARGET_ROUTES = ['/dashboard', '/practice', '/admin/panel/dashboard'];
+const DEFAULT_TARGET_ROUTES = ['/dashboard', '/questoes', '/admin/panel/dashboard'];
 const TARGET_ROUTES = (process.env.CM_TARGET_ROUTES || '')
   .split(',')
   .map((route) => route.trim())

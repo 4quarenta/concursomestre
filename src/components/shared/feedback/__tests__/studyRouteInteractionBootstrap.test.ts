@@ -21,7 +21,7 @@ describe('study route interaction bootstrap', () => {
   });
 
   it('keeps Practice server-rendered while splitting expensive interactive children', () => {
-    const pageSource = readSource('src/app/practice/page.tsx');
+    const pageSource = readSource('src/app/practice/PracticePage.tsx');
     const clientSource = readSource('src/app/practice/PracticeClient.tsx');
 
     expect(pageSource).toContain('fetchPracticeInitialQuestions');

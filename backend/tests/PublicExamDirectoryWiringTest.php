@@ -14,7 +14,7 @@ $checks = [
     [$base . '/modules/exams/repositories/ExamsRepository.php', "p.status_editorial = 'published'"],
     [$base . '/modules/exams/repositories/ExamsRepository.php', "p.visibility_status = 'public'"],
     [$base . '/modules/exams/repositories/ExamsRepository.php', 'LIMIT {$limit} OFFSET {$offset}'],
-    [$base . '/scripts/seo/generate_static_sitemaps.php', "'/blog/provas'"],
+    [$base . '/scripts/seo/generate_static_sitemaps.php', '$routes->examDetail($slug)'],
     [$base . '/scripts/seo/generate_static_sitemaps.php', "FROM provas"],
     [$base . '/scripts/seo/generate_static_sitemaps.php', "status_editorial = 'published'"],
     [$base . '/scripts/seo/generate_static_sitemaps.php', "sprintf('exams-%05d.xml'"],

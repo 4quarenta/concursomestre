@@ -44,7 +44,7 @@ const DRY_RUN = readBoolArg('dry-run', false);
 const TIMEOUT_MS = Number(readArgValue('timeout-ms', process.env.CM_VISUAL_SMOKE_TIMEOUT_MS || '15000'));
 const REPORT_PATH = path.resolve(readArgValue('report-file', process.env.CM_VISUAL_SMOKE_REPORT_FILE || DEFAULT_REPORT_PATH));
 const SCREENSHOT_DIR = path.resolve(readArgValue('screenshot-dir', process.env.CM_VISUAL_SMOKE_SCREENSHOT_DIR || DEFAULT_SCREENSHOT_DIR));
-const DEFAULT_STUDENT_ROUTES = ['/dashboard', '/practice', '/profile', '/lei-comentada'];
+const DEFAULT_STUDENT_ROUTES = ['/dashboard', '/questoes', '/profile', '/lei-comentada'];
 const DEFAULT_ADMIN_ROUTES = ['/admin/panel/dashboard', '/admin/settings/logs', '/admin/support/comments', '/admin/operation/lei-comentada'];
 const STUDENT_ROUTES = splitCsv(readArgValue('student-routes', process.env.CM_VISUAL_SMOKE_STUDENT_ROUTES)).length > 0
   ? splitCsv(readArgValue('student-routes', process.env.CM_VISUAL_SMOKE_STUDENT_ROUTES))

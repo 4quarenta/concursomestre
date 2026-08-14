@@ -16,21 +16,23 @@ describe('public launch SEO readiness', () => {
     expect(robots).not.toContain("'/sitemaps/google-news.xml'");
   });
 
-  it('renders an indexable practice snapshot while preserving the interactive client', () => {
-    const page = readSource('src/app/practice/page.tsx');
-    const snapshot = readSource('src/app/@seo/practice/page.tsx');
+  it('renders an indexable questions snapshot while preserving the interactive client', () => {
+    const page = readSource('src/app/practice/PracticePage.tsx');
+    const snapshot = readSource('src/app/@seo/questoes/page.tsx');
+    const snapshotContent = readSource('src/app/@seo/practice/page.tsx');
 
     expect(page).toContain('<PracticeClient');
-    expect(snapshot).toContain('PracticeSeoPage');
-    expect(snapshot).toContain("'@type': 'CollectionPage'");
+    expect(snapshot).toContain("from '../practice/page'");
+    expect(snapshotContent).toContain("'@type': 'CollectionPage'");
+    expect(snapshotContent).toContain('publicRoutes.questions.index()');
   });
 
   it('returns real 404s and canonical redirects for invalid public detail URLs', () => {
-    const question = readSource('src/app/question/[id]/[[...slug]]/page.tsx');
+    const question = readSource('src/app/questoes/[id]/[[...slug]]/page.tsx');
     const landing = readSource('src/app/l/[slug]/page.tsx');
 
     expect(question).toContain('notFound()');
-    expect(question).toContain('permanentRedirect(canonicalPath)');
+    expect(question).toContain('permanentRedirect(publicRoutes.questions.detail');
     expect(landing).toContain('notFound()');
   });
 

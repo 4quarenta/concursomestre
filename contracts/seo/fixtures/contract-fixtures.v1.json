@@ -1,0 +1,384 @@
+{
+  "version": "contract-fixtures.v1",
+  "seoDecision": {
+    "valid": [
+      {
+        "name": "question PASS and INDEX",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "123" },
+          "existence": "exists",
+          "quality": { "status": "PASS", "reasonCodes": [] },
+          "indexability": { "status": "INDEX", "reasonCodes": [] },
+          "resolution": { "action": "render", "httpStatus": 200, "target": null },
+          "canonical": {
+            "path": "/questoes/123/exemplo",
+            "url": "https://concursomestre.com/questoes/123/exemplo",
+            "slug": "exemplo"
+          },
+          "robots": { "index": true, "follow": true, "archive": true, "imageIndex": true },
+          "sitemap": { "eligible": true, "section": "questions", "lastModified": "2026-08-12T12:00:00Z" }
+        }
+      },
+      {
+        "name": "question PASS and NOINDEX",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "124" },
+          "existence": "exists",
+          "quality": { "status": "PASS", "reasonCodes": [] },
+          "indexability": { "status": "NOINDEX", "reasonCodes": ["indexability.structural_noindex"] },
+          "resolution": { "action": "render", "httpStatus": 200, "target": null },
+          "canonical": {
+            "path": "/questoes/124/exemplo-noindex",
+            "url": "https://concursomestre.com/questoes/124/exemplo-noindex",
+            "slug": "exemplo-noindex"
+          },
+          "robots": { "index": false, "follow": true, "archive": false, "imageIndex": true },
+          "sitemap": { "eligible": false, "section": "questions", "lastModified": "2026-08-12T12:00:00Z" }
+        }
+      },
+      {
+        "name": "question FAIL and NOINDEX",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "125" },
+          "existence": "exists",
+          "quality": { "status": "FAIL", "reasonCodes": ["quality.insufficient_distinct_content"] },
+          "indexability": { "status": "NOINDEX", "reasonCodes": ["indexability.quality_failed"] },
+          "resolution": { "action": "render", "httpStatus": 200, "target": null },
+          "canonical": {
+            "path": "/questoes/125/conteudo-insuficiente",
+            "url": "https://concursomestre.com/questoes/125/conteudo-insuficiente",
+            "slug": "conteudo-insuficiente"
+          },
+          "robots": { "index": false, "follow": true, "archive": false, "imageIndex": false },
+          "sitemap": { "eligible": false, "section": "questions", "lastModified": "2026-08-12T12:00:00Z" }
+        }
+      },
+      {
+        "name": "missing",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "404" },
+          "existence": "missing",
+          "quality": { "status": "NOT_EVALUATED", "reasonCodes": ["quality.not_evaluated"] },
+          "indexability": { "status": "NOINDEX", "reasonCodes": ["indexability.non_public"] },
+          "resolution": { "action": "not_found", "httpStatus": 404, "target": null },
+          "robots": { "index": false, "follow": false, "archive": false, "imageIndex": false },
+          "sitemap": { "eligible": false, "section": null, "lastModified": null }
+        }
+      },
+      {
+        "name": "removed",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "410" },
+          "existence": "removed",
+          "quality": { "status": "NOT_EVALUATED", "reasonCodes": ["quality.not_evaluated"] },
+          "indexability": { "status": "NOINDEX", "reasonCodes": ["indexability.non_public"] },
+          "resolution": { "action": "gone", "httpStatus": 410, "target": null },
+          "robots": { "index": false, "follow": false, "archive": false, "imageIndex": false },
+          "sitemap": { "eligible": false, "section": null, "lastModified": null }
+        }
+      },
+      {
+        "name": "redirect",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "126" },
+          "existence": "exists",
+          "quality": { "status": "PASS", "reasonCodes": [] },
+          "indexability": { "status": "NOINDEX", "reasonCodes": ["indexability.structural_noindex"] },
+          "resolution": { "action": "redirect", "httpStatus": 308, "target": "/questoes/126/slug-canonico" },
+          "robots": { "index": false, "follow": true, "archive": false, "imageIndex": false },
+          "sitemap": { "eligible": false, "section": null, "lastModified": null }
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "FAIL with INDEX",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "901" },
+          "existence": "exists",
+          "quality": { "status": "FAIL", "reasonCodes": ["quality.insufficient_distinct_content"] },
+          "indexability": { "status": "INDEX", "reasonCodes": [] },
+          "resolution": { "action": "render", "httpStatus": 200, "target": null },
+          "canonical": { "path": "/questoes/901/falha", "url": "https://concursomestre.com/questoes/901/falha", "slug": "falha" },
+          "robots": { "index": true, "follow": true, "archive": true, "imageIndex": true },
+          "sitemap": { "eligible": false, "section": "questions", "lastModified": null }
+        }
+      },
+      {
+        "name": "missing with PASS",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "902" },
+          "existence": "missing",
+          "quality": { "status": "PASS", "reasonCodes": [] },
+          "indexability": { "status": "NOINDEX", "reasonCodes": ["indexability.non_public"] },
+          "resolution": { "action": "not_found", "httpStatus": 404, "target": null },
+          "robots": { "index": false, "follow": false, "archive": false, "imageIndex": false },
+          "sitemap": { "eligible": false, "section": null, "lastModified": null }
+        }
+      },
+      {
+        "name": "removed with INDEX",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "903" },
+          "existence": "removed",
+          "quality": { "status": "NOT_EVALUATED", "reasonCodes": ["quality.not_evaluated"] },
+          "indexability": { "status": "INDEX", "reasonCodes": [] },
+          "resolution": { "action": "gone", "httpStatus": 410, "target": null },
+          "robots": { "index": true, "follow": false, "archive": false, "imageIndex": false },
+          "sitemap": { "eligible": false, "section": null, "lastModified": null }
+        }
+      },
+      {
+        "name": "redirect with canonical",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "904" },
+          "existence": "exists",
+          "quality": { "status": "PASS", "reasonCodes": [] },
+          "indexability": { "status": "NOINDEX", "reasonCodes": ["indexability.structural_noindex"] },
+          "resolution": { "action": "redirect", "httpStatus": 308, "target": "/questoes/904/correto" },
+          "canonical": { "path": "/questoes/904/correto", "url": "https://concursomestre.com/questoes/904/correto", "slug": "correto" },
+          "robots": { "index": false, "follow": true, "archive": false, "imageIndex": false },
+          "sitemap": { "eligible": false, "section": null, "lastModified": null }
+        }
+      },
+      {
+        "name": "sitemap eligible with NOINDEX",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "905" },
+          "existence": "exists",
+          "quality": { "status": "PASS", "reasonCodes": [] },
+          "indexability": { "status": "NOINDEX", "reasonCodes": ["indexability.structural_noindex"] },
+          "resolution": { "action": "render", "httpStatus": 200, "target": null },
+          "canonical": { "path": "/questoes/905/exemplo", "url": "https://concursomestre.com/questoes/905/exemplo", "slug": "exemplo" },
+          "robots": { "index": false, "follow": true, "archive": false, "imageIndex": false },
+          "sitemap": { "eligible": true, "section": "questions", "lastModified": null }
+        }
+      },
+      {
+        "name": "INDEX with robots false",
+        "value": {
+          "policyVersion": "seo-policy.v1",
+          "resource": { "type": "question", "id": "906" },
+          "existence": "exists",
+          "quality": { "status": "PASS", "reasonCodes": [] },
+          "indexability": { "status": "INDEX", "reasonCodes": [] },
+          "resolution": { "action": "render", "httpStatus": 200, "target": null },
+          "canonical": { "path": "/questoes/906/exemplo", "url": "https://concursomestre.com/questoes/906/exemplo", "slug": "exemplo" },
+          "robots": { "index": false, "follow": true, "archive": true, "imageIndex": true },
+          "sitemap": { "eligible": false, "section": "questions", "lastModified": null }
+        }
+      }
+    ]
+  },
+  "publicationDecision": {
+    "valid": [
+      {
+        "name": "public published",
+        "value": {
+          "policyVersion": "publication-policy.v1",
+          "status": "published",
+          "visibility": "public",
+          "access": "allowed",
+          "reasonCodes": []
+        }
+      },
+      {
+        "name": "private authenticated",
+        "value": {
+          "policyVersion": "publication-policy.v1",
+          "status": "published",
+          "visibility": "authenticated",
+          "access": "allowed",
+          "reasonCodes": ["publication.visibility_authenticated"]
+        }
+      },
+      {
+        "name": "blocked",
+        "value": {
+          "policyVersion": "publication-policy.v1",
+          "status": "blocked",
+          "visibility": "restricted",
+          "access": "denied",
+          "reasonCodes": ["publication.blocked"]
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "blocked with allowed access",
+        "value": {
+          "policyVersion": "publication-policy.v1",
+          "status": "blocked",
+          "visibility": "restricted",
+          "access": "allowed",
+          "reasonCodes": ["publication.blocked"]
+        }
+      },
+      {
+        "name": "unknown publication reason",
+        "value": {
+          "policyVersion": "publication-policy.v1",
+          "status": "published",
+          "visibility": "public",
+          "access": "allowed",
+          "reasonCodes": ["publication.typo_reason"]
+        }
+      }
+    ]
+  },
+  "seoFacts": {
+    "valid": [
+      {
+        "name": "question facts",
+        "value": {
+          "factsVersion": "seo-facts.v1",
+          "resourceType": "question",
+          "locale": "pt-BR",
+          "identity": { "displayName": "Quest\u00e3o 123", "shortName": "Quest\u00e3o 123" },
+          "content": { "questionExcerpt": "Assinale a alternativa correta.", "supportExcerpt": "", "publicDescription": "" },
+          "classification": { "subjectName": "Direito Constitucional", "topicName": "Controle de Constitucionalidade", "boardName": "CEBRASPE", "organizationName": "PM-PB", "roleName": "Soldado", "year": 2025 },
+          "dates": { "publishedAt": "2026-08-12T12:00:00Z", "updatedAt": "2026-08-12T12:00:00Z" },
+          "primaryImage": null,
+          "breadcrumbs": [{ "label": "Quest\u00f5es", "canonicalPath": "/questoes" }]
+        }
+      },
+      {
+        "name": "exam facts",
+        "value": {
+          "factsVersion": "seo-facts.v1", "resourceType": "exam", "locale": "pt-BR",
+          "identity": { "displayName": "Prova PM-PB 2025", "shortName": "PM-PB 2025" },
+          "content": { "summaryExcerpt": "Prova para Soldado.", "publicDescription": "" },
+          "classification": { "boardName": "CEBRASPE", "organizationNames": ["PM-PB"], "roleNames": ["Soldado"], "year": 2025, "levelName": "M\u00e9dio" },
+          "dates": { "publishedAt": null, "updatedAt": null }, "primaryImage": null, "breadcrumbs": []
+        }
+      },
+      {
+        "name": "taxonomy facts",
+        "value": {
+          "factsVersion": "seo-facts.v1", "resourceType": "taxonomy", "locale": "pt-BR",
+          "identity": { "displayName": "Direito Constitucional", "shortName": "Direito Constitucional" },
+          "taxonomyKind": "discipline", "content": { "publicDescription": "", "editorialIntroduction": "" },
+          "hierarchy": { "parentName": null, "rootName": "Direito" }, "metrics": { "publicItemCount": 100 },
+          "dates": { "publishedAt": null, "updatedAt": null }, "primaryImage": null, "breadcrumbs": []
+        }
+      },
+      {
+        "name": "board facts",
+        "value": {
+          "factsVersion": "seo-facts.v1", "resourceType": "board", "locale": "pt-BR",
+          "identity": { "displayName": "CEBRASPE", "shortName": "CEBRASPE" },
+          "content": { "publicDescription": "", "editorialIntroduction": "" },
+          "board": { "acronym": "CEBRASPE", "fullName": "Centro Brasileiro de Pesquisa em Avalia\u00e7\u00e3o e Sele\u00e7\u00e3o", "website": null },
+          "metrics": { "publicQuestionCount": 100, "publicExamCount": 10 },
+          "dates": { "publishedAt": null, "updatedAt": null }, "primaryImage": null, "breadcrumbs": []
+        }
+      },
+      {
+        "name": "law facts",
+        "value": {
+          "factsVersion": "seo-facts.v1", "resourceType": "law", "locale": "pt-BR",
+          "identity": { "displayName": "Constitui\u00e7\u00e3o Federal", "shortName": "CF" },
+          "content": { "publicDescription": "", "commentaryExcerpt": "" },
+          "law": { "identifier": "Constitui\u00e7\u00e3o de 1988", "jurisdiction": "Federal", "articleCount": 250 },
+          "dates": { "publishedAt": null, "updatedAt": null }, "primaryImage": null, "breadcrumbs": []
+        }
+      },
+      {
+        "name": "contest facts",
+        "value": {
+          "factsVersion": "seo-facts.v1", "resourceType": "contest", "locale": "pt-BR",
+          "identity": { "displayName": "Concurso PM-PB 2025", "shortName": "PM-PB 2025" },
+          "content": { "publicDescription": "", "summaryExcerpt": "" },
+          "contest": { "organizationNames": ["PM-PB"], "roleNames": ["Soldado"], "locationNames": ["Para\u00edba"], "year": 2025, "statusLabel": "Previsto" },
+          "dates": { "publishedAt": null, "updatedAt": null }, "primaryImage": null, "breadcrumbs": []
+        }
+      },
+      {
+        "name": "article facts",
+        "value": {
+          "factsVersion": "seo-facts.v1", "resourceType": "article", "locale": "pt-BR",
+          "identity": { "displayName": "Novo concurso autorizado", "shortName": "Novo concurso" },
+          "content": { "headline": "Novo concurso autorizado", "excerpt": "Resumo p\u00fablico.", "publicDescription": "" },
+          "article": { "authorName": "Equipe ConcursoMestre", "categoryNames": ["Not\u00edcias"], "tagNames": ["Para\u00edba"] },
+          "dates": { "publishedAt": "2026-08-12T12:00:00Z", "updatedAt": "2026-08-12T12:00:00Z" }, "primaryImage": null, "breadcrumbs": []
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "question facts expose answer",
+        "value": {
+          "factsVersion": "seo-facts.v1",
+          "resourceType": "question",
+          "locale": "pt-BR",
+          "identity": { "displayName": "Quest\u00e3o 999", "shortName": null },
+          "content": { "questionExcerpt": "Exemplo.", "supportExcerpt": "", "publicDescription": "", "answer": "A" },
+          "classification": { "subjectName": null, "topicName": null, "boardName": null, "organizationName": null, "roleName": null, "year": null },
+          "dates": { "publishedAt": null, "updatedAt": null },
+          "primaryImage": null,
+          "breadcrumbs": []
+        }
+      },
+      {
+        "name": "question facts contain presentation metadata",
+        "value": {
+          "factsVersion": "seo-facts.v1",
+          "resourceType": "question",
+          "locale": "pt-BR",
+          "identity": { "displayName": "Quest\u00e3o 998", "shortName": null },
+          "content": { "questionExcerpt": "Exemplo.", "supportExcerpt": "", "publicDescription": "" },
+          "classification": { "subjectName": null, "topicName": null, "boardName": null, "organizationName": null, "roleName": null, "year": null },
+          "dates": { "publishedAt": null, "updatedAt": null },
+          "primaryImage": null,
+          "breadcrumbs": [],
+          "title": "Metadata pronta proibida"
+        }
+      },
+      {
+        "name": "question facts with incomplete nested objects",
+        "value": {
+          "factsVersion": "seo-facts.v1",
+          "resourceType": "question",
+          "locale": "pt-BR",
+          "identity": { "displayName": "Questao 997", "shortName": null },
+          "content": {},
+          "classification": {},
+          "dates": { "publishedAt": null, "updatedAt": null },
+          "primaryImage": null,
+          "breadcrumbs": []
+        }
+      },
+      {
+        "name": "question facts expose protected editorial",
+        "value": {
+          "factsVersion": "seo-facts.v1",
+          "resourceType": "question",
+          "locale": "pt-BR",
+          "identity": { "displayName": "Questao 996", "shortName": null },
+          "content": {
+            "questionExcerpt": "Exemplo.",
+            "supportExcerpt": "",
+            "publicDescription": "",
+            "teacherComment": "Conteudo protegido",
+            "detailedComment": "Conteudo protegido"
+          },
+          "classification": { "subjectName": null, "topicName": null, "boardName": null, "organizationName": null, "roleName": null, "year": null },
+          "dates": { "publishedAt": null, "updatedAt": null },
+          "primaryImage": null,
+          "breadcrumbs": []
+        }
+      }
+    ]
+  }
+}

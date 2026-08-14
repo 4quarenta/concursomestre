@@ -1,5 +1,5 @@
-import PracticeClient from './PracticeClient';
-import { fetchPracticeInitialQuestions } from './practiceServerData';
+import { permanentRedirect } from 'next/navigation';
+import { publicRoutes, sanitizePublicRouteQuery } from '@services/routes/publicRoutes';
 
 type PracticePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -7,11 +7,9 @@ type PracticePageProps = {
 
 export const dynamic = 'force-dynamic';
 
-export default async function PracticePage({ searchParams }: PracticePageProps) {
+export default async function PracticeAliasPage({ searchParams }: PracticePageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const initialQuestionPage = await fetchPracticeInitialQuestions({
-    searchParams: resolvedSearchParams,
-  });
-
-  return <PracticeClient initialQuestionPage={initialQuestionPage} />;
+  permanentRedirect(publicRoutes.questions.index(
+    sanitizePublicRouteQuery('questions_hub', resolvedSearchParams),
+  ));
 }

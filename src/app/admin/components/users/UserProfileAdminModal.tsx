@@ -20,6 +20,7 @@ import { getSupportReasonLabel } from '@services/support/supportReasonLabels';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 import { ADMIN_USER_ROLE_OPTIONS, ADMIN_USER_STATUS_OPTIONS, getAdminUserRoleBadgeClass, getAdminUserRoleLabel, getAdminUserStatusBadgeClass, getAdminUserStatusLabel } from './userAdminOptions';
 import type { EditUserForm } from './useAdminUserProfileWorkflow';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_HEADER_CLASS,
@@ -471,7 +472,7 @@ const UserProfileAdminModal = ({
         <div key={comment.id} className={`${ADMIN_SURFACE_CLASS} p-4`}>
           <div className="mb-3 flex items-start justify-between gap-4">
             <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400"><Clock size={10} /> {formatDateTime(comment.created_at)}</span>
-            <Link href="/practice" target="_blank" className="rounded-sm bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-sky-50 hover:text-sky-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-sky-900/20 dark:hover:text-sky-300">Questao {comment.question_id}</Link>
+            <Link href={publicRoutes.questions.index({ questionId: comment.question_id })} target="_blank" className="rounded-sm bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-sky-50 hover:text-sky-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-sky-900/20 dark:hover:text-sky-300">Questao {comment.question_id}</Link>
           </div>
           <p className="border-l-2 border-slate-100 pl-4 text-sm font-medium leading-relaxed text-slate-700 dark:border-slate-700 dark:text-slate-300">&quot;{comment.comment}&quot;</p>
         </div>

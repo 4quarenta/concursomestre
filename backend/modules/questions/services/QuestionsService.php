@@ -20,6 +20,8 @@ require_once __DIR__ . '/../repositories/QuestionCanonicalRepository.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../../shared/events/TransactionalOutbox.php';
 require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
+require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
+require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 
 class QuestionsService
 {
@@ -41,6 +43,7 @@ class QuestionsService
         $this->ownershipPolicy = $ownershipPolicy ?? new QuestionOwnershipPolicy();
         $this->publicPageCache = $publicPageCache ?? QuestionPublicPageCache::fromEnvironment();
         $this->outbox = $outbox ?? new TransactionalOutbox($db);
+        $this->publicSeoEnvelope = new PublicSeoEnvelopeService();
     }
 
     private readonly QuestionAnswerEvaluator $answerEvaluator;
@@ -49,6 +52,7 @@ class QuestionsService
     private readonly QuestionOwnershipPolicy $ownershipPolicy;
     private readonly QuestionPublicPageCache $publicPageCache;
     private readonly TransactionalOutbox $outbox;
+    private readonly PublicSeoEnvelopeService $publicSeoEnvelope;
 
     public function submitAnswer(
         string $authenticatedUserId,
@@ -386,7 +390,7 @@ class QuestionsService
         $countsMap = $this->repository->listQuestionCommentCounts([$id]);
         $answerMap = $authenticatedUserId ? $this->repository->listLatestUserAnswersMap($authenticatedUserId, [$id]) : [];
 
-        return $this->normalizeQuestionRow(
+        $question = $this->normalizeQuestionRow(
             $row,
             $statsMap[$id] ?? null,
             $countsMap[$id] ?? 0,
@@ -396,6 +400,8 @@ class QuestionsService
             $canViewTeacherComments,
             $canViewDetailedAnalysis
         );
+
+        return $this->publicSeoEnvelope->attachQuestion($question);
     }
 
     /**
@@ -425,7 +431,7 @@ class QuestionsService
         $answerMap = $authenticatedUserId ? $this->repository->listLatestUserAnswersMap($authenticatedUserId, [$id]) : [];
         $aggregate = $this->loadCanonicalAggregateForRead((int) $id);
 
-        return $this->buildQuestionDetailV2(
+        $question = $this->buildQuestionDetailV2(
             $row,
             $aggregate,
             $filtersMap[$id] ?? [],
@@ -437,6 +443,8 @@ class QuestionsService
             $provasMap[$id] ?? [],
             $countsMap[$id] ?? 0
         );
+
+        return $this->publicSeoEnvelope->attachQuestion($question);
     }
 
     /**
@@ -2103,7 +2111,9 @@ class QuestionsService
                 'message' => 'Voce ganhou +3 XP por salvar uma questao para revisar.',
                 'category' => 'system',
                 'type' => 'success',
-                'link' => '/practice?questionId=' . rawurlencode((string) $data['questionId']),
+                'link' => (new PublicRouteBuilder())->questionsIndex([
+                    'questionId' => (string) $data['questionId'],
+                ]),
             ]);
         }
 

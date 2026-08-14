@@ -141,7 +141,7 @@ const AdminSeoSettingsSection = ({
           </div>
         ) : !sitemapStatus ? (
           <div className="mt-6 rounded-sm border border-amber-300 bg-amber-50 px-4 py-6 text-sm font-semibold text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
-            Nenhum `sitemap-status.json` foi encontrado. Execute `npm run seo:generate` para gerar o sitemap, o robots.txt e a cobertura operacional.
+            Nenhum `sitemap-status.json` foi encontrado. Execute `npm run seo:generate-static` para gerar e validar os artefatos operacionais.
           </div>
         ) : (
           <div className="mt-6 space-y-5">

@@ -1,0 +1,315 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://concursomestre.com/contracts/seo/seo-facts.v1.schema.json",
+  "title": "SeoFacts v1",
+  "oneOf": [
+    { "$ref": "#/definitions/questionFacts" },
+    { "$ref": "#/definitions/examFacts" },
+    { "$ref": "#/definitions/taxonomyFacts" },
+    { "$ref": "#/definitions/boardFacts" },
+    { "$ref": "#/definitions/lawFacts" },
+    { "$ref": "#/definitions/contestFacts" },
+    { "$ref": "#/definitions/articleFacts" }
+  ],
+  "definitions": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "shortName"],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "shortName": { "type": ["string", "null"], "maxLength": 160 }
+      }
+    },
+    "dates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publishedAt", "updatedAt"],
+      "properties": {
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "updatedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "primaryImage": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["url", "alt", "width", "height"],
+      "properties": {
+        "url": { "type": "string", "pattern": "^(?:https://|/)", "maxLength": 2048 },
+        "alt": { "type": "string", "maxLength": 300 },
+        "width": { "type": ["integer", "null"], "minimum": 1 },
+        "height": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "breadcrumbs": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "canonicalPath"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "canonicalPath": { "type": "string", "pattern": "^/[^?#]*$", "maxLength": 2048 }
+        }
+      }
+    },
+    "questionFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factsVersion", "resourceType", "locale", "identity", "content", "classification", "dates", "primaryImage", "breadcrumbs"],
+      "properties": {
+        "factsVersion": { "const": "seo-facts.v1" },
+        "resourceType": { "const": "question" },
+        "locale": { "const": "pt-BR" },
+        "identity": { "$ref": "#/definitions/identity" },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["questionExcerpt", "supportExcerpt", "publicDescription"],
+          "properties": {
+            "questionExcerpt": { "type": "string", "maxLength": 600 },
+            "supportExcerpt": { "type": "string", "maxLength": 600 },
+            "publicDescription": { "type": "string", "maxLength": 1200 }
+          }
+        },
+        "classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["subjectName", "topicName", "boardName", "organizationName", "roleName", "year"],
+          "properties": {
+            "subjectName": { "type": ["string", "null"], "maxLength": 190 },
+            "topicName": { "type": ["string", "null"], "maxLength": 190 },
+            "boardName": { "type": ["string", "null"], "maxLength": 190 },
+            "organizationName": { "type": ["string", "null"], "maxLength": 190 },
+            "roleName": { "type": ["string", "null"], "maxLength": 190 },
+            "year": { "type": ["integer", "null"], "minimum": 1900, "maximum": 2200 }
+          }
+        },
+        "dates": { "$ref": "#/definitions/dates" },
+        "primaryImage": { "$ref": "#/definitions/primaryImage" },
+        "breadcrumbs": { "$ref": "#/definitions/breadcrumbs" }
+      }
+    },
+    "examFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factsVersion", "resourceType", "locale", "identity", "content", "classification", "dates", "primaryImage", "breadcrumbs"],
+      "properties": {
+        "factsVersion": { "const": "seo-facts.v1" },
+        "resourceType": { "const": "exam" },
+        "locale": { "const": "pt-BR" },
+        "identity": { "$ref": "#/definitions/identity" },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summaryExcerpt", "publicDescription"],
+          "properties": {
+            "summaryExcerpt": { "type": "string", "maxLength": 600 },
+            "publicDescription": { "type": "string", "maxLength": 1200 }
+          }
+        },
+        "classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["boardName", "organizationNames", "roleNames", "year", "levelName"],
+          "properties": {
+            "boardName": { "type": ["string", "null"], "maxLength": 190 },
+            "organizationNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 190 } },
+            "roleNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 190 } },
+            "year": { "type": ["integer", "null"], "minimum": 1900, "maximum": 2200 },
+            "levelName": { "type": ["string", "null"], "maxLength": 100 }
+          }
+        },
+        "dates": { "$ref": "#/definitions/dates" },
+        "primaryImage": { "$ref": "#/definitions/primaryImage" },
+        "breadcrumbs": { "$ref": "#/definitions/breadcrumbs" }
+      }
+    },
+    "taxonomyFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factsVersion", "resourceType", "locale", "identity", "taxonomyKind", "content", "hierarchy", "metrics", "dates", "primaryImage", "breadcrumbs"],
+      "properties": {
+        "factsVersion": { "const": "seo-facts.v1" },
+        "resourceType": { "const": "taxonomy" },
+        "locale": { "const": "pt-BR" },
+        "identity": { "$ref": "#/definitions/identity" },
+        "taxonomyKind": { "enum": ["discipline", "topic", "subject", "category", "tag", "organization", "role", "year"] },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publicDescription", "editorialIntroduction"],
+          "properties": {
+            "publicDescription": { "type": "string", "maxLength": 1200 },
+            "editorialIntroduction": { "type": "string", "maxLength": 4000 }
+          }
+        },
+        "hierarchy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["parentName", "rootName"],
+          "properties": {
+            "parentName": { "type": ["string", "null"], "maxLength": 190 },
+            "rootName": { "type": ["string", "null"], "maxLength": 190 }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publicItemCount"],
+          "properties": {
+            "publicItemCount": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "dates": { "$ref": "#/definitions/dates" },
+        "primaryImage": { "$ref": "#/definitions/primaryImage" },
+        "breadcrumbs": { "$ref": "#/definitions/breadcrumbs" }
+      }
+    },
+    "boardFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factsVersion", "resourceType", "locale", "identity", "content", "board", "metrics", "dates", "primaryImage", "breadcrumbs"],
+      "properties": {
+        "factsVersion": { "const": "seo-facts.v1" },
+        "resourceType": { "const": "board" },
+        "locale": { "const": "pt-BR" },
+        "identity": { "$ref": "#/definitions/identity" },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publicDescription", "editorialIntroduction"],
+          "properties": {
+            "publicDescription": { "type": "string", "maxLength": 1200 },
+            "editorialIntroduction": { "type": "string", "maxLength": 4000 }
+          }
+        },
+        "board": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["acronym", "fullName", "website"],
+          "properties": {
+            "acronym": { "type": ["string", "null"], "maxLength": 40 },
+            "fullName": { "type": ["string", "null"], "maxLength": 300 },
+            "website": { "type": ["string", "null"], "format": "uri", "maxLength": 2048 }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publicQuestionCount", "publicExamCount"],
+          "properties": {
+            "publicQuestionCount": { "type": "integer", "minimum": 0 },
+            "publicExamCount": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "dates": { "$ref": "#/definitions/dates" },
+        "primaryImage": { "$ref": "#/definitions/primaryImage" },
+        "breadcrumbs": { "$ref": "#/definitions/breadcrumbs" }
+      }
+    },
+    "lawFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factsVersion", "resourceType", "locale", "identity", "content", "law", "dates", "primaryImage", "breadcrumbs"],
+      "properties": {
+        "factsVersion": { "const": "seo-facts.v1" },
+        "resourceType": { "const": "law" },
+        "locale": { "const": "pt-BR" },
+        "identity": { "$ref": "#/definitions/identity" },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publicDescription", "commentaryExcerpt"],
+          "properties": {
+            "publicDescription": { "type": "string", "maxLength": 1200 },
+            "commentaryExcerpt": { "type": "string", "maxLength": 1200 }
+          }
+        },
+        "law": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["identifier", "jurisdiction", "articleCount"],
+          "properties": {
+            "identifier": { "type": ["string", "null"], "maxLength": 190 },
+            "jurisdiction": { "type": ["string", "null"], "maxLength": 190 },
+            "articleCount": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "dates": { "$ref": "#/definitions/dates" },
+        "primaryImage": { "$ref": "#/definitions/primaryImage" },
+        "breadcrumbs": { "$ref": "#/definitions/breadcrumbs" }
+      }
+    },
+    "contestFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factsVersion", "resourceType", "locale", "identity", "content", "contest", "dates", "primaryImage", "breadcrumbs"],
+      "properties": {
+        "factsVersion": { "const": "seo-facts.v1" },
+        "resourceType": { "const": "contest" },
+        "locale": { "const": "pt-BR" },
+        "identity": { "$ref": "#/definitions/identity" },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publicDescription", "summaryExcerpt"],
+          "properties": {
+            "publicDescription": { "type": "string", "maxLength": 1200 },
+            "summaryExcerpt": { "type": "string", "maxLength": 1200 }
+          }
+        },
+        "contest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["organizationNames", "roleNames", "locationNames", "year", "statusLabel"],
+          "properties": {
+            "organizationNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 190 } },
+            "roleNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 190 } },
+            "locationNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 190 } },
+            "year": { "type": ["integer", "null"], "minimum": 1900, "maximum": 2200 },
+            "statusLabel": { "type": ["string", "null"], "maxLength": 100 }
+          }
+        },
+        "dates": { "$ref": "#/definitions/dates" },
+        "primaryImage": { "$ref": "#/definitions/primaryImage" },
+        "breadcrumbs": { "$ref": "#/definitions/breadcrumbs" }
+      }
+    },
+    "articleFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factsVersion", "resourceType", "locale", "identity", "content", "article", "dates", "primaryImage", "breadcrumbs"],
+      "properties": {
+        "factsVersion": { "const": "seo-facts.v1" },
+        "resourceType": { "const": "article" },
+        "locale": { "const": "pt-BR" },
+        "identity": { "$ref": "#/definitions/identity" },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["headline", "excerpt", "publicDescription"],
+          "properties": {
+            "headline": { "type": "string", "minLength": 1, "maxLength": 300 },
+            "excerpt": { "type": "string", "maxLength": 1200 },
+            "publicDescription": { "type": "string", "maxLength": 1200 }
+          }
+        },
+        "article": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["authorName", "categoryNames", "tagNames"],
+          "properties": {
+            "authorName": { "type": ["string", "null"], "maxLength": 190 },
+            "categoryNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 190 } },
+            "tagNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 190 } }
+          }
+        },
+        "dates": { "$ref": "#/definitions/dates" },
+        "primaryImage": { "$ref": "#/definitions/primaryImage" },
+        "breadcrumbs": { "$ref": "#/definitions/breadcrumbs" }
+      }
+    }
+  }
+}

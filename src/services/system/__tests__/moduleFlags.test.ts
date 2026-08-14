@@ -46,6 +46,10 @@ describe('module path visibility', () => {
     expect(getModuleFeatureKeyForPath('/lei-comentada')).toBe('annotatedLawsEnabled');
     expect(getModuleFeatureKeyForPath('/lei-comentada/codigo-penal?tab=1')).toBe('annotatedLawsEnabled');
     expect(getModuleFeatureKeyForPath('/simulation/new')).toBe('simulationsEnabled');
+    expect(getModuleFeatureKeyForPath('/practice')).toBe('practiceEnabled');
+    expect(getModuleFeatureKeyForPath('/questions')).toBe('practiceEnabled');
+    expect(getModuleFeatureKeyForPath('/questoes')).toBe('practiceEnabled');
+    expect(getModuleFeatureKeyForPath('/questoes/123/exemplo')).toBeNull();
     expect(getModuleFeatureKeyForPath('/support')).toBeNull();
   });
 
