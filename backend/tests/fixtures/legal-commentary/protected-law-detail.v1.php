@@ -1,0 +1,178 @@
+<?php
+
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
+declare(strict_types=1);
+
+return [
+    'id' => '101',
+    'slug' => 'lei-sentinela',
+    'areaId' => '7',
+    'title' => 'Lei Sentinela',
+    'shortTitle' => 'Lei Sentinela',
+    'number' => '12.345',
+    'year' => '2026',
+    'date' => '2026-08-13',
+    'publishedAt' => '2026-08-13T12:00:00Z',
+    'aliases' => [],
+    'description' => 'Descricao publica da lei.',
+    'summary' => 'Resumo publico da norma.',
+    'preamble' => 'Preambulo publico.',
+    'ementa' => 'Ementa publica.',
+    'status' => 'published',
+    'officialUrl' => 'https://example.test/lei-sentinela',
+    'sourceName' => 'Fonte oficial',
+    'lastSyncedAt' => '2026-08-13T12:00:00Z',
+    'articleCount' => 1,
+    'commentedArticleCount' => 1,
+    'jurisprudenceCount' => 1,
+    'examTipCount' => 1,
+    'accessCount' => 1,
+    'area' => [
+        'id' => '7',
+        'slug' => 'penal',
+        'name' => 'Direito Penal',
+        'description' => 'Area publica.',
+        'order' => 1,
+        'iconTone' => 'text-indigo-600',
+    ],
+    'sections' => [[
+        'id' => '201',
+        'lawId' => '101',
+        'slug' => 'capitulo-i',
+        'title' => 'Capitulo I',
+        'fromArticle' => '1',
+        'toArticle' => '1',
+        'articleCount' => 1,
+        'sortOrder' => 1,
+    ]],
+    'articles' => [[
+        'id' => '301',
+        'lawId' => '101',
+        'sectionId' => '201',
+        'slug' => 'artigo-1',
+        'number' => '1',
+        'title' => 'Artigo 1',
+        'text' => 'Texto legal publico.',
+        'paragraphs' => [],
+        'blocks' => [[
+            'id' => 'block-1',
+            'kind' => 'caput',
+            'label' => 'Art. 1',
+            'text' => 'Texto legal publico.',
+            'notes' => ['SECRET_BLOCK_SENTINEL_789'],
+            'previousText' => 'SECRET_PREVIOUS_TEXT_SENTINEL_987',
+        ]],
+        'doctrine' => [['body' => 'SECRET_DOCTRINE_SENTINEL_321']],
+        'doutrina' => [['body' => 'SECRET_DOCTRINE_SENTINEL_321']],
+        'jurisprudenceNotes' => [['body' => 'SECRET_JURISPRUDENCE_SENTINEL_654']],
+        'sumulas' => [['id' => 's-1', 'text' => 'SECRET_SUMULA_SENTINEL_852']],
+        'comentarios' => [['id' => 'c-1', 'body' => 'SECRET_EDITORIAL_SENTINEL_123']],
+        'jurisprudencia' => [['id' => 'j-1', 'summary' => 'SECRET_JURISPRUDENCE_SENTINEL_654']],
+        'macete' => 'SECRET_TIP_SENTINEL_741',
+        'examTip' => 'SECRET_TIP_SENTINEL_741',
+        'relatedQuestionCount' => 4,
+        'studyModules' => [
+            'xray' => [
+                'title' => 'Raio-X',
+                'preview' => 'SECRET_SUMMARY_SENTINEL_456',
+                'body' => 'SECRET_EDITORIAL_SENTINEL_123',
+                'mode' => 'locked',
+                'feature' => [
+                    'feature_key' => 'lei.raiox',
+                    'requires_plan' => 'Elite',
+                    'enabled' => false,
+                    'mode' => 'locked',
+                    'fallback_mode' => 'locked',
+                ],
+            ],
+        ],
+    ]],
+    'teacherComments' => [['id' => 'c-1', 'body' => 'SECRET_EDITORIAL_SENTINEL_123']],
+    'jurisprudence' => [['id' => 'j-1', 'summary' => 'SECRET_JURISPRUDENCE_SENTINEL_654']],
+    'examTips' => [['id' => 't-1', 'body' => 'SECRET_TIP_SENTINEL_741']],
+    'sumulas' => [['id' => 's-1', 'text' => 'SECRET_SUMULA_SENTINEL_852']],
+    'sectionEditorials' => [[
+        'id' => '401',
+        'lawId' => '101',
+        'sectionId' => '201',
+        'sectionTitle' => 'Capitulo I',
+        'rangeLabel' => 'Art. 1',
+        'articleCount' => 1,
+        'summary' => 'SECRET_SUMMARY_SENTINEL_456',
+        'blocks' => [['type' => 'paragraph', 'content' => 'SECRET_BLOCK_SENTINEL_789']],
+        'examFocus' => ['SECRET_EDITORIAL_SENTINEL_123'],
+        'macetes' => ['SECRET_TIP_SENTINEL_741'],
+        'doctrine' => ['SECRET_DOCTRINE_SENTINEL_321'],
+        'jurisprudence' => [['summary' => 'SECRET_JURISPRUDENCE_SENTINEL_654']],
+        'sumulas' => [['text' => 'SECRET_SUMULA_SENTINEL_852']],
+        'highlights' => [['excerpt' => 'SECRET_EDITORIAL_SENTINEL_123']],
+    ]],
+    'features' => [
+        'lei.texto' => [
+            'feature_key' => 'lei.texto',
+            'requires_plan' => 'Gratuito',
+            'enabled' => true,
+            'mode' => 'full',
+            'fallback_mode' => 'full',
+        ],
+        'lei.comentario_basico' => [
+            'feature_key' => 'lei.comentario_basico',
+            'requires_plan' => 'Essencial',
+            'enabled' => false,
+            'mode' => 'locked',
+            'fallback_mode' => 'locked',
+        ],
+        'lei.doutrina' => [
+            'feature_key' => 'lei.doutrina',
+            'requires_plan' => 'Pro',
+            'enabled' => false,
+            'mode' => 'locked',
+            'fallback_mode' => 'locked',
+        ],
+        'lei.macete' => [
+            'feature_key' => 'lei.macete',
+            'requires_plan' => 'Essencial',
+            'enabled' => false,
+            'mode' => 'locked',
+            'fallback_mode' => 'locked',
+        ],
+        'lei.jurisprudencia' => [
+            'feature_key' => 'lei.jurisprudencia',
+            'requires_plan' => 'Pro',
+            'enabled' => false,
+            'mode' => 'locked',
+            'fallback_mode' => 'locked',
+        ],
+        'lei.sumulas' => [
+            'feature_key' => 'lei.sumulas',
+            'requires_plan' => 'Pro',
+            'enabled' => false,
+            'mode' => 'locked',
+            'fallback_mode' => 'locked',
+        ],
+        'lei.raiox' => [
+            'feature_key' => 'lei.raiox',
+            'requires_plan' => 'Elite',
+            'enabled' => false,
+            'mode' => 'locked',
+            'fallback_mode' => 'locked',
+        ],
+    ],
+    'hasLockedFeatures' => true,
+    'planAccess' => [
+        'planName' => 'Gratuito',
+        'status' => 'inactive',
+        'isAdmin' => false,
+    ],
+    'syncLogs' => [['message' => 'SECRET_ADMIN_SENTINEL_963']],
+];

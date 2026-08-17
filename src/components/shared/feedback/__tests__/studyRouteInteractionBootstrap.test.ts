@@ -25,7 +25,9 @@ describe('study route interaction bootstrap', () => {
     const clientSource = readSource('src/app/practice/PracticeClient.tsx');
 
     expect(pageSource).toContain('fetchPracticeInitialQuestions');
-    expect(pageSource).toContain('<PracticeClient initialQuestionPage={initialQuestionPage} />');
+    expect(pageSource).toMatch(/<PracticeClient\s+initialQuestionPage=\{initialQuestionPage\}\s+semanticPageHeaderRendered/);
+    expect(pageSource).toContain('PracticePublicCollectionFallback');
+    expect(clientSource).toMatch(/useEffect\(\(\) => \{\s*if \(authIsLoading\) \{\s*return;/);
     expect(clientSource).toContain("dynamic(() => import('../questions/components/QuestionCard')");
     expect(clientSource).toContain("dynamic(() => import('../../components/shared/overlays/AuthModal')");
     expect(clientSource).toContain("dynamic(() => import('@/components/shared/overlays/UpgradeModal')");

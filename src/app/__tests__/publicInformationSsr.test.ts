@@ -23,12 +23,12 @@ describe('public information SSR snapshots', () => {
     expect(() => readSource(`src/app/@seo/${route}/page.tsx`)).toThrow();
   });
 
-  it('gives the client-rendered support route one server-rendered heading', () => {
-    const supportSeoSource = readSource('src/app/@seo/support/page.tsx');
+  it('gives support one real server-rendered heading without a duplicate SEO snapshot', () => {
     const supportLayoutSource = readSource('src/app/support/layout.tsx');
 
-    expect(supportSeoSource).toContain('SupportSeoPage');
-    expect(supportSeoSource).toContain('Suporte ConcursoMestre');
+    expect(() => readSource('src/app/@seo/support/page.tsx')).toThrow();
+    expect(supportLayoutSource).toContain('Como podemos ajudar?');
+    expect(supportLayoutSource).toContain('data-semantic-content');
     expect(supportLayoutSource).toContain('application/ld+json');
   });
 

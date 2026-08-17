@@ -16,24 +16,31 @@ describe('public launch SEO readiness', () => {
     expect(robots).not.toContain("'/sitemaps/google-news.xml'");
   });
 
-  it('renders an indexable questions snapshot while preserving the interactive client', () => {
+  it('renders the questions semantics in the real page while preserving the interactive client', () => {
     const page = readSource('src/app/practice/PracticePage.tsx');
-    const snapshot = readSource('src/app/@seo/questoes/page.tsx');
-    const snapshotContent = readSource('src/app/@seo/practice/page.tsx');
 
     expect(page).toContain('<PracticeClient');
-    expect(snapshot).toContain("from '../practice/page'");
-    expect(snapshotContent).toContain("'@type': 'CollectionPage'");
-    expect(snapshotContent).toContain('publicRoutes.questions.index()');
+    expect(page).toContain("'@type': 'CollectionPage'");
+    expect(page).toContain('publicRoutes.questions.index()');
+    expect(page).toContain('data-semantic-content');
+    expect(() => readSource('src/app/@seo/questoes/page.tsx')).toThrow();
+    expect(() => readSource('src/app/@seo/practice/page.tsx')).toThrow();
   });
 
   it('returns real 404s and canonical redirects for invalid public detail URLs', () => {
     const question = readSource('src/app/questoes/[id]/[[...slug]]/page.tsx');
     const landing = readSource('src/app/l/[slug]/page.tsx');
+    const lawDetail = readSource('src/app/lei-comentada/[slug]/page.tsx');
+    const lawDetailLayout = readSource('src/app/lei-comentada/[slug]/layout.tsx');
 
     expect(question).toContain('notFound()');
     expect(question).toContain('permanentRedirect(publicRoutes.questions.detail');
     expect(landing).toContain('notFound()');
+    expect(lawDetail).toContain('notFound()');
+    expect(lawDetailLayout).toContain('fetchLegalCommentaryModuleAvailability()');
+    expect(lawDetailLayout).toContain('if (!isModuleAvailable) {');
+    expect(lawDetailLayout).toContain('return children;');
+    expect(lawDetailLayout).toContain('notFound()');
   });
 
   it('does not ship marketplace or math dependencies to every public route', () => {

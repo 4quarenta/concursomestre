@@ -19,6 +19,7 @@ import type {
   ArticleJurisprudence,
   LawArticle,
   LawDetail,
+  PublicLawDetail,
   LawSummary,
   Question,
   LegalArea,
@@ -42,6 +43,7 @@ import type {
   LawUpdate,
   TeacherComment,
 } from '@types';
+import { parsePublicLawDetail } from './publicLegalCommentaryProjection';
 
 interface LegalSearchPayload {
   results: LegalSearchResult[];
@@ -192,11 +194,12 @@ export interface LegalEditorialGenerationInput {
 
 const unwrap = <T>(response: unknown, fallback: T): T => readApiData<T>(response, fallback);
 
-const validatePublicLawSeoEnvelope = (law: LawDetail | null, source: string): LawDetail | null => {
-  if (!law || typeof law !== 'object') return null;
-  return withValidatedSeoEnvelopeShadow(law as LawDetail & Record<string, unknown>, {
+const validatePublicLawSeoEnvelope = (law: unknown, source: string): PublicLawDetail | null => {
+  const parsed = parsePublicLawDetail(law, { authenticated: getUserScopedCacheKey() !== 'guest' });
+  if (!parsed) return null;
+  return withValidatedSeoEnvelopeShadow(parsed as PublicLawDetail & Record<string, unknown>, {
     expectedResourceType: 'law',
-    expectedResourceId: law.id,
+    expectedResourceId: parsed.id,
     source,
   });
 };
@@ -238,10 +241,10 @@ const readLegalMutationProgress = (...sources: unknown[]): LegalMutationProgress
 
   return {};
 };
-const lawDetailCache = new Map<string, LawDetail | null>();
-const lawDetailPromiseCache = new Map<string, Promise<LawDetail | null>>();
-const lawOutlineCache = new Map<string, LawDetail | null>();
-const lawOutlinePromiseCache = new Map<string, Promise<LawDetail | null>>();
+const lawDetailCache = new Map<string, PublicLawDetail | null>();
+const lawDetailPromiseCache = new Map<string, Promise<PublicLawDetail | null>>();
+const lawOutlineCache = new Map<string, PublicLawDetail | null>();
+const lawOutlinePromiseCache = new Map<string, Promise<PublicLawDetail | null>>();
 const relatedQuestionLawsCache = new Map<string, RelatedQuestionLawMatch[]>();
 const homeSnapshotCache = new Map<string, LegalHomeSnapshot>();
 const homeSnapshotPromiseCache = new Map<string, Promise<LegalHomeSnapshot>>();
@@ -625,18 +628,19 @@ export const legalCommentaryApiService = {
     return Array.isArray(payload.results) ? payload.results : [];
   },
 
-  async getLawDetail(slug: string, options?: { force?: boolean }): Promise<LawDetail | null> {
+  async getLawDetail(slug: string, options?: { force?: boolean }): Promise<PublicLawDetail | null> {
     const normalizedSlug = String(slug || '').trim();
     if (!normalizedSlug) return null;
 
     const cacheKey = buildLawDetailCacheKey(normalizedSlug);
+    const persistResponse = getUserScopedCacheKey() === 'guest';
 
     if (options?.force) {
       lawDetailCache.delete(cacheKey);
       lawDetailPromiseCache.delete(cacheKey);
     }
 
-    if (lawDetailCache.has(cacheKey)) {
+    if (persistResponse && lawDetailCache.has(cacheKey)) {
       return lawDetailCache.get(cacheKey) ?? null;
     }
 
@@ -650,10 +654,10 @@ export const legalCommentaryApiService = {
         params: { slug: normalizedSlug },
       }));
       const lawDetail = validatePublicLawSeoEnvelope(
-        unwrap<LawDetail | null>(response, null),
+        unwrap<unknown>(response, null),
         'legalCommentaryApiService.getLawDetail',
       );
-      if (lawDetail) {
+      if (lawDetail && persistResponse) {
         lawDetailCache.set(cacheKey, lawDetail);
       } else {
         lawDetailCache.delete(cacheKey);
@@ -670,18 +674,19 @@ export const legalCommentaryApiService = {
     }
   },
 
-  async getLawOutline(slug: string, options?: { force?: boolean }): Promise<LawDetail | null> {
+  async getLawOutline(slug: string, options?: { force?: boolean }): Promise<PublicLawDetail | null> {
     const normalizedSlug = String(slug || '').trim();
     if (!normalizedSlug) return null;
 
     const cacheKey = buildLawDetailCacheKey(normalizedSlug);
+    const persistResponse = getUserScopedCacheKey() === 'guest';
 
     if (options?.force) {
       lawOutlineCache.delete(cacheKey);
       lawOutlinePromiseCache.delete(cacheKey);
     }
 
-    if (lawOutlineCache.has(cacheKey)) {
+    if (persistResponse && lawOutlineCache.has(cacheKey)) {
       return lawOutlineCache.get(cacheKey) ?? null;
     }
 
@@ -696,10 +701,10 @@ export const legalCommentaryApiService = {
         timeout: OUTLINE_REQUEST_TIMEOUT_MS,
       }));
       const lawDetail = validatePublicLawSeoEnvelope(
-        unwrap<LawDetail | null>(response, null),
+        unwrap<unknown>(response, null),
         'legalCommentaryApiService.getLawOutline',
       );
-      if (lawDetail) {
+      if (lawDetail && persistResponse) {
         lawOutlineCache.set(cacheKey, lawDetail);
       } else {
         lawOutlineCache.delete(cacheKey);

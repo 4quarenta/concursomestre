@@ -1,8 +1,12 @@
 import { cache } from 'react';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { ENDPOINTS } from '@services/api/endpoints';
-import type { LawDetail, LegalHomeSnapshot } from '@types';
+import type { LegalHomeSnapshot, PublicLawDetail } from '@types';
 import { withValidatedSeoEnvelopeShadow } from '@services/seo/seoEnvelope';
+import { parsePublicLawDetail } from '@services/legal-commentary/publicLegalCommentaryProjection';
+import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
+import { fetchPublicMarketingSettings } from '../publicMarketingSettings';
+import type { SystemSettings } from '@types';
 
 type FetchLike = typeof fetch;
 
@@ -43,14 +47,6 @@ const isLegalHomeSnapshot = (value: unknown): value is LegalHomeSnapshot => {
   return Array.isArray(record.areas) && Array.isArray(record.lawsByArea);
 };
 
-const isLawDetail = (value: unknown): value is LawDetail => {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Record<string, unknown>;
-  return Boolean(String(record.id || '').trim())
-    && Boolean(String(record.slug || '').trim())
-    && Array.isArray(record.articles);
-};
-
 const fetchPublicJson = async (url: URL, fetchImpl: FetchLike): Promise<unknown> => {
   const response = await fetchImpl(url, {
     headers: { Accept: 'application/json' },
@@ -60,6 +56,15 @@ const fetchPublicJson = async (url: URL, fetchImpl: FetchLike): Promise<unknown>
   if (!response.ok) return null;
   return unwrapApiData(await response.json());
 };
+
+export const resolveLegalCommentaryModuleAvailability = (
+  settings: Partial<SystemSettings> | null | undefined,
+): boolean => resolveSystemFeatureFlag(settings, 'annotatedLawsEnabled', false);
+
+export const fetchLegalCommentaryModuleAvailability = cache(async (): Promise<boolean> => {
+  const publicSettings = await fetchPublicMarketingSettings();
+  return resolveLegalCommentaryModuleAvailability(publicSettings.settings);
+});
 
 export const buildLegalHomeServerUrl = (apiBaseUrl = getApiBaseUrl()): URL => (
   new URL(ENDPOINTS.legalCommentary.list, apiBaseUrl)
@@ -93,16 +98,17 @@ const fetchLawDetailUncached = async (
   slug: string,
   fetchImpl: FetchLike = fetch,
   apiBaseUrl?: string,
-): Promise<LawDetail | null> => {
+): Promise<PublicLawDetail | null> => {
   const normalizedSlug = String(slug || '').trim();
   if (!normalizedSlug) return null;
 
   try {
     const payload = await fetchPublicJson(buildLawDetailServerUrl(normalizedSlug, apiBaseUrl), fetchImpl);
-    if (!isLawDetail(payload)) return null;
-    return withValidatedSeoEnvelopeShadow(payload as LawDetail & Record<string, unknown>, {
+    const law = parsePublicLawDetail(payload, { authenticated: false });
+    if (!law) return null;
+    return withValidatedSeoEnvelopeShadow(law as PublicLawDetail & Record<string, unknown>, {
       expectedResourceType: 'law',
-      expectedResourceId: payload.id,
+      expectedResourceId: law.id,
       source: 'legalCommentaryServerData.fetchLawDetail',
     });
   } catch {
@@ -110,7 +116,7 @@ const fetchLawDetailUncached = async (
   }
 };
 
-export const fetchLawDetailForServer = cache((slug: string): Promise<LawDetail | null> => (
+export const fetchLawDetailForServer = cache((slug: string): Promise<PublicLawDetail | null> => (
   fetchLawDetailUncached(slug)
 ));
 

@@ -48,6 +48,8 @@ type PlanPricingByName = Partial<Record<PlanName, Partial<Record<BillingCycle, n
 
 interface MarketingPlansLandingPageProps {
   slug: string;
+  initialPlans?: Plan[];
+  semanticHeadingRendered?: boolean;
 }
 
 const BILLING_CYCLE_OPTIONS: Array<{ key: BillingCycle; label: string }> = [
@@ -123,7 +125,11 @@ const getLandingCardsGridClassName = (count: number) => {
   return 'grid gap-6 lg:grid-cols-3';
 };
 
-const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => {
+const MarketingPlansLandingPage = ({
+  slug,
+  initialPlans,
+  semanticHeadingRendered = false,
+}: MarketingPlansLandingPageProps) => {
   const searchParams = useSearchParams();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
   const {
@@ -135,7 +141,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
     isPreviewMode,
     previewRequested,
     canAccessPreview,
-  } = useMarketingPlansLanding({ slug });
+  } = useMarketingPlansLanding({ slug, initialPlans });
 
   const currentTheme = themeConfig[systemSettings.activeTheme || 'default'] || themeConfig.default;
   const ThemeIcon = currentTheme.icon;
@@ -252,24 +258,30 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
   );
 
   if (loading) {
+    const LoadingRoot = semanticHeadingRendered ? 'div' : 'main';
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-20 dark:bg-slate-950">
+      <LoadingRoot className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-20 dark:bg-slate-950" data-hydration-interaction={semanticHeadingRendered || undefined}>
         <div className="flex flex-col items-center gap-4 text-center">
           <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-indigo-500" />
           <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Carregando landing comercial...</p>
         </div>
-      </div>
+      </LoadingRoot>
     );
   }
 
   if (!landingPage) {
+    const MissingRoot = semanticHeadingRendered ? 'div' : 'main';
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-20 dark:bg-slate-950">
+      <MissingRoot className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-20 dark:bg-slate-950" data-hydration-interaction={semanticHeadingRendered || undefined}>
         <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
             <LayoutTemplate size={28} />
           </div>
-          <h1 className="mt-6 text-2xl font-black text-slate-900 dark:text-slate-100">Landing nao encontrada</h1>
+          {semanticHeadingRendered ? (
+            <h2 className="mt-6 text-2xl font-black text-slate-900 dark:text-slate-100">Landing nao encontrada</h2>
+          ) : (
+            <h1 className="mt-6 text-2xl font-black text-slate-900 dark:text-slate-100">Landing nao encontrada</h1>
+          )}
           <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
             {previewRequested && !canAccessPreview
               ? 'O preview administrativo exige perfil com acesso ao painel.'
@@ -279,12 +291,16 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             Voltar ao inicio
           </Link>
         </div>
-      </div>
+      </MissingRoot>
     );
   }
 
+  const PageRoot = semanticHeadingRendered ? 'div' : 'main';
   return (
-    <div className={`min-h-screen font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/30 ${forceModeClass || 'bg-white text-slate-950 dark:bg-slate-950 dark:text-white'}`}>
+    <PageRoot
+      className={`min-h-screen font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/30 ${forceModeClass || 'bg-white text-slate-950 dark:bg-slate-950 dark:text-white'}`}
+      data-hydration-interaction={semanticHeadingRendered || undefined}
+    >
       {isPreviewMode && (
         <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-center text-[10px] font-black uppercase tracking-[0.2em] text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-300">
           Preview administrativo da landing: {landingPage.title}
@@ -304,83 +320,85 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
         </div>
       </header>
 
-      <section className="relative isolate overflow-hidden px-6 pb-24 pt-20">
-        <ThemeOrnaments themeId={systemSettings.activeTheme} />
-        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr),420px] lg:items-center">
-          <div className="space-y-8">
-            <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] ${currentTheme.accent}`}>
-              <Star size={14} />
-              {landingPage.hero.eyebrow}
+      {!semanticHeadingRendered ? (
+        <section className="relative isolate overflow-hidden px-6 pb-24 pt-20">
+          <ThemeOrnaments themeId={systemSettings.activeTheme} />
+          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr),420px] lg:items-center">
+            <div className="space-y-8">
+              <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] ${currentTheme.accent}`}>
+                <Star size={14} />
+                {landingPage.hero.eyebrow}
+              </div>
+              <div className="space-y-5">
+                <h1 className="max-w-4xl text-5xl font-black leading-[1.02] text-slate-950 dark:text-white md:text-7xl">
+                  {landingPage.hero.title}
+                </h1>
+                <p className="max-w-3xl text-lg font-medium leading-relaxed text-slate-500 dark:text-slate-400 md:text-xl">
+                  {landingPage.hero.description}
+                </p>
+              </div>
+              <div className="flex flex-col gap-4 sm:flex-row">
+                <a
+                  href={featuredCard?.checkoutHref || appendTracking('/plans')}
+                  className={`inline-flex items-center justify-center gap-3 rounded-2xl px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-[1.01] active:scale-95 ${currentTheme.button}`}
+                >
+                  {landingPage.hero.primaryCtaLabel}
+                  <ArrowRight size={16} />
+                </a>
+                <a
+                  href="#comparar-planos"
+                  className="inline-flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-slate-900 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/60"
+                >
+                  {landingPage.hero.secondaryCtaLabel}
+                </a>
+              </div>
+              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{landingPage.hero.proof}</p>
             </div>
-            <div className="space-y-5">
-              <h1 className="max-w-4xl text-5xl font-black leading-[1.02] tracking-tight text-slate-950 dark:text-white md:text-7xl">
-                {landingPage.hero.title}
-              </h1>
-              <p className="max-w-3xl text-lg font-medium leading-relaxed text-slate-500 dark:text-slate-400 md:text-xl">
-                {landingPage.hero.description}
-              </p>
-            </div>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <a
-                href={featuredCard?.checkoutHref || appendTracking('/plans')}
-                className={`inline-flex items-center justify-center gap-3 rounded-2xl px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-[1.01] active:scale-95 ${currentTheme.button}`}
-              >
-                {landingPage.hero.primaryCtaLabel}
-                <ArrowRight size={16} />
-              </a>
-              <a
-                href="#comparar-planos"
-                className="inline-flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-slate-900 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/60"
-              >
-                {landingPage.hero.secondaryCtaLabel}
-              </a>
-            </div>
-            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{landingPage.hero.proof}</p>
-          </div>
 
-          <div className="rounded-[2.75rem] border border-slate-200 bg-white p-7 shadow-xl dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Plano recomendado</p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-              {featuredCard?.displayName || 'Plano Elite'}
-            </h2>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-              {featuredCard?.description || landingPage.eliteSection.description}
-            </p>
-            <div className="mt-6 rounded-2xl bg-slate-950 p-6 text-white dark:bg-slate-950">
-              {featuredCard?.hasDiscount ? (
-                <>
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300 line-through">
-                    De {formatCurrency(featuredCard.originalMonthlyAmount)}/mes
-                  </p>
-                  <p className="mt-2 text-4xl font-black tracking-tight text-emerald-300">
-                    {formatCurrency(featuredCard.monthlyAmount)}
+            <div className="rounded-[2.75rem] border border-slate-200 bg-white p-7 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Plano recomendado</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+                {featuredCard?.displayName || 'Plano Elite'}
+              </h2>
+              <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                {featuredCard?.description || landingPage.eliteSection.description}
+              </p>
+              <div className="mt-6 rounded-2xl bg-slate-950 p-6 text-white dark:bg-slate-950">
+                {featuredCard?.hasDiscount ? (
+                  <>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300 line-through">
+                      De {formatCurrency(featuredCard.originalMonthlyAmount)}/mes
+                    </p>
+                    <p className="mt-2 text-4xl font-black tracking-tight text-emerald-300">
+                      {formatCurrency(featuredCard.monthlyAmount)}
+                      <span className="ml-1 text-sm font-bold text-emerald-100">/mes</span>
+                    </p>
+                    {getCycleCount(billingCycle) > 1 && (
+                      <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-100">
+                        {formatCurrency(featuredCard.cycleAmount)}/{featuredCard.cycleLabel}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-4xl font-black tracking-tight text-emerald-300">
+                    {formatCurrency(featuredCard?.monthlyAmount || 0)}
                     <span className="ml-1 text-sm font-bold text-emerald-100">/mes</span>
                   </p>
-                  {getCycleCount(billingCycle) > 1 && (
-                    <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-100">
-                      {formatCurrency(featuredCard.cycleAmount)}/{featuredCard.cycleLabel}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <p className="text-4xl font-black tracking-tight text-emerald-300">
-                  {formatCurrency(featuredCard?.monthlyAmount || 0)}
-                  <span className="ml-1 text-sm font-bold text-emerald-100">/mes</span>
-                </p>
-              )}
-            </div>
+                )}
+              </div>
 
-            <ul className="mt-6 space-y-3">
-              {(featuredCard?.featureList || landingPage.eliteSection.bullets).map((item) => (
-                <li key={item} className="flex items-start gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-500" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
+              <ul className="mt-6 space-y-3">
+                {(featuredCard?.featureList || landingPage.eliteSection.bullets).map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-500" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <section id="comparar-planos" className="px-6 pb-8">
         <div className="mx-auto max-w-7xl">
@@ -741,7 +759,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
           </div>
         </div>
       </section>
-    </div>
+    </PageRoot>
   );
 };
 

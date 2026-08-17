@@ -12,6 +12,8 @@
 import React from 'react';
 import { websiteManifest } from '../../config/platform';
 
+const CREATED_BY_DOCUMENT_SEO = 'data-document-seo-created';
+
 export interface DocumentSeoPayload {
   title: string;
   description?: string;
@@ -31,6 +33,7 @@ const ensureMetaTag = (attribute: 'name' | 'property', key: string, content: str
   if (!element) {
     element = document.createElement('meta');
     element.setAttribute(attribute, key);
+    element.setAttribute(CREATED_BY_DOCUMENT_SEO, 'true');
     document.head.appendChild(element);
   }
 
@@ -43,6 +46,7 @@ const ensureLinkTag = (rel: string, href: string) => {
   if (!element) {
     element = document.createElement('link');
     element.setAttribute('rel', rel);
+    element.setAttribute(CREATED_BY_DOCUMENT_SEO, 'true');
     document.head.appendChild(element);
   }
 
@@ -78,11 +82,9 @@ export const useDocumentSeo = (payload: DocumentSeoPayload | null) => {
     applyDocumentSeo(payload);
 
     return () => {
-      applyDocumentSeo({
-        title: websiteManifest.website.title,
-        description: websiteManifest.website.description,
-        canonical: window.location.origin,
-      });
+      document.head
+        .querySelectorAll(`[${CREATED_BY_DOCUMENT_SEO}="true"]`)
+        .forEach((element) => element.remove());
     };
   }, [payload]);
 };

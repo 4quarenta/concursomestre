@@ -36,7 +36,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import type { Plan } from '@types';
+import type { Plan, SystemSettings } from '@types';
 import { getAssetUrl } from '@services/api';
 import { homeTestimonialsService, resolveHomeTestimonials, type HomeTestimonial } from '@services/marketing/homeTestimonials';
 import {
@@ -456,12 +456,14 @@ export const FeatureCard = ({
   </article>
 );
 
-const FeaturesSection = () => {
+const FeaturesSection = ({ initialSystemSettings = null }: { initialSystemSettings?: SystemSettings | null }) => {
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const settingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const effectiveSettings = settingsLoaded ? systemSettings : (initialSystemSettings || systemSettings);
+  const effectiveSettingsLoaded = settingsLoaded || Boolean(initialSystemSettings);
   const visibleFeatures = FEATURES.filter((feature) => (
     !('featureKey' in feature) || (
-      settingsLoaded && resolveSystemFeatureFlag(systemSettings, feature.featureKey, false)
+      effectiveSettingsLoaded && resolveSystemFeatureFlag(effectiveSettings, feature.featureKey, false)
     )
   ));
 
@@ -955,12 +957,12 @@ export const FinalCTA = () => (
 
 export const Footer = LandingCommercialFooter;
 
-const LandingCommercialPage: React.FC = () => (
+const LandingCommercialPage: React.FC<{ initialSystemSettings?: SystemSettings | null }> = ({ initialSystemSettings = null }) => (
   <div className="min-h-screen bg-white text-[#07103a]">
     <Header />
     <main>
       <HeroSection />
-      <FeaturesSection />
+      <FeaturesSection initialSystemSettings={initialSystemSettings} />
       <ApprovalContextSection />
       <ProcessSection />
       <TestimonialsSection />

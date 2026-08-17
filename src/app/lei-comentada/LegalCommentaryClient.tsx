@@ -22,7 +22,7 @@ import {
   PLATFORM_PAGE_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useEffectiveSystemSettings } from '@providers/AppConfigProvider';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import { getBenefitRequiredPlan, hasPlanBenefit, type CanonicalPlanName } from '@services/plans/planAccess';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
@@ -772,12 +772,16 @@ const InlineSpinner: React.FC<{ label?: string }> = ({ label }) => (
 
 type AnnotatedLawsPageProps = {
   initialSnapshot?: LegalHomeSnapshot | null;
+  semanticHeaderRendered?: boolean;
 };
 
-const AnnotatedLawsPage: React.FC<AnnotatedLawsPageProps> = ({ initialSnapshot = null }) => {
+const AnnotatedLawsPage: React.FC<AnnotatedLawsPageProps> = ({
+  initialSnapshot = null,
+  semanticHeaderRendered = false,
+}) => {
   const { currentUser, updateUser } = useAuth();
   const { addToast } = useToast();
-  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const { systemSettings } = useEffectiveSystemSettings();
   const userId = getUserId(currentUser as UserLike);
   const isAdminPreview = Boolean(
     (currentUser as UserLike)?.isAdmin
@@ -1562,19 +1566,20 @@ const AnnotatedLawsPage: React.FC<AnnotatedLawsPageProps> = ({ initialSnapshot =
   }
 
   return (
-    <div className="w-full animate-fade-in space-y-5">
-      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
+    <div
+      className="w-full animate-fade-in space-y-5"
+      data-hydration-interaction={semanticHeaderRendered || undefined}
+    >
+      <section aria-label="Resumo do acervo" className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        {!semanticHeaderRendered ? <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#615fff]">
             Biblioteca Legislativa
           </p>
-          <h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>
-            Lei comentada
-          </h1>
+          <h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>Lei comentada</h1>
           <p className={`mt-2 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>
             Seu acervo de legislacao comentada, com foco no que realmente cai em prova.
           </p>
-        </div>
+        </div> : null}
 
         <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[390px]">
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -1590,7 +1595,7 @@ const AnnotatedLawsPage: React.FC<AnnotatedLawsPageProps> = ({ initialSnapshot =
             <p className={`mt-2 leading-none ${PLATFORM_METRIC_VALUE_CLASS}`}>{formatNumber(snapshot.totals.updatedRecently)}</p>
           </div>
         </div>
-      </header>
+      </section>
 
       <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4`}>
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_230px]">

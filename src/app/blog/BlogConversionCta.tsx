@@ -17,7 +17,7 @@ export default function BlogConversionCta({ tone = 'dark', compact = false }: Bl
 
   if (isLoading) {
     return (
-      <section className={tone === 'dark' ? 'border-y border-slate-800 bg-slate-950' : 'border-y border-indigo-100 bg-indigo-50 dark:border-indigo-900/60 dark:bg-indigo-950/30'} aria-label="Carregando próximo passo">
+      <section data-hydration-interaction className={tone === 'dark' ? 'border-y border-slate-800 bg-slate-950' : 'border-y border-indigo-100 bg-indigo-50 dark:border-indigo-900/60 dark:bg-indigo-950/30'} aria-label="Carregando próximo passo">
         <div className={`mx-auto max-w-7xl px-5 lg:px-8 ${compact ? 'py-7' : 'py-10'}`}>
           <div className="h-20 animate-pulse rounded-md bg-slate-200/20" aria-hidden="true" />
         </div>
@@ -59,6 +59,7 @@ export default function BlogConversionCta({ tone = 'dark', compact = false }: Bl
 
   return (
     <section
+      data-hydration-interaction
       className={isDark
         ? 'border-y border-slate-800 bg-slate-950 text-white'
         : 'border-y border-indigo-100 bg-indigo-50 text-slate-950 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-white'}

@@ -453,6 +453,200 @@ export interface LawDetail extends LawSummary, SeoEnvelopeCarrier {
   sectionEditorials?: LawSectionEditorial[];
 }
 
+export type PublicLegalEditorialAccess = 'full' | 'preview' | 'locked' | 'hidden';
+
+export interface PublicLegalFeatureAccessState {
+  feature_key: string;
+  requires_plan?: string;
+  enabled?: boolean;
+  mode: PublicLegalEditorialAccess;
+  fallback_mode?: PublicLegalEditorialAccess;
+  limit_key?: string | null;
+  limit_value?: number | null;
+}
+
+export interface PublicLegalEditorialAvailability {
+  available: boolean;
+  access: PublicLegalEditorialAccess;
+}
+
+export interface PublicLawStudyModule {
+  title?: string;
+  badge?: string;
+  mode: PublicLegalEditorialAccess;
+  feature?: PublicLegalFeatureAccessState;
+  preview?: string;
+  body?: string | null;
+  front?: string;
+  back?: string;
+  items?: Array<string | number | boolean>;
+  connections?: Array<string | number | boolean>;
+  percent?: number;
+  level?: string;
+  importance?: string;
+  theme?: string;
+  questionCount?: number;
+  count?: number;
+  ctaLabel?: string;
+  ctaHref?: string;
+}
+
+export interface PublicLawArticle {
+  id: string;
+  lawId: string;
+  sectionId?: string | null;
+  slug: string;
+  number: string;
+  numero?: string;
+  title?: string;
+  titulo?: string;
+  text?: string;
+  texto?: string;
+  paragraphs?: LegalArticleParagraph[];
+  paragrafos?: LegalArticleParagraph[];
+  blocks: LegalArticleBlock[];
+  officialAnchor?: string;
+  isRecentlyChanged?: boolean;
+  relatedQuestionCount?: number;
+  questoesRelacionadas?: number;
+  assuntoFilterId?: string | null;
+  isFavorite?: boolean;
+  readAt?: string | null;
+  comentarios?: TeacherComment[];
+  doctrine?: Array<string | LegalTargetedText>;
+  doutrina?: Array<string | LegalTargetedText>;
+  macete?: string | null;
+  examTip?: string | null;
+  jurisprudenceNotes?: Array<string | LegalTargetedText>;
+  jurisprudencia?: ArticleJurisprudence[];
+  syllabi?: LegalArticleSyllabus[];
+  sumulas?: LegalArticleSyllabus[];
+  studyModules?: Record<string, PublicLawStudyModule>;
+}
+
+export interface PublicLawSectionEditorial {
+  id?: string;
+  lawId?: string;
+  sectionId?: string | null;
+  sectionTitle: string;
+  rangeLabel: string;
+  fromArticle?: string | null;
+  toArticle?: string | null;
+  articleCount: number;
+  hasContent: boolean;
+  access: PublicLegalEditorialAccess;
+  importance?: 'alta' | 'media' | 'baixa' | string;
+  style?: string;
+  summary?: string;
+  blocks?: LegalRichContentBlock[];
+  examFocus?: string[];
+  examFocusText?: string;
+  keywords?: string[];
+  macetes?: string[];
+  doctrine?: string[];
+  doutrina?: string[];
+  jurisprudence?: ArticleJurisprudence[];
+  jurisprudencia?: ArticleJurisprudence[];
+  sumulas?: LegalArticleSyllabus[];
+  highlights?: Array<{
+    articleId: string;
+    articleNumber: string;
+    title: string;
+    excerpt: string;
+  }>;
+  reactionKey?: string;
+  likes?: number;
+  dislikes?: number;
+  userReaction?: 'like' | 'dislike' | null;
+}
+
+export interface PublicLegalUserProgress {
+  id?: string;
+  lawId?: string;
+  viewedArticleIds: string[];
+  lastArticleId?: string | null;
+  lastViewedAt?: string;
+  progressPercent: number;
+}
+
+export type PublicLegalUserComment = Omit<LegalUserComment, 'userId'> & {
+  userId?: string;
+};
+
+export interface PublicLawDetail extends SeoEnvelopeCarrier {
+  id: string;
+  slug: string;
+  areaId?: string;
+  lawTopicFilterId?: string | null;
+  lawTopicName?: string | null;
+  lawTopicSlug?: string | null;
+  topicName?: string | null;
+  topicSlug?: string | null;
+  subjectFilterId?: string | null;
+  subjectName?: string | null;
+  materiaName?: string | null;
+  disciplinaName?: string | null;
+  subject?: LegalTaxonomySummary | string | null;
+  subjects?: Array<LegalTaxonomySummary | string>;
+  materia?: LegalTaxonomySummary | string | null;
+  materias?: Array<LegalTaxonomySummary | string>;
+  disciplina?: LegalTaxonomySummary | string | null;
+  disciplinas?: Array<LegalTaxonomySummary | string>;
+  disciplines?: Array<LegalTaxonomySummary | string>;
+  assuntos?: LegalTaxonomySummary[];
+  acronym?: string;
+  sigla?: string | null;
+  catalogId?: string;
+  title: string;
+  shortTitle: string;
+  nome?: string;
+  number: string;
+  numero?: string;
+  year?: string;
+  ano?: string | null;
+  description?: string;
+  descricao?: string;
+  date: string;
+  publishedAt?: string;
+  published_at?: string;
+  aliases: string[];
+  summary: string;
+  preamble?: string;
+  ementa?: string;
+  status: LegalContentStatus;
+  officialUrl: string;
+  urlPlanalto?: string;
+  sourceName: string;
+  lastSyncedAt?: string;
+  lastUpdatedAt?: string | null;
+  ultimaSincronizacao?: string;
+  ultimaAtualizacao?: string | null;
+  isRecentlyUpdated?: boolean;
+  atualizacaoPendente?: boolean;
+  articleCount: number;
+  totalArtigos?: number;
+  commentedArticleCount: number;
+  artigosComentados?: number;
+  jurisprudenceCount: number;
+  examTipCount: number;
+  accessCount: number;
+  outlineOnly?: boolean;
+  area?: LegalArea;
+  sections: LawSection[];
+  articles: PublicLawArticle[];
+  userComments?: PublicLegalUserComment[];
+  userCommentsPageInfo?: { limit: number; hasMore: boolean } | null;
+  updates?: LawUpdate[];
+  progress?: PublicLegalUserProgress;
+  progressPercent?: number;
+  isFavorite?: boolean;
+  sectionEditorials: PublicLawSectionEditorial[];
+  features: Record<string, PublicLegalFeatureAccessState>;
+  hasLockedFeatures: boolean;
+  planAccess?: { planName?: string; status?: string } | null;
+  editorialAvailability: Record<string, PublicLegalEditorialAvailability>;
+}
+
 export type LegalEditorialGenerationScope =
   | 'article-full'
   | 'stage-a'

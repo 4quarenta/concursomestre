@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
 import { MarketplaceProvider } from '@providers/MarketplaceProvider';
 
@@ -9,5 +9,9 @@ export const metadata = buildPublicPageMetadata({
 });
 
 export default function MarketplaceLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <MarketplaceProvider>{children}</MarketplaceProvider>;
+  return (
+    <MarketplaceProvider>
+      <Suspense fallback={null}>{children}</Suspense>
+    </MarketplaceProvider>
+  );
 }

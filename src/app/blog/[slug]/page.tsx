@@ -22,6 +22,7 @@ import { articlePopularity, formatBlogDateTime, publicationValue, wasMeaningfull
 import { fetchBlogArticleForServer, fetchBlogPageForServer } from '../blogServerData';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildNoIndexMetadata } from '@/app/seoMetadata';
 
 export const revalidate = 300;
 
@@ -30,7 +31,7 @@ type PageProps = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const article = await fetchBlogArticleForServer(slug);
-  if (!article) return { title: 'Notícia não encontrada', robots: { index: false } };
+  if (!article) return buildNoIndexMetadata({ title: 'Notícia não encontrada' });
   const canonical = article.canonicalUrl || `/blog/${article.slug}`;
   return {
     title: article.seoTitle || article.title,

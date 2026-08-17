@@ -25,7 +25,7 @@ import {
   type PaymentStatus,
 } from '@/services/billing/paymentStatus';
 import { subscriptionsService } from '@/services/subscriptions';
-import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useEffectiveSystemSettings } from './AppConfigProvider';
 import type { PlanBenefitKey } from '@types';
 import { resolveExamPublicRouteCompatibility } from './examRouteCompatibility';
 import { resolveQuestionCollectionRouteCompatibility } from './questionRouteCompatibility';
@@ -289,7 +289,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   const pathname = usePathname() || '/';
   const router = useRouter();
   const { currentUser, isLoading, logout } = useAuth();
-  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const { systemSettings } = useEffectiveSystemSettings();
   const hasInMemoryAccessToken = Boolean(getAccessToken());
   const restoredLegacyHashRouteRef = React.useRef(false);
   const [showLoginBypass, setShowLoginBypass] = React.useState(false);

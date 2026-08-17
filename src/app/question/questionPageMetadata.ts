@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { buildNoIndexMetadata } from '@/app/seoMetadata';
 import { buildAbsoluteUrl } from '@services/seo/slug';
 import type { PublicQuestionRouteResolution } from './questionServerResolver';
 import {
@@ -12,11 +13,10 @@ export const buildQuestionMetadata = (
 ): Metadata => {
   const question = resolution?.question;
   if (!question) {
-    return {
+    return buildNoIndexMetadata({
       title: 'Questão de concurso',
       description: 'Resolva questões de concursos por banca, órgão, cargo, ano e assunto no ConcursoMestre.',
-      robots: { index: false, follow: true },
-    };
+    });
   }
 
   const title = buildQuestionMetaTitle(question);

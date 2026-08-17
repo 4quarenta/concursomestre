@@ -13,7 +13,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useEffectiveSystemSettings } from '@/providers/AppConfigProvider';
 import { isModulePathEnabled } from '@services/system/moduleFlags';
 import PublicBrandLink from './PublicBrandLink';
 import { publicRoutes } from '@services/routes/publicRoutes';
@@ -49,9 +49,8 @@ const FOOTER_COLUMNS = [
 
 const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
-  const configuredVersion = useAppConfigStore((state) => state.systemSettings.platformVersion);
-  const systemSettings = useAppConfigStore((state) => state.systemSettings);
-  const settingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const { systemSettings, isSystemSettingsLoaded: settingsLoaded } = useEffectiveSystemSettings();
+  const configuredVersion = systemSettings.platformVersion;
   const platformVersion = String(configuredVersion || '1.0.0').trim().replace(/^v(?=\d)/i, '') || '1.0.0';
 
   return (

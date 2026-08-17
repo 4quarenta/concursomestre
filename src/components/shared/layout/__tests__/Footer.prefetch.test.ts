@@ -21,7 +21,8 @@ describe('Footer navigation', () => {
     expect(footerSource).toContain("title: 'Explorar'");
     expect(footerSource).toContain("title: 'Conte\\u00fado'");
     expect(footerSource).toContain("title: 'Ajuda'");
-    expect(footerSource).toContain('state.systemSettings.platformVersion');
+    expect(footerSource).toContain('useEffectiveSystemSettings');
+    expect(footerSource).toContain('systemSettings.platformVersion');
     expect(footerSource).toContain('Vers&atilde;o {platformVersion}');
     expect(footerSource).not.toContain('lucide-react');
     expect(footerSource).not.toContain('Desenvolvido com');

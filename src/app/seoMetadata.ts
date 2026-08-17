@@ -43,6 +43,9 @@ export const buildNoIndexMetadata = ({
 }: NoIndexMetadataInput): Metadata => ({
   title,
   description,
+  alternates: {
+    canonical: null,
+  },
   robots: {
     index: false,
     follow: false,

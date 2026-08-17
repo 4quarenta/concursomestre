@@ -22,10 +22,11 @@ import {
 } from '@services/marketing/landingPages';
 import { websiteManifest } from '../../../config/platform';
 import type { MarketingLandingPage, Plan } from '@types';
-import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useEffectiveSystemSettings } from '@providers/AppConfigProvider';
 
 interface UseMarketingPlansLandingOptions {
   slug: string;
+  initialPlans?: Plan[];
 }
 
 const ADMIN_PREVIEW_ROLES = new Set(['admin', 'staff']);
@@ -36,13 +37,12 @@ const ADMIN_PREVIEW_ROLES = new Set(['admin', 'staff']);
  *
  * @since v1.0.0
  */
-export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptions) => {
+export const useMarketingPlansLanding = ({ slug, initialPlans }: UseMarketingPlansLandingOptions) => {
   const { currentUser } = useAuth();
-  const systemSettings = useAppConfigStore((state) => state.systemSettings);
-  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const { systemSettings, isSystemSettingsLoaded } = useEffectiveSystemSettings();
   const searchParams = useSearchParams();
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [plansLoaded, setPlansLoaded] = useState(false);
+  const [plans, setPlans] = useState<Plan[]>(() => initialPlans || []);
+  const [plansLoaded, setPlansLoaded] = useState(initialPlans !== undefined);
   const [previewPages, setPreviewPages] = useState<MarketingLandingPage[] | null>(null);
   const [previewLoaded, setPreviewLoaded] = useState(false);
 
@@ -53,6 +53,10 @@ export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptio
   const canAccessPreview = ADMIN_PREVIEW_ROLES.has(String(currentUser?.role || '').toLowerCase());
 
   useEffect(() => {
+    if (initialPlans !== undefined) {
+      return undefined;
+    }
+
     let active = true;
 
     planService.getPlans()
@@ -70,7 +74,7 @@ export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptio
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialPlans]);
 
   useEffect(() => {
     if (!previewId || !canAccessPreview) {

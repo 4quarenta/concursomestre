@@ -12,8 +12,11 @@
 */
 
 import React from 'react';
+import type { SystemSettings } from '@types';
 import LandingCommercialPage from './components/LandingCommercialPage';
 
-const LandingPage: React.FC = () => <LandingCommercialPage />;
+const LandingPage: React.FC<{ initialSystemSettings?: SystemSettings | null }> = ({ initialSystemSettings = null }) => (
+  <LandingCommercialPage initialSystemSettings={initialSystemSettings} />
+);
 
 export default LandingPage;

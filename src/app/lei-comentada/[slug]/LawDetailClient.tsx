@@ -13,7 +13,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
@@ -71,7 +71,7 @@ import { reportsService } from '@services/reports';
 import { questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import { publicRoutes } from '@services/routes/publicRoutes';
-import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useEffectiveSystemSettings } from '@providers/AppConfigProvider';
 import {
   getAccessPlanName,
   getBenefitPlanLabel,
@@ -94,11 +94,11 @@ import type {
   LegalCommentaryFeatureFallbackMode,
   LegalCommentaryFeatureKey,
   LegalRichContentBlock,
-  LegalUserComment,
+  PublicLegalUserComment,
   LawArticle,
-  LawDetail,
+  PublicLawDetail,
   LawSection,
-  LawSectionEditorial,
+  PublicLawSectionEditorial,
   LegalTargetedText,
   PlanBenefitKey,
   QuestaoComentario,
@@ -250,7 +250,7 @@ const legalRichBlockToSingleAnalysisHtml = (block: LegalRichContentBlock) => {
   return parts.join('');
 };
 
-const buildSingleSectionAnalysisHtml = (editorial?: LawSectionEditorial | null) => {
+const buildSingleSectionAnalysisHtml = (editorial?: PublicLawSectionEditorial | null) => {
   if (!editorial) {
     return '';
   }
@@ -530,22 +530,14 @@ const getArticleTextLines = (article: LawArticle): string[] => {
   return singleLine ? [singleLine] : [];
 };
 
-const resolveArticleTeacherComments = (law: LawDetail, article: LawArticle): TeacherComment[] => {
-  if (Array.isArray(article.comentarios) && article.comentarios.length > 0) {
-    return article.comentarios;
-  }
-
-  return (Array.isArray(law.teacherComments) ? law.teacherComments : [])
-    .filter((comment) => String(comment.articleId) === String(article.id));
+const resolveArticleTeacherComments = (law: PublicLawDetail, article: LawArticle): TeacherComment[] => {
+  void law;
+  return Array.isArray(article.comentarios) ? article.comentarios : [];
 };
 
-const resolveArticleJurisprudence = (law: LawDetail, article: LawArticle): ArticleJurisprudence[] => {
-  if (Array.isArray(article.jurisprudencia) && article.jurisprudencia.length > 0) {
-    return article.jurisprudencia;
-  }
-
-  return (Array.isArray(law.jurisprudence) ? law.jurisprudence : [])
-    .filter((entry) => String(entry.articleId) === String(article.id));
+const resolveArticleJurisprudence = (law: PublicLawDetail, article: LawArticle): ArticleJurisprudence[] => {
+  void law;
+  return Array.isArray(article.jurisprudencia) ? article.jurisprudencia : [];
 };
 
 const normalizeLegalHeadingText = (value: string): string => value
@@ -740,7 +732,7 @@ const getSectionSearchTitles = (section: LawSectionSummary) => [
   .filter(Boolean);
 
 const sectionEditorialMatchesArticle = (
-  editorial: LawSectionEditorial,
+  editorial: PublicLawSectionEditorial,
   article: LawArticle,
   sections: LawSectionSummary[],
 ): boolean => {
@@ -780,7 +772,7 @@ const sectionEditorialMatchesArticle = (
 };
 
 const buildSectionEditorialSearchValuesForArticle = (
-  law: LawDetail,
+  law: PublicLawDetail,
   article: LawArticle,
   sections: LawSectionSummary[],
 ) => (Array.isArray(law.sectionEditorials) ? law.sectionEditorials : [])
@@ -802,17 +794,23 @@ const buildSectionEditorialSearchValuesForArticle = (
     ...collectLegalSearchValues(editorial.sumulas || []),
   ]);
 
-const resolveArticleExamTips = (law: LawDetail, article: LawArticle): ArticleExamTip[] => (
-  Array.isArray(law.examTips)
-    ? law.examTips.filter((tip) => String(tip.articleId || '') === String(article.id))
+const resolveArticleExamTips = (law: PublicLawDetail, article: LawArticle): ArticleExamTip[] => (
+  String(article.examTip || article.macete || '').trim()
+    ? [{
+      id: `article-tip:${article.id}`,
+      articleId: String(article.id),
+      title: 'Dica de prova',
+      body: String(article.examTip || article.macete || '').trim(),
+      tags: [],
+    }]
     : []
 );
 
 const resolveArticleUserCommentsForSearch = (
-  law: LawDetail,
+  law: PublicLawDetail,
   article: LawArticle,
   userId?: string | null,
-): LegalUserComment[] => (
+): PublicLegalUserComment[] => (
   Array.isArray(law.userComments)
     ? law.userComments.filter((comment) => (
       String(comment.articleId) === String(article.id)
@@ -824,7 +822,7 @@ const resolveArticleUserCommentsForSearch = (
 );
 
 const buildArticleSearchHaystack = (
-  law: LawDetail,
+  law: PublicLawDetail,
   article: LawArticle,
   sections: LawSectionSummary[],
   userId?: string | null,
@@ -1355,20 +1353,20 @@ const ReaderColorButton: React.FC<{
   </button>
 );
 
-const getLegalCommentAvatarUrl = (comment: LegalUserComment) => {
+const getLegalCommentAvatarUrl = (comment: PublicLegalUserComment) => {
   const rawAvatar = String(comment.userAvatar || comment.userPhotoUrl || comment.photoUrl || comment.avatarUrl || '').trim();
   return getAssetUrl(rawAvatar) || rawAvatar;
 };
 
-const getLegalCommentParentId = (comment: LegalUserComment): string => String(
+const getLegalCommentParentId = (comment: PublicLegalUserComment): string => String(
   comment.parentCommentId
   || comment.parent_comment_id
-  || (comment as LegalUserComment & { parentId?: string | number | null }).parentId
-  || (comment as LegalUserComment & { parent_id?: string | number | null }).parent_id
+  || (comment as PublicLegalUserComment & { parentId?: string | number | null }).parentId
+  || (comment as PublicLegalUserComment & { parent_id?: string | number | null }).parent_id
   || '',
 ).trim();
 
-const mapLegalCommentToQuestionComment = (comment: LegalUserComment): QuestaoComentario => ({
+const mapLegalCommentToQuestionComment = (comment: PublicLegalUserComment): QuestaoComentario => ({
   id: String(comment.id),
   userId: String(comment.userId || ''),
   userName: String(comment.userName || 'Aluno'),
@@ -1385,7 +1383,7 @@ const mapLegalCommentToQuestionComment = (comment: LegalUserComment): QuestaoCom
   replies: [],
 });
 
-const buildLegalQuestionCommentTree = (comments: LegalUserComment[]): QuestaoComentario[] => {
+const buildLegalQuestionCommentTree = (comments: PublicLegalUserComment[]): QuestaoComentario[] => {
   const mappedComments = comments.map(mapLegalCommentToQuestionComment);
   const byId = new Map(mappedComments.map((comment) => [String(comment.id), comment]));
   const roots: QuestaoComentario[] = [];
@@ -1590,7 +1588,7 @@ const RelatedQuestionPreviewCard: React.FC<{ question: Question; index: number }
 };
 
 const LegalCommentsPanel: React.FC<{
-  comments: LegalUserComment[];
+  comments: PublicLegalUserComment[];
   value: string;
   replyValue: string;
   replyTargetId: string | null;
@@ -1625,7 +1623,7 @@ const LegalCommentsPanel: React.FC<{
   currentUserId,
 }) => {
   const repliesByParent = React.useMemo(() => {
-    const map = new Map<string, LegalUserComment[]>();
+    const map = new Map<string, PublicLegalUserComment[]>();
     comments.forEach((comment) => {
       const parentId = getLegalCommentParentId(comment);
       if (!parentId) return;
@@ -1644,7 +1642,7 @@ const LegalCommentsPanel: React.FC<{
     comments.filter((comment) => !getLegalCommentParentId(comment))
   ), [comments]);
 
-  const renderComment = (comment: LegalUserComment, depth = 0): React.ReactNode => {
+  const renderComment = (comment: PublicLegalUserComment, depth = 0): React.ReactNode => {
     const replies = repliesByParent.get(String(comment.id)) || [];
     const isReplyEditorOpen = replyTargetId === String(comment.id);
 
@@ -2099,21 +2097,21 @@ const CalloutBlock: React.FC<{
 };
 
 type LawDetailPageProps = {
-  initialLaw?: LawDetail | null;
+  initialLaw?: PublicLawDetail | null;
   initialSlug?: string;
-  initialSearchParams?: Record<string, string | undefined>;
+  semanticHeaderRendered?: boolean;
 };
 
 const LawDetailPage: React.FC<LawDetailPageProps> = ({
   initialLaw = null,
   initialSlug = '',
-  initialSearchParams = {},
+  semanticHeaderRendered = false,
 }) => {
-  const params = useParams<{ slug: string }>();
   const router = useRouter();
+  const routeSearchParams = useSearchParams();
   const { currentUser, updateUser } = useAuth();
   const { addToast } = useToast();
-  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const { systemSettings } = useEffectiveSystemSettings();
   const readerEditorRef = React.useRef<HTMLDivElement>(null);
   const readingContentSectionRef = React.useRef<HTMLElement>(null);
   const commentsContentSectionRef = React.useRef<HTMLDivElement>(null);
@@ -2124,7 +2122,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
   const readerToolbarRef = React.useRef<HTMLElement>(null);
   const progressCompletionInFlightRef = React.useRef(false);
 
-  const slug = String(params?.slug || initialSlug || '').trim();
+  const slug = String(initialSlug || '').trim();
   const userId = React.useMemo(() => String(getUserId((currentUser as CurrentUserLike) || null) || ''), [currentUser]);
   const legalFeatureConfig = React.useMemo(
     () => normalizeLegalCommentaryFeatureConfig(
@@ -2196,12 +2194,12 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
     });
   }, [updateUser]);
 
-  const sectionFrom = String(initialSearchParams.from || '').trim();
-  const sectionTo = String(initialSearchParams.to || '').trim();
-  const sectionQueryId = String(initialSearchParams.sectionId || initialSearchParams.section || '').trim();
-  const requestedLawId = String(initialSearchParams.lawId || '').trim();
+  const sectionFrom = String(routeSearchParams.get('from') || '').trim();
+  const sectionTo = String(routeSearchParams.get('to') || '').trim();
+  const sectionQueryId = String(routeSearchParams.get('sectionId') || routeSearchParams.get('section') || '').trim();
+  const requestedLawId = String(routeSearchParams.get('lawId') || '').trim();
 
-  const [law, setLaw] = React.useState<LawDetail | null>(initialLaw);
+  const [law, setLaw] = React.useState<PublicLawDetail | null>(initialLaw);
   const [isLoading, setIsLoading] = React.useState(!initialLaw);
   const [loadError, setLoadError] = React.useState('');
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -2321,7 +2319,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
     setIsLoading(true);
     setLoadError('');
     try {
-      let detail: LawDetail | null = null;
+      let detail: PublicLawDetail | null = null;
 
       for (const identifier of identifiers) {
         try {
@@ -2681,8 +2679,8 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
       .filter((comment) => {
         const rawArticleId = String(comment.articleId || '').trim();
         const rawSectionId = String(
-          (comment as Partial<LegalUserComment> & { sectionId?: string | number; section_id?: string | number }).sectionId
-          || (comment as Partial<LegalUserComment> & { sectionId?: string | number; section_id?: string | number }).section_id
+          (comment as Partial<PublicLegalUserComment> & { sectionId?: string | number; section_id?: string | number }).sectionId
+          || (comment as Partial<PublicLegalUserComment> & { sectionId?: string | number; section_id?: string | number }).section_id
           || '',
         ).trim();
         const belongsToActiveArticle = rawArticleId !== '' && activeSectionArticleIds.has(rawArticleId);
@@ -2873,17 +2871,6 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
 
   const practiceSectionHref = React.useMemo(() => {
     const params = new URLSearchParams();
-    params.set('source', 'lei-comentada');
-
-    if (law?.id) {
-      params.set('lawId', String(law.id));
-    }
-
-    if (activeSection) {
-      params.set('sectionId', String(activeSection.id));
-      params.set('from', String(activeSection.fromArticle || ''));
-      params.set('to', String(activeSection.toArticle || activeSection.fromArticle || ''));
-    }
 
     const questionIds = Array.from(new Set((relatedQuestionsState.rows || [])
       .map((question) => String(question.id || '').trim())
@@ -2902,7 +2889,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
     }
 
     return publicRoutes.questions.index(params);
-  }, [activeSection, law, relatedQuestionScope, relatedQuestionsState.rows]);
+  }, [relatedQuestionScope, relatedQuestionsState.rows]);
 
   const visibleArticles = React.useMemo(() => {
     if (!law) return [];
@@ -2953,7 +2940,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
     return options;
   }, [activeSection, visibleArticles]);
 
-  const sectionEditorial = React.useMemo<LawSectionEditorial | null>(() => {
+  const sectionEditorial = React.useMemo<PublicLawSectionEditorial | null>(() => {
     if (!law || !activeSection) {
       return null;
     }
@@ -3018,7 +3005,8 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
   );
   const showLegacySectionAnalysisDetails = false;
   const hasSectionDeepAnalysis = Boolean(
-    sectionAnalysisContent
+    sectionEditorial?.hasContent
+    || sectionAnalysisContent
     || sectionExamFocus.length
     || sectionMacetes.length
     || sectionDoctrine.length
@@ -3506,7 +3494,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
         body,
       });
       applyUserProgressMutation(result);
-      const createdComment: LegalUserComment = result.comment || {
+      const createdComment: PublicLegalUserComment = result.comment || {
         id: result.id || `legal-comment-${Date.now()}`,
         articleId: targetArticleId,
         userId,
@@ -3583,7 +3571,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
         body,
       });
       applyUserProgressMutation(result);
-      const createdComment: LegalUserComment = result.comment || {
+      const createdComment: PublicLegalUserComment = result.comment || {
         id: result.id || `legal-comment-reply-${Date.now()}`,
         articleId: targetArticleId,
         parentCommentId,
@@ -4282,9 +4270,12 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
   const isReaderToolbarCollapsed = isScrollToolbarHidden;
 
   return (
-    <div className="space-y-4 pb-10">
+    <div
+      className="space-y-4 pb-10"
+      data-hydration-interaction={semanticHeaderRendered || undefined}
+    >
       <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-        <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-400">
+        {!semanticHeaderRendered ? <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-400">
           <Link href="/lei-comentada" className="inline-flex items-center gap-1 text-[#615fff] hover:underline">
             <ArrowLeft size={12} />
             Lei Comentada
@@ -4297,13 +4288,13 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
               <span className="text-slate-500">{activeSectionLabel}</span>
             </>
           ) : null}
-        </div>
+        </div> : null}
 
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className={PLATFORM_PAGE_TITLE_CLASS}>{law.number ? `Lei nº ${law.number}/${law.year || ''}` : law.shortTitle}</h1>
+        <div className={`${semanticHeaderRendered ? '' : 'mt-3'} flex flex-wrap items-start justify-between gap-3`}>
+          {!semanticHeaderRendered ? <div className="min-w-0">
+              <h1 className={PLATFORM_PAGE_TITLE_CLASS}>{law.number ? `Lei nº ${law.number}/${law.year || ''}` : law.shortTitle}</h1>
             <p className={`${PLATFORM_PAGE_DESCRIPTION_CLASS} mt-1`}>{law.shortTitle}</p>
-          </div>
+          </div> : null}
           <div className="flex flex-wrap items-center gap-2">
             <ToolbarButton
               icon={canUseLegalFavorites ? <Bookmark size={14} className={isActiveSectionFavorite ? 'fill-current' : ''} /> : <Lock size={14} />}
@@ -4695,9 +4686,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
                     const doctrine = Array.isArray(article.doutrina) ? article.doutrina : (Array.isArray(article.doctrine) ? article.doctrine : []);
                     const jurisprudenceNotes = Array.isArray(article.jurisprudenceNotes) ? article.jurisprudenceNotes : [];
                     const sumulas = Array.isArray(article.sumulas) ? article.sumulas : [];
-                    const examTips = Array.isArray(law.examTips)
-                      ? law.examTips.filter((tip) => String(tip.articleId || '') === String(article.id))
-                      : [];
+                    const examTips = resolveArticleExamTips(law, article);
                     const examTip = String(article.examTip || article.macete || '').trim();
                     const inlineNotesByBlock = activeTab === 'law' && showEditorialAnnotations
                       ? groupInlineNotesByBlock(

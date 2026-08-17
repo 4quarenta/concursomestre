@@ -4,6 +4,7 @@ import QuestionPublicPage from '@/app/question/QuestionPublicPage';
 import { buildQuestionMetadata } from '@/app/question/questionPageMetadata';
 import { fetchPublicQuestionRoute } from '@/app/question/questionServerResolver';
 import { publicRoutes, sanitizePublicRouteQuery } from '@services/routes/publicRoutes';
+import { buildAbsoluteUrl } from '@services/seo/slug';
 
 type QuestionPageParams = {
   id?: string;
@@ -38,5 +39,11 @@ export default async function FutureQuestionPage({
     ));
   }
 
-  return <QuestionPublicPage initialQuestion={resolution.question} routeFamily="future" />;
+  return (
+    <QuestionPublicPage
+      initialQuestion={resolution.question}
+      routeFamily="future"
+      canonicalUrl={buildAbsoluteUrl(resolution.futurePath)}
+    />
+  );
 }

@@ -64,6 +64,7 @@ nao podem compartilhar cache entre publico, autenticado e restrito.
 
 ## Limites atuais
 
-A remocao da arvore paralela `@seo`, a apresentacao de metadata por `SeoFacts`,
-a contagem persistida de entidades com quality PASS e qualquer enforcement de
-quality/indexability/publication pertencem a fases posteriores.
+A arvore paralela `@seo` foi removida depois que as paginas reais passaram a
+fornecer sua propria semantica SSR/ISR. A apresentacao integral de metadata por
+`SeoFacts`, a contagem persistida de entidades com quality PASS e qualquer
+enforcement de quality/indexability/publication pertencem a fases posteriores.

@@ -12,6 +12,7 @@ import {
   resolvePersistedSystemSettings,
 } from '@/state/app-config/systemSettings';
 import { buildSystemSettingsQueryKey } from '@/state/app-config/appConfigQuery';
+import type { SystemSettings } from '@types';
 
 interface AppConfigProviderProps {
   children: React.ReactNode;
@@ -20,6 +21,21 @@ interface AppConfigProviderProps {
 
 const isAdminSettingsRole = (role?: string | null) => role === 'admin' || role === 'staff';
 const ADMIN_PANEL_SETTINGS_DELAY_MS = 8_000;
+
+const InitialPublicSettingsContext = React.createContext<SystemSettings | null>(null);
+
+export const useEffectiveSystemSettings = () => {
+  const initialSystemSettings = React.useContext(InitialPublicSettingsContext);
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+
+  return {
+    systemSettings: isSystemSettingsLoaded
+      ? systemSettings
+      : (initialSystemSettings || systemSettings),
+    isSystemSettingsLoaded: isSystemSettingsLoaded || initialSystemSettings !== null,
+  };
+};
 
 /**
  * Bridge entre React Query e o store de configuracao.
@@ -41,6 +57,11 @@ export const AppConfigProvider: React.FC<AppConfigProviderProps> = ({ children, 
   );
   const hasTokenInMemory = Boolean(getAccessToken());
   const shouldHoldPublicSettings = !authIsLoading && !currentUser && hasTokenInMemory;
+  const resolvedInitialSystemSettings = React.useMemo(() => (
+    initialPublicSettings
+      ? resolvePersistedSystemSettings(DEFAULT_SYSTEM_SETTINGS, initialPublicSettings)
+      : null
+  ), [initialPublicSettings]);
 
   const canRunSettingsQuery = !authIsLoading && (
     Boolean(currentUser) || !shouldHoldPublicSettings
@@ -109,7 +130,11 @@ export const AppConfigProvider: React.FC<AppConfigProviderProps> = ({ children, 
     }
   }, [setSystemSettingsLoaded, systemSettingsQuery.isError]);
 
-  return <>{children}</>;
+  return (
+    <InitialPublicSettingsContext.Provider value={resolvedInitialSystemSettings}>
+      {children}
+    </InitialPublicSettingsContext.Provider>
+  );
 };
 
 export default AppConfigProvider;

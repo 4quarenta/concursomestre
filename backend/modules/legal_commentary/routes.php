@@ -16,6 +16,7 @@ require_once __DIR__ . '/services/LegalCommentaryService.php';
 require_once __DIR__ . '/services/LegalCommentaryAiGenerationService.php';
 require_once __DIR__ . '/services/PlanaltoImportService.php';
 require_once __DIR__ . '/repositories/LegalCommentaryRepository.php';
+require_once __DIR__ . '/projections/PublicLegalCommentaryProjection.php';
 require_once __DIR__ . '/validators/LegalCommentaryAiEditorialValidator.php';
 require_once __DIR__ . '/../ai/services/AiService.php';
 require_once __DIR__ . '/../ai/repositories/AiRepository.php';
@@ -193,7 +194,11 @@ function handleLegalCommentaryDetailRoute(PDO $db): void
         $law = $outlineOnly
             ? $controller->detailOutline($identifier, $optionalUserId)
             : $controller->detail($identifier, $optionalUserId, true);
-        Response::success((new PublicSeoEnvelopeService())->attachLaw($law));
+        $publicLaw = (new PublicLegalCommentaryProjection())->project($law, $optionalUserId !== null);
+
+        header('Cache-Control: private, no-store, max-age=0');
+        header('Vary: Authorization, Cookie, X-Auth-Token');
+        Response::success((new PublicSeoEnvelopeService())->attachLaw($publicLaw));
     } catch (RuntimeException $e) {
         if ((int) $e->getCode() === 404) {
             Response::notFound($e->getMessage());

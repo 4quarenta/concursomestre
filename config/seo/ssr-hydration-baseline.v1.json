@@ -1,0 +1,33 @@
+{
+  "version": "ssr-hydration-baseline.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "securitySentinels": [
+    "SECRET_EDITORIAL_SENTINEL_123",
+    "SECRET_SUMMARY_SENTINEL_456",
+    "SECRET_BLOCK_SENTINEL_789",
+    "SECRET_CORRECT_ANSWER_SENTINEL_246"
+  ],
+  "routes": [
+    { "key": "home", "path": "/", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/" },
+    { "key": "question_detail", "path": "/questoes/67813/art-5o-acao-e-controle", "pathEnv": "CM_SSR_ROUTE_QUESTION", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/questoes/67813/art-5o-acao-e-controle", "schemaTypes": ["Quiz"], "schemaCanonicalRequired": true },
+    { "key": "questions_hub", "path": "/questoes", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/questoes", "schemaTypes": ["CollectionPage"], "schemaCanonicalRequired": true, "requiredRawText": ["Questões de concursos"], "requiredRawLinks": ["/disciplinas", "/bancas", "/provas"], "requiredRawLinkPrefixes": ["/questoes/67813/"] },
+    { "key": "exam_detail", "path": "/provas/prova-ssr-2026", "pathEnv": "CM_SSR_ROUTE_EXAM", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/provas/prova-ssr-2026", "schemaTypes": ["LearningResource"], "schemaCanonicalRequired": true },
+    { "key": "exams_hub", "path": "/provas", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/provas", "schemaCanonicalRequired": true },
+    { "key": "board_detail", "path": "/bancas/cebraspe", "pathEnv": "CM_SSR_ROUTE_BOARD", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/bancas/cebraspe", "schemaTypes": ["Organization"], "schemaCanonicalRequired": true },
+    { "key": "disciplines_hub", "path": "/disciplinas", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/disciplinas", "schemaTypes": ["CollectionPage"], "schemaCanonicalRequired": true },
+    { "key": "boards_hub", "path": "/bancas", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/bancas", "schemaTypes": ["CollectionPage"], "schemaCanonicalRequired": true },
+    { "key": "law_detail", "path": "/lei-comentada/constituicao-federal", "pathEnv": "CM_SSR_ROUTE_LAW", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/lei-comentada/constituicao-federal", "schemaTypes": ["Article", "LearningResource"], "schemaCanonicalRequired": true, "requiredRawText": ["Texto constitucional"], "requiredRawLinks": ["/lei-comentada"] },
+    { "key": "law_detail_not_found", "path": "/lei-comentada/lei-inexistente-checkpoint-3-4", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "laws_hub", "path": "/lei-comentada", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/lei-comentada", "schemaTypes": ["CollectionPage"], "schemaCanonicalRequired": true, "requiredRawText": ["Consulte normas públicas"], "requiredRawLinkPrefixes": ["/lei-comentada/constituicao-federal"] },
+    { "key": "blog_article", "path": "/blog/noticia-ssr", "pathEnv": "CM_SSR_ROUTE_ARTICLE", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/noticia-ssr", "schemaTypes": ["NewsArticle"], "schemaCanonicalRequired": true },
+    { "key": "blog_hub", "path": "/blog", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog", "schemaCanonicalRequired": true },
+    { "key": "plans", "path": "/planos", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/planos", "schemaTypes": ["WebPage"], "schemaCanonicalRequired": true, "requiredRawText": ["Compare recursos"], "requiredRawLinks": ["/support"] },
+    { "key": "support", "path": "/support", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/support", "schemaTypes": ["ContactPage"], "schemaCanonicalRequired": true, "requiredRawText": ["Envie uma dúvida"], "requiredRawLinks": ["/support?category=bug", "/support?category=feedback", "/profile/support-history"] },
+    { "key": "faq", "path": "/faq", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/faq", "schemaTypes": ["FAQPage"] },
+    { "key": "news", "path": "/novidades", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/novidades", "schemaTypes": ["CollectionPage"], "schemaCanonicalRequired": true },
+    { "key": "not_found", "path": "/rota-inexistente-checkpoint-3-2", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true }
+  ]
+}

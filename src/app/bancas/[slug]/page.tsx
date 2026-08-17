@@ -22,6 +22,7 @@ import {
 } from '@constants/layout';
 import { serializeStructuredData } from '@services/seo/structuredData';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import { buildNoIndexMetadata } from '@/app/seoMetadata';
 import {
   fetchPublicBoardDetail,
   type PublicBoardExamStatus,
@@ -97,7 +98,7 @@ const difficultyLabel = (value: number) => {
 export async function generateMetadata({ params }: BoardPageProps): Promise<Metadata> {
   const { slug } = await params;
   const detail = await fetchPublicBoardDetail({ slug, page: 1, status: 'all' });
-  if (!detail) return { title: 'Banca não encontrada' };
+  if (!detail) return buildNoIndexMetadata({ title: 'Banca não encontrada' });
   const boardName = detail.board.acronym && detail.board.acronym !== detail.board.name
     ? `${detail.board.acronym} - ${detail.board.name}`
     : detail.board.name;

@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import {
   withValidatedSeoEnvelopeShadow,
@@ -147,15 +148,11 @@ export const fetchPublicTaxonomyDirectory = async ({
   }
 };
 
-export const fetchPublicBoardDetail = async ({
-  slug,
-  page,
-  status,
-}: {
-  slug: string;
-  page: number;
-  status: PublicBoardExamStatus | 'all';
-}): Promise<PublicBoardDetail | null> => {
+const fetchPublicBoardDetailCached = cache(async (
+  slug: string,
+  page: number,
+  status: PublicBoardExamStatus | 'all',
+): Promise<PublicBoardDetail | null> => {
   const apiBaseUrl = resolveAbsoluteApiBaseUrl(
     process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || undefined,
   );
@@ -205,4 +202,18 @@ export const fetchPublicBoardDetail = async ({
   } catch {
     return null;
   }
-};
+});
+
+export const fetchPublicBoardDetail = ({
+  slug,
+  page,
+  status,
+}: {
+  slug: string;
+  page: number;
+  status: PublicBoardExamStatus | 'all';
+}): Promise<PublicBoardDetail | null> => fetchPublicBoardDetailCached(
+  String(slug || '').trim(),
+  Math.max(1, page),
+  status,
+);

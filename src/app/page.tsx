@@ -1,6 +1,7 @@
 import LandingPage from './landing/LandingPage';
 import { buildSiteUrl } from '@/config/siteUrl';
 import { serializeStructuredData } from '@services/seo/structuredData';
+import { fetchPublicMarketingSettings } from './publicMarketingSettings';
 
 /**
  * Rota raiz da plataforma.
@@ -9,7 +10,8 @@ import { serializeStructuredData } from '@services/seo/structuredData';
  *
  * @since 1.0.0
  */
-export default function HomePage() {
+export default async function HomePage() {
+  const publicMarketingSettings = await fetchPublicMarketingSettings();
   const structuredData = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -34,7 +36,7 @@ export default function HomePage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-      <LandingPage />
+      <LandingPage initialSystemSettings={publicMarketingSettings.settings} />
     </>
   );
 }

@@ -27,7 +27,7 @@ import {
   PLATFORM_SECTION_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import { buildAbsoluteUrl, buildBoardPath, buildQuestionPath, buildQuestionSlug, summarizeSeoText, useDocumentSeo } from '@services/seo';
+import { buildAbsoluteUrl, buildBoardPath, buildQuestionPath, buildQuestionSlug } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import {
   buildQuestionKeywordPills,
@@ -61,9 +61,14 @@ const getQuestionRoleLabel = (item: unknown) => {
 type QuestionPublicPageProps = {
   initialQuestion?: Question | null;
   routeFamily?: 'legacy' | 'future';
+  canonicalUrl?: string | null;
 };
 
-const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion = null, routeFamily = 'legacy' }) => {
+const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
+  initialQuestion = null,
+  routeFamily = 'legacy',
+  canonicalUrl = null,
+}) => {
   const params = useParams<{ id?: string; slug?: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const routeSlug = Array.isArray(params.slug) ? params.slug.join('/') : params.slug;
@@ -146,14 +151,6 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
   const questionKeywords = React.useMemo(() => question ? buildQuestionKeywords(question) : [], [question]);
   const keywordPills = React.useMemo(() => question ? buildQuestionKeywordPills(question) : [], [question]);
 
-  useDocumentSeo(question ? {
-    title: `${buildQuestionMetaTitle(question)} | ConcursoMestre`,
-    description: buildQuestionMetaDescription(question),
-    canonical: buildAbsoluteUrl(canonicalPath || buildQuestionPath(question)),
-    ogTitle: summarizeSeoText(buildQuestionMetaTitle(question), 95),
-    ogDescription: summarizeSeoText(buildQuestionMetaDescription(question), 180),
-  } : null);
-
   const metadataItems = [
     { label: 'Banca', value: question?.bancas?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
     { label: 'Órgão', value: question?.orgaos?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
@@ -171,17 +168,17 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
       '@type': 'Quiz',
       name: buildQuestionMetaTitle(question),
       description: buildQuestionMetaDescription(question),
-      url: buildAbsoluteUrl(canonicalPath || buildQuestionPath(question)),
+      url: canonicalUrl || buildAbsoluteUrl(canonicalPath || buildQuestionPath(question)),
       educationalLevel: questionContext?.nivel || 'Concursos públicos',
       about: keywordPills,
       assesses: questionContext?.assuntos?.join(', ') || questionContext?.assunto || 'Conhecimentos para concursos',
       provider: {
         '@type': 'Organization',
         name: 'ConcursoMestre',
-        url: buildAbsoluteUrl('/'),
+        url: canonicalUrl ? new URL('/', canonicalUrl).toString() : buildAbsoluteUrl('/'),
       },
     };
-  }, [canonicalPath, keywordPills, question, questionContext]);
+  }, [canonicalPath, canonicalUrl, keywordPills, question, questionContext]);
   const showFreeAccountCta = !isAuthLoading && !currentUser;
   const isCanceledQuestion = question ? isQuestionCanceled(question) : false;
   const isOriginalQuestion = question ? isPlatformOriginalQuestion(question) : false;
@@ -404,7 +401,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
               </div>
 
               {showFreeAccountCta && (
-                <div className="overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-500/10">
+                <div data-hydration-interaction className="overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-500/10">
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">
                     <Sparkles size={14} />
                     Conta gratuita

@@ -48,7 +48,7 @@ import {
   normalizeCareerSelectorLabel,
 } from '@services/filters';
 import type { Assunto, Banca, Cargo, ErrorReport, Orgao, PlanBenefitKey, QuestaoComentario, Question } from '@types';
-import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useEffectiveSystemSettings } from '@providers/AppConfigProvider';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
 import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
@@ -754,12 +754,16 @@ const sanitizePracticeFiltersForFocus = (nextFilters: PracticeFilters): Practice
 
 type PracticeProps = {
   initialQuestionPage?: PracticeInitialQuestionPage;
+  semanticPageHeaderRendered?: boolean;
 };
 
-const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
+const Practice: React.FC<PracticeProps> = ({
+  initialQuestionPage,
+  semanticPageHeaderRendered = false,
+}) => {
   const { currentUser, isLoading: authIsLoading, toggleSavedQuestion, updateUser } = useAuth();
   const { addToast } = useToast();
-  const systemSettings = useAppConfigStore((store) => store.systemSettings);
+  const { systemSettings } = useEffectiveSystemSettings();
   const canUsePracticeBenefit = useCallback(
     (benefitKey: PlanBenefitKey) => hasPlanBenefit(currentUser, benefitKey, systemSettings.planEntitlements),
     [currentUser, systemSettings.planEntitlements],
@@ -1434,13 +1438,16 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
   ]);
 
   useEffect(() => {
+    if (authIsLoading) {
+      return;
+    }
+
     if (hasBootstrappedQuestionsRef.current === questionBootstrapKey) {
       return;
     }
 
     if (
-      !authIsLoading
-      && !currentUser?.id
+      !currentUser?.id
       && !hasActiveFilters
       && initialQuestionPage
       && initialQuestionPage.questions.length > 0
@@ -2004,7 +2011,11 @@ const Practice: React.FC<PracticeProps> = ({ initialQuestionPage }) => {
   };
 
   return (
-    <div ref={pageRootRef} className="space-y-5 px-3 pb-16 animate-fade-in sm:px-4 md:px-0 md:pb-12">
+    <div
+      ref={pageRootRef}
+      className="space-y-5 px-3 pb-16 animate-fade-in sm:px-4 md:px-0 md:pb-12"
+      data-hydration-interaction={semanticPageHeaderRendered || undefined}
+    >
       {/* Back Button when viewing specific question */}
       {highlightedQuestionId && (
         <button

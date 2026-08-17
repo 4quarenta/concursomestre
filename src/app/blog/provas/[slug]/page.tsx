@@ -9,6 +9,7 @@ import { fetchPublicExamDetailForServer, type PublicExamFile, type PublicExamTax
 import { serializeStructuredData } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import { buildNoIndexMetadata } from '@/app/seoMetadata';
 
 export const revalidate = 300;
 
@@ -26,7 +27,7 @@ const fileIcon = (file: PublicExamFile) => file.kind === 'gabarito' ? <Download 
 export async function generateMetadata({ params }: PublicExamPageProps): Promise<Metadata> {
   const { slug } = await params;
   const exam = await fetchPublicExamDetailForServer(slug);
-  if (!exam) return { title: 'Prova não encontrada' };
+  if (!exam) return buildNoIndexMetadata({ title: 'Prova não encontrada' });
   const description = `${exam.title}. Consulte informações, arquivos oficiais e ${exam.questionCount} questões vinculadas.`;
   return {
     title: exam.title,

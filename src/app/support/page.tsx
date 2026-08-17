@@ -28,11 +28,10 @@ import {
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useSearchParams } from 'next/navigation';
-import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useEffectiveSystemSettings } from '@providers/AppConfigProvider';
 import {
   PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
-  PLATFORM_PAGE_TITLE_CLASS,
   PLATFORM_SECTION_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
@@ -171,8 +170,7 @@ const SupportContent: React.FC = () => {
   const { currentUser, isLoading, updateUser } = useAuth();
   const { addToast } = useToast();
   const searchParams = useSearchParams();
-  const systemSettings = useAppConfigStore((state) => state.systemSettings);
-  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const { systemSettings, isSystemSettingsLoaded } = useEffectiveSystemSettings();
   const supportDonationsEnabled = isSystemSettingsLoaded
     && resolveSystemFeatureFlag(systemSettings, 'supportDonationsEnabled', false);
   const pixKey = systemSettings?.pixKey || 'pix@concursomestre.com.br';
@@ -436,22 +434,10 @@ const SupportContent: React.FC = () => {
   const ActiveCategoryIcon = activeCategory.icon;
 
   return (
-    <div className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 animate-fade-in`}>
-      <section className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between md:p-8`}>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Atendimento</p>
-          <h1 className={PLATFORM_PAGE_TITLE_CLASS}>Como podemos ajudar?</h1>
-          <p className={`${PLATFORM_PAGE_DESCRIPTION_CLASS} mt-2`}>Informe o assunto e descreva o que aconteceu. A resposta fica salva no seu perfil.</p>
-        </div>
-        <Link
-          href="/profile/support-history"
-          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-slate-200 px-4 text-sm font-bold text-slate-700 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200"
-        >
-          <MessageSquare size={16} />
-          Meus atendimentos
-        </Link>
-      </section>
-
+    <div
+      className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 animate-fade-in`}
+      data-hydration-interaction
+    >
       <nav aria-label="Tipo de atendimento" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {visibleSupportCategories.map((category) => {
           const Icon = category.icon;

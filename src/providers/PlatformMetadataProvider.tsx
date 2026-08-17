@@ -12,27 +12,17 @@
 'use client';
 
 import React from 'react';
-import { applyWebsiteMetadata, websiteManifest } from '../config/platform';
 
 interface PlatformMetadataProviderProps {
   children: React.ReactNode;
 }
 
 /**
- * Provider de bootstrap da identidade pública da plataforma.
- * Ele aplica no documento web o manifesto oficial antes que o restante da UI navegue entre as rotas.
+ * Compatibility boundary for consumers that still import the platform provider.
+ * Metadata is authoritative on the server and is never mutated here.
  * @since 1.0.0
  */
 export const PlatformMetadataProvider: React.FC<PlatformMetadataProviderProps> = ({ children }) => {
-  /**
-   * Aplica os metadados publicos do canal web uma vez por montagem.
-   * Esse efeito garante que site, manifesto e branding nascam coerentes em toda navegacao.
-   * @since 1.0.0
-   */
-  React.useEffect(() => {
-    applyWebsiteMetadata(websiteManifest);
-  }, []);
-
   return <>{children}</>;
 };
 
