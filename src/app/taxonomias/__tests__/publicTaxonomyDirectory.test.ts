@@ -32,6 +32,12 @@ describe('public taxonomy directories', () => {
     expect(serverDataSource).not.toContain('view=hierarchy');
   });
 
+  it('separates the discipline landing from the functional question facet', () => {
+    expect(directorySource).toContain('publicRoutes.disciplines.detail(item.slug)');
+    expect(hierarchySource).toContain('publicRoutes.disciplines.detail(item.slug)');
+    expect(hierarchySource).toContain('publicRoutes.questions.index({ materia: item.name })');
+  });
+
   it('renders the directories inside the canonical platform shell and links them publicly', () => {
     const shelllessRoutes = frameSource.slice(
       frameSource.indexOf('const ROUTES_WITHOUT_PLATFORM_SHELL'),

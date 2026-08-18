@@ -1,19 +1,21 @@
 import type { Metadata } from 'next';
 import PublicTaxonomyDirectory from '../taxonomias/PublicTaxonomyDirectory';
+import { buildTaxonomyDirectoryMetadata, type DirectoryMetadataSearchParams } from '../taxonomias/directoryMetadata';
 
 export const revalidate = 300;
 
-export const metadata: Metadata = {
-  title: 'Bancas de concursos',
-  description: 'Consulte bancas organizadoras e pratique com questões publicadas de cada banca.',
-  alternates: { canonical: '/bancas' },
-  openGraph: {
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<DirectoryMetadataSearchParams>;
+}): Promise<Metadata> {
+  return buildTaxonomyDirectoryMetadata({
     title: 'Bancas de concursos',
-    description: 'Conheça as bancas e resolva questões pelo perfil de cobrança.',
-    url: '/bancas',
-    type: 'website',
-  },
-};
+    description: 'Consulte bancas organizadoras e pratique com questões publicadas de cada banca.',
+    path: '/bancas',
+    searchParams: await searchParams,
+  });
+}
 
 export default function BoardsDirectoryPage({
   searchParams,

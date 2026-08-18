@@ -43,6 +43,16 @@ final class PublicRouteBuilder
         return $this->requiredPath('exam_detail', ['slug' => $persistedSlug]);
     }
 
+    public function disciplineDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('discipline_detail', ['slug' => $persistedSlug]);
+    }
+
+    public function boardDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('board_detail', ['slug' => $persistedSlug]);
+    }
+
     /** @param array<string, string|int> $parameters */
     private function requiredPath(string $familyId, array $parameters = []): string
     {

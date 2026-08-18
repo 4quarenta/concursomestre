@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+require_once dirname(__DIR__) . '/taxonomy/TaxonomyClassification.php';
+require_once dirname(__DIR__) . '/taxonomy/TaxonomyPromotionEligibility.php';
+
 /**
  * Le projecoes em lotes. O numero de queries e constante por lote e nunca por
  * entidade: questions usa no maximo seis consultas; os demais recursos, tres.
@@ -236,7 +239,9 @@ final class SeoShadowProjectionRepository
     /** @return list<array<string, mixed>> */
     private function taxonomies(int $afterId, int $limit, bool $boards): array
     {
-        $typeClause = $boards ? "f.type = 'banca'" : "f.type <> 'banca'";
+        $typeClause = $boards
+            ? "f.type = 'banca'"
+            : "f.type IN ('assunto', 'materia', 'orgao', 'cargo', 'ano')";
         $rows = $this->query(
             "SELECT f.id, f.type, f.name, f.slug, f.acronym, f.parent_id, f.taxonomy_level,
                     f.meta_materia, f.description, f.website, parent.name AS parent_name
@@ -265,10 +270,12 @@ final class SeoShadowProjectionRepository
             $params
         ));
 
-        return array_map(function (array $row) use ($boards, $questionCounts, $examCounts): array {
+        $promotionEligibility = new TaxonomyPromotionEligibility();
+        return array_map(function (array $row) use ($boards, $questionCounts, $examCounts, $promotionEligibility): array {
             $id = (int) $row['id'];
             $questionCount = (int) ($questionCounts[$id]['public_question_count'] ?? 0);
             $examCount = (int) ($examCounts[$id]['public_exam_count'] ?? 0);
+            $promotion = $promotionEligibility->evaluate($row, ['calibrationAvailable' => false]);
             if ($boards) {
                 return [
                     'resourceType' => 'board',
@@ -289,27 +296,28 @@ final class SeoShadowProjectionRepository
                         'updatedAt' => null,
                         'breadcrumbs' => [],
                     ],
-                    'qualityEvidence' => [],
+                    'qualityEvidence' => [
+                        'editorialContextValid' => trim((string) ($row['description'] ?? '')) !== '',
+                        'publicQuestionCount' => $questionCount,
+                        'publicExamCount' => $examCount,
+                        'promotionEligible' => $promotion['promotable'],
+                        'promotionReasonCodes' => $promotion['reasonCodes'],
+                    ],
                 ];
             }
 
-            $kind = $this->taxonomyKind($row);
-            $parentRequired = in_array($kind, ['topic', 'subject'], true);
+            $classification = TaxonomyClassification::fromFilter($row);
             return [
                 'resourceType' => 'taxonomy',
                 'resourceId' => (string) $id,
                 'existence' => 'exists',
-                'routeFamily' => match ($kind) {
-                    'discipline' => 'discipline_detail',
-                    'topic' => 'topic_detail',
-                    default => 'subject_detail',
-                },
+                'routeFamily' => $classification['routeFamily'],
                 'routeParameters' => [],
                 'publicationInput' => $this->implicitPublicInput(),
                 'publicData' => [
                     'id' => (string) $id,
                     'displayName' => (string) ($row['name'] ?? ''),
-                    'taxonomyKind' => $kind,
+                    'taxonomyKind' => $classification['seoFactsKind'],
                     'publicDescription' => $row['description'] ?? '',
                     'parentName' => $row['parent_name'] ?? null,
                     'rootName' => null,
@@ -318,7 +326,16 @@ final class SeoShadowProjectionRepository
                     'breadcrumbs' => [],
                 ],
                 'qualityEvidence' => [
-                    'hierarchyValid' => !$parentRequired || (int) ($row['parent_id'] ?? 0) > 0,
+                    'hierarchyValid' => !$classification['parentRequired'] || (int) ($row['parent_id'] ?? 0) > 0,
+                    'taxonomyKind' => $classification['kind'],
+                    'taxonomyLevel' => $classification['knowledgeLevel'],
+                    'pending' => $classification['pending'],
+                    'routeAvailable' => $classification['routeFamily'] !== null,
+                    'publicQuestionCount' => $questionCount,
+                    'publicExamCount' => $examCount,
+                    'editorialContextValid' => trim((string) ($row['description'] ?? '')) !== '',
+                    'promotionEligible' => $promotion['promotable'],
+                    'promotionReasonCodes' => $promotion['reasonCodes'],
                 ],
             ];
         }, $rows);
@@ -406,24 +423,6 @@ final class SeoShadowProjectionRepository
             'provenanceStatus' => 'unknown',
             'rightsStatus' => 'not_evaluable',
         ];
-    }
-
-    /** @param array<string, mixed> $row */
-    private function taxonomyKind(array $row): string
-    {
-        $level = strtolower(trim((string) ($row['taxonomy_level'] ?? '')));
-        if (!empty($row['meta_materia']) || $level === 'materia' || $row['type'] === 'materia') {
-            return 'discipline';
-        }
-        if ($level === 'topico') {
-            return 'topic';
-        }
-        return match ((string) ($row['type'] ?? '')) {
-            'orgao' => 'organization',
-            'cargo' => 'role',
-            'ano' => 'year',
-            default => 'subject',
-        };
     }
 
     /** @return list<array<string, mixed>> */

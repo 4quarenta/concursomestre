@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
-import { buildPublicPageMetadata } from '../seoMetadata';
+import { buildNoIndexMetadata } from '../seoMetadata';
 
-export const metadata = buildPublicPageMetadata({
+export const metadata = buildNoIndexMetadata({
   title: 'Rankings',
   description: 'Acompanhe rankings de concursos, simulados e desempenho entre candidatos na plataforma ConcursoMestre.',
-  path: '/ranking',
 });
 
 export default function RankingLayout({ children }: Readonly<{ children: ReactNode }>) {

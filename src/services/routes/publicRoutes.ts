@@ -197,6 +197,20 @@ export const publicRoutes = {
       query,
     ),
   },
+  disciplines: {
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'discipline_detail',
+      buildPath('discipline_detail', { slug }),
+      query,
+    ),
+  },
+  boards: {
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'board_detail',
+      buildPath('board_detail', { slug }),
+      query,
+    ),
+  },
 } as const;
 
 export const structuralPublicRoutePolicy = policy;

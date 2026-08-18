@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { applySeoLaunchModeToMetadata } from '@services/seo/launchControl';
 import { cache } from 'react';
 import type { MarketingLandingPage } from '@types';
 import { buildSiteUrl } from '../../config/siteUrl';
@@ -136,7 +137,7 @@ export const buildMarketingLandingMetadata = async (slug: string): Promise<Metad
   const ogTitle = landing.seo?.ogTitle || title;
   const ogDescription = landing.seo?.ogDescription || description;
 
-  return {
+  return applySeoLaunchModeToMetadata({
     title,
     description,
     alternates: {
@@ -159,5 +160,5 @@ export const buildMarketingLandingMetadata = async (slug: string): Promise<Metad
       title: ogTitle,
       description: ogDescription,
     },
-  };
+  }, undefined, buildMarketingLandingPath(landing.slug));
 };

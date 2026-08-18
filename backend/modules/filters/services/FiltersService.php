@@ -14,6 +14,10 @@
 require_once __DIR__ . '/../repositories/FiltersRepository.php';
 require_once __DIR__ . '/../validators/FiltersValidator.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
+require_once __DIR__ . '/../projections/PublicDisciplineProjection.php';
+require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
+require_once __DIR__ . '/../../seo/services/SeoSlugService.php';
+require_once __DIR__ . '/../../seo/taxonomy/PublicTaxonomyExposurePolicy.php';
 
 /**
  * Service do dominio de filtros/taxonomias.
@@ -247,6 +251,55 @@ class FiltersService
                 'hasMore' => (int) $pageData['page'] < (int) $pageData['pages'],
             ],
         ];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function getPublicDisciplineProjection(string $slug): ?array
+    {
+        $slug = trim($slug);
+        if ($slug === '' || strlen($slug) > 512 || preg_match('/[\x00-\x1F\x7F]/', $slug) === 1) {
+            throw new InvalidArgumentException('Disciplina invalida.');
+        }
+        $data = $this->repository->fetchPublicDisciplineProjectionData($slug);
+        if ($data === null) {
+            return null;
+        }
+        $identity = is_array($data['identity'] ?? null) ? $data['identity'] : [];
+        if (!(new PublicTaxonomyExposurePolicy())->allowsDiscipline($identity)) {
+            return null;
+        }
+        $routes = new PublicRouteBuilder();
+        $slugger = new SeoSlugService();
+        $data['canonicalPath'] = $routes->disciplineDetail((string) ($identity['slug'] ?? ''));
+        $data['questionsPath'] = $routes->questionsIndex(['materia' => (string) ($identity['name'] ?? '')]);
+        $data['topics'] = array_map(static function (array $topic) use ($routes): array {
+            $topic['questionsPath'] = $routes->questionsIndex(['topico' => (string) ($topic['name'] ?? '')]);
+            return $topic;
+        }, is_array($data['topics'] ?? null) ? $data['topics'] : []);
+        $data['exams'] = array_map(static function (array $exam) use ($routes): array {
+            $exam['path'] = $routes->examDetail((string) ($exam['slug'] ?? ''));
+            return $exam;
+        }, is_array($data['exams'] ?? null) ? $data['exams'] : []);
+        $data['boards'] = array_map(static function (array $board) use ($routes): array {
+            $board['path'] = $routes->boardDetail((string) ($board['slug'] ?? ''));
+            return $board;
+        }, is_array($data['boards'] ?? null) ? $data['boards'] : []);
+        $data['questions'] = array_map(static function (array $question) use ($routes, $slugger): array {
+            $id = (int) ($question['id'] ?? 0);
+            $question['path'] = $routes->questionDetail(
+                $id,
+                $slugger->slug((string) ($question['excerpt'] ?? ''), 'questao', $id)
+            );
+            return $question;
+        }, is_array($data['questions'] ?? null) ? $data['questions'] : []);
+        return PublicDisciplineProjection::fromRepositoryData($data, [
+            ['label' => 'Início', 'canonicalPath' => '/'],
+            ['label' => 'Disciplinas', 'canonicalPath' => '/disciplinas'],
+            [
+                'label' => (string) ($identity['name'] ?? ''),
+                'canonicalPath' => $routes->disciplineDetail((string) ($identity['slug'] ?? '')),
+            ],
+        ]);
     }
 
     public function getPublicBoardDetail(string $slug, int $page, int $perPage, string $status = 'all'): ?array

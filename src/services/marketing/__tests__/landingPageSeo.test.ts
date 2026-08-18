@@ -25,7 +25,7 @@ describe('landing page SEO metadata', () => {
     vi.unstubAllGlobals();
   });
 
-  it('builds server metadata for published custom landings', async () => {
+  it('builds server metadata but keeps published custom landings in PILOT noindex', async () => {
     vi.stubEnv('NEXT_PUBLIC_CANONICAL_URL', 'https://concursomestre.com.br');
 
     const landing = {
@@ -55,7 +55,7 @@ describe('landing page SEO metadata', () => {
     expect(metadata.title).toBe('Campanha Especial SEO');
     expect(metadata.description).toBe('Descricao da campanha especial.');
     expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/oferta/campanha-especial');
-    expect(readRobotsObject(metadata.robots).index).toBe(true);
+    expect(readRobotsObject(metadata.robots).index).toBe(false);
     expect(metadata.openGraph?.title).toBe('Oferta ConcursoMestre');
   });
 
@@ -83,7 +83,7 @@ describe('landing page SEO metadata', () => {
     expect(robots.googleBot?.index).toBe(false);
   });
 
-  it('falls back to the default published landings when settings are unavailable', async () => {
+  it('falls back to default landing content without promoting the PILOT', async () => {
     vi.stubEnv('NEXT_PUBLIC_CANONICAL_URL', 'https://concursomestre.com.br');
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('settings unavailable');
@@ -93,6 +93,6 @@ describe('landing page SEO metadata', () => {
 
     expect(String(metadata.title)).toContain('Plano Elite');
     expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/elite');
-    expect(readRobotsObject(metadata.robots).index).toBe(true);
+    expect(readRobotsObject(metadata.robots).index).toBe(false);
   });
 });

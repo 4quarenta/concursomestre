@@ -109,6 +109,7 @@ const RankingDetailPage: React.FC = () => {
     canonical: buildAbsoluteUrl(canonicalPath || `/ranking/${ranking.id}`),
     ogTitle: summarizeSeoText(`${ranking.name} | ${ranking.institution}`, 95),
     ogDescription: summarizeSeoText(`Veja colocacao, participacoes e dados do ranking ${ranking.name}.`, 180),
+    robots: 'noindex,follow',
   } : null);
 
   if (isLoading) {

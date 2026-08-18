@@ -83,7 +83,7 @@ export default async function PublicTaxonomyDirectory({
         name: item.name,
         url: buildSiteUrl(type === 'boards'
           ? buildBoardPath(item)
-          : publicRoutes.questions.index({ [config.practiceQueryKey]: item.name })),
+          : publicRoutes.disciplines.detail(item.slug)),
       })),
     },
   };
@@ -167,7 +167,7 @@ export default async function PublicTaxonomyDirectory({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800 sm:px-5">
           <div>
             <h2 className="text-sm font-black text-slate-900 dark:text-slate-100">{config.title} disponíveis</h2>
-            <p className="mt-0.5 text-xs font-medium text-slate-500">Selecione um item para estudar as questões relacionadas.</p>
+            <p className="mt-0.5 text-xs font-medium text-slate-500">Selecione um item para consultar seus dados públicos e questões relacionadas.</p>
           </div>
           <span className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
             {directory.pageInfo.total.toLocaleString('pt-BR')} {directory.pageInfo.total === 1 ? config.singular : config.title.toLowerCase()}

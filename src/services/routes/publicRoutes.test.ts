@@ -13,6 +13,8 @@ describe('publicRoutes', () => {
     expect(publicRoutes.questions.detail(123, 'art-5o')).toBe('/questoes/123/art-5o');
     expect(publicRoutes.exams.index()).toBe('/provas');
     expect(publicRoutes.exams.detail('pmpb-2026-soldado')).toBe('/provas/pmpb-2026-soldado');
+    expect(publicRoutes.disciplines.detail('direito-constitucional')).toBe('/disciplinas/direito-constitucional');
+    expect(publicRoutes.boards.detail('cebraspe')).toBe('/bancas/cebraspe');
   });
 
   it('preserves supported state and repeated parameters without adding pagination', () => {

@@ -1,19 +1,21 @@
 import type { Metadata } from 'next';
 import PublicTaxonomyDirectory from '../taxonomias/PublicTaxonomyDirectory';
+import { buildTaxonomyDirectoryMetadata, type DirectoryMetadataSearchParams } from '../taxonomias/directoryMetadata';
 
 export const revalidate = 300;
 
-export const metadata: Metadata = {
-  title: 'Disciplinas para concursos',
-  description: 'Encontre disciplinas com questões publicadas e pratique por matéria no ConcursoMestre.',
-  alternates: { canonical: '/disciplinas' },
-  openGraph: {
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<DirectoryMetadataSearchParams>;
+}): Promise<Metadata> {
+  return buildTaxonomyDirectoryMetadata({
     title: 'Disciplinas para concursos',
-    description: 'Explore disciplinas e resolva questões organizadas por matéria.',
-    url: '/disciplinas',
-    type: 'website',
-  },
-};
+    description: 'Encontre disciplinas com questões publicadas e pratique por matéria no ConcursoMestre.',
+    path: '/disciplinas',
+    searchParams: await searchParams,
+  });
+}
 
 export default function SubjectsDirectoryPage({
   searchParams,

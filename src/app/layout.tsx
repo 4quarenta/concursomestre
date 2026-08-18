@@ -4,6 +4,7 @@ import { websiteManifest } from '@/config/platform';
 import { getConfiguredSiteUrl } from '@/config/siteUrl';
 import NextAppProviders from '@/providers/NextAppProviders';
 import DeferredGoogleAnalytics from '@/components/shared/analytics/DeferredGoogleAnalytics';
+import { applySeoLaunchModeToMetadata } from '@services/seo/launchControl';
 import {
   fetchPublicMarketingSettings,
   normalizeAdsenseAccountId,
@@ -21,7 +22,7 @@ const inter = Inter({
   variable: '--font-sans',
 });
 
-const buildBaseMetadata = (adsenseAccount: string): Metadata => ({
+const buildBaseMetadata = (adsenseAccount: string): Metadata => applySeoLaunchModeToMetadata({
   title: {
     template: '%s | ConcursoMestre',
     default: websiteManifest.website.title,
@@ -78,7 +79,7 @@ const buildBaseMetadata = (adsenseAccount: string): Metadata => ({
       },
     }
     : {}),
-});
+}, undefined, '/');
 
 export const generateMetadata = async (): Promise<Metadata> => {
   const adsenseAccount = normalizeAdsenseAccountId(googleAdsenseAccount)

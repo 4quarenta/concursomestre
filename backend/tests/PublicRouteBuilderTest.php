@@ -44,6 +44,14 @@ try {
         'Filtros publicos de provas foram alterados.'
     );
     publicRouteAssert(
+        $builder->disciplineDetail('direito-constitucional') === '/disciplinas/direito-constitucional',
+        'Builder preparatorio de disciplina incorreto.'
+    );
+    publicRouteAssert(
+        $builder->boardDetail('cebraspe') === '/bancas/cebraspe',
+        'Builder PHP de banca divergente.'
+    );
+    publicRouteAssert(
         in_array('/practice', $policy->patterns('questions_hub', true), true)
             && in_array('/questions', $policy->patterns('questions_hub', true), true),
         'Aliases antigos de questoes nao estao declarados na policy.'

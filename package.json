@@ -40,7 +40,8 @@
     "test:crawler:gran": "node --test tools/local-question-crawler/__tests__/gran_mapper.node.mjs",
     "seo:generate-static": "php backend/scripts/seo/generate_static_sitemaps.php",
     "seo:validate-static": "php backend/scripts/seo/validate_static_sitemaps.php",
-    "seo:ssr-hydration": "node scripts/seo/ssr-hydration-harness.mjs"
+    "seo:ssr-hydration": "node scripts/seo/ssr-hydration-harness.mjs",
+    "seo:validate-launch-control": "node scripts/seo/validate-launch-control.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

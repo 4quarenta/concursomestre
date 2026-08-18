@@ -97,7 +97,14 @@ try {
     $qualityPolicy = new SeoQualityPolicy();
     $routes = new StructuralRoutePolicy();
     $promotionProvider = new DefaultEditorialSeoPromotionProvider();
-    $seoPolicy = new SeoPolicyService($routes, $promotionProvider, new SeoSlugService());
+    $seoPolicy = new SeoPolicyService(
+        $routes,
+        $promotionProvider,
+        new SeoSlugService(),
+        'https://concursomestre.com',
+        null,
+        'PRODUCTION'
+    );
 
     $public = $publicationPolicy->decide([
         'status' => 'published',
@@ -247,6 +254,21 @@ try {
     $report = $reporter->finalize($report, 6, 0.01);
     seoShadowAssert($report['quality'] === ['PASS' => 1, 'FAIL' => 1, 'NOT_EVALUATED' => 1], 'Shadow report nao agregou quality corretamente.');
     seoShadowAssert($report['indexability'] === ['INDEX' => 1, 'NOINDEX' => 2], 'Shadow report nao agregou indexabilidade potencial.');
+
+    $unroutedReport = $reporter->emptyReport();
+    $reporter->append($unroutedReport, [
+        'resourceType' => 'taxonomy', 'resourceId' => '301', 'existence' => 'exists',
+        'routeFamily' => null, 'routeParameters' => [],
+        'publicationInput' => ['status' => 'published', 'visibility' => 'public', 'rightsStatus' => 'not_evaluable'],
+        'publicData' => array_merge(seoShadowPublicData('taxonomy', '301'), ['taxonomyKind' => 'organization']),
+        'qualityEvidence' => array_merge(seoShadowEvidence('taxonomy'), ['taxonomyKind' => 'orgao', 'routeAvailable' => false]),
+    ]);
+    seoShadowAssert($unroutedReport['errors'] === [], 'Taxonomia sem rota gerou erro no shadow report.');
+    seoShadowAssert($unroutedReport['indexability']['NOINDEX'] === 1, 'Taxonomia sem rota nao ficou NOINDEX.');
+    seoShadowAssert(
+        ($unroutedReport['reasonCodes']['indexability.structural_noindex'] ?? 0) === 1,
+        'Taxonomia sem rota nao registrou structural_noindex.'
+    );
 
     $publicRuntimePaths = [dirname(__DIR__) . '/api', dirname(__DIR__) . '/modules'];
     $forbiddenImports = ['SeoPolicyService.php', 'SeoShadowReporter.php', 'SeoQualityPolicy.php'];

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { applySeoLaunchModeToMetadata } from '@services/seo/launchControl';
 import { buildNoIndexMetadata } from '@/app/seoMetadata';
 import { buildAbsoluteUrl } from '@services/seo/slug';
 import type { PublicQuestionRouteResolution } from './questionServerResolver';
@@ -22,7 +23,7 @@ export const buildQuestionMetadata = (
   const title = buildQuestionMetaTitle(question);
   const description = buildQuestionMetaDescription(question);
   const canonicalUrl = buildAbsoluteUrl(resolution.futurePath);
-  return {
+  return applySeoLaunchModeToMetadata({
     title,
     description,
     keywords: buildQuestionKeywords(question),
@@ -30,5 +31,5 @@ export const buildQuestionMetadata = (
     openGraph: { title, description, type: 'article', url: canonicalUrl },
     twitter: { card: 'summary', title, description },
     robots: { index: true, follow: true },
-  };
+  }, undefined, resolution.futurePath);
 };

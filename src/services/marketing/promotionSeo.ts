@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { applySeoLaunchModeToMetadata } from '@services/seo/launchControl';
 import type { Promotion } from '@types';
 import { buildSiteUrl } from '../../config/siteUrl';
 import { websiteManifest } from '../../config/platform';
@@ -119,15 +120,17 @@ export const buildPromotionMetadata = async (slug: string): Promise<Metadata> =>
     'Campanha ativa para estudar com mais recursos no ConcursoMestre.',
   );
 
-  return {
+  return applySeoLaunchModeToMetadata({
     title,
     description,
     alternates: {
       canonical,
     },
     robots: {
-      index: true,
+      index: false,
       follow: true,
+      noarchive: true,
+      googleBot: { index: false, follow: true, noarchive: true },
     },
     openGraph: {
       title,
@@ -142,5 +145,5 @@ export const buildPromotionMetadata = async (slug: string): Promise<Metadata> =>
       title,
       description,
     },
-  };
+  }, undefined, `/promo/${encodeURIComponent(slug)}`);
 };

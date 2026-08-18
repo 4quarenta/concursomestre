@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateMetadata as generateExamMetadata } from '../provas/page';
 import { generateMetadata as generateQuestionMetadata } from '../questoes/page';
 
@@ -7,6 +7,9 @@ const robotsIndex = (robots: Awaited<ReturnType<typeof generateQuestionMetadata>
 );
 
 describe('Phase 2 public collection metadata', () => {
+  beforeEach(() => vi.stubEnv('SEO_LAUNCH_MODE', 'PRODUCTION'));
+  afterEach(() => vi.unstubAllEnvs());
+
   it('keeps the clean questions hub indexable and strips tracking from canonical', async () => {
     const metadata = await generateQuestionMetadata({
       searchParams: Promise.resolve({ utm_source: 'newsletter' }),

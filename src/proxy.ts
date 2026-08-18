@@ -4,13 +4,22 @@ import { resolveCanonicalAuthRedirectPath } from '@services/auth/canonicalAuthRe
 import { canAccessAdminRoute } from '@services/auth/adminRouteAccess';
 import { hasAuthenticatedRouteSession } from '@services/auth/authenticatedRouteAccess';
 import { publicRoutes, sanitizePublicRouteQuery } from '@services/routes/publicRoutes';
+import { resolveXRobotsTag } from '@services/seo/launchControl';
 
 const adminNotFound = () => new NextResponse(null, {
   status: 404,
   headers: {
     'Cache-Control': 'no-store',
+    'X-Robots-Tag': 'noindex, nofollow',
   },
 });
+
+const nextWithSeoLaunchHeaders = (request: NextRequest): NextResponse => {
+  const response = NextResponse.next();
+  const xRobotsTag = resolveXRobotsTag(request.nextUrl.pathname, request.nextUrl.searchParams);
+  if (xRobotsTag) response.headers.set('X-Robots-Tag', xRobotsTag);
+  return response;
+};
 
 const withoutInternalRscParameter = (parameters: URLSearchParams): URLSearchParams => {
   const output = new URLSearchParams(parameters);
@@ -114,7 +123,7 @@ export async function proxy(request: NextRequest) {
       ? `${request.nextUrl.pathname}${request.nextUrl.search}`
       : request.nextUrl.pathname;
     if (currentPathWithSearch === redirectPath) {
-      return NextResponse.next();
+      return nextWithSeoLaunchHeaders(request);
     }
 
     const redirectUrl = request.nextUrl.clone();
@@ -137,7 +146,7 @@ export async function proxy(request: NextRequest) {
     return trailingSlashRedirect;
   }
 
-  return NextResponse.next();
+  return nextWithSeoLaunchHeaders(request);
 }
 
 export const config = {

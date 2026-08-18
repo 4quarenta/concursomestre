@@ -10,6 +10,18 @@
       "classification": "search",
       "multiValue": false
     },
+    "busca": {
+      "classification": "search",
+      "multiValue": false
+    },
+    "letra": {
+      "classification": "facet",
+      "multiValue": false
+    },
+    "cursor": {
+      "classification": "pagination",
+      "multiValue": false
+    },
     "keyword": {
       "classification": "search",
       "multiValue": false
@@ -223,7 +235,7 @@
       "supportsLanding": true,
       "supportsEditorialPromotion": false,
       "defaultIndexability": "INDEX",
-      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "allowedParameters": ["pagina", "busca", "letra", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
     {
@@ -232,7 +244,7 @@
       "audience": "public",
       "supportsLanding": true,
       "supportsEditorialPromotion": true,
-      "defaultIndexability": "NOINDEX",
+      "defaultIndexability": "INDEX",
       "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
@@ -242,7 +254,7 @@
       "audience": "public",
       "supportsLanding": true,
       "supportsEditorialPromotion": true,
-      "defaultIndexability": "NOINDEX",
+      "defaultIndexability": "INDEX",
       "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
@@ -252,7 +264,7 @@
       "audience": "public",
       "supportsLanding": true,
       "supportsEditorialPromotion": true,
-      "defaultIndexability": "NOINDEX",
+      "defaultIndexability": "INDEX",
       "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
@@ -263,7 +275,7 @@
       "supportsLanding": true,
       "supportsEditorialPromotion": false,
       "defaultIndexability": "INDEX",
-      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "allowedParameters": ["pagina", "busca", "letra", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
     {
@@ -272,7 +284,7 @@
       "audience": "public",
       "supportsLanding": true,
       "supportsEditorialPromotion": true,
-      "defaultIndexability": "NOINDEX",
+      "defaultIndexability": "INDEX",
       "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
@@ -304,7 +316,7 @@
       "audience": "public",
       "supportsLanding": true,
       "supportsEditorialPromotion": false,
-      "defaultIndexability": "NOINDEX",
+      "defaultIndexability": "INDEX",
       "allowedParameters": ["pagina", "ano", "orgao", "cargo", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
@@ -314,7 +326,7 @@
       "audience": "public",
       "supportsLanding": true,
       "supportsEditorialPromotion": true,
-      "defaultIndexability": "NOINDEX",
+      "defaultIndexability": "INDEX",
       "allowedParameters": ["utm_*", "gclid", "fbclid"],
       "paginationPolicy": "none"
     },
@@ -356,6 +368,36 @@
       "supportsEditorialPromotion": false,
       "defaultIndexability": "INDEX",
       "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "blog_category",
+      "patterns": ["/blog/categoria/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["cursor", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "blog_tag",
+      "patterns": ["/blog/tag/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["cursor", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "blog_author",
+      "patterns": ["/blog/autor/{id}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["cursor", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "none"
     },
     {

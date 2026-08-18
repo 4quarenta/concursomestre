@@ -62,14 +62,17 @@ final class SeoShadowReporter
                 $facts,
                 is_array($projection['qualityEvidence'] ?? null) ? $projection['qualityEvidence'] : []
             );
-            $decision = $this->seoPolicy->decide([
+            $routeFamily = is_string($projection['routeFamily'] ?? null)
+                ? trim((string) $projection['routeFamily'])
+                : '';
+            $decision = $routeFamily === '' ? null : $this->seoPolicy->decide([
                 'resourceType' => $resourceType,
                 'resourceId' => $resourceId,
                 'existence' => $projection['existence'] ?? 'exists',
                 'publicationDecision' => $publication,
                 'seoFacts' => $facts,
                 'seoQuality' => $quality,
-                'routeFamily' => $projection['routeFamily'] ?? '',
+                'routeFamily' => $routeFamily,
                 'routeParameters' => $projection['routeParameters'] ?? [],
                 'requestedSlug' => $projection['requestedSlug'] ?? '',
                 'canonicalEnvironment' => $projection['canonicalEnvironment'] ?? true,
@@ -77,13 +80,16 @@ final class SeoShadowReporter
 
             $report['resources'][$resourceType] = (int) ($report['resources'][$resourceType] ?? 0) + 1;
             $qualityStatus = (string) $quality['status'];
-            $indexStatus = (string) $decision['indexability']['status'];
+            $indexStatus = $decision === null ? 'NOINDEX' : (string) $decision['indexability']['status'];
+            $indexReasonCodes = $decision === null
+                ? ['indexability.structural_noindex']
+                : $decision['indexability']['reasonCodes'];
             $report['quality'][$qualityStatus]++;
             $report['indexability'][$indexStatus]++;
             foreach ($quality['reasonCodes'] as $reasonCode) {
                 $report['reasonCodes'][$reasonCode] = (int) ($report['reasonCodes'][$reasonCode] ?? 0) + 1;
             }
-            foreach ($decision['indexability']['reasonCodes'] as $reasonCode) {
+            foreach ($indexReasonCodes as $reasonCode) {
                 $report['reasonCodes'][$reasonCode] = (int) ($report['reasonCodes'][$reasonCode] ?? 0) + 1;
             }
             foreach ($publication['reasonCodes'] as $reasonCode) {
@@ -96,7 +102,8 @@ final class SeoShadowReporter
                     'quality' => $qualityStatus,
                     'wouldIndex' => $indexStatus === 'INDEX',
                     'qualityReasonCodes' => $quality['reasonCodes'],
-                    'indexabilityReasonCodes' => $decision['indexability']['reasonCodes'],
+                    'indexabilityReasonCodes' => $indexReasonCodes,
+                    'routeAvailable' => $routeFamily !== '',
                     'failedChecks' => array_values(array_filter(
                         $quality['checks'],
                         static fn (array $check): bool => $check['status'] !== 'PASS'

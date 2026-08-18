@@ -15,6 +15,7 @@ import { notFound } from 'next/navigation';
 import BlogArticleCard from '../../BlogArticleCard';
 import BlogHeader from '../../BlogHeader';
 import { fetchBlogPageForServer } from '../../blogServerData';
+import { buildUnpromotedBlogTaxonomyMetadata } from '../../blogTaxonomyMetadata';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -25,11 +26,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { id } = await params;
   const page = await fetchBlogPageForServer({ author: id });
   const author = page.items[0]?.author;
-  return {
+  return buildUnpromotedBlogTaxonomyMetadata({
     title: author ? `Artigos de ${author.name}` : 'Autor do blog',
-    description: author ? `Notícias e análises publicadas por ${author.name} no ConcursoMestre.` : undefined,
-    alternates: { canonical: `/blog/autor/${id}` },
-  };
+    description: author ? `Notícias e análises publicadas por ${author.name} no ConcursoMestre.` : 'Autor do blog ConcursoMestre.',
+    path: `/blog/autor/${id}`,
+  });
 }
 
 export default async function BlogAuthorPage({ params, searchParams }: PageProps) {

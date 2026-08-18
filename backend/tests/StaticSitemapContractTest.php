@@ -20,9 +20,13 @@ $validator = (string) file_get_contents($backend . '/modules/seo/sitemaps/Static
 foreach (['PublicRouteBuilder', 'SeoSlugService', 'createStagingDirectory', 'validateDirectory', 'promote'] as $needle) {
     sitemapContractAssert(str_contains($generator, $needle), 'Authoritative generator missing ' . $needle . '.');
 }
+sitemapContractAssert(str_contains($generator, 'SeoProductionPageMap'), 'Generator does not enforce the production page map.');
+sitemapContractAssert(str_contains($generator, "'familyId' => 'support'"), 'Production support target is missing from sitemap candidates.');
+sitemapContractAssert(str_contains($generator, "['launchStatus'] ?? null) !== 'ACTIVE'"), 'Non-active families are not excluded from sitemap publication.');
 sitemapContractAssert(!str_contains($generator, "'/practice'"), 'Generator still emits /practice.');
 sitemapContractAssert(!str_contains($generator, "'/question/'"), 'Generator still emits /question.');
 sitemapContractAssert(!str_contains($generator, "'/blog/provas'"), 'Generator still emits /blog/provas.');
+sitemapContractAssert(!str_contains($generator, "'/concursos' =>"), 'NOINDEX contest hub is still emitted.');
 sitemapContractAssert(!str_contains($generator, 'NOW() AS last_modified'), 'Generator fabricates taxonomy lastmod.');
 sitemapContractAssert(!preg_match('/COALESCE\([^\r\n]*NOW\(\)/', $generator), 'Generator fabricates entity lastmod.');
 sitemapContractAssert(str_contains($generator, "'lastmod' => null"), 'Taxonomies without material date must omit lastmod.');
@@ -32,6 +36,9 @@ sitemapContractAssert(
 );
 sitemapContractAssert(str_contains($blogWrapper, "generate_static_sitemaps.php"), 'Blog script must delegate to the only authority.');
 sitemapContractAssert(!str_contains($blogGenerator, 'NOW()) AS last_modified'), 'Blog generator fabricates lastmod.');
+sitemapContractAssert(!str_contains($blogGenerator, '/blog/categoria/'), 'Unpromoted blog categories are still emitted.');
+sitemapContractAssert(!str_contains($blogGenerator, '/blog/tag/'), 'Unpromoted blog tags are still emitted.');
+sitemapContractAssert(!str_contains($blogGenerator, '/blog/autor/'), 'Unpromoted blog authors are still emitted.');
 sitemapContractAssert(str_contains($publisher, 'rename($stagingDirectory, $this->outputDirectory)'), 'Publication must promote the validated tree.');
 sitemapContractAssert(str_contains($publisher, 'promoteWithAtomicSymlink'), 'Linux publication must atomically swap an immutable release pointer.');
 sitemapContractAssert(str_contains($validator, "'legacy_url'"), 'Validator must reject aliases.');

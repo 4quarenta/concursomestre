@@ -70,68 +70,6 @@ final class StaticBlogSitemapGenerator
             }
         }
 
-        $taxonomyEntries = [];
-        if ($this->tableExists('blog_categories', $queryCount)) {
-            $queryCount++;
-            $stmt = $this->db->query(
-                "SELECT c.slug, COALESCE(MAX(a.updated_at), c.updated_at) AS last_modified
-                 FROM blog_categories c
-                 INNER JOIN blog_articles a ON a.category_id = c.id
-                    AND a.deleted_at IS NULL
-                    AND a.status IN ('published', 'scheduled')
-                    AND a.published_at IS NOT NULL
-                    AND a.published_at <= NOW()
-                 GROUP BY c.id, c.slug, c.updated_at"
-            );
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-                $this->appendTaxonomy($taxonomyEntries, '/blog/categoria/', $row);
-            }
-        }
-
-        if ($this->tableExists('blog_tags', $queryCount) && $this->tableExists('blog_article_tags', $queryCount)) {
-            $queryCount++;
-            $stmt = $this->db->query(
-                "SELECT t.slug, COALESCE(MAX(a.updated_at), MAX(t.updated_at), MAX(t.created_at)) AS last_modified
-                 FROM blog_tags t
-                 INNER JOIN blog_article_tags bat ON bat.tag_id = t.id
-                 INNER JOIN blog_articles a ON a.id = bat.article_id
-                    AND a.deleted_at IS NULL
-                    AND a.status IN ('published', 'scheduled')
-                    AND a.published_at IS NOT NULL
-                    AND a.published_at <= NOW()
-                 GROUP BY t.id, t.slug"
-            );
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-                $this->appendTaxonomy($taxonomyEntries, '/blog/tag/', $row);
-            }
-        }
-
-        $queryCount++;
-        $stmt = $this->db->query(
-            "SELECT a.author_id, MAX(a.updated_at) AS last_modified
-             FROM blog_articles a
-             WHERE a.deleted_at IS NULL
-               AND a.status IN ('published', 'scheduled')
-               AND a.published_at IS NOT NULL
-               AND a.published_at <= NOW()
-             GROUP BY a.author_id"
-        );
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-            $authorId = trim((string) ($row['author_id'] ?? ''));
-            if ($authorId !== '') {
-                $taxonomyEntries[] = [
-                    'loc' => $this->baseUrl . '/blog/autor/' . rawurlencode($authorId),
-                    'lastmod' => $this->safeDate($row['last_modified'] ?? null),
-                ];
-            }
-        }
-        if ($taxonomyEntries !== []) {
-            $filename = 'blog-taxonomies-00001.xml';
-            $this->write($filename, $this->buildUrlSet($taxonomyEntries));
-            $files[] = ['name' => $filename, 'lastmod' => $this->maxLastmod($taxonomyEntries)];
-            $counts['taxonomies'] = count($taxonomyEntries);
-        }
-
         $queryCount++;
         $stmt = $this->db->query(
             "SELECT a.slug, a.title, a.published_at
@@ -188,18 +126,6 @@ final class StaticBlogSitemapGenerator
         );
         $stmt->execute([':table_name' => $table]);
         return (bool) $stmt->fetchColumn();
-    }
-
-    /** @param list<array{loc:string,lastmod:?string}> $entries @param array<string,mixed> $row */
-    private function appendTaxonomy(array &$entries, string $prefix, array $row): void
-    {
-        $slug = trim((string) ($row['slug'] ?? ''));
-        if ($slug !== '') {
-            $entries[] = [
-                'loc' => $this->baseUrl . $prefix . rawurlencode($slug),
-                'lastmod' => $this->safeDate($row['last_modified'] ?? null),
-            ];
-        }
     }
 
     private function safeDate(mixed $value): ?string

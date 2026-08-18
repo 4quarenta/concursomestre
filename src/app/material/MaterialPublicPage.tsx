@@ -114,6 +114,7 @@ const MaterialPublicPage: React.FC = () => {
     ogTitle: summarizeSeoText(material.title, 95),
     ogDescription: summarizeSeoText(material.description || material.details || 'Material do marketplace ConcursoMestre.', 180),
     ogImage: material.coverUrl,
+    robots: 'noindex,follow',
   } : null);
 
   const hasReaderAccess = Boolean(

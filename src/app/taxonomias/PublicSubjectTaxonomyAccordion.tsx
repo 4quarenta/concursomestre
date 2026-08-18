@@ -117,7 +117,9 @@ function TaxonomyBranch({ parentId, depth = 0 }: { parentId: number; depth?: num
 function TaxonomyTreeItem({ item, depth }: { item: PublicTaxonomyChild; depth: number }) {
   const [expanded, setExpanded] = useState(false);
   const queryKey = item.taxonomyLevel === 'topico' ? 'topico' : 'assunto';
-  const levelLabel = item.taxonomyLevel === 'topico' ? 'Tópico' : 'Assunto';
+  const levelLabel = item.taxonomyLevel === 'topico'
+    ? 'Tópico'
+    : item.taxonomyLevel === 'subtopico' ? 'Subtópico' : 'Assunto';
 
   return (
     <div>
@@ -144,14 +146,16 @@ export default function PublicSubjectTaxonomyAccordion({ item }: { item: PublicT
   return (
     <article className="overflow-hidden bg-white transition-colors dark:bg-slate-900">
       <div className="flex min-h-20 items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-950/40 sm:px-5">
-        <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-label={`${expanded ? 'Ocultar' : 'Mostrar'} tópicos de ${item.name}`} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[#615fff] hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300">
+          <ChevronDown size={18} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </button>
+        <Link href={publicRoutes.disciplines.detail(item.slug)} prefetch={false} className="flex min-w-0 flex-1 items-center gap-3 text-left hover:text-[#615fff]">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[#615fff] dark:bg-indigo-500/10 dark:text-indigo-300"><BookOpen size={17} /></span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-black text-slate-900 dark:text-slate-100">{item.name}</span>
-            <span className="mt-1 block text-xs font-semibold text-slate-600 dark:text-slate-400">Mostrar tópicos e assuntos</span>
+            <span className="mt-1 block text-xs font-semibold text-slate-600 dark:text-slate-400">Abrir landing da disciplina</span>
           </span>
-          <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180 text-[#615fff]' : ''}`} />
-        </button>
+        </Link>
         <Link href={publicRoutes.questions.index({ materia: item.name })} prefetch={false} className="hidden shrink-0 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-black text-slate-600 transition-colors hover:bg-indigo-50 hover:text-[#615fff] sm:inline-flex dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-indigo-500/10">
           {item.questionCount.toLocaleString('pt-BR')} questões
         </Link>

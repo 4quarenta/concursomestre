@@ -1,0 +1,29 @@
+{
+  "version": "taxonomy-promotion-policy.v1",
+  "enforcement": false,
+  "calibrationRequired": true,
+  "slug": {
+    "source": "filters.slug",
+    "maxLength": 80,
+    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "frozenAfterPromotion": true,
+    "changeRequiresHistoricalAlias": true,
+    "aliasRedirectStatus": 308
+  },
+  "blockedNames": [
+    "outros",
+    "outro",
+    "geral",
+    "diversos",
+    "diverso",
+    "pending",
+    "pendente",
+    "nao informado"
+  ],
+  "blockedTaxonomyLevels": ["pending"],
+  "thresholds": {
+    "minimumPublicQuestions": null,
+    "minimumDistinctRelations": null,
+    "maximumOverlap": null
+  }
+}

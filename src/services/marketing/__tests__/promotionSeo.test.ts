@@ -39,7 +39,7 @@ describe('promotion SEO metadata', () => {
     vi.unstubAllGlobals();
   });
 
-  it('indexes only the active promotion slug', async () => {
+  it('keeps even an active temporary promotion noindex', async () => {
     vi.stubEnv('NEXT_PUBLIC_CANONICAL_URL', 'https://concursomestre.com.br');
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
       data: {
@@ -60,7 +60,7 @@ describe('promotion SEO metadata', () => {
     expect(metadata.title).toBe('Oferta Black Friday');
     expect(metadata.description).toBe('Plano Elite com desconto especial.');
     expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/promo/black-friday');
-    expect(readRobotsObject(metadata.robots).index).toBe(true);
+    expect(readRobotsObject(metadata.robots).index).toBe(false);
   });
 
   it('marks wrong or inactive promotion slugs as noindex', async () => {

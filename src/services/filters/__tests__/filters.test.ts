@@ -88,9 +88,10 @@ describe('filtersService', () => {
         usage: { questions: 12, exams: 3, laws: 1, total: 16 },
       }],
       assuntos: [
-        { id: 2, nome: 'Direito', slug: 'direito', materia: true },
-        { id: 3, nome: 'Direito Constitucional', slug: 'direito-constitucional', materia: false, parent_id: 2 },
-        { id: 4, nome: 'Controle de constitucionalidade', slug: 'controle-de-constitucionalidade', materia: false, parent_id: 3 },
+        { id: 2, nome: 'Direito', slug: 'direito', materia: true, taxonomy_level: 'materia' },
+        { id: 3, nome: 'Direito Constitucional', slug: 'direito-constitucional', materia: false, parent_id: 2, taxonomy_level: 'topico' },
+        { id: 4, nome: 'Controle concentrado', slug: 'controle-concentrado', materia: false, parent_id: 3, taxonomy_level: 'subtopico' },
+        { id: 5, nome: 'ADI', slug: 'adi', materia: false, parent_id: 4, taxonomy_level: 'assunto' },
       ],
       carreiras: [{ id: 20, nome: 'Policial', slug: 'policial' }],
       anos: [2024],
@@ -116,7 +117,10 @@ describe('filtersService', () => {
     expect(taxonomies.subjects[0].name).toBe('Direito');
     expect(taxonomies.subjectTopics?.[0].name).toBe('Direito Constitucional');
     expect(taxonomies.subjectTopics?.[0].taxonomyLevel).toBe('topico');
-    expect(taxonomies.specificSubjects?.[0].name).toBe('Controle de constitucionalidade');
+    expect(taxonomies.subtopics?.[0].name).toBe('Controle concentrado');
+    expect(taxonomies.subtopics?.[0].taxonomyLevel).toBe('subtopico');
+    expect(taxonomies.subtopics?.[0].rootSubjectId).toBe('2');
+    expect(taxonomies.specificSubjects?.[0].name).toBe('ADI');
     expect(taxonomies.specificSubjects?.[0].rootSubjectId).toBe('2');
     expect(taxonomies.careers).toEqual([
       expect.objectContaining({ id: '20', name: 'Policial', slug: 'policial', type: 'career' }),
@@ -186,6 +190,17 @@ describe('filtersService', () => {
 
     expect(mockGet).toHaveBeenCalledWith('filtersList');
     expect(payload.bancas?.[0].nome).toBe('CESPE');
+  });
+
+  it('does not interpret string zero flags as materia', () => {
+    const taxonomies = normalizeFiltersToTaxonomies({
+      assuntos: [
+        { id: 1, nome: 'Direito', materia: '1', meta_materia: '1', taxonomy_level: 'materia' },
+        { id: 2, nome: 'Tópico', materia: '0', meta_materia: '0', taxonomy_level: 'topico', parent_id: 1 },
+      ],
+    });
+    expect(taxonomies.subjects.map((item) => item.id)).toEqual(['1']);
+    expect(taxonomies.subjectTopics?.map((item) => item.id)).toEqual(['2']);
   });
 
   it('loads the reduced practice catalog without materializing every taxonomy', async () => {

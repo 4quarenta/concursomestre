@@ -103,6 +103,31 @@ function handlePublicBoardDetailRoute(PDO $db): void
 }
 
 /**
+ * Landing publica allowlist de uma disciplina canonica.
+ */
+function handlePublicDisciplineDetailRoute(PDO $db): void
+{
+    try {
+        $slug = trim((string) ($_GET['slug'] ?? ''));
+        $controller = new FiltersController(
+            new FiltersService(
+                new FiltersRepository($db),
+                new FiltersValidator()
+            )
+        );
+        $payload = $controller->getPublicDisciplineDetail($slug);
+        if ($payload === null) {
+            Response::notFound('Disciplina nao encontrada.');
+        }
+        Response::success($payload);
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar a disciplina.', $e);
+    }
+}
+
+/**
  * Expande um unico ramo de disciplina por vez.
  */
 function handlePublicTaxonomyHierarchyRoute(PDO $db): void

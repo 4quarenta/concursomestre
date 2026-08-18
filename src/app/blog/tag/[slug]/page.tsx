@@ -5,6 +5,7 @@ import BlogArticleCard from '../../BlogArticleCard';
 import BlogConversionCta from '../../BlogConversionCta';
 import BlogHeader from '../../BlogHeader';
 import { fetchBlogPageForServer, fetchBlogTagsForServer } from '../../blogServerData';
+import { buildUnpromotedBlogTaxonomyMetadata } from '../../blogTaxonomyMetadata';
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -26,11 +27,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const tags = await fetchBlogTagsForServer();
   const tag = tags.find((item) => item.slug === slug);
   if (!tag) return { title: 'Tag não encontrada', robots: { index: false } };
-  return {
+  return buildUnpromotedBlogTaxonomyMetadata({
     title: `${tag.label}: notícias de concursos`,
     description: tag.description || `Notícias, editais e atualizações sobre ${tag.label}.`,
-    alternates: { canonical: `/blog/tag/${slug}` },
-  };
+    path: `/blog/tag/${slug}`,
+  });
 }
 
 export default async function BlogTagPage({ params, searchParams }: PageProps) {

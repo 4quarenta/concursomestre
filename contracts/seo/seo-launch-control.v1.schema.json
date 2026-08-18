@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://concursomestre.com/contracts/seo/seo-launch-control.v1.schema.json",
+  "title": "SEO Launch Control v1",
+  "version": "seo-launch-control.v1",
+  "definitions": {
+    "launchMode": {
+      "type": "string",
+      "enum": ["PRELAUNCH", "GO_CANDIDATE", "PRODUCTION"]
+    },
+    "familyEligibility": {
+      "type": "string",
+      "enum": ["INDEXABLE", "CONDITIONAL", "PERMANENT_NOINDEX"]
+    },
+    "instanceReadinessStatus": {
+      "type": "string",
+      "enum": ["READY", "NOT_READY", "NOT_APPLICABLE"]
+    },
+    "instanceReadinessReasonCode": {
+      "type": "string",
+      "enum": [
+        "instance_readiness.entity_missing",
+        "instance_readiness.invalid_slug",
+        "instance_readiness.pending",
+        "instance_readiness.publication_blocked",
+        "instance_readiness.invalid_hierarchy",
+        "instance_readiness.protected",
+        "instance_readiness.canonical_invalid",
+        "instance_readiness.not_evaluated",
+        "instance_readiness.not_applicable",
+        "instance_readiness.current_implementation_not_ready"
+      ]
+    }
+  }
+}

@@ -8,16 +8,37 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../modules/seo/launch/SeoLaunchMode.php';
+require_once __DIR__ . '/../../modules/seo/launch/SeoProductionPageMap.php';
 require_once __DIR__ . '/../../modules/seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../modules/seo/services/SeoSlugService.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticBlogSitemapGenerator.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapPublisher.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapValidator.php';
 
+$launchMode = SeoLaunchMode::fromEnvironment();
+$simulation = filter_var(getenv('SEO_SITEMAP_SIMULATION') ?: '0', FILTER_VALIDATE_BOOL);
+if ($launchMode !== SeoLaunchMode::PRODUCTION && !$simulation) {
+    fwrite(STDOUT, "Sitemap publication skipped: SEO_LAUNCH_MODE={$launchMode}.\n");
+    exit(0);
+}
+if ($simulation && $launchMode !== SeoLaunchMode::GO_CANDIDATE) {
+    throw new RuntimeException('Sitemap simulation is only allowed in GO_CANDIDATE.');
+}
+
 $startedAt = microtime(true);
 $db = (new Database('read'))->getConnection();
 $baseUrl = rtrim(trim((string) (getenv('CANONICAL_BASE_URL') ?: 'https://concursomestre.com')), '/');
-$outputDir = trim((string) (getenv('SITEMAP_OUTPUT_DIR') ?: dirname(__DIR__, 2) . '/storage/sitemaps'));
+$productionOutputDir = trim((string) (getenv('SITEMAP_OUTPUT_DIR') ?: dirname(__DIR__, 2) . '/storage/sitemaps'));
+$simulationOutputDir = trim((string) (getenv('SITEMAP_SIMULATION_OUTPUT_DIR') ?: ''));
+if ($simulation && $simulationOutputDir === '') {
+    throw new RuntimeException('SITEMAP_SIMULATION_OUTPUT_DIR is required for GO_CANDIDATE simulation.');
+}
+$outputDir = $simulation ? $simulationOutputDir : $productionOutputDir;
+if ($simulation && realpath(dirname($outputDir)) === realpath(dirname($productionOutputDir))
+    && basename($outputDir) === basename($productionOutputDir)) {
+    throw new RuntimeException('Sitemap simulation cannot target the served production directory.');
+}
 $httpValidationOrigin = trim((string) (getenv('SITEMAP_VALIDATION_ORIGIN') ?: ''));
 $validateHttp = filter_var(getenv('SITEMAP_VALIDATE_HTTP') ?: '0', FILTER_VALIDATE_BOOL);
 $batchSize = 45000;
@@ -42,6 +63,7 @@ try {
     }
 
     $routes = new PublicRouteBuilder();
+    $productionPageMap = new SeoProductionPageMap();
     $slugger = new SeoSlugService();
     $escape = static fn (string $value): string => htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     $safeDate = static function (mixed $value): ?string {
@@ -99,25 +121,34 @@ try {
     $files = [];
     $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'taxonomies' => 0];
     $institutionalSources = [
-        '/' => 'src/app/page.tsx',
-        '/planos' => 'src/app/planos/page.tsx',
-        $routes->questionsIndex() => 'src/app/questoes/page.tsx',
-        '/concursos' => 'src/app/concursos/page.tsx',
-        '/faq' => 'src/app/faq/page.tsx',
-        '/lei-comentada' => 'src/app/lei-comentada/page.tsx',
-        '/blog' => 'src/app/blog/page.tsx',
-        $routes->examsIndex() => 'src/app/provas/page.tsx',
-        '/disciplinas' => 'src/app/disciplinas/page.tsx',
-        '/bancas' => 'src/app/bancas/page.tsx',
-        '/novidades' => 'src/app/novidades/page.tsx',
-        '/elite' => 'src/app/elite/page.tsx',
-        '/marketplace' => 'src/app/marketplace/page.tsx',
-        '/privacy' => 'src/app/privacy/page.tsx',
-        '/terms' => 'src/app/terms/page.tsx',
+        '/' => ['source' => 'src/app/page.tsx', 'familyId' => 'home'],
+        '/planos' => ['source' => 'src/app/planos/page.tsx', 'familyId' => 'plans'],
+        $routes->questionsIndex() => ['source' => 'src/app/questoes/page.tsx', 'familyId' => 'questions_hub'],
+        '/faq' => ['source' => 'src/app/faq/page.tsx', 'familyId' => 'faq'],
+        '/lei-comentada' => ['source' => 'src/app/lei-comentada/page.tsx', 'familyId' => 'law_hub'],
+        '/blog' => ['source' => 'src/app/blog/page.tsx', 'familyId' => 'blog_hub'],
+        $routes->examsIndex() => ['source' => 'src/app/provas/page.tsx', 'familyId' => 'exam_hub'],
+        '/disciplinas' => ['source' => 'src/app/disciplinas/page.tsx', 'familyId' => 'discipline_hub'],
+        '/bancas' => ['source' => 'src/app/bancas/page.tsx', 'familyId' => 'board_hub'],
+        '/novidades' => ['source' => 'src/app/novidades/page.tsx', 'familyId' => 'news'],
+        '/support' => ['source' => 'src/app/support/page.tsx', 'familyId' => 'support'],
+        '/elite' => ['source' => 'src/app/elite/page.tsx', 'familyId' => 'elite'],
+        '/marketplace' => ['source' => 'src/app/marketplace/page.tsx', 'familyId' => 'marketplace'],
+        '/privacy' => ['source' => 'src/app/privacy/page.tsx', 'familyId' => 'privacy'],
+        '/terms' => ['source' => 'src/app/terms/page.tsx', 'familyId' => 'terms'],
     ];
     $institutionalEntries = [];
-    foreach ($institutionalSources as $path => $source) {
-        $institutionalEntries[] = ['loc' => $baseUrl . $path, 'lastmod' => $sourceLastmod($source)];
+    foreach ($institutionalSources as $path => $candidate) {
+        $family = $productionPageMap->family($candidate['familyId']);
+        if (($family['launchStatus'] ?? null) !== 'ACTIVE'
+            || ($family['targetProductionIndexability'] ?? null) !== 'INDEX'
+            || ($family['sitemapTarget'] ?? null) !== 'INCLUDE_WHEN_READY') {
+            continue;
+        }
+        $institutionalEntries[] = [
+            'loc' => $baseUrl . $path,
+            'lastmod' => $sourceLastmod($candidate['source']),
+        ];
     }
     $filename = 'institutional-00001.xml';
     $write($stage . '/' . $filename, $buildUrlSet($institutionalEntries));

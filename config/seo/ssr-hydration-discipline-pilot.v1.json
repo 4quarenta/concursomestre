@@ -1,0 +1,45 @@
+{
+  "version": "ssr-hydration-discipline-pilot.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "securitySentinels": [
+    "SECRET_CORRECT_ANSWER_SENTINEL",
+    "SECRET_TEACHER_COMMENT_SENTINEL",
+    "SECRET_DETAILED_ANALYSIS_SENTINEL",
+    "SECRET_IMPORTER_SENTINEL",
+    "SECRET_ADMIN_NOTE_SENTINEL"
+  ],
+  "routes": [
+    {
+      "key": "discipline_detail",
+      "path": "/disciplinas/direito-constitucional",
+      "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"],
+      "canonical": "/disciplinas/direito-constitucional",
+      "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"],
+      "schemaCanonicalRequired": true,
+      "expectedMainCount": 1,
+      "expectedH1Count": 1,
+      "requiredRawText": ["Questões de Direito Constitucional", "Descrição pública da disciplina."],
+      "requiredRawLinks": [
+        "/disciplinas",
+        "/questoes?materia=Direito%20Constitucional",
+        "/bancas/cebraspe",
+        "/provas/prova-persistida",
+        "/questoes/40/art-5o-acao-e-controle"
+      ]
+    },
+    {
+      "key": "discipline_detail_not_found",
+      "path": "/disciplinas/disciplina-inexistente-checkpoint-4-2",
+      "maturity": "error",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"],
+      "expectedStatus": 404,
+      "canonicalAbsent": true,
+      "expectNoIndex": true
+    }
+  ]
+}

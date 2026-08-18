@@ -15,7 +15,6 @@ export const SEO_PUBLIC_ROUTES = [
   { path: '/provas', changeFrequency: 'daily', priority: 0.85 },
   { path: '/disciplinas', changeFrequency: 'daily', priority: 0.85 },
   { path: '/bancas', changeFrequency: 'daily', priority: 0.85 },
-  { path: '/concursos', changeFrequency: 'weekly', priority: 0.85 },
   { path: '/faq', changeFrequency: 'monthly', priority: 0.75 },
   { path: '/lei-comentada', changeFrequency: 'weekly', priority: 0.75 },
   { path: '/blog', changeFrequency: 'daily', priority: 0.75 },
@@ -43,7 +42,8 @@ export const SEO_ROBOT_DISALLOW_PATHS = [
   '/reset-password',
   '/simulation',
   '/subscription/',
-  '/support',
+  '/setup',
+  '/checkout/',
   '/x-ray',
   '/api/',
 ];

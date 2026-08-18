@@ -15,6 +15,7 @@ import { notFound } from 'next/navigation';
 import BlogArticleCard from '../../BlogArticleCard';
 import BlogHeader from '../../BlogHeader';
 import { fetchBlogCategoriesForServer, fetchBlogPageForServer } from '../../blogServerData';
+import { buildUnpromotedBlogTaxonomyMetadata } from '../../blogTaxonomyMetadata';
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -25,11 +26,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const categories = await fetchBlogCategoriesForServer();
   const category = categories.find((item) => item.slug === slug);
-  return {
+  return buildUnpromotedBlogTaxonomyMetadata({
     title: category ? `${category.label}: notícias e editais` : 'Categoria do blog',
     description: category?.description || `Notícias e atualizações sobre ${category?.label || 'concursos públicos'}.`,
-    alternates: { canonical: `/blog/categoria/${slug}` },
-  };
+    path: `/blog/categoria/${slug}`,
+  });
 }
 
 export default async function BlogCategoryPage({ params, searchParams }: PageProps) {

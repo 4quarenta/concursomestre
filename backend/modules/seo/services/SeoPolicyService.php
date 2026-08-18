@@ -5,6 +5,9 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/contracts/SeoContractValidator.php';
 require_once dirname(__DIR__) . '/policies/StructuralRoutePolicy.php';
 require_once dirname(__DIR__) . '/promotion/EditorialSeoPromotionProvider.php';
+require_once dirname(__DIR__) . '/launch/SeoInstanceReadiness.php';
+require_once dirname(__DIR__) . '/launch/SeoLaunchMode.php';
+require_once dirname(__DIR__) . '/launch/SeoProductionPageMap.php';
 require_once __DIR__ . '/SeoSlugService.php';
 
 /**
@@ -13,12 +16,19 @@ require_once __DIR__ . '/SeoSlugService.php';
  */
 final class SeoPolicyService
 {
+    private readonly SeoProductionPageMap $productionPageMap;
+    private readonly string $launchMode;
+
     public function __construct(
         private readonly StructuralRoutePolicy $routes,
         private readonly EditorialSeoPromotionProvider $promotions,
         private readonly SeoSlugService $slugs,
-        private readonly string $canonicalBaseUrl = 'https://concursomestre.com'
+        private readonly string $canonicalBaseUrl = 'https://concursomestre.com',
+        ?SeoProductionPageMap $productionPageMap = null,
+        ?string $launchMode = null
     ) {
+        $this->productionPageMap = $productionPageMap ?? new SeoProductionPageMap();
+        $this->launchMode = SeoLaunchMode::normalize($launchMode ?? (getenv('SEO_LAUNCH_MODE') ?: null));
     }
 
     /**
@@ -61,6 +71,15 @@ final class SeoPolicyService
 
         $familyId = (string) ($input['routeFamily'] ?? '');
         $family = $this->routes->family($familyId);
+        $productionFamily = $this->productionPageMap->family($familyId);
+        $currentImplementationReady = !in_array(
+            'canonical_contest_model',
+            is_array($productionFamily['requirements'] ?? null) ? $productionFamily['requirements'] : [],
+            true
+        );
+        $instanceReadiness = isset($input['instanceReadiness'])
+            ? SeoInstanceReadiness::validate($input['instanceReadiness'])
+            : SeoInstanceReadiness::fromSignals($publication, $quality, $currentImplementationReady);
         $displayName = (string) ($facts['identity']['displayName'] ?? '');
         $slug = $this->slugs->slug($displayName, $resourceType, $resourceId);
         $routeParameters = is_array($input['routeParameters'] ?? null) ? $input['routeParameters'] : [];
@@ -84,11 +103,23 @@ final class SeoPolicyService
         } elseif (($quality['status'] ?? null) !== 'PASS') {
             $indexReasonCodes[] = 'indexability.quality_not_evaluated';
         }
-        if (($family['defaultIndexability'] ?? 'NOINDEX') !== 'INDEX') {
-            $indexReasonCodes[] = 'indexability.structural_noindex';
+        if ($this->launchMode === SeoLaunchMode::PRELAUNCH) {
+            $indexReasonCodes[] = 'indexability.launch_prelaunch';
+        } elseif ($this->launchMode === SeoLaunchMode::GO_CANDIDATE) {
+            $indexReasonCodes[] = 'indexability.launch_go_candidate';
         }
-        if (($promotion['status'] ?? null) === 'pending') {
+        if (($productionFamily['launchStatus'] ?? null) !== 'ACTIVE') {
+            $indexReasonCodes[] = 'indexability.launch_not_active';
+        }
+        if (($productionFamily['familyEligibility'] ?? null) === 'PERMANENT_NOINDEX') {
+            $indexReasonCodes[] = 'indexability.family_permanent_noindex';
+        }
+        if (($productionFamily['familyEligibility'] ?? null) === 'CONDITIONAL'
+            && ($promotion['status'] ?? null) === 'pending') {
             $indexReasonCodes[] = 'indexability.editorial_promotion_required';
+        }
+        if (($instanceReadiness['status'] ?? null) !== 'READY') {
+            $indexReasonCodes[] = 'indexability.instance_not_ready';
         }
         if (($input['canonicalEnvironment'] ?? true) !== true) {
             $indexReasonCodes[] = 'indexability.non_canonical_environment';
@@ -103,7 +134,9 @@ final class SeoPolicyService
             $indexReasonCodes[] = 'indexability.non_canonical_request';
         }
         $indexReasonCodes = array_values(array_unique($indexReasonCodes));
-        $wouldIndex = $indexReasonCodes === [];
+        $wouldIndex = $indexReasonCodes === []
+            && $this->launchMode === SeoLaunchMode::PRODUCTION
+            && ($productionFamily['targetProductionIndexability'] ?? null) === 'INDEX';
 
         $canonical = $canonicalPath !== null ? [
             'path' => $canonicalPath,
@@ -137,7 +170,9 @@ final class SeoPolicyService
                 'imageIndex' => $wouldIndex,
             ],
             'sitemap' => [
-                'eligible' => $wouldIndex && $resolution['action'] === 'render',
+                'eligible' => $wouldIndex
+                    && $resolution['action'] === 'render'
+                    && ($productionFamily['sitemapTarget'] ?? null) === 'INCLUDE_WHEN_READY',
                 'section' => $wouldIndex ? $this->sitemapSection($familyId) : null,
                 'lastModified' => $wouldIndex ? ($facts['dates']['updatedAt'] ?? $facts['dates']['publishedAt'] ?? null) : null,
             ],

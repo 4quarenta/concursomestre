@@ -1254,7 +1254,7 @@ export interface TaxonomyItem {
   slug?: string;
   parentId?: string;
   rootSubjectId?: string;
-  taxonomyLevel?: 'materia' | 'topico' | 'assunto' | string;
+  taxonomyLevel?: 'materia' | 'topico' | 'subtopico' | 'assunto' | string;
   type?: 'agency' | 'subject' | 'topic' | 'role' | 'year' | 'modality' | 'career' | string;
   description?: string;
   website?: string;
@@ -1283,6 +1283,7 @@ export interface GlobalTaxonomies {
   subjects: TaxonomyItem[];
   topics: TaxonomyItem[];
   subjectTopics?: TaxonomyItem[];
+  subtopics?: TaxonomyItem[];
   specificSubjects?: TaxonomyItem[];
   roles: TaxonomyItem[];
   careers: TaxonomyItem[];

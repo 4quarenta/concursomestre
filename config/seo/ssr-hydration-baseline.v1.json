@@ -8,7 +8,9 @@
     "SECRET_EDITORIAL_SENTINEL_123",
     "SECRET_SUMMARY_SENTINEL_456",
     "SECRET_BLOCK_SENTINEL_789",
-    "SECRET_CORRECT_ANSWER_SENTINEL_246"
+    "SECRET_CORRECT_ANSWER_SENTINEL_246",
+    "SECRET_IMPORTER_SENTINEL",
+    "SECRET_ADMIN_NOTE_SENTINEL"
   ],
   "routes": [
     { "key": "home", "path": "/", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/" },
@@ -18,6 +20,8 @@
     { "key": "exams_hub", "path": "/provas", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/provas", "schemaCanonicalRequired": true },
     { "key": "board_detail", "path": "/bancas/cebraspe", "pathEnv": "CM_SSR_ROUTE_BOARD", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/bancas/cebraspe", "schemaTypes": ["Organization"], "schemaCanonicalRequired": true },
     { "key": "disciplines_hub", "path": "/disciplinas", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/disciplinas", "schemaTypes": ["CollectionPage"], "schemaCanonicalRequired": true },
+    { "key": "discipline_detail", "path": "/disciplinas/direito-constitucional", "pathEnv": "CM_SSR_ROUTE_DISCIPLINE", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/disciplinas/direito-constitucional", "expectNoIndex": true, "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true, "requiredRawText": ["Questões de Direito Constitucional"], "requiredRawLinks": ["/disciplinas", "/questoes?materia=Direito%20Constitucional", "/bancas/cebraspe", "/provas/prova-persistida", "/questoes/40/art-5o-acao-e-controle"] },
+    { "key": "discipline_detail_not_found", "path": "/disciplinas/disciplina-inexistente-checkpoint-4-2", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
     { "key": "boards_hub", "path": "/bancas", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/bancas", "schemaTypes": ["CollectionPage"], "schemaCanonicalRequired": true },
     { "key": "law_detail", "path": "/lei-comentada/constituicao-federal", "pathEnv": "CM_SSR_ROUTE_LAW", "maturity": "ssr", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/lei-comentada/constituicao-federal", "schemaTypes": ["Article", "LearningResource"], "schemaCanonicalRequired": true, "requiredRawText": ["Texto constitucional"], "requiredRawLinks": ["/lei-comentada"] },
     { "key": "law_detail_not_found", "path": "/lei-comentada/lei-inexistente-checkpoint-3-4", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },

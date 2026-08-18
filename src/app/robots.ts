@@ -1,9 +1,11 @@
 import type { MetadataRoute } from 'next';
 import { buildSiteUrl, getConfiguredSiteUrl } from '@/config/siteUrl';
 import { SEO_ROBOT_DISALLOW_PATHS } from '@/services/seo/sitemapData';
+import { isSeoProductionMode } from '@services/seo/launchControl';
 
 export default function robots(): MetadataRoute.Robots {
   const siteUrl = getConfiguredSiteUrl();
+  const production = isSeoProductionMode();
 
   return {
     rules: {
@@ -11,10 +13,12 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: SEO_ROBOT_DISALLOW_PATHS,
     },
-    sitemap: [
-      buildSiteUrl('/sitemap.xml', siteUrl),
-      buildSiteUrl('/sitemaps/blog-sitemap.xml', siteUrl),
-    ],
+    ...(production ? {
+      sitemap: [
+        buildSiteUrl('/sitemap.xml', siteUrl),
+        buildSiteUrl('/sitemaps/blog-sitemap.xml', siteUrl),
+      ],
+    } : {}),
     host: siteUrl.origin,
   };
 }

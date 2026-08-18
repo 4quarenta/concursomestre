@@ -15,6 +15,8 @@ import type { Question, TaxonomyUsage, TaxonomyUsageSummary } from '@types';
 
 type RawFilterNode = Record<string, unknown>;
 
+export type KnowledgeTaxonomyLevel = 'materia' | 'topico' | 'subtopico' | 'assunto';
+
 type RawQuestionArea = {
   nome?: string;
   name?: string;
@@ -101,7 +103,7 @@ export interface FilterSavePayload {
   slug?: string;
   parent_id?: number | null;
   materia?: boolean;
-  taxonomy_level?: 'materia' | 'topico' | 'assunto' | string;
+  taxonomy_level?: KnowledgeTaxonomyLevel | string;
   description?: string;
   website?: string;
   assetUrl?: string;
@@ -349,7 +351,7 @@ const getTaxonomyParentId = (item: RawFilterNode) => {
   return parentId === null || parentId === undefined || parentId === '' ? undefined : String(parentId);
 };
 
-const getTaxonomyLevelFromPayload = (item: RawFilterNode) => {
+const getTaxonomyLevelFromPayload = (item: RawFilterNode): KnowledgeTaxonomyLevel | '' => {
   const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata as Record<string, unknown> : {};
   const rawLevel = String(
     item.taxonomy_level
@@ -359,29 +361,52 @@ const getTaxonomyLevelFromPayload = (item: RawFilterNode) => {
     || '',
   ).toLowerCase();
 
-  return rawLevel === 'materia' || rawLevel === 'topico' || rawLevel === 'assunto'
-    ? rawLevel
+  return ['materia', 'topico', 'subtopico', 'assunto'].includes(rawLevel)
+    ? rawLevel as KnowledgeTaxonomyLevel
     : '';
 };
 
+const readBooleanFlag = (value: unknown) => value === true || value === 1 || value === '1';
+
+const isMatterTaxonomy = (item: RawFilterNode) => (
+  readBooleanFlag(item.materia) || readBooleanFlag(item.meta_materia)
+  || getTaxonomyLevelFromPayload(item) === 'materia'
+);
+
 /**
  * Converte o payload bruto da API para o formato de taxonomias usado no app.
- * A hierarquia de estudo passa a ser: Materia -> Topico -> Assunto.
+ * A hierarquia canonica e: Materia -> Topico -> Subtopico -> Assunto.
+ * Payloads legados sem taxonomy_level preservam a inferencia anterior.
  */
 export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
   const rawSubjects = data.assuntos || [];
   const subjectIds = new Set(
     rawSubjects
-      .filter((item) => Boolean(item.materia))
+      .filter(isMatterTaxonomy)
       .map((item) => String(item.id)),
   );
   const nonSubjectIds = new Set(
     rawSubjects
-      .filter((item) => !item.materia)
+      .filter((item) => !isMatterTaxonomy(item))
       .map((item) => String(item.id)),
   );
 
-  const subjects = rawSubjects.filter((item) => item.materia).map((item) => ({
+  const rawById = new Map(rawSubjects.map((item) => [String(item.id), item]));
+  const resolveRootSubjectId = (item: RawFilterNode): string | undefined => {
+    let current: RawFilterNode | undefined = item;
+    const visited = new Set<string>();
+    for (let depth = 0; current && depth < 16; depth += 1) {
+      const currentId = String(current.id ?? '');
+      if (!currentId || visited.has(currentId)) return undefined;
+      visited.add(currentId);
+      if (isMatterTaxonomy(current)) return currentId;
+      const parentId = getTaxonomyParentId(current);
+      current = parentId ? rawById.get(parentId) : undefined;
+    }
+    return undefined;
+  };
+
+  const subjects = rawSubjects.filter(isMatterTaxonomy).map((item) => ({
     id: String(item.id),
     name: readNamedValue(item, ['nome', 'name']),
     slug: typeof item.slug === 'string' ? item.slug : undefined,
@@ -391,18 +416,11 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
     type: 'subject',
   }));
 
-  const nonSubjectTaxonomies = rawSubjects.filter((item) => !item.materia).map((item) => {
+  const nonSubjectTaxonomies = rawSubjects.filter((item) => !isMatterTaxonomy(item)).map((item) => {
     const parentId = getTaxonomyParentId(item);
     const explicitLevel = getTaxonomyLevelFromPayload(item);
     const taxonomyLevel = explicitLevel || (parentId && nonSubjectIds.has(parentId) ? 'assunto' : 'topico');
-    const parentTopic = taxonomyLevel === 'assunto'
-      ? rawSubjects.find((rawItem) => String(rawItem.id) === parentId)
-      : null;
-    const rootSubjectId = taxonomyLevel === 'topico'
-      ? parentId
-      : parentTopic
-        ? getTaxonomyParentId(parentTopic)
-        : undefined;
+    const rootSubjectId = resolveRootSubjectId(item);
 
     return {
       id: String(item.id),
@@ -413,7 +431,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
       rootSubjectId: rootSubjectId && subjectIds.has(String(rootSubjectId)) ? String(rootSubjectId) : undefined,
       materia: false,
       taxonomyLevel,
-      type: 'topic',
+      type: taxonomyLevel === 'topico' ? 'topic' : 'subject',
     };
   });
 
@@ -437,6 +455,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
     subjects,
     topics: nonSubjectTaxonomies,
     subjectTopics: nonSubjectTaxonomies.filter((item) => item.taxonomyLevel === 'topico'),
+    subtopics: nonSubjectTaxonomies.filter((item) => item.taxonomyLevel === 'subtopico'),
     specificSubjects: nonSubjectTaxonomies.filter((item) => item.taxonomyLevel === 'assunto'),
     roles: (data.cargos || []).map((item) => ({
       id: String(item.id),

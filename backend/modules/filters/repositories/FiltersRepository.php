@@ -20,6 +20,8 @@ require_once __DIR__ . '/../../../shared/runtime/RuntimeStoreFactory.php';
 
 class FiltersRepository
 {
+    public const PUBLIC_DISCIPLINE_QUERY_BUDGET = 5;
+
     private PDO $db;
 
     /**
@@ -372,6 +374,119 @@ class FiltersRepository
             'page' => $page,
             'perPage' => $perPage,
             'pages' => $pages,
+        ];
+    }
+
+    /**
+     * Dados sanitizados e limitados do piloto. Executa no maximo cinco consultas
+     * constantes; nao existe consulta por topico, prova, banca ou questao.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchPublicDisciplineProjectionData(
+        string $slug,
+        int $topicLimit = 12,
+        int $examLimit = 8,
+        int $boardLimit = 8,
+        int $questionLimit = 10
+    ): ?array {
+        $publishedQuestionClause = "q.publish_status IN ('published', 'scheduled')
+            AND q.visibility_status = 'public'
+            AND q.published_sort_at IS NOT NULL
+            AND q.published_sort_at <= NOW()";
+        $publicExamClause = "p.archived_at IS NULL
+            AND p.status_editorial = 'published'
+            AND p.visibility_status = 'public'
+            AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())";
+
+        $identityStmt = $this->db->prepare(
+            "SELECT f.id, f.type, f.taxonomy_level, f.meta_materia,
+                    f.slug, f.name, f.description,
+                    COUNT(DISTINCT q.id) AS question_count,
+                    MAX(q.updated_at) AS content_updated_at
+               FROM filters f
+               LEFT JOIN question_filters qf ON qf.filter_id = f.id
+               LEFT JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+              WHERE f.type = 'assunto'
+                AND (f.taxonomy_level = 'materia' OR f.meta_materia = 1)
+                AND COALESCE(f.taxonomy_level, '') <> 'pending'
+                AND f.slug = :slug
+              GROUP BY f.id, f.type, f.taxonomy_level, f.meta_materia, f.slug, f.name, f.description
+              LIMIT 1"
+        );
+        $identityStmt->execute([':slug' => $slug]);
+        $identity = $identityStmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($identity)) {
+            return null;
+        }
+        $disciplineId = (int) $identity['id'];
+
+        $topicsStmt = $this->db->prepare(
+            "SELECT f.id, f.slug, f.name, COUNT(DISTINCT q.id) AS questionCount
+               FROM filters f
+               LEFT JOIN question_filters qf ON qf.filter_id = f.id
+               LEFT JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+              WHERE f.type = 'assunto' AND f.taxonomy_level = 'topico' AND f.parent_id = :discipline_id
+              GROUP BY f.id, f.slug, f.name
+             HAVING COUNT(DISTINCT q.id) > 0
+              ORDER BY questionCount DESC, f.name ASC
+              LIMIT :limit"
+        );
+        $topicsStmt->bindValue(':discipline_id', $disciplineId, PDO::PARAM_INT);
+        $topicsStmt->bindValue(':limit', max(1, $topicLimit), PDO::PARAM_INT);
+        $topicsStmt->execute();
+
+        $examsStmt = $this->db->prepare(
+            "SELECT p.id, p.slug, p.nome AS name, p.ano AS year, COUNT(DISTINCT q.id) AS questionCount
+               FROM question_filters qf
+               INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+               INNER JOIN question_provas qp ON qp.question_id = q.id
+               INNER JOIN provas p ON p.id = qp.prova_id AND {$publicExamClause}
+              WHERE qf.filter_id = :discipline_id
+                AND COALESCE(p.slug, '') <> ''
+              GROUP BY p.id, p.slug, p.nome, p.ano
+              ORDER BY COALESCE(p.ano, 0) DESC, questionCount DESC, p.id DESC
+              LIMIT :limit"
+        );
+        $examsStmt->bindValue(':discipline_id', $disciplineId, PDO::PARAM_INT);
+        $examsStmt->bindValue(':limit', max(1, $examLimit), PDO::PARAM_INT);
+        $examsStmt->execute();
+
+        $boardsStmt = $this->db->prepare(
+            "SELECT board.id, board.slug, board.name, board.acronym, COUNT(DISTINCT q.id) AS questionCount
+               FROM question_filters qf_discipline
+               INNER JOIN questions q ON q.id = qf_discipline.question_id AND {$publishedQuestionClause}
+               INNER JOIN question_filters qf_board ON qf_board.question_id = q.id
+               INNER JOIN filters board ON board.id = qf_board.filter_id AND board.type = 'banca'
+              WHERE qf_discipline.filter_id = :discipline_id
+                AND COALESCE(board.slug, '') <> ''
+              GROUP BY board.id, board.slug, board.name, board.acronym
+              ORDER BY questionCount DESC, board.name ASC
+              LIMIT :limit"
+        );
+        $boardsStmt->bindValue(':discipline_id', $disciplineId, PDO::PARAM_INT);
+        $boardsStmt->bindValue(':limit', max(1, $boardLimit), PDO::PARAM_INT);
+        $boardsStmt->execute();
+
+        $questionsStmt = $this->db->prepare(
+            "SELECT q.id, LEFT(TRIM(COALESCE(NULLIF(q.enunciado_clean, ''), q.enunciado)), 320) AS excerpt,
+                    q.updated_at AS updatedAt
+               FROM question_filters qf
+               INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+              WHERE qf.filter_id = :discipline_id
+              ORDER BY q.published_sort_at DESC, q.id DESC
+              LIMIT :limit"
+        );
+        $questionsStmt->bindValue(':discipline_id', $disciplineId, PDO::PARAM_INT);
+        $questionsStmt->bindValue(':limit', max(1, $questionLimit), PDO::PARAM_INT);
+        $questionsStmt->execute();
+
+        return [
+            'identity' => $identity,
+            'topics' => $topicsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'exams' => $examsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'boards' => $boardsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'questions' => $questionsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
         ];
     }
 

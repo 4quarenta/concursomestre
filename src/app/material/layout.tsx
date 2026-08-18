@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
-import { buildPublicPageMetadata } from '../seoMetadata';
+import { buildNoIndexMetadata } from '../seoMetadata';
 import { MarketplaceProvider } from '@providers/MarketplaceProvider';
 
-export const metadata = buildPublicPageMetadata({
+export const metadata = buildNoIndexMetadata({
   title: 'Materiais para concursos',
   description: 'Acesse materiais, resumos e PDFs para complementar os estudos em concursos publicos.',
-  path: '/material',
 });
 
 export default function MaterialLayout({ children }: Readonly<{ children: ReactNode }>) {

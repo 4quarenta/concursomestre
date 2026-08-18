@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { applySeoLaunchModeToMetadata } from '@services/seo/launchControl';
 import { permanentRedirect } from 'next/navigation';
 import BlogConversionCta from '../BlogConversionCta';
 import BlogExamDirectory from '../BlogExamDirectory';
@@ -48,7 +49,7 @@ export async function generateMetadata({ searchParams }: ExamDirectoryPageProps)
   const query = await searchParams;
   const { canonical, hasFacetOrUnknown } = resolveExamCollectionSeo(query);
 
-  return {
+  return applySeoLaunchModeToMetadata({
     title: TITLE,
     description: DESCRIPTION,
     alternates: { canonical },
@@ -56,7 +57,7 @@ export async function generateMetadata({ searchParams }: ExamDirectoryPageProps)
     robots: hasFacetOrUnknown
       ? { index: false, follow: true, googleBot: { index: false, follow: true } }
       : { index: true, follow: true },
-  };
+  }, undefined, '/provas');
 }
 
 export default async function ExamDirectoryPage({ searchParams }: ExamDirectoryPageProps) {

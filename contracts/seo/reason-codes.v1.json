@@ -66,7 +66,12 @@
         "indexability.non_canonical_environment",
         "indexability.quality_not_evaluated",
         "indexability.missing_canonical_identity",
-        "indexability.non_canonical_request"
+        "indexability.non_canonical_request",
+        "indexability.launch_prelaunch",
+        "indexability.launch_go_candidate",
+        "indexability.launch_not_active",
+        "indexability.family_permanent_noindex",
+        "indexability.instance_not_ready"
       ]
     },
     "resolutionReasonCode": {
