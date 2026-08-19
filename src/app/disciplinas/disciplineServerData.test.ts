@@ -5,13 +5,16 @@ const payload = {
   id: 10,
   slug: 'direito-constitucional',
   name: 'Direito Constitucional',
+  requestedSlug: 'direito-constitucional',
   description: 'Descrição pública.',
+  taxonomyLevel: 'materia',
   canonicalPath: '/disciplinas/direito-constitucional',
   questionsPath: '/questoes?materia=Direito%20Constitucional',
-  parent: null,
-  root: null,
+  readiness: { status: 'READY', reasonCodes: [] },
+  parent: null, root: null, topic: null, subtopic: null,
   questionCount: 12,
-  topics: [{ id: 11, slug: 'controle', name: 'Controle', questionCount: 5, questionsPath: '/questoes?topico=Controle' }],
+  topics: [{ id: 11, slug: 'controle', name: 'Controle', taxonomyLevel: 'topico', questionCount: 5, path: '/topicos/controle', questionsPath: '/questoes?topico=Controle' }],
+  subtopics: [], subjects: [], organizations: [],
   exams: [{ id: 20, slug: 'prova', name: 'Prova', year: 2026, questionCount: 3, path: '/provas/prova' }],
   boards: [{ id: 30, slug: 'cebraspe', name: 'Cebraspe', acronym: 'CEBRASPE', questionCount: 8, path: '/bancas/cebraspe' }],
   questions: [{ id: 40, excerpt: 'Enunciado público', updatedAt: '2026-08-16', path: '/questoes/40/enunciado-publico', correctAnswer: 'SECRET_CORRECT_ANSWER_SENTINEL' }],
@@ -48,7 +51,7 @@ describe('disciplineServerData', () => {
     });
     expect(result?.canonicalPath).toBe('/disciplinas/direito-constitucional');
     expect(fetchImpl).toHaveBeenCalledOnce();
-    expect(String(fetchImpl.mock.calls[0][0])).toContain('filters/discipline.php?slug=direito-constitucional');
+    expect(String(fetchImpl.mock.calls[0][0])).toContain('filters/knowledge-taxonomy.php?level=materia&slug=direito-constitucional');
   });
 
   it('returns null only for an explicit backend 404', async () => {
@@ -62,7 +65,7 @@ describe('disciplineServerData', () => {
     await expect(fetchPublicDisciplineForServerTest('falha', {
       fetchImpl: failedFetch as typeof fetch,
       apiBaseUrl: 'https://example.test/api/',
-    })).rejects.toThrow('public_discipline_fetch_failed:503');
+    })).rejects.toThrow('public_knowledge_taxonomy_fetch_failed:503');
   });
 
   it('rejects a canonical mismatch instead of silently trusting an invalid contract', () => {

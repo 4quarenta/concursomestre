@@ -75,7 +75,7 @@ describe('SEO launch control', () => {
     expect(result).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
   });
 
-  it('keeps pilot and planned families noindex until explicit activation', () => {
+  it('promotes ready practice taxonomy families only after explicit activation in PRODUCTION', () => {
     const base = {
       launchMode: 'PRODUCTION' as const,
       instanceReadiness: ready,
@@ -87,11 +87,16 @@ describe('SEO launch control', () => {
     };
 
     expect(evaluateSeoLaunchControl({ ...base, family: family('discipline_detail') })).toMatchObject({
-      indexability: 'NOINDEX',
-      sitemapEligible: false,
-      reasonCodes: expect.arrayContaining(['indexability.launch_not_active']),
+      indexability: 'INDEX',
+      sitemapEligible: true,
     });
+    expect(evaluateSeoLaunchControl({ ...base, family: family('topic_detail') }))
+      .toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
+    expect(evaluateSeoLaunchControl({ ...base, family: family('subject_detail') }))
+      .toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
     expect(resolveXRobotsTag('/disciplinas/direito', new URLSearchParams(), 'PRODUCTION'))
+      .toBeNull();
+    expect(resolveXRobotsTag('/topicos/controle', new URLSearchParams(), 'PRELAUNCH'))
       .toBe('noindex, follow');
   });
 
@@ -124,14 +129,14 @@ describe('SEO launch control', () => {
     expect(metadata.robots).toMatchObject({ index: false, follow: true });
   });
 
-  it('keeps pilot metadata noindex in PRODUCTION without changing canonical identity', () => {
+  it('promotes ready discipline metadata in PRODUCTION without changing canonical identity', () => {
     const metadata = applySeoLaunchModeToMetadata(
       { alternates: { canonical: '/disciplinas/direito' }, robots: { index: true, follow: true } },
       'PRODUCTION',
       '/disciplinas/direito',
     );
     expect(metadata.alternates).toEqual({ canonical: '/disciplinas/direito' });
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: true, follow: true });
   });
 
   it('resolves permanent routes and functional query variations', () => {

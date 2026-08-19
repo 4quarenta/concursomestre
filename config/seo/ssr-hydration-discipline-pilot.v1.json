@@ -27,6 +27,7 @@
       "requiredRawLinks": [
         "/disciplinas",
         "/questoes?materia=Direito%20Constitucional",
+        "/topicos/controle-de-constitucionalidade",
         "/bancas/cebraspe",
         "/provas/prova-persistida",
         "/questoes/40/art-5o-acao-e-controle"

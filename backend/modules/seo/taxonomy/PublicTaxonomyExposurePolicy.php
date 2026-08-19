@@ -29,16 +29,24 @@ final class PublicTaxonomyExposurePolicy
     /** @param array<string, mixed> $filter */
     public function allowsDiscipline(array $filter): bool
     {
+        return $this->allowsKnowledgeTaxonomy($filter, 'materia');
+    }
+
+    /** @param array<string, mixed> $filter */
+    public function allowsKnowledgeTaxonomy(array $filter, string $expectedLevel): bool
+    {
         $classification = TaxonomyClassification::fromFilter($filter);
         $name = $this->normalize((string) ($filter['name'] ?? ''));
-        $slug = trim((string) ($filter['slug'] ?? ''));
+        $slug = strtolower(trim((string) ($filter['slug'] ?? '')));
 
-        return $classification['kind'] === 'materia'
+        return in_array($expectedLevel, TaxonomyClassification::KNOWLEDGE_LEVELS, true)
+            && $classification['knowledgeLevel'] === $expectedLevel
             && $classification['pending'] === false
             && $name !== ''
             && !in_array($name, $this->blockedNames, true)
             && $slug !== ''
-            && preg_match('/[\x00-\x1F\x7F\/\\?#]/u', $slug) !== 1;
+            && strlen($slug) <= 190
+            && preg_match('/^[a-z0-9-]+$/', $slug) === 1;
     }
 
     /** @param array<string, mixed> $filter */

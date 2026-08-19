@@ -87,11 +87,29 @@ try {
     launchAssert($production['indexability']['status'] === 'INDEX', 'Ready production fixture did not INDEX.');
     launchAssert($production['sitemap']['eligible'] === true, 'Ready production fixture did not enter sitemap simulation.');
 
-    $productionPilot = $service('PRODUCTION')->decide(array_merge($input, [
+    $productionTaxonomy = $service('PRODUCTION')->decide(array_merge($input, [
         'routeFamily' => 'discipline_detail',
+        'qualityAffectsIndexability' => false,
     ]));
-    launchAssert($productionPilot['indexability']['status'] === 'NOINDEX', 'PRODUCTION promoted a PILOT family.');
-    launchAssert(in_array('indexability.launch_not_active', $productionPilot['indexability']['reasonCodes'], true), 'PILOT launch reason missing.');
+    launchAssert($productionTaxonomy['indexability']['status'] === 'INDEX', 'Disciplina READY nao foi promovida na simulacao PRODUCTION.');
+    launchAssert($productionTaxonomy['sitemap']['eligible'] === true, 'Disciplina READY ficou fora da simulacao de sitemap.');
+
+    foreach (['topic_detail', 'subject_detail'] as $familyId) {
+        $readyTaxonomy = $service('PRODUCTION')->decide(array_merge($input, [
+            'routeFamily' => $familyId,
+            'qualityAffectsIndexability' => false,
+        ]));
+        launchAssert($readyTaxonomy['indexability']['status'] === 'INDEX', $familyId . ' READY nao foi promovida.');
+        launchAssert($readyTaxonomy['sitemap']['eligible'] === true, $familyId . ' READY ficou fora do sitemap simulado.');
+    }
+
+    $invalidTaxonomy = $service('PRODUCTION')->decide(array_merge($input, [
+        'routeFamily' => 'topic_detail',
+        'instanceReadiness' => ['status' => 'NOT_READY', 'reasonCodes' => ['instance_readiness.invalid_taxonomy_chain']],
+        'qualityAffectsIndexability' => false,
+    ]));
+    launchAssert($invalidTaxonomy['indexability']['status'] === 'NOINDEX', 'Cadeia invalida foi promovida.');
+    launchAssert($invalidTaxonomy['sitemap']['eligible'] === false, 'Cadeia invalida entrou no sitemap.');
 
     $organizationFamily = $map->family('organization_detail');
     launchAssert(($organizationFamily['launchStatus'] ?? null) === 'ACTIVE', 'Familia de orgao nao foi ativada como implementada.');

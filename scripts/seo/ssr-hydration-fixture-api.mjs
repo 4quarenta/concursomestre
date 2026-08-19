@@ -128,6 +128,110 @@ const organization = {
   externalImporterIdentity: 'SECRET_IMPORTER_SENTINEL',
   adminNote: 'SECRET_ADMIN_NOTE_SENTINEL',
 };
+const knowledgeQuestion = {
+  id: 67813,
+  excerpt: 'Art. 5º — Ação & Controle',
+  updatedAt: '2026-08-18',
+  path: '/questoes/67813/art-5o-acao-e-controle',
+  correctAnswer: 'SECRET_CORRECT_ANSWER_SENTINEL_246',
+  teacherComment: 'SECRET_TEACHER_COMMENT_SENTINEL',
+};
+const knowledgeRelations = {
+  exams: [{ id: 101, slug: 'prova-ssr-2026', name: 'Prova SSR 2026', year: 2026, questionCount: 1, path: '/provas/prova-ssr-2026' }],
+  boards: [{ id: 10, slug: 'cebraspe', name: 'Centro Brasileiro de Pesquisa em Avaliação', acronym: 'CEBRASPE', questionCount: 1, path: '/bancas/cebraspe' }],
+  organizations: [{ id: 11, slug: 'orgao-de-teste', name: 'Órgão de Teste', acronym: 'ODT', questionCount: 1, path: '/orgaos/orgao-de-teste' }],
+  questions: [knowledgeQuestion],
+};
+const knowledgeCrumbs = (tail) => [
+  { label: 'Início', canonicalPath: '/' },
+  { label: 'Disciplinas', canonicalPath: '/disciplinas' },
+  ...tail,
+];
+const discipline = {
+  id: 20, slug: 'direito-constitucional', requestedSlug: 'direito-constitucional', name: 'Direito Constitucional',
+  description: 'Descrição pública da disciplina.', taxonomyLevel: 'materia', canonicalPath: '/disciplinas/direito-constitucional',
+  questionsPath: '/questoes?materia=Direito%20Constitucional', readiness: { status: 'READY', reasonCodes: [] },
+  parent: null, root: null, topic: null, subtopic: null, questionCount: 1,
+  topics: [{ id: 21, slug: 'controle-de-constitucionalidade', name: 'Controle de Constitucionalidade', taxonomyLevel: 'topico', questionCount: 1, path: '/topicos/controle-de-constitucionalidade', questionsPath: '/questoes?topico=Controle%20de%20Constitucionalidade' }],
+  subtopics: [], subjects: [], ...knowledgeRelations,
+  breadcrumbs: knowledgeCrumbs([{ label: 'Direito Constitucional', canonicalPath: '/disciplinas/direito-constitucional' }]),
+  updatedAt: '2026-08-18T12:00:00Z', importerMetadata: 'SECRET_IMPORTER_SENTINEL', adminNote: 'SECRET_ADMIN_NOTE_SENTINEL',
+};
+const topic = {
+  id: 21, slug: 'controle-de-constitucionalidade', requestedSlug: 'controle-de-constitucionalidade', name: 'Controle de Constitucionalidade',
+  description: null, taxonomyLevel: 'topico', canonicalPath: '/topicos/controle-de-constitucionalidade',
+  questionsPath: '/questoes?topico=Controle%20de%20Constitucionalidade', readiness: { status: 'READY', reasonCodes: [] },
+  parent: { id: 20, slug: 'direito-constitucional', name: 'Direito Constitucional', taxonomyLevel: 'materia', path: '/disciplinas/direito-constitucional' },
+  root: { id: 20, slug: 'direito-constitucional', name: 'Direito Constitucional', taxonomyLevel: 'materia', path: '/disciplinas/direito-constitucional' },
+  topic: null, subtopic: null, questionCount: 1, topics: [],
+  subtopics: [{ id: 22, slug: 'modelos-de-controle', name: 'Modelos de controle', taxonomyLevel: 'subtopico' }],
+  subjects: [
+    { id: 24, slug: 'controle-concentrado', name: 'Controle concentrado', taxonomyLevel: 'assunto', questionCount: 1, subtopicId: 22, subtopicName: 'Modelos de controle', path: '/assuntos/controle-concentrado', questionsPath: '/questoes?assunto=Controle%20concentrado' },
+  ],
+  ...knowledgeRelations,
+  breadcrumbs: knowledgeCrumbs([
+    { label: 'Direito Constitucional', canonicalPath: '/disciplinas/direito-constitucional' },
+    { label: 'Controle de Constitucionalidade', canonicalPath: '/topicos/controle-de-constitucionalidade' },
+  ]), updatedAt: '2026-08-18T12:00:00Z',
+};
+const subject = {
+  id: 24, slug: 'controle-concentrado', requestedSlug: 'controle-concentrado', name: 'Controle concentrado',
+  description: 'Recorte público sobre controle concentrado.', taxonomyLevel: 'assunto', canonicalPath: '/assuntos/controle-concentrado',
+  questionsPath: '/questoes?assunto=Controle%20concentrado', readiness: { status: 'READY', reasonCodes: [] },
+  parent: { id: 22, slug: 'modelos-de-controle', name: 'Modelos de controle', taxonomyLevel: 'subtopico' },
+  root: { id: 20, slug: 'direito-constitucional', name: 'Direito Constitucional', taxonomyLevel: 'materia', path: '/disciplinas/direito-constitucional' },
+  topic: { id: 21, slug: 'controle-de-constitucionalidade', name: 'Controle de Constitucionalidade', taxonomyLevel: 'topico', path: '/topicos/controle-de-constitucionalidade' },
+  subtopic: { id: 22, slug: 'modelos-de-controle', name: 'Modelos de controle', taxonomyLevel: 'subtopico' },
+  questionCount: 1, topics: [], subtopics: [], subjects: [], ...knowledgeRelations,
+  breadcrumbs: knowledgeCrumbs([
+    { label: 'Direito Constitucional', canonicalPath: '/disciplinas/direito-constitucional' },
+    { label: 'Controle de Constitucionalidade', canonicalPath: '/topicos/controle-de-constitucionalidade' },
+    { label: 'Controle concentrado', canonicalPath: '/assuntos/controle-concentrado' },
+  ]), updatedAt: '2026-08-18T12:00:00Z',
+};
+const invalidChainSubject = {
+  ...subject,
+  id: 25,
+  slug: 'assunto-cadeia-invalida',
+  requestedSlug: 'assunto-cadeia-invalida',
+  name: 'Assunto com cadeia inválida',
+  canonicalPath: '/assuntos/assunto-cadeia-invalida',
+  readiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.wrong_parent_level', 'instance_readiness.invalid_taxonomy_chain'] },
+  parent: null,
+  root: null,
+  topic: null,
+  subtopic: null,
+  topics: [],
+  subtopics: [],
+  subjects: [],
+  breadcrumbs: knowledgeCrumbs([{ label: 'Assunto com cadeia inválida', canonicalPath: '/assuntos/assunto-cadeia-invalida' }]),
+};
+const emptyTopic = {
+  ...topic,
+  id: 26,
+  slug: 'topico-sem-conteudo-atual',
+  requestedSlug: 'topico-sem-conteudo-atual',
+  name: 'Tópico sem conteúdo atual',
+  canonicalPath: '/topicos/topico-sem-conteudo-atual',
+  questionsPath: '/questoes?topico=T%C3%B3pico%20sem%20conte%C3%BAdo%20atual',
+  questionCount: 0,
+  subtopics: [], subjects: [], exams: [], boards: [], organizations: [], questions: [],
+  breadcrumbs: knowledgeCrumbs([
+    { label: 'Direito Constitucional', canonicalPath: '/disciplinas/direito-constitucional' },
+    { label: 'Tópico sem conteúdo atual', canonicalPath: '/topicos/topico-sem-conteudo-atual' },
+  ]),
+};
+const knowledgeFor = (level, requestedSlug) => {
+  const fixtures = { materia: discipline, topico: topic, assunto: subject };
+  const aliases = { materia: 'direito-constitucional-antigo', topico: 'controle-constitucional-antigo', assunto: 'controle-concentrado-antigo' };
+  if (level === 'assunto' && requestedSlug === invalidChainSubject.slug) return invalidChainSubject;
+  if (level === 'topico' && requestedSlug === emptyTopic.slug) return emptyTopic;
+  const fixture = fixtures[level];
+  if (!fixture) return null;
+  if (requestedSlug === fixture.slug) return fixture;
+  if (requestedSlug === aliases[level]) return { ...fixture, requestedSlug };
+  return null;
+};
 const lawSummary = {
   id: 'law-1', slug: 'constituicao-federal', title: 'Constituição Federal', shortTitle: 'CF',
   summary: 'Texto constitucional público.', articleCount: 1, commentedArticleCount: 1,
@@ -173,6 +277,14 @@ const question = {
   materias: [{ id: 1, nome: 'Direito Constitucional', slug: 'direito-constitucional' }],
   assuntos: [{ id: 2, nome: 'Direitos fundamentais', slug: 'direitos-fundamentais' }],
   bancas: [{ id: 10, nome: 'CEBRASPE', sigla: 'CEBRASPE', slug: 'cebraspe' }],
+  filters: {
+    subjects: [{ id: 20, label: 'Direito Constitucional', slug: 'direito-constitucional', taxonomyLevel: 'materia', seoReady: true }],
+    topics: [{ id: 21, label: 'Controle de Constitucionalidade', slug: 'controle-de-constitucionalidade', taxonomyLevel: 'topico', seoReady: true }],
+    subtopics: [
+      { id: 24, label: 'Controle concentrado', slug: 'controle-concentrado', taxonomyLevel: 'assunto', seoReady: true },
+      { id: 25, label: 'Assunto inválido', slug: 'assunto-cadeia-invalida', taxonomyLevel: 'assunto', seoReady: false },
+    ],
+  },
   orgaos: [], cargos: [], anos: [2026],
 };
 
@@ -209,6 +321,7 @@ const payloadFor = (url) => {
   }
   if (pathname === '/filters/board.php') return { success: true, data: { board, examSummary: { total: 1, open: 0, upcoming: 1, completed: 0, unknown: 0 }, topSubjects: [{ id: 20, name: 'Direito Constitucional', slug: 'direito-constitucional', questionCount: 1 }], questionProfile: [{ modality: 'multiple_choice', difficulty: 2, questionCount: 1 }], exams: [{ ...examItem, organizations: ['Órgão de Teste'], registrationStart: null, registrationEnd: null, examDate: '2026-03-01', resultDate: null, status: 'upcoming' }], pageInfo } };
   if (pathname === '/filters/organization.php') return { success: true, data: organization };
+  if (pathname === '/filters/knowledge-taxonomy.php') return { success: true, data: knowledgeFor(url.searchParams.get('level'), url.searchParams.get('slug')) };
   if (pathname === '/blog/detail.php') return { success: true, data: article };
   if (pathname === '/blog/list.php') return { success: true, data: { items: [article], pageInfo: { limit: 24, hasMore: false, nextCursor: null, total: 1 } } };
   if (pathname === '/blog/categories.php') return { success: true, data: { items: [category] } };
@@ -247,6 +360,13 @@ const server = createServer((request, response) => {
   if (url.pathname.replace(/^\/api\//, '/') === '/filters/organization.php' && url.searchParams.get('slug') !== organization.slug) {
     count(url.pathname);
     return json(response, 404, { success: false, message: 'Orgao nao encontrado.' }, origin);
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/filters/knowledge-taxonomy.php') {
+    const fixture = knowledgeFor(url.searchParams.get('level'), url.searchParams.get('slug'));
+    if (!fixture) {
+      count(url.pathname);
+      return json(response, 404, { success: false, message: 'Taxonomia nao encontrada.' }, origin);
+    }
   }
   count(url.pathname);
   return json(response, 200, payloadFor(url), origin);

@@ -20,7 +20,8 @@ require_once __DIR__ . '/../../../shared/runtime/RuntimeStoreFactory.php';
 
 class FiltersRepository
 {
-    public const PUBLIC_DISCIPLINE_QUERY_BUDGET = 5;
+    public const PUBLIC_DISCIPLINE_QUERY_BUDGET = 6;
+    public const PUBLIC_KNOWLEDGE_TAXONOMY_QUERY_BUDGET = 6;
     public const PUBLIC_ORGANIZATION_QUERY_BUDGET = 6;
 
     private PDO $db;
@@ -536,6 +537,33 @@ class FiltersRepository
         int $boardLimit = 8,
         int $questionLimit = 10
     ): ?array {
+        return $this->fetchPublicKnowledgeTaxonomyProjectionData(
+            $slug,
+            'materia',
+            $topicLimit,
+            $examLimit,
+            $boardLimit,
+            $questionLimit
+        );
+    }
+
+    /**
+     * Carrega uma taxonomia publica e suas relacoes em seis consultas
+     * constantes. O nivel esperado faz parte da identidade da rota.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchPublicKnowledgeTaxonomyProjectionData(
+        string $slug,
+        string $level,
+        int $childLimit = 40,
+        int $examLimit = 8,
+        int $boardLimit = 8,
+        int $questionLimit = 10
+    ): ?array {
+        if (!in_array($level, ['materia', 'topico', 'assunto'], true)) {
+            throw new InvalidArgumentException('Nivel publico de taxonomia invalido.');
+        }
         $publishedQuestionClause = "q.publish_status IN ('published', 'scheduled')
             AND q.visibility_status = 'public'
             AND q.published_sort_at IS NOT NULL
@@ -545,42 +573,60 @@ class FiltersRepository
             AND p.visibility_status = 'public'
             AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())";
 
-        $identityStmt = $this->db->prepare(
-            "SELECT f.id, f.type, f.taxonomy_level, f.meta_materia,
-                    f.slug, f.name, f.description,
-                    COUNT(DISTINCT q.id) AS question_count,
-                    MAX(q.updated_at) AS content_updated_at
-               FROM filters f
-               LEFT JOIN question_filters qf ON qf.filter_id = f.id
-               LEFT JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
-              WHERE f.type = 'assunto'
-                AND (f.taxonomy_level = 'materia' OR f.meta_materia = 1)
-                AND COALESCE(f.taxonomy_level, '') <> 'pending'
-                AND f.slug = :slug
-              GROUP BY f.id, f.type, f.taxonomy_level, f.meta_materia, f.slug, f.name, f.description
-              LIMIT 1"
-        );
-        $identityStmt->execute([':slug' => $slug]);
-        $identity = $identityStmt->fetch(PDO::FETCH_ASSOC);
-        if (!is_array($identity)) {
-            return null;
-        }
-        $disciplineId = (int) $identity['id'];
+        $identity = $this->fetchPublicKnowledgeIdentity($slug, $level, $publishedQuestionClause);
+        if ($identity === null) return null;
+        $taxonomyId = (int) $identity['id'];
 
-        $topicsStmt = $this->db->prepare(
-            "SELECT f.id, f.slug, f.name, COUNT(DISTINCT q.id) AS questionCount
-               FROM filters f
-               LEFT JOIN question_filters qf ON qf.filter_id = f.id
-               LEFT JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
-              WHERE f.type = 'assunto' AND f.taxonomy_level = 'topico' AND f.parent_id = :discipline_id
-              GROUP BY f.id, f.slug, f.name
-             HAVING COUNT(DISTINCT q.id) > 0
-              ORDER BY questionCount DESC, f.name ASC
-              LIMIT :limit"
-        );
-        $topicsStmt->bindValue(':discipline_id', $disciplineId, PDO::PARAM_INT);
-        $topicsStmt->bindValue(':limit', max(1, $topicLimit), PDO::PARAM_INT);
-        $topicsStmt->execute();
+        $childrenSql = $level === 'materia'
+            ? "SELECT child.id, child.type, child.meta_materia, child.slug, child.name, child.taxonomy_level,
+                      child.parent_id, NULL AS parent_name,
+                      COUNT(DISTINCT q.id) AS questionCount
+                 FROM filters child
+                 LEFT JOIN question_filters qf ON qf.filter_id = child.id
+                 LEFT JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+                WHERE child.type = 'assunto' AND child.taxonomy_level = 'topico'
+                  AND child.parent_id = :taxonomy_id
+                GROUP BY child.id, child.type, child.meta_materia, child.slug, child.name, child.taxonomy_level, child.parent_id
+                ORDER BY child.name ASC, child.id ASC LIMIT :limit"
+            : ($level === 'topico'
+                ? "SELECT child.id, child.type, child.meta_materia, child.slug, child.name, child.taxonomy_level,
+                          child.parent_id, child.parent_name, child.parent_slug,
+                          COUNT(DISTINCT q.id) AS questionCount
+                     FROM (
+                         SELECT direct.id, direct.type, direct.meta_materia, direct.slug, direct.name, direct.taxonomy_level,
+                                direct.parent_id, parent.name AS parent_name, parent.slug AS parent_slug
+                           FROM filters direct
+                           LEFT JOIN filters parent ON parent.id = direct.parent_id
+                          WHERE direct.type = 'assunto'
+                            AND direct.parent_id = :taxonomy_id_direct
+                            AND direct.taxonomy_level IN ('subtopico', 'assunto')
+                         UNION ALL
+                         SELECT nested.id, nested.type, nested.meta_materia, nested.slug, nested.name, nested.taxonomy_level,
+                                nested.parent_id, subtopic.name AS parent_name, subtopic.slug AS parent_slug
+                           FROM filters subtopic
+                           INNER JOIN filters nested ON nested.parent_id = subtopic.id
+                                AND nested.type = 'assunto' AND nested.taxonomy_level = 'assunto'
+                          WHERE subtopic.type = 'assunto'
+                            AND subtopic.taxonomy_level = 'subtopico'
+                            AND subtopic.parent_id = :taxonomy_id_nested
+                     ) child
+                     LEFT JOIN question_filters qf ON qf.filter_id = child.id
+                     LEFT JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+                    GROUP BY child.id, child.type, child.meta_materia, child.slug, child.name, child.taxonomy_level, child.parent_id, child.parent_name, child.parent_slug
+                    ORDER BY COALESCE(child.parent_name, child.name), child.taxonomy_level DESC, child.name, child.id
+                    LIMIT :limit"
+                : "SELECT child.id, child.type, child.meta_materia, child.slug, child.name, child.taxonomy_level,
+                          child.parent_id, NULL AS parent_name, NULL AS parent_slug, 0 AS questionCount
+                     FROM filters child WHERE 1 = 0 LIMIT :limit");
+        $childrenStmt = $this->db->prepare($childrenSql);
+        if ($level === 'materia') {
+            $childrenStmt->bindValue(':taxonomy_id', $taxonomyId, PDO::PARAM_INT);
+        } elseif ($level === 'topico') {
+            $childrenStmt->bindValue(':taxonomy_id_direct', $taxonomyId, PDO::PARAM_INT);
+            $childrenStmt->bindValue(':taxonomy_id_nested', $taxonomyId, PDO::PARAM_INT);
+        }
+        $childrenStmt->bindValue(':limit', max(1, $childLimit), PDO::PARAM_INT);
+        $childrenStmt->execute();
 
         $examsStmt = $this->db->prepare(
             "SELECT p.id, p.slug, p.nome AS name, p.ano AS year, COUNT(DISTINCT q.id) AS questionCount
@@ -588,29 +634,29 @@ class FiltersRepository
                INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
                INNER JOIN question_provas qp ON qp.question_id = q.id
                INNER JOIN provas p ON p.id = qp.prova_id AND {$publicExamClause}
-              WHERE qf.filter_id = :discipline_id
+              WHERE qf.filter_id = :taxonomy_id
                 AND COALESCE(p.slug, '') <> ''
               GROUP BY p.id, p.slug, p.nome, p.ano
               ORDER BY COALESCE(p.ano, 0) DESC, questionCount DESC, p.id DESC
               LIMIT :limit"
         );
-        $examsStmt->bindValue(':discipline_id', $disciplineId, PDO::PARAM_INT);
+        $examsStmt->bindValue(':taxonomy_id', $taxonomyId, PDO::PARAM_INT);
         $examsStmt->bindValue(':limit', max(1, $examLimit), PDO::PARAM_INT);
         $examsStmt->execute();
 
         $boardsStmt = $this->db->prepare(
             "SELECT board.id, board.slug, board.name, board.acronym, COUNT(DISTINCT q.id) AS questionCount
-               FROM question_filters qf_discipline
-               INNER JOIN questions q ON q.id = qf_discipline.question_id AND {$publishedQuestionClause}
+               FROM question_filters qf_taxonomy
+               INNER JOIN questions q ON q.id = qf_taxonomy.question_id AND {$publishedQuestionClause}
                INNER JOIN question_filters qf_board ON qf_board.question_id = q.id
                INNER JOIN filters board ON board.id = qf_board.filter_id AND board.type = 'banca'
-              WHERE qf_discipline.filter_id = :discipline_id
+              WHERE qf_taxonomy.filter_id = :taxonomy_id
                 AND COALESCE(board.slug, '') <> ''
               GROUP BY board.id, board.slug, board.name, board.acronym
               ORDER BY questionCount DESC, board.name ASC
               LIMIT :limit"
         );
-        $boardsStmt->bindValue(':discipline_id', $disciplineId, PDO::PARAM_INT);
+        $boardsStmt->bindValue(':taxonomy_id', $taxonomyId, PDO::PARAM_INT);
         $boardsStmt->bindValue(':limit', max(1, $boardLimit), PDO::PARAM_INT);
         $boardsStmt->execute();
 
@@ -619,21 +665,123 @@ class FiltersRepository
                     q.updated_at AS updatedAt
                FROM question_filters qf
                INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
-              WHERE qf.filter_id = :discipline_id
+              WHERE qf.filter_id = :taxonomy_id
               ORDER BY q.published_sort_at DESC, q.id DESC
               LIMIT :limit"
         );
-        $questionsStmt->bindValue(':discipline_id', $disciplineId, PDO::PARAM_INT);
+        $questionsStmt->bindValue(':taxonomy_id', $taxonomyId, PDO::PARAM_INT);
         $questionsStmt->bindValue(':limit', max(1, $questionLimit), PDO::PARAM_INT);
         $questionsStmt->execute();
 
+        $organizationsStmt = $this->db->prepare(
+            "SELECT organization.id, organization.slug, organization.name, organization.acronym,
+                    COUNT(DISTINCT q.id) AS questionCount
+               FROM question_filters qf_taxonomy
+               INNER JOIN questions q ON q.id = qf_taxonomy.question_id AND {$publishedQuestionClause}
+               INNER JOIN question_filters qf_organization ON qf_organization.question_id = q.id
+               INNER JOIN filters organization ON organization.id = qf_organization.filter_id
+                    AND organization.type = 'orgao'
+                    AND COALESCE(organization.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+              WHERE qf_taxonomy.filter_id = :taxonomy_id
+                AND COALESCE(organization.slug, '') <> ''
+              GROUP BY organization.id, organization.slug, organization.name, organization.acronym
+              ORDER BY questionCount DESC, organization.name ASC
+              LIMIT :limit"
+        );
+        $organizationsStmt->bindValue(':taxonomy_id', $taxonomyId, PDO::PARAM_INT);
+        $organizationsStmt->bindValue(':limit', max(1, $boardLimit), PDO::PARAM_INT);
+        $organizationsStmt->execute();
+
         return [
             'identity' => $identity,
-            'topics' => $topicsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'children' => $childrenStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
             'exams' => $examsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
             'boards' => $boardsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'organizations' => $organizationsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
             'questions' => $questionsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
         ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function fetchPublicKnowledgeIdentity(string $requestedSlug, string $level, string $publishedQuestionClause): ?array
+    {
+        $identity = $this->fetchPublicKnowledgeIdentityWhere('f.slug = :identity', [':identity' => $requestedSlug], $level, $publishedQuestionClause);
+        if ($identity !== null) {
+            $identity['requested_slug'] = $requestedSlug;
+            $identity['alias_resolved'] = false;
+            return $identity;
+        }
+
+        $canonicalConflict = $this->db->prepare("SELECT id FROM filters WHERE type = 'assunto' AND slug = :slug LIMIT 1");
+        $canonicalConflict->execute([':slug' => $requestedSlug]);
+        if ($canonicalConflict->fetchColumn()) return null;
+
+        $levelClause = $this->publicKnowledgeLevelClause('f', $level);
+        $aliasStmt = $this->db->prepare(
+            "SELECT DISTINCT f.id
+               FROM filter_aliases alias
+               INNER JOIN filters f ON f.id = alias.filter_id
+              WHERE f.type = 'assunto' AND {$levelClause}
+                AND (alias.alias = :alias OR alias.normalized_alias = :normalized)
+              LIMIT 2"
+        );
+        $aliasStmt->execute([':alias' => $requestedSlug, ':normalized' => $requestedSlug]);
+        $ids = array_values(array_unique(array_map('intval', $aliasStmt->fetchAll(PDO::FETCH_COLUMN) ?: [])));
+        if (count($ids) !== 1) return null;
+
+        $identity = $this->fetchPublicKnowledgeIdentityWhere('f.id = :identity', [':identity' => $ids[0]], $level, $publishedQuestionClause);
+        if ($identity === null) return null;
+        $identity['requested_slug'] = $requestedSlug;
+        $identity['alias_resolved'] = true;
+        return $identity;
+    }
+
+    /** @param array<string, scalar> $params @return array<string, mixed>|null */
+    private function fetchPublicKnowledgeIdentityWhere(string $identityWhere, array $params, string $level, string $publishedQuestionClause): ?array
+    {
+        $levelClause = $this->publicKnowledgeLevelClause('f', $level);
+        $stmt = $this->db->prepare(
+            "SELECT f.id, f.type, f.parent_id AS own_parent_id, f.taxonomy_level, f.meta_materia,
+                    f.slug, f.name, f.description,
+                    parent.id AS parent_id, parent.parent_id AS parent_parent_id,
+                    parent.type AS parent_type, parent.taxonomy_level AS parent_taxonomy_level,
+                    parent.meta_materia AS parent_meta_materia, parent.slug AS parent_slug, parent.name AS parent_name,
+                    grandparent.id AS grandparent_id, grandparent.parent_id AS grandparent_parent_id,
+                    grandparent.type AS grandparent_type, grandparent.taxonomy_level AS grandparent_taxonomy_level,
+                    grandparent.meta_materia AS grandparent_meta_materia, grandparent.slug AS grandparent_slug, grandparent.name AS grandparent_name,
+                    great_grandparent.id AS great_grandparent_id, great_grandparent.parent_id AS great_grandparent_parent_id,
+                    great_grandparent.type AS great_grandparent_type,
+                    great_grandparent.taxonomy_level AS great_grandparent_taxonomy_level,
+                    great_grandparent.meta_materia AS great_grandparent_meta_materia,
+                    great_grandparent.slug AS great_grandparent_slug, great_grandparent.name AS great_grandparent_name,
+                    (SELECT COUNT(DISTINCT q.id)
+                       FROM question_filters qf
+                       INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+                      WHERE qf.filter_id = f.id) AS question_count,
+                    (SELECT MAX(q.updated_at)
+                       FROM question_filters qf
+                       INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+                      WHERE qf.filter_id = f.id) AS content_updated_at
+               FROM filters f
+               LEFT JOIN filters parent ON parent.id = f.parent_id
+               LEFT JOIN filters grandparent ON grandparent.id = parent.parent_id
+               LEFT JOIN filters great_grandparent ON great_grandparent.id = grandparent.parent_id
+              WHERE f.type = 'assunto' AND {$levelClause} AND {$identityWhere}
+              LIMIT 1"
+        );
+        $stmt->execute($params);
+        $identity = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($identity) ? $identity : null;
+    }
+
+    private function publicKnowledgeLevelClause(string $alias, string $level): string
+    {
+        return match ($level) {
+            'materia' => "({$alias}.taxonomy_level = 'materia' OR {$alias}.meta_materia = 1)",
+            'topico' => "{$alias}.taxonomy_level = 'topico' AND COALESCE({$alias}.meta_materia, 0) = 0",
+            'assunto' => "{$alias}.taxonomy_level = 'assunto' AND COALESCE({$alias}.meta_materia, 0) = 0",
+            default => throw new InvalidArgumentException('Nivel publico de taxonomia invalido.'),
+        };
     }
 
     /**

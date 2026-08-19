@@ -138,6 +138,8 @@ final class PublicSeoEnvelopeService
             'requestedSlug' => $projection['requestedSlug'] ?? '',
             'canonicalSlug' => $projection['canonicalSlug'] ?? '',
             'canonicalEnvironment' => $projection['canonicalEnvironment'] ?? true,
+            'instanceReadiness' => $projection['instanceReadiness'] ?? null,
+            'qualityAffectsIndexability' => $projection['qualityAffectsIndexability'] ?? true,
         ]);
 
         return [
@@ -331,6 +333,8 @@ final class PublicSeoEnvelopeService
                 default => 'subject_detail',
             },
             'routeParameters' => [],
+            'requestedSlug' => (string) ($payload['requestedSlug'] ?? $payload['slug'] ?? ''),
+            'canonicalSlug' => (string) ($payload['slug'] ?? ''),
             'publicationInput' => $this->implicitPublicInput(),
             'publicData' => [
                 'id' => $id,
@@ -344,8 +348,12 @@ final class PublicSeoEnvelopeService
                 'breadcrumbs' => [],
             ],
             'qualityEvidence' => [
-                'hierarchyValid' => !$parentRequired || $parentName !== null || (int) ($payload['parentId'] ?? 0) > 0,
+                'hierarchyValid' => ($payload['readiness']['status'] ?? null) === 'READY'
+                    || (!$parentRequired || $parentName !== null || (int) ($payload['parentId'] ?? 0) > 0),
             ],
+            'instanceReadiness' => $payload['readiness'] ?? null,
+            // Thresholds A/B permanecem diagnosticos para taxonomias de pratica.
+            'qualityAffectsIndexability' => false,
         ];
     }
 

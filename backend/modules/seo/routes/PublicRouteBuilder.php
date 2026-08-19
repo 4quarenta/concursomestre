@@ -48,6 +48,16 @@ final class PublicRouteBuilder
         return $this->requiredPath('discipline_detail', ['slug' => $persistedSlug]);
     }
 
+    public function topicDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('topic_detail', ['slug' => $persistedSlug]);
+    }
+
+    public function subjectDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('subject_detail', ['slug' => $persistedSlug]);
+    }
+
     public function boardDetail(string $persistedSlug): string
     {
         return $this->requiredPath('board_detail', ['slug' => $persistedSlug]);

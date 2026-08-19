@@ -204,6 +204,20 @@ export const publicRoutes = {
       query,
     ),
   },
+  topics: {
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'topic_detail',
+      buildPath('topic_detail', { slug }),
+      query,
+    ),
+  },
+  subjects: {
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'subject_detail',
+      buildPath('subject_detail', { slug }),
+      query,
+    ),
+  },
   boards: {
     detail: (slug: string, query?: PublicRouteQuery) => withQuery(
       'board_detail',

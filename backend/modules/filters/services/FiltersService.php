@@ -14,11 +14,12 @@
 require_once __DIR__ . '/../repositories/FiltersRepository.php';
 require_once __DIR__ . '/../validators/FiltersValidator.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
-require_once __DIR__ . '/../projections/PublicDisciplineProjection.php';
+require_once __DIR__ . '/../projections/PublicKnowledgeTaxonomyProjection.php';
 require_once __DIR__ . '/../projections/PublicOrganizationProjection.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/services/SeoSlugService.php';
 require_once __DIR__ . '/../../seo/taxonomy/PublicTaxonomyExposurePolicy.php';
+require_once __DIR__ . '/../../seo/taxonomy/KnowledgeTaxonomyHierarchyValidator.php';
 
 /**
  * Service do dominio de filtros/taxonomias.
@@ -268,26 +269,96 @@ class FiltersService
     /** @return array<string, mixed>|null */
     public function getPublicDisciplineProjection(string $slug): ?array
     {
-        $slug = trim($slug);
-        if ($slug === '' || strlen($slug) > 512 || preg_match('/[\x00-\x1F\x7F]/', $slug) === 1) {
-            throw new InvalidArgumentException('Disciplina invalida.');
+        return $this->getPublicKnowledgeTaxonomyProjection($slug, 'materia');
+    }
+
+    /** @return array<string, mixed>|null */
+    public function getPublicKnowledgeTaxonomyProjection(string $slug, string $level): ?array
+    {
+        $slug = strtolower(trim($slug));
+        if (!in_array($level, ['materia', 'topico', 'assunto'], true)
+            || $slug === '' || strlen($slug) > 190 || preg_match('/^[a-z0-9-]+$/', $slug) !== 1) {
+            return null;
         }
-        $data = $this->repository->fetchPublicDisciplineProjectionData($slug);
+
+        $data = $level === 'materia'
+            ? $this->repository->fetchPublicDisciplineProjectionData($slug)
+            : $this->repository->fetchPublicKnowledgeTaxonomyProjectionData($slug, $level);
         if ($data === null) {
             return null;
         }
         $identity = is_array($data['identity'] ?? null) ? $data['identity'] : [];
-        if (!(new PublicTaxonomyExposurePolicy())->allowsDiscipline($identity)) {
+        if (!(new PublicTaxonomyExposurePolicy())->allowsKnowledgeTaxonomy($identity, $level)) {
             return null;
         }
+
         $routes = new PublicRouteBuilder();
         $slugger = new SeoSlugService();
-        $data['canonicalPath'] = $routes->disciplineDetail((string) ($identity['slug'] ?? ''));
-        $data['questionsPath'] = $routes->questionsIndex(['materia' => (string) ($identity['name'] ?? '')]);
-        $data['topics'] = array_map(static function (array $topic) use ($routes): array {
-            $topic['questionsPath'] = $routes->questionsIndex(['topico' => (string) ($topic['name'] ?? '')]);
-            return $topic;
-        }, is_array($data['topics'] ?? null) ? $data['topics'] : []);
+        $persistedSlug = (string) ($identity['slug'] ?? '');
+        $data['requestedSlug'] = (string) ($identity['requested_slug'] ?? $slug);
+        $data['taxonomyLevel'] = $level;
+        $data['readiness'] = KnowledgeTaxonomyHierarchyValidator::evaluate($identity, $level);
+        $invalidTaxonomyChain = in_array(
+            'instance_readiness.invalid_taxonomy_chain',
+            $data['readiness']['reasonCodes'] ?? [],
+            true
+        );
+        $data['canonicalPath'] = match ($level) {
+            'materia' => $routes->disciplineDetail($persistedSlug),
+            'topico' => $routes->topicDetail($persistedSlug),
+            'assunto' => $routes->subjectDetail($persistedSlug),
+        };
+        $data['questionsPath'] = $routes->questionsIndex([
+            match ($level) { 'materia' => 'materia', 'topico' => 'topico', default => 'assunto' }
+                => (string) ($identity['name'] ?? ''),
+        ]);
+
+        $parent = $invalidTaxonomyChain ? null : $this->publicKnowledgeAncestor($identity, 'parent');
+        $grandparent = $this->publicKnowledgeAncestor($identity, 'grandparent');
+        $greatGrandparent = $this->publicKnowledgeAncestor($identity, 'great_grandparent');
+        $data['parent'] = $parent;
+        $root = null;
+        $topic = null;
+        if ($level === 'topico' && ($parent['taxonomyLevel'] ?? '') === 'materia') {
+            $root = $parent;
+            $topic = $this->publicKnowledgeIdentity($identity);
+        } elseif ($level === 'assunto' && ($parent['taxonomyLevel'] ?? '') === 'topico') {
+            $topic = $parent;
+            $root = ($grandparent['taxonomyLevel'] ?? '') === 'materia' ? $grandparent : null;
+        } elseif ($level === 'assunto' && ($parent['taxonomyLevel'] ?? '') === 'subtopico') {
+            $topic = ($grandparent['taxonomyLevel'] ?? '') === 'topico' ? $grandparent : null;
+            $root = ($greatGrandparent['taxonomyLevel'] ?? '') === 'materia' ? $greatGrandparent : null;
+        }
+        $data['root'] = $root;
+        $data['topic'] = $topic;
+        $data['subtopic'] = $level === 'assunto' && ($parent['taxonomyLevel'] ?? '') === 'subtopico'
+            ? $parent
+            : null;
+
+        $children = !$invalidTaxonomyChain && is_array($data['children'] ?? null)
+            ? array_values(array_filter($data['children'], 'is_array'))
+            : [];
+        $data['topics'] = [];
+        $data['subtopics'] = [];
+        $data['subjects'] = [];
+        foreach ($children as $child) {
+            $childLevel = strtolower(trim((string) ($child['taxonomy_level'] ?? '')));
+            if (!(new PublicTaxonomyExposurePolicy())->allowsKnowledgeTaxonomy($child, $childLevel)) continue;
+            if (!$this->publicKnowledgeChildIsReady($child, $identity, $level)) continue;
+            if ($childLevel === 'topico') {
+                $child['path'] = $routes->topicDetail((string) ($child['slug'] ?? ''));
+                $child['questionsPath'] = $routes->questionsIndex(['topico' => (string) ($child['name'] ?? '')]);
+                $data['topics'][] = $child;
+            } elseif ($childLevel === 'subtopico') {
+                $data['subtopics'][] = $child;
+            } elseif ($childLevel === 'assunto') {
+                $child['path'] = $routes->subjectDetail((string) ($child['slug'] ?? ''));
+                $child['questionsPath'] = $routes->questionsIndex(['assunto' => (string) ($child['name'] ?? '')]);
+                $child['subtopicId'] = (int) (($child['parent_id'] ?? 0) === (int) ($identity['id'] ?? 0) ? 0 : ($child['parent_id'] ?? 0));
+                $child['subtopicName'] = $child['subtopicId'] > 0 ? ($child['parent_name'] ?? null) : null;
+                $data['subjects'][] = $child;
+            }
+        }
         $data['exams'] = array_map(static function (array $exam) use ($routes): array {
             $exam['path'] = $routes->examDetail((string) ($exam['slug'] ?? ''));
             return $exam;
@@ -296,6 +367,14 @@ class FiltersService
             $board['path'] = $routes->boardDetail((string) ($board['slug'] ?? ''));
             return $board;
         }, is_array($data['boards'] ?? null) ? $data['boards'] : []);
+        $exposure = new PublicTaxonomyExposurePolicy();
+        $data['organizations'] = array_map(static function (array $organization) use ($routes): array {
+            $organization['path'] = $routes->organizationDetail((string) ($organization['slug'] ?? ''));
+            return $organization;
+        }, array_values(array_filter(
+            is_array($data['organizations'] ?? null) ? $data['organizations'] : [],
+            static fn (mixed $organization): bool => is_array($organization) && $exposure->allowsOrganization($organization)
+        )));
         $data['questions'] = array_map(static function (array $question) use ($routes, $slugger): array {
             $id = (int) ($question['id'] ?? 0);
             $question['path'] = $routes->questionDetail(
@@ -304,14 +383,111 @@ class FiltersService
             );
             return $question;
         }, is_array($data['questions'] ?? null) ? $data['questions'] : []);
-        return PublicDisciplineProjection::fromRepositoryData($data, [
+        $breadcrumbs = [
             ['label' => 'Início', 'canonicalPath' => '/'],
             ['label' => 'Disciplinas', 'canonicalPath' => '/disciplinas'],
-            [
-                'label' => (string) ($identity['name'] ?? ''),
-                'canonicalPath' => $routes->disciplineDetail((string) ($identity['slug'] ?? '')),
-            ],
-        ]);
+        ];
+        if ($level !== 'materia' && is_array($data['root']) && ($data['root']['path'] ?? '') !== '') {
+            $breadcrumbs[] = ['label' => (string) $data['root']['name'], 'canonicalPath' => (string) $data['root']['path']];
+        }
+        if ($level === 'assunto' && is_array($data['topic']) && ($data['topic']['path'] ?? '') !== '') {
+            $breadcrumbs[] = ['label' => (string) $data['topic']['name'], 'canonicalPath' => (string) $data['topic']['path']];
+        }
+        $breadcrumbs[] = ['label' => (string) ($identity['name'] ?? ''), 'canonicalPath' => $data['canonicalPath']];
+
+        $projection = PublicKnowledgeTaxonomyProjection::fromRepositoryData($data, $breadcrumbs);
+        return $this->publicSeoEnvelope->attachTaxonomy($projection);
+    }
+
+    /** @param array<string, mixed> $child @param array<string, mixed> $parent */
+    private function publicKnowledgeChildIsReady(array $child, array $parent, string $parentLevel): bool
+    {
+        $childLevel = strtolower(trim((string) ($child['taxonomy_level'] ?? '')));
+        if (!in_array($childLevel, ['topico', 'assunto'], true)) {
+            return $childLevel === 'subtopico';
+        }
+
+        $identity = [
+            'id' => (int) ($child['id'] ?? 0),
+            'type' => (string) ($child['type'] ?? ''),
+            'taxonomy_level' => $childLevel,
+            'meta_materia' => (int) ($child['meta_materia'] ?? 0),
+            'slug' => (string) ($child['slug'] ?? ''),
+            'name' => (string) ($child['name'] ?? ''),
+            'own_parent_id' => (int) ($child['parent_id'] ?? 0),
+        ];
+
+        if ($childLevel === 'topico' && $parentLevel === 'materia') {
+            $this->copyKnowledgeAncestor($identity, 'parent', $parent);
+        } elseif ($childLevel === 'assunto' && $parentLevel === 'topico') {
+            if ((int) ($child['parent_id'] ?? 0) === (int) ($parent['id'] ?? 0)) {
+                $this->copyKnowledgeAncestor($identity, 'parent', $parent);
+                $this->copyKnowledgeAncestor($identity, 'grandparent', $this->publicKnowledgeAncestor($parent, 'parent') ?? []);
+            } else {
+                $subtopic = [
+                    'id' => (int) ($child['parent_id'] ?? 0),
+                    'parent_id' => (int) ($parent['id'] ?? 0),
+                    'type' => 'assunto',
+                    'taxonomy_level' => 'subtopico',
+                    'meta_materia' => 0,
+                    'slug' => (string) ($child['parent_slug'] ?? ''),
+                    'name' => (string) ($child['parent_name'] ?? ''),
+                ];
+                if (!(new PublicTaxonomyExposurePolicy())->allowsKnowledgeTaxonomy($subtopic, 'subtopico')) return false;
+                $this->copyKnowledgeAncestor($identity, 'parent', $subtopic);
+                $this->copyKnowledgeAncestor($identity, 'grandparent', $parent);
+                $this->copyKnowledgeAncestor($identity, 'great_grandparent', $this->publicKnowledgeAncestor($parent, 'parent') ?? []);
+            }
+        }
+
+        return KnowledgeTaxonomyHierarchyValidator::evaluate($identity, $childLevel)['status'] === 'READY';
+    }
+
+    /** @param array<string, mixed> $identity @param array<string, mixed> $ancestor */
+    private function copyKnowledgeAncestor(array &$identity, string $prefix, array $ancestor): void
+    {
+        $identity[$prefix . '_id'] = (int) ($ancestor['id'] ?? 0);
+        $identity[$prefix . '_parent_id'] = (int) ($ancestor['own_parent_id'] ?? $ancestor['parent_id'] ?? 0);
+        $identity[$prefix . '_type'] = (string) ($ancestor['type'] ?? 'assunto');
+        $identity[$prefix . '_taxonomy_level'] = (string) ($ancestor['taxonomy_level'] ?? $ancestor['taxonomyLevel'] ?? '');
+        $identity[$prefix . '_meta_materia'] = (int) ($ancestor['meta_materia'] ?? 0);
+        $identity[$prefix . '_slug'] = (string) ($ancestor['slug'] ?? '');
+        $identity[$prefix . '_name'] = (string) ($ancestor['name'] ?? '');
+    }
+
+    /** @param array<string, mixed> $identity @return array<string, mixed>|null */
+    private function publicKnowledgeAncestor(array $identity, string $prefix): ?array
+    {
+        $id = (int) ($identity[$prefix . '_id'] ?? 0);
+        if ($id <= 0) return null;
+        $item = [
+            'id' => $id,
+            'slug' => (string) ($identity[$prefix . '_slug'] ?? ''),
+            'name' => (string) ($identity[$prefix . '_name'] ?? ''),
+            'taxonomyLevel' => !empty($identity[$prefix . '_meta_materia'])
+                ? 'materia'
+                : (string) ($identity[$prefix . '_taxonomy_level'] ?? ''),
+        ];
+        $routes = new PublicRouteBuilder();
+        $item['path'] = match ($item['taxonomyLevel']) {
+            'materia' => $routes->disciplineDetail($item['slug']),
+            'topico' => $routes->topicDetail($item['slug']),
+            'assunto' => $routes->subjectDetail($item['slug']),
+            default => '',
+        };
+        return $item;
+    }
+
+    /** @param array<string, mixed> $identity @return array<string, mixed> */
+    private function publicKnowledgeIdentity(array $identity): array
+    {
+        return [
+            'id' => (int) ($identity['id'] ?? 0),
+            'slug' => (string) ($identity['slug'] ?? ''),
+            'name' => (string) ($identity['name'] ?? ''),
+            'taxonomyLevel' => !empty($identity['meta_materia']) ? 'materia' : (string) ($identity['taxonomy_level'] ?? ''),
+            'path' => (new PublicRouteBuilder())->topicDetail((string) ($identity['slug'] ?? '')),
+        ];
     }
 
     /** @return array<string, mixed>|null */

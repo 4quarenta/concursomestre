@@ -80,6 +80,7 @@ final class SeoPolicyService
         $instanceReadiness = isset($input['instanceReadiness'])
             ? SeoInstanceReadiness::validate($input['instanceReadiness'])
             : SeoInstanceReadiness::fromSignals($publication, $quality, $currentImplementationReady);
+        $qualityAffectsIndexability = ($input['qualityAffectsIndexability'] ?? true) === true;
         $displayName = (string) ($facts['identity']['displayName'] ?? '');
         $canonicalSlug = trim((string) ($input['canonicalSlug'] ?? ''));
         if ($canonicalSlug !== '' && preg_match('/^[a-z0-9-]{1,190}$/', $canonicalSlug) !== 1) {
@@ -104,9 +105,9 @@ final class SeoPolicyService
             || ($publication['access'] ?? null) !== 'allowed') {
             $indexReasonCodes[] = 'indexability.non_public';
         }
-        if (($quality['status'] ?? null) === 'FAIL') {
+        if ($qualityAffectsIndexability && ($quality['status'] ?? null) === 'FAIL') {
             $indexReasonCodes[] = 'indexability.quality_failed';
-        } elseif (($quality['status'] ?? null) !== 'PASS') {
+        } elseif ($qualityAffectsIndexability && ($quality['status'] ?? null) !== 'PASS') {
             $indexReasonCodes[] = 'indexability.quality_not_evaluated';
         }
         if ($this->launchMode === SeoLaunchMode::PRELAUNCH) {

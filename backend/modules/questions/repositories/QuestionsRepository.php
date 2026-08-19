@@ -1750,9 +1750,34 @@ class QuestionsRepository
                     f.name,
                     f.slug,
                     f.parent_id,
-                    f.meta_materia
+                    f.meta_materia,
+                    f.taxonomy_level,
+                    parent.id AS taxonomy_parent_id,
+                    parent.parent_id AS taxonomy_parent_parent_id,
+                    parent.type AS taxonomy_parent_type,
+                    parent.name AS taxonomy_parent_name,
+                    parent.slug AS taxonomy_parent_slug,
+                    parent.meta_materia AS taxonomy_parent_meta_materia,
+                    parent.taxonomy_level AS taxonomy_parent_level,
+                    grandparent.id AS taxonomy_grandparent_id,
+                    grandparent.parent_id AS taxonomy_grandparent_parent_id,
+                    grandparent.type AS taxonomy_grandparent_type,
+                    grandparent.name AS taxonomy_grandparent_name,
+                    grandparent.slug AS taxonomy_grandparent_slug,
+                    grandparent.meta_materia AS taxonomy_grandparent_meta_materia,
+                    grandparent.taxonomy_level AS taxonomy_grandparent_level,
+                    great_grandparent.id AS taxonomy_great_grandparent_id,
+                    great_grandparent.parent_id AS taxonomy_great_grandparent_parent_id,
+                    great_grandparent.type AS taxonomy_great_grandparent_type,
+                    great_grandparent.name AS taxonomy_great_grandparent_name,
+                    great_grandparent.slug AS taxonomy_great_grandparent_slug,
+                    great_grandparent.meta_materia AS taxonomy_great_grandparent_meta_materia,
+                    great_grandparent.taxonomy_level AS taxonomy_great_grandparent_level
              FROM question_filters qf
              INNER JOIN filters f ON f.id = qf.filter_id
+             LEFT JOIN filters parent ON parent.id = f.parent_id
+             LEFT JOIN filters grandparent ON grandparent.id = parent.parent_id
+             LEFT JOIN filters great_grandparent ON great_grandparent.id = grandparent.parent_id
              WHERE qf.question_id IN ({$placeholders})
              ORDER BY f.type, f.name"
         );

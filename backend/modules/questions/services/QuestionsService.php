@@ -22,6 +22,7 @@ require_once __DIR__ . '/../../../shared/events/TransactionalOutbox.php';
 require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
+require_once __DIR__ . '/../../seo/taxonomy/KnowledgeTaxonomyHierarchyValidator.php';
 
 class QuestionsService
 {
@@ -1947,6 +1948,8 @@ class QuestionsService
                 'label' => $label,
                 'slug' => (string) ($item['slug'] ?? $this->slugify($label)),
                 'parentId' => is_numeric($item['parentId'] ?? $item['parent_id'] ?? null) ? (int) ($item['parentId'] ?? $item['parent_id']) : null,
+                'taxonomyLevel' => (string) ($item['taxonomyLevel'] ?? $item['taxonomy_level'] ?? ''),
+                'seoReady' => ($item['seoReady'] ?? false) === true,
             ];
         }
 
@@ -3858,13 +3861,19 @@ class QuestionsService
             } elseif ($type === 'carreira') {
                 $buckets['carreiras'][] = $base + ['description' => $name, 'pai' => $parentId];
             } elseif ($type === 'assunto') {
-                $taxonomyLevel = $id !== null
-                    ? ($subjectLevels[$id] ?? ($parentId === null ? 'materia' : 'assunto'))
-                    : ($parentId === null ? 'materia' : 'assunto');
+                $explicitLevel = strtolower(trim((string) ($filter['taxonomy_level'] ?? '')));
+                $taxonomyLevel = in_array($explicitLevel, ['materia', 'topico', 'subtopico', 'assunto'], true)
+                    ? ((int) ($filter['meta_materia'] ?? 0) === 1 ? 'materia' : $explicitLevel)
+                    : ($id !== null
+                        ? ($subjectLevels[$id] ?? ($parentId === null ? 'materia' : 'assunto'))
+                        : ($parentId === null ? 'materia' : 'assunto'));
+                $seoReady = in_array($taxonomyLevel, ['materia', 'topico', 'assunto'], true)
+                    && $this->questionTaxonomyIsSeoReady($filter, $taxonomyLevel);
                 $buckets['assuntos'][] = $base + [
                     'materia' => $taxonomyLevel === 'materia',
                     'taxonomyLevel' => $taxonomyLevel,
                     'taxonomy_level' => $taxonomyLevel,
+                    'seoReady' => $seoReady,
                     'assunto_raiz' => $parentId,
                     'pai' => $parentId,
                 ];
@@ -3878,6 +3887,28 @@ class QuestionsService
         }
 
         return $buckets;
+    }
+
+    /** @param array<string, mixed> $filter */
+    private function questionTaxonomyIsSeoReady(array $filter, string $level): bool
+    {
+        $identity = [
+            'id' => (int) ($filter['id'] ?? 0),
+            'type' => (string) ($filter['type'] ?? ''),
+            'name' => (string) ($filter['name'] ?? ''),
+            'slug' => (string) ($filter['slug'] ?? ''),
+            'taxonomy_level' => (string) ($filter['taxonomy_level'] ?? ''),
+            'meta_materia' => (int) ($filter['meta_materia'] ?? 0),
+            'own_parent_id' => (int) ($filter['parent_id'] ?? 0),
+        ];
+        foreach (['parent', 'grandparent', 'great_grandparent'] as $prefix) {
+            $source = 'taxonomy_' . $prefix;
+            foreach (['id', 'parent_id', 'type', 'name', 'slug', 'meta_materia'] as $field) {
+                $identity[$prefix . '_' . $field] = $filter[$source . '_' . $field] ?? null;
+            }
+            $identity[$prefix . '_taxonomy_level'] = $filter[$source . '_level'] ?? null;
+        }
+        return KnowledgeTaxonomyHierarchyValidator::evaluate($identity, $level)['status'] === 'READY';
     }
 
     private function parseSerializedFilters(string $serialized): array

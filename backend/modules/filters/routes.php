@@ -107,23 +107,33 @@ function handlePublicBoardDetailRoute(PDO $db): void
  */
 function handlePublicDisciplineDetailRoute(PDO $db): void
 {
+    handlePublicKnowledgeTaxonomyDetailRoute($db, 'materia', 'Disciplina');
+}
+
+/** Landing publica allowlist de materia, topico ou assunto final. */
+function handlePublicKnowledgeTaxonomyDetailRoute(PDO $db, ?string $fixedLevel = null, string $label = 'Taxonomia'): void
+{
     try {
         $slug = trim((string) ($_GET['slug'] ?? ''));
+        $level = $fixedLevel ?? strtolower(trim((string) ($_GET['level'] ?? '')));
+        if (!in_array($level, ['materia', 'topico', 'assunto'], true)) {
+            throw new InvalidArgumentException('Nivel publico de taxonomia invalido.');
+        }
         $controller = new FiltersController(
             new FiltersService(
                 new FiltersRepository($db),
                 new FiltersValidator()
             )
         );
-        $payload = $controller->getPublicDisciplineDetail($slug);
+        $payload = $controller->getPublicKnowledgeTaxonomyDetail($slug, $level);
         if ($payload === null) {
-            Response::notFound('Disciplina nao encontrada.');
+            Response::notFound($label . ' nao encontrado.');
         }
         Response::success($payload);
     } catch (InvalidArgumentException $e) {
         Response::badRequest($e->getMessage());
     } catch (Throwable $e) {
-        Response::serverError('Nao foi possivel carregar a disciplina.', $e);
+        Response::serverError('Nao foi possivel carregar a taxonomia publica.', $e);
     }
 }
 

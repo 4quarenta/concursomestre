@@ -45,7 +45,12 @@ try {
     );
     publicRouteAssert(
         $builder->disciplineDetail('direito-constitucional') === '/disciplinas/direito-constitucional',
-        'Builder preparatorio de disciplina incorreto.'
+        'Builder de disciplina incorreto.'
+    );
+    publicRouteAssert(
+        $builder->topicDetail('controle-de-constitucionalidade') === '/topicos/controle-de-constitucionalidade'
+            && $builder->subjectDetail('controle-concentrado') === '/assuntos/controle-concentrado',
+        'Builders de topico/assunto divergentes.'
     );
     publicRouteAssert(
         $builder->boardDetail('cebraspe') === '/bancas/cebraspe',

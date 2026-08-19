@@ -58,6 +58,34 @@ const getQuestionRoleLabel = (item: unknown) => {
   return String(record.descricao || record['descrição'] || record.name || '').trim();
 };
 
+type PublicTaxonomyLink = { key: string; label: string; href: string };
+
+const readQuestionTaxonomyLinks = (question: Question): PublicTaxonomyLink[] => {
+  const links = new Map<string, PublicTaxonomyLink>();
+  const add = (value: unknown, fallbackLevel = '') => {
+    if (!value || typeof value !== 'object') return;
+    const record = value as Record<string, unknown>;
+    const slug = String(record.slug || '').trim();
+    const label = String(record.label || record.nome || record.name || '').trim();
+    const level = String(record.taxonomyLevel || record.taxonomy_level || fallbackLevel).trim().toLowerCase();
+    if (record.seoReady !== true || !slug || !label || !/^[a-z0-9-]+$/.test(slug)) return;
+    const href = level === 'materia'
+      ? publicRoutes.disciplines.detail(slug)
+      : level === 'topico'
+        ? publicRoutes.topics.detail(slug)
+        : level === 'assunto'
+          ? publicRoutes.subjects.detail(slug)
+          : '';
+    if (href) links.set(href, { key: `${level}:${slug}`, label, href });
+  };
+
+  (question.filters?.subjects || question.filters?.materias || []).forEach((item) => add(item, 'materia'));
+  (question.filters?.topics || question.filters?.topicos || []).forEach((item) => add(item, 'topico'));
+  (question.filters?.subtopics || question.filters?.assuntos || []).forEach((item) => add(item));
+  (question.assuntos || []).forEach((item) => add(item, item.materia ? 'materia' : ''));
+  return [...links.values()];
+};
+
 type QuestionPublicPageProps = {
   initialQuestion?: Question | null;
   routeFamily?: 'legacy' | 'future';
@@ -150,6 +178,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
   const questionContext = React.useMemo(() => question ? getQuestionContextLabels(question) : null, [question]);
   const questionKeywords = React.useMemo(() => question ? buildQuestionKeywords(question) : [], [question]);
   const keywordPills = React.useMemo(() => question ? buildQuestionKeywordPills(question) : [], [question]);
+  const taxonomyLinks = React.useMemo(() => question ? readQuestionTaxonomyLinks(question) : [], [question]);
 
   const metadataItems = [
     { label: 'Banca', value: question?.bancas?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
@@ -305,6 +334,17 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
               ))}
             </div>
           )}
+
+          {taxonomyLinks.length > 0 ? (
+            <nav aria-label="Taxonomias da questão" className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-black text-slate-500 dark:text-slate-400">Estudar por:</span>
+              {taxonomyLinks.map((item) => (
+                <Link key={item.key} href={item.href} prefetch={false} className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:border-indigo-300 hover:text-[#615fff] dark:border-slate-700 dark:text-slate-200">
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          ) : null}
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr),360px]">
             <article className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">

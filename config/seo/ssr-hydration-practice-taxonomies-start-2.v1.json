@@ -1,0 +1,67 @@
+{
+  "version": "ssr-hydration-practice-taxonomies-start-2.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "securitySentinels": [
+    "SECRET_CORRECT_ANSWER_SENTINEL",
+    "SECRET_TEACHER_COMMENT_SENTINEL",
+    "SECRET_DETAILED_ANALYSIS_SENTINEL",
+    "SECRET_IMPORTER_SENTINEL",
+    "SECRET_ADMIN_NOTE_SENTINEL"
+  ],
+  "routes": [
+    {
+      "key": "discipline_detail_final", "path": "/disciplinas/direito-constitucional", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/disciplinas/direito-constitucional", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Questões de Direito Constitucional"],
+      "requiredRawLinks": ["/disciplinas", "/topicos/controle-de-constitucionalidade", "/questoes?materia=Direito%20Constitucional"]
+    },
+    {
+      "key": "topic_detail", "path": "/topicos/controle-de-constitucionalidade", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/topicos/controle-de-constitucionalidade", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Questões de Controle de Constitucionalidade", "Modelos de controle"],
+      "requiredRawLinks": ["/disciplinas/direito-constitucional", "/assuntos/controle-concentrado", "/questoes?topico=Controle%20de%20Constitucionalidade"]
+    },
+    {
+      "key": "subject_detail", "path": "/assuntos/controle-concentrado", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/assuntos/controle-concentrado", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Questões de Controle concentrado", "Modelos de controle"],
+      "requiredRawLinks": ["/disciplinas/direito-constitucional", "/topicos/controle-de-constitucionalidade", "/questoes?assunto=Controle%20concentrado"]
+    },
+    {
+      "key": "subject_invalid_chain", "path": "/assuntos/assunto-cadeia-invalida", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/assuntos/assunto-cadeia-invalida", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Questões de Assunto com cadeia inválida", "revisão estrutural"]
+    },
+    {
+      "key": "topic_empty_ready", "path": "/topicos/topico-sem-conteudo-atual", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/topicos/topico-sem-conteudo-atual", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Questões de Tópico sem conteúdo atual", "Nenhuma questão pública disponível nesta coleção."],
+      "requiredRawLinks": ["/disciplinas/direito-constitucional", "/questoes?topico=T%C3%B3pico%20sem%20conte%C3%BAdo%20atual"]
+    },
+    {
+      "key": "question_taxonomy_interlinks", "path": "/questoes/67813/art-5o-acao-e-controle", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/questoes/67813/art-5o-acao-e-controle", "expectNoIndex": true,
+      "schemaTypes": ["Quiz"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawLinks": ["/disciplinas/direito-constitucional", "/topicos/controle-de-constitucionalidade", "/assuntos/controle-concentrado"]
+    },
+    { "key": "discipline_missing", "path": "/disciplinas/taxonomia-inexistente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "topic_missing", "path": "/topicos/taxonomia-inexistente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "subject_missing", "path": "/assuntos/taxonomia-inexistente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "wrong_level_topic_as_discipline", "path": "/disciplinas/controle-de-constitucionalidade", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "wrong_level_subject_as_topic", "path": "/topicos/controle-concentrado", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true }
+  ]
+}
