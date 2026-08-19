@@ -119,7 +119,7 @@ try {
     };
 
     $files = [];
-    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'taxonomies' => 0];
+    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'contests' => 0, 'taxonomies' => 0];
     $institutionalSources = [
         '/' => ['source' => 'src/app/page.tsx', 'familyId' => 'home'],
         '/planos' => ['source' => 'src/app/planos/page.tsx', 'familyId' => 'plans'],
@@ -128,6 +128,8 @@ try {
         '/lei-comentada' => ['source' => 'src/app/lei-comentada/page.tsx', 'familyId' => 'law_hub'],
         '/blog' => ['source' => 'src/app/blog/page.tsx', 'familyId' => 'blog_hub'],
         $routes->examsIndex() => ['source' => 'src/app/provas/page.tsx', 'familyId' => 'exam_hub'],
+        $routes->contestsIndex() => ['source' => 'src/app/concursos/page.tsx', 'familyId' => 'contest_hub'],
+        $routes->openContests() => ['source' => 'src/app/concursos-abertos/page.tsx', 'familyId' => 'open_contests'],
         '/disciplinas' => ['source' => 'src/app/disciplinas/page.tsx', 'familyId' => 'discipline_hub'],
         '/bancas' => ['source' => 'src/app/bancas/page.tsx', 'familyId' => 'board_hub'],
         '/novidades' => ['source' => 'src/app/novidades/page.tsx', 'familyId' => 'news'],
@@ -198,6 +200,53 @@ try {
         if (count($rows) < $batchSize) {
             break;
         }
+    }
+
+    $contestCursor = 0;
+    $contestPage = 0;
+    while (true) {
+        $queryCount++;
+        $stmt = $db->prepare(
+            "SELECT id, slug, updated_at AS last_modified
+             FROM contests
+             WHERE id > :cursor
+               AND publication_status = 'published'
+               AND visibility_status = 'public'
+               AND archived_at IS NULL
+               AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+               AND TRIM(title) <> ''
+               AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+               AND EXISTS (
+                   SELECT 1 FROM contest_organizations co
+                   INNER JOIN filters organization ON organization.id = co.organization_filter_id
+                       AND organization.type = 'orgao'
+                       AND COALESCE(organization.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+                       AND TRIM(organization.name) <> ''
+                       AND BINARY organization.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                   WHERE co.contest_id = contests.id
+               )
+             ORDER BY id
+             LIMIT {$batchSize}"
+        );
+        $stmt->execute([':cursor' => $contestCursor]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if ($rows === []) break;
+        $entries = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $slug = trim((string) ($row['slug'] ?? ''));
+            $contestCursor = max($contestCursor, $id);
+            if ($id <= 0 || $slug === '') continue;
+            $entries[] = ['loc' => $baseUrl . $routes->contestDetail($slug), 'lastmod' => $safeDate($row['last_modified'] ?? null)];
+        }
+        if ($entries !== []) {
+            $contestPage++;
+            $filename = sprintf('contests-%05d.xml', $contestPage);
+            $write($stage . '/' . $filename, $buildUrlSet($entries));
+            $files[] = ['name' => $filename, 'lastmod' => $maxLastmod($entries)];
+            $counts['contests'] += count($entries);
+        }
+        if (count($rows) < $batchSize) break;
     }
 
     $lawCursor = 0;

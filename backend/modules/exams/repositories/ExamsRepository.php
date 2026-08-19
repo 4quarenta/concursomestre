@@ -327,6 +327,29 @@ class ExamsRepository
         return $this->hydrateMany([$row])[0] ?? null;
     }
 
+    /** @return array<string,mixed>|null */
+    public function findPublicContestForExam(int $examId): ?array
+    {
+        $stmt = $this->db->prepare("SELECT c.id, c.slug, c.title, c.domain_status AS status
+            FROM contest_exams ce INNER JOIN contests c ON c.id = ce.contest_id
+            WHERE ce.exam_id = :exam_id AND c.publication_status = 'published'
+              AND c.visibility_status = 'public' AND c.archived_at IS NULL
+              AND (c.scheduled_at IS NULL OR c.scheduled_at <= NOW())
+              AND BINARY c.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+              AND EXISTS (
+                  SELECT 1 FROM contest_organizations public_co
+                  INNER JOIN filters public_org ON public_org.id = public_co.organization_filter_id
+                      AND public_org.type = 'orgao'
+                      AND COALESCE(public_org.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+                      AND BINARY public_org.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                  WHERE public_co.contest_id = c.id
+              )
+            LIMIT 1");
+        $stmt->execute([':exam_id' => $examId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
     public function save(array $payload, string $userId): array
     {
         $this->ensureSchema();

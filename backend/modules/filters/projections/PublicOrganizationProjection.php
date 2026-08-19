@@ -31,6 +31,7 @@ final class PublicOrganizationProjection
             'boards' => self::mapList($data['boards'] ?? [], ['id', 'slug', 'name', 'acronym', 'examCount', 'path']),
             'exams' => self::mapList($data['exams'] ?? [], ['id', 'slug', 'name', 'year', 'questionCount', 'path']),
             'questions' => self::mapList($data['questions'] ?? [], ['id', 'excerpt', 'updatedAt', 'path']),
+            'contests' => self::mapList($data['contests'] ?? [], ['id', 'slug', 'title', 'status', 'year', 'path']),
             'breadcrumbs' => array_values(array_map(static fn (array $item): array => [
                 'label' => self::publicText($item['label'] ?? ''),
                 'canonicalPath' => trim((string) ($item['canonicalPath'] ?? '')),

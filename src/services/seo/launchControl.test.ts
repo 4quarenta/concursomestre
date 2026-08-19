@@ -123,6 +123,24 @@ describe('SEO launch control', () => {
     expect(resolveXRobotsTag('/orgaos/policia-federal', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
   });
 
+  it('keeps contest families protected until PRODUCTION and excludes unpublished instances', () => {
+    const ready = { status: 'READY' as const, reasonCodes: [] };
+    const input = {
+      launchMode: 'PRELAUNCH' as const,
+      instanceReadiness: ready,
+      publicationAllowed: true,
+      resolutionAction: 'render' as const,
+      httpStatus: 200,
+      canonicalValid: true,
+      qualityPass: true,
+    };
+    for (const id of ['contest_hub', 'contest_detail', 'open_contests']) {
+      expect(evaluateSeoLaunchControl({ ...input, family: family(id) }).indexability).toBe('NOINDEX');
+      expect(evaluateSeoLaunchControl({ ...input, launchMode: 'PRODUCTION', family: family(id) }).indexability).toBe('INDEX');
+    }
+    expect(evaluateSeoLaunchControl({ ...input, launchMode: 'PRODUCTION', family: family('contest_detail'), publicationAllowed: false }).sitemapEligible).toBe(false);
+  });
+
   it('keeps canonical metadata while applying PRELAUNCH noindex', () => {
     const metadata = applySeoLaunchModeToMetadata({ alternates: { canonical: '/disciplinas/direito' } }, 'PRELAUNCH');
     expect(metadata.alternates).toEqual({ canonical: '/disciplinas/direito' });

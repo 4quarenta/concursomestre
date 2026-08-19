@@ -28,6 +28,10 @@ try {
             'path' => '/questoes/40/enunciado-publico', 'correctAnswer' => 'SECRET_ANSWER',
             'teacherComment' => 'SECRET_COMMENT',
         ]],
+        'contests' => [[
+            'id' => 80, 'slug' => 'pf-2026', 'title' => 'Concurso PF 2026', 'status' => 'announced',
+            'year' => 2026, 'path' => '/concursos/pf-2026', 'admin_note' => 'SECRET_CONTEST_ADMIN',
+        ]],
         'canonicalPath' => '/orgaos/policia-federal',
         'questionsPath' => '/questoes?orgao=Pol%C3%ADcia%20Federal',
     ], [
@@ -37,13 +41,14 @@ try {
     ]);
 
     $encoded = json_encode($projection, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-    foreach (['SECRET_IMPORTER', 'SECRET_ADMIN', 'SECRET_PROVIDER', 'SECRET_ANSWER', 'SECRET_COMMENT', 'correctAnswer', 'teacherComment'] as $forbidden) {
+    foreach (['SECRET_IMPORTER', 'SECRET_ADMIN', 'SECRET_PROVIDER', 'SECRET_ANSWER', 'SECRET_COMMENT', 'SECRET_CONTEST_ADMIN', 'correctAnswer', 'teacherComment'] as $forbidden) {
         organizationProjectionAssert(!str_contains($encoded, $forbidden), 'Projection vazou ' . $forbidden);
     }
     organizationProjectionAssert($projection['description'] === 'Órgão público federal.', 'Descricao nao foi sanitizada.');
     organizationProjectionAssert($projection['questions'][0]['excerpt'] === 'Enunciado público', 'Questao nao foi sanitizada.');
     organizationProjectionAssert($projection['website'] === 'https://www.gov.br/pf/', 'Website publico valido foi removido.');
-    organizationProjectionAssert(FiltersRepository::PUBLIC_ORGANIZATION_QUERY_BUDGET === 6, 'Query budget do orgao mudou.');
+    organizationProjectionAssert($projection['contests'][0]['path'] === '/concursos/pf-2026', 'Interlink canonico de concurso ausente.');
+    organizationProjectionAssert(FiltersRepository::PUBLIC_ORGANIZATION_QUERY_BUDGET === 7, 'Query budget do orgao mudou.');
 
     $source = (string) file_get_contents(dirname(__DIR__) . '/modules/filters/repositories/FiltersRepository.php');
     organizationProjectionAssert(str_contains($source, "WHERE f.type = 'orgao'"), 'Lookup nao restringe type=orgao.');

@@ -74,6 +74,23 @@ final class PublicRouteBuilder
         return $this->requiredPath('organization_detail', ['slug' => $persistedSlug]);
     }
 
+    /** @param array<string, scalar|list<scalar>|null> $query */
+    public function contestsIndex(array $query = []): string
+    {
+        return $this->withQuery('contest_hub', $this->requiredPath('contest_hub'), $query);
+    }
+
+    public function contestDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('contest_detail', ['slug' => $persistedSlug]);
+    }
+
+    /** @param array<string, scalar|list<scalar>|null> $query */
+    public function openContests(array $query = []): string
+    {
+        return $this->withQuery('open_contests', $this->requiredPath('open_contests'), $query);
+    }
+
     /** @param array<string, string|int> $parameters */
     private function requiredPath(string $familyId, array $parameters = []): string
     {

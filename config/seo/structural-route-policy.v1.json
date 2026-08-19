@@ -14,6 +14,10 @@
       "classification": "search",
       "multiValue": false
     },
+    "status": {
+      "classification": "facet",
+      "multiValue": false
+    },
     "letra": {
       "classification": "facet",
       "multiValue": false
@@ -337,7 +341,7 @@
       "supportsLanding": true,
       "supportsEditorialPromotion": false,
       "defaultIndexability": "INDEX",
-      "allowedParameters": ["pagina", "ano", "orgao", "cargo", "utm_*", "gclid", "fbclid"],
+      "allowedParameters": ["pagina", "busca", "ano", "status", "orgao", "cargo", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
     {
@@ -349,6 +353,16 @@
       "defaultIndexability": "INDEX",
       "allowedParameters": ["utm_*", "gclid", "fbclid"],
       "paginationPolicy": "none"
+    },
+    {
+      "id": "open_contests",
+      "patterns": ["/concursos-abertos"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "busca", "ano", "orgao", "cargo", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
     },
     {
       "id": "law_hub",

@@ -88,6 +88,7 @@ const exam = {
   examTypes: [],
   files: [],
   relatedExams: [],
+  contest: { id: 301, slug: 'concurso-canonico-2026', title: 'Concurso Canônico 2026', status: 'registration_open', path: '/concursos/concurso-canonico-2026' },
 };
 const board = {
   id: 10,
@@ -119,6 +120,7 @@ const organization = {
   boards: [{ id: 10, slug: 'cebraspe', name: 'Centro Brasileiro de Pesquisa em Avaliação', acronym: 'CEBRASPE', examCount: 1, path: '/bancas/cebraspe' }],
   exams: [{ id: 101, slug: 'prova-ssr-2026', name: 'Prova SSR 2026', year: 2026, questionCount: 1, path: '/provas/prova-ssr-2026' }],
   questions: [{ id: 67813, excerpt: 'Art. 5º — Ação & Controle', updatedAt: '2026-08-18', path: '/questoes/67813/art-5o-acao-e-controle', correctAnswer: 'SECRET_CORRECT_ANSWER_SENTINEL_246' }],
+  contests: [{ id: 301, slug: 'concurso-canonico-2026', title: 'Concurso Canônico 2026', status: 'registration_open', year: 2026, path: '/concursos/concurso-canonico-2026' }],
   breadcrumbs: [
     { label: 'Início', canonicalPath: '/' },
     { label: 'Órgãos', canonicalPath: '/orgaos' },
@@ -127,6 +129,24 @@ const organization = {
   updatedAt: '2026-08-18T12:00:00Z',
   externalImporterIdentity: 'SECRET_IMPORTER_SENTINEL',
   adminNote: 'SECRET_ADMIN_NOTE_SENTINEL',
+};
+const contestSummary = {
+  id: 301, slug: 'concurso-canonico-2026', title: 'Concurso Canônico 2026', description: 'Concurso público canônico para o harness.',
+  status: 'registration_open', isOpen: true, year: 2026, registrationStart: '2026-08-01T00:00:00Z', registrationEnd: '2026-09-30T23:59:59Z',
+  organization: 'Órgão de Teste', organizationAcronym: 'ODT', board: 'Centro Brasileiro de Pesquisa em Avaliação', boardAcronym: 'CEBRASPE', path: '/concursos/concurso-canonico-2026', updatedAt: '2026-08-19T12:00:00Z',
+};
+const contest = {
+  ...contestSummary, officialUrl: 'https://example.com/concurso',
+  dates: { announcedAt: '2026-07-01T00:00:00Z', noticePublishedAt: '2026-07-15T00:00:00Z', registrationStartAt: '2026-08-01T00:00:00Z', registrationEndAt: '2026-09-30T23:59:59Z', examStartAt: '2026-11-01T12:00:00Z' },
+  organizations: [{ id: 11, slug: 'orgao-de-teste', name: 'Órgão de Teste', acronym: 'ODT', path: '/orgaos/orgao-de-teste' }],
+  board: { id: 10, slug: 'cebraspe', name: 'Centro Brasileiro de Pesquisa em Avaliação', acronym: 'CEBRASPE', path: '/bancas/cebraspe' },
+  positions: [{ id: 401, roleId: 12, name: 'Analista', vacancies: 10, reserveRegistry: true, salaryMin: 5000, salaryMax: 7000, educationLevel: 'Superior', weeklyHours: 40, locationLabel: 'Paraíba' }],
+  documents: [{ id: 501, type: 'notice', title: 'Edital 01/2026', url: 'https://example.com/edital.pdf', publishedAt: '2026-07-15T00:00:00Z' }],
+  exams: [{ id: 101, slug: 'prova-ssr-2026', title: 'Prova SSR 2026', year: 2026, questionCount: 1, path: '/provas/prova-ssr-2026' }],
+  questions: [{ id: 67813, excerpt: 'Art. 5º — Ação & Controle', path: '/questoes/67813/art-5o-acao-e-controle', correctAnswer: 'SECRET_CORRECT_ANSWER_SENTINEL_246' }],
+  questionCount: 1, canonicalPath: '/concursos/concurso-canonico-2026',
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Concursos', canonicalPath: '/concursos' }, { label: 'Concurso Canônico 2026', canonicalPath: '/concursos/concurso-canonico-2026' }],
+  updatedAt: '2026-08-19T12:00:00Z', adminNote: 'SECRET_ADMIN_NOTE_SENTINEL', importerIdentity: 'SECRET_IMPORTER_SENTINEL',
 };
 const knowledgeQuestion = {
   id: 67813,
@@ -310,6 +330,14 @@ const payloadFor = (url) => {
   if (pathname === '/v2/questions/list.php' || pathname === '/questionsList') return { success: true, data: { items: [question], questions: [question], pageInfo: { limit: 20, total: 1, hasMore: false } } };
   if (pathname === '/exams/directory.php') return { success: true, data: { items: [examItem], pageInfo: { page: 1, limit: 12, totalItems: 1, totalPages: 1, hasPrevious: false, hasNext: false }, facets: { years: [2026], regions: ['Nordeste'], states: [{ code: 'PB', name: 'Paraíba' }] } } };
   if (pathname === '/exams/detail.php') return { success: true, data: { exam } };
+  if (pathname === '/contests/index.php') return { success: true, data: { items: [contestSummary], pageInfo: { page: 1, pages: 1, limit: 24, total: 1 } } };
+  if (pathname === '/contests/open.php') return { success: true, data: { items: [contestSummary], pageInfo: { page: 1, pages: 1, limit: 24, total: 1 } } };
+  if (pathname === '/contests/detail.php') {
+    if (url.searchParams.get('slug') === 'concurso-canonico-antigo') {
+      return { success: true, data: { redirectSlug: contest.slug } };
+    }
+    return { success: true, data: contest };
+  }
   if (pathname === '/filters/directory.php') {
     const type = url.searchParams.get('type');
     const items = type === 'boards'
@@ -367,6 +395,10 @@ const server = createServer((request, response) => {
       count(url.pathname);
       return json(response, 404, { success: false, message: 'Taxonomia nao encontrada.' }, origin);
     }
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/contests/detail.php'
+    && ![contest.slug, 'concurso-canonico-antigo'].includes(url.searchParams.get('slug'))) {
+    return json(response, 404, { success: false, error: { code: 'not_found', message: 'Concurso não encontrado.' } }, origin);
   }
   count(url.pathname);
   return json(response, 200, payloadFor(url), origin);

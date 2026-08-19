@@ -184,6 +184,13 @@ export default async function OrganizationPage({ params }: OrganizationPageProps
           ) : null}
         </section>
       ) : null}
+
+      {organization.contests.length > 0 ? (
+        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`} aria-labelledby="organization-contests-title">
+          <h2 id="organization-contests-title" className="flex items-center gap-2 text-base font-black text-slate-950 dark:text-white"><BriefcaseBusiness size={17} className="text-[#615fff]" /> Concursos deste órgão</h2>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">{organization.contests.map((contest) => <Link key={contest.id} href={contest.path} prefetch={false} className="rounded-md border border-slate-200 px-3 py-2.5 text-sm font-bold text-slate-700 hover:border-[#615fff]/40 hover:text-[#615fff] dark:border-slate-700 dark:text-slate-200">{contest.title}{contest.year ? ` · ${contest.year}` : ''}</Link>)}</div>
+        </section>
+      ) : null}
     </article>
   );
 }

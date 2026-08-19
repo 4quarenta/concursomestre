@@ -363,6 +363,10 @@ class FiltersService
             $exam['path'] = $routes->examDetail((string) ($exam['slug'] ?? ''));
             return $exam;
         }, is_array($data['exams'] ?? null) ? $data['exams'] : []);
+        $data['contests'] = array_map(static function (array $contest) use ($routes): array {
+            $contest['path'] = $routes->contestDetail((string) ($contest['slug'] ?? ''));
+            return $contest;
+        }, is_array($data['contests'] ?? null) ? $data['contests'] : []);
         $data['boards'] = array_map(static function (array $board) use ($routes): array {
             $board['path'] = $routes->boardDetail((string) ($board['slug'] ?? ''));
             return $board;

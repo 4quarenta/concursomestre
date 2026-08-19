@@ -64,6 +64,7 @@ export type PublicOrganization = {
   boards: PublicOrganizationBoard[];
   exams: PublicOrganizationExam[];
   questions: PublicOrganizationQuestion[];
+  contests: Array<{ id: number; slug: string; title: string; status: string; year: number; path: string }>;
   breadcrumbs: Array<{ label: string; canonicalPath: string }>;
   updatedAt: string | null;
 };
@@ -166,6 +167,10 @@ export const parsePublicOrganization = (value: unknown): PublicOrganization | nu
       ? question
       : null;
   });
+  const contests = mapRecords(value.contests, (item) => {
+    const contest = { id: nonNegativeInt(item.id), slug: text(item.slug), title: text(item.title), status: text(item.status), year: nonNegativeInt(item.year), path: publicPath(item.path) };
+    return contest.id > 0 && contest.slug && contest.title && contest.path === publicRoutes.contests.detail(contest.slug) ? contest : null;
+  });
   const breadcrumbs = mapRecords(value.breadcrumbs, (item) => {
     const breadcrumb = { label: text(item.label), canonicalPath: publicPath(item.canonicalPath) };
     return breadcrumb.label
@@ -196,6 +201,7 @@ export const parsePublicOrganization = (value: unknown): PublicOrganization | nu
     boards,
     exams,
     questions,
+    contests,
     breadcrumbs,
     updatedAt: nullableText(value.updatedAt),
   };

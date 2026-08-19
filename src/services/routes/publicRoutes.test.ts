@@ -19,6 +19,9 @@ describe('publicRoutes', () => {
     expect(publicRoutes.boards.detail('cebraspe')).toBe('/bancas/cebraspe');
     expect(publicRoutes.organizations.index({ letra: 'P' })).toBe('/orgaos?letra=P');
     expect(publicRoutes.organizations.detail('policia-federal')).toBe('/orgaos/policia-federal');
+    expect(publicRoutes.contests.index({ ano: 2026, status: 'registration_open' })).toBe('/concursos?ano=2026&status=registration_open');
+    expect(publicRoutes.contests.detail('concurso-pf-2026')).toBe('/concursos/concurso-pf-2026');
+    expect(publicRoutes.contests.open()).toBe('/concursos-abertos');
   });
 
   it('preserves supported state and repeated parameters without adding pagination', () => {

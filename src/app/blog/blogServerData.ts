@@ -88,6 +88,7 @@ export interface PublicExamDetail extends Omit<PublicExamDirectoryItem, 'board' 
   examTypes: PublicExamTaxonomy[];
   files: PublicExamFile[];
   relatedExams: PublicExamDirectoryItem[];
+  contest: { id: number; slug: string; title: string; status: string; path: string } | null;
 }
 
 const apiBaseUrl = () => resolveAbsoluteApiBaseUrl(

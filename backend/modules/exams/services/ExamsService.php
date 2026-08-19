@@ -16,6 +16,7 @@ require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
 require_once __DIR__ . '/ExamLocationClassifier.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 require_once __DIR__ . '/../../seo/taxonomy/PublicTaxonomyExposurePolicy.php';
+require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 
 class ExamsService
 {
@@ -214,6 +215,7 @@ class ExamsService
             'examTypes' => $this->publicTaxonomyList($taxonomies['tipo_prova'] ?? []),
             'files' => $files,
             'relatedExams' => $relatedExams,
+            'contest' => $this->publicContest($this->repository->findPublicContestForExam((int) $exam['id'])),
             ...$location,
         ];
 
@@ -261,6 +263,24 @@ class ExamsService
             $items,
             static fn (mixed $item): bool => is_array($item) && $exposure->allowsOrganization($item)
         )));
+    }
+
+    /** @param array<string,mixed>|null $contest @return array<string,mixed>|null */
+    private function publicContest(?array $contest): ?array
+    {
+        if ($contest === null) return null;
+        $slug = trim((string) ($contest['slug'] ?? ''));
+        $id = (int) ($contest['id'] ?? 0);
+        $title = trim((string) ($contest['title'] ?? ''));
+        if ($id <= 0 || $title === '' || strlen($slug) > 190
+            || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) !== 1) return null;
+        return [
+            'id' => $id,
+            'slug' => $slug,
+            'title' => $title,
+            'status' => (string) ($contest['status'] ?? ''),
+            'path' => (new PublicRouteBuilder())->contestDetail($slug),
+        ];
     }
 
     private function firstTaxonomyMetadataValue(array $items, string $key): ?string

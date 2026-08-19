@@ -237,6 +237,15 @@ export const publicRoutes = {
       query,
     ),
   },
+  contests: {
+    index: (query?: PublicRouteQuery) => withQuery('contest_hub', buildPath('contest_hub', {}), query),
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'contest_detail',
+      buildPath('contest_detail', { slug }),
+      query,
+    ),
+    open: (query?: PublicRouteQuery) => withQuery('open_contests', buildPath('open_contests', {}), query),
+  },
 } as const;
 
 export const structuralPublicRoutePolicy = policy;

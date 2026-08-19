@@ -22,7 +22,7 @@ class FiltersRepository
 {
     public const PUBLIC_DISCIPLINE_QUERY_BUDGET = 6;
     public const PUBLIC_KNOWLEDGE_TAXONOMY_QUERY_BUDGET = 6;
-    public const PUBLIC_ORGANIZATION_QUERY_BUDGET = 6;
+    public const PUBLIC_ORGANIZATION_QUERY_BUDGET = 7;
 
     private PDO $db;
 
@@ -384,7 +384,7 @@ class FiltersRepository
     }
 
     /**
-     * Carrega o perfil publico de um orgao em seis consultas constantes.
+     * Carrega o perfil publico de um orgao em sete consultas constantes.
      * Nenhuma consulta depende da quantidade de cards retornados.
      *
      * @return array<string, mixed>|null
@@ -514,6 +514,21 @@ class FiltersRepository
         $boardsStmt->bindValue(':limit', max(1, $boardLimit), PDO::PARAM_INT);
         $boardsStmt->execute();
 
+        $contestsStmt = $this->db->prepare(
+            "SELECT c.id, c.slug, c.title, c.domain_status AS status, c.year
+               FROM contest_organizations co
+               INNER JOIN contests c ON c.id = co.contest_id
+              WHERE co.organization_filter_id = :organization_id
+                AND c.publication_status = 'published'
+                AND c.visibility_status = 'public'
+                AND c.archived_at IS NULL
+                AND (c.scheduled_at IS NULL OR c.scheduled_at <= NOW())
+                AND BINARY c.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+              ORDER BY COALESCE(c.registration_end_at, c.updated_at) DESC, c.id DESC
+              LIMIT 8"
+        );
+        $contestsStmt->execute([':organization_id' => $organizationId]);
+
         return [
             'identity' => $identity,
             'questions' => $questionsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
@@ -521,6 +536,7 @@ class FiltersRepository
             'roles' => $rolesStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
             'disciplines' => $disciplinesStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
             'boards' => $boardsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'contests' => $contestsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [],
         ];
     }
 
