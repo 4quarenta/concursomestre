@@ -100,6 +100,34 @@ const board = {
   examCount: 1,
   website: 'https://example.com',
 };
+const organization = {
+  id: 11,
+  slug: 'orgao-de-teste',
+  name: 'Órgão de Teste',
+  acronym: 'ODT',
+  description: 'Órgão público usado para validar a landing SSR.',
+  website: 'https://example.com/orgao',
+  imageUrl: null,
+  stateCode: 'PB',
+  sphere: 'Estadual',
+  canonicalPath: '/orgaos/orgao-de-teste',
+  questionsPath: '/questoes?orgao=%C3%93rg%C3%A3o%20de%20Teste',
+  questionCount: 1,
+  examCount: 1,
+  roles: [{ id: 12, name: 'Analista', questionsPath: '/questoes?cargo=Analista' }],
+  disciplines: [{ id: 20, slug: 'direito-constitucional', name: 'Direito Constitucional', questionCount: 1, path: '/disciplinas/direito-constitucional' }],
+  boards: [{ id: 10, slug: 'cebraspe', name: 'Centro Brasileiro de Pesquisa em Avaliação', acronym: 'CEBRASPE', examCount: 1, path: '/bancas/cebraspe' }],
+  exams: [{ id: 101, slug: 'prova-ssr-2026', name: 'Prova SSR 2026', year: 2026, questionCount: 1, path: '/provas/prova-ssr-2026' }],
+  questions: [{ id: 67813, excerpt: 'Art. 5º — Ação & Controle', updatedAt: '2026-08-18', path: '/questoes/67813/art-5o-acao-e-controle', correctAnswer: 'SECRET_CORRECT_ANSWER_SENTINEL_246' }],
+  breadcrumbs: [
+    { label: 'Início', canonicalPath: '/' },
+    { label: 'Órgãos', canonicalPath: '/orgaos' },
+    { label: 'Órgão de Teste', canonicalPath: '/orgaos/orgao-de-teste' },
+  ],
+  updatedAt: '2026-08-18T12:00:00Z',
+  externalImporterIdentity: 'SECRET_IMPORTER_SENTINEL',
+  adminNote: 'SECRET_ADMIN_NOTE_SENTINEL',
+};
 const lawSummary = {
   id: 'law-1', slug: 'constituicao-federal', title: 'Constituição Federal', shortTitle: 'CF',
   summary: 'Texto constitucional público.', articleCount: 1, commentedArticleCount: 1,
@@ -171,10 +199,16 @@ const payloadFor = (url) => {
   if (pathname === '/exams/directory.php') return { success: true, data: { items: [examItem], pageInfo: { page: 1, limit: 12, totalItems: 1, totalPages: 1, hasPrevious: false, hasNext: false }, facets: { years: [2026], regions: ['Nordeste'], states: [{ code: 'PB', name: 'Paraíba' }] } } };
   if (pathname === '/exams/detail.php') return { success: true, data: { exam } };
   if (pathname === '/filters/directory.php') {
-    const isBoard = url.searchParams.get('type') === 'boards';
-    return { success: true, data: { items: isBoard ? [board] : [{ ...board, id: 20, name: 'Direito Constitucional', slug: 'direito-constitucional', acronym: null }], pageInfo } };
+    const type = url.searchParams.get('type');
+    const items = type === 'boards'
+      ? [board]
+      : type === 'organizations'
+        ? [{ ...organization, canonicalPath: undefined, questionsPath: undefined, roles: undefined, disciplines: undefined, boards: undefined, exams: undefined, questions: undefined, breadcrumbs: undefined }]
+        : [{ ...board, id: 20, name: 'Direito Constitucional', slug: 'direito-constitucional', acronym: null }];
+    return { success: true, data: { items, pageInfo } };
   }
   if (pathname === '/filters/board.php') return { success: true, data: { board, examSummary: { total: 1, open: 0, upcoming: 1, completed: 0, unknown: 0 }, topSubjects: [{ id: 20, name: 'Direito Constitucional', slug: 'direito-constitucional', questionCount: 1 }], questionProfile: [{ modality: 'multiple_choice', difficulty: 2, questionCount: 1 }], exams: [{ ...examItem, organizations: ['Órgão de Teste'], registrationStart: null, registrationEnd: null, examDate: '2026-03-01', resultDate: null, status: 'upcoming' }], pageInfo } };
+  if (pathname === '/filters/organization.php') return { success: true, data: organization };
   if (pathname === '/blog/detail.php') return { success: true, data: article };
   if (pathname === '/blog/list.php') return { success: true, data: { items: [article], pageInfo: { limit: 24, hasMore: false, nextCursor: null, total: 1 } } };
   if (pathname === '/blog/categories.php') return { success: true, data: { items: [category] } };
@@ -209,6 +243,10 @@ const server = createServer((request, response) => {
   if (url.pathname.replace(/^\/api\//, '/') === '/legal-commentary/detail.php' && url.searchParams.get('slug') !== lawSummary.slug) {
     count(url.pathname);
     return json(response, 404, { success: false, message: 'Lei nao encontrada.' }, origin);
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/filters/organization.php' && url.searchParams.get('slug') !== organization.slug) {
+    count(url.pathname);
+    return json(response, 404, { success: false, message: 'Orgao nao encontrado.' }, origin);
   }
   count(url.pathname);
   return json(response, 200, payloadFor(url), origin);

@@ -19,7 +19,7 @@ try {
         'subtopico' => ['type' => 'assunto', 'taxonomy_level' => 'subtopico', 'meta_materia' => 0, 'route' => null],
         'assunto' => ['type' => 'assunto', 'taxonomy_level' => 'assunto', 'meta_materia' => 0, 'route' => 'subject_detail'],
         'banca' => ['type' => 'banca', 'taxonomy_level' => null, 'meta_materia' => 0, 'route' => 'board_detail'],
-        'orgao' => ['type' => 'orgao', 'taxonomy_level' => 'assunto', 'meta_materia' => 0, 'route' => null],
+        'orgao' => ['type' => 'orgao', 'taxonomy_level' => 'assunto', 'meta_materia' => 0, 'route' => 'organization_detail'],
         'cargo' => ['type' => 'cargo', 'taxonomy_level' => 'topico', 'meta_materia' => 0, 'route' => null],
         'ano' => ['type' => 'ano', 'taxonomy_level' => 'materia', 'meta_materia' => 0, 'route' => null],
     ];

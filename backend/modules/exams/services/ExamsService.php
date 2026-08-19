@@ -15,6 +15,7 @@ require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
 require_once __DIR__ . '/ExamLocationClassifier.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
+require_once __DIR__ . '/../../seo/taxonomy/PublicTaxonomyExposurePolicy.php';
 
 class ExamsService
 {
@@ -145,7 +146,7 @@ class ExamsService
         }
 
         $taxonomies = is_array($exam['taxonomies'] ?? null) ? $exam['taxonomies'] : [];
-        $organizations = $this->publicTaxonomyList($taxonomies['orgao'] ?? []);
+        $organizations = $this->publicOrganizationList($taxonomies['orgao'] ?? []);
         $boards = $this->publicTaxonomyList($taxonomies['banca'] ?? []);
         $location = ExamLocationClassifier::classify([
             $exam['nome'] ?? '',
@@ -251,6 +252,15 @@ class ExamsService
             'name' => (string) ($item['nome'] ?? $item['name'] ?? ''),
             'slug' => (string) ($item['slug'] ?? ''),
         ], array_filter($items, 'is_array')));
+    }
+
+    private function publicOrganizationList(array $items): array
+    {
+        $exposure = new PublicTaxonomyExposurePolicy();
+        return $this->publicTaxonomyList(array_values(array_filter(
+            $items,
+            static fn (mixed $item): bool => is_array($item) && $exposure->allowsOrganization($item)
+        )));
     }
 
     private function firstTaxonomyMetadataValue(array $items, string $key): ?string

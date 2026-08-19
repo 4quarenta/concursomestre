@@ -18,6 +18,7 @@ foreach ([
     "f.type = 'assunto'",
     "f.taxonomy_level = 'materia'",
     "f.type = 'banca'",
+    "f.type = 'orgao'",
     'COUNT(DISTINCT q.id) AS question_count',
     'COUNT(DISTINCT p.id) AS exam_count',
     "p.status_editorial = 'published'",
@@ -32,7 +33,7 @@ foreach (['items', 'pageInfo', 'questionCount', 'examCount', 'imageUrl', 'hasChi
     $assertContains($service, $needle, "Contrato publico nao entrega {$needle}.");
 }
 
-foreach (['handlePublicTaxonomyDirectoryRoute', 'handlePublicTaxonomyHierarchyRoute', "['subjects', 'boards']", 'per_page', 'parent_id'] as $needle) {
+foreach (['handlePublicTaxonomyDirectoryRoute', 'handlePublicTaxonomyHierarchyRoute', "['subjects', 'boards', 'organizations']", 'per_page', 'parent_id'] as $needle) {
     $assertContains($routes . $service, $needle, "Rota publica nao valida {$needle}.");
 }
 

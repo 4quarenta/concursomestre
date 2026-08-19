@@ -15,6 +15,7 @@ require_once __DIR__ . '/../repositories/FiltersRepository.php';
 require_once __DIR__ . '/../validators/FiltersValidator.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 require_once __DIR__ . '/../projections/PublicDisciplineProjection.php';
+require_once __DIR__ . '/../projections/PublicOrganizationProjection.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/services/SeoSlugService.php';
 require_once __DIR__ . '/../../seo/taxonomy/PublicTaxonomyExposurePolicy.php';
@@ -198,7 +199,7 @@ class FiltersService
     }
 
     /**
-     * Contrato publico minimo para as bibliotecas de disciplinas e bancas.
+     * Contrato publico minimo para diretorios de taxonomias e entidades.
      */
     public function listPublicDirectory(
         string $directoryType,
@@ -207,7 +208,7 @@ class FiltersService
         string $search = '',
         string $letter = ''
     ): array {
-        if (!in_array($directoryType, ['subjects', 'boards'], true)) {
+        if (!in_array($directoryType, ['subjects', 'boards', 'organizations'], true)) {
             throw new InvalidArgumentException('Tipo de diretorio publico invalido.');
         }
 
@@ -218,6 +219,14 @@ class FiltersService
             $search,
             $letter
         );
+
+        $rows = $pageData['rows'];
+        if ($directoryType === 'organizations') {
+            $exposure = new PublicTaxonomyExposurePolicy();
+            $rows = array_values(array_filter($rows, static fn (array $row): bool => $exposure->allowsOrganization(
+                $row + ['type' => 'orgao', 'taxonomy_level' => null]
+            )));
+        }
 
         $items = array_map(function (array $row) use ($directoryType): array {
             $item = [
@@ -234,11 +243,14 @@ class FiltersService
             if ($directoryType === 'boards') {
                 return $this->publicSeoEnvelope->attachBoard($item);
             }
+            if ($directoryType === 'organizations') {
+                return $this->publicSeoEnvelope->attachOrganization($item);
+            }
 
             $taxonomyPayload = $this->publicSeoEnvelope->attachTaxonomy($item + ['taxonomyLevel' => 'materia']);
             unset($taxonomyPayload['taxonomyLevel']);
             return $taxonomyPayload;
-        }, $pageData['rows']);
+        }, $rows);
 
         return [
             'items' => $items,
@@ -300,6 +312,62 @@ class FiltersService
                 'canonicalPath' => $routes->disciplineDetail((string) ($identity['slug'] ?? '')),
             ],
         ]);
+    }
+
+    /** @return array<string, mixed>|null */
+    public function getPublicOrganizationProjection(string $slug): ?array
+    {
+        $slug = strtolower(trim($slug));
+        if ($slug === '' || strlen($slug) > 190 || preg_match('/^[a-z0-9-]+$/', $slug) !== 1) {
+            return null;
+        }
+
+        $data = $this->repository->fetchPublicOrganizationProjectionData($slug);
+        if ($data === null) {
+            return null;
+        }
+        $identity = is_array($data['identity'] ?? null) ? $data['identity'] : [];
+        if (!(new PublicTaxonomyExposurePolicy())->allowsOrganization($identity)) {
+            return null;
+        }
+
+        $routes = new PublicRouteBuilder();
+        $slugger = new SeoSlugService();
+        $persistedSlug = (string) ($identity['slug'] ?? '');
+        $organizationName = (string) ($identity['name'] ?? '');
+        $data['canonicalPath'] = $routes->organizationDetail($persistedSlug);
+        $data['questionsPath'] = $routes->questionsIndex(['orgao' => $organizationName]);
+        $data['roles'] = array_map(static function (array $role) use ($routes): array {
+            $role['questionsPath'] = $routes->questionsIndex(['cargo' => (string) ($role['name'] ?? '')]);
+            return $role;
+        }, is_array($data['roles'] ?? null) ? $data['roles'] : []);
+        $data['disciplines'] = array_map(static function (array $discipline) use ($routes): array {
+            $discipline['path'] = $routes->disciplineDetail((string) ($discipline['slug'] ?? ''));
+            return $discipline;
+        }, is_array($data['disciplines'] ?? null) ? $data['disciplines'] : []);
+        $data['boards'] = array_map(static function (array $board) use ($routes): array {
+            $board['path'] = $routes->boardDetail((string) ($board['slug'] ?? ''));
+            return $board;
+        }, is_array($data['boards'] ?? null) ? $data['boards'] : []);
+        $data['exams'] = array_map(static function (array $exam) use ($routes): array {
+            $exam['path'] = $routes->examDetail((string) ($exam['slug'] ?? ''));
+            return $exam;
+        }, is_array($data['exams'] ?? null) ? $data['exams'] : []);
+        $data['questions'] = array_map(static function (array $question) use ($routes, $slugger): array {
+            $id = (int) ($question['id'] ?? 0);
+            $question['path'] = $routes->questionDetail(
+                $id,
+                $slugger->slug((string) ($question['excerpt'] ?? ''), 'questao', $id)
+            );
+            return $question;
+        }, is_array($data['questions'] ?? null) ? $data['questions'] : []);
+
+        $projection = PublicOrganizationProjection::fromRepositoryData($data, [
+            ['label' => 'Início', 'canonicalPath' => '/'],
+            ['label' => 'Órgãos', 'canonicalPath' => $routes->organizationsIndex()],
+            ['label' => $organizationName, 'canonicalPath' => $routes->organizationDetail($persistedSlug)],
+        ]);
+        return $this->publicSeoEnvelope->attachOrganization($projection);
     }
 
     public function getPublicBoardDetail(string $slug, int $page, int $perPage, string $status = 'all'): ?array

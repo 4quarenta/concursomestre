@@ -72,6 +72,11 @@ class FiltersController
         return $this->service->getPublicDisciplineProjection($slug);
     }
 
+    public function getPublicOrganizationDetail(string $slug): ?array
+    {
+        return $this->service->getPublicOrganizationProjection($slug);
+    }
+
     public function listPublicTaxonomyChildren(int $parentId, int $page, int $perPage): array
     {
         return $this->service->listPublicTaxonomyChildren($parentId, $page, $perPage);

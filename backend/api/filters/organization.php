@@ -7,9 +7,4 @@ require_once __DIR__ . '/../../modules/filters/routes.php';
 $database = new Database('read');
 $db = $database->getConnection();
 
-if (strtolower(trim((string) ($_GET['view'] ?? ''))) === 'hierarchy') {
-    handlePublicTaxonomyHierarchyRoute($db);
-    return;
-}
-
-handlePublicTaxonomyDirectoryRoute($db);
+handlePublicOrganizationDetailRoute($db);

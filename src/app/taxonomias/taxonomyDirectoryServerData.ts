@@ -5,7 +5,7 @@ import {
   type SeoEnvelopeCarrier,
 } from '@services/seo/seoEnvelope';
 
-export type PublicTaxonomyDirectoryKind = 'subjects' | 'boards';
+export type PublicTaxonomyDirectoryKind = 'subjects' | 'boards' | 'organizations';
 
 export type PublicTaxonomyDirectoryItem = SeoEnvelopeCarrier & {
   id: number;

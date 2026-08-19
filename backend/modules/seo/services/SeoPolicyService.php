@@ -81,7 +81,13 @@ final class SeoPolicyService
             ? SeoInstanceReadiness::validate($input['instanceReadiness'])
             : SeoInstanceReadiness::fromSignals($publication, $quality, $currentImplementationReady);
         $displayName = (string) ($facts['identity']['displayName'] ?? '');
-        $slug = $this->slugs->slug($displayName, $resourceType, $resourceId);
+        $canonicalSlug = trim((string) ($input['canonicalSlug'] ?? ''));
+        if ($canonicalSlug !== '' && preg_match('/^[a-z0-9-]{1,190}$/', $canonicalSlug) !== 1) {
+            throw new InvalidArgumentException('Slug canonico persistido invalido para SeoPolicyService.');
+        }
+        $slug = $canonicalSlug !== ''
+            ? $canonicalSlug
+            : $this->slugs->slug($displayName, $resourceType, $resourceId);
         $routeParameters = is_array($input['routeParameters'] ?? null) ? $input['routeParameters'] : [];
         $routeParameters['id'] = $resourceId;
         $routeParameters['slug'] = $slug;
@@ -233,7 +239,7 @@ final class SeoPolicyService
         return match ($familyId) {
             'question_detail', 'questions_hub' => 'questions',
             'exam_detail', 'exam_hub' => 'exams',
-            'board_detail', 'board_hub', 'discipline_detail', 'discipline_hub', 'topic_detail', 'subject_detail' => 'taxonomies',
+            'board_detail', 'board_hub', 'discipline_detail', 'discipline_hub', 'topic_detail', 'subject_detail', 'organization_detail', 'organizations_hub' => 'taxonomies',
             'law_detail', 'law_hub' => 'laws',
             'blog_article', 'blog_hub' => 'articles',
             default => 'pages',

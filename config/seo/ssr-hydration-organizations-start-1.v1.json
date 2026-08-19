@@ -1,0 +1,61 @@
+{
+  "version": "ssr-hydration-organizations-start-1.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "securitySentinels": [
+    "SECRET_CORRECT_ANSWER_SENTINEL_246",
+    "SECRET_TEACHER_COMMENT_SENTINEL",
+    "SECRET_DETAILED_ANALYSIS_SENTINEL",
+    "SECRET_IMPORTER_SENTINEL",
+    "SECRET_ADMIN_NOTE_SENTINEL"
+  ],
+  "routes": [
+    {
+      "key": "organizations_hub",
+      "path": "/orgaos",
+      "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"],
+      "canonical": "/orgaos",
+      "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"],
+      "schemaCanonicalRequired": true,
+      "expectedMainCount": 1,
+      "expectedH1Count": 1,
+      "requiredRawText": ["Órgãos", "Órgão de Teste"],
+      "requiredRawLinks": ["/orgaos/orgao-de-teste"]
+    },
+    {
+      "key": "organization_detail",
+      "path": "/orgaos/orgao-de-teste",
+      "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"],
+      "canonical": "/orgaos/orgao-de-teste",
+      "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "Organization", "BreadcrumbList", "ItemList"],
+      "schemaCanonicalRequired": true,
+      "expectedMainCount": 1,
+      "expectedH1Count": 1,
+      "requiredRawText": ["Órgão de Teste (ODT)", "Órgão público usado para validar a landing SSR."],
+      "requiredRawLinks": [
+        "/orgaos",
+        "/questoes?orgao=%C3%93rg%C3%A3o%20de%20Teste",
+        "/questoes?cargo=Analista",
+        "/disciplinas/direito-constitucional",
+        "/bancas/cebraspe",
+        "/provas/prova-ssr-2026",
+        "/questoes/67813/art-5o-acao-e-controle"
+      ]
+    },
+    {
+      "key": "organization_detail_not_found",
+      "path": "/orgaos/orgao-inexistente-start-1",
+      "maturity": "error",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"],
+      "expectedStatus": 404,
+      "canonicalAbsent": true,
+      "expectNoIndex": true
+    }
+  ]
+}

@@ -211,6 +211,18 @@ export const publicRoutes = {
       query,
     ),
   },
+  organizations: {
+    index: (query?: PublicRouteQuery) => withQuery(
+      'organizations_hub',
+      buildPath('organizations_hub', {}),
+      query,
+    ),
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'organization_detail',
+      buildPath('organization_detail', { slug }),
+      query,
+    ),
+  },
 } as const;
 
 export const structuralPublicRoutePolicy = policy;

@@ -93,6 +93,11 @@ try {
     launchAssert($productionPilot['indexability']['status'] === 'NOINDEX', 'PRODUCTION promoted a PILOT family.');
     launchAssert(in_array('indexability.launch_not_active', $productionPilot['indexability']['reasonCodes'], true), 'PILOT launch reason missing.');
 
+    $organizationFamily = $map->family('organization_detail');
+    launchAssert(($organizationFamily['launchStatus'] ?? null) === 'ACTIVE', 'Familia de orgao nao foi ativada como implementada.');
+    launchAssert(($organizationFamily['targetProductionIndexability'] ?? null) === 'INDEX', 'Target de orgao deixou de ser INDEX.');
+    launchAssert(($organizationFamily['sitemapTarget'] ?? null) === 'INCLUDE_WHEN_READY', 'Target de sitemap do orgao foi removido.');
+
     $notReady = $service('PRODUCTION')->decide(array_merge($input, [
         'instanceReadiness' => ['status' => 'NOT_READY', 'reasonCodes' => ['instance_readiness.pending']],
     ]));

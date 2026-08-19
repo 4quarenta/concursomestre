@@ -41,6 +41,24 @@ final class PublicTaxonomyExposurePolicy
             && preg_match('/[\x00-\x1F\x7F\/\\?#]/u', $slug) !== 1;
     }
 
+    /** @param array<string, mixed> $filter */
+    public function allowsOrganization(array $filter): bool
+    {
+        $classification = TaxonomyClassification::fromFilter($filter);
+        $name = $this->normalize((string) ($filter['name'] ?? ''));
+        $slug = trim((string) ($filter['slug'] ?? ''));
+        $level = strtolower(trim((string) ($filter['taxonomy_level'] ?? '')));
+
+        return $classification['kind'] === 'orgao'
+            && $classification['pending'] === false
+            && !in_array($level, ['internal', 'technical'], true)
+            && $name !== ''
+            && !in_array($name, $this->blockedNames, true)
+            && $slug !== ''
+            && strlen($slug) <= 190
+            && preg_match('/^[a-z0-9-]+$/', $slug) === 1;
+    }
+
     private function normalize(string $value): string
     {
         $value = trim(function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value));

@@ -17,7 +17,7 @@ export const buildTaxonomyDirectoryMetadata = ({
 }: {
   title: string;
   description: string;
-  path: '/disciplinas' | '/bancas';
+  path: '/disciplinas' | '/bancas' | '/orgaos';
   searchParams: DirectoryMetadataSearchParams;
 }): Metadata => {
   const functionalKeys = Object.keys(searchParams).filter((key) => (

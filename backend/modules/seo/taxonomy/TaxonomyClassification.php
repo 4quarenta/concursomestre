@@ -18,7 +18,7 @@ final class TaxonomyClassification
     {
         $type = strtolower(trim((string) ($filter['type'] ?? '')));
         $level = strtolower(trim((string) ($filter['taxonomy_level'] ?? '')));
-        $pending = $type === 'assunto' && $level === 'pending';
+        $pending = $level === 'pending';
         $isMatter = $type === 'materia'
             || ($type === 'assunto' && ($level === 'materia' || self::truthy($filter['meta_materia'] ?? false)));
 
@@ -26,7 +26,7 @@ final class TaxonomyClassification
             return self::result('banca', null, 'category', 'board_detail', false, false);
         }
         if ($type === 'orgao') {
-            return self::result('orgao', null, 'organization', null, false, false);
+            return self::result('orgao', null, 'organization', $pending ? null : 'organization_detail', false, $pending);
         }
         if ($type === 'cargo') {
             return self::result('cargo', null, 'role', null, false, false);

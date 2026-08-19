@@ -52,6 +52,11 @@ try {
         'Builder PHP de banca divergente.'
     );
     publicRouteAssert(
+        $builder->organizationsIndex(['letra' => 'P']) === '/orgaos?letra=P'
+            && $builder->organizationDetail('policia-federal') === '/orgaos/policia-federal',
+        'Builder PHP de orgao divergente.'
+    );
+    publicRouteAssert(
         in_array('/practice', $policy->patterns('questions_hub', true), true)
             && in_array('/questions', $policy->patterns('questions_hub', true), true),
         'Aliases antigos de questoes nao estao declarados na policy.'

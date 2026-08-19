@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BookOpen, ChevronLeft, ChevronRight, FileText, Landmark, ListChecks, Search } from 'lucide-react';
+import { BookOpen, Building2, ChevronLeft, ChevronRight, FileText, Landmark, ListChecks, Search } from 'lucide-react';
 import { buildSiteUrl } from '@/config/siteUrl';
 import { serializeStructuredData } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
@@ -15,12 +15,12 @@ import { fetchPublicTaxonomyDirectory, type PublicTaxonomyDirectoryKind } from '
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 type DirectoryConfig = {
-  path: '/disciplinas' | '/bancas';
+  path: '/disciplinas' | '/bancas' | '/orgaos';
   title: string;
   singular: string;
   description: string;
   searchPlaceholder: string;
-  practiceQueryKey: 'materia' | 'banca';
+  practiceQueryKey: 'materia' | 'banca' | 'orgao';
 };
 
 const CONFIG: Record<PublicTaxonomyDirectoryKind, DirectoryConfig> = {
@@ -39,6 +39,14 @@ const CONFIG: Record<PublicTaxonomyDirectoryKind, DirectoryConfig> = {
     description: 'Conheça as bancas disponíveis e pratique com questões organizadas por perfil de cobrança.',
     searchPlaceholder: 'Buscar por nome ou sigla...',
     practiceQueryKey: 'banca',
+  },
+  organizations: {
+    path: '/orgaos',
+    title: 'Órgãos',
+    singular: 'órgão',
+    description: 'Encontre órgãos públicos e navegue por questões e provas associadas a cada instituição.',
+    searchPlaceholder: 'Buscar por nome ou sigla...',
+    practiceQueryKey: 'orgao',
   },
 };
 
@@ -68,9 +76,9 @@ export default async function PublicTaxonomyDirectory({
   const letter = /^[A-Z]$/.test(letterCandidate) ? letterCandidate : '';
   const requestedPage = Math.max(1, Number.parseInt(String(params.pagina || '1'), 10) || 1);
   const directory = await fetchPublicTaxonomyDirectory({ type, page: requestedPage, search, letter });
-  const jsonLd = {
-    '@context': 'https://schema.org',
+  const collectionSchema = {
     '@type': 'CollectionPage',
+    '@id': `${buildSiteUrl(config.path)}#webpage`,
     name: config.title,
     description: config.description,
     url: buildSiteUrl(config.path),
@@ -83,14 +91,35 @@ export default async function PublicTaxonomyDirectory({
         name: item.name,
         url: buildSiteUrl(type === 'boards'
           ? buildBoardPath(item)
-          : publicRoutes.disciplines.detail(item.slug)),
+          : type === 'organizations'
+            ? publicRoutes.organizations.detail(item.slug)
+            : publicRoutes.disciplines.detail(item.slug)),
       })),
     },
   };
+  const jsonLd = type === 'organizations' ? {
+    '@context': 'https://schema.org',
+    '@graph': [collectionSchema, {
+      '@type': 'BreadcrumbList',
+      '@id': `${buildSiteUrl(config.path)}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Início', item: buildSiteUrl('/') },
+        { '@type': 'ListItem', position: 2, name: 'Órgãos', item: buildSiteUrl('/orgaos') },
+      ],
+    }],
+  } : { '@context': 'https://schema.org', ...collectionSchema };
 
   return (
     <div className="w-full animate-fade-in space-y-5">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }} />
+
+      {type === 'organizations' ? (
+        <nav data-breadcrumbs aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">
+          <Link href="/" prefetch={false} className="hover:text-[#615fff] hover:underline">Início</Link>
+          <ChevronRight size={12} aria-hidden="true" />
+          <span aria-current="page" className="text-slate-700 dark:text-slate-200">Órgãos</span>
+        </nav>
+      ) : null}
 
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
@@ -115,6 +144,14 @@ export default async function PublicTaxonomyDirectory({
             className={`inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-colors sm:flex-none ${type === 'boards' ? 'bg-[#615fff] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800'}`}
           >
             <Landmark size={15} /> Bancas
+          </Link>
+          <Link
+            href="/orgaos"
+            prefetch={false}
+            aria-current={type === 'organizations' ? 'page' : undefined}
+            className={`inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-colors sm:flex-none ${type === 'organizations' ? 'bg-[#615fff] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+          >
+            <Building2 size={15} /> Órgãos
           </Link>
         </nav>
       </header>
@@ -177,7 +214,7 @@ export default async function PublicTaxonomyDirectory({
         {directory.items.length > 0 ? (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {directory.items.map((item) => {
-              const displayName = type === 'boards' && item.acronym && item.acronym !== item.name
+              const displayName = type !== 'subjects' && item.acronym && item.acronym !== item.name
                 ? `${item.acronym} - ${item.name}`
                 : item.name;
               if (type === 'subjects') {
@@ -186,11 +223,11 @@ export default async function PublicTaxonomyDirectory({
               return (
                 <Link
                   key={item.id}
-                  href={buildBoardPath(item)}
+                  href={type === 'organizations' ? publicRoutes.organizations.detail(item.slug) : buildBoardPath(item)}
                   prefetch={false}
                   className="group flex min-h-20 flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-950/40 sm:px-5"
                 >
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[#615fff] dark:bg-indigo-500/10 dark:text-indigo-300"><Landmark size={17} /></span>
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-50 text-[#615fff] dark:bg-indigo-500/10 dark:text-indigo-300">{type === 'organizations' ? <Building2 size={17} /> : <Landmark size={17} />}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-black text-slate-900 transition-colors group-hover:text-[#615fff] dark:text-slate-100">{displayName}</span>
                     {item.description ? <span className="mt-1 line-clamp-1 block text-xs text-slate-500 dark:text-slate-400">{item.description}</span> : null}

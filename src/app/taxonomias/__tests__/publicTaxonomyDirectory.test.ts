@@ -11,9 +11,10 @@ const footerSource = readSource('src/components/shared/layout/Footer.tsx');
 const hierarchySource = readSource('src/app/taxonomias/PublicSubjectTaxonomyAccordion.tsx');
 
 describe('public taxonomy directories', () => {
-  it('renders disciplines and boards on the server with search, alphabet and pagination', () => {
+  it('renders disciplines, boards and organizations on the server with search, alphabet and pagination', () => {
     expect(readSource('src/app/disciplinas/page.tsx')).toContain('type="subjects"');
     expect(readSource('src/app/bancas/page.tsx')).toContain('type="boards"');
+    expect(readSource('src/app/orgaos/page.tsx')).toContain('type="organizations"');
     expect(directorySource).toContain('LETTERS.map');
     expect(directorySource).toContain('name="busca"');
     expect(directorySource).toContain('directory.pageInfo.hasMore');
@@ -22,6 +23,7 @@ describe('public taxonomy directories', () => {
     expect(serverDataSource).toContain('examCount');
     expect(serverDataSource).toContain("include_counts', 'questions,exams'");
     expect(directorySource).toContain('item.examCount');
+    expect(directorySource).toContain('publicRoutes.organizations.detail(item.slug)');
   });
 
   it('expands topics and subjects only when the user opens a taxonomy branch', () => {
@@ -45,6 +47,7 @@ describe('public taxonomy directories', () => {
     );
     expect(shelllessRoutes).not.toContain("'/disciplinas'");
     expect(shelllessRoutes).not.toContain("'/bancas'");
+    expect(shelllessRoutes).not.toContain("'/orgaos'");
     expect(directorySource).not.toContain('PublicTaxonomyHeader');
     expect(directorySource).not.toContain('PublicTaxonomyFooter');
     expect(landingSource).toContain("{ label: 'Disciplinas', href: '/disciplinas' }");
@@ -72,5 +75,6 @@ describe('public taxonomy directories', () => {
     expect(boardPage).toContain("publicRoutes.questions.index({ agency: board.acronym || board.name })");
     expect(questionCard).toContain('buildBoardPath(board)');
     expect(examPage).toContain('buildBoardPath(exam.board)');
+    expect(examPage).toContain('publicRoutes.organizations.detail(organization.slug)');
   });
 });

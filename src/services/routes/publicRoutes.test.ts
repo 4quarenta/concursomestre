@@ -15,6 +15,8 @@ describe('publicRoutes', () => {
     expect(publicRoutes.exams.detail('pmpb-2026-soldado')).toBe('/provas/pmpb-2026-soldado');
     expect(publicRoutes.disciplines.detail('direito-constitucional')).toBe('/disciplinas/direito-constitucional');
     expect(publicRoutes.boards.detail('cebraspe')).toBe('/bancas/cebraspe');
+    expect(publicRoutes.organizations.index({ letra: 'P' })).toBe('/orgaos?letra=P');
+    expect(publicRoutes.organizations.detail('policia-federal')).toBe('/orgaos/policia-federal');
   });
 
   it('preserves supported state and repeated parameters without adding pagination', () => {

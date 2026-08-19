@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildTaxonomyDirectoryMetadata } from './directoryMetadata';
 
-const build = (path: '/disciplinas' | '/bancas', searchParams: Record<string, string | string[]>) => (
+const build = (path: '/disciplinas' | '/bancas' | '/orgaos', searchParams: Record<string, string | string[]>) => (
   buildTaxonomyDirectoryMetadata({ title: 'Diretório', description: 'Diretório público.', path, searchParams })
 );
 
@@ -34,5 +34,14 @@ describe('buildTaxonomyDirectoryMetadata', () => {
   it('keeps clean pagination canonical and drops tracking from canonical', () => {
     expect(build('/bancas', { pagina: '2', utm_source: 'email' }).alternates?.canonical).toBe('/bancas?pagina=2');
     expect(build('/bancas', { gclid: 'abc' }).alternates?.canonical).toBe('/bancas');
+  });
+
+  it('keeps organization filters noindex with the clean hub canonical', () => {
+    vi.stubEnv('SEO_LAUNCH_MODE', 'PRODUCTION');
+    expect(build('/orgaos', { busca: 'policia' })).toMatchObject({
+      alternates: { canonical: '/orgaos' },
+      robots: { index: false, follow: true },
+    });
+    expect(build('/orgaos', { letra: 'P' }).alternates?.canonical).toBe('/orgaos');
   });
 });

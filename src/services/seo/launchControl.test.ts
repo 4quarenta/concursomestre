@@ -93,8 +93,29 @@ describe('SEO launch control', () => {
     });
     expect(resolveXRobotsTag('/disciplinas/direito', new URLSearchParams(), 'PRODUCTION'))
       .toBe('noindex, follow');
-    expect(resolveXRobotsTag('/orgaos/policia-federal', new URLSearchParams(), 'PRODUCTION'))
-      .toBe('noindex, follow');
+  });
+
+  it('promotes ready organization routes only in PRODUCTION', () => {
+    const base = {
+      launchMode: 'PRODUCTION' as const,
+      instanceReadiness: ready,
+      publicationAllowed: true,
+      resolutionAction: 'render' as const,
+      httpStatus: 200,
+      canonicalValid: true,
+      qualityPass: true,
+    };
+    expect(evaluateSeoLaunchControl({ ...base, family: family('organizations_hub') }))
+      .toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
+    expect(evaluateSeoLaunchControl({ ...base, family: family('organization_detail') }))
+      .toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
+    expect(evaluateSeoLaunchControl({
+      ...base,
+      family: family('organization_detail'),
+      instanceReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.pending'] },
+    })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
+    expect(resolveXRobotsTag('/orgaos/policia-federal', new URLSearchParams(), 'PRODUCTION')).toBeNull();
+    expect(resolveXRobotsTag('/orgaos/policia-federal', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
   });
 
   it('keeps canonical metadata while applying PRELAUNCH noindex', () => {

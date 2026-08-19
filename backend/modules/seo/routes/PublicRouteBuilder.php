@@ -53,6 +53,17 @@ final class PublicRouteBuilder
         return $this->requiredPath('board_detail', ['slug' => $persistedSlug]);
     }
 
+    /** @param array<string, scalar|list<scalar>|null> $query */
+    public function organizationsIndex(array $query = []): string
+    {
+        return $this->withQuery('organizations_hub', $this->requiredPath('organizations_hub'), $query);
+    }
+
+    public function organizationDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('organization_detail', ['slug' => $persistedSlug]);
+    }
+
     /** @param array<string, string|int> $parameters */
     private function requiredPath(string $familyId, array $parameters = []): string
     {

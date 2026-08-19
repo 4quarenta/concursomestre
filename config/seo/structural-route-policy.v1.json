@@ -289,6 +289,26 @@
       "paginationPolicy": "query_page"
     },
     {
+      "id": "organizations_hub",
+      "patterns": ["/orgaos"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "busca", "letra", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "organization_detail",
+      "patterns": ["/orgaos/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
       "id": "exam_hub",
       "patterns": ["/provas"],
       "legacyPatterns": ["/blog/provas"],

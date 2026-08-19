@@ -45,7 +45,7 @@ function handleFiltersListRoute(PDO $db): void
 }
 
 /**
- * Diretorio publico paginado de disciplinas ou bancas.
+ * Diretorio publico paginado de disciplinas, bancas ou orgaos.
  */
 function handlePublicTaxonomyDirectoryRoute(PDO $db): void
 {
@@ -124,6 +124,31 @@ function handlePublicDisciplineDetailRoute(PDO $db): void
         Response::badRequest($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel carregar a disciplina.', $e);
+    }
+}
+
+/**
+ * Landing publica allowlist de um orgao canonico.
+ */
+function handlePublicOrganizationDetailRoute(PDO $db): void
+{
+    try {
+        $slug = trim((string) ($_GET['slug'] ?? ''));
+        $controller = new FiltersController(
+            new FiltersService(
+                new FiltersRepository($db),
+                new FiltersValidator()
+            )
+        );
+        $payload = $controller->getPublicOrganizationDetail($slug);
+        if ($payload === null) {
+            Response::notFound('Orgao nao encontrado.');
+        }
+        Response::success($payload);
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar o orgao.', $e);
     }
 }
 

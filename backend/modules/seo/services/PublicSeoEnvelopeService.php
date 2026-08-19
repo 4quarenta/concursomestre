@@ -83,6 +83,14 @@ final class PublicSeoEnvelopeService
     /** @param array<string, mixed> $payload
      *  @return array<string, mixed>
      */
+    public function attachOrganization(array $payload): array
+    {
+        return $this->attach($payload, $this->organizationProjection($payload));
+    }
+
+    /** @param array<string, mixed> $payload
+     *  @return array<string, mixed>
+     */
     public function attachLaw(array $payload): array
     {
         return $this->attach($payload, $this->lawProjection($payload));
@@ -128,6 +136,7 @@ final class PublicSeoEnvelopeService
             'routeFamily' => $projection['routeFamily'] ?? '',
             'routeParameters' => $projection['routeParameters'] ?? [],
             'requestedSlug' => $projection['requestedSlug'] ?? '',
+            'canonicalSlug' => $projection['canonicalSlug'] ?? '',
             'canonicalEnvironment' => $projection['canonicalEnvironment'] ?? true,
         ]);
 
@@ -336,6 +345,38 @@ final class PublicSeoEnvelopeService
             ],
             'qualityEvidence' => [
                 'hierarchyValid' => !$parentRequired || $parentName !== null || (int) ($payload['parentId'] ?? 0) > 0,
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $payload
+     *  @return array<string, mixed>
+     */
+    private function organizationProjection(array $payload): array
+    {
+        $id = (string) ($payload['id'] ?? '');
+        return [
+            'resourceType' => 'taxonomy',
+            'resourceId' => $id,
+            'existence' => 'exists',
+            'routeFamily' => 'organization_detail',
+            'routeParameters' => [],
+            'requestedSlug' => (string) ($payload['slug'] ?? ''),
+            'canonicalSlug' => (string) ($payload['slug'] ?? ''),
+            'publicationInput' => $this->implicitPublicInput(),
+            'publicData' => [
+                'id' => $id,
+                'displayName' => (string) ($payload['name'] ?? ''),
+                'taxonomyKind' => 'organization',
+                'publicDescription' => (string) ($payload['description'] ?? ''),
+                'parentName' => null,
+                'rootName' => null,
+                'publicItemCount' => (int) ($payload['questionCount'] ?? 0) + (int) ($payload['examCount'] ?? 0),
+                'primaryImage' => $this->imageFromUrl($payload['imageUrl'] ?? null, (string) ($payload['name'] ?? '')),
+                'breadcrumbs' => [],
+            ],
+            'qualityEvidence' => [
+                'hierarchyValid' => true,
             ],
         ];
     }
