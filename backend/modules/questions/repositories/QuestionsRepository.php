@@ -1749,10 +1749,26 @@ class QuestionsRepository
                     f.type,
                     f.name,
                     f.slug,
-                    f.parent_id,
-                    f.meta_materia,
-                    f.taxonomy_level,
-                    parent.id AS taxonomy_parent_id,
+                     f.parent_id,
+                     f.meta_materia,
+                     f.taxonomy_level,
+                     CASE
+                       WHEN f.type <> 'carreira' THEN 1
+                       WHEN EXISTS (
+                         SELECT 1
+                           FROM question_filters qf_cargo
+                           INNER JOIN filters cargo
+                             ON cargo.id = qf_cargo.filter_id
+                            AND cargo.type = 'cargo'
+                           INNER JOIN filter_relationships career_link
+                             ON career_link.source_filter_id = cargo.id
+                            AND career_link.target_filter_id = f.id
+                            AND career_link.relation_type = 'cargo_career'
+                          WHERE qf_cargo.question_id = qf.question_id
+                       ) THEN 1
+                       ELSE 0
+                     END AS professional_relation_ready,
+                     parent.id AS taxonomy_parent_id,
                     parent.parent_id AS taxonomy_parent_parent_id,
                     parent.type AS taxonomy_parent_type,
                     parent.name AS taxonomy_parent_name,

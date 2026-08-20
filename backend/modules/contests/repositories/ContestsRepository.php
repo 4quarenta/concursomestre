@@ -74,12 +74,14 @@ final class ContestsRepository
                 AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
                 AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
             WHERE co.contest_id = :id ORDER BY co.is_primary DESC, f.name", $id);
-        $positions = $this->fetchAll("SELECT cp.id, f.id AS roleId, f.name, cp.vacancies,
+        $positions = $this->fetchAll("SELECT cp.id, f.id AS roleId, f.slug, f.name, cp.vacancies,
                 cp.reserve_registry AS reserveRegistry, cp.salary_min AS salaryMin, cp.salary_max AS salaryMax,
                 cp.education_level AS educationLevel, cp.weekly_hours AS weeklyHours, cp.location_label AS locationLabel
             FROM contest_positions cp INNER JOIN filters f ON f.id = cp.role_filter_id
                 AND f.type = 'cargo'
                 AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+                AND TRIM(f.name) <> ''
+                AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
             WHERE cp.contest_id = :id ORDER BY f.name", $id);
         $documents = $this->fetchAll("SELECT id, document_type AS type, title, public_url AS url, published_at AS publishedAt
             FROM contest_documents WHERE contest_id = :id AND publication_status = 'published'

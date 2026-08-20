@@ -22,6 +22,10 @@ describe('publicRoutes', () => {
     expect(publicRoutes.contests.index({ ano: 2026, status: 'registration_open' })).toBe('/concursos?ano=2026&status=registration_open');
     expect(publicRoutes.contests.detail('concurso-pf-2026')).toBe('/concursos/concurso-pf-2026');
     expect(publicRoutes.contests.open()).toBe('/concursos-abertos');
+    expect(publicRoutes.careers.index({ letra: 'F' })).toBe('/carreiras?letra=F');
+    expect(publicRoutes.careers.detail('carreira-fiscal')).toBe('/carreiras/carreira-fiscal');
+    expect(publicRoutes.positions.index({ busca: 'auditor' })).toBe('/cargos?busca=auditor');
+    expect(publicRoutes.positions.detail('auditor-fiscal')).toBe('/cargos/auditor-fiscal');
   });
 
   it('preserves supported state and repeated parameters without adding pagination', () => {

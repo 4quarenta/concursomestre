@@ -13,9 +13,9 @@ try {
     $blogGenerator = (string) file_get_contents($root . '/backend/modules/seo/sitemaps/StaticBlogSitemapGenerator.php');
     phase4BudgetAssert(is_dir($root . '/src/app/disciplinas/[slug]'), 'Piloto SSR de disciplina nao foi criado.');
     $disciplinePage = (string) file_get_contents($root . '/src/app/disciplinas/[slug]/page.tsx');
-    $disciplineMetadata = (string) file_get_contents($root . '/src/app/disciplinas/disciplineMetadata.ts');
-    phase4BudgetAssert(str_contains($disciplineMetadata, 'index: false'), 'Piloto de disciplina deixou de ser NOINDEX.');
-    phase4BudgetAssert(str_contains($disciplineMetadata, 'follow: true'), 'Piloto de disciplina deixou de permitir follow.');
+    $taxonomyMetadata = (string) file_get_contents($root . '/src/app/taxonomias/knowledgeTaxonomyMetadata.ts');
+    phase4BudgetAssert(str_contains($taxonomyMetadata, 'evaluateSeoLaunchControl'), 'Taxonomias deixaram de aplicar launch control.');
+    phase4BudgetAssert(str_contains($taxonomyMetadata, 'launchModeRobots(true)'), 'PRELAUNCH deixou de produzir NOINDEX,follow.');
     phase4BudgetAssert(str_contains($disciplinePage, 'notFound()'), 'Piloto de disciplina nao possui hard 404.');
     phase4BudgetAssert(!str_contains($generator, 'disciplineDetail('), 'Sitemap passou a emitir disciplinas.');
     phase4BudgetAssert(!str_contains($generator, "'/concursos' =>"), 'Sitemap ainda emite /concursos NOINDEX.');
@@ -23,6 +23,10 @@ try {
         phase4BudgetAssert(!str_contains($blogGenerator, $prefix), 'Sitemap ainda emite taxonomia sem promocao: ' . $prefix);
     }
     phase4BudgetAssert(!str_contains($generator, '/disciplinas/{slug}'), 'Sitemap contem template de disciplina.');
+    phase4BudgetAssert(
+        str_contains($generator, '$launchMode !== SeoLaunchMode::PRODUCTION && !$simulation'),
+        'PRELAUNCH deixou de bloquear publicacao materializada do sitemap.'
+    );
 
     echo "Phase4IndexBudgetTest: PASS\n";
     exit(0);

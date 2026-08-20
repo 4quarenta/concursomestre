@@ -237,6 +237,18 @@ export const publicRoutes = {
       query,
     ),
   },
+  careers: {
+    index: (query?: PublicRouteQuery) => withQuery('careers_hub', buildPath('careers_hub', {}), query),
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'career_detail', buildPath('career_detail', { slug }), query,
+    ),
+  },
+  positions: {
+    index: (query?: PublicRouteQuery) => withQuery('positions_hub', buildPath('positions_hub', {}), query),
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'position_detail', buildPath('position_detail', { slug }), query,
+    ),
+  },
   contests: {
     index: (query?: PublicRouteQuery) => withQuery('contest_hub', buildPath('contest_hub', {}), query),
     detail: (slug: string, query?: PublicRouteQuery) => withQuery(

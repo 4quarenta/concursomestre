@@ -17,6 +17,7 @@ require_once __DIR__ . '/ExamLocationClassifier.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 require_once __DIR__ . '/../../seo/taxonomy/PublicTaxonomyExposurePolicy.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
+require_once __DIR__ . '/../../filters/professional/ProfessionalTaxonomyReadinessValidator.php';
 
 class ExamsService
 {
@@ -208,8 +209,8 @@ class ExamsService
             'officialUrl' => trim((string) ($exam['urlOficial'] ?? '')) ?: null,
             'board' => $boards[0] ?? null,
             'organizations' => $organizations,
-            'roles' => $this->publicTaxonomyList($taxonomies['cargo'] ?? []),
-            'careers' => $this->publicTaxonomyList($taxonomies['carreira'] ?? []),
+            'roles' => $this->publicProfessionalTaxonomyList($taxonomies['cargo'] ?? [], 'position'),
+            'careers' => $this->publicProfessionalTaxonomyList($taxonomies['carreira'] ?? [], 'career'),
             'areas' => $this->publicTaxonomyList(array_merge($taxonomies['area'] ?? [], $taxonomies['foco'] ?? [])),
             'subjects' => $this->publicTaxonomyList($taxonomies['materia'] ?? []),
             'examTypes' => $this->publicTaxonomyList($taxonomies['tipo_prova'] ?? []),
@@ -262,6 +263,16 @@ class ExamsService
         return $this->publicTaxonomyList(array_values(array_filter(
             $items,
             static fn (mixed $item): bool => is_array($item) && $exposure->allowsOrganization($item)
+        )));
+    }
+
+    private function publicProfessionalTaxonomyList(array $items, string $kind): array
+    {
+        $type = $kind === 'career' ? 'carreira' : 'cargo';
+        return $this->publicTaxonomyList(array_values(array_filter(
+            $items,
+            static fn (mixed $item): bool => is_array($item)
+                && ProfessionalTaxonomyReadinessValidator::evaluate($item + ['type' => $type], $kind)['status'] === 'READY'
         )));
     }
 

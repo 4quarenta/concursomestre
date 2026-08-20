@@ -22,7 +22,7 @@ final class PublicContestProjection
             'organizations' => self::items($data['organizations'] ?? [], ['id', 'slug', 'name', 'acronym', 'path']),
             'board' => self::item($data['board'] ?? null, ['id', 'slug', 'name', 'acronym', 'path']),
             'positions' => self::items($data['positions'] ?? [], [
-                'id', 'roleId', 'name', 'vacancies', 'reserveRegistry', 'salaryMin', 'salaryMax',
+                'id', 'roleId', 'slug', 'name', 'path', 'vacancies', 'reserveRegistry', 'salaryMin', 'salaryMax',
                 'educationLevel', 'weeklyHours', 'locationLabel',
             ]),
             'documents' => self::publicDocuments($data['documents'] ?? []),

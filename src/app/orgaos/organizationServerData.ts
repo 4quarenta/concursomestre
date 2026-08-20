@@ -8,7 +8,9 @@ import {
 
 export type PublicOrganizationRole = {
   id: number;
+  slug: string;
   name: string;
+  path: string;
   questionsPath: string;
 };
 
@@ -113,10 +115,13 @@ export const parsePublicOrganization = (value: unknown): PublicOrganization | nu
   const roles = mapRecords(value.roles, (item) => {
     const role = {
       id: nonNegativeInt(item.id),
+      slug: text(item.slug),
       name: text(item.name),
+      path: publicPath(item.path),
       questionsPath: publicPath(item.questionsPath),
     };
-    return role.id > 0 && role.name && role.questionsPath.startsWith('/questoes?')
+    return role.id > 0 && role.slug && role.name && role.path === publicRoutes.positions.detail(role.slug)
+      && role.questionsPath.startsWith('/questoes?')
       && isQuestionsIndexPath(role.questionsPath) ? role : null;
   });
   const disciplines = mapRecords(value.disciplines, (item) => {

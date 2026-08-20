@@ -463,13 +463,15 @@ class FiltersRepository
         $examsStmt->execute();
 
         $rolesStmt = $this->db->prepare(
-            "SELECT cargo.id, cargo.name
+            "SELECT cargo.id, cargo.slug, cargo.name
                FROM filter_relationships relationship
                INNER JOIN filters cargo ON cargo.id = relationship.source_filter_id AND cargo.type = 'cargo'
               WHERE relationship.target_filter_id = :organization_id
                 AND relationship.relation_type = 'cargo_organization'
                 AND COALESCE(cargo.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
-              GROUP BY cargo.id, cargo.name
+                AND TRIM(cargo.name) <> ''
+                AND BINARY cargo.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+              GROUP BY cargo.id, cargo.slug, cargo.name
               ORDER BY cargo.name ASC
               LIMIT :limit"
         );

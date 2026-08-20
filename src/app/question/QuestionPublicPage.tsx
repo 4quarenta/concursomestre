@@ -75,6 +75,10 @@ const readQuestionTaxonomyLinks = (question: Question): PublicTaxonomyLink[] => 
         ? publicRoutes.topics.detail(slug)
         : level === 'assunto'
           ? publicRoutes.subjects.detail(slug)
+          : level === 'cargo'
+            ? publicRoutes.positions.detail(slug)
+            : level === 'carreira'
+              ? publicRoutes.careers.detail(slug)
           : '';
     if (href) links.set(href, { key: `${level}:${slug}`, label, href });
   };
@@ -82,6 +86,8 @@ const readQuestionTaxonomyLinks = (question: Question): PublicTaxonomyLink[] => 
   (question.filters?.subjects || question.filters?.materias || []).forEach((item) => add(item, 'materia'));
   (question.filters?.topics || question.filters?.topicos || []).forEach((item) => add(item, 'topico'));
   (question.filters?.subtopics || question.filters?.assuntos || []).forEach((item) => add(item));
+  (question.filters?.roles || question.filters?.cargos || []).forEach((item) => add(item, 'cargo'));
+  (question.filters?.careers || question.filters?.carreiras || []).forEach((item) => add(item, 'carreira'));
   (question.assuntos || []).forEach((item) => add(item, item.materia ? 'materia' : ''));
   return [...links.values()];
 };

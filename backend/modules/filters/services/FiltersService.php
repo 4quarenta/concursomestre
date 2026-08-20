@@ -16,6 +16,7 @@ require_once __DIR__ . '/../validators/FiltersValidator.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 require_once __DIR__ . '/../projections/PublicKnowledgeTaxonomyProjection.php';
 require_once __DIR__ . '/../projections/PublicOrganizationProjection.php';
+require_once __DIR__ . '/../professional/ProfessionalTaxonomyReadinessValidator.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/services/SeoSlugService.php';
 require_once __DIR__ . '/../../seo/taxonomy/PublicTaxonomyExposurePolicy.php';
@@ -518,9 +519,14 @@ class FiltersService
         $data['canonicalPath'] = $routes->organizationDetail($persistedSlug);
         $data['questionsPath'] = $routes->questionsIndex(['orgao' => $organizationName]);
         $data['roles'] = array_map(static function (array $role) use ($routes): array {
+            $role['path'] = $routes->positionDetail((string) ($role['slug'] ?? ''));
             $role['questionsPath'] = $routes->questionsIndex(['cargo' => (string) ($role['name'] ?? '')]);
             return $role;
-        }, is_array($data['roles'] ?? null) ? $data['roles'] : []);
+        }, array_values(array_filter(
+            is_array($data['roles'] ?? null) ? $data['roles'] : [],
+            static fn (mixed $role): bool => is_array($role)
+                && ProfessionalTaxonomyReadinessValidator::evaluate($role + ['type' => 'cargo'], 'position')['status'] === 'READY'
+        )));
         $data['disciplines'] = array_map(static function (array $discipline) use ($routes): array {
             $discipline['path'] = $routes->disciplineDetail((string) ($discipline['slug'] ?? ''));
             return $discipline;

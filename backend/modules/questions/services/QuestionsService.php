@@ -23,6 +23,7 @@ require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
 require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/taxonomy/KnowledgeTaxonomyHierarchyValidator.php';
+require_once __DIR__ . '/../../filters/professional/ProfessionalTaxonomyReadinessValidator.php';
 
 class QuestionsService
 {
@@ -3857,9 +3858,18 @@ class QuestionsService
             } elseif ($type === 'orgao') {
                 $buckets['orgaos'][] = $base + ['sigla' => $name];
             } elseif ($type === 'cargo') {
-                $buckets['cargos'][] = $base + ['descricao' => $name, 'description' => $name, 'pai' => $parentId];
+                $buckets['cargos'][] = $base + [
+                    'descricao' => $name, 'description' => $name, 'pai' => $parentId,
+                    'taxonomyLevel' => 'cargo', 'taxonomy_level' => 'cargo',
+                    'seoReady' => ProfessionalTaxonomyReadinessValidator::evaluate($filter, 'position')['status'] === 'READY',
+                ];
             } elseif ($type === 'carreira') {
-                $buckets['carreiras'][] = $base + ['description' => $name, 'pai' => $parentId];
+                $buckets['carreiras'][] = $base + [
+                    'description' => $name, 'pai' => $parentId,
+                    'taxonomyLevel' => 'carreira', 'taxonomy_level' => 'carreira',
+                    'seoReady' => ProfessionalTaxonomyReadinessValidator::evaluate($filter, 'career')['status'] === 'READY'
+                        && (int) ($filter['professional_relation_ready'] ?? 0) === 1,
+                ];
             } elseif ($type === 'assunto') {
                 $explicitLevel = strtolower(trim((string) ($filter['taxonomy_level'] ?? '')));
                 $taxonomyLevel = in_array($explicitLevel, ['materia', 'topico', 'subtopico', 'assunto'], true)

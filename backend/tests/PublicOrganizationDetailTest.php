@@ -41,7 +41,7 @@ function publicOrganizationFixture(array $overrides = []): array
             'question_count' => 42, 'exam_count' => 3, 'content_updated_at' => '2026-08-18',
             'external_identity' => 'SECRET_IMPORTER_SENTINEL',
         ], $overrides),
-        'roles' => [['id' => 71, 'name' => 'Agente']],
+        'roles' => [['id' => 71, 'slug' => 'agente', 'name' => 'Agente']],
         'disciplines' => [['id' => 10, 'slug' => 'direito', 'name' => 'Direito', 'questionCount' => 12]],
         'boards' => [['id' => 30, 'slug' => 'cebraspe', 'name' => 'Cebraspe', 'acronym' => 'CEBRASPE', 'examCount' => 2]],
         'exams' => [['id' => 20, 'slug' => 'pf-2026', 'name' => 'PF 2026', 'year' => 2026, 'questionCount' => 5]],
@@ -65,7 +65,8 @@ try {
     publicOrganizationAssert(is_array($projection), 'Orgao valido nao resolveu.');
     publicOrganizationAssert(($projection['canonicalPath'] ?? '') === '/orgaos/policia-federal', 'Canonical nao usa slug persistido.');
     publicOrganizationAssert(($projection['questionsPath'] ?? '') === '/questoes?orgao=Pol%C3%ADcia%20Federal', 'Faceta de orgao divergente.');
-    publicOrganizationAssert(($projection['roles'][0]['questionsPath'] ?? '') === '/questoes?cargo=Agente', 'Cargo criou rota inexistente.');
+    publicOrganizationAssert(($projection['roles'][0]['path'] ?? '') === '/cargos/agente', 'Cargo nao usa o slug persistido.');
+    publicOrganizationAssert(($projection['roles'][0]['questionsPath'] ?? '') === '/questoes?cargo=Agente', 'Faceta funcional de cargo divergente.');
     publicOrganizationAssert(($projection['disciplines'][0]['path'] ?? '') === '/disciplinas/direito', 'Link de disciplina divergente.');
     publicOrganizationAssert(($projection['boards'][0]['path'] ?? '') === '/bancas/cebraspe', 'Link de banca divergente.');
     publicOrganizationAssert(($projection['exams'][0]['path'] ?? '') === '/provas/pf-2026', 'Slug de prova foi regenerado.');

@@ -26,7 +26,7 @@ final class PublicOrganizationProjection
             'questionsPath' => trim((string) ($data['questionsPath'] ?? '')),
             'questionCount' => max(0, (int) ($identity['question_count'] ?? 0)),
             'examCount' => max(0, (int) ($identity['exam_count'] ?? 0)),
-            'roles' => self::mapList($data['roles'] ?? [], ['id', 'name', 'questionsPath']),
+            'roles' => self::mapList($data['roles'] ?? [], ['id', 'slug', 'name', 'path', 'questionsPath']),
             'disciplines' => self::mapList($data['disciplines'] ?? [], ['id', 'slug', 'name', 'questionCount', 'path']),
             'boards' => self::mapList($data['boards'] ?? [], ['id', 'slug', 'name', 'acronym', 'examCount', 'path']),
             'exams' => self::mapList($data['exams'] ?? [], ['id', 'slug', 'name', 'year', 'questionCount', 'path']),

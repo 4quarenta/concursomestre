@@ -1,0 +1,71 @@
+{
+  "version": "ssr-hydration-careers-positions-start-4.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "securitySentinels": [
+    "SECRET_CORRECT_ANSWER_SENTINEL_246",
+    "SECRET_IMPORTER_SENTINEL",
+    "SECRET_PROVIDER_SENTINEL",
+    "SECRET_ADMIN_NOTE_SENTINEL"
+  ],
+  "routes": [
+    {
+      "key": "careers_hub", "path": "/carreiras", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/carreiras", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Carreiras", "Carreira Fiscal"], "requiredRawLinks": ["/carreiras/carreira-fiscal", "/cargos"]
+    },
+    {
+      "key": "career_detail", "path": "/carreiras/carreira-fiscal", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/carreiras/carreira-fiscal", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Carreira Fiscal", "Cargos desta carreira"],
+      "requiredRawLinks": ["/carreiras", "/cargos/analista", "/questoes?career=Carreira%20Fiscal", "/concursos"]
+    },
+    {
+      "key": "positions_hub", "path": "/cargos", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/cargos", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Cargos", "Analista"], "requiredRawLinks": ["/cargos/analista", "/carreiras"]
+    },
+    {
+      "key": "position_detail", "path": "/cargos/analista", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/cargos/analista", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Analista", "Carreiras relacionadas"],
+      "requiredRawLinks": ["/cargos", "/carreiras/carreira-fiscal", "/questoes?role=Analista", "/concursos?cargo=Analista"]
+    },
+    {
+      "key": "organization_position_interlink", "path": "/orgaos/orgao-de-teste", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/orgaos/orgao-de-teste", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "Organization", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawLinks": ["/cargos/analista"]
+    },
+    {
+      "key": "contest_position_interlink", "path": "/concursos/concurso-canonico-2026", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/concursos/concurso-canonico-2026", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawLinks": ["/cargos/analista"]
+    },
+    {
+      "key": "exam_professional_interlinks", "path": "/provas/prova-ssr-2026", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/provas/prova-ssr-2026", "expectNoIndex": true,
+      "schemaTypes": ["LearningResource"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawLinks": ["/cargos/analista"]
+    },
+    {
+      "key": "question_professional_interlinks", "path": "/questoes/67813/art-5o-acao-e-controle", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/questoes/67813/art-5o-acao-e-controle", "expectNoIndex": true,
+      "schemaTypes": ["Quiz"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawLinks": ["/cargos/analista", "/carreiras/carreira-fiscal"]
+    },
+    { "key": "career_missing", "path": "/carreiras/carreira-inexistente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "position_missing", "path": "/cargos/cargo-inexistente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true }
+  ]
+}

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildTaxonomyDirectoryMetadata } from './directoryMetadata';
 
-const build = (path: '/disciplinas' | '/bancas' | '/orgaos', searchParams: Record<string, string | string[]>) => (
+const build = (path: '/disciplinas' | '/bancas' | '/orgaos' | '/carreiras' | '/cargos', searchParams: Record<string, string | string[]>) => (
   buildTaxonomyDirectoryMetadata({ title: 'Diretório', description: 'Diretório público.', path, searchParams })
 );
 
@@ -43,5 +43,13 @@ describe('buildTaxonomyDirectoryMetadata', () => {
       robots: { index: false, follow: true },
     });
     expect(build('/orgaos', { letra: 'P' }).alternates?.canonical).toBe('/orgaos');
+  });
+
+  it.each(['/carreiras', '/cargos'] as const)('keeps professional filters noindex for %s', (path) => {
+    vi.stubEnv('SEO_LAUNCH_MODE', 'PRODUCTION');
+    expect(build(path, { busca: 'auditor', letra: 'A', sort: 'nome', foo: 'bar' })).toMatchObject({
+      alternates: { canonical: path },
+      robots: { index: false, follow: true },
+    });
   });
 });

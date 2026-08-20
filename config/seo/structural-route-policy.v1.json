@@ -313,6 +313,46 @@
       "paginationPolicy": "none"
     },
     {
+      "id": "careers_hub",
+      "patterns": ["/carreiras"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "busca", "letra", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "career_detail",
+      "patterns": ["/carreiras/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "positions_hub",
+      "patterns": ["/cargos"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "busca", "letra", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "position_detail",
+      "patterns": ["/cargos/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
       "id": "exam_hub",
       "patterns": ["/provas"],
       "legacyPatterns": ["/blog/provas"],

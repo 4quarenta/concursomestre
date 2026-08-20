@@ -15,7 +15,7 @@ const payload = {
   questionsPath: '/questoes?orgao=Pol%C3%ADcia%20Federal',
   questionCount: 42,
   examCount: 3,
-  roles: [{ id: 71, name: 'Agente', questionsPath: '/questoes?cargo=Agente' }],
+  roles: [{ id: 71, slug: 'agente', name: 'Agente', path: '/cargos/agente', questionsPath: '/questoes?cargo=Agente' }],
   disciplines: [{ id: 10, slug: 'direito', name: 'Direito', questionCount: 12, path: '/disciplinas/direito' }],
   boards: [{ id: 30, slug: 'cebraspe', name: 'Cebraspe', acronym: 'CEBRASPE', examCount: 2, path: '/bancas/cebraspe' }],
   exams: [{ id: 20, slug: 'pf-2026', name: 'PF 2026', year: 2026, questionCount: 5, path: '/provas/pf-2026' }],
@@ -35,6 +35,7 @@ describe('organizationServerData', () => {
     const parsed = parsePublicOrganization(payload);
     const serialized = JSON.stringify(parsed);
     expect(parsed?.canonicalPath).toBe('/orgaos/policia-federal');
+    expect(parsed?.roles[0].path).toBe('/cargos/agente');
     expect(parsed?.roles[0].questionsPath).toBe('/questoes?cargo=Agente');
     expect(serialized).not.toContain('SECRET_CORRECT_ANSWER_SENTINEL');
     expect(serialized).not.toContain('SECRET_IMPORTER_SENTINEL');

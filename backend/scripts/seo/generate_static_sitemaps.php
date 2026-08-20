@@ -119,7 +119,7 @@ try {
     };
 
     $files = [];
-    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'contests' => 0, 'taxonomies' => 0];
+    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'contests' => 0, 'taxonomies' => 0, 'professional' => 0];
     $institutionalSources = [
         '/' => ['source' => 'src/app/page.tsx', 'familyId' => 'home'],
         '/planos' => ['source' => 'src/app/planos/page.tsx', 'familyId' => 'plans'],
@@ -130,6 +130,8 @@ try {
         $routes->examsIndex() => ['source' => 'src/app/provas/page.tsx', 'familyId' => 'exam_hub'],
         $routes->contestsIndex() => ['source' => 'src/app/concursos/page.tsx', 'familyId' => 'contest_hub'],
         $routes->openContests() => ['source' => 'src/app/concursos-abertos/page.tsx', 'familyId' => 'open_contests'],
+        $routes->careersIndex() => ['source' => 'src/app/carreiras/page.tsx', 'familyId' => 'careers_hub'],
+        $routes->positionsIndex() => ['source' => 'src/app/cargos/page.tsx', 'familyId' => 'positions_hub'],
         '/disciplinas' => ['source' => 'src/app/disciplinas/page.tsx', 'familyId' => 'discipline_hub'],
         '/bancas' => ['source' => 'src/app/bancas/page.tsx', 'familyId' => 'board_hub'],
         '/novidades' => ['source' => 'src/app/novidades/page.tsx', 'familyId' => 'news'],
@@ -375,6 +377,52 @@ try {
         $write($stage . '/' . $filename, $buildUrlSet($entries));
         $files[] = ['name' => $filename, 'lastmod' => null];
         $counts['taxonomies'] += count($entries);
+    }
+
+    $professionalCursor = 0;
+    $professionalPage = 0;
+    while (true) {
+        $queryCount++;
+        $stmt = $db->prepare(
+            "SELECT id, type, slug
+               FROM filters
+              WHERE id > :cursor
+                AND type IN ('carreira', 'cargo')
+                AND COALESCE(taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+                AND TRIM(name) <> ''
+                AND LOWER(TRIM(name)) NOT IN (
+                    'outros', 'outras', 'diversos', 'diversas', 'geral',
+                    'nao informado', 'não informado', 'sem classificacao',
+                    'sem classificação', 'a definir', 'cargo nao identificado',
+                    'cargo não identificado'
+                )
+                AND CHAR_LENGTH(slug) <= 190
+                AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+              ORDER BY id
+              LIMIT {$batchSize}"
+        );
+        $stmt->execute([':cursor' => $professionalCursor]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if ($rows === []) break;
+        $entries = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $slug = trim((string) ($row['slug'] ?? ''));
+            $professionalCursor = max($professionalCursor, $id);
+            if ($id <= 0 || $slug === '') continue;
+            $path = ($row['type'] ?? '') === 'carreira'
+                ? $routes->careerDetail($slug)
+                : $routes->positionDetail($slug);
+            $entries[] = ['loc' => $baseUrl . $path, 'lastmod' => null];
+        }
+        if ($entries !== []) {
+            $professionalPage++;
+            $filename = sprintf('professional-%05d.xml', $professionalPage);
+            $write($stage . '/' . $filename, $buildUrlSet($entries));
+            $files[] = ['name' => $filename, 'lastmod' => null];
+            $counts['professional'] += count($entries);
+        }
+        if (count($rows) < $batchSize) break;
     }
 
     $blogGenerator = new StaticBlogSitemapGenerator($db, $baseUrl, $stage, $batchSize);

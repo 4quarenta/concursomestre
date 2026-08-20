@@ -75,6 +75,28 @@ final class PublicRouteBuilder
     }
 
     /** @param array<string, scalar|list<scalar>|null> $query */
+    public function careersIndex(array $query = []): string
+    {
+        return $this->withQuery('careers_hub', $this->requiredPath('careers_hub'), $query);
+    }
+
+    public function careerDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('career_detail', ['slug' => $persistedSlug]);
+    }
+
+    /** @param array<string, scalar|list<scalar>|null> $query */
+    public function positionsIndex(array $query = []): string
+    {
+        return $this->withQuery('positions_hub', $this->requiredPath('positions_hub'), $query);
+    }
+
+    public function positionDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('position_detail', ['slug' => $persistedSlug]);
+    }
+
+    /** @param array<string, scalar|list<scalar>|null> $query */
     public function contestsIndex(array $query = []): string
     {
         return $this->withQuery('contest_hub', $this->requiredPath('contest_hub'), $query);

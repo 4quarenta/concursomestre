@@ -62,6 +62,16 @@ try {
         'Builder PHP de orgao divergente.'
     );
     publicRouteAssert(
+        $builder->careersIndex(['letra' => 'F']) === '/carreiras?letra=F'
+            && $builder->careerDetail('carreira-fiscal') === '/carreiras/carreira-fiscal',
+        'Builder PHP de carreira divergente.'
+    );
+    publicRouteAssert(
+        $builder->positionsIndex(['busca' => 'auditor']) === '/cargos?busca=auditor'
+            && $builder->positionDetail('auditor-fiscal') === '/cargos/auditor-fiscal',
+        'Builder PHP de cargo divergente.'
+    );
+    publicRouteAssert(
         in_array('/practice', $policy->patterns('questions_hub', true), true)
             && in_array('/questions', $policy->patterns('questions_hub', true), true),
         'Aliases antigos de questoes nao estao declarados na policy.'

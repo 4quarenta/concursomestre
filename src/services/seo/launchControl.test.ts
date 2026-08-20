@@ -141,6 +141,19 @@ describe('SEO launch control', () => {
     expect(evaluateSeoLaunchControl({ ...input, launchMode: 'PRODUCTION', family: family('contest_detail'), publicationAllowed: false }).sitemapEligible).toBe(false);
   });
 
+  it('promotes READY career and position families only in PRODUCTION', () => {
+    const input = {
+      launchMode: 'PRODUCTION' as const, instanceReadiness: ready, publicationAllowed: true,
+      resolutionAction: 'render' as const, httpStatus: 200, canonicalValid: true, qualityPass: true,
+    };
+    for (const id of ['careers_hub', 'career_detail', 'positions_hub', 'position_detail']) {
+      expect(evaluateSeoLaunchControl({ ...input, family: family(id) })).toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
+      expect(evaluateSeoLaunchControl({ ...input, launchMode: 'PRELAUNCH', family: family(id) })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
+    }
+    expect(evaluateSeoLaunchControl({ ...input, family: family('position_detail'), instanceReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.placeholder'] } })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
+    expect(resolveXRobotsTag('/cargos/auditor-fiscal', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
+  });
+
   it('keeps canonical metadata while applying PRELAUNCH noindex', () => {
     const metadata = applySeoLaunchModeToMetadata({ alternates: { canonical: '/disciplinas/direito' } }, 'PRELAUNCH');
     expect(metadata.alternates).toEqual({ canonical: '/disciplinas/direito' });

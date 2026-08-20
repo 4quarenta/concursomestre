@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, BookOpenCheck, BriefcaseBusiness, Building2, Cal
 import { buildSiteUrl } from '@/config/siteUrl';
 import BlogConversionCta from '../../BlogConversionCta';
 import BlogHeader from '../../BlogHeader';
-import { fetchPublicExamDetailForServer, type PublicExamFile, type PublicExamTaxonomy } from '../../blogServerData';
+import { fetchPublicExamDetailForServer, type PublicExamFile } from '../../blogServerData';
 import { serializeStructuredData } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
@@ -21,7 +21,6 @@ const formatDate = (value: string | null) => {
   return Number.isNaN(date.getTime()) ? null : new Intl.DateTimeFormat('pt-BR').format(date);
 };
 
-const names = (items: PublicExamTaxonomy[]) => items.map((item) => item.name).filter(Boolean).join(' / ');
 const fileIcon = (file: PublicExamFile) => file.kind === 'gabarito' ? <Download size={17} /> : <FileText size={17} />;
 
 export async function generateMetadata({ params }: PublicExamPageProps): Promise<Metadata> {
@@ -90,8 +89,8 @@ export default async function PublicExamPage({ params }: PublicExamPageProps) {
                 {exam.contest ? <div><dt className="text-xs font-black uppercase text-slate-400">Concurso</dt><dd className="mt-1 font-bold text-slate-800 dark:text-slate-100"><Link href={exam.contest.path} className="hover:text-indigo-600 hover:underline">{exam.contest.title}</Link></dd></div> : null}
                 {exam.board ? <div><dt className="text-xs font-black uppercase text-slate-400">Banca</dt><dd className="mt-1 font-bold text-slate-800 dark:text-slate-100"><Link href={buildBoardPath(exam.board)} className="hover:text-indigo-600 hover:underline">{exam.board.name}</Link></dd></div> : null}
                 {exam.organizations.length ? <div><dt className="text-xs font-black uppercase text-slate-400">Órgão</dt><dd className="mt-1 flex flex-wrap gap-x-2 font-bold text-slate-800 dark:text-slate-100">{exam.organizations.map((organization) => <Link key={organization.id} href={publicRoutes.organizations.detail(organization.slug)} className="hover:text-indigo-600 hover:underline">{organization.name}</Link>)}</dd></div> : null}
-                {exam.roles.length ? <div><dt className="text-xs font-black uppercase text-slate-400">Cargo</dt><dd className="mt-1 font-bold text-slate-800 dark:text-slate-100">{names(exam.roles)}</dd></div> : null}
-                {exam.careers.length ? <div><dt className="text-xs font-black uppercase text-slate-400">Carreira</dt><dd className="mt-1 font-bold text-slate-800 dark:text-slate-100">{names(exam.careers)}</dd></div> : null}
+                {exam.roles.length ? <div><dt className="text-xs font-black uppercase text-slate-400">Cargo</dt><dd className="mt-1 flex flex-wrap gap-x-2 font-bold text-slate-800 dark:text-slate-100">{exam.roles.map((role) => <Link key={role.id} href={publicRoutes.positions.detail(role.slug)} className="hover:text-indigo-600 hover:underline">{role.name}</Link>)}</dd></div> : null}
+                {exam.careers.length ? <div><dt className="text-xs font-black uppercase text-slate-400">Carreira</dt><dd className="mt-1 flex flex-wrap gap-x-2 font-bold text-slate-800 dark:text-slate-100">{exam.careers.map((career) => <Link key={career.id} href={publicRoutes.careers.detail(career.slug)} className="hover:text-indigo-600 hover:underline">{career.name}</Link>)}</dd></div> : null}
                 {exam.noticeNumber ? <div><dt className="text-xs font-black uppercase text-slate-400">Edital</dt><dd className="mt-1 font-bold text-slate-800 dark:text-slate-100">{exam.noticeNumber}</dd></div> : null}
                 {exam.vacancies !== null ? <div><dt className="text-xs font-black uppercase text-slate-400">Vagas</dt><dd className="mt-1 font-bold text-slate-800 dark:text-slate-100">{exam.vacancies}</dd></div> : null}
                 <div><dt className="text-xs font-black uppercase text-slate-400">Localidade</dt><dd className="mt-1 inline-flex items-center gap-1 font-bold text-slate-800 dark:text-slate-100"><MapPin size={15} /> {exam.region} · {exam.stateName}</dd></div>

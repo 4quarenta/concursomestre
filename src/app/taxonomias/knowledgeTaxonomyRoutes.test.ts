@@ -28,6 +28,8 @@ describe('practice taxonomy route wiring', () => {
     expect(source).toContain('publicRoutes.disciplines.detail(slug)');
     expect(source).toContain('publicRoutes.topics.detail(slug)');
     expect(source).toContain('publicRoutes.subjects.detail(slug)');
+    expect(source).toContain('publicRoutes.positions.detail(slug)');
+    expect(source).toContain('publicRoutes.careers.detail(slug)');
     expect(source).toContain("level === 'assunto'");
     expect(source).toContain('record.seoReady !== true');
     expect(source).not.toContain('slugify(');

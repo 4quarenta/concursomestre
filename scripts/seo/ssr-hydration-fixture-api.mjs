@@ -115,7 +115,7 @@ const organization = {
   questionsPath: '/questoes?orgao=%C3%93rg%C3%A3o%20de%20Teste',
   questionCount: 1,
   examCount: 1,
-  roles: [{ id: 12, name: 'Analista', questionsPath: '/questoes?cargo=Analista' }],
+  roles: [{ id: 12, slug: 'analista', name: 'Analista', path: '/cargos/analista', questionsPath: '/questoes?cargo=Analista' }],
   disciplines: [{ id: 20, slug: 'direito-constitucional', name: 'Direito Constitucional', questionCount: 1, path: '/disciplinas/direito-constitucional' }],
   boards: [{ id: 10, slug: 'cebraspe', name: 'Centro Brasileiro de Pesquisa em Avaliação', acronym: 'CEBRASPE', examCount: 1, path: '/bancas/cebraspe' }],
   exams: [{ id: 101, slug: 'prova-ssr-2026', name: 'Prova SSR 2026', year: 2026, questionCount: 1, path: '/provas/prova-ssr-2026' }],
@@ -140,7 +140,7 @@ const contest = {
   dates: { announcedAt: '2026-07-01T00:00:00Z', noticePublishedAt: '2026-07-15T00:00:00Z', registrationStartAt: '2026-08-01T00:00:00Z', registrationEndAt: '2026-09-30T23:59:59Z', examStartAt: '2026-11-01T12:00:00Z' },
   organizations: [{ id: 11, slug: 'orgao-de-teste', name: 'Órgão de Teste', acronym: 'ODT', path: '/orgaos/orgao-de-teste' }],
   board: { id: 10, slug: 'cebraspe', name: 'Centro Brasileiro de Pesquisa em Avaliação', acronym: 'CEBRASPE', path: '/bancas/cebraspe' },
-  positions: [{ id: 401, roleId: 12, name: 'Analista', vacancies: 10, reserveRegistry: true, salaryMin: 5000, salaryMax: 7000, educationLevel: 'Superior', weeklyHours: 40, locationLabel: 'Paraíba' }],
+  positions: [{ id: 401, roleId: 12, slug: 'analista', name: 'Analista', path: '/cargos/analista', vacancies: 10, reserveRegistry: true, salaryMin: 5000, salaryMax: 7000, educationLevel: 'Superior', weeklyHours: 40, locationLabel: 'Paraíba' }],
   documents: [{ id: 501, type: 'notice', title: 'Edital 01/2026', url: 'https://example.com/edital.pdf', publishedAt: '2026-07-15T00:00:00Z' }],
   exams: [{ id: 101, slug: 'prova-ssr-2026', title: 'Prova SSR 2026', year: 2026, questionCount: 1, path: '/provas/prova-ssr-2026' }],
   questions: [{ id: 67813, excerpt: 'Art. 5º — Ação & Controle', path: '/questoes/67813/art-5o-acao-e-controle', correctAnswer: 'SECRET_CORRECT_ANSWER_SENTINEL_246' }],
@@ -226,6 +226,39 @@ const invalidChainSubject = {
   subjects: [],
   breadcrumbs: knowledgeCrumbs([{ label: 'Assunto com cadeia inválida', canonicalPath: '/assuntos/assunto-cadeia-invalida' }]),
 };
+const professionalRelations = {
+  contests: [{ id: 301, slug: 'concurso-canonico-2026', title: 'Concurso Canônico 2026', status: 'registration_open', year: 2026, organization: 'Órgão de Teste', path: '/concursos/concurso-canonico-2026' }],
+  organizations: [{ id: 11, slug: 'orgao-de-teste', name: 'Órgão de Teste', acronym: 'ODT', path: '/orgaos/orgao-de-teste' }],
+  exams: [{ id: 101, slug: 'prova-ssr-2026', name: 'Prova SSR 2026', year: 2026, questionCount: 1, path: '/provas/prova-ssr-2026' }],
+  questions: [{ id: 67813, excerpt: 'Art. 5º — Ação & Controle', path: '/questoes/67813/art-5o-acao-e-controle', correctAnswer: 'SECRET_CORRECT_ANSWER_SENTINEL_246' }],
+  boards: [{ id: 10, slug: 'cebraspe', name: 'Centro Brasileiro de Pesquisa em Avaliação', acronym: 'CEBRASPE', path: '/bancas/cebraspe' }],
+  readiness: { status: 'READY', reasonCodes: [] }, updatedAt: '2026-08-19T12:00:00Z',
+};
+const career = {
+  kind: 'career', id: 13, slug: 'carreira-fiscal', name: 'Carreira Fiscal', description: 'Carreira pública editorial usada pelo harness.',
+  canonicalPath: '/carreiras/carreira-fiscal', questionsPath: '/questoes?career=Carreira%20Fiscal', contestsPath: '/concursos',
+  questionCount: 1, examCount: 1, careers: [],
+  positions: [{ id: 12, slug: 'analista', name: 'Analista', questionCount: 1, examCount: 1, path: '/cargos/analista' }],
+  ...professionalRelations,
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Carreiras', canonicalPath: '/carreiras' }, { label: 'Carreira Fiscal', canonicalPath: '/carreiras/carreira-fiscal' }],
+  importerIdentity: 'SECRET_IMPORTER_SENTINEL', adminNote: 'SECRET_ADMIN_NOTE_SENTINEL',
+};
+const position = {
+  kind: 'position', id: 12, slug: 'analista', name: 'Analista', description: 'Cargo público usado pelo harness.',
+  canonicalPath: '/cargos/analista', questionsPath: '/questoes?role=Analista', contestsPath: '/concursos?cargo=Analista',
+  questionCount: 1, examCount: 1,
+  careers: [{ id: 13, slug: 'carreira-fiscal', name: 'Carreira Fiscal', path: '/carreiras/carreira-fiscal' }], positions: [],
+  ...professionalRelations,
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Cargos', canonicalPath: '/cargos' }, { label: 'Analista', canonicalPath: '/cargos/analista' }],
+  sourceExternalId: 'SECRET_PROVIDER_SENTINEL', adminNote: 'SECRET_ADMIN_NOTE_SENTINEL',
+};
+const professionalFor = (kind, requestedSlug) => {
+  const item = kind === 'career' ? career : kind === 'position' ? position : null;
+  if (!item) return null;
+  if (requestedSlug === item.slug) return item;
+  if (requestedSlug === `${item.slug}-antigo`) return { redirectSlug: item.slug };
+  return null;
+};
 const emptyTopic = {
   ...topic,
   id: 26,
@@ -304,6 +337,8 @@ const question = {
       { id: 24, label: 'Controle concentrado', slug: 'controle-concentrado', taxonomyLevel: 'assunto', seoReady: true },
       { id: 25, label: 'Assunto inválido', slug: 'assunto-cadeia-invalida', taxonomyLevel: 'assunto', seoReady: false },
     ],
+    roles: [{ id: 12, label: 'Analista', slug: 'analista', taxonomyLevel: 'cargo', seoReady: true }],
+    careers: [{ id: 13, label: 'Carreira Fiscal', slug: 'carreira-fiscal', taxonomyLevel: 'carreira', seoReady: true }],
   },
   orgaos: [], cargos: [], anos: [2026],
 };
@@ -350,6 +385,11 @@ const payloadFor = (url) => {
   if (pathname === '/filters/board.php') return { success: true, data: { board, examSummary: { total: 1, open: 0, upcoming: 1, completed: 0, unknown: 0 }, topSubjects: [{ id: 20, name: 'Direito Constitucional', slug: 'direito-constitucional', questionCount: 1 }], questionProfile: [{ modality: 'multiple_choice', difficulty: 2, questionCount: 1 }], exams: [{ ...examItem, organizations: ['Órgão de Teste'], registrationStart: null, registrationEnd: null, examDate: '2026-03-01', resultDate: null, status: 'upcoming' }], pageInfo } };
   if (pathname === '/filters/organization.php') return { success: true, data: organization };
   if (pathname === '/filters/knowledge-taxonomy.php') return { success: true, data: knowledgeFor(url.searchParams.get('level'), url.searchParams.get('slug')) };
+  if (pathname === '/filters/professional-directory.php') {
+    const kind = url.searchParams.get('kind'); const item = kind === 'career' ? career : kind === 'position' ? position : null;
+    return { success: true, data: { items: item ? [{ id: item.id, slug: item.slug, name: item.name, description: item.description, questionCount: item.questionCount, examCount: item.examCount, path: item.canonicalPath }] : [], pageInfo: { page: 1, pages: 1, limit: 30, total: item ? 1 : 0 } } };
+  }
+  if (pathname === '/filters/professional-taxonomy.php') return { success: true, data: professionalFor(url.searchParams.get('kind'), url.searchParams.get('slug')) };
   if (pathname === '/blog/detail.php') return { success: true, data: article };
   if (pathname === '/blog/list.php') return { success: true, data: { items: [article], pageInfo: { limit: 24, hasMore: false, nextCursor: null, total: 1 } } };
   if (pathname === '/blog/categories.php') return { success: true, data: { items: [category] } };
@@ -395,6 +435,11 @@ const server = createServer((request, response) => {
       count(url.pathname);
       return json(response, 404, { success: false, message: 'Taxonomia nao encontrada.' }, origin);
     }
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/filters/professional-taxonomy.php'
+    && !professionalFor(url.searchParams.get('kind'), url.searchParams.get('slug'))) {
+    count(url.pathname);
+    return json(response, 404, { success: false, message: 'Entidade profissional não encontrada.' }, origin);
   }
   if (url.pathname.replace(/^\/api\//, '/') === '/contests/detail.php'
     && ![contest.slug, 'concurso-canonico-antigo'].includes(url.searchParams.get('slug'))) {

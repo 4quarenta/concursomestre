@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../repositories/ContestsRepository.php';
 require_once __DIR__ . '/../projections/PublicContestProjection.php';
+require_once __DIR__ . '/../../filters/professional/ProfessionalTaxonomyReadinessValidator.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/services/SeoSlugService.php';
 
@@ -65,6 +66,14 @@ final class ContestsService
             'name' => (string) $contest['board_name'], 'acronym' => $contest['board_acronym'] ?: null,
             'path' => $routes->boardDetail((string) $contest['board_slug']),
         ] : null;
+        $data['positions'] = array_map(static function (array $item) use ($routes): array {
+            $item['path'] = $routes->positionDetail((string) ($item['slug'] ?? ''));
+            return $item;
+        }, array_values(array_filter(
+            $data['positions'],
+            static fn (mixed $item): bool => is_array($item)
+                && ProfessionalTaxonomyReadinessValidator::evaluate($item + ['type' => 'cargo'], 'position')['status'] === 'READY'
+        )));
         $data['exams'] = array_map(static function (array $item) use ($routes): array {
             $item['path'] = $routes->examDetail((string) ($item['slug'] ?? ''));
             return $item;
