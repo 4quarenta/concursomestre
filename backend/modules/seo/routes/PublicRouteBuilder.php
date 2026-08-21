@@ -124,6 +124,23 @@ final class PublicRouteBuilder
         return $this->requiredPath('simulation_detail', ['slug' => $persistedSlug]);
     }
 
+    /** @param array<string, scalar|list<scalar>|null> $query */
+    public function materialsIndex(array $query = []): string
+    {
+        return $this->withQuery('materials_hub', $this->requiredPath('materials_hub'), $query);
+    }
+
+    public function materialDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('material_detail', ['slug' => $persistedSlug]);
+    }
+
+    /** @param array<string, scalar|list<scalar>|null> $query */
+    public function marketplaceIndex(array $query = []): string
+    {
+        return $this->withQuery('marketplace', $this->requiredPath('marketplace'), $query);
+    }
+
     public function lawDetail(string $persistedSlug): string
     {
         return $this->requiredPath('law_detail', ['slug' => $persistedSlug]);

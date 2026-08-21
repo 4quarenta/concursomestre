@@ -305,6 +305,73 @@ const publicSimulationFor = (requestedSlug) => {
   if (requestedSlug === 'simulado-publico-antigo') return { redirectSlug: publicSimulation.slug };
   return null;
 };
+const materialBase = {
+  id: 'mat-publico-1', slug: 'guia-publico-de-estudo', title: 'Guia público de estudo',
+  description: 'Material editorial público usado para validar SSR e segurança.', format: 'PDF', pageCount: 42, year: 2026,
+  publicAuthorName: 'Equipe ConcursoMestre', coverUrl: null, previewUrl: 'https://example.com/material-preview.pdf',
+  hasAsset: true, offer: { mode: 'paid', amountMinor: 2990, currency: 'BRL', available: true },
+  path: '/materiais/guia-publico-de-estudo', updatedAt: '2026-08-21T12:00:00Z',
+};
+const publicMaterial = {
+  ...materialBase, canonicalPath: materialBase.path, marketplacePath: '/marketplace',
+  taxonomies: [{ id: 20, slug: 'direito-constitucional', name: 'Direito Constitucional', relationType: 'discipline', path: '/disciplinas/direito-constitucional' }],
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Materiais', canonicalPath: '/materiais' }, { label: materialBase.title, canonicalPath: materialBase.path }],
+  readiness: { status: 'READY', reasonCodes: [] }, listingReadiness: { status: 'READY', reasonCodes: [] },
+  storagePath: 'SECRET_STORAGE_PATH_SENTINEL', signedDownloadUrl: 'SECRET_SIGNED_DOWNLOAD_SENTINEL',
+  sellerEmail: 'SECRET_SELLER_EMAIL_SENTINEL', purchaseId: 'SECRET_PURCHASE_SENTINEL', paymentId: 'SECRET_PAYMENT_SENTINEL',
+};
+const freeMaterial = {
+  ...publicMaterial, id: 'mat-gratis-1', slug: 'material-gratuito-publico', title: 'Material gratuito público',
+  path: '/materiais/material-gratuito-publico', canonicalPath: '/materiais/material-gratuito-publico',
+  offer: { mode: 'free', amountMinor: null, currency: null, available: true },
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Materiais', canonicalPath: '/materiais' }, { label: 'Material gratuito público', canonicalPath: '/materiais/material-gratuito-publico' }],
+};
+const unavailableMaterial = {
+  ...publicMaterial, id: 'mat-historico-1', slug: 'material-historico', title: 'Material histórico',
+  path: '/materiais/material-historico', canonicalPath: '/materiais/material-historico',
+  offer: { mode: 'unavailable', amountMinor: null, currency: null, available: false },
+  listingReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.invalid_definition'] },
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Materiais', canonicalPath: '/materiais' }, { label: 'Material histórico', canonicalPath: '/materiais/material-historico' }],
+};
+const notForSaleMaterial = {
+  ...publicMaterial, id: 'mat-editorial-1', slug: 'material-editorial-publico', title: 'Material editorial público',
+  path: '/materiais/material-editorial-publico', canonicalPath: '/materiais/material-editorial-publico',
+  offer: { mode: 'not_for_sale', amountMinor: null, currency: null, available: false },
+  listingReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.invalid_definition'] },
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Materiais', canonicalPath: '/materiais' }, { label: 'Material editorial público', canonicalPath: '/materiais/material-editorial-publico' }],
+};
+const includedInPlanMaterial = {
+  ...publicMaterial, id: 'mat-plano-1', slug: 'material-incluido-em-plano', title: 'Material incluído em plano',
+  path: '/materiais/material-incluido-em-plano', canonicalPath: '/materiais/material-incluido-em-plano',
+  offer: { mode: 'included_in_plan', amountMinor: null, currency: null, available: true },
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Materiais', canonicalPath: '/materiais' }, { label: 'Material incluído em plano', canonicalPath: '/materiais/material-incluido-em-plano' }],
+};
+const xssMaterial = {
+  ...publicMaterial, id: 'mat-xss-1', slug: 'material-xss-seguro',
+  title: '<script>window.XSS_TITLE=1</script>',
+  description: '<svg onload="window.XSS_DESCRIPTION=1"></svg><iframe src="javascript:alert(1)"></iframe>',
+  publicAuthorName: '<img src=x onerror="window.XSS_AUTHOR=1">', previewUrl: 'javascript:alert(1)',
+  path: '/materiais/material-xss-seguro', canonicalPath: '/materiais/material-xss-seguro',
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Materiais', canonicalPath: '/materiais' }, { label: '<script>window.XSS_TITLE=1</script>', canonicalPath: '/materiais/material-xss-seguro' }],
+};
+const materialWithoutAsset = {
+  ...publicMaterial, id: 'mat-sem-asset', slug: 'material-sem-asset', title: 'Material sem asset validado',
+  path: '/materiais/material-sem-asset', canonicalPath: '/materiais/material-sem-asset', hasAsset: false,
+  readiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.invalid_definition'] },
+  listingReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.invalid_definition'] },
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Materiais', canonicalPath: '/materiais' }, { label: 'Material sem asset validado', canonicalPath: '/materiais/material-sem-asset' }],
+};
+const materialFor = (requestedSlug) => {
+  if (requestedSlug === publicMaterial.slug) return publicMaterial;
+  if (requestedSlug === freeMaterial.slug) return freeMaterial;
+  if (requestedSlug === unavailableMaterial.slug) return unavailableMaterial;
+  if (requestedSlug === notForSaleMaterial.slug) return notForSaleMaterial;
+  if (requestedSlug === includedInPlanMaterial.slug) return includedInPlanMaterial;
+  if (requestedSlug === xssMaterial.slug) return xssMaterial;
+  if (requestedSlug === materialWithoutAsset.slug) return materialWithoutAsset;
+  if (requestedSlug === 'guia-publico-antigo') return { redirectSlug: publicMaterial.slug };
+  return null;
+};
 const emptyTopic = {
   ...topic,
   id: 26,
@@ -461,6 +528,13 @@ const payloadFor = (url) => {
     return { success: true, data: { items: [publicSimulationSummary], pageInfo: { page: Math.min(requestedPage, 2), pages: 2, limit: 24, total: 25 } } };
   }
   if (pathname === '/simulations/public-detail.php') return { success: true, data: publicSimulationFor(url.searchParams.get('slug')) };
+  if (pathname === '/materials/public-directory.php') {
+    const scope = url.searchParams.get('scope') === 'marketplace' ? 'marketplace' : 'materials';
+    const items = scope === 'marketplace' ? [materialBase, { ...freeMaterial, canonicalPath: undefined, breadcrumbs: undefined, readiness: undefined, listingReadiness: undefined }] : [materialBase, { ...freeMaterial, canonicalPath: undefined, breadcrumbs: undefined, readiness: undefined, listingReadiness: undefined }, { ...unavailableMaterial, canonicalPath: undefined, breadcrumbs: undefined, readiness: undefined, listingReadiness: undefined }];
+    return { success: true, data: { items, pageInfo: { page: 1, pages: 1, limit: 24, total: items.length }, scope } };
+  }
+  if (pathname === '/materials/public-detail.php') return { success: true, data: materialFor(url.searchParams.get('slug')) };
+  if (pathname === '/materials/public-legacy.php') return { success: true, data: url.searchParams.get('id') === publicMaterial.id ? { redirectSlug: publicMaterial.slug } : null };
   if (pathname === '/filters/directory.php') {
     const type = url.searchParams.get('type');
     const items = type === 'boards'
@@ -554,6 +628,16 @@ const server = createServer((request, response) => {
     && ![publicSimulation.slug, publicSimulationWithoutComposition.slug, 'simulado-publico-antigo'].includes(url.searchParams.get('slug'))) {
     count(url.pathname);
     return json(response, 404, { success: false, message: 'Simulado não encontrado.' }, origin);
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/materials/public-detail.php'
+    && !materialFor(url.searchParams.get('slug'))) {
+    count(url.pathname);
+    return json(response, 404, { success: false, message: 'Material não encontrado.' }, origin);
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/materials/public-legacy.php'
+    && url.searchParams.get('id') !== publicMaterial.id) {
+    count(url.pathname);
+    return json(response, 404, { success: false, message: 'Material não encontrado.' }, origin);
   }
   count(url.pathname);
   return json(response, 200, payloadFor(url), origin);

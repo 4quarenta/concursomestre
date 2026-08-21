@@ -415,6 +415,37 @@
       "paginationPolicy": "query_page"
     },
     {
+      "id": "materials_hub",
+      "patterns": ["/materiais"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "busca", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "material_detail",
+      "patterns": ["/materiais/{slug}"],
+      "legacyPatterns": ["/material/{id}", "/material/{id}/{*slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
+      "id": "marketplace",
+      "patterns": ["/marketplace"],
+      "audience": "public",
+      "supportsLanding": false,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "NOINDEX",
+      "allowedParameters": ["q", "busca", "subject", "materia", "sort", "view", "tab", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
       "id": "simulation_detail",
       "patterns": ["/simulados/{slug}"],
       "audience": "public",

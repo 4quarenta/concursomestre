@@ -1504,11 +1504,16 @@ export interface SystemSettings {
 
 export interface Material {
   id: string;
+  slug?: string;
+  canonicalPath?: string;
   title: string;
   description: string;
   authorId: string;
   authorName: string;
+  publicAuthorName?: string;
   price: number;
+  currency?: string;
+  offerMode?: 'free' | 'paid' | 'included_in_plan' | 'unavailable' | 'not_for_sale';
   type: 'PDF' | 'Simulado' | 'Resumo';
   subject: Subject | string;
   subjectId?: number;

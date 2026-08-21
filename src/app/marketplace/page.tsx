@@ -13,10 +13,11 @@
 
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import ReactDOM, { createPortal } from 'react-dom';
 import { Subject, Material, QuestaoComentario, UserProfile } from '@types';
 import { Search, BookOpen, Star, Lock, FileText, ShoppingBag, X, Tag, History, Clock, AlertTriangle, Package, Download, RefreshCcw, Check, Store, List, Grid, ShieldAlert, XCircle } from 'lucide-react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -39,6 +40,16 @@ import {
 
 const MARKETPLACE_MS_PER_DAY = 1000 * 60 * 60 * 24;
 const readMarketplaceTimeMs = () => Date.now();
+const marketplaceOfferLabel = (material: Material) => material.offerMode === 'included_in_plan'
+    ? 'Incluído no plano'
+    : material.offerMode === 'free'
+        ? 'Grátis'
+        : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: material.currency || 'BRL' }).format(material.price);
+const marketplaceActionLabel = (material: Material) => material.offerMode === 'included_in_plan'
+    ? 'Ver planos'
+    : material.offerMode === 'free'
+        ? 'Obter'
+        : 'Comprar';
 
 type MarketplaceComment = QuestaoComentario;
 type MarketplaceCommentSetter = React.Dispatch<React.SetStateAction<MarketplaceComment[]>>;
@@ -329,7 +340,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                             </button>
                         ) : (
                             <button onClick={onBuy} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors flex items-center gap-2 shadow-lg shadow-emerald-600/20">
-                                <ShoppingBag size={16} /> {material.price === 0 ? 'Obter Grátis' : `Comprar R$ ${material.price.toFixed(2)}`}
+                                <ShoppingBag size={16} /> {material.offerMode === 'included_in_plan' ? 'Ver planos' : material.offerMode === 'free' ? 'Obter Grátis' : `Comprar R$ ${material.price.toFixed(2)}`}
                             </button>
                         )}
                     </div>
@@ -380,7 +391,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                                         <>
                                             <div className="w-px h-8 bg-slate-200 dark:bg-slate-800"></div>
                                             <div className="flex flex-col">
-                                                <span className="text-xl font-black text-slate-900 dark:text-slate-100">{material.price === 0 ? 'Grátis' : `R$ ${material.price.toFixed(2)}`}</span>
+                                                <span className="text-xl font-black text-slate-900 dark:text-slate-100">{marketplaceOfferLabel(material)}</span>
                                                 <span className="text-xs font-bold text-emerald-500 uppercase tracking-wider">Valor</span>
                                             </div>
                                         </>
@@ -545,7 +556,6 @@ const Marketplace: React.FC = () => {
     const { addToast } = useToast();
     const router = useRouter();
     const pathname = usePathname() || '/marketplace';
-    const searchParams = useSearchParams();
     const setSearchParams = React.useCallback((nextParams: URLSearchParams) => {
         const queryString = nextParams.toString();
         router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
@@ -571,6 +581,7 @@ const Marketplace: React.FC = () => {
 
     // Handle deep linking from notifications
     React.useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
         const openMaterialId = searchParams.get('openMaterial');
         const hasComment = searchParams.get('comment');
 
@@ -594,7 +605,7 @@ const Marketplace: React.FC = () => {
         });
 
         return () => window.cancelAnimationFrame(frame);
-    }, [materials, searchParams, selectedMaterial]);
+    }, [materials, selectedMaterial]);
 
     React.useEffect(() => {
         ensureTaxonomiesLoaded();
@@ -628,7 +639,7 @@ const Marketplace: React.FC = () => {
             const matchesKeyword = !filter.keyword || m.title.toLowerCase().includes(filter.keyword.toLowerCase());
             const matchesSubject = filter.subject === 'All' || m.subject === filter.subject;
             const matchesType = filter.type === 'All' || m.type === filter.type;
-            const matchesPrice = filter.price === 'All' || (filter.price === 'Free' ? m.price === 0 : m.price > 0);
+            const matchesPrice = filter.price === 'All' || (filter.price === 'Free' ? m.offerMode === 'free' : m.offerMode === 'paid');
             const matchesAuthor = !filter.authorId || m.authorId === filter.authorId;
             return isApproved && matchesKeyword && matchesSubject && matchesType && matchesPrice && matchesAuthor;
         });
@@ -699,8 +710,13 @@ const Marketplace: React.FC = () => {
             return;
         }
 
-        // Free materials - direct purchase
-        if (material.price === 0) {
+        if (material.offerMode === 'included_in_plan') {
+            router.push('/planos');
+            return;
+        }
+
+        // Free materials - direct entitlement request through the existing purchase flow.
+        if (material.offerMode === 'free') {
             purchaseMaterial(material);
             return;
         }
@@ -773,7 +789,7 @@ const Marketplace: React.FC = () => {
     };
 
     // Components
-    const PriceTag = ({ price, purchased }: { price: number, purchased: boolean }) => {
+    const PriceTag = ({ material, purchased }: { material: Material, purchased: boolean }) => {
         if (purchased) {
             return (
                 <div className="flex flex-col items-end">
@@ -782,11 +798,11 @@ const Marketplace: React.FC = () => {
             );
         }
         return (
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-sm transition-colors ${price === 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/30 text-emerald-700 dark:text-emerald-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-900 dark:text-slate-100'}`}>
-                <Tag size={14} className={price === 0 ? 'text-emerald-500' : 'text-indigo-500'} />
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-sm transition-colors ${material.offerMode === 'free' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/30 text-emerald-700 dark:text-emerald-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-900 dark:text-slate-100'}`}>
+                <Tag size={14} className={material.offerMode === 'free' ? 'text-emerald-500' : 'text-indigo-500'} />
                 <div className="flex flex-col leading-none">
                     <span className="text-[9px] font-bold uppercase opacity-60 tracking-wider">Valor</span>
-                    <span className="text-sm font-black tracking-tight">{price === 0 ? 'GRÁTIS' : `R$ ${price.toFixed(2)}`}</span>
+                    <span className="text-sm font-black tracking-tight">{marketplaceOfferLabel(material).toUpperCase()}</span>
                 </div>
             </div>
         );
@@ -829,7 +845,7 @@ const Marketplace: React.FC = () => {
                     <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
                         <ShoppingBag className="text-indigo-600 dark:text-indigo-400" size={24} /> Materiais
                     </h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium transition-colors">Conteúdos premium criados por especialistas.</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium transition-colors">Materiais com publicação, direitos e disponibilidade validados pela plataforma.</p>
                 </div>
                 <div className="flex gap-3">
                     {(currentUser?.isPartner || systemSettings.features.partnerRegistrationEnabled === true || String(systemSettings.features.partnerRegistrationEnabled) === 'true') && (
@@ -942,6 +958,7 @@ const Marketplace: React.FC = () => {
                                                 </div>
                                                 <div className="min-w-0">
                                                     <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate pr-4 transition-colors">{item.title}</h3>
+                                                    {item.canonicalPath ? <Link href={item.canonicalPath} onClick={(event) => event.stopPropagation()} className="text-[10px] font-bold text-indigo-600 hover:underline">Ver página pública</Link> : null}
                                                     <div className="flex items-center gap-2 mt-0.5">
                                                         <span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 rounded transition-colors">{item.type}</span>
                                                         <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase truncate transition-colors">{item.authorName}</span>
@@ -949,7 +966,7 @@ const Marketplace: React.FC = () => {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-4 pl-4 border-l border-slate-50 dark:border-slate-800 transition-colors">
-                                                <PriceTag price={item.price} purchased={isPurchased(item.id) || false} />
+                                                <PriceTag material={item} purchased={isPurchased(item.id) || false} />
                                                 {isPurchased(item.id) ? (
                                                     <div className="flex gap-2">
                                                         <button onClick={(e) => { e.stopPropagation(); handleAccessMaterial(item, 'read'); }} className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
@@ -965,7 +982,7 @@ const Marketplace: React.FC = () => {
                                                     </div>
                                                 ) : (
                                                     <button onClick={(e) => { e.stopPropagation(); handleBuy(item); }} className="px-4 py-2 bg-slate-900 dark:bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-700 shadow-md transition-all">
-                                                        Comprar
+                                                        {marketplaceActionLabel(item)}
                                                     </button>
                                                 )}
                                             </div>
@@ -980,6 +997,7 @@ const Marketplace: React.FC = () => {
                                         </div>
                                         <div className="p-5 flex-1 flex flex-col">
                                             <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-snug mb-1 line-clamp-2 transition-colors">{item.title}</h3>
+                                            {item.canonicalPath ? <Link href={item.canonicalPath} onClick={(event) => event.stopPropagation()} className="mb-2 text-[10px] font-bold text-indigo-600 hover:underline">Ver página pública</Link> : null}
                                             <div className="flex flex-wrap gap-2 mb-3">
                                                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase transition-colors">{item.authorName}</p>
                                                 {(item.topic || item.subjectText) && (
@@ -994,7 +1012,7 @@ const Marketplace: React.FC = () => {
                                                 )}
                                             </div>
                                             <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-50 dark:border-slate-800 transition-colors">
-                                                <PriceTag price={item.price} purchased={isPurchased(item.id) || false} />
+                                                <PriceTag material={item} purchased={isPurchased(item.id) || false} />
                                                 {isPurchased(item.id) ? (
                                                     <div className="flex gap-2">
                                                         <button onClick={(e) => { e.stopPropagation(); handleAccessMaterial(item, 'read'); }} className="px-3 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
@@ -1010,7 +1028,7 @@ const Marketplace: React.FC = () => {
                                                     </div>
                                                 ) : (
                                                     <button onClick={(e) => { e.stopPropagation(); handleBuy(item); }} className="px-3 py-2 bg-slate-900 dark:bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-700 shadow-md transition-all">
-                                                        Comprar
+                                                        {marketplaceActionLabel(item)}
                                                     </button>
                                                 )}
                                             </div>
@@ -1244,8 +1262,8 @@ const Marketplace: React.FC = () => {
                     onClose={() => {
                         setSelectedMaterial(null);
                         setInitialModalTab('overview');
-                        if (searchParams.has('openMaterial') || searchParams.has('comment')) {
-                            const nextParams = new URLSearchParams(searchParams);
+                        const nextParams = new URLSearchParams(window.location.search);
+                        if (nextParams.has('openMaterial') || nextParams.has('comment')) {
                             nextParams.delete('openMaterial');
                             nextParams.delete('comment');
                             setSearchParams(nextParams);

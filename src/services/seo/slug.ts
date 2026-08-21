@@ -42,8 +42,7 @@ export const buildQuestionSlug = (question: Partial<Question>) => buildContractS
 export const buildRankingSlug = (ranking: Partial<Ranking>) =>
   slugifyContent([ranking.name, ranking.institution].filter(Boolean).join(' '));
 
-export const buildMaterialSlug = (material: Partial<Material>) =>
-  slugifyContent(material.title || material.description || `material-${material.id || 'publico'}`);
+export const buildMaterialSlug = (material: Partial<Material>) => material.slug || '';
 
 export const buildQuestionPath = (question: Partial<Question>) =>
   publicRoutes.questions.detail(String(question.id || ''), buildQuestionSlug(question));
@@ -52,7 +51,7 @@ export const buildRankingPath = (ranking: Partial<Ranking>) =>
   `/ranking/${ranking.id}/${buildRankingSlug(ranking)}`;
 
 export const buildMaterialPath = (material: Partial<Material>) =>
-  `/material/${material.id}/${buildMaterialSlug(material)}`;
+  material.slug ? publicRoutes.materials.detail(material.slug) : '';
 
 export const buildAbsoluteUrl = (path: string, baseUrl = DEFAULT_CANONICAL_BASE_URL) =>
   new URL(path, baseUrl).toString();

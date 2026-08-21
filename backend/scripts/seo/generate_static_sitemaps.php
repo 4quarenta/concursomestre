@@ -119,7 +119,7 @@ try {
     };
 
     $files = [];
-    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'lawArticles' => 0, 'exams' => 0, 'contests' => 0, 'simulations' => 0, 'taxonomies' => 0, 'professional' => 0];
+    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'lawArticles' => 0, 'exams' => 0, 'contests' => 0, 'simulations' => 0, 'materials' => 0, 'taxonomies' => 0, 'professional' => 0];
     $institutionalSources = [
         '/' => ['source' => 'src/app/page.tsx', 'familyId' => 'home'],
         '/planos' => ['source' => 'src/app/planos/page.tsx', 'familyId' => 'plans'],
@@ -131,6 +131,7 @@ try {
         $routes->contestsIndex() => ['source' => 'src/app/concursos/page.tsx', 'familyId' => 'contest_hub'],
         $routes->openContests() => ['source' => 'src/app/concursos-abertos/page.tsx', 'familyId' => 'open_contests'],
         $routes->simulationsIndex() => ['source' => 'src/app/simulados/page.tsx', 'familyId' => 'simulations_hub'],
+        $routes->materialsIndex() => ['source' => 'src/app/materiais/page.tsx', 'familyId' => 'materials_hub'],
         $routes->careersIndex() => ['source' => 'src/app/carreiras/page.tsx', 'familyId' => 'careers_hub'],
         $routes->positionsIndex() => ['source' => 'src/app/cargos/page.tsx', 'familyId' => 'positions_hub'],
         '/disciplinas' => ['source' => 'src/app/disciplinas/page.tsx', 'familyId' => 'discipline_hub'],
@@ -296,6 +297,56 @@ try {
             $write($stage . '/' . $filename, $buildUrlSet($entries));
             $files[] = ['name' => $filename, 'lastmod' => $maxLastmod($entries)];
             $counts['simulations'] += count($entries);
+        }
+        if (count($rows) < $batchSize) break;
+    }
+
+    $materialCursor = 0;
+    $materialPage = 0;
+    while (true) {
+        $queryCount++;
+        $stmt = $db->prepare(
+            "SELECT id, slug, COALESCE(updated_at, published_at, created_at) AS last_modified
+               FROM materials
+              WHERE id > :cursor
+                AND status = 'approved'
+                AND publication_status = 'published'
+                AND visibility_status = 'public'
+                AND rights_status = 'approved'
+                AND archived_at IS NULL
+                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+                AND TRIM(title) <> ''
+                AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND CHAR_LENGTH(slug) <= 190
+                AND EXISTS (
+                    SELECT 1
+                      FROM material_uploads ready_upload
+                     WHERE ready_upload.attached_material_id = materials.id
+                       AND ready_upload.status = 'attached'
+                )
+              ORDER BY id
+              LIMIT {$batchSize}"
+        );
+        $stmt->execute([':cursor' => $materialCursor]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if ($rows === []) break;
+        $entries = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $slug = trim((string) ($row['slug'] ?? ''));
+            $materialCursor = max($materialCursor, $id);
+            if ($id <= 0 || $slug === '') continue;
+            $entries[] = [
+                'loc' => $baseUrl . $routes->materialDetail($slug),
+                'lastmod' => $safeDate($row['last_modified'] ?? null),
+            ];
+        }
+        if ($entries !== []) {
+            $materialPage++;
+            $filename = sprintf('materials-%05d.xml', $materialPage);
+            $write($stage . '/' . $filename, $buildUrlSet($entries));
+            $files[] = ['name' => $filename, 'lastmod' => $maxLastmod($entries)];
+            $counts['materials'] += count($entries);
         }
         if (count($rows) < $batchSize) break;
     }

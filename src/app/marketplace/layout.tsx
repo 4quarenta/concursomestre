@@ -1,6 +1,7 @@
-import { Suspense, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
 import { MarketplaceProvider } from '@providers/MarketplaceProvider';
+import { fetchPublicMaterialDirectory, toMarketplaceMaterial } from '../materiais/materialServerData';
 
 export const metadata = buildPublicPageMetadata({
   title: 'Marketplace',
@@ -8,10 +9,13 @@ export const metadata = buildPublicPageMetadata({
   path: '/marketplace',
 });
 
-export default function MarketplaceLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default async function MarketplaceLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const initialMaterials = await fetchPublicMaterialDirectory({}, 'marketplace')
+    .then((directory) => directory.items.map(toMarketplaceMaterial))
+    .catch(() => []);
   return (
-    <MarketplaceProvider>
-      <Suspense fallback={null}>{children}</Suspense>
+    <MarketplaceProvider initialMaterials={initialMaterials}>
+      {children}
     </MarketplaceProvider>
   );
 }

@@ -1,0 +1,86 @@
+{
+  "version": "ssr-hydration-materials-marketplace-start-7.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "securitySentinels": [
+    "SECRET_STORAGE_PATH_SENTINEL",
+    "SECRET_SIGNED_DOWNLOAD_SENTINEL",
+    "SECRET_SELLER_EMAIL_SENTINEL",
+    "SECRET_PURCHASE_SENTINEL",
+    "SECRET_PAYMENT_SENTINEL"
+  ],
+  "routes": [
+    {
+      "key": "materials_hub", "path": "/materiais", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Materiais para concursos", "Guia público de estudo"],
+      "requiredRawLinks": ["/materiais/guia-publico-de-estudo", "/marketplace"]
+    },
+    {
+      "key": "materials_hub_search", "path": "/materiais?busca=direito", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawText": ["Materiais para concursos"]
+    },
+    {
+      "key": "material_paid", "path": "/materiais/guia-publico-de-estudo", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais/guia-publico-de-estudo", "expectNoIndex": true,
+      "schemaTypes": ["WebPage", "BreadcrumbList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Guia público de estudo", "R$ 29,90", "Acesso e segurança"],
+      "requiredRawLinks": ["/materiais", "/disciplinas/direito-constitucional"]
+    },
+    {
+      "key": "material_free", "path": "/materiais/material-gratuito-publico", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais/material-gratuito-publico", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawText": ["Material gratuito público", "Acesso gratuito"]
+    },
+    {
+      "key": "material_unavailable", "path": "/materiais/material-historico", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais/material-historico", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawText": ["Material histórico", "Oferta indisponível"]
+    },
+    {
+      "key": "material_not_for_sale", "path": "/materiais/material-editorial-publico", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais/material-editorial-publico", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawText": ["Material editorial público", "Não disponível para compra", "Sem oferta disponível no momento"]
+    },
+    {
+      "key": "material_included_in_plan", "path": "/materiais/material-incluido-em-plano", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais/material-incluido-em-plano", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawText": ["Material incluído em plano", "Incluído em plano"]
+    },
+    {
+      "key": "material_without_asset", "path": "/materiais/material-sem-asset", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais/material-sem-asset", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawText": ["Material sem asset validado"]
+    },
+    {
+      "key": "material_xss_boundary", "path": "/materiais/material-xss-seguro", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/materiais/material-xss-seguro", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1
+    },
+    { "key": "material_alias", "path": "/materiais/guia-publico-antigo", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 308, "canonical": "/materiais/guia-publico-de-estudo", "expectNoIndex": true },
+    { "key": "material_missing", "path": "/materiais/material-inexistente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "material_draft", "path": "/materiais/material-rascunho", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "material_private", "path": "/materiais/material-privado", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "material_rights_pending", "path": "/materiais/material-direitos-pendentes", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "material_moderation_pending", "path": "/materiais/material-moderacao-pendente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "material_invalid_slug", "path": "/materiais/INVALID", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "material_legacy", "path": "/material/mat-publico-1", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 308, "canonical": "/materiais/guia-publico-de-estudo", "expectNoIndex": true },
+    {
+      "key": "marketplace", "path": "/marketplace", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/marketplace", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawText": ["Marketplace", "Guia público de estudo"],
+      "requiredRawLinks": ["/materiais/guia-publico-de-estudo"]
+    },
+    {
+      "key": "marketplace_facet", "path": "/marketplace?busca=direito&categoria=pdf&page=2&foo=bar", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/marketplace", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1, "requiredRawText": ["Marketplace"]
+    }
+  ]
+}

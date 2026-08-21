@@ -168,6 +168,24 @@ describe('SEO launch control', () => {
     expect(resolveXRobotsTag('/simulados', new URLSearchParams('busca=fiscal'), 'PRODUCTION')).toBe('noindex, follow');
   });
 
+  it('promotes READY Materials but never promotes the functional marketplace', () => {
+    const input = {
+      launchMode: 'PRODUCTION' as const, instanceReadiness: ready, publicationAllowed: true,
+      resolutionAction: 'render' as const, httpStatus: 200, canonicalValid: true, qualityPass: true,
+    };
+    for (const id of ['materials_hub', 'material_detail']) {
+      expect(evaluateSeoLaunchControl({ ...input, family: family(id) })).toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
+      expect(evaluateSeoLaunchControl({ ...input, launchMode: 'PRELAUNCH', family: family(id) })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
+    }
+    expect(evaluateSeoLaunchControl({
+      ...input, family: family('marketplace'),
+      instanceReadiness: { status: 'NOT_APPLICABLE', reasonCodes: ['instance_readiness.not_applicable'] },
+    })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
+    expect(resolveXRobotsTag('/materiais/guia-de-estudo', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
+    expect(resolveXRobotsTag('/materiais', new URLSearchParams('busca=direito'), 'PRODUCTION')).toBe('noindex, follow');
+    expect(resolveXRobotsTag('/marketplace', new URLSearchParams(), 'PRODUCTION')).toBe('noindex, follow');
+  });
+
   it('keeps canonical metadata while applying PRELAUNCH noindex', () => {
     const metadata = applySeoLaunchModeToMetadata({ alternates: { canonical: '/disciplinas/direito' } }, 'PRELAUNCH');
     expect(metadata.alternates).toEqual({ canonical: '/disciplinas/direito' });

@@ -264,6 +264,15 @@ export const publicRoutes = {
       'simulation_detail', buildPath('simulation_detail', { slug }), query,
     ),
   },
+  materials: {
+    index: (query?: PublicRouteQuery) => withQuery('materials_hub', buildPath('materials_hub', {}), query),
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'material_detail', buildPath('material_detail', { slug }), query,
+    ),
+  },
+  marketplace: {
+    index: (query?: PublicRouteQuery) => withQuery('marketplace', buildPath('marketplace', {}), query),
+  },
   laws: {
     index: (query?: PublicRouteQuery) => withQuery('law_hub', buildPath('law_hub', {}), query),
     detail: (slug: string, query?: PublicRouteQuery) => withQuery(

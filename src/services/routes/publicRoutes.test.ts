@@ -28,6 +28,9 @@ describe('publicRoutes', () => {
     expect(publicRoutes.positions.detail('auditor-fiscal')).toBe('/cargos/auditor-fiscal');
     expect(publicRoutes.simulations.index()).toBe('/simulados');
     expect(publicRoutes.simulations.detail('simulado-publico')).toBe('/simulados/simulado-publico');
+    expect(publicRoutes.materials.index()).toBe('/materiais');
+    expect(publicRoutes.materials.detail('guia-de-estudo')).toBe('/materiais/guia-de-estudo');
+    expect(publicRoutes.marketplace.index()).toBe('/marketplace');
   });
 
   it('preserves supported state and repeated parameters without adding pagination', () => {

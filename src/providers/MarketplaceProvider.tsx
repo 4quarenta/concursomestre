@@ -104,11 +104,12 @@ const isPrivilegedTransactionViewer = (
  * camada `src/services` concentra os contratos HTTP do dominio.
  * @since 1.0.0
  */
-export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const MarketplaceProvider: React.FC<{ children: React.ReactNode; initialMaterials?: Material[] }> = ({ children, initialMaterials }) => {
   const pathname = usePathname() || '/';
-  const [materials, setMaterials] = useState<Material[]>([]);
+  const hasPublicInitialMaterials = initialMaterials !== undefined;
+  const [materials, setMaterials] = useState<Material[]>(initialMaterials ?? []);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [isLoadingMaterials, setIsLoadingMaterials] = useState(true);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState(!hasPublicInitialMaterials);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const { currentUser, isLoading: authLoading, purchaseMaterial: authPurchase, removeMaterialAccess } = useAuth();
@@ -148,7 +149,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   // Carrega os materiais uma unica vez para abastecer vitrine, dashboard do parceiro e administracao.
-  const materialsInitRef = useRef(false);
+  const materialsInitRef = useRef(hasPublicInitialMaterials);
   /**
    * Carrega a vitrine inicial de materiais uma unica vez por montagem do provider.
    * @since 1.0.0
