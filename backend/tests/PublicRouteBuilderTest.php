@@ -72,6 +72,11 @@ try {
         'Builder PHP de cargo divergente.'
     );
     publicRouteAssert(
+        $builder->simulationsIndex() === '/simulados'
+            && $builder->simulationDetail('simulado-publico') === '/simulados/simulado-publico',
+        'Builder PHP de simulado publico divergente.'
+    );
+    publicRouteAssert(
         in_array('/practice', $policy->patterns('questions_hub', true), true)
             && in_array('/questions', $policy->patterns('questions_hub', true), true),
         'Aliases antigos de questoes nao estao declarados na policy.'

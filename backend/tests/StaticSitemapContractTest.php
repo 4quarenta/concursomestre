@@ -28,6 +28,8 @@ sitemapContractAssert(!str_contains($generator, "'/question/'"), 'Generator stil
 sitemapContractAssert(!str_contains($generator, "'/blog/provas'"), 'Generator still emits /blog/provas.');
 sitemapContractAssert(!str_contains($generator, "'/concursos' =>"), 'NOINDEX contest hub is still emitted.');
 sitemapContractAssert(!str_contains($generator, 'NOW() AS last_modified'), 'Generator fabricates taxonomy lastmod.');
+sitemapContractAssert(str_contains($generator, 'public_simulation_questions ready_sq'), 'Simulation sitemap is not readiness-aware.');
+sitemapContractAssert(str_contains($generator, '$routes->simulationDetail($slug)'), 'Canonical simulation details are missing from the production sitemap simulation.');
 sitemapContractAssert(!preg_match('/COALESCE\([^\r\n]*NOW\(\)/', $generator), 'Generator fabricates entity lastmod.');
 sitemapContractAssert(str_contains($generator, "'lastmod' => null"), 'Taxonomies without material date must omit lastmod.');
 sitemapContractAssert(

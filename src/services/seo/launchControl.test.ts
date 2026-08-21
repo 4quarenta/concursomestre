@@ -154,6 +154,20 @@ describe('SEO launch control', () => {
     expect(resolveXRobotsTag('/cargos/auditor-fiscal', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
   });
 
+  it('promotes only READY public simulations in PRODUCTION', () => {
+    const input = {
+      launchMode: 'PRODUCTION' as const, instanceReadiness: ready, publicationAllowed: true,
+      resolutionAction: 'render' as const, httpStatus: 200, canonicalValid: true, qualityPass: true,
+    };
+    for (const id of ['simulations_hub', 'simulation_detail']) {
+      expect(evaluateSeoLaunchControl({ ...input, family: family(id) })).toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
+      expect(evaluateSeoLaunchControl({ ...input, launchMode: 'PRELAUNCH', family: family(id) })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
+    }
+    expect(evaluateSeoLaunchControl({ ...input, family: family('simulation_detail'), instanceReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.invalid_definition'] } })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
+    expect(resolveXRobotsTag('/simulados/simulado-publico', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
+    expect(resolveXRobotsTag('/simulados', new URLSearchParams('busca=fiscal'), 'PRODUCTION')).toBe('noindex, follow');
+  });
+
   it('keeps canonical metadata while applying PRELAUNCH noindex', () => {
     const metadata = applySeoLaunchModeToMetadata({ alternates: { canonical: '/disciplinas/direito' } }, 'PRELAUNCH');
     expect(metadata.alternates).toEqual({ canonical: '/disciplinas/direito' });

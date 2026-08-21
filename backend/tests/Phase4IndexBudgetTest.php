@@ -27,6 +27,12 @@ try {
         str_contains($generator, '$launchMode !== SeoLaunchMode::PRODUCTION && !$simulation'),
         'PRELAUNCH deixou de bloquear publicacao materializada do sitemap.'
     );
+    phase4BudgetAssert(
+        str_contains($generator, '$routes->simulationDetail($slug)')
+            && str_contains($generator, "publication_status = 'published'")
+            && str_contains($generator, 'public_simulation_questions ready_sq'),
+        'Sitemap futuro de simulados nao aplica publicacao e readiness.'
+    );
 
     echo "Phase4IndexBudgetTest: PASS\n";
     exit(0);

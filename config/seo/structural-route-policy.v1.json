@@ -405,6 +405,26 @@
       "paginationPolicy": "query_page"
     },
     {
+      "id": "simulations_hub",
+      "patterns": ["/simulados"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["pagina", "busca", "utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "query_page"
+    },
+    {
+      "id": "simulation_detail",
+      "patterns": ["/simulados/{slug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": true,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
       "id": "law_hub",
       "patterns": ["/lei-comentada"],
       "audience": "public",

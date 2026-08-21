@@ -1,0 +1,61 @@
+{
+  "version": "ssr-hydration-public-simulations-start-5.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "securitySentinels": [
+    "SECRET_CORRECT_ANSWER_SENTINEL_246",
+    "SECRET_TEACHER_COMMENT_SENTINEL",
+    "SECRET_ATTEMPT_SENTINEL",
+    "SECRET_USER_SENTINEL",
+    "SECRET_ANSWER_SENTINEL",
+    "SECRET_ADMIN_NOTE_SENTINEL",
+    "SECRET_PROVIDER_SENTINEL"
+  ],
+  "routes": [
+    {
+      "key": "simulations_hub", "path": "/simulados", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/simulados", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Simulados", "Simulado de Direito Constitucional"],
+      "requiredRawLinks": ["/simulados/simulado-publico-constitucional"]
+    },
+    {
+      "key": "simulations_hub_page_2", "path": "/simulados?pagina=2", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/simulados", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Página", "Simulado de Direito Constitucional"]
+    },
+    {
+      "key": "simulations_hub_unsupported_filters", "path": "/simulados?cargo=analista&carreira=fiscal&foo=bar", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/simulados", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Simulados", "Simulado de Direito Constitucional"]
+    },
+    {
+      "key": "simulation_detail", "path": "/simulados/simulado-publico-constitucional", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/simulados/simulado-publico-constitucional", "expectNoIndex": true,
+      "schemaTypes": ["WebPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Simulado de Direito Constitucional", "Questões apresentadas"],
+      "requiredRawLinks": ["/simulados", "/simulation", "/disciplinas/direito-constitucional", "/concursos/concurso-canonico-2026"]
+    },
+    {
+      "key": "simulation_invalid_definition", "path": "/simulados/simulado-sem-composicao", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/simulados/simulado-sem-composicao", "expectNoIndex": true,
+      "schemaTypes": ["WebPage", "BreadcrumbList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Simulado sem composicao valida", "ainda não está disponível para iniciar"]
+    },
+    { "key": "simulation_alias", "path": "/simulados/simulado-publico-antigo", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 308, "canonical": "/simulados/simulado-publico-constitucional", "expectNoIndex": true },
+    { "key": "simulation_missing", "path": "/simulados/simulado-inexistente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "simulation_draft", "path": "/simulados/simulado-rascunho", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "simulation_private", "path": "/simulados/simulado-privado", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "simulation_internal", "path": "/simulados/simulado-interno", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "simulation_invalid_slug", "path": "/simulados/INVALID", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true }
+  ]
+}

@@ -259,6 +259,52 @@ const professionalFor = (kind, requestedSlug) => {
   if (requestedSlug === `${item.slug}-antigo`) return { redirectSlug: item.slug };
   return null;
 };
+const publicSimulationSummary = {
+  id: 601, slug: 'simulado-publico-constitucional', title: 'Simulado de Direito Constitucional',
+  description: 'Simulado editorial público com composição estável para validar a experiência SSR.',
+  durationMinutes: 45, questionCount: 1, availabilityStatus: 'available',
+  path: '/simulados/simulado-publico-constitucional', updatedAt: '2026-08-19T13:00:00Z',
+};
+const publicSimulation = {
+  ...publicSimulationSummary, canonicalPath: publicSimulationSummary.path,
+  instructions: 'Leia cada questão com atenção antes de concluir a prática.', isAttemptAvailable: true,
+  practicePath: '/simulation', readiness: { status: 'READY', reasonCodes: [] },
+  questions: [{ id: 67813, excerpt: 'Art. 5º — Ação & Controle', position: 1, path: '/questoes/67813/art-5o-acao-e-controle', correctAnswer: 'SECRET_CORRECT_ANSWER_SENTINEL_246', teacherComment: 'SECRET_TEACHER_COMMENT_SENTINEL' }],
+  taxonomies: [
+    { id: 20, slug: 'direito-constitucional', name: 'Direito Constitucional', relationType: 'discipline', path: '/disciplinas/direito-constitucional' },
+    { id: 13, slug: 'carreira-fiscal', name: 'Carreira Fiscal', relationType: 'career', path: '/carreiras/carreira-fiscal' },
+    { id: 12, slug: 'analista', name: 'Analista', relationType: 'position', path: '/cargos/analista' },
+    { id: 11, slug: 'orgao-de-teste', name: 'Órgão de Teste', relationType: 'organization', path: '/orgaos/orgao-de-teste' },
+  ],
+  contests: [{ id: 301, slug: 'concurso-canonico-2026', title: 'Concurso Canônico 2026', path: '/concursos/concurso-canonico-2026' }],
+  exams: [{ id: 101, slug: 'prova-ssr-2026', title: 'Prova SSR 2026', year: 2026, path: '/provas/prova-ssr-2026' }],
+  breadcrumbs: [{ label: 'Início', canonicalPath: '/' }, { label: 'Simulados', canonicalPath: '/simulados' }, { label: 'Simulado de Direito Constitucional', canonicalPath: '/simulados/simulado-publico-constitucional' }],
+  attempt_id: 'SECRET_ATTEMPT_SENTINEL', user_id: 'SECRET_USER_SENTINEL', score: 100,
+  answers: ['SECRET_ANSWER_SENTINEL'], adminNote: 'SECRET_ADMIN_NOTE_SENTINEL', providerIdentity: 'SECRET_PROVIDER_SENTINEL',
+};
+const publicSimulationWithoutComposition = {
+  ...publicSimulationSummary,
+  id: 602,
+  slug: 'simulado-sem-composicao',
+  title: 'Simulado sem composicao valida',
+  description: 'Definicao editorial publica ainda sem questoes validas.',
+  questionCount: 0,
+  availabilityStatus: 'unavailable',
+  path: '/simulados/simulado-sem-composicao',
+  canonicalPath: '/simulados/simulado-sem-composicao',
+  instructions: null,
+  isAttemptAvailable: false,
+  practicePath: '/simulation',
+  readiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.invalid_definition'] },
+  questions: [], taxonomies: [], contests: [], exams: [],
+  breadcrumbs: [{ label: 'Inicio', canonicalPath: '/' }, { label: 'Simulados', canonicalPath: '/simulados' }, { label: 'Simulado sem composicao valida', canonicalPath: '/simulados/simulado-sem-composicao' }],
+};
+const publicSimulationFor = (requestedSlug) => {
+  if (requestedSlug === publicSimulation.slug) return publicSimulation;
+  if (requestedSlug === publicSimulationWithoutComposition.slug) return publicSimulationWithoutComposition;
+  if (requestedSlug === 'simulado-publico-antigo') return { redirectSlug: publicSimulation.slug };
+  return null;
+};
 const emptyTopic = {
   ...topic,
   id: 26,
@@ -373,6 +419,11 @@ const payloadFor = (url) => {
     }
     return { success: true, data: contest };
   }
+  if (pathname === '/simulations/public-directory.php') {
+    const requestedPage = Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1);
+    return { success: true, data: { items: [publicSimulationSummary], pageInfo: { page: Math.min(requestedPage, 2), pages: 2, limit: 24, total: 25 } } };
+  }
+  if (pathname === '/simulations/public-detail.php') return { success: true, data: publicSimulationFor(url.searchParams.get('slug')) };
   if (pathname === '/filters/directory.php') {
     const type = url.searchParams.get('type');
     const items = type === 'boards'
@@ -444,6 +495,11 @@ const server = createServer((request, response) => {
   if (url.pathname.replace(/^\/api\//, '/') === '/contests/detail.php'
     && ![contest.slug, 'concurso-canonico-antigo'].includes(url.searchParams.get('slug'))) {
     return json(response, 404, { success: false, error: { code: 'not_found', message: 'Concurso não encontrado.' } }, origin);
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/simulations/public-detail.php'
+    && ![publicSimulation.slug, publicSimulationWithoutComposition.slug, 'simulado-publico-antigo'].includes(url.searchParams.get('slug'))) {
+    count(url.pathname);
+    return json(response, 404, { success: false, message: 'Simulado não encontrado.' }, origin);
   }
   count(url.pathname);
   return json(response, 200, payloadFor(url), origin);

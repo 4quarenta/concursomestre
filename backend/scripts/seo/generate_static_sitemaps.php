@@ -119,7 +119,7 @@ try {
     };
 
     $files = [];
-    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'contests' => 0, 'taxonomies' => 0, 'professional' => 0];
+    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'contests' => 0, 'simulations' => 0, 'taxonomies' => 0, 'professional' => 0];
     $institutionalSources = [
         '/' => ['source' => 'src/app/page.tsx', 'familyId' => 'home'],
         '/planos' => ['source' => 'src/app/planos/page.tsx', 'familyId' => 'plans'],
@@ -130,6 +130,7 @@ try {
         $routes->examsIndex() => ['source' => 'src/app/provas/page.tsx', 'familyId' => 'exam_hub'],
         $routes->contestsIndex() => ['source' => 'src/app/concursos/page.tsx', 'familyId' => 'contest_hub'],
         $routes->openContests() => ['source' => 'src/app/concursos-abertos/page.tsx', 'familyId' => 'open_contests'],
+        $routes->simulationsIndex() => ['source' => 'src/app/simulados/page.tsx', 'familyId' => 'simulations_hub'],
         $routes->careersIndex() => ['source' => 'src/app/carreiras/page.tsx', 'familyId' => 'careers_hub'],
         $routes->positionsIndex() => ['source' => 'src/app/cargos/page.tsx', 'familyId' => 'positions_hub'],
         '/disciplinas' => ['source' => 'src/app/disciplinas/page.tsx', 'familyId' => 'discipline_hub'],
@@ -247,6 +248,54 @@ try {
             $write($stage . '/' . $filename, $buildUrlSet($entries));
             $files[] = ['name' => $filename, 'lastmod' => $maxLastmod($entries)];
             $counts['contests'] += count($entries);
+        }
+        if (count($rows) < $batchSize) break;
+    }
+
+    $simulationCursor = 0;
+    $simulationPage = 0;
+    while (true) {
+        $queryCount++;
+        $stmt = $db->prepare(
+            "SELECT id, slug, updated_at AS last_modified
+             FROM public_simulations
+             WHERE id > :cursor
+               AND publication_status = 'published'
+               AND visibility_status = 'public'
+               AND archived_at IS NULL
+               AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+               AND TRIM(title) <> ''
+               AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+               AND CHAR_LENGTH(slug) <= 190
+               AND EXISTS (
+                   SELECT 1 FROM public_simulation_questions ready_sq
+                   INNER JOIN questions ready_q ON ready_q.id = ready_sq.question_id
+                       AND ready_q.publish_status IN ('published', 'scheduled')
+                       AND ready_q.visibility_status = 'public'
+                       AND ready_q.published_sort_at IS NOT NULL
+                       AND ready_q.published_sort_at <= NOW()
+                   WHERE ready_sq.simulation_id = public_simulations.id
+               )
+             ORDER BY id
+             LIMIT {$batchSize}"
+        );
+        $stmt->execute([':cursor' => $simulationCursor]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if ($rows === []) break;
+        $entries = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $slug = trim((string) ($row['slug'] ?? ''));
+            $simulationCursor = max($simulationCursor, $id);
+            if ($id <= 0 || $slug === '') continue;
+            $entries[] = ['loc' => $baseUrl . $routes->simulationDetail($slug), 'lastmod' => $safeDate($row['last_modified'] ?? null)];
+        }
+        if ($entries !== []) {
+            $simulationPage++;
+            $filename = sprintf('simulations-%05d.xml', $simulationPage);
+            $write($stage . '/' . $filename, $buildUrlSet($entries));
+            $files[] = ['name' => $filename, 'lastmod' => $maxLastmod($entries)];
+            $counts['simulations'] += count($entries);
         }
         if (count($rows) < $batchSize) break;
     }

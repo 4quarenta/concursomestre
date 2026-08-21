@@ -113,6 +113,17 @@ final class PublicRouteBuilder
         return $this->withQuery('open_contests', $this->requiredPath('open_contests'), $query);
     }
 
+    /** @param array<string, scalar|list<scalar>|null> $query */
+    public function simulationsIndex(array $query = []): string
+    {
+        return $this->withQuery('simulations_hub', $this->requiredPath('simulations_hub'), $query);
+    }
+
+    public function simulationDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('simulation_detail', ['slug' => $persistedSlug]);
+    }
+
     /** @param array<string, string|int> $parameters */
     private function requiredPath(string $familyId, array $parameters = []): string
     {

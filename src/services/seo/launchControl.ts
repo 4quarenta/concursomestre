@@ -72,6 +72,7 @@ const INSTANCE_REASON_CODES = new Set([
   'instance_readiness.not_evaluated',
   'instance_readiness.not_applicable',
   'instance_readiness.current_implementation_not_ready',
+  'instance_readiness.invalid_definition',
 ]);
 
 const validateProductionPageMap = (value: unknown): SeoProductionPageMapV1 => {

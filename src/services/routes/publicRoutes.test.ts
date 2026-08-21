@@ -26,6 +26,8 @@ describe('publicRoutes', () => {
     expect(publicRoutes.careers.detail('carreira-fiscal')).toBe('/carreiras/carreira-fiscal');
     expect(publicRoutes.positions.index({ busca: 'auditor' })).toBe('/cargos?busca=auditor');
     expect(publicRoutes.positions.detail('auditor-fiscal')).toBe('/cargos/auditor-fiscal');
+    expect(publicRoutes.simulations.index()).toBe('/simulados');
+    expect(publicRoutes.simulations.detail('simulado-publico')).toBe('/simulados/simulado-publico');
   });
 
   it('preserves supported state and repeated parameters without adding pagination', () => {
