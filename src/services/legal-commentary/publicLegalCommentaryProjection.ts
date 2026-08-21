@@ -223,7 +223,7 @@ const projectArticle = (
     ...pick(record, [
       'id', 'lawId', 'sectionId', 'slug', 'number', 'numero', 'title', 'titulo',
       'text', 'texto', 'officialAnchor', 'isRecentlyChanged', 'relatedQuestionCount',
-      'questoesRelacionadas', 'assuntoFilterId',
+      'questoesRelacionadas', 'assuntoFilterId', 'officialStatus', 'publicArticlePath',
     ]),
     id,
     lawId: String(record.lawId || ''),

@@ -241,7 +241,7 @@ final class SeoPolicyService
             'question_detail', 'questions_hub' => 'questions',
             'exam_detail', 'exam_hub' => 'exams',
             'board_detail', 'board_hub', 'discipline_detail', 'discipline_hub', 'topic_detail', 'subject_detail', 'organization_detail', 'organizations_hub' => 'taxonomies',
-            'law_detail', 'law_hub' => 'laws',
+            'law_detail', 'law_article_detail', 'law_hub' => 'laws',
             'blog_article', 'blog_hub' => 'articles',
             default => 'pages',
         };

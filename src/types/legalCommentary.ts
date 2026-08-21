@@ -234,6 +234,8 @@ export interface LawArticle {
   jurisprudencia?: ArticleJurisprudence[];
   blocks: LegalArticleBlock[];
   officialAnchor?: string;
+  officialStatus?: string;
+  publicArticlePath?: string | null;
   isRecentlyChanged?: boolean;
   isFavorite?: boolean;
   readAt?: string;
@@ -506,6 +508,8 @@ export interface PublicLawArticle {
   paragrafos?: LegalArticleParagraph[];
   blocks: LegalArticleBlock[];
   officialAnchor?: string;
+  officialStatus?: string;
+  publicArticlePath?: string | null;
   isRecentlyChanged?: boolean;
   relatedQuestionCount?: number;
   questoesRelacionadas?: number;

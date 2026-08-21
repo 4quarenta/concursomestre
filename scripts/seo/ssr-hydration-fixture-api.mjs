@@ -344,6 +344,7 @@ const protectedLaw = {
   articles: [{
     id: 'article-1', lawId: 'law-1', sectionId: 'section-1', slug: 'artigo-5', number: '5',
     title: 'Art. 5º', text: 'Todos são iguais perante a lei.',
+    officialStatus: 'active',
     comentarios: [{ body: 'SECRET_EDITORIAL_SENTINEL_123' }],
   }],
   sectionEditorials: [{
@@ -356,6 +357,42 @@ const protectedLaw = {
   },
   hasLockedFeatures: true,
   planAccess: { planName: 'Gratuito', status: 'active' },
+};
+const lawArticleFixture = (articleSlug = 'artigo-5') => {
+  const variants = {
+    'artigo-5': { id: 501, number: '5º', title: 'Direitos e garantias fundamentais', officialText: 'Todos são iguais perante a lei, sem distinção de qualquer natureza.', officialStatus: 'active' },
+    'artigo-5-a': { id: 502, number: '5º-A', title: null, officialText: 'Texto oficial do artigo incluído para validar numeração alfanumérica.', officialStatus: 'active' },
+    'artigo-5-b': { id: 506, number: '5º-B', title: null, officialText: 'Texto oficial do segundo artigo alfanumérico.', officialStatus: 'active' },
+    'artigo-6': { id: 503, number: '6º', title: null, officialText: 'Texto histórico revogado preservado para consulta.', officialStatus: 'revoked' },
+    'artigo-7': { id: 504, number: '7º', title: null, officialText: 'Dispositivo vetado.', officialStatus: 'vetoed' },
+    'artigo-sem-texto': { id: 505, number: '8º', title: null, officialText: '', officialStatus: 'active' },
+  };
+  const variant = variants[articleSlug];
+  if (!variant) return null;
+  const articlePath = `/lei-comentada/constituicao-federal/${articleSlug}`;
+  return {
+    law: { id: 1, slug: 'constituicao-federal', title: 'Constituição Federal', shortTitle: 'Constituição Federal', number: '1988', year: '1988', status: 'published', officialUrl: 'https://www.planalto.gov.br/ccivil_03/constituicao/constituicao.htm', sourceName: 'Portal do Planalto', updatedAt: '2026-08-20T10:00:00-03:00' },
+    article: { ...variant, lawId: 1, sectionId: 1, slug: articleSlug, officialAnchor: `art-${variant.number}`, updatedAt: '2026-08-20T10:00:00-03:00', blocks: variant.officialText ? [{ id: variant.id, uid: `${articleSlug}-caput`, kind: 'caput', label: `Art. ${variant.number}`, text: variant.officialText, parentUid: null, anchor: null, sortOrder: 0 }] : [] },
+    section: { id: 1, title: 'Direitos e garantias fundamentais', titleLabel: 'TÍTULO II', titleName: 'Dos Direitos e Garantias Fundamentais', chapterLabel: 'CAPÍTULO I', chapterName: 'Dos Direitos e Deveres Individuais e Coletivos' },
+    navigation: {
+      previous: articleSlug === 'artigo-5-a'
+        ? { slug: 'artigo-5', number: '5º', title: null, path: '/lei-comentada/constituicao-federal/artigo-5' }
+        : articleSlug === 'artigo-5-b'
+          ? { slug: 'artigo-5-a', number: '5º-A', title: null, path: '/lei-comentada/constituicao-federal/artigo-5-a' }
+          : null,
+      next: articleSlug === 'artigo-5'
+        ? { slug: 'artigo-5-a', number: '5º-A', title: null, path: '/lei-comentada/constituicao-federal/artigo-5-a' }
+        : articleSlug === 'artigo-5-a'
+          ? { slug: 'artigo-5-b', number: '5º-B', title: null, path: '/lei-comentada/constituicao-federal/artigo-5-b' }
+          : articleSlug === 'artigo-5-b'
+            ? { slug: 'artigo-6', number: '6º', title: null, path: '/lei-comentada/constituicao-federal/artigo-6' }
+            : null,
+    },
+    canonicalPath: articlePath,
+    breadcrumbs: [{ label: 'Início', path: '/' }, { label: 'Lei Comentada', path: '/lei-comentada' }, { label: 'Constituição Federal', path: '/lei-comentada/constituicao-federal' }, { label: `Art. ${variant.number}`, path: articlePath }],
+    readiness: variant.officialText ? { status: 'READY', reasonCodes: [] } : { status: 'NOT_READY', reasonCodes: ['instance_readiness.invalid_definition'] },
+    editorial: { commentaryAvailable: false, protectedContentIncluded: false },
+  };
 };
 const question = {
   id: 67813,
@@ -451,6 +488,14 @@ const payloadFor = (url) => {
       ? { success: true, data: protectedLaw }
       : { success: false, message: 'Lei nao encontrada.' };
   }
+  if (pathname === '/legal-commentary/article-detail.php') {
+    const lawSlug = url.searchParams.get('lawSlug');
+    const articleSlug = url.searchParams.get('articleSlug');
+    if (lawSlug === 'constituicao-antiga' && articleSlug === 'artigo-5') {
+      return { success: true, data: { redirectPath: '/lei-comentada/constituicao-federal/artigo-5' } };
+    }
+    return { success: true, data: lawSlug === 'constituicao-federal' ? lawArticleFixture(articleSlug) : null };
+  }
   if (pathname === '/changelog/list.php') return { success: true, data: { items: [], pageInfo: { page: 1, limit: 8, total: 0, totalPages: 1, hasMore: false } } };
   if (pathname.includes('suggest')) return { success: true, data: { items: [] } };
   if (pathname === '/plans/list.php') return { success: true, data: { items: [] } };
@@ -475,6 +520,15 @@ const server = createServer((request, response) => {
   if (url.pathname.replace(/^\/api\//, '/') === '/legal-commentary/detail.php' && url.searchParams.get('slug') !== lawSummary.slug) {
     count(url.pathname);
     return json(response, 404, { success: false, message: 'Lei nao encontrada.' }, origin);
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/legal-commentary/article-detail.php') {
+    const lawSlug = url.searchParams.get('lawSlug'); const articleSlug = url.searchParams.get('articleSlug');
+    const validLaw = ['constituicao-federal', 'constituicao-antiga'].includes(lawSlug);
+    const validArticle = ['artigo-5', 'artigo-5-a', 'artigo-5-b', 'artigo-6', 'artigo-7', 'artigo-sem-texto'].includes(articleSlug);
+    if (!validLaw || !validArticle || (lawSlug === 'constituicao-antiga' && articleSlug !== 'artigo-5')) {
+      count(url.pathname);
+      return json(response, 404, { success: false, message: 'Artigo normativo não encontrado.' }, origin);
+    }
   }
   if (url.pathname.replace(/^\/api\//, '/') === '/filters/organization.php' && url.searchParams.get('slug') !== organization.slug) {
     count(url.pathname);

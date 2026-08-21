@@ -4943,6 +4943,7 @@ class LegalCommentaryRepository
             'questoesRelacionadas' => (int) ($row['related_question_count'] ?? 0),
             'blocks' => $blocks,
             'officialAnchor' => $row['official_anchor'] ?? null,
+            'officialStatus' => (string) ($row['official_status'] ?? 'active'),
             'isRecentlyChanged' => (bool) ($row['is_recently_changed'] ?? false),
             'isFavorite' => !empty($favorites['article:' . $id]),
             'readAt' => in_array($id, $progress['viewedArticleIds'] ?? [], true) ? ($progress['lastViewedAt'] ?? null) : null,

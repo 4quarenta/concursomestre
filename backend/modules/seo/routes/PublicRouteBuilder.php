@@ -124,6 +124,24 @@ final class PublicRouteBuilder
         return $this->requiredPath('simulation_detail', ['slug' => $persistedSlug]);
     }
 
+    public function lawDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('law_detail', ['slug' => $persistedSlug]);
+    }
+
+    public function lawsIndex(): string
+    {
+        return $this->requiredPath('law_hub');
+    }
+
+    public function lawArticleDetail(string $lawPersistedSlug, string $articlePersistedSlug): string
+    {
+        return $this->requiredPath('law_article_detail', [
+            'lawSlug' => $lawPersistedSlug,
+            'articleSlug' => $articlePersistedSlug,
+        ]);
+    }
+
     /** @param array<string, string|int> $parameters */
     private function requiredPath(string $familyId, array $parameters = []): string
     {

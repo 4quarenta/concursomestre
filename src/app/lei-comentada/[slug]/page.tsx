@@ -5,6 +5,7 @@ import { Suspense } from 'react';
 import { websiteManifest } from '@/config/platform';
 import { buildSiteUrl } from '@/config/siteUrl';
 import { buildNoIndexMetadata } from '../../seoMetadata';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import ModuleAccessFallback from '@/components/shared/feedback/ModuleAccessFallback';
 import {
   fetchLawDetailForServer,
@@ -119,7 +120,13 @@ const LawPublicFallback = ({
     <div className="space-y-4">
       {law.articles.map((article) => (
         <section key={String(article.id)} className="rounded-md border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="font-black text-slate-900 dark:text-slate-100">{article.title || `Art. ${article.number}`}</h3>
+          <h3 className="font-black text-slate-900 dark:text-slate-100">
+            {article.slug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(article.slug)
+              && ['active', 'revoked', 'vetoed'].includes(article.officialStatus || 'active')
+              && plainText(article.text) ? (
+                <Link href={publicRoutes.laws.article(law.slug, article.slug)}>{article.title || `Art. ${article.number}`}</Link>
+              ) : (article.title || `Art. ${article.number}`)}
+          </h3>
           <p className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-700 dark:text-slate-300">{plainText(article.text)}</p>
         </section>
       ))}

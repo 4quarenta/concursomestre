@@ -56,7 +56,7 @@ final class PublicLegalCommentaryProjection
     private const ARTICLE_FIELDS = [
         'id', 'lawId', 'sectionId', 'slug', 'number', 'numero', 'title', 'titulo',
         'text', 'texto', 'officialAnchor', 'isRecentlyChanged', 'relatedQuestionCount',
-        'questoesRelacionadas', 'assuntoFilterId',
+        'questoesRelacionadas', 'assuntoFilterId', 'officialStatus', 'publicArticlePath',
     ];
 
     /** @var list<string> */

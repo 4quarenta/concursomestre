@@ -445,6 +445,16 @@
       "paginationPolicy": "none"
     },
     {
+      "id": "law_article_detail",
+      "patterns": ["/lei-comentada/{lawSlug}/{articleSlug}"],
+      "audience": "public",
+      "supportsLanding": true,
+      "supportsEditorialPromotion": false,
+      "defaultIndexability": "INDEX",
+      "allowedParameters": ["utm_*", "gclid", "fbclid"],
+      "paginationPolicy": "none"
+    },
+    {
       "id": "blog_hub",
       "patterns": ["/blog"],
       "audience": "public",

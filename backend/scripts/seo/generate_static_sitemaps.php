@@ -119,7 +119,7 @@ try {
     };
 
     $files = [];
-    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'exams' => 0, 'contests' => 0, 'simulations' => 0, 'taxonomies' => 0, 'professional' => 0];
+    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'lawArticles' => 0, 'exams' => 0, 'contests' => 0, 'simulations' => 0, 'taxonomies' => 0, 'professional' => 0];
     $institutionalSources = [
         '/' => ['source' => 'src/app/page.tsx', 'familyId' => 'home'],
         '/planos' => ['source' => 'src/app/planos/page.tsx', 'familyId' => 'plans'],
@@ -343,6 +343,53 @@ try {
         if (count($rows) < $batchSize) {
             break;
         }
+    }
+
+    $lawArticleCursor = 0;
+    $lawArticlePage = 0;
+    while (true) {
+        $queryCount++;
+        $stmt = $db->prepare(
+            "SELECT a.id, a.slug AS article_slug, l.slug AS law_slug,
+                    COALESCE(a.updated_at, a.created_at, l.updated_at, l.published_at) AS last_modified
+               FROM law_articles a
+               INNER JOIN laws l ON l.id = a.law_id
+              WHERE a.id > :cursor
+                AND a.official_status IN ('active', 'revoked', 'vetoed')
+                AND TRIM(a.article_number) <> ''
+                AND TRIM(a.official_text) <> ''
+                AND BINARY a.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND CHAR_LENGTH(a.slug) <= 180
+                AND BINARY l.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND CHAR_LENGTH(l.slug) <= 160
+                AND (l.status IN ('active', 'published', 'revoked')
+                     OR (l.status = 'scheduled' AND l.published_at IS NOT NULL AND l.published_at <= NOW()))
+              ORDER BY a.id
+              LIMIT {$batchSize}"
+        );
+        $stmt->execute([':cursor' => $lawArticleCursor]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if ($rows === []) break;
+        $entries = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $lawSlug = trim((string) ($row['law_slug'] ?? ''));
+            $articleSlug = trim((string) ($row['article_slug'] ?? ''));
+            $lawArticleCursor = max($lawArticleCursor, $id);
+            if ($id <= 0 || $lawSlug === '' || $articleSlug === '') continue;
+            $entries[] = [
+                'loc' => $baseUrl . $routes->lawArticleDetail($lawSlug, $articleSlug),
+                'lastmod' => $safeDate($row['last_modified'] ?? null),
+            ];
+        }
+        if ($entries !== []) {
+            $lawArticlePage++;
+            $filename = sprintf('law-articles-%05d.xml', $lawArticlePage);
+            $write($stage . '/' . $filename, $buildUrlSet($entries));
+            $files[] = ['name' => $filename, 'lastmod' => $maxLastmod($entries)];
+            $counts['lawArticles'] += count($entries);
+        }
+        if (count($rows) < $batchSize) break;
     }
 
     $examCursor = 0;

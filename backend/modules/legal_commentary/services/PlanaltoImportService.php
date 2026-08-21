@@ -3197,6 +3197,10 @@ class PlanaltoImportService
 
             if ($existingArticle) {
                 $article['id'] = $existingArticle['id'];
+                $persistedSlug = trim((string) ($existingArticle['slug'] ?? ''));
+                if ($persistedSlug !== '') {
+                    $article['slug'] = $persistedSlug;
+                }
                 $article['assuntoFilterId'] = $article['assuntoFilterId'] ?: ($existingArticle['assuntoFilterId'] ?? null);
                 $article['relatedQuestionCount'] = $existingArticle['relatedQuestionCount'] ?? $article['relatedQuestionCount'];
                 if (!empty($existingArticle['title']) && empty($article['title'])) {

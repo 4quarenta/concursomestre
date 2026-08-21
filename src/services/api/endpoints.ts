@@ -303,6 +303,7 @@ export const ENDPOINTS = {
     legalCommentary: {
         list: 'legal-commentary/list.php',
         detail: 'legal-commentary/detail.php',
+        articleDetail: 'legal-commentary/article-detail.php',
         favorite: 'legal-commentary/favorite.php',
         progress: 'legal-commentary/progress.php',
         notes: 'legal-commentary/notes.php',

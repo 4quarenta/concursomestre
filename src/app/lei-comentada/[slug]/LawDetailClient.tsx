@@ -498,6 +498,15 @@ const saveTeacherCommentRequestKeys = (userKey: string, lawId: string, ids: Set<
 
 const getArticleNumber = (article: LawArticle) => String(article.number || article.numero || '').trim();
 
+const getPublicArticlePath = (lawSlug: string, article: LawArticle): string | null => {
+  const persistedSlug = String(article.slug || '').trim();
+  const status = String(article.officialStatus || 'active').trim().toLowerCase();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(persistedSlug)
+    || !['active', 'revoked', 'vetoed'].includes(status)
+    || getArticleTextLines(article).length === 0) return null;
+  return publicRoutes.laws.article(lawSlug, persistedSlug);
+};
+
 const getArticleTaxonomyNames = (article: LawArticle) => {
   return [
     article.title,
@@ -4677,6 +4686,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
                   {shouldRenderSavedReaderMarkup ? null : (
                 <div className="space-y-6">
                   {visibleArticles.map((article) => {
+                    const publicArticlePath = getPublicArticlePath(law.slug, article);
                     const blocks = buildArticleBlocks(article);
                     const displayBlocks = showLegalTextNotes
                       ? blocks
@@ -4710,7 +4720,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
                       <article key={article.id} className="space-y-4 pb-6 outline-none focus:outline-none focus-visible:outline-none" style={fontSizeStyle}>
                         <div className="flex items-start justify-between gap-4">
                           <h3 className="text-xl font-black tracking-tight text-slate-900 dark:text-slate-100">
-                            Art. {getArticleNumber(article) || '-'}
+                            {publicArticlePath ? <Link href={publicArticlePath}>Art. {getArticleNumber(article) || '-'}</Link> : <>Art. {getArticleNumber(article) || '-'}</>}
                           </h3>
                           <span className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-full bg-indigo-100 px-2 text-xs font-black text-[#615fff] dark:bg-indigo-500/20">
                             {Math.max(blocks.length - 1, 1)}

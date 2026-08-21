@@ -32,15 +32,16 @@ describe('public launch SEO readiness', () => {
     const landing = readSource('src/app/l/[slug]/page.tsx');
     const lawDetail = readSource('src/app/lei-comentada/[slug]/page.tsx');
     const lawDetailLayout = readSource('src/app/lei-comentada/[slug]/layout.tsx');
+    const lawArticleDetail = readSource('src/app/lei-comentada/[slug]/[articleSlug]/page.tsx');
 
     expect(question).toContain('notFound()');
     expect(question).toContain('permanentRedirect(publicRoutes.questions.detail');
     expect(landing).toContain('notFound()');
     expect(lawDetail).toContain('notFound()');
-    expect(lawDetailLayout).toContain('fetchLegalCommentaryModuleAvailability()');
-    expect(lawDetailLayout).toContain('if (!isModuleAvailable) {');
     expect(lawDetailLayout).toContain('return children;');
-    expect(lawDetailLayout).toContain('notFound()');
+    expect(lawDetailLayout).not.toContain('fetchLawDetailForServer');
+    expect(lawArticleDetail).toContain('fetchPublicLawArticle');
+    expect(lawArticleDetail).toContain('notFound()');
   });
 
   it('does not ship marketplace or math dependencies to every public route', () => {

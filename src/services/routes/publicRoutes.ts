@@ -264,6 +264,15 @@ export const publicRoutes = {
       'simulation_detail', buildPath('simulation_detail', { slug }), query,
     ),
   },
+  laws: {
+    index: (query?: PublicRouteQuery) => withQuery('law_hub', buildPath('law_hub', {}), query),
+    detail: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'law_detail', buildPath('law_detail', { slug }), query,
+    ),
+    article: (lawSlug: string, articleSlug: string, query?: PublicRouteQuery) => withQuery(
+      'law_article_detail', buildPath('law_article_detail', { lawSlug, articleSlug }), query,
+    ),
+  },
 } as const;
 
 export const structuralPublicRoutePolicy = policy;
