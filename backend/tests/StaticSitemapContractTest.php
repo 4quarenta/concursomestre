@@ -38,7 +38,8 @@ sitemapContractAssert(
 );
 sitemapContractAssert(str_contains($blogWrapper, "generate_static_sitemaps.php"), 'Blog script must delegate to the only authority.');
 sitemapContractAssert(!str_contains($blogGenerator, 'NOW()) AS last_modified'), 'Blog generator fabricates lastmod.');
-sitemapContractAssert(!str_contains($blogGenerator, '/blog/categoria/'), 'Unpromoted blog categories are still emitted.');
+sitemapContractAssert(str_contains($blogGenerator, 'blogCategoryDetail'), 'READY blog categories are missing from production sitemap simulation.');
+sitemapContractAssert(str_contains($blogGenerator, 'blog-categories-%05d.xml'), 'Blog category sitemap is not batched.');
 sitemapContractAssert(!str_contains($blogGenerator, '/blog/tag/'), 'Unpromoted blog tags are still emitted.');
 sitemapContractAssert(!str_contains($blogGenerator, '/blog/autor/'), 'Unpromoted blog authors are still emitted.');
 sitemapContractAssert(str_contains($publisher, 'rename($stagingDirectory, $this->outputDirectory)'), 'Publication must promote the validated tree.');

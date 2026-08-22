@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../routes/PublicRouteBuilder.php';
+
 final class StaticBlogSitemapGenerator
 {
     public function __construct(
@@ -67,6 +69,54 @@ final class StaticBlogSitemapGenerator
             }
             if (count($rows) < $this->batchSize) {
                 break;
+            }
+        }
+
+        if ($this->tableExists('blog_categories', $queryCount)) {
+            $routes = new PublicRouteBuilder();
+            $cursor = 0;
+            $page = 0;
+            while (true) {
+                $queryCount++;
+                $stmt = $this->db->prepare(
+                    "SELECT c.id, c.slug,
+                            MAX(COALESCE(a.updated_at, a.published_at, a.created_at)) AS last_modified
+                     FROM blog_categories c
+                     INNER JOIN blog_articles a
+                       ON a.category_id = c.id
+                      AND a.deleted_at IS NULL
+                      AND a.status IN ('published', 'scheduled')
+                      AND a.published_at IS NOT NULL
+                      AND a.published_at <= NOW()
+                     WHERE c.id > :cursor
+                     GROUP BY c.id, c.slug
+                     ORDER BY c.id
+                     LIMIT {$this->batchSize}"
+                );
+                $stmt->execute([':cursor' => $cursor]);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                if ($rows === []) break;
+                $entries = [];
+                foreach ($rows as $row) {
+                    $id = (int) ($row['id'] ?? 0);
+                    $slug = trim((string) ($row['slug'] ?? ''));
+                    $cursor = max($cursor, $id);
+                    if ($id <= 0 || strlen($slug) > 140 || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) !== 1) {
+                        continue;
+                    }
+                    $entries[] = [
+                        'loc' => $this->baseUrl . $routes->blogCategoryDetail($slug),
+                        'lastmod' => $this->safeDate($row['last_modified'] ?? null),
+                    ];
+                }
+                if ($entries !== []) {
+                    $page++;
+                    $filename = sprintf('blog-categories-%05d.xml', $page);
+                    $this->write($filename, $this->buildUrlSet($entries));
+                    $files[] = ['name' => $filename, 'lastmod' => $this->maxLastmod($entries)];
+                    $counts['taxonomies'] += count($entries);
+                }
+                if (count($rows) < $this->batchSize) break;
             }
         }
 

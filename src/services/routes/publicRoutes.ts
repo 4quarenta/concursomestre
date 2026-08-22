@@ -282,6 +282,15 @@ export const publicRoutes = {
       'law_article_detail', buildPath('law_article_detail', { lawSlug, articleSlug }), query,
     ),
   },
+  blog: {
+    index: (query?: PublicRouteQuery) => withQuery('blog_hub', buildPath('blog_hub', {}), query),
+    category: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'blog_category', buildPath('blog_category', { slug }), query,
+    ),
+    tag: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'blog_tag', buildPath('blog_tag', { slug }), query,
+    ),
+  },
 } as const;
 
 export const structuralPublicRoutePolicy = policy;

@@ -12,6 +12,7 @@ final class BlogController
     public function detailPublic(string $slug, ?array $viewer): array { return $this->service->detailPublic($slug, $viewer); }
     public function categories(bool $publicOnly = true): array { return $this->service->categories($publicOnly); }
     public function tags(bool $publicOnly = true): array { return $this->service->tags($publicOnly); }
+    public function taxonomyArchive(array $query): array { return $this->service->taxonomyArchive($query); }
     public function listAdmin(array $query): array { return $this->service->listAdmin($query); }
     public function detailAdmin(int $id): array { return $this->service->detailAdmin($id); }
     public function save(array $payload, array $actor): array { return $this->service->save($payload, $actor); }

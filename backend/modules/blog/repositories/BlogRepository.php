@@ -16,7 +16,7 @@ final class BlogRepository
     public function listPublic(array $filters, ?string $viewerUserId): array
     {
         $limit = (int) $filters['limit'];
-        $cursor = SignedKeysetCursor::decodePayload($filters['cursor'] ?? null, 'blog.public');
+        $cursor = self::decodePublicCursor($filters['cursor'] ?? null);
         $conditions = [
             "a.deleted_at IS NULL",
             "a.status IN ('published', 'scheduled')",
@@ -169,6 +169,49 @@ final class BlogRepository
             ],
             $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []
         );
+    }
+
+    public function findPublicTaxonomyBySlug(string $type, string $slug): ?array
+    {
+        if ($type === 'category') {
+            $stmt = $this->db->prepare(
+                "SELECT c.id, c.name, c.slug, c.description, c.image_url,
+                        COUNT(a.id) AS article_count,
+                        MAX(a.published_at) AS last_published_at
+                 FROM blog_categories c
+                 LEFT JOIN blog_articles a
+                   ON a.category_id = c.id
+                  AND a.deleted_at IS NULL
+                  AND a.status IN ('published', 'scheduled')
+                  AND a.published_at IS NOT NULL
+                  AND a.published_at <= NOW()
+                 WHERE c.slug = :slug
+                 GROUP BY c.id, c.name, c.slug, c.description, c.image_url
+                 LIMIT 1"
+            );
+        } elseif ($type === 'tag') {
+            $stmt = $this->db->prepare(
+                "SELECT t.id, t.name, t.slug, t.kind, t.description, t.image_url,
+                        COUNT(DISTINCT a.id) AS article_count,
+                        MAX(a.published_at) AS last_published_at
+                 FROM blog_tags t
+                 LEFT JOIN blog_article_tags bat ON bat.tag_id = t.id
+                 LEFT JOIN blog_articles a
+                   ON a.id = bat.article_id
+                  AND a.deleted_at IS NULL
+                  AND a.status IN ('published', 'scheduled')
+                  AND a.published_at IS NOT NULL
+                  AND a.published_at <= NOW()
+                 WHERE t.slug = :slug
+                 GROUP BY t.id, t.name, t.slug, t.kind, t.description, t.image_url
+                 LIMIT 1"
+            );
+        } else {
+            throw new InvalidArgumentException('Tipo de taxonomia editorial invalido.');
+        }
+        $stmt->execute([':slug' => $slug]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
     }
 
     public function listAdmin(array $filters): array
@@ -497,6 +540,26 @@ final class BlogRepository
                 FROM blog_articles a
                 INNER JOIN blog_categories c ON c.id = a.category_id
                 LEFT JOIN users u ON u.id = a.author_id";
+    }
+
+    /** @return array{publishedAt:string,id:int}|null */
+    private static function decodePublicCursor(?string $value): ?array
+    {
+        $payload = SignedKeysetCursor::decodePayload($value, 'blog.public');
+        if ($payload === null) {
+            return null;
+        }
+
+        $publishedAt = trim((string) ($payload['publishedAt'] ?? ''));
+        $id = filter_var($payload['id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $publishedAt);
+        if ($id === false || $date === false || $date->format('Y-m-d H:i:s') !== $publishedAt) {
+            throw new InvalidArgumentException('Cursor de paginacao invalido.');
+        }
+
+        return ['publishedAt' => $publishedAt, 'id' => (int) $id];
     }
 
     private function hydrateArticles(array $rows, bool $includeBody = false): array

@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../public/PublicBlogTaxonomyProjection.php';
+require_once __DIR__ . '/../public/PublicBlogTaxonomyReadiness.php';
+require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
+
 final class BlogService
 {
     public function __construct(
@@ -35,6 +39,42 @@ final class BlogService
     public function tags(bool $publicOnly = true): array
     {
         return $this->repository->listTags($publicOnly);
+    }
+
+    public function taxonomyArchive(array $query): array
+    {
+        $filters = $this->validator->validatePublicTaxonomyArchive($query);
+        $taxonomy = $this->repository->findPublicTaxonomyBySlug($filters['type'], $filters['slug']);
+        if ($taxonomy === null) {
+            throw new OutOfBoundsException('Taxonomia editorial nao encontrada.');
+        }
+        $routes = new PublicRouteBuilder();
+        $canonicalPath = $filters['type'] === 'category'
+            ? $routes->blogCategoryDetail((string) $taxonomy['slug'])
+            : $routes->blogTagDetail((string) $taxonomy['slug']);
+        $page = $this->repository->listPublic([
+            'limit' => $filters['limit'],
+            'cursor' => $filters['cursor'],
+            'categorySlug' => $filters['type'] === 'category' ? $filters['slug'] : null,
+            'tagSlug' => $filters['type'] === 'tag' ? $filters['slug'] : null,
+            'authorId' => null,
+            'featured' => false,
+            'search' => null,
+        ], null);
+
+        return [
+            'taxonomy' => PublicBlogTaxonomyProjection::taxonomy(
+                $taxonomy,
+                $filters['type'],
+                $canonicalPath,
+                PublicBlogTaxonomyReadiness::evaluate($taxonomy)
+            ),
+            'items' => array_values(array_map(
+                static fn (array $article): array => PublicBlogTaxonomyProjection::articleCard($article),
+                $page['items'] ?? []
+            )),
+            'pageInfo' => $page['pageInfo'] ?? ['limit' => $filters['limit'], 'hasMore' => false, 'nextCursor' => null],
+        ];
     }
 
     public function listAdmin(array $query): array

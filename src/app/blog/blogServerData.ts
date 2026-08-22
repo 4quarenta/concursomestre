@@ -12,7 +12,13 @@
 import { cache } from 'react';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { ENDPOINTS } from '@services/api/endpoints';
-import type { BlogArticle, BlogCategory, BlogPage, BlogTag } from '@services/blog';
+import type {
+  BlogArticle,
+  BlogCategory,
+  BlogPage,
+  BlogTag,
+  PublicBlogTaxonomyArchive,
+} from '@services/blog';
 import {
   withValidatedSeoEnvelopeShadow,
   type SeoEnvelopeCarrier,
@@ -157,6 +163,19 @@ export const fetchBlogTagsForServer = cache(async (): Promise<BlogTag[]> => {
   const payload = await fetchPublic<{ items?: BlogTag[] }>(ENDPOINTS.blog.tags);
   return Array.isArray(payload?.items) ? payload.items : [];
 });
+
+export const fetchBlogTaxonomyArchiveForServer = cache(async (
+  type: 'category' | 'tag',
+  slug: string,
+  cursor = '',
+): Promise<PublicBlogTaxonomyArchive | null> => (
+  fetchPublic<PublicBlogTaxonomyArchive>(ENDPOINTS.blog.taxonomy, {
+    type,
+    slug,
+    ...(cursor ? { cursor } : {}),
+    limit: '24',
+  })
+));
 
 export const fetchPublicExamDirectoryPageForServer = cache(async (params: {
   page?: number;

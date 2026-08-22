@@ -20,12 +20,31 @@ final class BlogValidator
     {
         return [
             'limit' => max(1, min(30, (int) ($query['limit'] ?? 12))),
-            'cursor' => $this->optionalString($query['cursor'] ?? null),
+            'cursor' => $this->limitedOptionalString($query['cursor'] ?? null, 4096),
             'categorySlug' => $this->optionalString($query['category'] ?? null),
             'tagSlug' => $this->optionalString($query['tag'] ?? null),
             'authorId' => $this->optionalString($query['author'] ?? null),
             'featured' => filter_var($query['featured'] ?? false, FILTER_VALIDATE_BOOL),
             'search' => $this->limitedOptionalString($query['search'] ?? $query['q'] ?? null, 160),
+        ];
+    }
+
+    /** @return array{type:string,slug:string,cursor:?string,limit:int} */
+    public function validatePublicTaxonomyArchive(array $query): array
+    {
+        $type = strtolower(trim((string) ($query['type'] ?? '')));
+        $slug = trim((string) ($query['slug'] ?? ''));
+        if (!in_array($type, ['category', 'tag'], true)) {
+            throw new InvalidArgumentException('Tipo de taxonomia editorial invalido.');
+        }
+        if ($slug === '' || strlen($slug) > 140 || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) !== 1) {
+            throw new InvalidArgumentException('Slug de taxonomia editorial invalido.');
+        }
+        return [
+            'type' => $type,
+            'slug' => $slug,
+            'cursor' => $this->limitedOptionalString($query['cursor'] ?? null, 4096),
+            'limit' => max(1, min(30, (int) ($query['limit'] ?? 24))),
         ];
     }
 

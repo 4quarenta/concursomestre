@@ -31,6 +31,9 @@ describe('publicRoutes', () => {
     expect(publicRoutes.materials.index()).toBe('/materiais');
     expect(publicRoutes.materials.detail('guia-de-estudo')).toBe('/materiais/guia-de-estudo');
     expect(publicRoutes.marketplace.index()).toBe('/marketplace');
+    expect(publicRoutes.blog.index({ q: 'edital' })).toBe('/blog?q=edital');
+    expect(publicRoutes.blog.category('editais')).toBe('/blog/categoria/editais');
+    expect(publicRoutes.blog.tag('nordeste', { cursor: 'signed' })).toBe('/blog/tag/nordeste?cursor=signed');
   });
 
   it('preserves supported state and repeated parameters without adding pagination', () => {

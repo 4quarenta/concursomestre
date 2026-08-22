@@ -170,12 +170,12 @@ foreach (['BlogConversionCta', 'Notícias por região', '/blog/tag/'] as $needle
 }
 
 $tagPage = (string) file_get_contents($root . '/src/app/blog/tag/[slug]/page.tsx');
-foreach (['fetchBlogTagsForServer', 'fetchBlogPageForServer({ tag:', 'buildUnpromotedBlogTaxonomyMetadata', 'BlogConversionCta'] as $needle) {
+foreach (['fetchBlogTaxonomyArchiveForServer', "'tag'", 'buildBlogTaxonomyMetadata', 'BlogTaxonomyArchivePage'] as $needle) {
     assertBlogPlatform(str_contains($tagPage, $needle), 'Blog tag page is missing ' . $needle . '.');
 }
 $taxonomyMetadata = (string) file_get_contents($root . '/src/app/blog/blogTaxonomyMetadata.ts');
-foreach (['buildPublicPageMetadata', 'index: false', 'follow: true'] as $needle) {
-    assertBlogPlatform(str_contains($taxonomyMetadata, $needle), 'Unpromoted blog taxonomy metadata is missing ' . $needle . '.');
+foreach (['buildPublicPageMetadata', 'evaluateSeoLaunchControl', 'launchModeRobots(true)'] as $needle) {
+    assertBlogPlatform(str_contains($taxonomyMetadata, $needle), 'Blog taxonomy metadata is missing ' . $needle . '.');
 }
 
 $cta = (string) file_get_contents($root . '/src/app/blog/BlogConversionCta.tsx');

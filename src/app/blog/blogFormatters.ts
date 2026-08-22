@@ -1,9 +1,11 @@
 import type { BlogArticle } from '@services/blog';
 
+type BlogPublicationDates = Pick<BlogArticle, 'publishedAt'> & Partial<Pick<BlogArticle, 'createdAt'>>;
+
 export const BLOG_TIME_ZONE = 'America/Sao_Paulo';
 
-export const publicationValue = (article: BlogArticle): string => (
-  article.publishedAt || article.createdAt
+export const publicationValue = (article: BlogPublicationDates): string => (
+  article.publishedAt || article.createdAt || ''
 );
 
 export const formatBlogDateTime = (value?: string | null, dateStyle: 'medium' | 'long' = 'medium'): string => {

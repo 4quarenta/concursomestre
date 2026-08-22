@@ -492,7 +492,7 @@
       "supportsLanding": true,
       "supportsEditorialPromotion": false,
       "defaultIndexability": "INDEX",
-      "allowedParameters": ["pagina", "utm_*", "gclid", "fbclid"],
+      "allowedParameters": ["cursor", "q", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
     {

@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import { Clock3, MessageSquare, ThumbsUp } from 'lucide-react';
-import type { BlogArticle } from '@services/blog';
+import type { BlogArticleCardItem } from '@services/blog';
 import { formatBlogDateTime, publicationValue } from './blogFormatters';
 
 export default function BlogArticleCard({
@@ -19,7 +19,7 @@ export default function BlogArticleCard({
   featured = false,
   compact = false,
 }: {
-  article: BlogArticle;
+  article: BlogArticleCardItem;
   featured?: boolean;
   compact?: boolean;
 }) {

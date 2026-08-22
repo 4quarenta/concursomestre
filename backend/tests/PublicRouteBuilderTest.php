@@ -77,6 +77,12 @@ try {
         'Builder PHP de simulado publico divergente.'
     );
     publicRouteAssert(
+        $builder->blogIndex() === '/blog'
+            && $builder->blogCategoryDetail('editais') === '/blog/categoria/editais'
+            && $builder->blogTagDetail('nordeste') === '/blog/tag/nordeste',
+        'Builders PHP das taxonomias do blog divergentes.'
+    );
+    publicRouteAssert(
         in_array('/practice', $policy->patterns('questions_hub', true), true)
             && in_array('/questions', $policy->patterns('questions_hub', true), true),
         'Aliases antigos de questoes nao estao declarados na policy.'

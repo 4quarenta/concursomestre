@@ -31,6 +31,24 @@ const json = (response, status, payload, origin = '*') => {
 
 const category = { id: 1, label: 'Concursos', slug: 'concursos', description: 'Notícias de concursos', articleCount: 1 };
 const tag = { id: 1, label: 'Nordeste', slug: 'nordeste', kind: 'region', articleCount: 1 };
+const sameSlugCategory = { id: 3, label: 'Segurança editorial', slug: 'seguranca', description: 'Categoria pública de segurança.', articleCount: 1 };
+const sameSlugTag = { id: 3, label: 'Segurança temática', slug: 'seguranca', kind: 'topic', articleCount: 1 };
+const taxonomyArchive = (type, slug) => {
+  const taxonomy = type === 'category' && slug === category.slug
+    ? { ...category, type, kind: null, imageUrl: null, lastPublishedAt: article.publishedAt, canonicalPath: `/blog/categoria/${category.slug}`, readiness: { status: 'READY', reasonCodes: [] } }
+    : type === 'category' && slug === 'sem-posts'
+      ? { id: 2, type, label: 'Sem posts', slug, kind: null, description: null, imageUrl: null, articleCount: 0, lastPublishedAt: null, canonicalPath: `/blog/categoria/${slug}`, readiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.publication_blocked'] } }
+      : type === 'category' && slug === sameSlugCategory.slug
+        ? { ...sameSlugCategory, type, kind: null, imageUrl: null, lastPublishedAt: article.publishedAt, canonicalPath: `/blog/categoria/${slug}`, readiness: { status: 'READY', reasonCodes: [] } }
+        : type === 'tag' && slug === tag.slug
+          ? { ...tag, type, description: null, imageUrl: null, lastPublishedAt: article.publishedAt, canonicalPath: `/blog/tag/${tag.slug}`, readiness: { status: 'READY', reasonCodes: [] } }
+          : type === 'tag' && slug === sameSlugTag.slug
+            ? { ...sameSlugTag, type, description: null, imageUrl: null, lastPublishedAt: article.publishedAt, canonicalPath: `/blog/tag/${slug}`, readiness: { status: 'READY', reasonCodes: [] } }
+            : type === 'tag' && slug === 'sem-posts'
+              ? { id: 4, type, label: 'Tag sem posts', slug, kind: 'general', description: null, imageUrl: null, articleCount: 0, lastPublishedAt: null, canonicalPath: `/blog/tag/${slug}`, readiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.publication_blocked'] } }
+              : null;
+  return taxonomy ? { taxonomy, items: taxonomy.articleCount > 0 ? [article] : [], pageInfo: { limit: 24, hasMore: false, nextCursor: null } } : null;
+};
 const article = {
   id: 1,
   title: 'Notícia SSR de teste',
@@ -556,6 +574,7 @@ const payloadFor = (url) => {
   if (pathname === '/blog/list.php') return { success: true, data: { items: [article], pageInfo: { limit: 24, hasMore: false, nextCursor: null, total: 1 } } };
   if (pathname === '/blog/categories.php') return { success: true, data: { items: [category] } };
   if (pathname === '/blog/tags.php') return { success: true, data: { items: [tag] } };
+  if (pathname === '/blog/taxonomy.php') return { success: true, data: taxonomyArchive(url.searchParams.get('type'), url.searchParams.get('slug')) };
   if (pathname === '/legal-commentary/list.php') return { success: true, data: { areas: [{ id: 1, name: 'Constitucional', slug: 'constitucional' }], lawsByArea: [{ area: { id: 1, name: 'Constitucional', slug: 'constitucional' }, laws: [lawSummary] }], mostAccessed: [lawSummary], favoriteLaws: [], favoriteItems: [], recentlyStudied: [], recentlyUpdated: [], totals: { laws: 1, articles: 1, commentedArticles: 1, updatedRecently: 0 } } };
   if (pathname === '/legal-commentary/detail.php') {
     return url.searchParams.get('slug') === lawSummary.slug
@@ -638,6 +657,13 @@ const server = createServer((request, response) => {
     && url.searchParams.get('id') !== publicMaterial.id) {
     count(url.pathname);
     return json(response, 404, { success: false, message: 'Material não encontrado.' }, origin);
+  }
+  if (url.pathname.replace(/^\/api\//, '/') === '/blog/taxonomy.php') {
+    const cursor = url.searchParams.get('cursor') || '';
+    if (cursor !== '' && cursor !== 'signed') {
+      count(url.pathname);
+      return json(response, 400, { success: false, message: 'Cursor de paginação inválido.' }, origin);
+    }
   }
   count(url.pathname);
   return json(response, 200, payloadFor(url), origin);

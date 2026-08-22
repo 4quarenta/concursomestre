@@ -1,0 +1,88 @@
+{
+  "version": "ssr-hydration-blog-taxonomies-start-8.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "securitySentinels": [
+    "PROTECTED_BLOG_DRAFT_SENTINEL",
+    "PROTECTED_AUTHOR_EMAIL_SENTINEL",
+    "PROTECTED_ADMIN_NOTES_SENTINEL",
+    "PROTECTED_REVISION_SENTINEL"
+  ],
+  "routes": [
+    {
+      "key": "blog_hub", "path": "/blog", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Concursos públicos em pauta", "Notícia SSR de teste"],
+      "requiredRawLinks": ["/blog/categoria/concursos", "/blog/tag/nordeste"]
+    },
+    {
+      "key": "blog_search", "path": "/blog?q=edital", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1
+    },
+    {
+      "key": "blog_category", "path": "/blog/categoria/concursos", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/categoria/concursos", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Concursos", "Notícia SSR de teste"],
+      "requiredRawLinks": ["/blog", "/blog/noticia-ssr"]
+    },
+    {
+      "key": "blog_category_empty", "path": "/blog/categoria/sem-posts", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/categoria/sem-posts", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Sem posts", "Ainda não há publicações públicas nesta página"]
+    },
+    {
+      "key": "blog_category_cursor", "path": "/blog/categoria/concursos?cursor=signed", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/categoria/concursos", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1
+    },
+    {
+      "key": "blog_category_page_param", "path": "/blog/categoria/concursos?page=2", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/categoria/concursos", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1
+    },
+    {
+      "key": "blog_category_unknown_param", "path": "/blog/categoria/concursos?foo=bar", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/categoria/concursos", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1
+    },
+    {
+      "key": "blog_category_same_slug", "path": "/blog/categoria/seguranca", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/categoria/seguranca", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Segurança editorial"]
+    },
+    {
+      "key": "blog_tag", "path": "/blog/tag/nordeste", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/tag/nordeste", "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"], "schemaCanonicalRequired": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Nordeste", "Notícia SSR de teste"]
+    },
+    {
+      "key": "blog_tag_same_slug", "path": "/blog/tag/seguranca", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/tag/seguranca", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Segurança temática"]
+    },
+    {
+      "key": "blog_tag_empty", "path": "/blog/tag/sem-posts", "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "canonical": "/blog/tag/sem-posts", "expectNoIndex": true,
+      "expectedMainCount": 1, "expectedH1Count": 1,
+      "requiredRawText": ["Tag sem posts", "Ainda não há publicações públicas nesta página"]
+    },
+    { "key": "blog_category_invalid_cursor", "path": "/blog/categoria/concursos?cursor=garbage", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "blog_category_tampered_cursor", "path": "/blog/categoria/concursos?cursor=signed-tampered", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "blog_category_wrong_type", "path": "/blog/categoria/nordeste", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "blog_tag_wrong_type", "path": "/blog/tag/concursos", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "blog_category_missing", "path": "/blog/categoria/inexistente", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true },
+    { "key": "blog_category_invalid", "path": "/blog/categoria/INVALID", "maturity": "error", "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"], "expectedStatus": 404, "canonicalAbsent": true, "expectNoIndex": true }
+  ]
+}

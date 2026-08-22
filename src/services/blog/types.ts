@@ -88,6 +88,45 @@ export type BlogPage = {
   };
 };
 
+export type BlogArticleCardItem = Pick<BlogArticle,
+  | 'id'
+  | 'title'
+  | 'slug'
+  | 'excerpt'
+  | 'readingMinutes'
+  | 'coverImageUrl'
+  | 'coverImageAlt'
+  | 'featured'
+  | 'publishedAt'
+  | 'updatedAt'
+  | 'taxonomy'
+  | 'author'
+  | 'engagement'
+>;
+
+export type PublicBlogTaxonomy = {
+  id: number;
+  type: 'category' | 'tag';
+  label: string;
+  slug: string;
+  kind: BlogTagKind | null;
+  description: string | null;
+  imageUrl: string | null;
+  articleCount: number;
+  lastPublishedAt: string | null;
+  canonicalPath: string;
+  readiness: {
+    status: 'READY' | 'NOT_READY';
+    reasonCodes: string[];
+  };
+};
+
+export type PublicBlogTaxonomyArchive = {
+  taxonomy: PublicBlogTaxonomy;
+  items: BlogArticleCardItem[];
+  pageInfo: BlogPage['pageInfo'];
+};
+
 export type BlogArticleInput = {
   id?: number | null;
   title: string;

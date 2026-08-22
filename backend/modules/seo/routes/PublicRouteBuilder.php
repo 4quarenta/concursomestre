@@ -159,6 +159,21 @@ final class PublicRouteBuilder
         ]);
     }
 
+    public function blogIndex(): string
+    {
+        return $this->requiredPath('blog_hub');
+    }
+
+    public function blogCategoryDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('blog_category', ['slug' => $persistedSlug]);
+    }
+
+    public function blogTagDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('blog_tag', ['slug' => $persistedSlug]);
+    }
+
     /** @param array<string, string|int> $parameters */
     private function requiredPath(string $familyId, array $parameters = []): string
     {

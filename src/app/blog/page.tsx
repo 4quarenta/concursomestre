@@ -26,32 +26,32 @@ import {
 } from './blogServerData';
 import { serializeStructuredData } from '@services/seo/structuredData';
 import type { BlogArticle } from '@services/blog';
+import { buildPublicPageMetadata } from '../seoMetadata';
+import { launchModeRobots } from '@services/seo/launchControl';
 
 export const revalidate = 300;
 
-export const metadata: Metadata = {
-  title: 'Notícias de concursos, editais e carreiras',
-  description: 'Notícias, editais, prazos e análises para quem estuda para concursos públicos.',
-  alternates: { canonical: '/blog' },
-  openGraph: {
-    title: 'Blog ConcursoMestre',
-    description: 'Notícias, editais e análises para concursos públicos.',
-    url: '/blog',
-    type: 'website',
-  },
+type BlogPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-type BlogPageProps = {
-  searchParams: Promise<{ cursor?: string; q?: string }>;
-};
+const BLOG_TITLE = 'Notícias de concursos, editais e carreiras';
+const BLOG_DESCRIPTION = 'Notícias, editais, prazos e análises para quem estuda para concursos públicos.';
+
+export async function generateMetadata({ searchParams }: BlogPageProps): Promise<Metadata> {
+  const query = await searchParams;
+  const metadata = buildPublicPageMetadata({ title: BLOG_TITLE, description: BLOG_DESCRIPTION, path: '/blog' });
+  return Object.keys(query).length > 0 ? { ...metadata, robots: launchModeRobots(true) } : metadata;
+}
 
 const uniqueArticles = (articles: BlogArticle[]): BlogArticle[] => (
   Array.from(new Map(articles.map((article) => [article.id, article])).values())
 );
 
 export default async function BlogPage({ searchParams }: BlogPageProps) {
-  const { cursor = '', q = '' } = await searchParams;
-  const search = q.trim().slice(0, 160);
+  const query = await searchParams;
+  const cursor = typeof query.cursor === 'string' ? query.cursor : '';
+  const search = (typeof query.q === 'string' ? query.q : '').trim().slice(0, 160);
   const [page, categories, tags, exams] = await Promise.all([
     fetchBlogPageForServer({ cursor, search }),
     fetchBlogCategoriesForServer(),

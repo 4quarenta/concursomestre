@@ -72,6 +72,19 @@ function handleBlogTagsRoute(PDO $db): void
     }
 }
 
+function handleBlogTaxonomyRoute(PDO $db): void
+{
+    try {
+        Response::success(buildBlogController($db)->taxonomyArchive($_GET));
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel carregar a taxonomia editorial.', $e);
+    }
+}
+
 function handleBlogLikeRoute(PDO $db): void
 {
     try {
