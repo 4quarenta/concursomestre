@@ -1,6 +1,6 @@
 import LandingPage from './landing/LandingPage';
 import { buildSiteUrl } from '@/config/siteUrl';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import StructuredData from '@/components/seo/StructuredData';
 import { fetchPublicMarketingSettings } from './publicMarketingSettings';
 
 /**
@@ -35,7 +35,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
+      <StructuredData value={structuredData} />
       <LandingPage initialSystemSettings={publicMarketingSettings.settings} />
     </>
   );

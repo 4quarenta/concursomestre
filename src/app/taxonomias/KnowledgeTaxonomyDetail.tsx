@@ -1,42 +1,31 @@
 import Link from 'next/link';
 import { ArrowRight, BookOpen, ChevronRight, FileQuestion, FileText, Landmark, ListChecks } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildItemList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import { knowledgeTaxonomyDescription } from './knowledgeTaxonomyMetadata';
 import type { PublicKnowledgeTaxonomy } from './knowledgeTaxonomyServerData';
 
 const labels = { materia: 'Disciplina', topico: 'Tópico', assunto: 'Assunto' } as const;
 
 export default function KnowledgeTaxonomyDetail({ taxonomy }: { taxonomy: PublicKnowledgeTaxonomy }) {
-  const canonicalUrl = buildSiteUrl(taxonomy.canonicalPath);
-  const breadcrumbItems = taxonomy.breadcrumbs.map((item, index) => ({
-    '@type': 'ListItem', position: index + 1, name: item.label, item: buildSiteUrl(item.canonicalPath),
-  }));
-  const questionItems = taxonomy.questions.map((question, index) => ({
-    '@type': 'ListItem', position: index + 1, name: question.excerpt || `Questão ${question.id}`, url: buildSiteUrl(question.path),
-  }));
-  const structuredData = {
-    '@context': 'https://schema.org',
-    '@graph': [
-      { '@type': 'CollectionPage', '@id': `${canonicalUrl}#webpage`, url: canonicalUrl, name: `Questões de ${taxonomy.name}`, description: knowledgeTaxonomyDescription(taxonomy), mainEntity: questionItems.length ? { '@id': `${canonicalUrl}#questions` } : undefined },
-      { '@type': 'BreadcrumbList', '@id': `${canonicalUrl}#breadcrumb`, itemListElement: breadcrumbItems },
-      ...(questionItems.length ? [{ '@type': 'ItemList', '@id': `${canonicalUrl}#questions`, numberOfItems: questionItems.length, itemListElement: questionItems }] : []),
-    ],
-  };
+  const breadcrumbs = taxonomy.breadcrumbs.map((item) => ({ label: item.label, path: item.canonicalPath }));
+  const questionItems = buildItemList(taxonomy.questions.map((question) => ({
+    name: question.excerpt || `Questão ${question.id}`,
+    path: question.path,
+  })));
+  const structuredData = buildStructuredDataGraph([
+    buildWebPage({ path: taxonomy.canonicalPath, name: `Questões de ${taxonomy.name}`, description: knowledgeTaxonomyDescription(taxonomy) }),
+    buildBreadcrumbList(breadcrumbs),
+    ...(taxonomy.questions.length ? [questionItems] : []),
+  ]);
   const directSubjects = taxonomy.subjects.filter((item) => !item.subtopicId);
 
   return (
     <article data-semantic-content className="w-full animate-fade-in space-y-5">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-      <nav data-breadcrumbs aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">
-        {taxonomy.breadcrumbs.map((item, index) => <span key={`${item.canonicalPath}-${item.label}`} className="inline-flex items-center gap-1.5">
-          {index ? <ChevronRight size={12} aria-hidden="true" /> : null}
-          {index === taxonomy.breadcrumbs.length - 1
-            ? <span aria-current="page" className="text-slate-700 dark:text-slate-200">{item.label}</span>
-            : <Link href={item.canonicalPath} prefetch={false} className="hover:text-[#615fff] hover:underline">{item.label}</Link>}
-        </span>)}
-      </nav>
+      <StructuredData value={structuredData} />
+      <CanonicalBreadcrumbs items={breadcrumbs} />
 
       <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}>
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700 dark:text-indigo-300">{labels[taxonomy.taxonomyLevel]}</p>

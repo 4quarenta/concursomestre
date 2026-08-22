@@ -3,7 +3,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
-  ArrowLeft,
   ArrowRight,
   BookOpenCheck,
   Building2,
@@ -15,12 +14,14 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import {
   PLATFORM_PAGE_DESCRIPTION_CLASS,
   PLATFORM_PAGE_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import { buildNoIndexMetadata } from '@/app/seoMetadata';
 import {
@@ -136,24 +137,27 @@ export default async function PublicBoardPage({ params, searchParams }: BoardPag
     profileByDifficulty.set(item.difficulty, (profileByDifficulty.get(item.difficulty) || 0) + item.questionCount);
   });
   const maxSubjectCount = Math.max(1, ...detail.topSubjects.map((item) => item.questionCount));
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: board.name,
-    alternateName: board.acronym || undefined,
-    url: buildSiteUrl(`/bancas/${board.slug}`),
-    sameAs: board.website ? [board.website] : undefined,
-    logo: board.imageUrl || undefined,
-    description: board.description || undefined,
-  };
+  const canonicalPath = publicRoutes.boards.detail(board.slug);
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Bancas', path: publicRoutes.boards.index() }, { label: boardName, path: canonicalPath }];
+  const jsonLd = buildStructuredDataGraph([
+    buildWebPage({ path: canonicalPath, name: boardName, description: board.description || undefined }),
+    buildBreadcrumbList(breadcrumbs),
+    {
+      '@type': 'Organization',
+      '@id': `${buildSiteUrl(canonicalPath)}#organization`,
+      name: board.name,
+      alternateName: board.acronym || undefined,
+      url: buildSiteUrl(canonicalPath),
+      sameAs: board.website ? [board.website] : undefined,
+      logo: board.imageUrl || undefined,
+      description: board.description || undefined,
+    },
+  ]);
 
   return (
     <div className="w-full animate-fade-in space-y-5">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }} />
-
-      <Link href="/bancas" prefetch={false} className="inline-flex items-center gap-1.5 text-xs font-black text-[#615fff] hover:underline">
-        <ArrowLeft size={14} /> Todas as bancas
-      </Link>
+      <StructuredData value={jsonLd} />
+      <CanonicalBreadcrumbs items={breadcrumbs} />
 
       <header className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
         <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">

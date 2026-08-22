@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { ArrowLeft, ArrowRight, ExternalLink, FileText, Scale } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import { buildNoIndexMetadata, buildPublicPageMetadata } from '../../../seoMetadata';
 import { fetchPublicLawArticle, type PublicLawArticleDetail } from '../../lawArticleServerData';
 
@@ -45,15 +46,16 @@ export default async function LawArticlePage({ params }: Props) {
   const { slug, articleSlug } = await params;
   const item = await load(slug, articleSlug);
   if (!item) notFound();
-  const canonical = buildSiteUrl(item.canonicalPath); const heading = lawArticleHeading(item); const summary = lawArticleDescription(item);
+  const heading = lawArticleHeading(item); const summary = lawArticleDescription(item);
   const blocks = item.article.blocks.length ? item.article.blocks : [{ id: item.article.id, uid: 'official-text', kind: 'caput', label: null, text: item.article.officialText, parentUid: null, anchor: null, sortOrder: 0 }];
-  const structuredData = { '@context': 'https://schema.org', '@graph': [
-    { '@type': 'WebPage', '@id': `${canonical}#webpage`, url: canonical, name: heading, description: summary, inLanguage: 'pt-BR', isPartOf: { '@type': 'WebPage', name: lawArticleName(item), url: buildSiteUrl(`/lei-comentada/${item.law.slug}`) }, dateModified: item.article.updatedAt || item.law.updatedAt || undefined },
-    { '@type': 'BreadcrumbList', itemListElement: item.breadcrumbs.map((crumb, index) => ({ '@type': 'ListItem', position: index + 1, name: crumb.label, item: buildSiteUrl(crumb.path) })) },
-  ] };
+  const breadcrumbs = item.breadcrumbs.map((crumb) => ({ label: crumb.label, path: crumb.path }));
+  const structuredData = buildStructuredDataGraph([
+    { ...buildWebPage({ path: item.canonicalPath, name: heading, description: summary }), dateModified: item.article.updatedAt || item.law.updatedAt || undefined },
+    buildBreadcrumbList(breadcrumbs),
+  ]);
   return <article data-semantic-content className="w-full space-y-5 animate-fade-in">
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">{item.breadcrumbs.map((crumb, index) => <span key={crumb.path} className="inline-flex items-center gap-1.5">{index ? <span aria-hidden="true">/</span> : null}{index === item.breadcrumbs.length - 1 ? <span aria-current="page">{crumb.label}</span> : <Link href={crumb.path}>{crumb.label}</Link>}</span>)}</nav>
+    <StructuredData value={structuredData} />
+    <CanonicalBreadcrumbs items={breadcrumbs} />
     <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}>
       <p className="text-[10px] font-black uppercase text-indigo-700">Texto normativo oficial</p>
       <h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>{heading}</h1>

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { buildPublicPageMetadata } from '../seoMetadata';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 
 export const metadata = buildPublicPageMetadata({
   title: 'Suporte',
@@ -10,14 +12,16 @@ export const metadata = buildPublicPageMetadata({
 });
 
 export default function SupportLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Suporte', path: '/support' }];
+  const structuredData = buildStructuredDataGraph([
+    buildWebPage({ path: '/support', name: 'Suporte ConcursoMestre', description: 'Canais oficiais de ajuda e atendimento do ConcursoMestre.' }),
+    buildBreadcrumbList(breadcrumbs),
+  ]);
   return (
     <>
+      <StructuredData value={structuredData} />
       <header className="mx-auto w-full max-w-7xl px-3 pb-6 sm:px-4 md:px-0" data-semantic-content>
-        <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-          <Link href="/" className="hover:text-indigo-600">Início</Link>
-          <span aria-hidden="true">/</span>
-          <span aria-current="page">Suporte</span>
-        </nav>
+        <CanonicalBreadcrumbs items={breadcrumbs} />
         <p className="mt-5 text-xs font-black uppercase text-indigo-600 dark:text-indigo-300">Atendimento</p>
         <h1 className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">Como podemos ajudar?</h1>
         <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
@@ -30,7 +34,6 @@ export default function SupportLayout({ children }: Readonly<{ children: ReactNo
         </nav>
       </header>
       {children}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData({ '@context': 'https://schema.org', '@type': 'ContactPage', name: 'Suporte ConcursoMestre', url: 'https://concursomestre.com/support' }) }} />
     </>
   );
 }

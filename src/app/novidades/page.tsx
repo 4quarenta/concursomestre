@@ -3,8 +3,9 @@ import { CalendarDays, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide
 import BrandLogo from '@/components/shared/layout/BrandLogo';
 import BlogAccountAction from '../blog/BlogAccountAction';
 import { fetchChangelogForServer } from '../changelog/changelogServerData';
-import { buildSiteUrl } from '@/config/siteUrl';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
+import { buildBreadcrumbList, buildCollectionPage, buildStructuredDataGraph } from '@services/seo/structuredData';
 import PublicSuggestionsBoard from './PublicSuggestionsBoard';
 import { fetchPublicSuggestionsForServer } from './novidadesSuggestionServerData';
 import { publicRoutes } from '@services/routes/publicRoutes';
@@ -30,23 +31,15 @@ export default async function NovidadesPage({ searchParams }: NovidadesPageProps
     fetchPublicSuggestionsForServer(),
   ]);
   const { page, totalPages } = result.pageInfo;
-  const structuredData = {
-    '@context': 'https://schema.org',
-    '@type': 'CollectionPage',
-    name: 'Novidades do ConcursoMestre',
-    url: buildSiteUrl('/novidades'),
-    inLanguage: 'pt-BR',
-    hasPart: result.items.map((entry) => ({
-      '@type': 'Article',
-      headline: entry.title,
-      datePublished: entry.publishedAt || entry.releaseDate,
-      description: entry.description,
-    })),
-  };
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Novidades', path: '/novidades' }];
+  const structuredData = buildStructuredDataGraph([
+    buildCollectionPage({ path: '/novidades', name: 'Novidades do ConcursoMestre', description: 'Atualizações públicas de produto do ConcursoMestre.' }),
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
+      <StructuredData value={structuredData} />
       <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 lg:px-8">
           <Link href="/" aria-label="Ir para o início" className="inline-flex items-center">
@@ -63,6 +56,7 @@ export default async function NovidadesPage({ searchParams }: NovidadesPageProps
       <main>
         <section className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-6xl px-5 py-12 lg:px-8">
+            <CanonicalBreadcrumbs items={breadcrumbs} className="mb-6" />
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-600">
               <Sparkles size={16} /> Evolução da plataforma
             </div>

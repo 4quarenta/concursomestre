@@ -52,8 +52,8 @@ describe('public taxonomy directories', () => {
     expect(directorySource).not.toContain('PublicTaxonomyFooter');
     expect(landingSource).toContain("{ label: 'Disciplinas', href: '/disciplinas' }");
     expect(landingSource).toContain("{ label: 'Bancas', href: '/bancas' }");
-    expect(footerSource).toContain("path: '/disciplinas'");
-    expect(footerSource).toContain("path: '/bancas'");
+    expect(footerSource).toContain('path: publicRoutes.disciplines.index()');
+    expect(footerSource).toContain('path: publicRoutes.boards.index()');
   });
 
   it('does not use the broad administrative taxonomy contract', () => {

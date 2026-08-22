@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { buildQuestionPath, summarizeSeoText } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildCollectionPage, buildItemList, buildStructuredDataGraph } from '@services/seo/structuredData';
 import PracticeClient from './PracticeClient';
 import { fetchPracticeInitialQuestions } from './practiceServerData';
 
@@ -41,41 +42,26 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
     searchParams: resolvedSearchParams,
   });
   const questionItems = initialQuestionPage.questions.slice(0, initialQuestionPage.pageInfo.limit);
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'CollectionPage',
-    name: 'Questões de concursos para praticar',
-    description: 'Banco de questões organizado por banca, disciplina, assunto, cargo e ano.',
-    url: buildSiteUrl(publicRoutes.questions.index()),
-    inLanguage: 'pt-BR',
-    mainEntity: {
-      '@type': 'ItemList',
-      numberOfItems: questionItems.length,
-      itemListElement: questionItems.map((question, index) => ({
-        '@type': 'ListItem',
-        position: index + 1,
-        name: summarizeSeoText(question.enunciado_clean || question.enunciado || `Questão ${question.id}`, 120),
-        url: buildSiteUrl(buildQuestionPath(question)),
-      })),
-    },
-  };
+  const path = publicRoutes.questions.index();
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Questões', path }];
+  const itemList = buildItemList(questionItems.map((question) => ({
+    name: summarizeSeoText(question.enunciado_clean || question.enunciado || `Questão ${question.id}`, 120),
+    path: buildQuestionPath(question),
+  })));
+  const jsonLd = buildStructuredDataGraph([
+    { ...buildCollectionPage({ path, name: 'Questões de concursos para praticar', description: 'Banco de questões organizado por banca, disciplina, assunto, cargo e ano.' }), mainEntity: itemList },
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }}
-      />
+      <StructuredData value={jsonLd} />
       <header
         className="space-y-4 px-3 pb-2 sm:px-4 md:px-0"
         data-practice-semantic-header
         data-semantic-content
       >
-        <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-          <Link href="/" className="transition-colors hover:text-indigo-600">Início</Link>
-          <span aria-hidden="true">/</span>
-          <span aria-current="page">Questões</span>
-        </nav>
+        <CanonicalBreadcrumbs items={breadcrumbs} />
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Banco de questões</p>
           <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
@@ -86,8 +72,8 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
           </p>
         </div>
         <nav aria-label="Explorar o acervo" className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold text-indigo-700 dark:text-indigo-300">
-          <Link href="/disciplinas" className="hover:underline">Disciplinas</Link>
-          <Link href="/bancas" className="hover:underline">Bancas</Link>
+          <Link href={publicRoutes.disciplines.index()} className="hover:underline">Disciplinas</Link>
+          <Link href={publicRoutes.boards.index()} className="hover:underline">Bancas</Link>
           <Link href={publicRoutes.exams.index()} className="hover:underline">Provas</Link>
         </nav>
       </header>

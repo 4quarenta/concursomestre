@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { permanentRedirect } from 'next/navigation';
 import { BookOpen, ChevronLeft, ChevronRight, FileText, Search } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildCollectionPage, buildItemList, buildStructuredDataGraph } from '@services/seo/structuredData';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import { fetchPublicMaterialDirectory } from './materialServerData';
 
@@ -12,15 +13,16 @@ export default async function MaterialsDirectory({ searchParams }: { searchParam
   const href = (page = 1) => { const query = new URLSearchParams(); if (search) query.set('busca', search); if (page > 1) query.set('pagina', String(page)); return query.size ? `${path}?${query}` : path; };
   const requested = String(params.pagina || '').trim(); if (requested && (!/^[1-9]\d*$/.test(requested) || Number(requested) !== directory.pageInfo.page)) permanentRedirect(href(directory.pageInfo.page));
   const description = 'Consulte materiais editoriais públicos, sua finalidade e as relações de estudo disponíveis.';
-  const structuredData = { '@context': 'https://schema.org', '@graph': [
-    { '@type': 'CollectionPage', '@id': `${buildSiteUrl(path)}#webpage`, url: buildSiteUrl(path), name: 'Materiais para concursos', description },
-    { '@type': 'BreadcrumbList', itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Início', item: buildSiteUrl('/') }, { '@type': 'ListItem', position: 2, name: 'Materiais', item: buildSiteUrl(path) }] },
-    { '@type': 'ItemList', numberOfItems: directory.items.length, itemListElement: directory.items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.title, url: buildSiteUrl(item.path) })) },
-  ] };
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Materiais', path }];
+  const structuredData = buildStructuredDataGraph([
+    buildCollectionPage({ path, name: 'Materiais para concursos', description }),
+    buildBreadcrumbList(breadcrumbs),
+    buildItemList(directory.items.map((item) => ({ name: item.title, path: item.path }))),
+  ]);
   return <article data-semantic-content className="w-full space-y-5 animate-fade-in">
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs font-bold text-slate-500"><Link href="/">Início</Link><ChevronRight size={12}/><span aria-current="page">Materiais</span></nav>
-    <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}><p className="text-[10px] font-black uppercase text-indigo-700">Biblioteca pública</p><h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>Materiais para concursos</h1><p className={`mt-3 max-w-3xl ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>{description}</p><Link href="/marketplace" className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#615fff] px-4 text-xs font-black text-white"><BookOpen size={16}/> Abrir marketplace</Link></header>
+    <StructuredData value={structuredData} />
+    <CanonicalBreadcrumbs items={breadcrumbs} />
+    <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}><p className="text-[10px] font-black uppercase text-indigo-700">Biblioteca pública</p><h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>Materiais para concursos</h1><p className={`mt-3 max-w-3xl ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>{description}</p><Link href={publicRoutes.marketplace.index()} className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#615fff] px-4 text-xs font-black text-white"><BookOpen size={16}/> Abrir marketplace</Link></header>
     <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4`} aria-label="Busca de materiais"><form action={path} className="flex flex-col gap-3 sm:flex-row"><label className="relative flex-1"><span className="sr-only">Buscar materiais</span><Search size={16} className="absolute left-3 top-3 text-slate-400"/><input name="busca" defaultValue={search} className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Buscar materiais" /></label><button className="h-10 rounded-md bg-[#615fff] px-4 text-sm font-black text-white">Buscar</button></form></section>
     <section aria-labelledby="materials-list"><div><h2 id="materials-list" className="text-lg font-black">Materiais publicados</h2><p className="text-xs text-slate-500">{directory.pageInfo.total.toLocaleString('pt-BR')} registro(s) público(s)</p></div>{directory.items.length?<div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{directory.items.map((item)=><Link key={item.id} href={item.path} className={`${PLATFORM_SURFACE_CARD_CLASS} min-w-0 p-4 hover:border-[#615fff]/40`}><span className="flex items-center gap-2 text-xs font-bold text-indigo-700"><FileText size={14}/>{item.format || 'Material'}</span><span className="mt-2 block break-words font-black">{item.title}</span>{item.description?<span className="mt-2 line-clamp-3 block text-sm leading-6 text-slate-500">{item.description}</span>:null}<span className="mt-3 block text-xs font-bold text-slate-500">{item.offer.mode === 'free' ? 'Acesso gratuito' : item.offer.mode === 'paid' ? 'Oferta disponível no marketplace' : item.offer.mode === 'included_in_plan' ? 'Incluído em plano' : 'Consulta pública'}</span></Link>)}</div>:<div className={`${PLATFORM_SURFACE_CARD_CLASS} mt-4 p-8 text-center`}><p className="font-black">Nenhum material público está disponível.</p><p className="mt-2 text-sm text-slate-500">O catálogo será preenchido após validação editorial e de direitos.</p></div>}{directory.pageInfo.pages>1?<nav aria-label="Paginação" className="mt-5 flex justify-between text-sm font-bold">{directory.pageInfo.page>1?<Link href={href(directory.pageInfo.page-1)}><ChevronLeft size={15} className="inline"/> Anterior</Link>:<span/>}<span>Página {directory.pageInfo.page} de {directory.pageInfo.pages}</span>{directory.pageInfo.page<directory.pageInfo.pages?<Link href={href(directory.pageInfo.page+1)}>Próxima <ChevronRight size={15} className="inline"/></Link>:<span/>}</nav>:null}</section>
   </article>;

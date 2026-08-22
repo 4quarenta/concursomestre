@@ -12,7 +12,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, MapPin, Newspaper, SearchX, Tags, TrendingUp } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import BlogArticleCard from './BlogArticleCard';
 import BlogConversionCta from './BlogConversionCta';
 import BlogExamDirectory from './BlogExamDirectory';
@@ -24,7 +25,8 @@ import {
   fetchBlogTagsForServer,
   fetchPublicExamDirectoryForServer,
 } from './blogServerData';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildCollectionPage, buildItemList, buildStructuredDataGraph } from '@services/seo/structuredData';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import type { BlogArticle } from '@services/blog';
 import { buildPublicPageMetadata } from '../seoMetadata';
 import { launchModeRobots } from '@services/seo/launchControl';
@@ -82,30 +84,22 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
     .filter((tag) => tag.kind !== 'region' && tag.kind !== 'state')
     .sort((left, right) => (right.articleCount || 0) - (left.articleCount || 0))
     .slice(0, 14);
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'CollectionPage',
-    name: 'Blog ConcursoMestre',
-    url: buildSiteUrl('/blog'),
-    inLanguage: 'pt-BR',
-    mainEntity: {
-      '@type': 'ItemList',
-      itemListElement: articles.map((article, index) => ({
-        '@type': 'ListItem',
-        position: index + 1,
-        url: buildSiteUrl(`/blog/${article.slug}`),
-        name: article.title,
-      })),
-    },
-  };
+  const path = publicRoutes.blog.index();
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Blog', path }];
+  const itemList = buildItemList(articles.map((article) => ({ name: article.title, path: publicRoutes.blog.article(article.slug) })));
+  const jsonLd = buildStructuredDataGraph([
+    { ...buildCollectionPage({ path, name: 'Blog ConcursoMestre', description: BLOG_DESCRIPTION }), mainEntity: itemList },
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }} />
+      <StructuredData value={jsonLd} />
       <BlogHeader />
       <main>
         <section className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
+            <CanonicalBreadcrumbs items={breadcrumbs} className="mb-5" />
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">ConcursoMestre Notícias</p>

@@ -1,19 +1,19 @@
-import { buildSiteUrl } from '@/config/siteUrl';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import ModuleAccessFallback from '@/components/shared/feedback/ModuleAccessFallback';
 import { buildNoIndexMetadata } from '../seoMetadata';
 import LegalCommentaryClient from './LegalCommentaryClient';
+import { publicRoutes } from '@services/routes/publicRoutes';
+import { buildBreadcrumbList, buildCollectionPage, buildItemList, buildStructuredDataGraph } from '@services/seo/structuredData';
 import {
   fetchLegalCommentaryModuleAvailability,
   fetchLegalHomeSnapshot,
 } from './legalCommentaryServerData';
 
 export const revalidate = 300;
-
-const absoluteUrl = (path: string): string => buildSiteUrl(path);
-const serializeJsonLd = (value: unknown): string => JSON.stringify(value).replace(/</g, '\\u003c');
 
 const LegalCatalogFallback = ({
   snapshot,
@@ -32,7 +32,7 @@ const LegalCatalogFallback = ({
         {uniqueLaws.map((law) => (
           <li key={String(law.id)}>
             <Link
-              href={`/lei-comentada/${law.slug}`}
+              href={publicRoutes.laws.detail(law.slug)}
               className="block rounded-md border border-slate-200 bg-white p-4 font-bold text-slate-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
             >
               {law.title}
@@ -74,45 +74,19 @@ export default async function LegalCommentaryPage() {
   const snapshot = await fetchLegalHomeSnapshot();
   const laws = snapshot.lawsByArea.flatMap(({ laws: areaLaws }) => areaLaws);
   const uniqueLaws = Array.from(new Map(laws.map((law) => [String(law.id), law])).values());
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': 'CollectionPage',
-        name: 'Lei Comentada',
-        description: 'Legislação comentada para concursos públicos, com texto oficial e conteúdo editorial de estudo.',
-        url: absoluteUrl('/lei-comentada'),
-        inLanguage: 'pt-BR',
-        mainEntity: {
-          '@type': 'ItemList',
-          numberOfItems: uniqueLaws.length,
-          itemListElement: uniqueLaws.map((law, index) => ({
-            '@type': 'ListItem',
-            position: index + 1,
-            name: law.title,
-            url: absoluteUrl(`/lei-comentada/${law.slug}`),
-          })),
-        },
-      },
-      {
-        '@type': 'BreadcrumbList',
-        itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Início', item: absoluteUrl('/') },
-          { '@type': 'ListItem', position: 2, name: 'Lei Comentada', item: absoluteUrl('/lei-comentada') },
-        ],
-      },
-    ],
-  };
+  const path = publicRoutes.laws.index();
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Lei Comentada', path }];
+  const itemList = buildItemList(uniqueLaws.map((law) => ({ name: law.title, path: publicRoutes.laws.detail(law.slug) })));
+  const jsonLd = buildStructuredDataGraph([
+    { ...buildCollectionPage({ path, name: 'Lei Comentada', description: 'Legislação comentada para concursos públicos, com texto oficial e conteúdo editorial de estudo.' }), mainEntity: itemList },
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
+      <StructuredData value={jsonLd} />
       <header className="space-y-4 pb-6" data-semantic-content>
-        <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-          <Link href="/" className="hover:text-indigo-600">Início</Link>
-          <span aria-hidden="true">/</span>
-          <span aria-current="page">Lei Comentada</span>
-        </nav>
+        <CanonicalBreadcrumbs items={breadcrumbs} />
         <div>
           <p className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-300">Biblioteca legislativa</p>
           <h1 className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">Lei comentada</h1>

@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { publicRoutes } from '@services/routes/publicRoutes';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildCollectionPage, buildItemList, buildStructuredDataGraph } from '@services/seo/structuredData';
 import type { PublicBlogTaxonomyArchive } from '@services/blog';
 import BlogArticleCard from './BlogArticleCard';
 import BlogConversionCta from './BlogConversionCta';
@@ -28,49 +28,20 @@ export default function BlogTaxonomyArchivePage({
     { label: 'Blog', path: publicRoutes.blog.index() },
     { label: taxonomy.label, path: archivePath },
   ];
-  const jsonLd = [
-    {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      '@id': buildSiteUrl(`${archivePath}#collection`),
-      name: taxonomy.label,
-      description: taxonomy.description || undefined,
-      url: buildSiteUrl(archivePath),
-      inLanguage: 'pt-BR',
-      mainEntity: {
-        '@type': 'ItemList',
-        numberOfItems: items.length,
-        itemListElement: items.map((article, index) => ({
-          '@type': 'ListItem', position: index + 1, name: article.title, url: buildSiteUrl(`/blog/${article.slug}`),
-        })),
-      },
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'BreadcrumbList',
-      itemListElement: breadcrumbs.map((item, index) => ({
-        '@type': 'ListItem', position: index + 1, name: item.label, item: buildSiteUrl(item.path),
-      })),
-    },
-  ];
+  const itemList = buildItemList(items.map((article) => ({ name: article.title, path: publicRoutes.blog.article(article.slug) })));
+  const jsonLd = buildStructuredDataGraph([
+    { ...buildCollectionPage({ path: archivePath, name: taxonomy.label, description: taxonomy.description || undefined }), mainEntity: itemList },
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }} />
+      <StructuredData value={jsonLd} />
       <BlogHeader />
       <main>
         <section className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-7xl px-5 py-10 lg:px-8">
-            <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-1 text-sm text-slate-500">
-              {breadcrumbs.map((item, index) => (
-                <span key={item.path} className="inline-flex items-center gap-1">
-                  {index > 0 ? <ChevronRight aria-hidden="true" size={14} /> : null}
-                  {index === breadcrumbs.length - 1
-                    ? <span aria-current="page">{item.label}</span>
-                    : <Link href={item.path} className="hover:text-indigo-600">{item.label}</Link>}
-                </span>
-              ))}
-            </nav>
+            <CanonicalBreadcrumbs items={breadcrumbs} className="mb-5" />
             <p className="text-xs font-black uppercase tracking-[0.16em] text-indigo-600">{typeLabel}</p>
             <h1 className="mt-2 break-words text-4xl font-black text-slate-950 dark:text-white">{taxonomy.label}</h1>
             <p className="mt-3 max-w-3xl leading-7 text-slate-600 dark:text-slate-300">

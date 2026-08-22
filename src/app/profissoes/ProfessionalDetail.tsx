@@ -1,21 +1,23 @@
 import Link from 'next/link';
-import { BriefcaseBusiness, Building2, ChevronRight, ClipboardList, FileQuestion, FileText, Landmark, ListChecks, UsersRound } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import { BriefcaseBusiness, Building2, ClipboardList, FileQuestion, FileText, Landmark, ListChecks, UsersRound } from 'lucide-react';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildItemList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import { professionalDescription } from './professionalMetadata';
 import type { ProfessionalDetail as Detail } from './professionalServerData';
 
 export default function ProfessionalDetail({ item }: { item: Detail }) {
-  const career = item.kind === 'career'; const description = professionalDescription(item); const canonical = buildSiteUrl(item.canonicalPath);
-  const structuredData = { '@context': 'https://schema.org', '@graph': [
-    { '@type': 'CollectionPage', '@id': `${canonical}#webpage`, url: canonical, name: item.name, description },
-    { '@type': 'BreadcrumbList', itemListElement: item.breadcrumbs.map((crumb, index) => ({ '@type': 'ListItem', position: index + 1, name: crumb.label, item: buildSiteUrl(crumb.canonicalPath) })) },
-    ...(item.questions.length ? [{ '@type': 'ItemList', name: 'Questões relacionadas', numberOfItems: item.questions.length, itemListElement: item.questions.map((question, index) => ({ '@type': 'ListItem', position: index + 1, name: question.excerpt || `Questão ${question.id}`, url: buildSiteUrl(question.path) })) }] : []),
-  ] };
+  const career = item.kind === 'career'; const description = professionalDescription(item);
+  const breadcrumbs = item.breadcrumbs.map((crumb) => ({ label: crumb.label, path: crumb.canonicalPath }));
+  const structuredData = buildStructuredDataGraph([
+    buildWebPage({ path: item.canonicalPath, name: item.name, description }),
+    buildBreadcrumbList(breadcrumbs),
+    ...(item.questions.length ? [buildItemList(item.questions.map((question) => ({ name: question.excerpt || `Questão ${question.id}`, path: question.path })))] : []),
+  ]);
   return <article data-semantic-content className="w-full space-y-5 animate-fade-in">
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">{item.breadcrumbs.map((crumb,index)=><span key={crumb.canonicalPath} className="inline-flex items-center gap-1.5">{index?<ChevronRight size={12}/>:null}{index===item.breadcrumbs.length-1?<span aria-current="page">{crumb.label}</span>:<Link href={crumb.canonicalPath}>{crumb.label}</Link>}</span>)}</nav>
+    <StructuredData value={structuredData} />
+    <CanonicalBreadcrumbs items={breadcrumbs} />
     <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}><p className="text-[10px] font-black uppercase text-indigo-700">{career?'Carreira pública':'Cargo público'}</p><h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>{item.name}</h1><p className={`mt-3 max-w-4xl ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>{description}</p><div className="mt-5 flex flex-wrap gap-3"><Link href={item.questionsPath} className="inline-flex h-10 items-center gap-2 rounded-md bg-[#615fff] px-4 text-xs font-black text-white"><ListChecks size={15}/> Resolver questões {career?'desta carreira':'deste cargo'}</Link><Link href={item.contestsPath} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 px-4 text-xs font-black dark:border-slate-700"><ClipboardList size={15}/> Ver concursos</Link></div></header>
     <section className="grid gap-3 sm:grid-cols-2"><div className={`${PLATFORM_SURFACE_CARD_CLASS} p-4`}><p className="text-xs font-bold text-slate-500">Questões públicas</p><p className="mt-1 text-2xl font-black">{item.questionCount.toLocaleString('pt-BR')}</p></div><div className={`${PLATFORM_SURFACE_CARD_CLASS} p-4`}><p className="text-xs font-bold text-slate-500">Provas públicas</p><p className="mt-1 text-2xl font-black">{item.examCount.toLocaleString('pt-BR')}</p></div></section>
     {career && item.positions.length ? <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`} aria-labelledby="positions"><h2 id="positions" className="flex items-center gap-2 font-black"><BriefcaseBusiness size={17} className="text-[#615fff]"/> Cargos desta carreira</h2><div className="mt-4 grid gap-2 sm:grid-cols-2">{item.positions.map((position)=><Link key={position.id} href={position.path} className="rounded-md border border-slate-200 p-3 text-sm font-bold hover:text-[#615fff] dark:border-slate-700">{position.name}<span className="mt-1 block text-xs font-normal text-slate-500">{position.questionCount} questões · {position.examCount} provas</span></Link>)}</div></section>:null}

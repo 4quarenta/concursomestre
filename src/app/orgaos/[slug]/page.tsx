@@ -7,7 +7,6 @@ import {
   BookOpen,
   BriefcaseBusiness,
   Building2,
-  ChevronRight,
   ExternalLink,
   FileQuestion,
   FileText,
@@ -16,12 +15,14 @@ import {
   MapPin,
 } from 'lucide-react';
 import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import {
   PLATFORM_PAGE_DESCRIPTION_CLASS,
   PLATFORM_PAGE_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildItemList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import {
   buildOrganizationMetadata,
   organizationDescription,
@@ -46,29 +47,13 @@ export default async function OrganizationPage({ params }: OrganizationPageProps
   const canonicalUrl = buildSiteUrl(organization.canonicalPath);
   const displayName = organizationDisplayName(organization);
   const description = organizationDescription(organization);
-  const breadcrumbItems = organization.breadcrumbs.map((item, index) => ({
-    '@type': 'ListItem',
-    position: index + 1,
-    name: item.label,
-    item: buildSiteUrl(item.canonicalPath),
-  }));
-  const questionItems = organization.questions.map((question, index) => ({
-    '@type': 'ListItem',
-    position: index + 1,
+  const breadcrumbs = organization.breadcrumbs.map((item) => ({ label: item.label, path: item.canonicalPath }));
+  const questionItems = buildItemList(organization.questions.map((question) => ({
     name: question.excerpt || `Questão ${question.id}`,
-    url: buildSiteUrl(question.path),
-  }));
-  const structuredData = {
-    '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': 'CollectionPage',
-        '@id': `${canonicalUrl}#webpage`,
-        url: canonicalUrl,
-        name: displayName,
-        description,
-        mainEntity: { '@id': `${canonicalUrl}#organization` },
-      },
+    path: question.path,
+  })));
+  const structuredData = buildStructuredDataGraph([
+      { ...buildWebPage({ path: organization.canonicalPath, name: displayName, description }), mainEntity: { '@id': `${canonicalUrl}#organization` } },
       {
         '@type': 'Organization',
         '@id': `${canonicalUrl}#organization`,
@@ -79,34 +64,14 @@ export default async function OrganizationPage({ params }: OrganizationPageProps
         sameAs: organization.website ? [organization.website] : undefined,
         logo: organization.imageUrl || undefined,
       },
-      {
-        '@type': 'BreadcrumbList',
-        '@id': `${canonicalUrl}#breadcrumb`,
-        itemListElement: breadcrumbItems,
-      },
-      ...(questionItems.length > 0 ? [{
-        '@type': 'ItemList',
-        '@id': `${canonicalUrl}#questions`,
-        numberOfItems: questionItems.length,
-        itemListElement: questionItems,
-      }] : []),
-    ],
-  };
+      buildBreadcrumbList(breadcrumbs),
+      ...(organization.questions.length > 0 ? [questionItems] : []),
+  ]);
 
   return (
     <article data-semantic-content className="w-full animate-fade-in space-y-5">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-
-      <nav data-breadcrumbs aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">
-        {organization.breadcrumbs.map((item, index) => (
-          <span key={`${item.canonicalPath}-${item.label}`} className="inline-flex items-center gap-1.5">
-            {index > 0 ? <ChevronRight size={12} aria-hidden="true" /> : null}
-            {index === organization.breadcrumbs.length - 1
-              ? <span aria-current="page" className="text-slate-700 dark:text-slate-200">{item.label}</span>
-              : <Link href={item.canonicalPath} prefetch={false} className="hover:text-[#615fff] hover:underline">{item.label}</Link>}
-          </span>
-        ))}
-      </nav>
+      <StructuredData value={structuredData} />
+      <CanonicalBreadcrumbs items={breadcrumbs} />
 
       <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}>
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">

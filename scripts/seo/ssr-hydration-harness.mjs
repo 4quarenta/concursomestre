@@ -167,6 +167,32 @@ const inspectRoute = async ({ browser, route, viewport, sentinels }) => {
     .filter((value) => !rawLinkHrefs.includes(String(value)));
   const requiredRawLinkPrefixesMissing = (Array.isArray(route.requiredRawLinkPrefixes) ? route.requiredRawLinkPrefixes : [])
     .filter((value) => !rawLinkHrefs.some((href) => href.startsWith(String(value))));
+  const visualBreadcrumb = hydrated.breadcrumbItems[0] || [];
+  const jsonLdBreadcrumb = hydrated.jsonLdBreadcrumbItems[0] || [];
+  const breadcrumbEquivalent = route.breadcrumbRequired !== true
+    || (visualBreadcrumb.length > 0 && JSON.stringify(visualBreadcrumb) === JSON.stringify(jsonLdBreadcrumb));
+  const duplicatePrimarySchemas = ['WebPage', 'CollectionPage', 'BreadcrumbList', 'ItemList']
+    .filter((type) => Number(hydrated.schemaTypeCounts[type] || 0) > 1);
+  const internalTargets = { checked: 0, broken: [], redirects: [] };
+  if (route.verifyInternalLinks === true) {
+    const skipPrefixes = Array.isArray(route.skipLinkPrefixes) ? route.skipLinkPrefixes : ['/auth', '/api/', '/checkout'];
+    const targets = [...new Set(rawLinkHrefs.map((href) => {
+      try {
+        const target = new URL(href, url);
+        if (target.origin !== url.origin || target.hash) return '';
+        if (target.search && route.verifyFunctionalLinks !== true) return '';
+        return `${target.pathname}${target.search}`;
+      } catch {
+        return '';
+      }
+    }).filter((href) => href && !skipPrefixes.some((prefix) => href.startsWith(prefix))))].slice(0, 80);
+    for (const target of targets) {
+      const response = await fetch(new URL(target, baseUrl), { redirect: 'manual', headers: { Accept: 'text/html' } });
+      internalTargets.checked += 1;
+      if (response.status >= 300 && response.status < 400) internalTargets.redirects.push({ target, status: response.status, location: response.headers.get('location') });
+      if (response.status >= 400) internalTargets.broken.push({ target, status: response.status });
+    }
+  }
 
   return {
     route: routePath,
@@ -191,6 +217,7 @@ const inspectRoute = async ({ browser, route, viewport, sentinels }) => {
     },
     semantics: { expectedMainCount, expectedH1Count, mainCountMatches, h1CountMatches },
     content: { requiredRawTextMissing, requiredRawLinksMissing, requiredRawLinkPrefixesMissing },
+    graph: { internalTargets, visualBreadcrumb, jsonLdBreadcrumb, breadcrumbEquivalent, duplicatePrimarySchemas },
     metadata: { expectedCanonical, canonicalPaths, canonicalMatches, robotsNoIndex, missingSchemas, schemaCanonicalMatches },
     console: { errors: consoleErrors, warnings: consoleWarnings, pageErrors, hydrationMessages },
     fetchCounts: {
@@ -238,6 +265,10 @@ const main = async () => {
     if (result.content.requiredRawTextMissing.length > 0) routeFailures.push(`${result.key}/${result.viewport}: raw text missing ${result.content.requiredRawTextMissing.join(',')}`);
     if (result.content.requiredRawLinksMissing.length > 0) routeFailures.push(`${result.key}/${result.viewport}: raw links missing ${result.content.requiredRawLinksMissing.join(',')}`);
     if (result.content.requiredRawLinkPrefixesMissing.length > 0) routeFailures.push(`${result.key}/${result.viewport}: raw link prefixes missing ${result.content.requiredRawLinkPrefixesMissing.join(',')}`);
+    if (!result.graph.breadcrumbEquivalent) routeFailures.push(`${result.key}/${result.viewport}: visual/json-ld breadcrumb mismatch`);
+    if (result.graph.duplicatePrimarySchemas.length > 0) routeFailures.push(`${result.key}/${result.viewport}: duplicate primary schema ${result.graph.duplicatePrimarySchemas.join(',')}`);
+    if (result.graph.internalTargets.broken.length > 0) routeFailures.push(`${result.key}/${result.viewport}: broken internal links`);
+    if (result.graph.internalTargets.redirects.length > 0) routeFailures.push(`${result.key}/${result.viewport}: redirecting internal links`);
     if (result.console.hydrationMessages.length > 0) routeFailures.push(`${result.key}/${result.viewport}: hydration warning`);
     return routeFailures;
   });

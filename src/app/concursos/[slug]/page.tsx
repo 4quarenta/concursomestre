@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
-import { Building2, CalendarDays, ChevronRight, ExternalLink, FileQuestion, FileText, Landmark, ListChecks, WalletCards } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import { Building2, CalendarDays, ExternalLink, FileQuestion, FileText, Landmark, ListChecks, WalletCards } from 'lucide-react';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildItemList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import { buildContestMetadata, contestDescription, contestStatusLabel } from '../contestMetadata';
 import { fetchPublicContestForServer, type PublicContest } from '../contestServerData';
 
@@ -23,15 +24,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> { c
 
 export default async function ContestDetailPage({ params }: Props) {
   const { slug } = await params; const contest = await load(slug); if (!contest) notFound();
-  const canonical = buildSiteUrl(contest.canonicalPath); const description = contestDescription(contest);
-  const structuredData = { '@context': 'https://schema.org', '@graph': [
-    { '@type': 'CollectionPage', '@id': `${canonical}#webpage`, url: canonical, name: contest.title, description },
-    { '@type': 'BreadcrumbList', itemListElement: contest.breadcrumbs.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.label, item: buildSiteUrl(item.canonicalPath) })) },
-    ...(contest.exams.length ? [{ '@type': 'ItemList', name: 'Provas relacionadas', numberOfItems: contest.exams.length, itemListElement: contest.exams.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.title, url: buildSiteUrl(item.path) })) }] : []),
-  ] };
+  const description = contestDescription(contest);
+  const breadcrumbs = contest.breadcrumbs.map((item) => ({ label: item.label, path: item.canonicalPath }));
+  const structuredData = buildStructuredDataGraph([
+    buildWebPage({ path: contest.canonicalPath, name: contest.title, description }),
+    buildBreadcrumbList(breadcrumbs),
+    ...(contest.exams.length ? [buildItemList(contest.exams.map((item) => ({ name: item.title, path: item.path })))] : []),
+  ]);
   return <article data-semantic-content className="w-full space-y-5 animate-fade-in">
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">{contest.breadcrumbs.map((item, index) => <span key={item.canonicalPath} className="inline-flex items-center gap-1.5">{index ? <ChevronRight size={12} /> : null}{index === contest.breadcrumbs.length - 1 ? <span aria-current="page">{item.label}</span> : <Link href={item.canonicalPath}>{item.label}</Link>}</span>)}</nav>
+    <StructuredData value={structuredData} />
+    <CanonicalBreadcrumbs items={breadcrumbs} />
     <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}>
       <p className="text-xs font-black text-indigo-700 dark:text-indigo-300">{contestStatusLabel(contest.status, contest.isOpen)}</p>
       <h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>{contest.title}</h1>

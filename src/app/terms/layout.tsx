@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { buildPublicPageMetadata } from '../seoMetadata';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 
 export const metadata = buildPublicPageMetadata({
   title: 'Termos de uso',
@@ -9,5 +11,6 @@ export const metadata = buildPublicPageMetadata({
 });
 
 export default function TermsLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <>{children}<script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData({ '@context': 'https://schema.org', '@type': 'WebPage', name: 'Termos de Uso do ConcursoMestre', url: 'https://concursomestre.com/terms', inLanguage: 'pt-BR' }) }} /></>;
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Termos de Uso', path: '/terms' }];
+  return <><StructuredData value={buildStructuredDataGraph([buildWebPage({ path: '/terms', name: 'Termos de Uso do ConcursoMestre' }), buildBreadcrumbList(breadcrumbs)])} /><div data-semantic-content className="mx-auto w-full max-w-6xl px-4 pt-6"><CanonicalBreadcrumbs items={breadcrumbs} /></div>{children}</>;
 }

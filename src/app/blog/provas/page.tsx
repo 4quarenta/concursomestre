@@ -5,8 +5,9 @@ import BlogConversionCta from '../BlogConversionCta';
 import BlogExamDirectory from '../BlogExamDirectory';
 import BlogHeader from '../BlogHeader';
 import { fetchPublicExamDirectoryPageForServer } from '../blogServerData';
-import { buildSiteUrl } from '@/config/siteUrl';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
+import { buildBreadcrumbList, buildCollectionPage, buildItemList, buildStructuredDataGraph } from '@services/seo/structuredData';
 import {
   classifyPublicRouteParameter,
   publicRoutes,
@@ -81,29 +82,22 @@ export default async function ExamDirectoryPage({ searchParams }: ExamDirectoryP
     region: filters.region,
     state: filters.state,
   });
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'CollectionPage',
-    name: 'Provas de concursos',
-    url: buildSiteUrl(collectionSeo.canonical),
-    inLanguage: 'pt-BR',
-    mainEntity: {
-      '@type': 'ItemList',
-      itemListElement: directory.items.map((exam, index) => ({
-        '@type': 'ListItem',
-        position: index + 1,
-        name: exam.title,
-      })),
-    },
-  };
+  const canonicalPath = publicRoutes.exams.index();
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Provas', path: canonicalPath }];
+  const itemList = buildItemList(directory.items.map((exam) => ({ name: exam.title, path: publicRoutes.exams.detail(exam.slug) })));
+  const jsonLd = buildStructuredDataGraph([
+    { ...buildCollectionPage({ path: canonicalPath, name: 'Provas de concursos', description: DESCRIPTION }), mainEntity: itemList },
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }} />
+      <StructuredData value={jsonLd} />
       <BlogHeader />
       <main>
         <section className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
+            <CanonicalBreadcrumbs items={breadcrumbs} className="mb-5" />
             <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Acervo ConcursoMestre</p>
             <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-white lg:text-4xl">Provas de concursos</h1>
             <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 dark:text-slate-300">

@@ -14,6 +14,8 @@ import Link from 'next/link';
 import { ArrowRight, Clock3, TrendingUp } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import BlogHeader from '../BlogHeader';
 import BlogConversionCta from '../BlogConversionCta';
 import BlogArticleEngagement from './BlogArticleEngagement';
@@ -21,7 +23,8 @@ import BlogShareBar from './BlogShareBar';
 import { articlePopularity, formatBlogDateTime, publicationValue, wasMeaningfullyUpdated } from '../blogFormatters';
 import { fetchBlogArticleForServer, fetchBlogPageForServer } from '../blogServerData';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildStructuredDataGraph } from '@services/seo/structuredData';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import { buildNoIndexMetadata } from '@/app/seoMetadata';
 
 export const revalidate = 300;
@@ -32,12 +35,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const article = await fetchBlogArticleForServer(slug);
   if (!article) return buildNoIndexMetadata({ title: 'Notícia não encontrada' });
-  const canonical = article.canonicalUrl || `/blog/${article.slug}`;
+  const canonical = publicRoutes.blog.article(article.slug);
   return {
     title: article.seoTitle || article.title,
     description: article.seoDescription || article.excerpt,
     alternates: { canonical },
-    authors: [{ name: article.author.name, url: `/blog/autor/${article.author.id}` }],
+    authors: [{ name: article.author.name, url: publicRoutes.blog.author(article.author.id) }],
     openGraph: {
       type: 'article',
       title: article.seoTitle || article.title,
@@ -65,7 +68,8 @@ export default async function BlogArticlePage({ params }: PageProps) {
     fetchBlogPageForServer(),
   ]);
   if (!article) notFound();
-  const canonical = article.canonicalUrl || buildSiteUrl(`/blog/${article.slug}`);
+  const canonicalPath = publicRoutes.blog.article(article.slug);
+  const canonical = buildSiteUrl(canonicalPath);
   const related = latestPage.items
     .filter((item) => item.id !== article.id)
     .sort((left, right) => {
@@ -80,8 +84,12 @@ export default async function BlogArticlePage({ params }: PageProps) {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join('');
-  const jsonLd = {
-    '@context': 'https://schema.org',
+  const breadcrumbs = [
+    { label: 'Início', path: '/' },
+    { label: 'Blog', path: publicRoutes.blog.index() },
+    { label: article.title, path: canonicalPath },
+  ];
+  const newsArticle = {
     '@type': 'NewsArticle',
     headline: article.title,
     description: article.excerpt,
@@ -93,7 +101,7 @@ export default async function BlogArticlePage({ params }: PageProps) {
     author: {
       '@type': 'Person',
       name: article.author.name,
-      url: buildSiteUrl(`/blog/autor/${article.author.id}`),
+      url: buildSiteUrl(publicRoutes.blog.author(article.author.id)),
     },
     publisher: {
       '@type': 'Organization',
@@ -108,27 +116,22 @@ export default async function BlogArticlePage({ params }: PageProps) {
     articleSection: article.taxonomy.category.label,
     keywords: article.taxonomy.tags.map((tag) => tag.label).join(', '),
   };
+  const jsonLd = buildStructuredDataGraph([newsArticle, buildBreadcrumbList(breadcrumbs)]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }} />
+      <StructuredData value={jsonLd} />
       <BlogHeader />
       <main>
         <div className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
-            <nav className="text-xs font-bold text-slate-500" aria-label="Navegação estrutural">
-              <Link href="/" className="hover:text-indigo-600">Início</Link>
-              <span className="px-2">/</span>
-              <Link href="/blog" className="hover:text-indigo-600">Notícias</Link>
-              <span className="px-2">/</span>
-              <Link href={`/blog/categoria/${article.taxonomy.category.slug}`} className="hover:text-indigo-600">{article.taxonomy.category.label}</Link>
-            </nav>
+            <CanonicalBreadcrumbs items={breadcrumbs} />
           </div>
         </div>
 
         <div className={`mx-auto grid gap-10 px-5 py-10 lg:px-8 ${related.length > 0 ? 'max-w-7xl lg:grid-cols-[minmax(0,780px)_320px]' : 'max-w-4xl'}`}>
           <article className="min-w-0">
-            <Link href={`/blog/categoria/${article.taxonomy.category.slug}`} className="text-xs font-black uppercase tracking-[0.16em] text-indigo-600">
+            <Link href={publicRoutes.blog.category(article.taxonomy.category.slug)} className="text-xs font-black uppercase tracking-[0.16em] text-indigo-600">
               {article.taxonomy.category.label}
             </Link>
             <h1 className="mt-3 text-4xl font-black leading-[1.08] text-slate-950 dark:text-white lg:text-5xl">{article.title}</h1>
@@ -140,7 +143,7 @@ export default async function BlogArticlePage({ params }: PageProps) {
                   {authorInitials || 'CM'}
                 </span>
                 <div className="text-sm">
-                  <Link href={`/blog/autor/${article.author.id}`} className="font-black text-slate-900 hover:text-indigo-600 dark:text-white">{article.author.name}</Link>
+                  <Link href={publicRoutes.blog.author(article.author.id)} className="font-black text-slate-900 hover:text-indigo-600 dark:text-white">{article.author.name}</Link>
                   <p className="mt-1 text-xs text-slate-500">
                     Publicado em <time dateTime={publicationValue(article)}>{formatBlogDateTime(publicationValue(article), 'long')}</time>
                   </p>
@@ -194,7 +197,7 @@ export default async function BlogArticlePage({ params }: PageProps) {
               <div className="mt-9 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-6 dark:border-slate-800">
                 <span className="mr-1 text-xs font-black uppercase text-slate-500">Assuntos</span>
                 {article.taxonomy.tags.map((tag) => (
-                  <Link key={`${tag.id}-${tag.slug}`} href={`/blog/tag/${tag.slug}`} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                  <Link key={`${tag.id}-${tag.slug}`} href={publicRoutes.blog.tag(tag.slug)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
                     {tag.label}
                   </Link>
                 ))}
@@ -205,7 +208,7 @@ export default async function BlogArticlePage({ params }: PageProps) {
               <span className="inline-flex size-14 shrink-0 items-center justify-center rounded-full bg-slate-950 text-base font-black text-white dark:bg-white dark:text-slate-950" aria-hidden="true">{authorInitials || 'CM'}</span>
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Publicado por</p>
-                <Link href={`/blog/autor/${article.author.id}`} className="mt-1 inline-block text-lg font-black text-slate-950 hover:text-indigo-600 dark:text-white">{article.author.name}</Link>
+                <Link href={publicRoutes.blog.author(article.author.id)} className="mt-1 inline-block text-lg font-black text-slate-950 hover:text-indigo-600 dark:text-white">{article.author.name}</Link>
                 <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">Equipe editorial do ConcursoMestre, com informações para acompanhar oportunidades e organizar a preparação.</p>
               </div>
             </section>
@@ -229,12 +232,12 @@ export default async function BlogArticlePage({ params }: PageProps) {
                   <article key={item.id} className="grid grid-cols-[28px_1fr] gap-3 border-t border-slate-200 py-4 dark:border-slate-800">
                     <span className="text-xl font-black text-slate-300">{index + 1}</span>
                     <div>
-                      <Link href={`/blog/${item.slug}`} className="text-sm font-black leading-5 text-slate-900 hover:text-indigo-600 dark:text-white">{item.title}</Link>
+                      <Link href={publicRoutes.blog.article(item.slug)} className="text-sm font-black leading-5 text-slate-900 hover:text-indigo-600 dark:text-white">{item.title}</Link>
                       <p className="mt-2 text-[11px] font-bold uppercase text-indigo-600">{item.taxonomy.category.label}</p>
                     </div>
                   </article>
                 ))}
-                <Link href="/blog" className="mb-5 mt-2 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:underline">Ver últimas notícias <ArrowRight size={14} /></Link>
+                <Link href={publicRoutes.blog.index()} className="mb-5 mt-2 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:underline">Ver últimas notícias <ArrowRight size={14} /></Link>
               </div>
             </aside>
           ) : null}

@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Landmark, Search } from 'lucide-react';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
-import { buildSiteUrl } from '@/config/siteUrl';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildCollectionPage, buildItemList, buildStructuredDataGraph } from '@services/seo/structuredData';
+import { publicRoutes } from '@services/routes/publicRoutes';
 import type { ContestDirectory } from './contestServerData';
 import { contestStatusLabel } from './contestMetadata';
 
@@ -10,10 +12,10 @@ type Props = { directory: ContestDirectory; openOnly?: boolean; search?: string;
 const dateLabel = (value: string | null) => value ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeZone: 'America/Sao_Paulo' }).format(new Date(value)) : null;
 
 export default function ContestDirectoryView({ directory, openOnly = false, search = '', year = '', status = '' }: Props) {
-  const path = openOnly ? '/concursos-abertos' : '/concursos';
+  const path = openOnly ? publicRoutes.contests.open() : publicRoutes.contests.index();
   const title = openOnly ? 'Concursos abertos' : 'Concursos públicos';
   const breadcrumbs = openOnly
-    ? [{ label: 'Início', path: '/' }, { label: 'Concursos', path: '/concursos' }, { label: title, path }]
+    ? [{ label: 'Início', path: '/' }, { label: 'Concursos', path: publicRoutes.contests.index() }, { label: title, path }]
     : [{ label: 'Início', path: '/' }, { label: title, path }];
   const pageHref = (page: number) => {
     const params = new URLSearchParams();
@@ -24,21 +26,20 @@ export default function ContestDirectoryView({ directory, openOnly = false, sear
     const query = params.toString();
     return query ? `${path}?${query}` : path;
   };
-  const structuredData = { '@context': 'https://schema.org', '@graph': [
-    { '@type': 'CollectionPage', '@id': `${buildSiteUrl(path)}#webpage`, url: buildSiteUrl(path), name: title },
-    { '@type': 'BreadcrumbList', itemListElement: breadcrumbs.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.label, item: buildSiteUrl(item.path) })) },
-    { '@type': 'ItemList', numberOfItems: directory.items.length, itemListElement: directory.items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.title, url: buildSiteUrl(item.path) })) },
-  ] };
+  const itemList = buildItemList(directory.items.map((item) => ({ name: item.title, path: item.path })));
+  const structuredData = buildStructuredDataGraph([
+    buildCollectionPage({ path, name: title }),
+    buildBreadcrumbList(breadcrumbs),
+    itemList,
+  ]);
   return <article data-semantic-content className="w-full space-y-5 animate-fade-in">
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">
-      {breadcrumbs.map((item, index) => <span key={item.path} className="inline-flex items-center gap-1.5">{index ? <ChevronRight size={12} /> : null}{index === breadcrumbs.length - 1 ? <span aria-current="page">{item.label}</span> : <Link href={item.path}>{item.label}</Link>}</span>)}
-    </nav>
+    <StructuredData value={structuredData} />
+    <CanonicalBreadcrumbs items={breadcrumbs} />
     <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}>
       <p className="text-[10px] font-black uppercase text-indigo-700 dark:text-indigo-300">Catálogo canônico</p>
       <h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>{title}</h1>
       <p className={`mt-3 max-w-3xl ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>{openOnly ? 'Concursos com período de inscrição comprovadamente aberto por status e datas públicas.' : 'Acompanhe concursos reais, editais, cargos, provas e questões vinculados por relações explícitas.'}</p>
-      {!openOnly ? <Link href="/concursos-abertos" className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#615fff]">Ver concursos abertos <ChevronRight size={15} /></Link> : null}
+      {!openOnly ? <Link href={publicRoutes.contests.open()} className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#615fff]">Ver concursos abertos <ChevronRight size={15} /></Link> : null}
     </header>
     <form action={path} method="get" className={`${PLATFORM_SURFACE_CARD_CLASS} grid gap-3 p-4 sm:grid-cols-[1fr_130px_190px_auto]`}>
       <label className="relative"><span className="sr-only">Buscar concursos</span><Search size={16} className="absolute left-3 top-3 text-slate-400" /><input name="busca" defaultValue={search} placeholder="Buscar concurso" className="h-10 w-full rounded-md border border-slate-200 bg-white pl-10 pr-3 text-sm dark:border-slate-700 dark:bg-slate-900" /></label>

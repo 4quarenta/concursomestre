@@ -1,9 +1,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { BookOpen, ChevronRight, ExternalLink, FileText, ShoppingBag, UserRound } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import { BookOpen, ExternalLink, FileText, ShoppingBag, UserRound } from 'lucide-react';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import type { PublicMaterialDetail } from './materialServerData';
 import { materialDescription } from './materialMetadata';
 
@@ -16,15 +17,16 @@ const offerLabel = (item: PublicMaterialDetail) => {
 };
 
 export default function MaterialDetail({ item }: { item: PublicMaterialDetail }) {
-  const description = materialDescription(item); const canonical = buildSiteUrl(item.canonicalPath);
-  const structuredData = { '@context': 'https://schema.org', '@graph': [
-    { '@type': 'WebPage', '@id': `${canonical}#webpage`, url: canonical, name: item.title, description },
-    { '@type': 'BreadcrumbList', itemListElement: item.breadcrumbs.map((crumb,index)=>({ '@type':'ListItem', position:index+1, name:crumb.label, item:buildSiteUrl(crumb.canonicalPath) })) },
-  ] };
+  const description = materialDescription(item);
+  const breadcrumbs = item.breadcrumbs.map((crumb) => ({ label: crumb.label, path: crumb.canonicalPath }));
+  const structuredData = buildStructuredDataGraph([
+    buildWebPage({ path: item.canonicalPath, name: item.title, description }),
+    buildBreadcrumbList(breadcrumbs),
+  ]);
   const marketplaceHref = `${item.marketplacePath}?openMaterial=${encodeURIComponent(item.id)}`;
   return <article data-semantic-content className="w-full space-y-5 animate-fade-in">
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">{item.breadcrumbs.map((crumb,index)=><span key={crumb.canonicalPath} className="inline-flex items-center gap-1.5">{index?<ChevronRight size={12}/>:null}{index===item.breadcrumbs.length-1?<span aria-current="page">{crumb.label}</span>:<Link href={crumb.canonicalPath}>{crumb.label}</Link>}</span>)}</nav>
+    <StructuredData value={structuredData} />
+    <CanonicalBreadcrumbs items={breadcrumbs} />
     <header className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 sm:p-6`}><div className="flex flex-col gap-5 sm:flex-row">{item.coverUrl?<Image src={item.coverUrl} alt={`Capa de ${item.title}`} width={160} height={220} unoptimized className="aspect-[3/4] h-auto w-32 shrink-0 rounded-md border border-slate-200 object-cover dark:border-slate-700"/>:<span className="grid aspect-[3/4] w-32 shrink-0 place-items-center rounded-md bg-slate-100 text-slate-400 dark:bg-slate-800"><FileText size={36}/></span>}<div className="min-w-0 flex-1"><p className="text-[10px] font-black uppercase text-indigo-700">Material editorial público</p><h1 className={`mt-2 break-words ${PLATFORM_PAGE_TITLE_CLASS}`}>{item.title}</h1><p className={`mt-3 max-w-4xl ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>{description}</p><div className="mt-4 flex flex-wrap gap-2 text-xs font-bold text-slate-600 dark:text-slate-300">{item.format?<span className="rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">{item.format}</span>:null}{item.pageCount?<span className="rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">{item.pageCount} páginas</span>:null}{item.year?<span className="rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">{item.year}</span>:null}<span className="rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">{offerLabel(item)}</span></div>{item.publicAuthorName?<p className="mt-4 flex items-center gap-2 text-sm font-semibold text-slate-500"><UserRound size={15}/>{item.publicAuthorName}</p>:null}</div></div>
       <div className="mt-5 flex flex-wrap gap-3">{item.listingReadiness.status==='READY'?<Link href={marketplaceHref} className="inline-flex h-10 items-center gap-2 rounded-md bg-[#615fff] px-4 text-xs font-black text-white"><ShoppingBag size={15}/> Ver oferta no marketplace</Link>:<span className="inline-flex h-10 items-center rounded-md border border-slate-200 px-4 text-xs font-black text-slate-500 dark:border-slate-700">Sem oferta disponível no momento</span>}{item.previewUrl?<a href={item.previewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 px-4 text-xs font-black dark:border-slate-700">Abrir prévia pública <ExternalLink size={14}/></a>:null}</div>
     </header>

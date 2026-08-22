@@ -10,8 +10,9 @@
 */
 
 import { Suspense } from 'react';
-import { buildSiteUrl } from '@/config/siteUrl';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import MarketingPlansLandingPage from './components/MarketingPlansLandingPage';
 import { fetchPublicPlanCatalogForServer } from './plansServerData';
 
@@ -48,19 +49,18 @@ const PlansCatalogFallback = ({ plans }: { plans: Awaited<ReturnType<typeof fetc
  */
 export default async function PlanosPage() {
   const initialPlans = await fetchPublicPlanCatalogForServer();
-  const structuredData = {
-    '@context': 'https://schema.org',
-    '@type': 'WebPage',
-    name: 'Planos do ConcursoMestre',
-    description: 'Compare os planos e escolha os recursos adequados para sua rotina de estudos.',
-    url: buildSiteUrl('/planos'),
-  };
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Planos', path: '/planos' }];
+  const structuredData = buildStructuredDataGraph([
+    buildWebPage({ path: '/planos', name: 'Planos do ConcursoMestre', description: 'Compare os planos e escolha os recursos adequados para sua rotina de estudos.' }),
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(structuredData) }} />
+      <StructuredData value={structuredData} />
       <main className="min-h-screen bg-white text-slate-950 dark:bg-slate-950 dark:text-white">
         <header className="mx-auto w-full max-w-7xl px-6 pb-10 pt-16" data-semantic-content>
+          <CanonicalBreadcrumbs items={breadcrumbs} className="mb-6" />
           <p className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-300">Planos ConcursoMestre</p>
           <h1 className="mt-3 max-w-4xl text-3xl font-black leading-tight sm:text-4xl">
             Estude com mais estratégia e escolha o plano adequado à sua rotina

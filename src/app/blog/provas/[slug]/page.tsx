@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ArrowRight, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, Download, ExternalLink, FileText, GraduationCap, MapPin } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
+import { ArrowRight, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, Download, ExternalLink, FileText, GraduationCap, MapPin } from 'lucide-react';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import BlogConversionCta from '../../BlogConversionCta';
 import BlogHeader from '../../BlogHeader';
 import { fetchPublicExamDetailForServer, type PublicExamFile } from '../../blogServerData';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import { buildNoIndexMetadata } from '@/app/seoMetadata';
@@ -46,25 +47,22 @@ export default async function PublicExamPage({ params }: PublicExamPageProps) {
     ['Data da prova', formatDate(exam.examDate)],
     ['Resultado', formatDate(exam.resultDate)],
   ].filter((item): item is [string, string] => Boolean(item[1]));
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'LearningResource',
-    name: exam.title,
-    url: buildSiteUrl(publicRoutes.exams.detail(exam.slug)),
-    inLanguage: 'pt-BR',
-    educationalLevel: exam.level || undefined,
-    provider: { '@type': 'Organization', name: exam.board?.name || 'ConcursoMestre' },
-    hasPart: exam.files.map((file) => ({ '@type': 'MediaObject', name: file.name, contentUrl: buildSiteUrl(file.url) })),
-  };
+  const canonicalPath = publicRoutes.exams.detail(exam.slug);
+  const description = `${exam.title}. Consulte informações públicas, arquivos oficiais e questões vinculadas.`;
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Provas', path: publicRoutes.exams.index() }, { label: exam.title, path: canonicalPath }];
+  const jsonLd = buildStructuredDataGraph([
+    buildWebPage({ path: canonicalPath, name: exam.title, description }),
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }} />
+      <StructuredData value={jsonLd} />
       <BlogHeader />
       <main>
         <section className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
-            <Link href={publicRoutes.exams.index()} className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline"><ArrowLeft size={16} /> Acervo de provas</Link>
+            <CanonicalBreadcrumbs items={breadcrumbs} />
             <div className="mt-5 flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.08em]">
               {exam.year ? <span className="rounded-md bg-indigo-50 px-3 py-2 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-200">{exam.year}</span> : null}
               <span className="rounded-md bg-slate-100 px-3 py-2 text-slate-600 dark:bg-slate-800 dark:text-slate-200">{exam.region} · {exam.stateName}</span>

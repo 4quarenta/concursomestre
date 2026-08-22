@@ -530,7 +530,30 @@ const payloadFor = (url) => {
   if (pathname === '/auth/me.php') return { success: true, data: { user: null } };
   if (pathname === '/notifications/list.php') return { success: true, data: { items: [], unreadCount: 0 } };
   if (pathname === '/questions/show.php') return { success: true, data: question };
-  if (pathname === '/v2/questions/list.php' || pathname === '/questionsList') return { success: true, data: { items: [question], questions: [question], pageInfo: { limit: 20, total: 1, hasMore: false } } };
+  if (pathname === '/v2/questions/list.php' || pathname === '/questionsList') return {
+    success: true,
+    data: {
+      items: [{
+        id: question.id,
+        statementPreview: question.enunciado_clean,
+        type: 'multiple_choice',
+        difficulty: 'medium',
+        hasImage: false,
+        taxonomySummary: {
+          subjects: question.filters.subjects,
+          topics: question.filters.topics,
+          subtopics: question.filters.subtopics,
+          examBoards: question.bancas.map((item) => ({ id: item.id, label: item.nome, slug: item.slug })),
+          organizations: [],
+          roles: question.filters.roles,
+          careers: question.filters.careers,
+          years: question.anos,
+        },
+        publication: { status: 'published', visibility: 'public' },
+      }],
+      pageInfo: { limit: 20, total: 1, hasMore: false },
+    },
+  };
   if (pathname === '/exams/directory.php') return { success: true, data: { items: [examItem], pageInfo: { page: 1, limit: 12, totalItems: 1, totalPages: 1, hasPrevious: false, hasNext: false }, facets: { years: [2026], regions: ['Nordeste'], states: [{ code: 'PB', name: 'Paraíba' }] } } };
   if (pathname === '/exams/detail.php') return { success: true, data: { exam } };
   if (pathname === '/contests/index.php') return { success: true, data: { items: [contestSummary], pageInfo: { page: 1, pages: 1, limit: 24, total: 1 } } };

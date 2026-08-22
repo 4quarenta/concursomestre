@@ -80,8 +80,10 @@ describe('Phase 3 metadata authority', () => {
     const rootLayout = source('src/app/layout.tsx');
 
     expect(practice).toContain('data-practice-semantic-header');
-    expect(practice).toContain("'@type': 'CollectionPage'");
-    expect(plans).toContain("'@type': 'WebPage'");
+    expect(practice).toContain('buildCollectionPage');
+    expect(practice).toContain('buildBreadcrumbList');
+    expect(plans).toContain('buildWebPage');
+    expect(plans).toContain('buildBreadcrumbList');
     expect(lawHub).toContain('fetchLegalCommentaryModuleAvailability');
     expect(lawDetail).toContain('fetchLegalCommentaryModuleAvailability');
     expect(() => source('src/app/@seo/default.tsx')).toThrow();
@@ -103,14 +105,17 @@ describe('Phase 3 metadata authority', () => {
     expect(lawDetailClient).not.toMatch(/semanticHeaderRendered \? \(\s*<h2/);
   });
 
-  it('keeps footer gates and question structured data stable across hydration', () => {
+  it('keeps footer gates and question structured data under server authority', () => {
     const footer = source('src/components/shared/layout/Footer.tsx');
     const questionRoute = source('src/app/questoes/[id]/[[...slug]]/page.tsx');
     const questionClient = source('src/app/question/QuestionPublicPage.tsx');
 
     expect(footer).toContain('useEffectiveSystemSettings');
     expect(footer).not.toContain('useAppConfigStore');
-    expect(questionRoute).toContain('canonicalUrl={buildAbsoluteUrl(resolution.futurePath)}');
-    expect(questionClient).toContain('canonicalUrl || buildAbsoluteUrl');
+    expect(questionRoute).toContain('buildWebPage');
+    expect(questionRoute).toContain('buildBreadcrumbList');
+    expect(questionRoute).toContain('<StructuredData value={structuredData} />');
+    expect(questionClient).not.toContain('application/ld+json');
+    expect(questionClient).not.toContain('canonicalUrl');
   });
 });

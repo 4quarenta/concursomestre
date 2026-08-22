@@ -20,7 +20,8 @@ describe('public launch SEO readiness', () => {
     const page = readSource('src/app/practice/PracticePage.tsx');
 
     expect(page).toContain('<PracticeClient');
-    expect(page).toContain("'@type': 'CollectionPage'");
+    expect(page).toContain('buildCollectionPage');
+    expect(page).toContain('<StructuredData');
     expect(page).toContain('publicRoutes.questions.index()');
     expect(page).toContain('data-semantic-content');
     expect(() => readSource('src/app/@seo/questoes/page.tsx')).toThrow();

@@ -23,9 +23,9 @@ const FOOTER_COLUMNS = [
     title: 'Explorar',
     links: [
       { label: 'Quest\u00f5es', path: publicRoutes.questions.index() },
-      { label: 'Disciplinas', path: '/disciplinas' },
-      { label: 'Bancas', path: '/bancas' },
-      { label: 'Simulados', path: '/simulation' },
+      { label: 'Disciplinas', path: publicRoutes.disciplines.index() },
+      { label: 'Bancas', path: publicRoutes.boards.index() },
+      { label: 'Simulados', path: publicRoutes.simulations.index() },
     ],
   },
   {

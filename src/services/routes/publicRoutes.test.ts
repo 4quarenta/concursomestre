@@ -13,9 +13,11 @@ describe('publicRoutes', () => {
     expect(publicRoutes.questions.detail(123, 'art-5o')).toBe('/questoes/123/art-5o');
     expect(publicRoutes.exams.index()).toBe('/provas');
     expect(publicRoutes.exams.detail('pmpb-2026-soldado')).toBe('/provas/pmpb-2026-soldado');
+    expect(publicRoutes.disciplines.index()).toBe('/disciplinas');
     expect(publicRoutes.disciplines.detail('direito-constitucional')).toBe('/disciplinas/direito-constitucional');
     expect(publicRoutes.topics.detail('controle-de-constitucionalidade')).toBe('/topicos/controle-de-constitucionalidade');
     expect(publicRoutes.subjects.detail('controle-concentrado')).toBe('/assuntos/controle-concentrado');
+    expect(publicRoutes.boards.index()).toBe('/bancas');
     expect(publicRoutes.boards.detail('cebraspe')).toBe('/bancas/cebraspe');
     expect(publicRoutes.organizations.index({ letra: 'P' })).toBe('/orgaos?letra=P');
     expect(publicRoutes.organizations.detail('policia-federal')).toBe('/orgaos/policia-federal');
@@ -34,6 +36,8 @@ describe('publicRoutes', () => {
     expect(publicRoutes.blog.index({ q: 'edital' })).toBe('/blog?q=edital');
     expect(publicRoutes.blog.category('editais')).toBe('/blog/categoria/editais');
     expect(publicRoutes.blog.tag('nordeste', { cursor: 'signed' })).toBe('/blog/tag/nordeste?cursor=signed');
+    expect(publicRoutes.blog.article('noticia-publica')).toBe('/blog/noticia-publica');
+    expect(publicRoutes.blog.author('staff-1')).toBe('/blog/autor/staff-1');
   });
 
   it('preserves supported state and repeated parameters without adding pagination', () => {

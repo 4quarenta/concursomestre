@@ -73,7 +73,8 @@ describe('Lei Comentada SSR data', () => {
 
     expect(listPage).not.toContain("'use client'");
     expect(listPage).toContain('await fetchLegalHomeSnapshot()');
-    expect(listPage).toContain('application/ld+json');
+    expect(listPage).toContain('<StructuredData');
+    expect(listPage).toContain('buildStructuredDataGraph');
     expect(detailPage).not.toContain("'use client'");
     expect(detailPage).toContain('await fetchLawDetailForServer(slug)');
     expect(detailPage).toContain('generateMetadata');

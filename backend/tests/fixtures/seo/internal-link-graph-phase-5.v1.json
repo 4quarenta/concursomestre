@@ -1,0 +1,79 @@
+{
+  "nodes": [
+    { "id": "discipline-hub", "family": "discipline_hub", "ready": true, "indexable": true, "public": true },
+    { "id": "discipline-ready", "family": "discipline_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "topic-orphan", "family": "topic_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "subject-private", "family": "subject_detail", "ready": false, "indexable": true, "public": false },
+    { "id": "discipline-alias", "family": "discipline_detail", "ready": true, "indexable": true, "public": true, "alias": true },
+    { "id": "law-article", "family": "law_article_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "question", "family": "question_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "material", "family": "material_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "career", "family": "career_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "post", "family": "blog_article", "ready": true, "indexable": true, "public": true },
+    { "id": "contest", "family": "contest_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "organizations-hub", "family": "organizations_hub", "ready": true, "indexable": true, "public": true },
+    { "id": "organization-ready", "family": "organization_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "positions-hub", "family": "positions_hub", "ready": true, "indexable": true, "public": true },
+    { "id": "position-ready", "family": "position_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "simulations-hub", "family": "public_simulations", "ready": true, "indexable": true, "public": true, "orphanCandidate": false },
+    { "id": "simulation-ready", "family": "simulation_detail", "ready": true, "indexable": true, "public": true },
+    { "id": "blog-hub", "family": "blog_hub", "ready": true, "indexable": true, "public": true },
+    { "id": "blog-category-ready", "family": "blog_category", "ready": true, "indexable": true, "public": true },
+    { "id": "private-ready", "family": "material_detail", "ready": true, "indexable": true, "public": false }
+  ],
+  "links": [
+    { "source": "discipline-hub", "target": "discipline-ready", "href": "/disciplinas/direito", "relation": "directory", "structural": true },
+    { "source": "discipline-hub", "target": "subject-private", "href": "/assuntos/privado", "relation": "directory", "structural": true },
+    { "source": "discipline-hub", "target": "discipline-alias", "href": "/disciplinas/antigo", "relation": "directory", "structural": true, "redirect": true },
+    { "source": "discipline-hub", "target": "missing", "href": "/disciplinas/inexistente", "relation": "directory", "structural": true },
+    { "source": "discipline-hub", "target": "discipline-ready", "href": "/disciplinas/direito", "relation": "directory", "structural": true },
+    { "source": "organizations-hub", "target": "organization-ready", "href": "/orgaos/orgao-publico", "relation": "directory", "structural": true },
+    { "source": "positions-hub", "target": "position-ready", "href": "/cargos/analista", "relation": "directory", "structural": true },
+    { "source": "simulations-hub", "target": "simulation-ready", "href": "/simulados/simulado-publico", "relation": "directory", "structural": true },
+    { "source": "blog-hub", "target": "blog-category-ready", "href": "/blog/categoria/concursos", "relation": "editorial_category", "structural": true }
+  ],
+  "pages": [
+    {
+      "id": "discipline-hub",
+      "canonical": "/disciplinas",
+      "breadcrumbRequired": true,
+      "visualBreadcrumb": ["Início|/", "Disciplinas|/disciplinas"],
+      "jsonLdBreadcrumb": ["Início|/", "Disciplinas|/disciplinas"],
+      "expectedBreadcrumb": ["Início|/", "Disciplinas|/disciplinas"],
+      "schemaTypes": ["CollectionPage", "BreadcrumbList"],
+      "expectedSchemaTypes": ["CollectionPage", "BreadcrumbList"],
+      "allowedSchemaTypes": ["CollectionPage", "BreadcrumbList", "ItemList"],
+      "jsonValid": true
+    },
+    {
+      "id": "bad-page",
+      "canonical": "/topicos/x",
+      "breadcrumbRequired": true,
+      "visualBreadcrumb": ["Início|/"],
+      "jsonLdBreadcrumb": ["Início|/", "Tópico|/topicos/x"],
+      "expectedBreadcrumb": ["Início|/", "Disciplinas|/disciplinas", "Tópico|/topicos/x"],
+      "breadcrumbCanonical": false,
+      "schemaTypes": ["WebPage", "WebPage", "Event"],
+      "expectedSchemaTypes": ["WebPage", "BreadcrumbList"],
+      "allowedSchemaTypes": ["WebPage", "BreadcrumbList"],
+      "jsonValid": false,
+      "privateMarker": true,
+      "schemaCanonical": false,
+      "visibleDataMapping": false
+    }
+  ],
+  "limits": { "directory": 3 },
+  "negativeAbsentRelations": [
+    { "source": "law-article", "target": "question", "reason": "no explicit relation" },
+    { "source": "material", "target": "career", "reason": "no explicit relation" },
+    { "source": "post", "target": "contest", "reason": "no explicit relation" }
+  ],
+  "expected": {
+    "orphans": ["topic-orphan", "law-article", "question", "material", "career", "post", "contest"],
+    "brokenLinks": 1,
+    "nonpublicTargets": 1,
+    "aliasTargets": 1,
+    "redirectTargets": 1,
+    "duplicateLinks": 1
+  }
+}

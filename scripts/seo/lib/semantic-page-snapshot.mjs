@@ -19,6 +19,14 @@ export function extractSemanticSnapshot(documentOrOptions, maybeOptions = {}) {
     .replace(/\s+/g, ' ')
     .replace(/\b\d{1,2}:\d{2}:\d{2}\b/g, '<time>')
     .trim();
+  const normalizePath = (value) => {
+    try {
+      const url = new URL(String(value || ''), options.origin || 'https://concursomestre.com');
+      return `${url.pathname.replace(/\/$/, '') || '/'}${url.search}`;
+    } catch {
+      return String(value || '');
+    }
+  };
   const isExcluded = (element) => {
     if (!element || typeof element.closest !== 'function') return false;
     if (element.closest('[data-hydration-interaction]')) return true;
@@ -65,8 +73,19 @@ export function extractSemanticSnapshot(documentOrOptions, maybeOptions = {}) {
   const breadcrumbs = elements(breadcrumbSelector)
     .map((element) => normalize(element.textContent))
     .filter(Boolean);
+  const breadcrumbItems = elements(breadcrumbSelector).map((element) => {
+    const candidates = Array.from(element.querySelectorAll('li'));
+    const items = candidates.length ? candidates : Array.from(element.querySelectorAll('a[href], [aria-current="page"]'));
+    return items.map((item) => {
+      const anchor = item.matches?.('a[href]') ? item : item.querySelector?.('a[href]');
+      const current = item.matches?.('[aria-current="page"]') ? item : item.querySelector?.('[aria-current="page"]');
+      return `${normalize((current || anchor || item).textContent)}|${normalizePath(anchor?.getAttribute('href') || current?.closest?.('nav')?.getAttribute('data-canonical-current') || '')}`;
+    }).filter((item) => !item.startsWith('|'));
+  });
   const schemaTypes = [];
+  const schemaTypeCounts = {};
   const schemaIdentifiers = [];
+  const jsonLdBreadcrumbItems = [];
   const jsonLd = [];
   const collectSchemaFacts = (value) => {
     if (Array.isArray(value)) {
@@ -79,6 +98,7 @@ export function extractSemanticSnapshot(documentOrOptions, maybeOptions = {}) {
         (Array.isArray(nested) ? nested : [nested]).forEach((item) => {
           const type = normalize(item);
           if (type) schemaTypes.push(type);
+          if (type) schemaTypeCounts[type] = (schemaTypeCounts[type] || 0) + 1;
         });
       }
       if (key === '@id' || key === 'url' || key === 'item' || key === 'mainEntityOfPage') {
@@ -87,6 +107,11 @@ export function extractSemanticSnapshot(documentOrOptions, maybeOptions = {}) {
       }
       collectSchemaFacts(nested);
     });
+    if (value['@type'] === 'BreadcrumbList' && Array.isArray(value.itemListElement)) {
+      jsonLdBreadcrumbItems.push(value.itemListElement.map((item) => (
+        `${normalize(item?.name)}|${normalizePath(item?.item || item?.url || '')}`
+      )));
+    }
   };
   elements('script[type="application/ld+json"]').forEach((element) => {
     try {
@@ -134,10 +159,13 @@ export function extractSemanticSnapshot(documentOrOptions, maybeOptions = {}) {
     h2: texts('main h2, [data-semantic-content] h2'),
     h3: texts('main h3, [data-semantic-content] h3'),
     breadcrumbs,
+    breadcrumbItems,
+    jsonLdBreadcrumbItems,
     internalLinks,
     jsonLdCount: jsonLd.length,
     jsonLdInvalidCount: jsonLd.filter((entry) => entry && entry.invalid === true).length,
     schemaTypes: [...new Set(schemaTypes)].sort(),
+    schemaTypeCounts,
     schemaIdentifiers: [...new Set(schemaIdentifiers)].sort(),
     semanticTextDigest: digest(semanticText),
     semanticTextSample: semanticText.slice(0, 600),
@@ -153,8 +181,9 @@ export const compareSemanticSnapshots = ({ raw, hydrated, sentinels = [], surfac
   };
   [
     'title', 'canonical', 'robots', 'description', 'openGraph', 'mainCount',
-    'h1', 'h2', 'h3', 'breadcrumbs', 'jsonLdCount', 'jsonLdInvalidCount',
-    'schemaTypes', 'schemaIdentifiers', 'semanticTextDigest',
+    'h1', 'h2', 'h3', 'breadcrumbs', 'breadcrumbItems', 'jsonLdBreadcrumbItems',
+    'jsonLdCount', 'jsonLdInvalidCount', 'schemaTypes', 'schemaTypeCounts',
+    'schemaIdentifiers', 'semanticTextDigest',
   ].forEach((field) => compare(field));
   compare('internalLinks', 'interaction');
 

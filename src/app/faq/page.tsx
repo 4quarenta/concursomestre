@@ -29,7 +29,6 @@ import {
   Zap,
 } from 'lucide-react';
 import { FAQ_DATA, type FaqIconKey } from './faqContent';
-import { serializeStructuredData } from '@services/seo/structuredData';
 
 const FAQ_ICON_BY_KEY: Record<FaqIconKey, React.ElementType> = {
   target: Target,
@@ -40,16 +39,6 @@ const FAQ_ICON_BY_KEY: Record<FaqIconKey, React.ElementType> = {
   shield: ShieldCheck,
   users: Users,
   help: HelpCircle,
-};
-
-const FAQ_STRUCTURED_DATA = {
-  '@context': 'https://schema.org',
-  '@type': 'FAQPage',
-  mainEntity: FAQ_DATA.flatMap((category) => category.questions).map((entry) => ({
-    '@type': 'Question',
-    name: entry.q,
-    acceptedAnswer: { '@type': 'Answer', text: entry.a },
-  })),
 };
 
 const Page: React.FC = () => {
@@ -67,7 +56,6 @@ const Page: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pt-24 pb-12 px-4 transition-colors">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(FAQ_STRUCTURED_DATA) }} />
       <div className="max-w-4xl mx-auto space-y-12">
         <div className="text-center space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full text-xs font-black uppercase tracking-widest">

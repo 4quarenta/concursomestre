@@ -1,7 +1,13 @@
 import Link from 'next/link';
 import { BookOpen, Building2, ChevronLeft, ChevronRight, FileText, Landmark, ListChecks, Search } from 'lucide-react';
-import { buildSiteUrl } from '@/config/siteUrl';
-import { serializeStructuredData } from '@services/seo/structuredData';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
+import {
+  buildBreadcrumbList,
+  buildCollectionPage,
+  buildItemList,
+  buildStructuredDataGraph,
+} from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import {
@@ -76,50 +82,24 @@ export default async function PublicTaxonomyDirectory({
   const letter = /^[A-Z]$/.test(letterCandidate) ? letterCandidate : '';
   const requestedPage = Math.max(1, Number.parseInt(String(params.pagina || '1'), 10) || 1);
   const directory = await fetchPublicTaxonomyDirectory({ type, page: requestedPage, search, letter });
-  const collectionSchema = {
-    '@type': 'CollectionPage',
-    '@id': `${buildSiteUrl(config.path)}#webpage`,
-    name: config.title,
-    description: config.description,
-    url: buildSiteUrl(config.path),
-    mainEntity: {
-      '@type': 'ItemList',
-      numberOfItems: directory.items.length,
-      itemListElement: directory.items.map((item, index) => ({
-        '@type': 'ListItem',
-        position: ((directory.pageInfo.page - 1) * directory.pageInfo.perPage) + index + 1,
-        name: item.name,
-        url: buildSiteUrl(type === 'boards'
-          ? buildBoardPath(item)
-          : type === 'organizations'
-            ? publicRoutes.organizations.detail(item.slug)
-            : publicRoutes.disciplines.detail(item.slug)),
-      })),
-    },
-  };
-  const jsonLd = type === 'organizations' ? {
-    '@context': 'https://schema.org',
-    '@graph': [collectionSchema, {
-      '@type': 'BreadcrumbList',
-      '@id': `${buildSiteUrl(config.path)}#breadcrumb`,
-      itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Início', item: buildSiteUrl('/') },
-        { '@type': 'ListItem', position: 2, name: 'Órgãos', item: buildSiteUrl('/orgaos') },
-      ],
-    }],
-  } : { '@context': 'https://schema.org', ...collectionSchema };
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: config.title, path: config.path }];
+  const itemList = buildItemList(directory.items.map((item) => ({
+    name: item.name,
+    path: type === 'boards'
+      ? buildBoardPath(item)
+      : type === 'organizations'
+        ? publicRoutes.organizations.detail(item.slug)
+        : publicRoutes.disciplines.detail(item.slug),
+  })), ((directory.pageInfo.page - 1) * directory.pageInfo.perPage) + 1);
+  const jsonLd = buildStructuredDataGraph([
+    { ...buildCollectionPage({ path: config.path, name: config.title, description: config.description }), mainEntity: itemList },
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 
   return (
     <div className="w-full animate-fade-in space-y-5">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeStructuredData(jsonLd) }} />
-
-      {type === 'organizations' ? (
-        <nav data-breadcrumbs aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-500">
-          <Link href="/" prefetch={false} className="hover:text-[#615fff] hover:underline">Início</Link>
-          <ChevronRight size={12} aria-hidden="true" />
-          <span aria-current="page" className="text-slate-700 dark:text-slate-200">Órgãos</span>
-        </nav>
-      ) : null}
+      <StructuredData value={jsonLd} />
+      <CanonicalBreadcrumbs items={breadcrumbs} />
 
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
@@ -130,7 +110,7 @@ export default async function PublicTaxonomyDirectory({
 
         <nav className="flex w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:w-auto" aria-label="Diretórios de questões">
           <Link
-            href="/disciplinas"
+            href={publicRoutes.disciplines.index()}
             prefetch={false}
             aria-current={type === 'subjects' ? 'page' : undefined}
             className={`inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-colors sm:flex-none ${type === 'subjects' ? 'bg-[#615fff] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800'}`}
@@ -138,7 +118,7 @@ export default async function PublicTaxonomyDirectory({
             <BookOpen size={15} /> Disciplinas
           </Link>
           <Link
-            href="/bancas"
+            href={publicRoutes.boards.index()}
             prefetch={false}
             aria-current={type === 'boards' ? 'page' : undefined}
             className={`inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-colors sm:flex-none ${type === 'boards' ? 'bg-[#615fff] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800'}`}
@@ -146,7 +126,7 @@ export default async function PublicTaxonomyDirectory({
             <Landmark size={15} /> Bancas
           </Link>
           <Link
-            href="/orgaos"
+            href={publicRoutes.organizations.index()}
             prefetch={false}
             aria-current={type === 'organizations' ? 'page' : undefined}
             className={`inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-colors sm:flex-none ${type === 'organizations' ? 'bg-[#615fff] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800'}`}

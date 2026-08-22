@@ -27,27 +27,15 @@ import {
   PLATFORM_SECTION_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import { buildAbsoluteUrl, buildBoardPath, buildQuestionPath, buildQuestionSlug } from '@services/seo';
+import { buildBoardPath, buildQuestionPath, buildQuestionSlug } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import {
   buildQuestionKeywordPills,
   buildQuestionKeywords,
-  buildQuestionMetaDescription,
-  buildQuestionMetaTitle,
   buildQuestionPageHeading,
-  getQuestionContextLabels,
 } from './questionSeo';
 
 const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-const serializeJsonLd = (payload: unknown) => (
-  JSON.stringify(payload)
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e')
-    .replace(/&/g, '\\u0026')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029')
-);
 
 const getQuestionRoleLabel = (item: unknown) => {
   if (!item || typeof item !== 'object') {
@@ -95,13 +83,11 @@ const readQuestionTaxonomyLinks = (question: Question): PublicTaxonomyLink[] => 
 type QuestionPublicPageProps = {
   initialQuestion?: Question | null;
   routeFamily?: 'legacy' | 'future';
-  canonicalUrl?: string | null;
 };
 
 const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
   initialQuestion = null,
   routeFamily = 'legacy',
-  canonicalUrl = null,
 }) => {
   const params = useParams<{ id?: string; slug?: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -181,7 +167,6 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
     }
   }, [canonicalPath, question, routeFamily, routeSlug, router]);
 
-  const questionContext = React.useMemo(() => question ? getQuestionContextLabels(question) : null, [question]);
   const questionKeywords = React.useMemo(() => question ? buildQuestionKeywords(question) : [], [question]);
   const keywordPills = React.useMemo(() => question ? buildQuestionKeywordPills(question) : [], [question]);
   const taxonomyLinks = React.useMemo(() => question ? readQuestionTaxonomyLinks(question) : [], [question]);
@@ -195,25 +180,6 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
     { label: 'Modalidade', value: question?.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Múltipla escolha' },
   ].filter((item) => item.value);
 
-  const structuredData = React.useMemo(() => {
-    if (!question) return null;
-
-    return {
-      '@context': 'https://schema.org',
-      '@type': 'Quiz',
-      name: buildQuestionMetaTitle(question),
-      description: buildQuestionMetaDescription(question),
-      url: canonicalUrl || buildAbsoluteUrl(canonicalPath || buildQuestionPath(question)),
-      educationalLevel: questionContext?.nivel || 'Concursos públicos',
-      about: keywordPills,
-      assesses: questionContext?.assuntos?.join(', ') || questionContext?.assunto || 'Conhecimentos para concursos',
-      provider: {
-        '@type': 'Organization',
-        name: 'ConcursoMestre',
-        url: canonicalUrl ? new URL('/', canonicalUrl).toString() : buildAbsoluteUrl('/'),
-      },
-    };
-  }, [canonicalPath, canonicalUrl, keywordPills, question, questionContext]);
   const showFreeAccountCta = !isAuthLoading && !currentUser;
   const isCanceledQuestion = question ? isQuestionCanceled(question) : false;
   const isOriginalQuestion = question ? isPlatformOriginalQuestion(question) : false;
@@ -269,12 +235,6 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
 
   return (
     <>
-    {structuredData && (
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
-      />
-    )}
     <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 px-4 py-8 sm:px-6 lg:px-8`}>
       <div className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden ${isCanceledQuestion ? 'border-red-400 ring-2 ring-red-100 dark:border-red-700 dark:ring-red-900/30' : ''}`}>
         <div className="border-b border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">

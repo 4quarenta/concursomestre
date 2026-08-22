@@ -9,17 +9,20 @@ const readSource = (relativePath: string) => readFileSync(resolve(process.cwd(),
 describe('public information SSR snapshots', () => {
   it('keeps FAQ content in one shared source and exposes every answer to the SSR route', () => {
     const clientSource = readSource('src/app/faq/page.tsx');
+    const layoutSource = readSource('src/app/faq/layout.tsx');
     const questionCount = FAQ_DATA.reduce((total, category) => total + category.questions.length, 0);
 
     expect(questionCount).toBeGreaterThan(20);
     expect(clientSource).toContain('import { FAQ_DATA');
-    expect(clientSource).toContain("'@type': 'FAQPage'");
+    expect(layoutSource).toContain("'@type': 'FAQPage'");
+    expect(layoutSource).toContain('<StructuredData');
   });
 
   it.each(['privacy', 'terms'])('%s exposes one structured server document without a duplicate SEO shell', (route) => {
     const layoutSource = readSource(`src/app/${route}/layout.tsx`);
 
-    expect(layoutSource).toContain('application/ld+json');
+    expect(layoutSource).toContain('<StructuredData');
+    expect(layoutSource).toContain('buildBreadcrumbList');
     expect(() => readSource(`src/app/@seo/${route}/page.tsx`)).toThrow();
   });
 
@@ -29,7 +32,7 @@ describe('public information SSR snapshots', () => {
     expect(() => readSource('src/app/@seo/support/page.tsx')).toThrow();
     expect(supportLayoutSource).toContain('Como podemos ajudar?');
     expect(supportLayoutSource).toContain('data-semantic-content');
-    expect(supportLayoutSource).toContain('application/ld+json');
+    expect(supportLayoutSource).toContain('<StructuredData');
   });
 
   it('keeps support public and indexable while write actions remain session-bound', () => {

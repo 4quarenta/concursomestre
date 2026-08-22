@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { websiteManifest } from '@/config/platform';
-import { buildSiteUrl } from '@/config/siteUrl';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { buildNoIndexMetadata } from '../../seoMetadata';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import ModuleAccessFallback from '@/components/shared/feedback/ModuleAccessFallback';
@@ -12,14 +13,13 @@ import {
   fetchLegalCommentaryModuleAvailability,
 } from '../legalCommentaryServerData';
 import LawDetailClient from './LawDetailClient';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 
 export const revalidate = 300;
 
 type LawDetailPageProps = {
   params: Promise<{ slug: string }>;
 };
-
-const absoluteUrl = (path: string): string => buildSiteUrl(path);
 
 const plainText = (value: unknown): string => String(value || '')
   .replace(/<[^>]+>/g, ' ')
@@ -32,44 +32,21 @@ export const descriptionForLaw = (law: Awaited<ReturnType<typeof fetchLawDetailF
   return (description || `Estude ${law.title} com texto legal atualizado e coment\u00e1rios para concursos p\u00fablicos.`).slice(0, 160);
 };
 
-const serializeJsonLd = (value: unknown): string => JSON.stringify(value).replace(/</g, '\\u003c');
-
 export const buildLawJsonLd = (
   law: NonNullable<Awaited<ReturnType<typeof fetchLawDetailForServer>>>,
 ) => {
   const description = descriptionForLaw(law);
 
-  return {
-    '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': ['Article', 'LearningResource'],
-        headline: law.title,
-        alternativeHeadline: law.shortTitle || undefined,
-        description,
-        url: absoluteUrl(`/lei-comentada/${law.slug}`),
-        inLanguage: 'pt-BR',
-        educationalUse: 'study',
-        learningResourceType: 'legisla\u00e7\u00e3o comentada',
-        articleSection: law.area?.name || undefined,
-        datePublished: law.publishedAt || law.date || undefined,
-        dateModified: law.lastUpdatedAt || law.lastSyncedAt || undefined,
-        isPartOf: {
-          '@type': 'CollectionPage',
-          name: 'Lei Comentada',
-          url: absoluteUrl('/lei-comentada'),
-        },
-      },
-      {
-        '@type': 'BreadcrumbList',
-        itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'In\u00edcio', item: absoluteUrl('/') },
-          { '@type': 'ListItem', position: 2, name: 'Lei Comentada', item: absoluteUrl('/lei-comentada') },
-          { '@type': 'ListItem', position: 3, name: law.shortTitle || law.title, item: absoluteUrl(`/lei-comentada/${law.slug}`) },
-        ],
-      },
-    ],
-  };
+  const path = publicRoutes.laws.detail(law.slug);
+  const breadcrumbs = [
+    { label: 'Início', path: '/' },
+    { label: 'Lei Comentada', path: publicRoutes.laws.index() },
+    { label: law.shortTitle || law.title, path },
+  ];
+  return buildStructuredDataGraph([
+    buildWebPage({ path, name: law.title, description }),
+    buildBreadcrumbList(breadcrumbs),
+  ]);
 };
 
 export async function generateMetadata({ params }: LawDetailPageProps): Promise<Metadata> {
@@ -160,21 +137,20 @@ export default async function LawPage({ params }: LawDetailPageProps) {
   const publicTitle = law
     ? (law.number ? `Lei nº ${law.number}/${law.year || ''}` : (law.shortTitle || law.title))
     : '';
+  const breadcrumbs = [
+    { label: 'Início', path: '/' },
+    { label: 'Lei Comentada', path: publicRoutes.laws.index() },
+    { label: law.shortTitle || law.title, path: publicRoutes.laws.detail(law.slug) },
+  ];
 
   return (
     <>
       {jsonLd ? (
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
+        <StructuredData value={jsonLd} />
       ) : null}
       {law ? (
         <header className="space-y-4 pb-6" data-semantic-content>
-          <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-            <Link href="/" className="hover:text-indigo-600">Início</Link>
-            <span aria-hidden="true">/</span>
-            <Link href="/lei-comentada" className="hover:text-indigo-600">Lei Comentada</Link>
-            <span aria-hidden="true">/</span>
-            <span aria-current="page">{law.shortTitle || law.title}</span>
-          </nav>
+          <CanonicalBreadcrumbs items={breadcrumbs} />
           <div>
             <p className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-300">Texto legal e navegação pública</p>
             <h1 className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{publicTitle}</h1>

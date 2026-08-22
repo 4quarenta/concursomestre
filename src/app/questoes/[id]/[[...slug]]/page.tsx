@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
 import QuestionPublicPage from '@/app/question/QuestionPublicPage';
+import { buildQuestionMetaDescription, buildQuestionMetaTitle } from '@/app/question/questionSeo';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import StructuredData from '@/components/seo/StructuredData';
 import { buildQuestionMetadata } from '@/app/question/questionPageMetadata';
 import { fetchPublicQuestionRoute } from '@/app/question/questionServerResolver';
 import { publicRoutes, sanitizePublicRouteQuery } from '@services/routes/publicRoutes';
-import { buildAbsoluteUrl } from '@services/seo/slug';
+import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 
 type QuestionPageParams = {
   id?: string;
@@ -39,11 +42,27 @@ export default async function FutureQuestionPage({
     ));
   }
 
+  const breadcrumbs = [
+    { label: 'Início', path: '/' },
+    { label: 'Questões', path: publicRoutes.questions.index() },
+    { label: `Questão ${resolution.question.id}`, path: resolution.futurePath },
+  ];
+  const structuredData = buildStructuredDataGraph([
+    buildWebPage({
+      path: resolution.futurePath,
+      name: buildQuestionMetaTitle(resolution.question),
+      description: buildQuestionMetaDescription(resolution.question),
+    }),
+    buildBreadcrumbList(breadcrumbs),
+  ]);
+
   return (
-    <QuestionPublicPage
-      initialQuestion={resolution.question}
-      routeFamily="future"
-      canonicalUrl={buildAbsoluteUrl(resolution.futurePath)}
-    />
+    <>
+      <StructuredData value={structuredData} />
+      <div className="mx-auto w-full max-w-[1600px] px-4 pt-5 sm:px-6 lg:px-8">
+        <CanonicalBreadcrumbs items={breadcrumbs} />
+      </div>
+      <QuestionPublicPage initialQuestion={resolution.question} routeFamily="future" />
+    </>
   );
 }

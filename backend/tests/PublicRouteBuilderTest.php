@@ -44,7 +44,8 @@ try {
         'Filtros publicos de provas foram alterados.'
     );
     publicRouteAssert(
-        $builder->disciplineDetail('direito-constitucional') === '/disciplinas/direito-constitucional',
+        $builder->disciplinesIndex() === '/disciplinas'
+            && $builder->disciplineDetail('direito-constitucional') === '/disciplinas/direito-constitucional',
         'Builder de disciplina incorreto.'
     );
     publicRouteAssert(
@@ -53,7 +54,8 @@ try {
         'Builders de topico/assunto divergentes.'
     );
     publicRouteAssert(
-        $builder->boardDetail('cebraspe') === '/bancas/cebraspe',
+        $builder->boardsIndex() === '/bancas'
+            && $builder->boardDetail('cebraspe') === '/bancas/cebraspe',
         'Builder PHP de banca divergente.'
     );
     publicRouteAssert(
@@ -78,8 +80,10 @@ try {
     );
     publicRouteAssert(
         $builder->blogIndex() === '/blog'
+            && $builder->blogArticleDetail('noticia-publica') === '/blog/noticia-publica'
             && $builder->blogCategoryDetail('editais') === '/blog/categoria/editais'
-            && $builder->blogTagDetail('nordeste') === '/blog/tag/nordeste',
+            && $builder->blogTagDetail('nordeste') === '/blog/tag/nordeste'
+            && $builder->blogAuthorDetail(7) === '/blog/autor/7',
         'Builders PHP das taxonomias do blog divergentes.'
     );
     publicRouteAssert(

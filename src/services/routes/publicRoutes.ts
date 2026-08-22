@@ -198,6 +198,7 @@ export const publicRoutes = {
     ),
   },
   disciplines: {
+    index: (query?: PublicRouteQuery) => withQuery('discipline_hub', buildPath('discipline_hub', {}), query),
     detail: (slug: string, query?: PublicRouteQuery) => withQuery(
       'discipline_detail',
       buildPath('discipline_detail', { slug }),
@@ -219,6 +220,7 @@ export const publicRoutes = {
     ),
   },
   boards: {
+    index: (query?: PublicRouteQuery) => withQuery('board_hub', buildPath('board_hub', {}), query),
     detail: (slug: string, query?: PublicRouteQuery) => withQuery(
       'board_detail',
       buildPath('board_detail', { slug }),
@@ -284,11 +286,17 @@ export const publicRoutes = {
   },
   blog: {
     index: (query?: PublicRouteQuery) => withQuery('blog_hub', buildPath('blog_hub', {}), query),
+    article: (slug: string, query?: PublicRouteQuery) => withQuery(
+      'blog_article', buildPath('blog_article', { slug }), query,
+    ),
     category: (slug: string, query?: PublicRouteQuery) => withQuery(
       'blog_category', buildPath('blog_category', { slug }), query,
     ),
     tag: (slug: string, query?: PublicRouteQuery) => withQuery(
       'blog_tag', buildPath('blog_tag', { slug }), query,
+    ),
+    author: (id: string | number, query?: PublicRouteQuery) => withQuery(
+      'blog_author', buildPath('blog_author', { id }), query,
     ),
   },
 } as const;

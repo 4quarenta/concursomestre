@@ -11,6 +11,11 @@ require_once dirname(__DIR__) . '/policies/StructuralRoutePolicy.php';
  */
 final class PublicRouteBuilder
 {
+    public function disciplinesIndex(): string
+    {
+        return $this->requiredPath('discipline_hub');
+    }
+
     private readonly StructuralRoutePolicy $routes;
 
     public function __construct(?StructuralRoutePolicy $routes = null)
@@ -61,6 +66,11 @@ final class PublicRouteBuilder
     public function boardDetail(string $persistedSlug): string
     {
         return $this->requiredPath('board_detail', ['slug' => $persistedSlug]);
+    }
+
+    public function boardsIndex(): string
+    {
+        return $this->requiredPath('board_hub');
     }
 
     /** @param array<string, scalar|list<scalar>|null> $query */
@@ -164,6 +174,11 @@ final class PublicRouteBuilder
         return $this->requiredPath('blog_hub');
     }
 
+    public function blogArticleDetail(string $persistedSlug): string
+    {
+        return $this->requiredPath('blog_article', ['slug' => $persistedSlug]);
+    }
+
     public function blogCategoryDetail(string $persistedSlug): string
     {
         return $this->requiredPath('blog_category', ['slug' => $persistedSlug]);
@@ -172,6 +187,11 @@ final class PublicRouteBuilder
     public function blogTagDetail(string $persistedSlug): string
     {
         return $this->requiredPath('blog_tag', ['slug' => $persistedSlug]);
+    }
+
+    public function blogAuthorDetail(int $id): string
+    {
+        return $this->requiredPath('blog_author', ['id' => (string) $id]);
     }
 
     /** @param array<string, string|int> $parameters */

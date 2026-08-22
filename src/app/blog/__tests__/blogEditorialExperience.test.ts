@@ -32,7 +32,7 @@ describe('blog editorial experience', () => {
     const tagPage = readSource('src/app/blog/tag/[slug]/page.tsx');
     expect(home).toContain('Notícias por região');
     expect(home).toContain('/blog/tag/');
-    expect(detail).toContain('href={`/blog/tag/${tag.slug}`}');
+    expect(detail).toContain('href={publicRoutes.blog.tag(tag.slug)}');
     expect(tagPage).toContain("fetchBlogTaxonomyArchiveForServer('tag', slug");
   });
 
@@ -47,11 +47,11 @@ describe('blog editorial experience', () => {
   it('serializes hostile taxonomy and article text without an executable script boundary', () => {
     const serialized = serializeStructuredData({
       name: '</script><script>globalThis.__BLOG_XSS__=true</script>',
-      description: '<img src=x onerror=alert(1)>',
-      author: '" onmouseover="alert(2)',
+      description: '<img src=x onerror=globalThis.__BLOG_XSS__>',
+      author: '" onmouseover="globalThis.__BLOG_XSS__=true',
     });
     expect(serialized).not.toContain('</script>');
     expect(serialized).not.toContain('<script>');
-    expect(serialized).toContain('\\u003c/script>');
+    expect(serialized).toContain('\\u003c/script\\u003e');
   });
 });
