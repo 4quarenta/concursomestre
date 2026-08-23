@@ -37,11 +37,12 @@ describe('Phase 2 internal public links', () => {
   }, 45_000);
 
   it('keeps the operational sitemap authority on canonical URLs after Checkpoint 2.3', () => {
-    const inventory = fs.readFileSync(path.join(ROOT, 'src/services/seo/sitemapData.ts'), 'utf8');
+    const pageMap = fs.readFileSync(path.join(ROOT, 'config/seo/seo-production-page-map.v1.json'), 'utf8');
     const staticSitemap = fs.readFileSync(path.join(ROOT, 'backend/scripts/seo/generate_static_sitemaps.php'), 'utf8');
-    expect(inventory).toContain("{ path: '/questoes'");
-    expect(inventory).toContain("{ path: '/provas'");
-    expect(inventory).not.toContain("{ path: '/practice'");
+    expect(pageMap).toContain('"familyId": "questions_hub"');
+    expect(pageMap).toContain('"routePatterns": ["/questoes"]');
+    expect(pageMap).toContain('"familyId": "exam_hub"');
+    expect(pageMap).toContain('"routePatterns": ["/provas"]');
     expect(staticSitemap).toContain('$routes->questionDetail');
     expect(staticSitemap).toContain('$routes->examDetail');
     expect(staticSitemap).not.toContain("'/blog/provas'");

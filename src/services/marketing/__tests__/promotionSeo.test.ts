@@ -59,7 +59,7 @@ describe('promotion SEO metadata', () => {
 
     expect(metadata.title).toBe('Oferta Black Friday');
     expect(metadata.description).toBe('Plano Elite com desconto especial.');
-    expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/promo/black-friday');
+    expect(metadata.alternates?.canonical).toBe('https://concursomestre.com/promo/black-friday');
     expect(readRobotsObject(metadata.robots).index).toBe(false);
   });
 

@@ -1,14 +1,17 @@
 import type { Metadata } from 'next';
 import productionPageMapJson from '../../../config/seo/seo-production-page-map.v1.json';
 import { classifyPublicRouteParameter } from '@services/routes/publicRoutes';
+import { isQualityRequiredForFamily, isSeoRuntimeIndexingAllowed } from './runtimeEnvironment';
 
 export const SEO_LAUNCH_MODES = ['PRELAUNCH', 'GO_CANDIDATE', 'PRODUCTION'] as const;
 export const SEO_FAMILY_ELIGIBILITIES = ['INDEXABLE', 'CONDITIONAL', 'PERMANENT_NOINDEX'] as const;
 export const SEO_INSTANCE_READINESS_STATUSES = ['READY', 'NOT_READY', 'NOT_APPLICABLE'] as const;
+export const SEO_QUALITY_STATUSES = ['PASS', 'FAIL', 'NOT_EVALUATED'] as const;
 
 export type SeoLaunchMode = (typeof SEO_LAUNCH_MODES)[number];
 export type SeoFamilyEligibility = (typeof SEO_FAMILY_ELIGIBILITIES)[number];
 export type SeoInstanceReadinessStatus = (typeof SEO_INSTANCE_READINESS_STATUSES)[number];
+export type SeoQualityStatus = (typeof SEO_QUALITY_STATUSES)[number];
 export type SeoRuntimeIndexability = 'INDEX' | 'NOINDEX';
 
 export interface SeoInstanceReadiness {
@@ -45,7 +48,10 @@ export interface SeoLaunchEvaluationInput {
   resolutionAction: 'render' | 'redirect' | 'not_found' | 'gone';
   httpStatus: number;
   canonicalValid: boolean;
-  qualityPass: boolean;
+  qualityPass?: boolean;
+  qualityStatus?: SeoQualityStatus;
+  canonicalEnvironment?: boolean;
+  productionActivationAllowed?: boolean;
 }
 
 export interface SeoLaunchEvaluation {
@@ -142,18 +148,27 @@ export const evaluateSeoLaunchControl = ({
   httpStatus,
   canonicalValid,
   qualityPass,
+  qualityStatus = qualityPass === true ? 'PASS' : 'NOT_EVALUATED',
+  canonicalEnvironment = false,
+  productionActivationAllowed = false,
 }: SeoLaunchEvaluationInput): SeoLaunchEvaluation => {
   const readinessErrors = validateInstanceReadiness(instanceReadiness);
   if (readinessErrors.length > 0) throw new Error(readinessErrors.join(' | '));
 
   const reasonCodes: string[] = [];
   if (!publicationAllowed) reasonCodes.push('indexability.non_public');
-  if (!qualityPass) reasonCodes.push('indexability.quality_not_evaluated');
+  if (isQualityRequiredForFamily(family.familyId) && qualityStatus === 'FAIL') {
+    reasonCodes.push('indexability.quality_failed');
+  } else if (isQualityRequiredForFamily(family.familyId) && qualityStatus !== 'PASS') {
+    reasonCodes.push('indexability.quality_not_evaluated');
+  }
   if (launchMode === 'PRELAUNCH') reasonCodes.push('indexability.launch_prelaunch');
   if (launchMode === 'GO_CANDIDATE') reasonCodes.push('indexability.launch_go_candidate');
   if (family.launchStatus !== 'ACTIVE') reasonCodes.push('indexability.launch_not_active');
   if (family.familyEligibility === 'PERMANENT_NOINDEX') reasonCodes.push('indexability.family_permanent_noindex');
   if (instanceReadiness.status !== 'READY') reasonCodes.push('indexability.instance_not_ready');
+  if (!canonicalEnvironment) reasonCodes.push('indexability.non_canonical_environment');
+  if (!productionActivationAllowed) reasonCodes.push('indexability.production_activation_missing');
   if (resolutionAction !== 'render' || httpStatus !== 200 || !canonicalValid) {
     reasonCodes.push('indexability.missing_canonical_identity');
   }
@@ -203,15 +218,20 @@ export const hasFunctionalSeoQuery = (searchParams: URLSearchParams): boolean =>
 export const resolveXRobotsTag = (
   pathname: string,
   searchParams: URLSearchParams,
-  launchMode = getSeoLaunchMode(),
+  launchMode?: SeoLaunchMode,
+  requestOrigin?: string,
 ): string | null => {
+  const effectiveLaunchMode = launchMode ?? getSeoLaunchMode();
   const family = resolveSeoProductionFamily(pathname);
   if (family.familyEligibility === 'PERMANENT_NOINDEX'
     || family.launchStatus !== 'ACTIVE'
     || hasFunctionalSeoQuery(searchParams)) {
     return `noindex, ${family.robotsFollow ? 'follow' : 'nofollow'}`;
   }
-  if (launchMode !== 'PRODUCTION') return 'noindex, follow';
+  const environmentAllowed = launchMode !== undefined
+    ? true
+    : isSeoRuntimeIndexingAllowed(effectiveLaunchMode, requestOrigin);
+  if (effectiveLaunchMode !== 'PRODUCTION' || !environmentAllowed) return 'noindex, follow';
   return null;
 };
 
@@ -226,18 +246,33 @@ export const launchModeRobots = (follow = true): NonNullable<Metadata['robots']>
   },
 });
 
+const hasExplicitNoindex = (robots: Metadata['robots']): boolean => {
+  if (typeof robots === 'string') return /(?:^|[\s,])noindex(?:$|[\s,])/i.test(robots);
+  return Boolean(robots && typeof robots === 'object' && robots.index === false);
+};
+
 export const applySeoLaunchModeToMetadata = (
   metadata: Metadata,
-  launchMode = getSeoLaunchMode(),
+  launchMode?: SeoLaunchMode,
   pathname?: string,
-): Metadata => (
-  launchMode === 'PRODUCTION'
+): Metadata => {
+  const effectiveLaunchMode = launchMode ?? getSeoLaunchMode();
+  const environmentAllowed = launchMode !== undefined
+    ? true
+    : isSeoRuntimeIndexingAllowed(effectiveLaunchMode);
+  return effectiveLaunchMode === 'PRODUCTION'
+    && environmentAllowed
     && (!pathname || (
       resolveSeoProductionFamily(pathname).launchStatus === 'ACTIVE'
       && resolveSeoProductionFamily(pathname).familyEligibility !== 'PERMANENT_NOINDEX'
     ))
-    ? metadata
-    : { ...metadata, robots: launchModeRobots(true) }
-);
+    // Production relies on the crawler default when indexable. Omitting an
+    // explicit `index` meta lets the host-aware X-Robots-Tag remain stricter
+    // on preview or alternate hosts without emitting contradictory directives.
+    ? (hasExplicitNoindex(metadata.robots) ? metadata : { ...metadata, robots: undefined })
+    : { ...metadata, robots: launchModeRobots(true) };
+};
 
-export const isSeoProductionMode = (launchMode = getSeoLaunchMode()): boolean => launchMode === 'PRODUCTION';
+export const isSeoProductionMode = (launchMode = getSeoLaunchMode()): boolean => (
+  launchMode === 'PRODUCTION' && isSeoRuntimeIndexingAllowed(launchMode)
+);

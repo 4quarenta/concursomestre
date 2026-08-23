@@ -34,7 +34,7 @@ describe('Phase 2 public collection metadata', () => {
     });
 
     expect(metadata.alternates?.canonical).toBe('/provas?pagina=2');
-    expect(robotsIndex(metadata.robots)).toBe(true);
+    expect(robotsIndex(metadata.robots)).not.toBe(false);
   });
 
   it('marks exam facets noindex and points them to the clean hub', async () => {

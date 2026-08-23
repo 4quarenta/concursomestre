@@ -46,12 +46,14 @@ describe('Phase 2 coordinated URL cutover', () => {
   });
 
   it('moves canonical presentation and the operational sitemap to the new families', () => {
+    const pageMap = source('config', 'seo', 'seo-production-page-map.v1.json');
     expect(source('src', 'app', 'practice', 'layout.tsx')).toContain("path: '/questoes'");
     expect(source('src', 'app', 'questoes', '[id]', '[[...slug]]', 'page.tsx')).toContain('buildQuestionMetadata');
     expect(source('src', 'app', 'blog', 'provas', 'page.tsx')).toContain('publicRoutes.exams.index()');
     expect(source('src', 'app', 'blog', 'provas', '[slug]', 'page.tsx')).toContain('publicRoutes.exams.detail(exam.slug)');
-    expect(source('src', 'services', 'seo', 'sitemapData.ts')).toContain("{ path: '/questoes'");
-    expect(source('src', 'services', 'seo', 'sitemapData.ts')).toContain("{ path: '/provas'");
-    expect(source('src', 'services', 'seo', 'sitemapData.ts')).not.toContain("{ path: '/practice'");
+    expect(pageMap).toContain('"familyId": "questions_hub"');
+    expect(pageMap).toContain('"routePatterns": ["/questoes"]');
+    expect(pageMap).toContain('"familyId": "exam_hub"');
+    expect(pageMap).toContain('"routePatterns": ["/provas"]');
   });
 });

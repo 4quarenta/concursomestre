@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 final class StaticSitemapValidator
 {
+    private const MAX_URLS_PER_FILE = 45000;
+    private const MAX_FILE_BYTES = 52428800;
     private const LEGACY_PATHS = ['~^/practice/?$~', '~^/questions/?$~', '~^/question(?:/|$)~', '~^/blog/provas(?:/|$)~'];
     private const PRIVATE_PATHS = [
         '/admin', '/api', '/auth', '/checkout', '/dashboard', '/notifications',
         '/partner-dashboard', '/profile', '/read', '/simulation', '/subscription',
+    ];
+    private const PERMANENT_NOINDEX_PATHS = [
+        '/marketplace', '/search', '/setup', '/blog/tag',
     ];
 
     private string $canonicalOrigin;
@@ -28,7 +33,8 @@ final class StaticSitemapValidator
         $entries = [];
         $sectionCounts = [];
         $regularUrls = [];
-        $indexes = ['sitemap.xml', 'blog-sitemap.xml'];
+        $indexes = ['sitemap.xml'];
+        $indexedFiles = [];
 
         foreach ($indexes as $indexName) {
             $indexPath = $directory . DIRECTORY_SEPARATOR . $indexName;
@@ -37,6 +43,7 @@ final class StaticSitemapValidator
                 continue;
             }
             foreach ($this->readIndexFiles($indexPath, $issues) as $filename) {
+                $indexedFiles[] = $filename;
                 $filePath = $directory . DIRECTORY_SEPARATOR . $filename;
                 if (!is_file($filePath)) {
                     $issues[] = ['type' => 'missing_section', 'file' => $filename];
@@ -50,14 +57,10 @@ final class StaticSitemapValidator
             }
         }
 
-        if (is_file($directory . DIRECTORY_SEPARATOR . 'google-news.xml')) {
-            foreach ($this->readUrlSet(
-                $directory . DIRECTORY_SEPARATOR . 'google-news.xml',
-                'google-news.xml',
-                $issues
-            ) as $entry) {
-                $entries[] = $entry;
-                $sectionCounts['google-news'] = ($sectionCounts['google-news'] ?? 0) + 1;
+        foreach (glob($directory . DIRECTORY_SEPARATOR . '*.xml') ?: [] as $xmlPath) {
+            $filename = basename($xmlPath);
+            if ($filename !== 'sitemap.xml' && !in_array($filename, $indexedFiles, true)) {
+                $issues[] = ['type' => 'unreferenced_sitemap_file', 'file' => $filename];
             }
         }
 
@@ -110,6 +113,9 @@ final class StaticSitemapValidator
     /** @param list<array<string, mixed>> $issues @return list<string> */
     private function readIndexFiles(string $path, array &$issues): array
     {
+        if ((int) filesize($path) > self::MAX_FILE_BYTES) {
+            $issues[] = ['type' => 'sitemap_file_too_large', 'file' => basename($path)];
+        }
         $xml = $this->loadXml($path, $issues);
         if ($xml === null || $xml->documentElement?->localName !== 'sitemapindex') {
             $issues[] = ['type' => 'invalid_sitemap_index', 'file' => basename($path)];
@@ -136,12 +142,21 @@ final class StaticSitemapValidator
             }
             $files[] = $file;
         }
+        if (count($files) > 50000) {
+            $issues[] = ['type' => 'too_many_sitemaps_in_index', 'count' => count($files)];
+        }
+        if (count($files) !== count(array_unique($files))) {
+            $issues[] = ['type' => 'duplicate_sitemap_file'];
+        }
         return array_values(array_unique($files));
     }
 
     /** @param list<array<string, mixed>> $issues @return list<array{url:string,lastmod:?string,section:string}> */
     private function readUrlSet(string $path, string $filename, array &$issues): array
     {
+        if ((int) filesize($path) > self::MAX_FILE_BYTES) {
+            $issues[] = ['type' => 'sitemap_file_too_large', 'file' => $filename];
+        }
         $xml = $this->loadXml($path, $issues);
         if ($xml === null || $xml->documentElement?->localName !== 'urlset') {
             $issues[] = ['type' => 'invalid_urlset', 'file' => $filename];
@@ -162,6 +177,9 @@ final class StaticSitemapValidator
                 'lastmod' => $lastmodNode ? trim($lastmodNode->textContent) : null,
                 'section' => preg_replace('/-\d+\.xml$/', '', $filename) ?: $filename,
             ];
+        }
+        if (count($entries) > self::MAX_URLS_PER_FILE) {
+            $issues[] = ['type' => 'too_many_urls', 'file' => $filename, 'count' => count($entries)];
         }
         return $entries;
     }
@@ -202,8 +220,15 @@ final class StaticSitemapValidator
                 $issues[] = ['type' => 'private_url', 'url' => $entry['url']];
             }
         }
+        foreach (self::PERMANENT_NOINDEX_PATHS as $prefix) {
+            if ($path === $prefix || str_starts_with($path, $prefix . '/')) {
+                $issues[] = ['type' => 'permanent_noindex_url', 'url' => $entry['url']];
+            }
+        }
         if ($entry['lastmod'] !== null && strtotime($entry['lastmod']) === false) {
             $issues[] = ['type' => 'invalid_lastmod', 'url' => $entry['url']];
+        } elseif ($entry['lastmod'] !== null && $entry['lastmod'] > gmdate('Y-m-d')) {
+            $issues[] = ['type' => 'future_lastmod', 'url' => $entry['url'], 'lastmod' => $entry['lastmod']];
         }
         if ($entry['section'] === 'questions' && preg_match('~^/questoes/[1-9][0-9]*/[^/]+$~', $path) !== 1) {
             $issues[] = ['type' => 'invalid_question_route', 'url' => $entry['url']];
@@ -273,8 +298,19 @@ final class StaticSitemapValidator
                         $report['issues'][] = ['type' => 'canonical_mismatch', 'url' => $entry['url'], 'actual' => $canonical];
                     }
                     $xRobots = (string) ($responseHeaders['x-robots-tag'] ?? '');
-                    if (($robots !== null && preg_match('/(?:^|[,\s])noindex(?:[,\s]|$)/i', $robots) === 1)
-                        || preg_match('/(?:^|[,\s])noindex(?:[,\s]|$)/i', $xRobots) === 1) {
+                    $metaNoindex = $robots !== null && preg_match('/(?:^|[,\s])noindex(?:[,\s]|$)/i', $robots) === 1;
+                    $headerNoindex = preg_match('/(?:^|[,\s])noindex(?:[,\s]|$)/i', $xRobots) === 1;
+                    $metaIndex = $robots !== null && !$metaNoindex && preg_match('/(?:^|[,\s])index(?:[,\s]|$)/i', $robots) === 1;
+                    $headerIndex = !$headerNoindex && preg_match('/(?:^|[,\s])index(?:[,\s]|$)/i', $xRobots) === 1;
+                    if (($metaIndex && $headerNoindex) || ($headerIndex && $metaNoindex)) {
+                        $report['issues'][] = [
+                            'type' => 'robots_directive_conflict',
+                            'url' => $entry['url'],
+                            'meta' => $robots,
+                            'header' => $xRobots,
+                        ];
+                    }
+                    if ($metaNoindex || $headerNoindex) {
                         $report['noindex']++;
                         $report['issues'][] = ['type' => 'noindex', 'url' => $entry['url']];
                     }

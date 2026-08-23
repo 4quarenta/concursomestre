@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/promotion/EditorialSeoPromotionProvider.php';
 require_once dirname(__DIR__) . '/launch/SeoInstanceReadiness.php';
 require_once dirname(__DIR__) . '/launch/SeoLaunchMode.php';
 require_once dirname(__DIR__) . '/launch/SeoProductionPageMap.php';
+require_once dirname(__DIR__) . '/launch/SeoRuntimeEnvironment.php';
 require_once __DIR__ . '/SeoSlugService.php';
 
 /**
@@ -18,6 +19,7 @@ final class SeoPolicyService
 {
     private readonly SeoProductionPageMap $productionPageMap;
     private readonly string $launchMode;
+    private readonly bool $productionActivationAllowed;
 
     public function __construct(
         private readonly StructuralRoutePolicy $routes,
@@ -25,10 +27,13 @@ final class SeoPolicyService
         private readonly SeoSlugService $slugs,
         private readonly string $canonicalBaseUrl = 'https://concursomestre.com',
         ?SeoProductionPageMap $productionPageMap = null,
-        ?string $launchMode = null
+        ?string $launchMode = null,
+        ?bool $productionActivationAllowed = null
     ) {
         $this->productionPageMap = $productionPageMap ?? new SeoProductionPageMap();
         $this->launchMode = SeoLaunchMode::normalize($launchMode ?? (getenv('SEO_LAUNCH_MODE') ?: null));
+        $this->productionActivationAllowed = $productionActivationAllowed
+            ?? (new SeoRuntimeEnvironment())->evaluate($this->launchMode)['runtimeIndexingAllowed'];
     }
 
     /**
@@ -130,6 +135,9 @@ final class SeoPolicyService
         }
         if (($input['canonicalEnvironment'] ?? true) !== true) {
             $indexReasonCodes[] = 'indexability.non_canonical_environment';
+        }
+        if (!$this->productionActivationAllowed) {
+            $indexReasonCodes[] = 'indexability.production_activation_missing';
         }
         if ($canonicalPath === null) {
             $indexReasonCodes[] = 'indexability.missing_canonical_identity';

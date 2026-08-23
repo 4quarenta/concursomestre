@@ -7,6 +7,7 @@ import {
   resolveSeoProductionFamily,
 } from '@services/seo/launchControl';
 import type { PublicKnowledgeTaxonomy, PublicKnowledgeTaxonomyLevel } from './knowledgeTaxonomyServerData';
+import { isSeoRuntimeIndexingAllowed } from '@services/seo/runtimeEnvironment';
 
 const levelLabel: Record<PublicKnowledgeTaxonomyLevel, string> = {
   materia: 'Disciplina',
@@ -39,15 +40,19 @@ export const buildKnowledgeTaxonomyMetadata = (taxonomy: PublicKnowledgeTaxonomy
     description: knowledgeTaxonomyDescription(taxonomy),
     path: taxonomy.canonicalPath,
   });
+  const launchMode = getSeoLaunchMode();
+  const environmentAllowed = isSeoRuntimeIndexingAllowed(launchMode);
   const decision = evaluateSeoLaunchControl({
-    launchMode: getSeoLaunchMode(),
+    launchMode,
     family: resolveSeoProductionFamily(taxonomy.canonicalPath),
     instanceReadiness: taxonomy.readiness,
     publicationAllowed: true,
     resolutionAction: 'render',
     httpStatus: 200,
     canonicalValid: true,
-    qualityPass: true,
+    qualityStatus: 'PASS',
+    canonicalEnvironment: environmentAllowed,
+    productionActivationAllowed: environmentAllowed,
   });
   return decision.indexability === 'INDEX' ? metadata : { ...metadata, robots: launchModeRobots(true) };
 };

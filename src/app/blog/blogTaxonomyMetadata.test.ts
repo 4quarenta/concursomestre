@@ -33,9 +33,9 @@ describe('blog taxonomy metadata', () => {
     expect(metadata.robots).toMatchObject({ index: false, follow: true });
   });
 
-  it('indexes only READY categories in PRODUCTION and keeps functional variants noindex', () => {
+  it('keeps categories fail-closed until real quality evidence exists', () => {
     process.env.SEO_LAUNCH_MODE = 'PRODUCTION';
-    expect(buildBlogTaxonomyMetadata(taxonomy('category')).robots).toBeUndefined();
+    expect(buildBlogTaxonomyMetadata(taxonomy('category')).robots).toMatchObject({ index: false, follow: true });
     expect(buildBlogTaxonomyMetadata(taxonomy('category', 'NOT_READY')).robots).toMatchObject({ index: false });
     expect(buildBlogTaxonomyMetadata(taxonomy('category'), true).robots).toMatchObject({ index: false, follow: true });
   });

@@ -12,12 +12,16 @@ function sitemapPublisherAssert(bool $condition, string $message): void
     }
 }
 
-function sitemapFixtureIndex(string $filename): string
+/** @param string|list<string> $filenames */
+function sitemapFixtureIndex(string|array $filenames): string
 {
+    $items = '';
+    foreach ((array) $filenames as $filename) {
+        $items .= '<sitemap><loc>https://concursomestre.com/sitemaps/' . $filename . '</loc></sitemap>';
+    }
     return '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
         . '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        . '<sitemap><loc>https://concursomestre.com/sitemaps/' . $filename . '</loc></sitemap>'
-        . '</sitemapindex>' . "\n";
+        . $items . '</sitemapindex>' . "\n";
 }
 
 function sitemapFixtureUrlSet(string $url): string
@@ -38,8 +42,7 @@ $validator = new StaticSitemapValidator('https://concursomestre.com');
 $stage = $publisher->createStagingDirectory();
 file_put_contents($stage . '/institutional-00001.xml', sitemapFixtureUrlSet('https://concursomestre.com/questoes'));
 file_put_contents($stage . '/blog-articles-00001.xml', sitemapFixtureUrlSet('https://concursomestre.com/blog/noticia'));
-file_put_contents($stage . '/sitemap.xml', sitemapFixtureIndex('institutional-00001.xml'));
-file_put_contents($stage . '/blog-sitemap.xml', sitemapFixtureIndex('blog-articles-00001.xml'));
+file_put_contents($stage . '/sitemap.xml', sitemapFixtureIndex(['institutional-00001.xml', 'blog-articles-00001.xml']));
 
 $report = $validator->validateDirectory($stage);
 $validator->assertValid($report);
@@ -51,8 +54,7 @@ sitemapPublisherAssert(($report['totalUrls'] ?? 0) === 2, 'Validator must inspec
 $invalidStage = $publisher->createStagingDirectory();
 file_put_contents($invalidStage . '/institutional-00001.xml', sitemapFixtureUrlSet('https://concursomestre.com/practice'));
 file_put_contents($invalidStage . '/blog-articles-00001.xml', sitemapFixtureUrlSet('https://concursomestre.com/blog/noticia'));
-file_put_contents($invalidStage . '/sitemap.xml', sitemapFixtureIndex('institutional-00001.xml'));
-file_put_contents($invalidStage . '/blog-sitemap.xml', sitemapFixtureIndex('blog-articles-00001.xml'));
+file_put_contents($invalidStage . '/sitemap.xml', sitemapFixtureIndex(['institutional-00001.xml', 'blog-articles-00001.xml']));
 
 $invalidReport = $validator->validateDirectory($invalidStage);
 sitemapPublisherAssert($invalidReport['valid'] === false, 'Legacy URL must invalidate the stage.');

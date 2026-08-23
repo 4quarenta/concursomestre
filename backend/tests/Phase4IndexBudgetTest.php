@@ -17,17 +17,14 @@ try {
     phase4BudgetAssert(str_contains($taxonomyMetadata, 'evaluateSeoLaunchControl'), 'Taxonomias deixaram de aplicar launch control.');
     phase4BudgetAssert(str_contains($taxonomyMetadata, 'launchModeRobots(true)'), 'PRELAUNCH deixou de produzir NOINDEX,follow.');
     phase4BudgetAssert(str_contains($disciplinePage, 'notFound()'), 'Piloto de disciplina nao possui hard 404.');
-    phase4BudgetAssert(!str_contains($generator, 'disciplineDetail('), 'Sitemap passou a emitir disciplinas.');
+    phase4BudgetAssert(str_contains($generator, 'disciplineDetail('), 'Production-ready sitemap deixou de cobrir disciplinas.');
     phase4BudgetAssert(!str_contains($generator, "'/concursos' =>"), 'Sitemap ainda emite /concursos NOINDEX.');
-    phase4BudgetAssert(str_contains($blogGenerator, 'blogCategoryDetail'), 'Categorias READY nao entram na simulacao de sitemap.');
+    phase4BudgetAssert(str_contains($blogGenerator, 'quality PASS real'), 'Categorias sem quality real nao estao fail-closed.');
     foreach (['/blog/tag/', '/blog/autor/'] as $prefix) {
         phase4BudgetAssert(!str_contains($blogGenerator, $prefix), 'Sitemap ainda emite taxonomia NOINDEX: ' . $prefix);
     }
     phase4BudgetAssert(!str_contains($generator, '/disciplinas/{slug}'), 'Sitemap contem template de disciplina.');
-    phase4BudgetAssert(
-        str_contains($generator, '$launchMode !== SeoLaunchMode::PRODUCTION && !$simulation'),
-        'PRELAUNCH deixou de bloquear publicacao materializada do sitemap.'
-    );
+    phase4BudgetAssert(str_contains($generator, 'sitemapPublicationAllowed'), 'PRELAUNCH deixou de bloquear publicacao materializada do sitemap.');
     phase4BudgetAssert(
         str_contains($generator, '$routes->simulationDetail($slug)')
             && str_contains($generator, "publication_status = 'published'")

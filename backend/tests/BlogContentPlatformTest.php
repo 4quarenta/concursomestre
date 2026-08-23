@@ -106,9 +106,10 @@ assertBlogPlatform(
 );
 
 $sitemap = (string) file_get_contents($backend . '/modules/seo/sitemaps/StaticBlogSitemapGenerator.php');
-foreach (['google-news.xml', 'INTERVAL 2 DAY', 'LIMIT 1000', 'blog-sitemap.xml', 'blog-articles-%05d.xml'] as $needle) {
-    assertBlogPlatform(str_contains($sitemap, $needle), 'Blog sitemap generator is missing ' . $needle . '.');
-}
+assertBlogPlatform(str_contains($sitemap, 'blog-articles-%05d.xml'), 'Canonical sitemap is missing blog article batches.');
+assertBlogPlatform(str_contains($sitemap, "'filesList' => \$files"), 'Blog batches are not returned to the canonical sitemap index.');
+assertBlogPlatform(!str_contains($sitemap, 'google-news.xml'), 'Google News must wait for a dedicated product gate.');
+assertBlogPlatform(!str_contains($sitemap, 'blog-sitemap.xml'), 'Parallel blog sitemap authority remains active.');
 
 $articlePage = (string) file_get_contents($root . '/src/app/blog/[slug]/page.tsx');
 foreach (['NewsArticle', 'datePublished', 'dateModified', 'articleSection', 'Em resumo', 'BlogShareBar', 'Leia também', 'BlogArticleEngagement'] as $needle) {

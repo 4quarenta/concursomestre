@@ -72,7 +72,24 @@ try {
         new SeoSlugService(),
         'https://concursomestre.com',
         $map,
-        $mode
+        $mode,
+        true
+    );
+
+    $failClosedProduction = new SeoPolicyService(
+        new StructuralRoutePolicy(),
+        new DefaultEditorialSeoPromotionProvider(),
+        new SeoSlugService(),
+        'https://concursomestre.com',
+        $map,
+        'PRODUCTION',
+        false
+    );
+    $blockedProduction = $failClosedProduction->decide($input);
+    launchAssert($blockedProduction['indexability']['status'] === 'NOINDEX', 'PRODUCTION sem ativacao explicita produziu INDEX.');
+    launchAssert(
+        in_array('indexability.production_activation_missing', $blockedProduction['indexability']['reasonCodes'], true),
+        'Gate de ativacao ausente nao foi registrado.'
     );
 
     $prelaunch = $service('PRELAUNCH')->decide($input);

@@ -1,0 +1,35 @@
+{
+  "version": "index-policy-phase-6.v1",
+  "familyAuthority": "seo-production-page-map.v1",
+  "canonicalOrigin": "https://concursomestre.com",
+  "sitemap": {
+    "indexPath": "/sitemap.xml",
+    "legacyIndexPath": "/sitemap-index.xml",
+    "childPathPrefix": "/sitemaps/",
+    "maxUrlsPerChild": 45000,
+    "maxUncompressedBytes": 52428800,
+    "productionCacheSeconds": 300
+  },
+  "runtime": {
+    "deploymentEnvironmentVariable": "SEO_DEPLOYMENT_ENVIRONMENT",
+    "productionEnvironmentValue": "PRODUCTION",
+    "indexActivationVariable": "SEO_PRODUCTION_INDEXING",
+    "sitemapActivationVariable": "SEO_PRODUCTION_SITEMAP",
+    "activationValue": "CONFIRMED"
+  },
+  "quality": {
+    "defaultPolicy": "NOT_REQUIRED",
+    "requiredFamilies": [
+      "blog_category",
+      "marketing_landing"
+    ]
+  },
+  "futureGates": [
+    "SITEMAP_REAL_DATA_VALIDATION_REQUIRED",
+    "INDEX_POLICY_REAL_DATA_VALIDATION_REQUIRED",
+    "ROBOTS_PRODUCTION_VALIDATION_REQUIRED",
+    "CANONICAL_HOST_PRODUCTION_VALIDATION_REQUIRED",
+    "SITEMAP_PRODUCTION_SCALE_VALIDATION_REQUIRED",
+    "SEARCH_ENGINE_SUBMISSION_AFTER_SEO_GO"
+  ]
+}

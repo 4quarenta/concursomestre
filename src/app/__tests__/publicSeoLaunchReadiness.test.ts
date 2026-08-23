@@ -7,13 +7,13 @@ const readSource = (relativePath: string) => readFileSync(resolve(process.cwd(),
 describe('public launch SEO readiness', () => {
   it('uses the production apex host and only materialized sitemap endpoints', () => {
     const website = readSource('config/platform/website.json');
-    const robots = readSource('src/app/robots.ts');
+    const robots = readSource('src/app/robots.txt/route.ts');
 
     expect(website).toContain('https://concursomestre.com');
     expect(website).not.toContain('https://concursomestre.com.br');
-    expect(robots).toContain("'/sitemap.xml'");
-    expect(robots).not.toContain("'/sitemap-index.xml'");
-    expect(robots).not.toContain("'/sitemaps/google-news.xml'");
+    expect(robots).toContain('seoIndexPolicy.sitemap.indexPath');
+    expect(robots).not.toContain('blog-sitemap.xml');
+    expect(robots).not.toContain('google-news.xml');
   });
 
   it('renders the questions semantics in the real page while preserving the interactive client', () => {

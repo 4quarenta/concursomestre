@@ -7,6 +7,7 @@ import {
   resolveSeoProductionFamily,
 } from '@services/seo/launchControl';
 import type { PublicBlogTaxonomy } from '@services/blog';
+import { isSeoRuntimeIndexingAllowed } from '@services/seo/runtimeEnvironment';
 
 export const buildUnpromotedBlogTaxonomyMetadata = ({
   title,
@@ -44,15 +45,19 @@ export const buildBlogTaxonomyMetadata = (
     description: blogTaxonomyDescription(taxonomy),
     path: taxonomy.canonicalPath,
   });
+  const launchMode = getSeoLaunchMode();
+  const environmentAllowed = isSeoRuntimeIndexingAllowed(launchMode);
   const decision = evaluateSeoLaunchControl({
-    launchMode: getSeoLaunchMode(),
+    launchMode,
     family: resolveSeoProductionFamily(taxonomy.canonicalPath),
     instanceReadiness: taxonomy.readiness,
     publicationAllowed: taxonomy.articleCount > 0,
     resolutionAction: 'render',
     httpStatus: 200,
     canonicalValid: true,
-    qualityPass: true,
+    qualityStatus: 'NOT_EVALUATED',
+    canonicalEnvironment: environmentAllowed,
+    productionActivationAllowed: environmentAllowed,
   });
   return decision.indexability === 'INDEX' && !hasFunctionalQuery
     ? metadata

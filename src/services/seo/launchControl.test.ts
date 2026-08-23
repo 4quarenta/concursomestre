@@ -58,6 +58,8 @@ describe('SEO launch control', () => {
       httpStatus: 200,
       canonicalValid: true,
       qualityPass: true,
+      canonicalEnvironment: true,
+      productionActivationAllowed: true,
     };
     expect(evaluateSeoLaunchControl({ ...base, instanceReadiness: ready })).toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
     expect(evaluateSeoLaunchControl({
@@ -84,6 +86,8 @@ describe('SEO launch control', () => {
       httpStatus: 200,
       canonicalValid: true,
       qualityPass: true,
+      canonicalEnvironment: true,
+      productionActivationAllowed: true,
     };
 
     expect(evaluateSeoLaunchControl({ ...base, family: family('discipline_detail') })).toMatchObject({
@@ -109,6 +113,8 @@ describe('SEO launch control', () => {
       httpStatus: 200,
       canonicalValid: true,
       qualityPass: true,
+      canonicalEnvironment: true,
+      productionActivationAllowed: true,
     };
     expect(evaluateSeoLaunchControl({ ...base, family: family('organizations_hub') }))
       .toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
@@ -133,6 +139,8 @@ describe('SEO launch control', () => {
       httpStatus: 200,
       canonicalValid: true,
       qualityPass: true,
+      canonicalEnvironment: true,
+      productionActivationAllowed: true,
     };
     for (const id of ['contest_hub', 'contest_detail', 'open_contests']) {
       expect(evaluateSeoLaunchControl({ ...input, family: family(id) }).indexability).toBe('NOINDEX');
@@ -145,6 +153,7 @@ describe('SEO launch control', () => {
     const input = {
       launchMode: 'PRODUCTION' as const, instanceReadiness: ready, publicationAllowed: true,
       resolutionAction: 'render' as const, httpStatus: 200, canonicalValid: true, qualityPass: true,
+      canonicalEnvironment: true, productionActivationAllowed: true,
     };
     for (const id of ['careers_hub', 'career_detail', 'positions_hub', 'position_detail']) {
       expect(evaluateSeoLaunchControl({ ...input, family: family(id) })).toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
@@ -158,6 +167,7 @@ describe('SEO launch control', () => {
     const input = {
       launchMode: 'PRODUCTION' as const, instanceReadiness: ready, publicationAllowed: true,
       resolutionAction: 'render' as const, httpStatus: 200, canonicalValid: true, qualityPass: true,
+      canonicalEnvironment: true, productionActivationAllowed: true,
     };
     for (const id of ['simulations_hub', 'simulation_detail']) {
       expect(evaluateSeoLaunchControl({ ...input, family: family(id) })).toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
@@ -172,6 +182,7 @@ describe('SEO launch control', () => {
     const input = {
       launchMode: 'PRODUCTION' as const, instanceReadiness: ready, publicationAllowed: true,
       resolutionAction: 'render' as const, httpStatus: 200, canonicalValid: true, qualityPass: true,
+      canonicalEnvironment: true, productionActivationAllowed: true,
     };
     for (const id of ['materials_hub', 'material_detail']) {
       expect(evaluateSeoLaunchControl({ ...input, family: family(id) })).toMatchObject({ indexability: 'INDEX', sitemapEligible: true });
@@ -199,7 +210,16 @@ describe('SEO launch control', () => {
       '/disciplinas/direito',
     );
     expect(metadata.alternates).toEqual({ canonical: '/disciplinas/direito' });
-    expect(metadata.robots).toMatchObject({ index: true, follow: true });
+    expect(metadata.robots).toBeUndefined();
+  });
+
+  it('preserves an explicit instance or facet noindex in PRODUCTION', () => {
+    const metadata = applySeoLaunchModeToMetadata(
+      { alternates: { canonical: '/provas' }, robots: { index: false, follow: true } },
+      'PRODUCTION',
+      '/provas',
+    );
+    expect(metadata.robots).toMatchObject({ index: false, follow: true });
   });
 
   it('resolves permanent routes and functional query variations', () => {

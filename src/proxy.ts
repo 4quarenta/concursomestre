@@ -16,7 +16,12 @@ const adminNotFound = () => new NextResponse(null, {
 
 const nextWithSeoLaunchHeaders = (request: NextRequest): NextResponse => {
   const response = NextResponse.next();
-  const xRobotsTag = resolveXRobotsTag(request.nextUrl.pathname, request.nextUrl.searchParams);
+  const xRobotsTag = resolveXRobotsTag(
+    request.nextUrl.pathname,
+    request.nextUrl.searchParams,
+    undefined,
+    request.nextUrl.origin,
+  );
   if (xRobotsTag) response.headers.set('X-Robots-Tag', xRobotsTag);
   return response;
 };

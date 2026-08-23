@@ -47,13 +47,14 @@ describe('public information SSR snapshots', () => {
   it('renders the blog with its public editorial shell instead of the authenticated platform frame', () => {
     const routeFrameSource = readSource('src/providers/NextRouteFrame.tsx');
     const blogSource = readSource('src/app/blog/page.tsx');
-    const robotsSource = readSource('src/app/robots.ts');
+    const robotsSource = readSource('src/app/robots.txt/route.ts');
 
     expect(routeFrameSource).toMatch(/ROUTES_WITHOUT_PLATFORM_SHELL[\s\S]*'\/blog'/);
     expect(blogSource).toContain('<BlogHeader />');
     expect(blogSource).not.toContain("'use client'");
-    expect(robotsSource).toContain('/sitemaps/blog-sitemap.xml');
-    expect(robotsSource).not.toContain('/sitemaps/google-news.xml');
+    expect(robotsSource).toContain('seoIndexPolicy.sitemap.indexPath');
+    expect(robotsSource).not.toContain('blog-sitemap.xml');
+    expect(robotsSource).not.toContain('google-news.xml');
   });
 
   it('renders novidades on the server and sanitizes private entries', () => {

@@ -54,7 +54,7 @@ describe('landing page SEO metadata', () => {
 
     expect(metadata.title).toBe('Campanha Especial SEO');
     expect(metadata.description).toBe('Descricao da campanha especial.');
-    expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/oferta/campanha-especial');
+    expect(metadata.alternates?.canonical).toBe('https://concursomestre.com/oferta/campanha-especial');
     expect(readRobotsObject(metadata.robots).index).toBe(false);
     expect(metadata.openGraph?.title).toBe('Oferta ConcursoMestre');
   });
@@ -92,7 +92,7 @@ describe('landing page SEO metadata', () => {
     const metadata = await buildMarketingLandingMetadata('elite');
 
     expect(String(metadata.title)).toContain('Plano Elite');
-    expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/elite');
+    expect(metadata.alternates?.canonical).toBe('https://concursomestre.com/elite');
     expect(readRobotsObject(metadata.robots).index).toBe(false);
   });
 });

@@ -71,7 +71,8 @@
         "indexability.launch_go_candidate",
         "indexability.launch_not_active",
         "indexability.family_permanent_noindex",
-        "indexability.instance_not_ready"
+        "indexability.instance_not_ready",
+        "indexability.production_activation_missing"
       ]
     },
     "resolutionReasonCode": {

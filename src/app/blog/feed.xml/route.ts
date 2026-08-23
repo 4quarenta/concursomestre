@@ -44,6 +44,8 @@ export async function GET() {
     headers: {
       'Content-Type': 'application/rss+xml; charset=utf-8',
       'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+      'X-Robots-Tag': 'noindex, follow',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 }

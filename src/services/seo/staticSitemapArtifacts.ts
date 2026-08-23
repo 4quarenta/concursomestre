@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
+import { seoIndexPolicy } from './runtimeEnvironment';
 
-const SITEMAP_FILENAME = /^(?:sitemap|blog-sitemap|google-news|[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{5})\.xml$/;
+const SITEMAP_FILENAME = /^(?:sitemap|[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{5})\.xml$/;
 
 const getArtifactDirectory = () => {
   const configured = String(process.env.SITEMAP_OUTPUT_DIR || '').trim();
@@ -13,6 +14,8 @@ export const readStaticSitemapArtifact = async (filename: string): Promise<strin
   }
 
   try {
+    const status = await readStaticSitemapStatus();
+    if (!isCurrentStaticSitemapStatus(status)) return null;
     return await readFile(
       /* turbopackIgnore: true */ `${getArtifactDirectory()}/${filename}`,
       'utf8',
@@ -20,6 +23,16 @@ export const readStaticSitemapArtifact = async (filename: string): Promise<strin
   } catch {
     return null;
   }
+};
+
+const isCurrentStaticSitemapStatus = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  const status = value as Record<string, unknown>;
+  const validation = status.validation as Record<string, unknown> | undefined;
+  return status.indexPolicyVersion === seoIndexPolicy.version
+    && status.artifactSet === 'canonical-sitemap-index'
+    && status.canonicalBaseUrl === seoIndexPolicy.canonicalOrigin
+    && validation?.valid === true;
 };
 
 export const readStaticSitemapStatus = async (): Promise<unknown | null> => {
@@ -33,3 +46,5 @@ export const readStaticSitemapStatus = async (): Promise<unknown | null> => {
     return null;
   }
 };
+
+export { isCurrentStaticSitemapStatus };

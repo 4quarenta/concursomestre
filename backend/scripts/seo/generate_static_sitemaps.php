@@ -9,6 +9,7 @@ if (PHP_SAPI !== 'cli') {
 
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../modules/seo/launch/SeoLaunchMode.php';
+require_once __DIR__ . '/../../modules/seo/launch/SeoRuntimeEnvironment.php';
 require_once __DIR__ . '/../../modules/seo/launch/SeoProductionPageMap.php';
 require_once __DIR__ . '/../../modules/seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../modules/seo/services/SeoSlugService.php';
@@ -18,7 +19,9 @@ require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapValidator.php';
 
 $launchMode = SeoLaunchMode::fromEnvironment();
 $simulation = filter_var(getenv('SEO_SITEMAP_SIMULATION') ?: '0', FILTER_VALIDATE_BOOL);
-if ($launchMode !== SeoLaunchMode::PRODUCTION && !$simulation) {
+$runtimeEnvironment = new SeoRuntimeEnvironment();
+$environmentDecision = $runtimeEnvironment->evaluate($launchMode);
+if (!$simulation && ($environmentDecision['sitemapPublicationAllowed'] ?? false) !== true) {
     fwrite(STDOUT, "Sitemap publication skipped: SEO_LAUNCH_MODE={$launchMode}.\n");
     exit(0);
 }
@@ -28,7 +31,7 @@ if ($simulation && $launchMode !== SeoLaunchMode::GO_CANDIDATE) {
 
 $startedAt = microtime(true);
 $db = (new Database('read'))->getConnection();
-$baseUrl = rtrim(trim((string) (getenv('CANONICAL_BASE_URL') ?: 'https://concursomestre.com')), '/');
+$baseUrl = $runtimeEnvironment->canonicalOrigin();
 $productionOutputDir = trim((string) (getenv('SITEMAP_OUTPUT_DIR') ?: dirname(__DIR__, 2) . '/storage/sitemaps'));
 $simulationOutputDir = trim((string) (getenv('SITEMAP_SIMULATION_OUTPUT_DIR') ?: ''));
 if ($simulation && $simulationOutputDir === '') {
@@ -41,7 +44,7 @@ if ($simulation && realpath(dirname($outputDir)) === realpath(dirname($productio
 }
 $httpValidationOrigin = trim((string) (getenv('SITEMAP_VALIDATION_ORIGIN') ?: ''));
 $validateHttp = filter_var(getenv('SITEMAP_VALIDATE_HTTP') ?: '0', FILTER_VALIDATE_BOOL);
-$batchSize = 45000;
+$batchSize = $runtimeEnvironment->maxUrlsPerChild();
 $generatedAt = gmdate('c');
 $queryCount = 0;
 
@@ -64,6 +67,23 @@ try {
 
     $routes = new PublicRouteBuilder();
     $productionPageMap = new SeoProductionPageMap();
+    $assertSitemapFamily = static function (string $familyId) use ($productionPageMap): void {
+        $family = $productionPageMap->family($familyId);
+        if (($family['launchStatus'] ?? null) !== 'ACTIVE'
+            || ($family['familyEligibility'] ?? null) === 'PERMANENT_NOINDEX'
+            || ($family['targetProductionIndexability'] ?? null) !== 'INDEX'
+            || ($family['sitemapTarget'] ?? null) !== 'INCLUDE_WHEN_READY') {
+            throw new RuntimeException('Familia nao elegivel no Production Page Map: ' . $familyId . '.');
+        }
+    };
+    foreach ([
+        'question_detail', 'law_detail', 'law_article_detail', 'exam_detail',
+        'contest_detail', 'simulation_detail', 'material_detail', 'board_detail',
+        'organization_detail', 'discipline_detail', 'topic_detail', 'subject_detail',
+        'career_detail', 'position_detail', 'blog_article',
+    ] as $dynamicFamilyId) {
+        $assertSitemapFamily($dynamicFamilyId);
+    }
     $slugger = new SeoSlugService();
     $escape = static fn (string $value): string => htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     $safeDate = static function (mixed $value): ?string {
@@ -72,11 +92,6 @@ try {
         }
         $timestamp = strtotime((string) $value);
         return $timestamp === false ? null : gmdate('Y-m-d', $timestamp);
-    };
-    $sourceLastmod = static function (string $relativePath): ?string {
-        $absolutePath = dirname(__DIR__, 3) . '/' . ltrim($relativePath, '/');
-        $mtime = is_file($absolutePath) ? filemtime($absolutePath) : false;
-        return $mtime === false ? null : gmdate('Y-m-d', $mtime);
     };
     $write = static function (string $path, string $contents): void {
         if (file_put_contents($path, $contents, LOCK_EX) === false) {
@@ -119,7 +134,7 @@ try {
     };
 
     $files = [];
-    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'lawArticles' => 0, 'exams' => 0, 'contests' => 0, 'simulations' => 0, 'materials' => 0, 'taxonomies' => 0, 'professional' => 0];
+    $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'lawArticles' => 0, 'exams' => 0, 'contests' => 0, 'simulations' => 0, 'materials' => 0, 'boards' => 0, 'organizations' => 0, 'disciplines' => 0, 'topics' => 0, 'subjects' => 0, 'professional' => 0];
     $institutionalSources = [
         '/' => ['source' => 'src/app/page.tsx', 'familyId' => 'home'],
         '/planos' => ['source' => 'src/app/planos/page.tsx', 'familyId' => 'plans'],
@@ -136,6 +151,7 @@ try {
         $routes->positionsIndex() => ['source' => 'src/app/cargos/page.tsx', 'familyId' => 'positions_hub'],
         '/disciplinas' => ['source' => 'src/app/disciplinas/page.tsx', 'familyId' => 'discipline_hub'],
         '/bancas' => ['source' => 'src/app/bancas/page.tsx', 'familyId' => 'board_hub'],
+        $routes->organizationsIndex() => ['source' => 'src/app/orgaos/page.tsx', 'familyId' => 'organizations_hub'],
         '/novidades' => ['source' => 'src/app/novidades/page.tsx', 'familyId' => 'news'],
         '/support' => ['source' => 'src/app/support/page.tsx', 'familyId' => 'support'],
         '/elite' => ['source' => 'src/app/elite/page.tsx', 'familyId' => 'elite'],
@@ -153,7 +169,7 @@ try {
         }
         $institutionalEntries[] = [
             'loc' => $baseUrl . $path,
-            'lastmod' => $sourceLastmod($candidate['source']),
+            'lastmod' => null,
         ];
     }
     $filename = 'institutional-00001.xml';
@@ -171,8 +187,10 @@ try {
                     COALESCE(updated_at, published_at, created_at) AS last_modified
              FROM questions
              WHERE id > :cursor
-               AND publish_status = 'published'
+               AND publish_status IN ('published', 'scheduled')
                AND visibility_status = 'public'
+               AND published_sort_at IS NOT NULL
+               AND published_sort_at <= NOW()
              ORDER BY id
              LIMIT {$batchSize}"
         );
@@ -220,6 +238,7 @@ try {
                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
                AND TRIM(title) <> ''
                AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+               AND CHAR_LENGTH(slug) <= 190
                AND EXISTS (
                    SELECT 1 FROM contest_organizations co
                    INNER JOIN filters organization ON organization.id = co.organization_filter_id
@@ -227,6 +246,7 @@ try {
                        AND COALESCE(organization.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
                        AND TRIM(organization.name) <> ''
                        AND BINARY organization.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                       AND CHAR_LENGTH(organization.slug) <= 190
                    WHERE co.contest_id = contests.id
                )
              ORDER BY id
@@ -361,6 +381,8 @@ try {
              WHERE id > :cursor
                AND slug IS NOT NULL
                AND slug <> ''
+               AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+               AND CHAR_LENGTH(slug) <= 160
                AND (status IN ('active', 'published')
                     OR (status = 'scheduled' AND published_at IS NOT NULL AND published_at <= NOW()))
              ORDER BY id
@@ -458,6 +480,8 @@ try {
                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
                AND slug IS NOT NULL
                AND slug <> ''
+               AND BINARY slug REGEXP '^[a-z0-9-]+$'
+               AND CHAR_LENGTH(slug) <= 190
              ORDER BY id
              LIMIT {$batchSize}"
         );
@@ -493,38 +517,172 @@ try {
         }
     }
 
-    $queryCount++;
-    $taxonomyStmt = $db->query(
-        "SELECT f.id, f.type, f.slug
-           FROM filters f
-          WHERE f.slug IS NOT NULL
-            AND f.slug <> ''
-            AND f.type = 'banca'
-            AND EXISTS (
-                SELECT 1
-                  FROM question_filters qf
-                  INNER JOIN questions q ON q.id = qf.question_id
-                 WHERE qf.filter_id = f.id
-                   AND q.publish_status IN ('published', 'scheduled')
-                   AND q.visibility_status = 'public'
-                   AND q.published_sort_at IS NOT NULL
-                   AND q.published_sort_at <= NOW()
-            )
-          ORDER BY f.id"
-    );
-    $taxonomyEntries = [];
-    foreach ($taxonomyStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-        $slug = trim((string) ($row['slug'] ?? ''));
-        if ($slug !== '') {
-            $taxonomyEntries[] = ['loc' => $baseUrl . '/bancas/' . rawurlencode($slug), 'lastmod' => null];
+    $publicFilterNameClauseFor = static fn (string $alias): string => "TRIM({$alias}.name) <> ''
+        AND LOWER(TRIM({$alias}.name)) NOT IN (
+            'outros', 'outras', 'diversos', 'diversas', 'geral',
+            'nao informado', 'não informado', 'sem classificacao',
+            'sem classificação', 'a definir'
+        )";
+    $publicFilterNameClause = $publicFilterNameClauseFor('f');
+    $publicRootNameClause = $publicFilterNameClauseFor('root');
+    $publicTopicNameClause = $publicFilterNameClauseFor('topic');
+    $publicSubtopicNameClause = $publicFilterNameClauseFor('subtopic');
+    $appendFilterSection = static function (
+        string $section,
+        string $filenamePrefix,
+        string $sql,
+        callable $pathBuilder
+    ) use (
+        $db,
+        $batchSize,
+        $baseUrl,
+        $stage,
+        $buildUrlSet,
+        $write,
+        &$files,
+        &$counts,
+        &$queryCount
+    ): void {
+        $cursor = 0;
+        $page = 0;
+        while (true) {
+            $queryCount++;
+            $stmt = $db->prepare($sql);
+            $stmt->execute([':cursor' => $cursor]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            if ($rows === []) break;
+            $entries = [];
+            foreach ($rows as $row) {
+                $id = (int) ($row['id'] ?? 0);
+                $slug = trim((string) ($row['slug'] ?? ''));
+                $cursor = max($cursor, $id);
+                if ($id <= 0 || $slug === '') continue;
+                $entries[] = ['loc' => $baseUrl . $pathBuilder($slug), 'lastmod' => null];
+            }
+            if ($entries !== []) {
+                $page++;
+                $filename = sprintf('%s-%05d.xml', $filenamePrefix, $page);
+                $write($stage . '/' . $filename, $buildUrlSet($entries));
+                $files[] = ['name' => $filename, 'lastmod' => null];
+                $counts[$section] += count($entries);
+            }
+            if (count($rows) < $batchSize) break;
         }
-    }
-    foreach (array_chunk($taxonomyEntries, $batchSize) as $index => $entries) {
-        $filename = sprintf('taxonomies-%05d.xml', $index + 1);
-        $write($stage . '/' . $filename, $buildUrlSet($entries));
-        $files[] = ['name' => $filename, 'lastmod' => null];
-        $counts['taxonomies'] += count($entries);
-    }
+    };
+
+    $appendFilterSection(
+        'boards',
+        'boards',
+        "SELECT f.id, f.slug
+           FROM filters f
+          WHERE f.id > :cursor
+            AND f.type = 'banca'
+            AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+            AND {$publicFilterNameClause}
+            AND CHAR_LENGTH(f.slug) <= 190
+            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+          ORDER BY f.id
+          LIMIT {$batchSize}",
+        static fn (string $slug): string => $routes->boardDetail($slug)
+    );
+    $appendFilterSection(
+        'organizations',
+        'organizations',
+        "SELECT f.id, f.slug
+           FROM filters f
+          WHERE f.id > :cursor
+            AND f.type = 'orgao'
+            AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+            AND {$publicFilterNameClause}
+            AND CHAR_LENGTH(f.slug) <= 190
+            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+          ORDER BY f.id
+          LIMIT {$batchSize}",
+        static fn (string $slug): string => $routes->organizationDetail($slug)
+    );
+    $appendFilterSection(
+        'disciplines',
+        'disciplines',
+        "SELECT f.id, f.slug
+           FROM filters f
+          WHERE f.id > :cursor
+            AND f.type = 'assunto'
+            AND (f.taxonomy_level = 'materia' OR f.meta_materia = 1)
+            AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+            AND COALESCE(f.parent_id, 0) = 0
+            AND {$publicFilterNameClause}
+            AND CHAR_LENGTH(f.slug) <= 80
+            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+          ORDER BY f.id
+          LIMIT {$batchSize}",
+        static fn (string $slug): string => $routes->disciplineDetail($slug)
+    );
+    $appendFilterSection(
+        'topics',
+        'topics',
+        "SELECT f.id, f.slug
+           FROM filters f
+           INNER JOIN filters root
+             ON root.id = f.parent_id
+            AND root.type = 'assunto'
+            AND (root.taxonomy_level = 'materia' OR root.meta_materia = 1)
+            AND COALESCE(root.parent_id, 0) = 0
+            AND COALESCE(root.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+            AND {$publicRootNameClause}
+            AND CHAR_LENGTH(root.slug) <= 80
+            AND BINARY root.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+          WHERE f.id > :cursor
+            AND f.type = 'assunto'
+            AND f.taxonomy_level = 'topico'
+            AND COALESCE(f.meta_materia, 0) = 0
+            AND {$publicFilterNameClause}
+            AND CHAR_LENGTH(f.slug) <= 80
+            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+          ORDER BY f.id
+          LIMIT {$batchSize}",
+        static fn (string $slug): string => $routes->topicDetail($slug)
+    );
+    $appendFilterSection(
+        'subjects',
+        'subjects',
+        "SELECT f.id, f.slug
+           FROM filters f
+           INNER JOIN filters subtopic
+             ON subtopic.id = f.parent_id
+            AND subtopic.type = 'assunto'
+            AND subtopic.taxonomy_level = 'subtopico'
+            AND COALESCE(subtopic.meta_materia, 0) = 0
+            AND {$publicSubtopicNameClause}
+            AND CHAR_LENGTH(subtopic.slug) <= 80
+            AND BINARY subtopic.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+           INNER JOIN filters topic
+             ON topic.id = subtopic.parent_id
+            AND topic.type = 'assunto'
+            AND topic.taxonomy_level = 'topico'
+            AND COALESCE(topic.meta_materia, 0) = 0
+            AND {$publicTopicNameClause}
+            AND CHAR_LENGTH(topic.slug) <= 80
+            AND BINARY topic.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+           INNER JOIN filters root
+             ON root.id = topic.parent_id
+            AND root.type = 'assunto'
+            AND (root.taxonomy_level = 'materia' OR root.meta_materia = 1)
+            AND COALESCE(root.parent_id, 0) = 0
+            AND COALESCE(root.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+            AND {$publicRootNameClause}
+            AND CHAR_LENGTH(root.slug) <= 80
+            AND BINARY root.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+          WHERE f.id > :cursor
+            AND f.type = 'assunto'
+            AND f.taxonomy_level = 'assunto'
+            AND COALESCE(f.meta_materia, 0) = 0
+            AND {$publicFilterNameClause}
+            AND CHAR_LENGTH(f.slug) <= 80
+            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+          ORDER BY f.id
+          LIMIT {$batchSize}",
+        static fn (string $slug): string => $routes->subjectDetail($slug)
+    );
 
     $professionalCursor = 0;
     $professionalPage = 0;
@@ -575,6 +733,9 @@ try {
     $blogGenerator = new StaticBlogSitemapGenerator($db, $baseUrl, $stage, $batchSize);
     $blogResult = $blogGenerator->generate();
     $queryCount += (int) ($blogResult['queryCount'] ?? 0);
+    foreach ($blogResult['filesList'] ?? [] as $blogFile) {
+        if (is_array($blogFile)) $files[] = $blogFile;
+    }
 
     $write($stage . '/sitemap.xml', $buildIndex($files));
     $validator = new StaticSitemapValidator($baseUrl);
@@ -583,22 +744,24 @@ try {
 
     $status = [
         'scope' => 'static_sitemap_coverage',
+        'artifactSet' => 'canonical-sitemap-index',
+        'indexPolicyVersion' => 'index-policy-phase-6.v1',
         'generatedAt' => $generatedAt,
         'canonicalBaseUrl' => $baseUrl,
         'sitemapUrl' => $baseUrl . '/sitemap.xml',
         'robotsUrl' => $baseUrl . '/robots.txt',
         'counts' => array_merge($counts, ['blog' => $blogResult['counts']]),
         'totalUrls' => array_sum($counts) + (int) ($blogResult['totalUrls'] ?? 0),
-        'files' => count($files) + (int) ($blogResult['files'] ?? 0),
+        'files' => count($files),
         'queries' => $queryCount,
         'durationMs' => (int) round((microtime(true) - $startedAt) * 1000),
         'peakMemoryBytes' => memory_get_peak_usage(true),
         'coverage' => [
             'institutional' => ['total' => $counts['institutional'], 'indexed' => $counts['institutional'], 'missing' => 0],
             'questions' => ['total' => $counts['questions'], 'indexed' => $counts['questions'], 'missing' => 0],
-            'boards' => ['total' => $counts['taxonomies'], 'indexed' => $counts['taxonomies'], 'missing' => 0],
+            'boards' => ['total' => $counts['boards'], 'indexed' => $counts['boards'], 'missing' => 0],
             'rankings' => ['total' => 0, 'indexed' => 0, 'missing' => 0],
-            'materials' => ['total' => 0, 'indexed' => 0, 'missing' => 0],
+            'materials' => ['total' => $counts['materials'], 'indexed' => $counts['materials'], 'missing' => 0],
         ],
         'missingSamples' => [
             'questions' => [],

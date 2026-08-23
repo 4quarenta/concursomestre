@@ -103,7 +103,8 @@ try {
         new SeoSlugService(),
         'https://concursomestre.com',
         null,
-        'PRODUCTION'
+        'PRODUCTION',
+        true
     );
 
     $public = $publicationPolicy->decide([

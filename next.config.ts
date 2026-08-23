@@ -167,6 +167,10 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      ...['/api/:path*', '/uploads/:path*', '/storage/:path*', '/downloads/:path*'].map((source) => ({
+        source,
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      })),
     ];
   },
   async redirects() {
