@@ -49,6 +49,11 @@ export default function BlogArticleCard({
           <img
             src={article.coverImageUrl}
             alt={article.coverImageAlt}
+            width={featured ? 1280 : 960}
+            height={featured ? 800 : 540}
+            loading={featured ? 'eager' : 'lazy'}
+            fetchPriority={featured ? 'high' : 'auto'}
+            decoding="async"
             className={`w-full object-cover transition-transform duration-300 hover:scale-[1.02] ${featured ? 'aspect-[16/10] h-full' : 'aspect-[16/9]'}`}
           />
         </Link>

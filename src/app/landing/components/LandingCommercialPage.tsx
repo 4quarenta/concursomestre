@@ -637,8 +637,11 @@ export const TestimonialsSection = () => {
                       <img
                         src={photoUrl}
                         alt={`Foto de ${testimonial.name}`}
+                        width={48}
+                        height={48}
                         className="h-12 w-12 rounded-full border border-indigo-100 object-cover"
                         loading="lazy"
+                        decoding="async"
                         referrerPolicy="no-referrer"
                       />
                     ) : (

@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { Hammer, LogOut, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
@@ -14,7 +15,6 @@ import GlobalLoader from '@/components/GlobalLoader';
 import ModuleAccessFallback from '@/components/shared/feedback/ModuleAccessFallback';
 import GlobalPaymentIssueBanner from '@/components/shared/feedback/GlobalPaymentIssueBanner';
 import DebugBanner from '@/components/shared/feedback/debug/DebugBanner';
-import { StudyTrackerBridge } from './StudyTrackerProvider';
 import { buildProfilePath } from '../app/profile/profileNavigation';
 import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPageNavigationConfig';
 import { resolvePaymentStatusIssue } from '@/services/billing/paymentIssue';
@@ -24,11 +24,15 @@ import {
   shouldLoadPaymentStatusForPath,
   type PaymentStatus,
 } from '@/services/billing/paymentStatus';
-import { subscriptionsService } from '@/services/subscriptions';
 import { useEffectiveSystemSettings } from './AppConfigProvider';
 import type { PlanBenefitKey } from '@types';
 import { resolveExamPublicRouteCompatibility } from './examRouteCompatibility';
 import { resolveQuestionCollectionRouteCompatibility } from './questionRouteCompatibility';
+
+const StudyTrackerBridge = dynamic(
+  () => import('./StudyTrackerProvider').then((module) => module.StudyTrackerBridge),
+  { ssr: false },
+);
 
 const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/auth',
@@ -347,6 +351,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
 
     if (isPastDueSubscription || paymentIssue?.code === 'payment_past_due' || paymentIssue?.code === 'payment_authentication_required') {
       try {
+        const { subscriptionsService } = await import('@/services/subscriptions');
         const portal = await subscriptionsService.createStripePortalSession();
         if (portal.url && /^https:\/\//i.test(portal.url)) {
           window.location.assign(portal.url);
@@ -593,7 +598,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   const appOverlays = (
     <>
       <GlobalLoader />
-      <StudyTrackerBridge />
+      {currentUser ? <StudyTrackerBridge /> : null}
       {process.env.NODE_ENV === 'development' && <DebugBanner />}
     </>
   );

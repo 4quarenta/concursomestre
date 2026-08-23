@@ -719,7 +719,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {hasMobileTopHeader && (
           <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
             <div className="flex items-center justify-between">
-            <PublicBrandLink width={190} priority />
+            <PublicBrandLink width={190} />
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
@@ -771,7 +771,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="hidden shrink-0 px-5 pb-4 pt-5 md:flex">
               <PublicBrandLink
                 width={215}
-                priority
                 className="inline-flex items-center transition-opacity hover:opacity-90"
               />
             </div>

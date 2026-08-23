@@ -1,0 +1,21 @@
+{
+  "version": "phase-7-route-matrix.v1",
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "routes": [
+    { "key": "home", "path": "/", "class": "public_marketing" },
+    { "key": "questions_hub", "path": "/questoes", "class": "directory" },
+    { "key": "question_detail", "path": "/questoes/67813/art-5o-acao-e-controle", "class": "entity_detail" },
+    { "key": "discipline_detail", "path": "/disciplinas/direito-constitucional", "class": "entity_detail" },
+    { "key": "organization_detail", "path": "/orgaos/orgao-de-teste", "class": "entity_detail" },
+    { "key": "contest_detail", "path": "/concursos/concurso-canonico-2026", "class": "entity_detail" },
+    { "key": "law_article_detail", "path": "/lei-comentada/constituicao-federal/artigo-5", "class": "editorial_detail" },
+    { "key": "blog_hub", "path": "/blog", "class": "editorial_hub" },
+    { "key": "blog_article", "path": "/blog/noticia-ssr", "class": "editorial_detail" },
+    { "key": "plans", "path": "/planos", "class": "commercial" },
+    { "key": "support", "path": "/support", "class": "support" },
+    { "key": "not_found", "path": "/rota-inexistente-checkpoint-3-2", "class": "error", "expectedStatus": 404 }
+  ]
+}

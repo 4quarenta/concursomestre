@@ -14,7 +14,10 @@ import { withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { DiscountCode, Plan } from '@types';
 import { cardsService } from '@services/billing';
 import { clientLog } from '@services/monitoring/clientLog';
-import { subscriptionsService } from '@services/subscriptions';
+
+const loadSubscriptionsService = async () => (
+  await import('@services/subscriptions')
+).subscriptionsService;
 
 type StripeBillingMode = 'single_installment' | 'term_recurring';
 type PlanApiEnvelope<TData extends Record<string, unknown> = Record<string, unknown>> = TData & {
@@ -100,6 +103,7 @@ export const planService = {
     installment_count?: number;
     checkout_attempt_id?: string;
   }): Promise<StripeCheckoutSessionResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.createStripeCheckoutSession(payload) as Promise<StripeCheckoutSessionResponse>;
   },
 
@@ -118,6 +122,7 @@ export const planService = {
     installment_count?: number;
     checkout_attempt_id?: string;
   }): Promise<StripeSubscriptionResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.createStripeSubscription(payload) as Promise<StripeSubscriptionResponse>;
   },
 
@@ -135,6 +140,7 @@ export const planService = {
     save_card?: boolean;
     billing_mode?: StripeBillingMode;
   }): Promise<StripeFinalizeSubscriptionResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.finalizeStripeSubscription(payload) as Promise<StripeFinalizeSubscriptionResponse>;
   },
 
@@ -159,6 +165,7 @@ export const planService = {
    * @since 1.0.0
    */
   async createStripePortalSession(): Promise<StripePortalSessionResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.createStripePortalSession() as Promise<StripePortalSessionResponse>;
   },
 
@@ -167,6 +174,7 @@ export const planService = {
    * @since 1.0.0
    */
   async getStripePixCapability(): Promise<StripePixCapabilityResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.getStripePixCapability() as Promise<StripePixCapabilityResponse>;
   },
 
@@ -175,6 +183,7 @@ export const planService = {
    * @since 1.0.0
    */
   async requestStripePixCapability(): Promise<StripePixCapabilityResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.requestStripePixCapability() as Promise<StripePixCapabilityResponse>;
   },
 
@@ -192,6 +201,7 @@ export const planService = {
       targetId?: string | number;
     } = {},
   ): Promise<CouponValidationResult> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.validateCoupon(code, amount, options) as Promise<CouponValidationResult>;
   },
 
@@ -201,6 +211,7 @@ export const planService = {
    */
   async cancelSubscription(userId: string, reason?: string, details?: string, captchaToken?: string | null, confirmDebtCharge = false): Promise<SubscriptionActionResponse> {
     void userId;
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.cancelSubscription(reason, details, captchaToken, confirmDebtCharge) as Promise<SubscriptionActionResponse>;
   },
 
@@ -209,6 +220,7 @@ export const planService = {
    * @since 1.0.0
    */
   async cancelRefundRequest(): Promise<SubscriptionGenericResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.cancelRefundRequest() as Promise<SubscriptionGenericResponse>;
   },
 
@@ -217,6 +229,7 @@ export const planService = {
    * @since 1.0.0
    */
   async undoCancellationRequest(): Promise<SubscriptionGenericResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.undoCancellationRequest() as Promise<SubscriptionGenericResponse>;
   },
 
@@ -225,6 +238,7 @@ export const planService = {
    * @since 1.0.0
    */
   async updateRenewal(autoRenew: boolean): Promise<SubscriptionGenericResponse> {
+    const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.updateRenewal(autoRenew) as Promise<SubscriptionGenericResponse>;
   },
 };

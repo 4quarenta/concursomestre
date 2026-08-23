@@ -164,7 +164,14 @@ export default async function BlogArticlePage({ params }: PageProps) {
             {article.coverImageUrl ? (
               <figure className="mt-8">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={article.coverImageUrl} alt={article.coverImageAlt} className="aspect-[16/9] w-full object-cover" />
+                <img
+                  src={article.coverImageUrl}
+                  alt={article.coverImageAlt}
+                  width={1280}
+                  height={720}
+                  decoding="async"
+                  className="aspect-[16/9] w-full object-cover"
+                />
                 {article.coverImageAlt ? <figcaption className="mt-2 text-xs leading-5 text-slate-500">{article.coverImageAlt}</figcaption> : null}
               </figure>
             ) : null}

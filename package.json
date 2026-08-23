@@ -41,7 +41,8 @@
     "seo:generate-static": "php backend/scripts/seo/generate_static_sitemaps.php",
     "seo:validate-static": "php backend/scripts/seo/validate_static_sitemaps.php",
     "seo:ssr-hydration": "node scripts/seo/ssr-hydration-harness.mjs",
-    "seo:validate-launch-control": "node scripts/seo/validate-launch-control.mjs"
+    "seo:validate-launch-control": "node scripts/seo/validate-launch-control.mjs",
+    "performance:phase7": "node scripts/performance/phase7-performance-readiness-reporter.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
