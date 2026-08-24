@@ -10,6 +10,7 @@ import {
 describe('publicRoutes', () => {
   it('builds only the new canonical public route families', () => {
     expect(publicRoutes.questions.index()).toBe('/questoes');
+    expect(publicRoutes.search.index({ q: 'controle concentrado' })).toBe('/busca?q=controle+concentrado');
     expect(publicRoutes.questions.detail(123, 'art-5o')).toBe('/questoes/123/art-5o');
     expect(publicRoutes.exams.index()).toBe('/provas');
     expect(publicRoutes.exams.detail('pmpb-2026-soldado')).toBe('/provas/pmpb-2026-soldado');

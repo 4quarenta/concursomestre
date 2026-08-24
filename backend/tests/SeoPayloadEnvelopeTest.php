@@ -102,8 +102,8 @@ try {
         'Envelope de board deve cobrir diretorio e detalhe publicos.'
     );
     seoPayloadAssert(
-        substr_count($filterSource, 'attachTaxonomy(') === 2,
-        'Envelope de taxonomy deve cobrir diretorio e hierarquia publicos.'
+        substr_count($filterSource, 'attachTaxonomy(') === 3,
+        'Envelope de taxonomy deve cobrir diretorio, hierarquia e expansao publica de filhos.'
     );
 
     $lawRoutes = (string) file_get_contents(dirname(__DIR__) . '/modules/legal_commentary/routes.php');

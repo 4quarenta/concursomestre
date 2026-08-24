@@ -1,0 +1,19 @@
+{
+  "version": "ssr-hydration-phase-8.v1",
+  "extends": "./ssr-hydration-phase-5.v1.json",
+  "routes": [
+    {
+      "key": "search",
+      "path": "/busca?q=controle",
+      "maturity": "ssr",
+      "allowedClassifications": ["EQUIVALENT", "INTERACTION_ONLY"],
+      "canonical": "/busca",
+      "expectNoIndex": true,
+      "schemaTypes": ["CollectionPage", "BreadcrumbList"],
+      "schemaCanonicalRequired": true,
+      "breadcrumbRequired": true,
+      "requiredRawText": ["Busca de questões de concursos"],
+      "verifyInternalLinks": true
+    }
+  ]
+}

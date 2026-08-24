@@ -633,6 +633,10 @@ const server = createServer((request, response) => {
     count(url.pathname);
     return json(response, 404, { success: false, message: 'Questao nao encontrada.' }, origin);
   }
+  if (url.pathname.replace(/^\/api\//, '/') === '/blog/detail.php' && url.searchParams.get('slug') !== article.slug) {
+    count(url.pathname);
+    return json(response, 404, { success: false, message: 'Artigo nao encontrado.' }, origin);
+  }
   if (url.pathname.replace(/^\/api\//, '/') === '/legal-commentary/detail.php' && url.searchParams.get('slug') !== lawSummary.slug) {
     count(url.pathname);
     return json(response, 404, { success: false, message: 'Lei nao encontrada.' }, origin);

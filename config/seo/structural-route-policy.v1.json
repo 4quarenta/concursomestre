@@ -537,12 +537,12 @@
     },
     {
       "id": "search",
-      "patterns": ["/questoes?q={query}"],
+      "patterns": ["/busca"],
       "audience": "public",
       "supportsLanding": false,
       "supportsEditorialPromotion": false,
       "defaultIndexability": "NOINDEX",
-      "allowedParameters": ["q", "pagina", "ordenacao", "view", "utm_*", "gclid", "fbclid"],
+      "allowedParameters": ["q", "keyword", "busca", "pagina", "ordenacao", "view", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
     {

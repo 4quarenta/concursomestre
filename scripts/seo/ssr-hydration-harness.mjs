@@ -38,6 +38,28 @@ const metricsUrl = arg('metrics-url', process.env.CM_SSR_HARNESS_METRICS_URL || 
 const timeoutMs = Number(arg('timeout-ms', '20000'));
 const strict = boolArg('strict', false);
 
+const readBaseline = async (filePath, visited = new Set()) => {
+  const resolvedPath = path.resolve(filePath);
+  if (visited.has(resolvedPath)) throw new Error(`Baseline inheritance cycle: ${resolvedPath}`);
+  visited.add(resolvedPath);
+  const baseline = JSON.parse(await readFile(resolvedPath, 'utf8'));
+  if (!baseline.extends) return baseline;
+
+  const parent = await readBaseline(path.resolve(path.dirname(resolvedPath), baseline.extends), visited);
+  const routes = new Map((parent.routes || []).map((route) => [route.key, route]));
+  (baseline.routes || []).forEach((route) => routes.set(route.key, route));
+  return {
+    ...parent,
+    ...baseline,
+    viewports: baseline.viewports || parent.viewports,
+    securitySentinels: [...new Set([
+      ...(parent.securitySentinels || []),
+      ...(baseline.securitySentinels || []),
+    ])],
+    routes: [...routes.values()],
+  };
+};
+
 const normalizePath = (value) => {
   try {
     return new URL(value, baseUrl).pathname.replace(/\/$/, '') || '/';
@@ -232,7 +254,7 @@ const inspectRoute = async ({ browser, route, viewport, sentinels }) => {
 };
 
 const main = async () => {
-  const baseline = JSON.parse(await readFile(baselinePath, 'utf8'));
+  const baseline = await readBaseline(baselinePath);
   const sentinels = [
     ...(Array.isArray(baseline.securitySentinels) ? baseline.securitySentinels : []),
     ...String(process.env.CM_SSR_HARNESS_SENTINELS || '').split(',').map((value) => value.trim()).filter(Boolean),

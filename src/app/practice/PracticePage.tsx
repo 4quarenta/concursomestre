@@ -10,6 +10,21 @@ import { fetchPracticeInitialQuestions } from './practiceServerData';
 
 type PracticePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  semanticPage?: {
+    path: string;
+    title: string;
+    description: string;
+    eyebrow: string;
+    breadcrumbLabel: string;
+  };
+};
+
+const DEFAULT_SEMANTIC_PAGE = {
+  path: publicRoutes.questions.index(),
+  title: 'Questões de concursos para praticar',
+  description: 'Banco de questões organizado por banca, disciplina, assunto, cargo e ano.',
+  eyebrow: 'Banco de questões',
+  breadcrumbLabel: 'Questões',
 };
 
 const PracticePublicCollectionFallback = ({
@@ -36,20 +51,20 @@ const PracticePublicCollectionFallback = ({
   </section>
 );
 
-export default async function PracticePage({ searchParams }: PracticePageProps) {
+export default async function PracticePage({ searchParams, semanticPage = DEFAULT_SEMANTIC_PAGE }: PracticePageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const initialQuestionPage = await fetchPracticeInitialQuestions({
     searchParams: resolvedSearchParams,
   });
   const questionItems = initialQuestionPage.questions.slice(0, initialQuestionPage.pageInfo.limit);
-  const path = publicRoutes.questions.index();
-  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Questões', path }];
+  const path = semanticPage.path;
+  const breadcrumbs = [{ label: 'Início', path: '/' }, { label: semanticPage.breadcrumbLabel, path }];
   const itemList = buildItemList(questionItems.map((question) => ({
     name: summarizeSeoText(question.enunciado_clean || question.enunciado || `Questão ${question.id}`, 120),
     path: buildQuestionPath(question),
   })));
   const jsonLd = buildStructuredDataGraph([
-    { ...buildCollectionPage({ path, name: 'Questões de concursos para praticar', description: 'Banco de questões organizado por banca, disciplina, assunto, cargo e ano.' }), mainEntity: itemList },
+    { ...buildCollectionPage({ path, name: semanticPage.title, description: semanticPage.description }), mainEntity: itemList },
     buildBreadcrumbList(breadcrumbs),
   ]);
 
@@ -63,12 +78,12 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
       >
         <CanonicalBreadcrumbs items={breadcrumbs} />
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Banco de questões</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">{semanticPage.eyebrow}</p>
           <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-            Questões de concursos para praticar
+            {semanticPage.title}
           </h1>
           <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
-            Resolva questões públicas e use filtros por disciplina, banca, assunto, cargo e ano para direcionar seus estudos.
+            {semanticPage.description}
           </p>
         </div>
         <nav aria-label="Explorar o acervo" className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold text-indigo-700 dark:text-indigo-300">

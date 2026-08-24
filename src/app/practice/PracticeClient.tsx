@@ -1076,7 +1076,7 @@ const Practice: React.FC<PracticeProps> = ({
 
     const parsedFilters: PracticeFilters = {
       ...DEFAULT_FILTERS,
-      keyword: searchParams.get('keyword') || DEFAULT_FILTERS.keyword,
+      keyword: searchParams.get('keyword') || searchParams.get('q') || DEFAULT_FILTERS.keyword,
       subject: readMultiParam(['subject', 'materia']),
       difficulty: readMultiParam(['difficulty']),
       agency: readMultiParam(['agency']),

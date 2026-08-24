@@ -181,6 +181,9 @@ export const isExamPublicPath = (path: string): boolean => (
 );
 
 export const publicRoutes = {
+  search: {
+    index: (query?: PublicRouteQuery) => withQuery('search', buildPath('search', {}), query),
+  },
   questions: {
     index: (query?: PublicRouteQuery) => withQuery('questions_hub', buildPath('questions_hub', {}), query),
     detail: (id: string | number, slug: string, query?: PublicRouteQuery) => withQuery(

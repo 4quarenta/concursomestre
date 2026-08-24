@@ -76,6 +76,13 @@ describe('practice SSR data', () => {
     expect(url.searchParams.get('questionIds')).toBe('42');
   });
 
+  it('maps the canonical search query to the backend keyword parameter', () => {
+    const url = buildPracticeServerUrl({ q: 'controle concentrado' }, 'https://example.test/api/');
+
+    expect(url.searchParams.get('keyword')).toBe('controle concentrado');
+    expect(url.searchParams.has('q')).toBe(false);
+  });
+
   it('keeps the page renderable when the backend is unavailable', async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error('offline'));
     const result = await fetchPracticeInitialQuestions({

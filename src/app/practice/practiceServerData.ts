@@ -85,6 +85,11 @@ export const buildPracticeServerUrl = (
     if (value) url.searchParams.set(key, value);
   });
 
+  const searchQuery = Array.isArray(searchParams.q) ? searchParams.q[0] : searchParams.q;
+  if (searchQuery && !url.searchParams.has('keyword')) {
+    url.searchParams.set('keyword', searchQuery);
+  }
+
   const highlightedQuestionId = String(searchParams.questionId || '').trim();
   if (highlightedQuestionId && !url.searchParams.has('questionIds')) {
     url.searchParams.set('questionIds', highlightedQuestionId);
