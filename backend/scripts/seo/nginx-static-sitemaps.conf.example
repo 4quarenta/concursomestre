@@ -1,12 +1,21 @@
-# Ajuste o caminho para o release ativo do site no CloudPanel.
+# O app aplica LaunchMode, ativacao de producao e freshness do artefato.
+# Nao sirva o diretorio materializado diretamente: isso contorna os gates.
+# backend/storage e quarentenas operacionais nunca sao webroots. Assets publicos
+# usam /uploads; servir /storage reabre bypass para releases e estado.
+location ^~ /storage/ {
+    add_header Cache-Control "private, no-store" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    return 404;
+}
+
 location = /sitemap.xml {
-    alias /home/concursomestre/htdocs/concursomestre.com/backend/storage/sitemaps/sitemap.xml;
-    default_type application/xml;
-    add_header Cache-Control "public, max-age=300, s-maxage=3600";
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 
 location ^~ /sitemaps/ {
-    alias /home/concursomestre/htdocs/concursomestre.com/backend/storage/sitemaps/;
-    default_type application/xml;
-    add_header Cache-Control "public, max-age=300, s-maxage=900";
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }

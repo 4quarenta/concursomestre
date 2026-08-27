@@ -16,7 +16,7 @@ $checks = [
     [$base . '/modules/exams/repositories/ExamsRepository.php', 'LIMIT {$limit} OFFSET {$offset}'],
     [$base . '/scripts/seo/generate_static_sitemaps.php', '$routes->examDetail($slug)'],
     [$base . '/scripts/seo/generate_static_sitemaps.php', "FROM provas"],
-    [$base . '/scripts/seo/generate_static_sitemaps.php', "status_editorial = 'published'"],
+    [$base . '/scripts/seo/generate_static_sitemaps.php', "'status' => (string) (\$row['status_editorial'] ?? 'unpublished')"],
     [$base . '/scripts/seo/generate_static_sitemaps.php', "sprintf('exams-%05d.xml'"],
     [$base . '/modules/exams/repositories/ExamsRepository.php', "'publishedAt' => \$metadata['publishedAt']"],
     [$base . '/modules/exams/repositories/ExamsRepository.php', 'COUNT(DISTINCT qp.question_id) AS question_count'],

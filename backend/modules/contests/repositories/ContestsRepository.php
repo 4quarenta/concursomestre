@@ -43,7 +43,7 @@ final class ContestsRepository
                LEFT JOIN filters public_board ON public_board.id = c.board_filter_id
                     AND public_board.type = 'banca'
                     AND COALESCE(public_board.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
-                    AND BINARY public_board.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                    AND CAST(public_board.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
               WHERE {$where}
               ORDER BY {$orderBy}
               LIMIT :limit OFFSET :offset");
@@ -72,7 +72,7 @@ final class ContestsRepository
             FROM contest_organizations co INNER JOIN filters f ON f.id = co.organization_filter_id
                 AND f.type = 'orgao'
                 AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
-                AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND CAST(f.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
             WHERE co.contest_id = :id ORDER BY co.is_primary DESC, f.name", $id);
         $positions = $this->fetchAll("SELECT cp.id, f.id AS roleId, f.slug, f.name, cp.vacancies,
                 cp.reserve_registry AS reserveRegistry, cp.salary_min AS salaryMin, cp.salary_max AS salaryMax,
@@ -81,7 +81,7 @@ final class ContestsRepository
                 AND f.type = 'cargo'
                 AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
                 AND TRIM(f.name) <> ''
-                AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND CAST(f.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
             WHERE cp.contest_id = :id ORDER BY f.name", $id);
         $documents = $this->fetchAll("SELECT id, document_type AS type, title, public_url AS url, published_at AS publishedAt
             FROM contest_documents WHERE contest_id = :id AND publication_status = 'published'
@@ -91,7 +91,7 @@ final class ContestsRepository
             LEFT JOIN question_provas qp ON qp.prova_id = p.id
             WHERE ce.contest_id = :id AND p.archived_at IS NULL AND p.status_editorial = 'published'
               AND p.visibility_status = 'public' AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())
-              AND TRIM(p.nome) <> '' AND BINARY p.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+              AND TRIM(p.nome) <> '' AND CAST(p.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
             GROUP BY p.id ORDER BY p.ano DESC, p.id DESC LIMIT 12", $id);
         $questions = $this->fetchAll("SELECT q.id,
                 LEFT(COALESCE(NULLIF(q.enunciado_clean, ''), NULLIF(q.enunciado, ''), CONCAT('Questao ', q.id)), 240) AS excerpt
@@ -124,7 +124,7 @@ final class ContestsRepository
             FROM contests c LEFT JOIN filters b ON b.id = c.board_filter_id
                 AND b.type = 'banca'
                 AND COALESCE(b.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
-                AND BINARY b.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND CAST(b.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
             WHERE c.slug = :slug AND " . $this->publicationClause('c') . ' LIMIT 1');
         $stmt->execute([':slug' => $slug]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -160,7 +160,7 @@ final class ContestsRepository
             AND {$alias}.archived_at IS NULL
             AND ({$alias}.scheduled_at IS NULL OR {$alias}.scheduled_at <= NOW())
             AND TRIM({$alias}.title) <> ''
-            AND BINARY {$alias}.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND CAST({$alias}.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
             AND EXISTS (
                 SELECT 1
                 FROM contest_organizations public_co
@@ -168,7 +168,7 @@ final class ContestsRepository
                     AND public_org.type = 'orgao'
                     AND COALESCE(public_org.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
                     AND TRIM(public_org.name) <> ''
-                    AND BINARY public_org.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                    AND CAST(public_org.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
                 WHERE public_co.contest_id = {$alias}.id
             )";
     }

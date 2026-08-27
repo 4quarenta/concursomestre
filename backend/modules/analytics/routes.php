@@ -14,8 +14,10 @@
 require_once __DIR__ . '/controllers/AnalyticsTrackingController.php';
 require_once __DIR__ . '/services/AnalyticsTrackingService.php';
 require_once __DIR__ . '/services/AnalyticsTrackingAvailability.php';
+require_once __DIR__ . '/repositories/AnalyticsDatasetStateRepository.php';
 require_once __DIR__ . '/repositories/AnalyticsTrackingRepository.php';
 require_once __DIR__ . '/validators/AnalyticsTrackingValidator.php';
+require_once __DIR__ . '/../seo/launch/SeoLaunchMode.php';
 require_once __DIR__ . '/../../shared/auth/request_auth.php';
 require_once __DIR__ . '/../../shared/middleware/RateLimiter.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
@@ -23,6 +25,19 @@ require_once __DIR__ . '/../../shared/responses/Response.php';
 function handleAnalyticsTrackingRoute(PDO $db): void
 {
     try {
+        $canonicalDatasetEmpty = (new AnalyticsDatasetStateRepository($db))->isCanonicalDatasetEmpty();
+        if (AnalyticsTrackingAvailability::shouldDiscardForPrelaunchZeroState(
+            SeoLaunchMode::fromEnvironment(),
+            $canonicalDatasetEmpty
+        )) {
+            Response::success([
+                'tracked' => false,
+                'discarded' => true,
+                'reason' => 'prelaunch_zero_state',
+            ], 'Evento analitico descartado durante preparacao do dataset.');
+            return;
+        }
+
         try {
             RateLimiter::enforceProfile('analytics_track');
         } catch (Throwable $rateLimitError) {

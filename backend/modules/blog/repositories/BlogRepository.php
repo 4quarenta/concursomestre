@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
 
 final class BlogRepository
 {
@@ -303,6 +304,7 @@ final class BlogRepository
         string $authorRole
     ): array
     {
+        StaticSitemapMutationInvalidator::invalidate('BLOG_CONTENT_MUTATION');
         $this->db->beginTransaction();
         try {
             $category = $article['taxonomy']['category'];
@@ -409,6 +411,7 @@ final class BlogRepository
 
     public function archive(int $id): bool
     {
+        StaticSitemapMutationInvalidator::invalidate('BLOG_CONTENT_MUTATION');
         $stmt = $this->db->prepare(
             "UPDATE blog_articles
              SET status = 'archived', deleted_at = NOW(), updated_at = NOW()
@@ -455,6 +458,7 @@ final class BlogRepository
 
     public function createCategory(array $category, string $userId): array
     {
+        StaticSitemapMutationInvalidator::invalidate('BLOG_TAXONOMY_MUTATION');
         $stmt = $this->db->prepare(
             "INSERT INTO blog_categories (name, slug, description, created_by)
              VALUES (:name, :slug, :description, :created_by)
@@ -485,6 +489,7 @@ final class BlogRepository
 
     public function createTag(array $tag, string $userId): array
     {
+        StaticSitemapMutationInvalidator::invalidate('BLOG_TAXONOMY_MUTATION');
         $stmt = $this->db->prepare(
             "INSERT INTO blog_tags (name, slug, kind, description, image_url, created_by)
              VALUES (:name, :slug, :kind, :description, :image_url, :created_by)

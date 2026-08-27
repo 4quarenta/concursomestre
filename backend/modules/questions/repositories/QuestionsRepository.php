@@ -12,6 +12,7 @@
 */
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
 
 /**
  * Repository oficial do dominio de questes.
@@ -2217,6 +2218,7 @@ class QuestionsRepository
      */
     public function insertQuestion(array $record): string
     {
+        StaticSitemapMutationInvalidator::invalidate('QUESTION_CONTENT_MUTATION');
         $this->ensurePublicationColumns();
 
         $stmt = $this->db->prepare(
@@ -2291,6 +2293,7 @@ class QuestionsRepository
      */
     public function updateQuestion(string|int $questionId, array $record): void
     {
+        StaticSitemapMutationInvalidator::invalidate('QUESTION_CONTENT_MUTATION');
         $this->ensurePublicationColumns();
 
         $stmt = $this->db->prepare(
@@ -2404,6 +2407,7 @@ class QuestionsRepository
      */
     public function deleteQuestionById(string|int $questionId): int
     {
+        StaticSitemapMutationInvalidator::invalidate('QUESTION_CONTENT_MUTATION');
         $stmt = $this->db->prepare("DELETE FROM questions WHERE id = :question_id");
         $stmt->bindValue(':question_id', $questionId);
         $stmt->execute();
@@ -2557,6 +2561,7 @@ class QuestionsRepository
         int $metaCarreira = 0,
         ?int $parentId = null
     ): int {
+        StaticSitemapMutationInvalidator::invalidate('FILTER_CONTENT_MUTATION');
         $stmt = $this->db->prepare(
             "INSERT INTO filters (type, name, slug, parent_id, meta_materia, meta_carreira)
              VALUES (:type, :name, :slug, :parent_id, :meta_materia, :meta_carreira)"
@@ -2650,6 +2655,7 @@ class QuestionsRepository
      */
     public function saveImportedExam(array $record): int
     {
+        StaticSitemapMutationInvalidator::invalidate('EXAM_CONTENT_MUTATION');
         $this->ensureExamInfrastructure();
 
         $sourceProvider = trim((string) ($record['source_provider'] ?? ''));

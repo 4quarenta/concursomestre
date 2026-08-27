@@ -12,21 +12,36 @@ final class PublicSimulationReadinessValidator
      */
     public static function evaluate(array $row): array
     {
-        $reasons = [];
-        $slug = trim((string) ($row['slug'] ?? ''));
-        if ((int) ($row['id'] ?? 0) <= 0) $reasons[] = 'instance_readiness.entity_missing';
-        if ($slug === '' || strlen($slug) > 190 || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) !== 1) {
-            $reasons[] = 'instance_readiness.invalid_slug';
-        }
-        if (trim((string) ($row['title'] ?? '')) === '') $reasons[] = 'instance_readiness.invalid_definition';
-        if (($row['publication_status'] ?? '') !== 'published' || ($row['visibility_status'] ?? '') !== 'public') {
-            $reasons[] = 'instance_readiness.publication_blocked';
-        }
-        if ((int) ($row['question_count'] ?? $row['questionCount'] ?? 0) < 1) {
-            $reasons[] = 'instance_readiness.invalid_definition';
-        }
+        require_once dirname(__DIR__, 2) . '/seo/launch/SeoInstanceReadinessAssembler.php';
+        return (new SeoInstanceReadinessAssembler())->assemblePublicEntity(
+            'simulation',
+            self::publicationInput($row),
+            self::profileSignals($row)
+        );
+    }
 
-        $reasons = array_values(array_unique($reasons));
-        return ['status' => $reasons === [] ? 'READY' : 'NOT_READY', 'reasonCodes' => $reasons];
+    /** @return array<string,mixed> */
+    public static function publicationInput(array $row): array
+    {
+        return [
+            'status' => (string) ($row['publication_status'] ?? 'unpublished'),
+            'visibility' => (string) ($row['visibility_status'] ?? 'restricted'),
+            'scheduledAt' => $row['scheduled_at'] ?? null,
+            'provenanceStatus' => 'verified',
+            'rightsStatus' => 'allowed',
+        ];
+    }
+
+    /** @return array<string,bool> */
+    public static function profileSignals(array $row): array
+    {
+        $slug = trim((string) ($row['slug'] ?? ''));
+        return [
+            'entityExists' => (int) ($row['id'] ?? 0) > 0,
+            'validSlug' => $slug !== '' && strlen($slug) <= 190 && preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) === 1,
+            'hasDefinition' => trim((string) ($row['title'] ?? '')) !== '',
+            'notArchived' => empty($row['archived_at']),
+            'hasQuestion' => (int) ($row['question_count'] ?? $row['questionCount'] ?? $row['has_ready_question'] ?? 0) >= 1,
+        ];
     }
 }

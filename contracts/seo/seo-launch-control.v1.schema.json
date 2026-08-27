@@ -21,6 +21,7 @@
       "enum": [
         "instance_readiness.entity_missing",
         "instance_readiness.invalid_slug",
+        "instance_readiness.invalid_definition",
         "instance_readiness.pending",
         "instance_readiness.publication_blocked",
         "instance_readiness.invalid_hierarchy",

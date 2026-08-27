@@ -8,6 +8,7 @@ final class SeoInstanceReadiness
     private const REASON_CODES = [
         'instance_readiness.entity_missing',
         'instance_readiness.invalid_slug',
+        'instance_readiness.invalid_definition',
         'instance_readiness.pending',
         'instance_readiness.publication_blocked',
         'instance_readiness.invalid_hierarchy',
@@ -52,30 +53,6 @@ final class SeoInstanceReadiness
             throw new InvalidArgumentException('InstanceReadiness bloqueada exige reason code.');
         }
         return ['status' => $status, 'reasonCodes' => $reasonCodes];
-    }
-
-    /** @param array<string,mixed> $publication
-     *  @param array<string,mixed> $quality
-     *  @return array{status:string,reasonCodes:list<string>}
-     */
-    public static function fromSignals(array $publication, array $quality, bool $currentImplementationReady = true): array
-    {
-        if (!$currentImplementationReady) {
-            return ['status' => 'NOT_READY', 'reasonCodes' => ['instance_readiness.current_implementation_not_ready']];
-        }
-        if (($publication['status'] ?? null) !== 'published'
-            || ($publication['visibility'] ?? null) !== 'public'
-            || ($publication['access'] ?? null) !== 'allowed') {
-            return ['status' => 'NOT_READY', 'reasonCodes' => ['instance_readiness.publication_blocked']];
-        }
-        if (($quality['status'] ?? null) !== 'PASS') {
-            $qualityReasons = is_array($quality['reasonCodes'] ?? null) ? $quality['reasonCodes'] : [];
-            if (in_array('quality.taxonomy.invalid_hierarchy', $qualityReasons, true)) {
-                return ['status' => 'NOT_READY', 'reasonCodes' => ['instance_readiness.invalid_hierarchy']];
-            }
-            return ['status' => 'NOT_READY', 'reasonCodes' => ['instance_readiness.not_evaluated']];
-        }
-        return ['status' => 'READY', 'reasonCodes' => []];
     }
 
     private function __construct()

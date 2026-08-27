@@ -63,7 +63,7 @@ final class PublicMaterialsRepository
     {
         $stmt = $this->db->prepare("SELECT m.slug FROM materials m WHERE m.id = :id
             AND " . $this->publicIdentityClause('m') . "
-            AND BINARY m.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$' AND CHAR_LENGTH(m.slug) <= 190 LIMIT 1");
+            AND CAST(m.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY) AND CHAR_LENGTH(m.slug) <= 190 LIMIT 1");
         $stmt->execute([':id' => $id]);
         $slug = trim((string) $stmt->fetchColumn());
         return $slug === '' ? null : $slug;
@@ -82,7 +82,7 @@ final class PublicMaterialsRepository
             INNER JOIN filters f ON f.id = m.subject_id OR f.id = m.topic_id
             WHERE m.id = :id AND TRIM(f.name) <> ''
               AND COALESCE(f.taxonomy_level, '') NOT IN ('pending','internal','technical')
-              AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$' AND CHAR_LENGTH(f.slug) <= 190
+              AND CAST(f.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY) AND CHAR_LENGTH(f.slug) <= 190
             HAVING relationType IS NOT NULL
             ORDER BY relationType, f.name");
         $stmt->execute([':id' => $materialId]);
@@ -111,7 +111,7 @@ final class PublicMaterialsRepository
     private function publicClause(string $alias): string
     {
         return $this->publicIdentityClause($alias) . " AND TRIM({$alias}.title) <> ''
-            AND BINARY {$alias}.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$' AND CHAR_LENGTH({$alias}.slug) <= 190";
+            AND CAST({$alias}.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY) AND CHAR_LENGTH({$alias}.slug) <= 190";
     }
 
     private function assetClause(string $alias): string

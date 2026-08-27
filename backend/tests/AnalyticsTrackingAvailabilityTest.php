@@ -12,6 +12,23 @@ function assertAnalyticsAvailability(bool $condition, string $message): void
 }
 
 assertAnalyticsAvailability(
+    AnalyticsTrackingAvailability::shouldDiscardForPrelaunchZeroState('PRELAUNCH', true),
+    'PRELAUNCH with an empty canonical dataset must discard lifecycle analytics.'
+);
+assertAnalyticsAvailability(
+    AnalyticsTrackingAvailability::shouldDiscardForPrelaunchZeroState('unknown', true),
+    'An invalid launch mode must fail safe as PRELAUNCH.'
+);
+assertAnalyticsAvailability(
+    !AnalyticsTrackingAvailability::shouldDiscardForPrelaunchZeroState('PRELAUNCH', false),
+    'PRELAUNCH with canonical content must not be treated as the post-reset zero state.'
+);
+assertAnalyticsAvailability(
+    !AnalyticsTrackingAvailability::shouldDiscardForPrelaunchZeroState('PRODUCTION', true),
+    'The zero-state maintenance guard must not redefine PRODUCTION tracking policy.'
+);
+
+assertAnalyticsAvailability(
     AnalyticsTrackingAvailability::shouldDiscardForUnavailableRateLimit(
         new RuntimeException('Rate limit compartilhado indisponivel; Redis e obrigatorio neste ambiente.')
     ),

@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
 
 /**
  * Repositorio do dominio de materiais.
@@ -353,6 +354,7 @@ class MaterialsRepository
      */
     public function createMaterial(array $payload): void
     {
+        StaticSitemapMutationInvalidator::invalidate('MATERIAL_CONTENT_MUTATION');
         $stmt = $this->db->prepare(
             "
             INSERT INTO materials (
@@ -410,6 +412,8 @@ class MaterialsRepository
         if ($fields === []) {
             return;
         }
+
+        StaticSitemapMutationInvalidator::invalidate('MATERIAL_CONTENT_MUTATION');
 
         $assignments = [];
         $params = [':id' => $materialId];
@@ -503,6 +507,7 @@ class MaterialsRepository
      */
     public function updateModeration(string $materialId, string $status, ?string $reason, string $moderatorUserId): void
     {
+        StaticSitemapMutationInvalidator::invalidate('MATERIAL_PUBLICATION_MUTATION');
         $stmt = $this->db->prepare(
             "
             UPDATE materials

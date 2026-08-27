@@ -101,6 +101,20 @@ final class StaticSitemapValidator
         ];
     }
 
+    /** @return array<string, mixed> */
+    public function validateForPromotion(string $directory, string $httpOrigin): array
+    {
+        if (trim($httpOrigin) === '') {
+            throw new InvalidArgumentException('Promotion exige origem HTTP para validacao semantica.');
+        }
+        $report = $this->validateDirectory($directory, $httpOrigin);
+        if (($report['http']['executed'] ?? false) !== true) {
+            throw new RuntimeException('Validacao HTTP obrigatoria nao foi executada.');
+        }
+        $this->assertValid($report);
+        return $report;
+    }
+
     /** @param array<string, mixed> $report */
     public function assertValid(array $report): void
     {

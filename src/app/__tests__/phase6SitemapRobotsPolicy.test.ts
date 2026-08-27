@@ -1,5 +1,6 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +10,7 @@ import { GET as getLegacySitemap } from '../sitemap-index.xml/route';
 import { GET as getSitemapChild } from '../sitemaps/[filename]/route';
 
 const directories: string[] = [];
+const stateFiles: string[] = [];
 
 const activateProduction = () => {
   vi.stubEnv('SEO_LAUNCH_MODE', 'PRODUCTION');
@@ -22,19 +24,55 @@ const createArtifacts = async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'cm-phase6-route-'));
   directories.push(directory);
   vi.stubEnv('SITEMAP_OUTPUT_DIR', directory);
-  await writeFile(path.join(directory, 'sitemap.xml'), '<sitemapindex/>', 'utf8');
-  await writeFile(path.join(directory, 'questions-00001.xml'), '<urlset/>', 'utf8');
+  const files = {
+    'sitemap.xml': '<sitemapindex><sitemap><loc>https://concursomestre.com/sitemaps/questions-00001.xml</loc></sitemap></sitemapindex>',
+    'questions-00001.xml': '<urlset/>',
+  };
+  const manifestFiles = Object.entries(files).map(([name, body]) => ({
+    name, sha256: createHash('sha256').update(body, 'utf8').digest('hex'), size: Buffer.byteLength(body),
+  })).sort((a, b) => a.name.localeCompare(b.name));
+  const datasetFingerprint = createHash('sha256').update('eligible-db-rows', 'utf8').digest('hex');
+  vi.stubEnv('SITEMAP_TEST_CURRENT_FINGERPRINT', datasetFingerprint);
+  const artifactFingerprint = createHash('sha256').update(JSON.stringify(manifestFiles), 'utf8').digest('hex');
+  const releaseId = createHash('sha256').update(['sitemap-release-manifest.v1', datasetFingerprint, artifactFingerprint].join('\0')).digest('hex');
+  const manifest = JSON.stringify({
+    version: 'sitemap-release-manifest.v1', artifactStateVersion: 'database-driven-sitemap-state.v3', releaseId,
+    logicalDatasetFingerprint: datasetFingerprint, physicalSetFingerprint: artifactFingerprint, files: manifestFiles,
+    indexReferences: ['questions-00001.xml'],
+  });
+  const manifestHash = createHash('sha256').update(manifest, 'utf8').digest('hex');
+  await Promise.all(Object.entries(files).map(([name, body]) => writeFile(path.join(directory, name), body, 'utf8')));
+  await writeFile(path.join(directory, 'sitemap-release-manifest.json'), manifest, 'utf8');
   await writeFile(path.join(directory, 'sitemap-status.json'), JSON.stringify({
     artifactSet: 'canonical-sitemap-index',
     indexPolicyVersion: 'index-policy-phase-6.v1',
     canonicalBaseUrl: 'https://concursomestre.com',
+    artifactStateVersion: 'database-driven-sitemap-state.v3',
+    logicalDatasetVersion: 'eligible-sitemap-dataset.v2',
+    releaseManifestVersion: 'sitemap-release-manifest.v1',
+    releaseManifestFile: 'sitemap-release-manifest.json',
+    eligibleDatasetFingerprint: datasetFingerprint,
+    artifactFingerprint,
+    releaseId,
+    manifestHash,
     validation: { valid: true },
+  }), 'utf8');
+  const statePath = path.join(path.dirname(directory), `.${path.basename(directory)}-publication-state.json`);
+  stateFiles.push(statePath);
+  await writeFile(statePath, JSON.stringify({
+    version: 'database-driven-sitemap-state.v3',
+    state: 'CURRENT',
+    eligibleDatasetFingerprint: datasetFingerprint,
+    artifactFingerprint,
+    releaseId,
+    manifestHash,
   }), 'utf8');
 };
 
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+  await Promise.all(stateFiles.splice(0).map((statePath) => rm(statePath, { force: true })));
 });
 
 describe('Phase 6 sitemap and robots publication', () => {

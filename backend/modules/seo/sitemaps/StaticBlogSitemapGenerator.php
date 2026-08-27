@@ -2,25 +2,33 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/AuthoritativeSitemapEligibilityService.php';
+
 final class StaticBlogSitemapGenerator
 {
+    private readonly AuthoritativeSitemapEligibilityService $eligibility;
+
     public function __construct(
         private readonly PDO $db,
         private readonly string $baseUrl,
         private readonly string $outputDirectory,
-        private readonly int $batchSize = 45000
+        private readonly int $batchSize = 45000,
+        ?AuthoritativeSitemapEligibilityService $eligibility = null,
+        private readonly bool $writeArtifacts = true
     ) {
+        $this->eligibility = $eligibility ?? new AuthoritativeSitemapEligibilityService();
     }
 
-    /** @return array{counts:array{articles:int,taxonomies:int},totalUrls:int,files:int,filesList:list<array{name:string,lastmod:?string}>,queryCount:int} */
+    /** @return array{counts:array{articles:int,taxonomies:int},totalUrls:int,files:int,filesList:list<array{name:string,lastmod:?string}>,logicalRecords:list<array<string,string|null>>,queryCount:int} */
     public function generate(): array
     {
         $files = [];
+        $logicalRecords = [];
         $counts = ['articles' => 0, 'taxonomies' => 0];
         $queryCount = 0;
 
         if (!$this->tableExists('blog_articles', $queryCount)) {
-            return ['counts' => $counts, 'totalUrls' => 0, 'files' => 0, 'filesList' => [], 'queryCount' => $queryCount];
+            return ['counts' => $counts, 'totalUrls' => 0, 'files' => 0, 'filesList' => [], 'logicalRecords' => [], 'queryCount' => $queryCount];
         }
 
         $cursor = 0;
@@ -28,13 +36,10 @@ final class StaticBlogSitemapGenerator
         while (true) {
             $queryCount++;
             $stmt = $this->db->prepare(
-                "SELECT id, slug, COALESCE(updated_at, published_at, created_at) AS last_modified
+                "SELECT id, slug, title, status, published_at, deleted_at,
+                        COALESCE(updated_at, published_at, created_at) AS last_modified
                  FROM blog_articles
                  WHERE id > :cursor
-                   AND deleted_at IS NULL
-                   AND status IN ('published', 'scheduled')
-                   AND published_at IS NOT NULL
-                   AND published_at <= NOW()
                  ORDER BY id
                  LIMIT {$this->batchSize}"
             );
@@ -51,15 +56,49 @@ final class StaticBlogSitemapGenerator
                 if ($id <= 0 || strlen($slug) > 180 || preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/D', $slug) !== 1) {
                     continue;
                 }
+                $record = $this->eligibility->eligibleRecord([
+                    'resourceType' => 'article',
+                    'resourceId' => (string) $id,
+                    'existence' => 'exists',
+                    'publicationInput' => [
+                        'status' => (string) ($row['status'] ?? 'unpublished'),
+                        'visibility' => 'public',
+                        'provenanceStatus' => 'verified',
+                        'rightsStatus' => 'allowed',
+                        'scheduledAt' => is_scalar($row['published_at'] ?? null) ? (string) $row['published_at'] : null,
+                    ],
+                    'publicData' => [
+                        'id' => (string) $id,
+                        'displayName' => (string) ($row['title'] ?? ''),
+                        'updatedAt' => is_scalar($row['last_modified'] ?? null) ? (string) $row['last_modified'] : null,
+                    ],
+                    'routeFamily' => 'blog_article',
+                    'routeParameters' => ['slug' => $slug],
+                    'requestedSlug' => $slug,
+                    'canonicalSlug' => $slug,
+                    'canonicalEnvironment' => true,
+                    'readinessProfile' => 'blog_article',
+                    'readinessSignals' => [
+                        'entityExists' => true,
+                        'validSlug' => true,
+                        'hasDefinition' => trim((string) ($row['title'] ?? '')) !== '',
+                        'notArchived' => empty($row['deleted_at']),
+                    ],
+                    'qualityAffectsIndexability' => false,
+                ]);
+                if ($record === null) continue;
+                $logicalRecords[] = $record;
                 $entries[] = [
-                    'loc' => $this->baseUrl . '/blog/' . rawurlencode($slug),
-                    'lastmod' => $this->safeDate($row['last_modified'] ?? null),
+                    'loc' => (string) $record['canonicalUrl'],
+                    'lastmod' => $this->safeDate($record['lastModified'] ?? null),
                 ];
             }
             if ($entries !== []) {
                 $page++;
                 $filename = sprintf('blog-articles-%05d.xml', $page);
-                $this->write($filename, $this->buildUrlSet($entries));
+                if ($this->writeArtifacts) {
+                    $this->write($filename, $this->buildUrlSet($entries));
+                }
                 $files[] = ['name' => $filename, 'lastmod' => $this->maxLastmod($entries)];
                 $counts['articles'] += count($entries);
             }
@@ -76,6 +115,7 @@ final class StaticBlogSitemapGenerator
             'totalUrls' => $counts['articles'] + $counts['taxonomies'],
             'files' => count($files),
             'filesList' => $files,
+            'logicalRecords' => $logicalRecords,
             'queryCount' => $queryCount,
         ];
     }

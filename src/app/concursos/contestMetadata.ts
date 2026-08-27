@@ -18,6 +18,8 @@ export const contestMetadataTitle = (contest: PublicContest): string => {
   if (organization && !contest.title.toLocaleLowerCase('pt-BR').includes(organization.toLocaleLowerCase('pt-BR'))) context.push(organization);
   return context.length ? `${contest.title} - ${context.join(', ')}` : contest.title;
 };
-export const buildContestMetadata = (contest: PublicContest | null): Metadata => contest
-  ? buildPublicPageMetadata({ title: contestMetadataTitle(contest), description: contestDescription(contest), path: contest.canonicalPath })
-  : buildNoIndexMetadata({ title: 'Concurso não encontrado' });
+export const buildContestMetadata = (contest: PublicContest | null): Metadata => {
+  if (!contest) return buildNoIndexMetadata({ title: 'Concurso não encontrado' });
+  const metadata = buildPublicPageMetadata({ title: contestMetadataTitle(contest), description: contestDescription(contest), path: contest.canonicalPath });
+  return contest.readiness.status === 'READY' ? metadata : { ...metadata, robots: { index: false, follow: true } };
+};

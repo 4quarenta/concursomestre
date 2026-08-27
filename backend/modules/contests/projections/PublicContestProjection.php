@@ -29,6 +29,7 @@ final class PublicContestProjection
             'exams' => self::items($data['exams'] ?? [], ['id', 'slug', 'title', 'year', 'questionCount', 'path']),
             'questions' => self::items($data['questions'] ?? [], ['id', 'excerpt', 'path']),
             'questionCount' => max(0, (int) ($data['questionCount'] ?? 0)),
+            'readiness' => self::readiness($data['readiness'] ?? null),
             'canonicalPath' => self::text($data['canonicalPath'] ?? ''),
             'breadcrumbs' => self::items($data['breadcrumbs'] ?? [], ['label', 'canonicalPath']),
             'updatedAt' => self::nullableText($contest['updated_at'] ?? null),
@@ -137,6 +138,17 @@ final class PublicContestProjection
             return null;
         }
         return $date->format(DATE_ATOM);
+    }
+
+    /** @return array{status:string,reasonCodes:list<string>} */
+    private static function readiness(mixed $value): array
+    {
+        if (!is_array($value)) return ['status' => 'NOT_READY', 'reasonCodes' => ['instance_readiness.not_evaluated']];
+        $status = in_array($value['status'] ?? null, ['READY', 'NOT_READY', 'NOT_APPLICABLE'], true)
+            ? (string) $value['status'] : 'NOT_READY';
+        $reasonCodes = is_array($value['reasonCodes'] ?? null)
+            ? array_values(array_filter($value['reasonCodes'], 'is_string')) : ['instance_readiness.not_evaluated'];
+        return ['status' => $status, 'reasonCodes' => $reasonCodes];
     }
 
     private static function url(mixed $value): ?string

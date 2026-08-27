@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/contracts/SeoContractValidator.php';
 require_once dirname(__DIR__) . '/policies/StructuralRoutePolicy.php';
 require_once dirname(__DIR__) . '/promotion/EditorialSeoPromotionProvider.php';
 require_once dirname(__DIR__) . '/launch/SeoInstanceReadiness.php';
+require_once dirname(__DIR__) . '/launch/SeoInstanceReadinessAssembler.php';
 require_once dirname(__DIR__) . '/launch/SeoLaunchMode.php';
 require_once dirname(__DIR__) . '/launch/SeoProductionPageMap.php';
 require_once dirname(__DIR__) . '/launch/SeoRuntimeEnvironment.php';
@@ -82,9 +83,14 @@ final class SeoPolicyService
             is_array($productionFamily['requirements'] ?? null) ? $productionFamily['requirements'] : [],
             true
         );
-        $instanceReadiness = isset($input['instanceReadiness'])
-            ? SeoInstanceReadiness::validate($input['instanceReadiness'])
-            : SeoInstanceReadiness::fromSignals($publication, $quality, $currentImplementationReady);
+        $instanceReadiness = (new SeoInstanceReadinessAssembler())->assemble(
+            $publication,
+            $quality,
+            $currentImplementationReady,
+            is_array($input['instanceReadiness'] ?? null) ? $input['instanceReadiness'] : null,
+            (string) ($input['readinessProfile'] ?? 'default'),
+            is_array($input['readinessSignals'] ?? null) ? $input['readinessSignals'] : []
+        );
         $qualityAffectsIndexability = ($input['qualityAffectsIndexability'] ?? true) === true;
         $displayName = (string) ($facts['identity']['displayName'] ?? '');
         $canonicalSlug = trim((string) ($input['canonicalSlug'] ?? ''));

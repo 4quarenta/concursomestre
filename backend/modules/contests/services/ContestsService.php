@@ -7,6 +7,7 @@ require_once __DIR__ . '/../projections/PublicContestProjection.php';
 require_once __DIR__ . '/../../filters/professional/ProfessionalTaxonomyReadinessValidator.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/services/SeoSlugService.php';
+require_once __DIR__ . '/../../seo/launch/SeoInstanceReadinessAssembler.php';
 
 final class ContestsService
 {
@@ -53,9 +54,17 @@ final class ContestsService
 
         $contest = $data['contest'];
         if ((int) ($contest['id'] ?? 0) <= 0 || trim((string) ($contest['title'] ?? '')) === '') return null;
+        $slugValue = trim((string) ($contest['slug'] ?? ''));
+        $data['readiness'] = (new SeoInstanceReadinessAssembler())->fromProfile('contest', [
+            'entityExists' => (int) ($contest['id'] ?? 0) > 0,
+            'validSlug' => strlen($slugValue) <= 190 && preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slugValue) === 1,
+            'hasDefinition' => trim((string) ($contest['title'] ?? '')) !== '',
+            'notArchived' => empty($contest['archived_at']),
+            'hasOrganization' => count($data['organizations'] ?? []) > 0,
+        ]);
         $routes = new PublicRouteBuilder();
         $slugger = new SeoSlugService();
-        $canonicalPath = $routes->contestDetail((string) $contest['slug']);
+        $canonicalPath = $routes->contestDetail($slugValue);
         $data['canonicalPath'] = $canonicalPath;
         $data['organizations'] = array_map(static function (array $item) use ($routes): array {
             $item['path'] = $routes->organizationDetail((string) ($item['slug'] ?? ''));

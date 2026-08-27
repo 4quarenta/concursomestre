@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 require_once __DIR__ . '/LegalCommentaryCommunityReadRepository.php';
+require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
 
 /*
 * ----------------------------------------------------
@@ -2299,6 +2300,7 @@ class LegalCommentaryRepository
     public function saveAdminPayload(array $payload, bool $preserveUnmatched = false): array
     {
         $this->assertSchemaReady();
+        StaticSitemapMutationInvalidator::invalidate('LAW_CONTENT_MUTATION');
         $this->db->beginTransaction();
 
         try {
@@ -2348,6 +2350,7 @@ class LegalCommentaryRepository
             }
         }
 
+        StaticSitemapMutationInvalidator::invalidate('LAW_CONTENT_MUTATION');
         $stmt = $this->db->prepare('DELETE FROM laws WHERE id = :id');
         $stmt->execute([':id' => $lawId]);
     }
@@ -2389,6 +2392,7 @@ class LegalCommentaryRepository
             throw new InvalidArgumentException('Artigo nao encontrado para atualizar o editorial.');
         }
 
+        StaticSitemapMutationInvalidator::invalidate('LAW_CONTENT_MUTATION');
         $this->db->beginTransaction();
 
         try {
@@ -2433,6 +2437,7 @@ class LegalCommentaryRepository
             throw new InvalidArgumentException('Informe o capitulo para persistir a analise.');
         }
 
+        StaticSitemapMutationInvalidator::invalidate('LAW_CONTENT_MUTATION');
         $this->upsertSectionEditorial($lawId, $editorial);
 
         $stmt = $this->db->prepare(

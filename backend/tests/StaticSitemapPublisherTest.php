@@ -66,5 +66,7 @@ try {
 }
 $publisher->discard($invalidStage);
 sitemapPublisherAssert(is_file($output . '/sitemap.xml'), 'Rejected stage must preserve the currently served artifact.');
+sitemapPublisherAssert($publisher->withdraw(), 'Published sitemap must be withdrawable after invalidation.');
+sitemapPublisherAssert(!file_exists($output) && !is_link($output), 'Withdraw must remove the served path.');
 
 fwrite(STDOUT, "StaticSitemapPublisherTest: PASS\n");

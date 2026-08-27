@@ -43,8 +43,9 @@ describe('Phase 2 internal public links', () => {
     expect(pageMap).toContain('"routePatterns": ["/questoes"]');
     expect(pageMap).toContain('"familyId": "exam_hub"');
     expect(pageMap).toContain('"routePatterns": ["/provas"]');
-    expect(staticSitemap).toContain('$routes->questionDetail');
-    expect(staticSitemap).toContain('$routes->examDetail');
+    expect(staticSitemap).toContain('AuthoritativeSitemapEligibilityService');
+    expect(staticSitemap).toContain("'question_detail'");
+    expect(staticSitemap).toContain("'exam_detail'");
     expect(staticSitemap).not.toContain("'/blog/provas'");
     expect(staticSitemap).not.toContain("'/question/'");
   });

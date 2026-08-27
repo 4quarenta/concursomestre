@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . '/policies/StructuralRoutePolicy.php';
 require_once dirname(__DIR__) . '/promotion/DefaultEditorialSeoPromotionProvider.php';
 require_once __DIR__ . '/SeoSlugService.php';
 require_once __DIR__ . '/SeoPolicyService.php';
+require_once dirname(__DIR__) . '/launch/SeoInstanceReadinessAssembler.php';
 
 /**
  * Adiciona os contratos SEO v1 aos DTOs publicos em shadow mode.
@@ -35,7 +36,11 @@ final class PublicSeoEnvelopeService
     private readonly SeoQualityPolicy $qualityPolicy;
     private readonly SeoPolicyService $seoPolicy;
 
-    public function __construct()
+    public function __construct(
+        ?string $launchMode = null,
+        ?bool $productionActivationAllowed = null,
+        private readonly bool $structuralQualityPass = false
+    )
     {
         $routes = new StructuralRoutePolicy();
         $this->publicationPolicy = new ContentPublicationPolicy();
@@ -44,7 +49,11 @@ final class PublicSeoEnvelopeService
         $this->seoPolicy = new SeoPolicyService(
             $routes,
             new DefaultEditorialSeoPromotionProvider(),
-            new SeoSlugService()
+            new SeoSlugService(),
+            'https://concursomestre.com',
+            null,
+            $launchMode,
+            $productionActivationAllowed
         );
     }
 
@@ -126,6 +135,17 @@ final class PublicSeoEnvelopeService
             $facts,
             is_array($projection['qualityEvidence'] ?? null) ? $projection['qualityEvidence'] : []
         );
+        if ($this->structuralQualityPass && ($projection['qualityAffectsIndexability'] ?? true) === false) {
+            $quality = ['status' => 'PASS', 'reasonCodes' => [], 'checks' => []];
+        }
+        $instanceReadiness = (new SeoInstanceReadinessAssembler())->assemble(
+            $publication,
+            $quality,
+            true,
+            is_array($projection['instanceReadiness'] ?? null) ? $projection['instanceReadiness'] : null,
+            (string) ($projection['readinessProfile'] ?? 'default'),
+            is_array($projection['readinessSignals'] ?? null) ? $projection['readinessSignals'] : []
+        );
         $decision = $this->seoPolicy->decide([
             'resourceType' => $resourceType,
             'resourceId' => $resourceId,
@@ -138,14 +158,16 @@ final class PublicSeoEnvelopeService
             'requestedSlug' => $projection['requestedSlug'] ?? '',
             'canonicalSlug' => $projection['canonicalSlug'] ?? '',
             'canonicalEnvironment' => $projection['canonicalEnvironment'] ?? true,
-            'instanceReadiness' => $projection['instanceReadiness'] ?? null,
+            'instanceReadiness' => $instanceReadiness,
             'qualityAffectsIndexability' => $projection['qualityAffectsIndexability'] ?? true,
+            'replacementTarget' => $projection['replacementTarget'] ?? '',
         ]);
 
         return [
             'publicationDecision' => $this->publicPublicationDecision($publication),
             'seoDecision' => $decision,
             'seoFacts' => $facts,
+            'instanceReadiness' => $instanceReadiness,
         ];
     }
 
@@ -242,6 +264,11 @@ final class PublicSeoEnvelopeService
                 'breadcrumbs' => [],
             ],
             'qualityEvidence' => $evidence,
+            'readinessProfile' => 'question',
+            'readinessSignals' => [
+                'entityExists' => (int) $id > 0,
+                'hasDefinition' => trim(strip_tags($statement)) !== '',
+            ],
         ];
     }
 
@@ -280,6 +307,14 @@ final class PublicSeoEnvelopeService
                     || $this->taxonomyNames($payload['roles'] ?? []) !== [],
                 'officialFileCount' => count($files),
                 'publicQuestionCount' => $questionCount,
+            ],
+            'readinessProfile' => 'exam',
+            'readinessSignals' => [
+                'entityExists' => (int) $id > 0,
+                'validSlug' => preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', (string) ($payload['slug'] ?? '')) === 1
+                    && strlen((string) ($payload['slug'] ?? '')) <= 190,
+                'hasDefinition' => trim((string) ($payload['title'] ?? $payload['name'] ?? '')) !== '',
+                'notArchived' => empty($payload['archivedAt'] ?? $payload['archived_at'] ?? null),
             ],
         ];
     }

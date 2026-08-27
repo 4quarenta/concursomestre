@@ -24,6 +24,8 @@ final class SeoFactsAssembler
             'taxonomy' => $this->taxonomy($publicData),
             'board' => $this->board($publicData),
             'law' => $this->law($publicData),
+            'contest' => $this->contest($publicData),
+            'article' => $this->article($publicData),
             default => throw new InvalidArgumentException('SeoFactsAssembler nao suporta este recurso no Checkpoint 2.'),
         };
 
@@ -146,6 +148,46 @@ final class SeoFactsAssembler
                 'identifier' => $this->nullableText($data['identifier'] ?? null, 190),
                 'jurisdiction' => $this->nullableText($data['jurisdiction'] ?? null, 190),
                 'articleCount' => $this->nonNegativeInt($data['articleCount'] ?? 0),
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $data
+     *  @return array<string, mixed>
+     */
+    private function contest(array $data): array
+    {
+        return $this->base('contest', $data, $this->requiredName($data, 'Concurso')) + [
+            'content' => [
+                'publicDescription' => $this->excerpt($data['publicDescription'] ?? '', 1200),
+                'summaryExcerpt' => $this->excerpt($data['summaryExcerpt'] ?? '', 1200),
+            ],
+            'contest' => [
+                'organizationNames' => $this->textList($data['organizationNames'] ?? [], 190),
+                'roleNames' => $this->textList($data['roleNames'] ?? [], 190),
+                'locationNames' => $this->textList($data['locationNames'] ?? [], 190),
+                'year' => $this->year($data['year'] ?? null),
+                'statusLabel' => $this->nullableText($data['statusLabel'] ?? $data['status'] ?? null, 100),
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $data
+     *  @return array<string, mixed>
+     */
+    private function article(array $data): array
+    {
+        $headline = $this->requiredName($data, 'Conteudo');
+        return $this->base('article', $data, $headline) + [
+            'content' => [
+                'headline' => $this->truncate($headline, 300),
+                'excerpt' => $this->excerpt($data['excerpt'] ?? '', 1200),
+                'publicDescription' => $this->excerpt($data['publicDescription'] ?? '', 1200),
+            ],
+            'article' => [
+                'authorName' => $this->nullableText($data['authorName'] ?? null, 190),
+                'categoryNames' => $this->textList($data['categoryNames'] ?? [], 190),
+                'tagNames' => $this->textList($data['tagNames'] ?? [], 190),
             ],
         ];
     }

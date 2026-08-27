@@ -95,8 +95,18 @@ try {
     $assert(str_contains($service, "['materials', 'marketplace']") && str_contains($service, 'validSlug'), 'API aceita escopo ou slug arbitrario.');
     $assert(!preg_match('/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE|CREATE)\b/i', $reporter), 'Reporter possui comando de escrita.');
     $assert(str_contains($reporterScript, "new Database('read')") && str_contains($reporterScript, 'isUsingReplica'), 'Reporter nao exige DB_READ dedicado.');
-    $assert(str_contains($sitemap, "sprintf('materials-%05d.xml'") && str_contains($sitemap, '$routes->materialDetail($slug)'), 'Sitemap Material nao e readiness-aware/loteado.');
-    $assert(str_contains($sitemap, 'attached_material_id = materials.id') && str_contains($sitemap, "rights_status = 'approved'"), 'Sitemap inclui Material sem asset/direitos.');
+    $assert(str_contains($sitemap, "sprintf('materials-%05d.xml'")
+        && str_contains($sitemap, "'material_detail'")
+        && str_contains($sitemap, "'readinessProfile' => 'material'"), 'Sitemap Material nao usa autoridade compartilhada de readiness em lotes.');
+    $assert(str_contains($sitemap, 'attached_material_id = materials.id')
+        && str_contains($sitemap, 'PublicMaterialReadiness::publicationInput($row)')
+        && str_contains($sitemap, 'PublicMaterialReadiness::profileSignals($row)'), 'Sitemap nao usa o adaptador factual compartilhado de Material.');
+    $materialReadinessSource = file_get_contents($root . '/modules/materials/public/PublicMaterialReadiness.php');
+    $assert(is_string($materialReadinessSource)
+        && str_contains($materialReadinessSource, 'assemblePublicEntity(')
+        && str_contains($materialReadinessSource, "'material',")
+        && !str_contains($materialReadinessSource, "['reasonCodes'][]")
+        && !str_contains($materialReadinessSource, "['status'] ="), 'Wrapper de Material ainda altera readiness depois da autoridade compartilhada.');
 
     $families = [];
     foreach ($productionMap['families'] ?? [] as $family) $families[(string) ($family['familyId'] ?? '')] = $family;

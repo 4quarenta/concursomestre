@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
 
 /**
  * Consolida taxonomias lidas pela extensao Gran no navegador.
@@ -331,6 +332,7 @@ final class AdminGranTaxonomySyncService
      */
     public function syncChunk(string $kind, array $granResponse): array
     {
+        StaticSitemapMutationInvalidator::invalidate('FILTER_IMPORT_MUTATION');
         $kind = strtolower(trim($kind));
         $config = self::KINDS[$kind] ?? null;
         if ($config === null) {
@@ -811,6 +813,7 @@ final class AdminGranTaxonomySyncService
      */
     public function syncMissingSubjectRoots(array $granResponses, array $requestedRootExternalIds): array
     {
+        StaticSitemapMutationInvalidator::invalidate('FILTER_IMPORT_MUTATION');
         if ($granResponses === [] || count($granResponses) > 500) {
             throw new InvalidArgumentException('Lote do catalogo de assuntos invalido.');
         }
@@ -895,6 +898,7 @@ final class AdminGranTaxonomySyncService
      */
     public function syncMissingSubjectHierarchyNodes(array $granResponses, array $requestedExternalIds): array
     {
+        StaticSitemapMutationInvalidator::invalidate('FILTER_IMPORT_MUTATION');
         if ($granResponses === [] || count($granResponses) > 500) {
             throw new InvalidArgumentException('Lote da hierarquia pendente invalido.');
         }
@@ -1090,6 +1094,7 @@ final class AdminGranTaxonomySyncService
     /** @return array{resolved:int,pending:int,total:int} */
     public function finalizeSync(): array
     {
+        StaticSitemapMutationInvalidator::invalidate('FILTER_HIERARCHY_MUTATION');
         $rows = $this->db->query(
             "SELECT id, source_external_id, source_parent_external_id, source_root_external_id,
                     taxonomy_level, meta_materia

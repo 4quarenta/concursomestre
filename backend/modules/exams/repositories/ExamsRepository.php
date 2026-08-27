@@ -12,6 +12,7 @@
 */
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
 
 class ExamsRepository
 {
@@ -352,6 +353,7 @@ class ExamsRepository
 
     public function save(array $payload, string $userId): array
     {
+        StaticSitemapMutationInvalidator::invalidate('EXAM_CONTENT_MUTATION');
         $this->ensureSchema();
         $startedTransaction = !$this->db->inTransaction();
 
@@ -451,6 +453,7 @@ class ExamsRepository
 
     public function archive(int $id): void
     {
+        StaticSitemapMutationInvalidator::invalidate('EXAM_CONTENT_MUTATION');
         $this->ensureSchema();
         $stmt = $this->db->prepare("UPDATE provas SET archived_at = NOW(), status_editorial = 'archived' WHERE id = :id");
         $stmt->execute([':id' => $id]);

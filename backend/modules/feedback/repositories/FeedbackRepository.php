@@ -246,8 +246,6 @@ class FeedbackRepository
      */
     public function listPublishedTestimonials(int $limit = 9): array
     {
-        $this->ensureFeedbackSchema();
-
         $stmt = $this->db->prepare(
             "SELECT
                 f.id,

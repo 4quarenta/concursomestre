@@ -11,6 +11,16 @@ declare(strict_types=1);
  */
 final class AnalyticsTrackingAvailability
 {
+    public static function shouldDiscardForPrelaunchZeroState(string $launchMode, bool $canonicalDatasetEmpty): bool
+    {
+        $normalized = strtoupper(trim($launchMode));
+        if (!in_array($normalized, ['PRELAUNCH', 'GO_CANDIDATE', 'PRODUCTION'], true)) {
+            $normalized = 'PRELAUNCH';
+        }
+
+        return $normalized === 'PRELAUNCH' && $canonicalDatasetEmpty;
+    }
+
     public static function shouldDiscardForUnavailableRateLimit(Throwable $error): bool
     {
         return $error instanceof RuntimeException

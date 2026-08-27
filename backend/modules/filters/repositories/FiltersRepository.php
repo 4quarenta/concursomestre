@@ -17,6 +17,7 @@
  * @since 1.0.0
  */
 require_once __DIR__ . '/../../../shared/runtime/RuntimeStoreFactory.php';
+require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
 
 class FiltersRepository
 {
@@ -1143,6 +1144,7 @@ class FiltersRepository
      */
     public function update(array $payload): void
     {
+        StaticSitemapMutationInvalidator::invalidate('FILTER_CONTENT_MUTATION');
         $ownsTransaction = !$this->db->inTransaction();
         if ($ownsTransaction) {
             $this->db->beginTransaction();
@@ -1201,6 +1203,7 @@ class FiltersRepository
      */
     public function create(array $payload): int
     {
+        StaticSitemapMutationInvalidator::invalidate('FILTER_CONTENT_MUTATION');
         $ownsTransaction = !$this->db->inTransaction();
         if ($ownsTransaction) {
             $this->db->beginTransaction();
@@ -1269,6 +1272,8 @@ class FiltersRepository
         if ($ids === []) {
             return [];
         }
+
+        StaticSitemapMutationInvalidator::invalidate('FILTER_CONTENT_MUTATION');
 
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $ownsTransaction = !$this->db->inTransaction();

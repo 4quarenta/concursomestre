@@ -14,36 +14,54 @@ require_once __DIR__ . '/../../modules/seo/launch/SeoProductionPageMap.php';
 require_once __DIR__ . '/../../modules/seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../modules/seo/services/SeoSlugService.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticBlogSitemapGenerator.php';
+require_once __DIR__ . '/../../modules/seo/sitemaps/AuthoritativeSitemapEligibilityService.php';
+require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapArtifactState.php';
+require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapLogicalDataset.php';
+require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapReleaseManifest.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapPublisher.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapValidator.php';
+require_once __DIR__ . '/../../modules/materials/public/PublicMaterialReadiness.php';
+require_once __DIR__ . '/../../modules/simulations/public/PublicSimulationReadinessValidator.php';
 
 $launchMode = SeoLaunchMode::fromEnvironment();
 $simulation = filter_var(getenv('SEO_SITEMAP_SIMULATION') ?: '0', FILTER_VALIDATE_BOOL);
+$fingerprintOnly = filter_var(getenv('SITEMAP_FINGERPRINT_ONLY') ?: '0', FILTER_VALIDATE_BOOL);
 $runtimeEnvironment = new SeoRuntimeEnvironment();
 $environmentDecision = $runtimeEnvironment->evaluate($launchMode);
-if (!$simulation && ($environmentDecision['sitemapPublicationAllowed'] ?? false) !== true) {
-    fwrite(STDOUT, "Sitemap publication skipped: SEO_LAUNCH_MODE={$launchMode}.\n");
+$productionOutputDir = trim((string) (getenv('SITEMAP_OUTPUT_DIR') ?: dirname(__DIR__, 2) . '/storage/sitemaps'));
+$productionPublisher = new StaticSitemapPublisher($productionOutputDir);
+$productionState = new StaticSitemapArtifactState($productionOutputDir);
+if (!$simulation && !$fingerprintOnly && ($environmentDecision['sitemapPublicationAllowed'] ?? false) !== true) {
+    $productionState->invalidate('PUBLICATION_NOT_ALLOWED', ['launchMode' => $launchMode]);
+    $withdrawn = $productionPublisher->withdraw();
+    fwrite(STDOUT, json_encode([
+        'status' => 'withdrawn',
+        'launchMode' => $launchMode,
+        'publicationAllowed' => false,
+        'previousArtifactWithdrawn' => $withdrawn,
+    ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL);
     exit(0);
 }
-if ($simulation && $launchMode !== SeoLaunchMode::GO_CANDIDATE) {
+if ($simulation && !$fingerprintOnly && $launchMode !== SeoLaunchMode::GO_CANDIDATE) {
     throw new RuntimeException('Sitemap simulation is only allowed in GO_CANDIDATE.');
 }
 
 $startedAt = microtime(true);
 $db = (new Database('read'))->getConnection();
 $baseUrl = $runtimeEnvironment->canonicalOrigin();
-$productionOutputDir = trim((string) (getenv('SITEMAP_OUTPUT_DIR') ?: dirname(__DIR__, 2) . '/storage/sitemaps'));
 $simulationOutputDir = trim((string) (getenv('SITEMAP_SIMULATION_OUTPUT_DIR') ?: ''));
 if ($simulation && $simulationOutputDir === '') {
     throw new RuntimeException('SITEMAP_SIMULATION_OUTPUT_DIR is required for GO_CANDIDATE simulation.');
 }
-$outputDir = $simulation ? $simulationOutputDir : $productionOutputDir;
+$outputDir = $fingerprintOnly
+    ? sys_get_temp_dir() . '/concursomestre-sitemap-fingerprint-' . getmypid()
+    : ($simulation ? $simulationOutputDir : $productionOutputDir);
 if ($simulation && realpath(dirname($outputDir)) === realpath(dirname($productionOutputDir))
     && basename($outputDir) === basename($productionOutputDir)) {
     throw new RuntimeException('Sitemap simulation cannot target the served production directory.');
 }
 $httpValidationOrigin = trim((string) (getenv('SITEMAP_VALIDATION_ORIGIN') ?: ''));
-$validateHttp = filter_var(getenv('SITEMAP_VALIDATE_HTTP') ?: '0', FILTER_VALIDATE_BOOL);
+$httpValidationRequired = !$simulation && !$fingerprintOnly;
 $batchSize = $runtimeEnvironment->maxUrlsPerChild();
 $generatedAt = gmdate('c');
 $queryCount = 0;
@@ -58,11 +76,12 @@ if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
 }
 
 $publisher = new StaticSitemapPublisher($outputDir);
+$artifactState = $simulation ? null : $productionState;
 $stage = $publisher->createStagingDirectory();
 
 try {
-    if ($validateHttp && $httpValidationOrigin === '') {
-        throw new RuntimeException('SITEMAP_VALIDATION_ORIGIN e obrigatoria quando SITEMAP_VALIDATE_HTTP estiver ativo.');
+    if ($httpValidationRequired && $httpValidationOrigin === '') {
+        throw new RuntimeException('SITEMAP_VALIDATION_ORIGIN e obrigatoria para qualquer promotion publica.');
     }
 
     $routes = new PublicRouteBuilder();
@@ -85,6 +104,8 @@ try {
         $assertSitemapFamily($dynamicFamilyId);
     }
     $slugger = new SeoSlugService();
+    $authoritativeEligibility = new AuthoritativeSitemapEligibilityService();
+    $logicalDataset = new StaticSitemapLogicalDataset();
     $escape = static fn (string $value): string => htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     $safeDate = static function (mixed $value): ?string {
         if ($value === null || trim((string) $value) === '') {
@@ -93,7 +114,8 @@ try {
         $timestamp = strtotime((string) $value);
         return $timestamp === false ? null : gmdate('Y-m-d', $timestamp);
     };
-    $write = static function (string $path, string $contents): void {
+    $write = static function (string $path, string $contents) use ($fingerprintOnly): void {
+        if ($fingerprintOnly) return;
         if (file_put_contents($path, $contents, LOCK_EX) === false) {
             throw new RuntimeException('Falha ao materializar ' . basename($path));
         }
@@ -116,6 +138,54 @@ try {
     $maxLastmod = static function (array $entries): ?string {
         $dates = array_values(array_filter(array_column($entries, 'lastmod'), static fn ($date): bool => is_string($date) && $date !== ''));
         return $dates === [] ? null : max($dates);
+    };
+    $eligibleEntry = static function (
+        string $familyId,
+        string $resourceType,
+        int|string $resourceId,
+        string $canonicalSlug,
+        array $routeParameters,
+        mixed $lastModified,
+        array $publicData = [],
+        array $signals = []
+    ) use ($authoritativeEligibility, $logicalDataset, $safeDate): ?array {
+        $displayName = trim((string) ($publicData['displayName'] ?? ''));
+        if ($displayName === '') {
+            $displayName = ucfirst($resourceType) . ' ' . (string) $resourceId;
+        }
+        $record = $authoritativeEligibility->eligibleRecord([
+            'resourceType' => $resourceType,
+            'resourceId' => (string) $resourceId,
+            'existence' => $signals['existence'] ?? 'exists',
+            'replacementTarget' => $signals['replacementTarget'] ?? '',
+            'publicationInput' => array_merge([
+                'status' => 'published',
+                'visibility' => 'public',
+                'provenanceStatus' => 'verified',
+                'rightsStatus' => 'allowed',
+            ], is_array($signals['publicationInput'] ?? null) ? $signals['publicationInput'] : []),
+            'publicData' => array_merge($publicData, [
+                'id' => (string) $resourceId,
+                'displayName' => $displayName,
+                'updatedAt' => is_scalar($lastModified) ? (string) $lastModified : null,
+            ]),
+            'qualityEvidence' => [],
+            'routeFamily' => $familyId,
+            'routeParameters' => $routeParameters,
+            'requestedSlug' => $canonicalSlug,
+            'canonicalSlug' => $canonicalSlug,
+            'canonicalEnvironment' => true,
+            'readinessProfile' => (string) ($signals['readinessProfile'] ?? 'default'),
+            'readinessSignals' => is_array($signals['readinessSignals'] ?? null)
+                ? $signals['readinessSignals']
+                : [],
+            'qualityAffectsIndexability' => false,
+        ]);
+        if ($record === null) {
+            return null;
+        }
+        $logicalDataset->add($record);
+        return ['loc' => (string) $record['canonicalUrl'], 'lastmod' => $safeDate($record['lastModified'] ?? null)];
     };
     $buildIndex = static function (array $files) use ($baseUrl, $escape): string {
         $lines = [
@@ -171,6 +241,13 @@ try {
             'loc' => $baseUrl . $path,
             'lastmod' => null,
         ];
+        $logicalDataset->add([
+            'family' => $candidate['familyId'],
+            'identity' => 'page:' . $candidate['familyId'],
+            'canonicalUrl' => $baseUrl . $path,
+            'lastModified' => null,
+            'policyVersion' => 'seo-production-page-map.v1',
+        ]);
     }
     $filename = 'institutional-00001.xml';
     $write($stage . '/' . $filename, $buildUrlSet($institutionalEntries));
@@ -184,13 +261,10 @@ try {
         $stmt = $db->prepare(
             "SELECT id,
                     COALESCE(NULLIF(enunciado_clean, ''), NULLIF(enunciado, ''), CONCAT('Questao ', id)) AS label,
-                    COALESCE(updated_at, published_at, created_at) AS last_modified
+                    COALESCE(updated_at, published_at, created_at) AS last_modified,
+                    publish_status, visibility_status, published_sort_at
              FROM questions
              WHERE id > :cursor
-               AND publish_status IN ('published', 'scheduled')
-               AND visibility_status = 'public'
-               AND published_sort_at IS NOT NULL
-               AND published_sort_at <= NOW()
              ORDER BY id
              LIMIT {$batchSize}"
         );
@@ -206,10 +280,28 @@ try {
                 continue;
             }
             $slug = $slugger->slug((string) ($row['label'] ?? ''), 'questao', $id);
-            $entries[] = [
-                'loc' => $baseUrl . $routes->questionDetail($id, $slug),
-                'lastmod' => $safeDate($row['last_modified'] ?? null),
-            ];
+            $publishedSortAt = trim((string) ($row['published_sort_at'] ?? ''));
+            $entry = $eligibleEntry(
+                'question_detail',
+                'question',
+                $id,
+                $slug,
+                ['id' => (string) $id, 'slug' => $slug],
+                $row['last_modified'] ?? null,
+                ['displayName' => (string) ($row['label'] ?? '')],
+                ['publicationInput' => [
+                    'status' => (string) ($row['publish_status'] ?? 'unpublished'),
+                    'visibility' => (string) ($row['visibility_status'] ?? 'restricted'),
+                    'scheduledAt' => $publishedSortAt !== '' ? $publishedSortAt : null,
+                ],
+                'readinessProfile' => 'question',
+                'readinessSignals' => [
+                    'entityExists' => true,
+                    'hasDefinition' => trim((string) ($row['label'] ?? '')) !== '',
+                ],
+                ]
+            );
+            if ($entry !== null) $entries[] = $entry;
             $cursor = $id;
         }
         if ($entries !== []) {
@@ -229,26 +321,20 @@ try {
     while (true) {
         $queryCount++;
         $stmt = $db->prepare(
-            "SELECT id, slug, updated_at AS last_modified
+            "SELECT id, slug, title, publication_status, visibility_status, archived_at, scheduled_at,
+                    updated_at AS last_modified,
+                    EXISTS (
+                       SELECT 1 FROM contest_organizations co
+                       INNER JOIN filters organization ON organization.id = co.organization_filter_id
+                           AND organization.type = 'orgao'
+                           AND COALESCE(organization.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+                           AND TRIM(organization.name) <> ''
+                           AND BINARY organization.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                           AND CHAR_LENGTH(organization.slug) <= 190
+                       WHERE co.contest_id = contests.id
+                    ) AS has_ready_organization
              FROM contests
              WHERE id > :cursor
-               AND publication_status = 'published'
-               AND visibility_status = 'public'
-               AND archived_at IS NULL
-               AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-               AND TRIM(title) <> ''
-               AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
-               AND CHAR_LENGTH(slug) <= 190
-               AND EXISTS (
-                   SELECT 1 FROM contest_organizations co
-                   INNER JOIN filters organization ON organization.id = co.organization_filter_id
-                       AND organization.type = 'orgao'
-                       AND COALESCE(organization.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
-                       AND TRIM(organization.name) <> ''
-                       AND BINARY organization.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
-                       AND CHAR_LENGTH(organization.slug) <= 190
-                   WHERE co.contest_id = contests.id
-               )
              ORDER BY id
              LIMIT {$batchSize}"
         );
@@ -261,7 +347,26 @@ try {
             $slug = trim((string) ($row['slug'] ?? ''));
             $contestCursor = max($contestCursor, $id);
             if ($id <= 0 || $slug === '') continue;
-            $entries[] = ['loc' => $baseUrl . $routes->contestDetail($slug), 'lastmod' => $safeDate($row['last_modified'] ?? null)];
+            $entry = $eligibleEntry(
+                'contest_detail', 'contest', $id, $slug, ['slug' => $slug], $row['last_modified'] ?? null,
+                ['displayName' => (string) ($row['title'] ?? '')],
+                [
+                    'publicationInput' => [
+                        'status' => (string) ($row['publication_status'] ?? 'unpublished'),
+                        'visibility' => (string) ($row['visibility_status'] ?? 'restricted'),
+                        'scheduledAt' => is_scalar($row['scheduled_at'] ?? null) ? (string) $row['scheduled_at'] : null,
+                    ],
+                    'readinessProfile' => 'contest',
+                    'readinessSignals' => [
+                        'entityExists' => true,
+                        'validSlug' => preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) === 1 && strlen($slug) <= 190,
+                        'hasDefinition' => trim((string) ($row['title'] ?? '')) !== '',
+                        'notArchived' => empty($row['archived_at']),
+                        'hasOrganization' => (int) ($row['has_ready_organization'] ?? 0) === 1,
+                    ],
+                ]
+            );
+            if ($entry !== null) $entries[] = $entry;
         }
         if ($entries !== []) {
             $contestPage++;
@@ -278,25 +383,19 @@ try {
     while (true) {
         $queryCount++;
         $stmt = $db->prepare(
-            "SELECT id, slug, updated_at AS last_modified
+            "SELECT id, slug, title, publication_status, visibility_status, archived_at, scheduled_at,
+                    updated_at AS last_modified,
+                    EXISTS (
+                       SELECT 1 FROM public_simulation_questions ready_sq
+                       INNER JOIN questions ready_q ON ready_q.id = ready_sq.question_id
+                           AND ready_q.publish_status IN ('published', 'scheduled')
+                           AND ready_q.visibility_status = 'public'
+                           AND ready_q.published_sort_at IS NOT NULL
+                           AND ready_q.published_sort_at <= NOW()
+                       WHERE ready_sq.simulation_id = public_simulations.id
+                    ) AS has_ready_question
              FROM public_simulations
              WHERE id > :cursor
-               AND publication_status = 'published'
-               AND visibility_status = 'public'
-               AND archived_at IS NULL
-               AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-               AND TRIM(title) <> ''
-               AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
-               AND CHAR_LENGTH(slug) <= 190
-               AND EXISTS (
-                   SELECT 1 FROM public_simulation_questions ready_sq
-                   INNER JOIN questions ready_q ON ready_q.id = ready_sq.question_id
-                       AND ready_q.publish_status IN ('published', 'scheduled')
-                       AND ready_q.visibility_status = 'public'
-                       AND ready_q.published_sort_at IS NOT NULL
-                       AND ready_q.published_sort_at <= NOW()
-                   WHERE ready_sq.simulation_id = public_simulations.id
-               )
              ORDER BY id
              LIMIT {$batchSize}"
         );
@@ -309,7 +408,12 @@ try {
             $slug = trim((string) ($row['slug'] ?? ''));
             $simulationCursor = max($simulationCursor, $id);
             if ($id <= 0 || $slug === '') continue;
-            $entries[] = ['loc' => $baseUrl . $routes->simulationDetail($slug), 'lastmod' => $safeDate($row['last_modified'] ?? null)];
+            $entry = $eligibleEntry('simulation_detail', 'article', $id, $slug, ['slug' => $slug], $row['last_modified'] ?? null, ['displayName' => (string) ($row['title'] ?? '')], [
+                'publicationInput' => PublicSimulationReadinessValidator::publicationInput($row),
+                'readinessProfile' => 'simulation',
+                'readinessSignals' => PublicSimulationReadinessValidator::profileSignals($row),
+            ]);
+            if ($entry !== null) $entries[] = $entry;
         }
         if ($entries !== []) {
             $simulationPage++;
@@ -326,24 +430,11 @@ try {
     while (true) {
         $queryCount++;
         $stmt = $db->prepare(
-            "SELECT id, slug, COALESCE(updated_at, published_at, created_at) AS last_modified
+            "SELECT id, slug, title, status, publication_status, visibility_status, rights_status,
+                    archived_at, scheduled_at, COALESCE(updated_at, published_at, created_at) AS last_modified,
+                    EXISTS (SELECT 1 FROM material_uploads ready_upload WHERE ready_upload.attached_material_id = materials.id AND ready_upload.status = 'attached') AS has_ready_upload
                FROM materials
               WHERE id > :cursor
-                AND status = 'approved'
-                AND publication_status = 'published'
-                AND visibility_status = 'public'
-                AND rights_status = 'approved'
-                AND archived_at IS NULL
-                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-                AND TRIM(title) <> ''
-                AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
-                AND CHAR_LENGTH(slug) <= 190
-                AND EXISTS (
-                    SELECT 1
-                      FROM material_uploads ready_upload
-                     WHERE ready_upload.attached_material_id = materials.id
-                       AND ready_upload.status = 'attached'
-                )
               ORDER BY id
               LIMIT {$batchSize}"
         );
@@ -356,10 +447,12 @@ try {
             $slug = trim((string) ($row['slug'] ?? ''));
             $materialCursor = max($materialCursor, $id);
             if ($id <= 0 || $slug === '') continue;
-            $entries[] = [
-                'loc' => $baseUrl . $routes->materialDetail($slug),
-                'lastmod' => $safeDate($row['last_modified'] ?? null),
-            ];
+            $entry = $eligibleEntry('material_detail', 'article', $id, $slug, ['slug' => $slug], $row['last_modified'] ?? null, ['displayName' => (string) ($row['title'] ?? '')], [
+                'publicationInput' => PublicMaterialReadiness::publicationInput($row),
+                'readinessProfile' => 'material',
+                'readinessSignals' => PublicMaterialReadiness::profileSignals($row),
+            ]);
+            if ($entry !== null) $entries[] = $entry;
         }
         if ($entries !== []) {
             $materialPage++;
@@ -401,10 +494,8 @@ try {
             if ($id <= 0 || $slug === '') {
                 continue;
             }
-            $entries[] = [
-                'loc' => $baseUrl . '/lei-comentada/' . rawurlencode($slug),
-                'lastmod' => $safeDate($row['last_modified'] ?? null),
-            ];
+            $entry = $eligibleEntry('law_detail', 'law', $id, $slug, ['slug' => $slug], $row['last_modified'] ?? null, ['identifier' => (string) $id]);
+            if ($entry !== null) $entries[] = $entry;
         }
         if ($entries !== []) {
             $lawPage++;
@@ -450,10 +541,15 @@ try {
             $articleSlug = trim((string) ($row['article_slug'] ?? ''));
             $lawArticleCursor = max($lawArticleCursor, $id);
             if ($id <= 0 || $lawSlug === '' || $articleSlug === '') continue;
-            $entries[] = [
-                'loc' => $baseUrl . $routes->lawArticleDetail($lawSlug, $articleSlug),
-                'lastmod' => $safeDate($row['last_modified'] ?? null),
-            ];
+            $entry = $eligibleEntry(
+                'law_article_detail',
+                'article',
+                $id,
+                $articleSlug,
+                ['lawSlug' => $lawSlug, 'articleSlug' => $articleSlug, 'slug' => $articleSlug],
+                $row['last_modified'] ?? null
+            );
+            if ($entry !== null) $entries[] = $entry;
         }
         if ($entries !== []) {
             $lawArticlePage++;
@@ -471,17 +567,10 @@ try {
     while (true) {
         $queryCount++;
         $stmt = $db->prepare(
-            "SELECT id, slug, COALESCE(updated_at, created_at) AS last_modified
+            "SELECT id, slug, nome, archived_at, status_editorial, visibility_status, scheduled_at,
+                    COALESCE(updated_at, created_at) AS last_modified
              FROM provas
              WHERE id > :cursor
-               AND archived_at IS NULL
-               AND status_editorial = 'published'
-               AND visibility_status = 'public'
-               AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-               AND slug IS NOT NULL
-               AND slug <> ''
-               AND BINARY slug REGEXP '^[a-z0-9-]+$'
-               AND CHAR_LENGTH(slug) <= 190
              ORDER BY id
              LIMIT {$batchSize}"
         );
@@ -503,7 +592,17 @@ try {
                 continue;
             }
             $seenExamUrls[$examUrl] = true;
-            $entries[] = ['loc' => $examUrl, 'lastmod' => $safeDate($row['last_modified'] ?? null)];
+            $entry = $eligibleEntry('exam_detail', 'exam', $id, $slug, ['slug' => $slug], $row['last_modified'] ?? null, ['displayName' => (string) ($row['nome'] ?? '')], [
+                'publicationInput' => ['status' => (string) ($row['status_editorial'] ?? 'unpublished'), 'visibility' => (string) ($row['visibility_status'] ?? 'restricted'), 'scheduledAt' => $row['scheduled_at'] ?? null],
+                'readinessProfile' => 'exam',
+                'readinessSignals' => [
+                    'entityExists' => true,
+                    'validSlug' => preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) === 1 && strlen($slug) <= 190,
+                    'hasDefinition' => trim((string) ($row['nome'] ?? '')) !== '',
+                    'notArchived' => empty($row['archived_at']),
+                ],
+            ]);
+            if ($entry !== null) $entries[] = $entry;
         }
         if ($entries !== []) {
             $examPage++;
@@ -530,6 +629,8 @@ try {
     $appendFilterSection = static function (
         string $section,
         string $filenamePrefix,
+        string $familyId,
+        string $taxonomyKind,
         string $sql,
         callable $pathBuilder
     ) use (
@@ -541,7 +642,8 @@ try {
         $write,
         &$files,
         &$counts,
-        &$queryCount
+        &$queryCount,
+        $eligibleEntry
     ): void {
         $cursor = 0;
         $page = 0;
@@ -557,7 +659,16 @@ try {
                 $slug = trim((string) ($row['slug'] ?? ''));
                 $cursor = max($cursor, $id);
                 if ($id <= 0 || $slug === '') continue;
-                $entries[] = ['loc' => $baseUrl . $pathBuilder($slug), 'lastmod' => null];
+                $entry = $eligibleEntry(
+                    $familyId,
+                    $taxonomyKind === 'board' ? 'board' : 'taxonomy',
+                    $id,
+                    $slug,
+                    ['slug' => $slug],
+                    null,
+                    ['taxonomyKind' => $taxonomyKind]
+                );
+                if ($entry !== null) $entries[] = $entry;
             }
             if ($entries !== []) {
                 $page++;
@@ -573,6 +684,8 @@ try {
     $appendFilterSection(
         'boards',
         'boards',
+        'board_detail',
+        'board',
         "SELECT f.id, f.slug
            FROM filters f
           WHERE f.id > :cursor
@@ -588,6 +701,8 @@ try {
     $appendFilterSection(
         'organizations',
         'organizations',
+        'organization_detail',
+        'organization',
         "SELECT f.id, f.slug
            FROM filters f
           WHERE f.id > :cursor
@@ -603,6 +718,8 @@ try {
     $appendFilterSection(
         'disciplines',
         'disciplines',
+        'discipline_detail',
+        'discipline',
         "SELECT f.id, f.slug
            FROM filters f
           WHERE f.id > :cursor
@@ -620,6 +737,8 @@ try {
     $appendFilterSection(
         'topics',
         'topics',
+        'topic_detail',
+        'topic',
         "SELECT f.id, f.slug
            FROM filters f
            INNER JOIN filters root
@@ -645,6 +764,8 @@ try {
     $appendFilterSection(
         'subjects',
         'subjects',
+        'subject_detail',
+        'subject',
         "SELECT f.id, f.slug
            FROM filters f
            INNER JOIN filters subtopic
@@ -718,7 +839,10 @@ try {
             $path = ($row['type'] ?? '') === 'carreira'
                 ? $routes->careerDetail($slug)
                 : $routes->positionDetail($slug);
-            $entries[] = ['loc' => $baseUrl . $path, 'lastmod' => null];
+            $kind = ($row['type'] ?? '') === 'carreira' ? 'category' : 'role';
+            $familyId = ($row['type'] ?? '') === 'carreira' ? 'career_detail' : 'position_detail';
+            $entry = $eligibleEntry($familyId, 'taxonomy', $id, $slug, ['slug' => $slug], null, ['taxonomyKind' => $kind]);
+            if ($entry !== null) $entries[] = $entry;
         }
         if ($entries !== []) {
             $professionalPage++;
@@ -730,23 +854,58 @@ try {
         if (count($rows) < $batchSize) break;
     }
 
-    $blogGenerator = new StaticBlogSitemapGenerator($db, $baseUrl, $stage, $batchSize);
+    $blogGenerator = new StaticBlogSitemapGenerator(
+        $db,
+        $baseUrl,
+        $stage,
+        $batchSize,
+        $authoritativeEligibility,
+        !$fingerprintOnly
+    );
     $blogResult = $blogGenerator->generate();
     $queryCount += (int) ($blogResult['queryCount'] ?? 0);
     foreach ($blogResult['filesList'] ?? [] as $blogFile) {
         if (is_array($blogFile)) $files[] = $blogFile;
     }
+    foreach ($blogResult['logicalRecords'] ?? [] as $blogRecord) {
+        if (is_array($blogRecord)) $logicalDataset->add($blogRecord);
+    }
 
-    $write($stage . '/sitemap.xml', $buildIndex($files));
-    $validator = new StaticSitemapValidator($baseUrl);
-    $validation = $validator->validateDirectory($stage, $validateHttp ? $httpValidationOrigin : null);
-    $validator->assertValid($validation);
+    $eligibleDatasetFingerprint = $logicalDataset->fingerprint();
+    if ($fingerprintOnly) {
+        $publisher->discard($stage);
+        fwrite(STDOUT, json_encode([
+            'status' => 'fingerprint',
+            'logicalDatasetVersion' => StaticSitemapLogicalDataset::VERSION,
+            'eligibleDatasetFingerprint' => $eligibleDatasetFingerprint,
+            'logicalDatasetRecords' => $logicalDataset->count(),
+            'queries' => $queryCount,
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL);
+    } else {
+        $write($stage . '/sitemap.xml', $buildIndex($files));
+        $validator = new StaticSitemapValidator($baseUrl);
+        $validation = $httpValidationRequired
+            ? $validator->validateForPromotion($stage, $httpValidationOrigin)
+            : $validator->validateDirectory($stage);
+        if (!$httpValidationRequired) $validator->assertValid($validation);
+        $manifest = StaticSitemapReleaseManifest::create($stage, $eligibleDatasetFingerprint);
+        $manifestHash = StaticSitemapReleaseManifest::write($stage, $manifest);
+        $artifactFingerprint = (string) $manifest['physicalSetFingerprint'];
 
-    $status = [
+        $status = [
         'scope' => 'static_sitemap_coverage',
         'artifactSet' => 'canonical-sitemap-index',
         'indexPolicyVersion' => 'index-policy-phase-6.v1',
         'generatedAt' => $generatedAt,
+        'artifactStateVersion' => StaticSitemapArtifactState::VERSION,
+        'logicalDatasetVersion' => StaticSitemapLogicalDataset::VERSION,
+        'logicalDatasetRecords' => $logicalDataset->count(),
+        'eligibleDatasetFingerprint' => $eligibleDatasetFingerprint,
+        'artifactFingerprint' => $artifactFingerprint,
+        'releaseManifestVersion' => StaticSitemapReleaseManifest::VERSION,
+        'releaseManifestFile' => StaticSitemapReleaseManifest::FILENAME,
+        'releaseId' => $manifest['releaseId'],
+        'manifestHash' => $manifestHash,
         'canonicalBaseUrl' => $baseUrl,
         'sitemapUrl' => $baseUrl . '/sitemap.xml',
         'robotsUrl' => $baseUrl . '/robots.txt',
@@ -771,23 +930,38 @@ try {
         ],
         'note' => 'Cobertura do artefato estatico validado. Indexacao depende de rastreamento externo.',
         'validation' => $validation,
-    ];
-    $write($stage . '/sitemap-status.json', json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
-    $publisher->promote($stage);
+        ];
+        $write($stage . '/sitemap-status.json', json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+        $publisher->promote($stage);
+        if ($artifactState !== null) {
+            $artifactState->markCurrent(
+                $eligibleDatasetFingerprint,
+                $artifactFingerprint,
+                (string) $manifest['releaseId'],
+                $manifestHash,
+                $generatedAt
+            );
+        }
 
-    fwrite(STDOUT, json_encode([
-        'status' => 'complete',
-        'outputDir' => $outputDir,
-        'counts' => $status['counts'],
-        'totalUrls' => $status['totalUrls'],
-        'files' => $status['files'],
-        'queries' => $queryCount,
-        'durationMs' => $status['durationMs'],
-        'peakMemoryBytes' => $status['peakMemoryBytes'],
-        'validation' => $validation,
-    ], JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        fwrite(STDOUT, json_encode([
+            'status' => 'complete',
+            'outputDir' => $outputDir,
+            'counts' => $status['counts'],
+            'totalUrls' => $status['totalUrls'],
+            'files' => $status['files'],
+            'queries' => $queryCount,
+            'durationMs' => $status['durationMs'],
+            'peakMemoryBytes' => $status['peakMemoryBytes'],
+            'eligibleDatasetFingerprint' => $eligibleDatasetFingerprint,
+            'validation' => $validation,
+        ], JSON_UNESCAPED_SLASHES) . PHP_EOL);
+    }
 } catch (Throwable $error) {
     $publisher->discard($stage);
+    if ($artifactState !== null) {
+        $artifactState->invalidate('GENERATION_FAILED');
+        $publisher->withdraw();
+    }
     throw $error;
 } finally {
     flock($lock, LOCK_UN);

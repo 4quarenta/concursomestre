@@ -8,6 +8,7 @@ const contest = {
   id: 1, slug: 'concurso-canonico', title: 'Concurso Canônico', description: null, isOpen: false,
   status: 'completed', year: 2025, officialUrl: null, dates: {}, organizations: [], board: null,
   positions: [], documents: [], exams: [], questions: [], questionCount: 0,
+  readiness: { status: 'READY', reasonCodes: [] },
   canonicalPath: '/concursos/concurso-canonico', breadcrumbs: [], updatedAt: null,
 } satisfies PublicContest;
 

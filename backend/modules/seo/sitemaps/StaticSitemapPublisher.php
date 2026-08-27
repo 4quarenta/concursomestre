@@ -40,11 +40,45 @@ final class StaticSitemapPublisher
         $this->promoteWithDirectorySwap($stagingDirectory);
     }
 
+    public function withdraw(): bool
+    {
+        if (!is_link($this->outputDirectory) && !file_exists($this->outputDirectory)) {
+            return false;
+        }
+
+        $withdrawn = $this->outputDirectory . '.withdrawn-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        $previousTarget = is_link($this->outputDirectory) ? readlink($this->outputDirectory) : false;
+        if (!rename($this->outputDirectory, $withdrawn)) {
+            throw new RuntimeException('Nao foi possivel retirar atomicamente o sitemap publicado.');
+        }
+
+        if (is_link($withdrawn)) {
+            if (!unlink($withdrawn)) {
+                throw new RuntimeException('Nao foi possivel remover o ponteiro retirado do sitemap.');
+            }
+            $this->removePreviousRelease($previousTarget);
+            return true;
+        }
+
+        if (!is_dir($withdrawn)) {
+            throw new RuntimeException('Artefato publicado de sitemap possui tipo inesperado.');
+        }
+        self::removeDirectory($withdrawn);
+        return true;
+    }
+
     private function promoteWithAtomicSymlink(string $stagingDirectory): void
     {
         $release = $this->outputDirectory . '.release-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (!rename($stagingDirectory, $release)) {
             throw new RuntimeException('Nao foi possivel preparar o release imutavel do sitemap.');
+        }
+
+        try {
+            self::sealDirectory($release);
+        } catch (Throwable $error) {
+            if (is_dir($release)) self::removeDirectory($release);
+            throw $error;
         }
 
         $temporaryLink = $this->outputDirectory . '.link-' . getmypid() . '-' . bin2hex(random_bytes(4));
@@ -144,6 +178,7 @@ final class StaticSitemapPublisher
 
     private static function removeDirectory(string $directory): void
     {
+        @chmod($directory, 0775);
         $items = scandir($directory);
         if ($items === false) {
             throw new RuntimeException('Nao foi possivel ler diretorio temporario de sitemap.');
@@ -155,12 +190,31 @@ final class StaticSitemapPublisher
             $path = $directory . DIRECTORY_SEPARATOR . $item;
             if (is_dir($path)) {
                 self::removeDirectory($path);
-            } elseif (!unlink($path)) {
+            } else {
+                @chmod($path, 0664);
+                if (!unlink($path)) {
                 throw new RuntimeException('Nao foi possivel remover artefato temporario de sitemap.');
+                }
             }
         }
         if (!rmdir($directory)) {
             throw new RuntimeException('Nao foi possivel remover diretorio temporario de sitemap.');
+        }
+    }
+
+    private static function sealDirectory(string $directory): void
+    {
+        foreach (scandir($directory) ?: [] as $item) {
+            if ($item === '.' || $item === '..') continue;
+            $path = $directory . DIRECTORY_SEPARATOR . $item;
+            if (is_dir($path)) {
+                self::sealDirectory($path);
+            } elseif (!chmod($path, 0444)) {
+                throw new RuntimeException('Nao foi possivel selar arquivo do release de sitemap.');
+            }
+        }
+        if (!chmod($directory, 0555)) {
+            throw new RuntimeException('Nao foi possivel selar diretorio do release de sitemap.');
         }
     }
 }

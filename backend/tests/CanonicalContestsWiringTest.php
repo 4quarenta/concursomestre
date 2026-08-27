@@ -18,8 +18,8 @@ $assert(str_contains($migration, 'CREATE TABLE IF NOT EXISTS contests'), 'Canoni
 $assert(str_contains($migration, 'publication_status') && str_contains($migration, "DEFAULT 'draft'"), 'Draft-by-default publication is required.');
 $assert(!preg_match('/\bINSERT\s+INTO|\bDELETE\s+FROM|\$db->exec\(["\']UPDATE\s/i', $migration), 'Migration must not backfill synthetic contests.');
 $assert(str_contains($repository, "publication_status = 'published'") && str_contains($repository, "visibility_status = 'public'"), 'Public repository must enforce publication.');
-$assert(str_contains($repository, 'c.slug = :slug') && str_contains($repository, 'BINARY {$alias}.slug REGEXP'), 'Canonical slug lookup must keep indexed equality plus a case-sensitive persisted-slug gate.');
-$assert(str_contains($repository, "BINARY public_org.slug REGEXP") && str_contains($repository, "BINARY p.slug REGEXP"), 'Public repository must enforce case-sensitive persisted slugs.');
+$assert(str_contains($repository, 'c.slug = :slug') && str_contains($repository, 'CAST({$alias}.slug AS BINARY) REGEXP CAST'), 'Canonical slug lookup must keep indexed equality plus a MySQL 8.4-compatible case-sensitive persisted-slug gate.');
+$assert(str_contains($repository, "CAST(public_org.slug AS BINARY) REGEXP CAST") && str_contains($repository, "CAST(p.slug AS BINARY) REGEXP CAST"), 'Public repository must enforce case-sensitive persisted slugs.');
 $assert(substr_count($repository, "NOT IN ('pending', 'internal', 'technical')") >= 4, 'Public contest relations must exclude internal taxonomies.');
 $assert(str_contains($repository, 'EXISTS (') && str_contains($repository, 'public_co.contest_id'), 'A public contest must have an explicit public organization relation.');
 $assert(str_contains($openState, "domain_status = 'registration_open'") && str_contains($openState, 'registration_end_at >= NOW()'), 'Open-contest rule must use status and dates.');
@@ -35,7 +35,7 @@ $assert(!ContestOpenState::isOpen('registration_open', '2026-08-20 00:00:00', '2
 $assert(!ContestOpenState::isOpen('cancelled', null, null, $now), 'Cancelled contests must not be open.');
 $assert(!ContestOpenState::isOpen('announced', '2026-08-01 00:00:00', '2026-08-30 00:00:00', $now), 'Dates alone must not infer open status.');
 $assert(substr_count($repository, "p.status_editorial = 'published'") >= 3, 'Exam lists and question projections must require a public exam.');
-$assert(str_contains($repository, "BINARY p.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'") && str_contains($repository, "TRIM(p.nome) <> ''"), 'Public exam links must require a valid persisted identity.');
+$assert(str_contains($repository, "CAST(p.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)") && str_contains($repository, "TRIM(p.nome) <> ''"), 'Public exam links must require a valid persisted identity.');
 $assert(str_contains($service, 'contestDetail') && str_contains($service, 'redirectSlug'), 'Canonical routes and aliases must be wired.');
 $assert(str_contains($service, "^[a-z0-9]+(?:-[a-z0-9]+)*$"), 'Contest resolver must enforce canonical slug grammar.');
 $assert(str_contains($examRepository, 'contest_organizations public_co') && str_contains($examRepository, "BINARY c.slug REGEXP"), 'Exam interlinks must require a ready canonical contest.');

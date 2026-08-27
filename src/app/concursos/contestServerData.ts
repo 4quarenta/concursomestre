@@ -19,6 +19,7 @@ export type PublicContest = {
   exams: Array<{ id: number; slug: string; title: string; year: number | null; questionCount: number; path: string }>;
   questions: Array<{ id: number; excerpt: string; path: string }>;
   questionCount: number; canonicalPath: string;
+  readiness: { status: 'READY' | 'NOT_READY' | 'NOT_APPLICABLE'; reasonCodes: string[] };
   breadcrumbs: Array<{ label: string; canonicalPath: string }>;
   updatedAt: string | null;
 };
@@ -31,6 +32,13 @@ const int = (value: unknown) => Math.max(0, Math.trunc(Number(value) || 0));
 const persistedSlug = (value: unknown): string => {
   const slug = text(value);
   return slug.length <= 190 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ? slug : '';
+};
+const readiness = (value: unknown): PublicContest['readiness'] => {
+  if (!record(value)) return { status: 'NOT_READY', reasonCodes: ['instance_readiness.not_evaluated'] };
+  const status = ['READY', 'NOT_READY', 'NOT_APPLICABLE'].includes(text(value.status))
+    ? text(value.status) as PublicContest['readiness']['status'] : 'NOT_READY';
+  const reasonCodes = Array.isArray(value.reasonCodes) ? value.reasonCodes.map(text).filter(Boolean) : [];
+  return { status, reasonCodes };
 };
 const unwrap = (value: unknown): unknown => record(value) && 'data' in value ? value.data : value;
 const safeUrl = (value: unknown): string | null => {
@@ -79,7 +87,7 @@ export const parsePublicContest = (value: unknown): PublicContest | { redirectSl
     documents: list(value.documents, (item) => { const url = safeUrl(item.url); return int(item.id) && text(item.title) && url ? { id: int(item.id), type: text(item.type), title: text(item.title), url, publishedAt: nullableText(item.publishedAt) } : null; }),
     exams: list(value.exams, (item) => { const exam = { id: int(item.id), slug: persistedSlug(item.slug), title: text(item.title), year: item.year == null ? null : int(item.year), questionCount: int(item.questionCount), path: text(item.path) }; return exam.id && exam.slug && exam.title && exam.path === publicRoutes.exams.detail(exam.slug) ? exam : null; }),
     questions: list(value.questions, (item) => { const question = { id: int(item.id), excerpt: text(item.excerpt), path: text(item.path) }; return question.id && question.path.startsWith(`/questoes/${question.id}/`) ? question : null; }),
-    questionCount: int(value.questionCount),
+    questionCount: int(value.questionCount), readiness: readiness(value.readiness),
     breadcrumbs: list(value.breadcrumbs, (item) => text(item.label) && text(item.canonicalPath) ? { label: text(item.label), canonicalPath: text(item.canonicalPath) } : null),
     updatedAt: nullableText(value.updatedAt),
   };

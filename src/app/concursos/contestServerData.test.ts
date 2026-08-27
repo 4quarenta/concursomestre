@@ -4,6 +4,7 @@ import { parseContestDirectory, parsePublicContest } from './contestServerData';
 const summary = { id: 1, slug: 'pf-2026', title: 'Concurso PF 2026', description: null, status: 'registration_open', isOpen: true, year: 2026, registrationStart: null, registrationEnd: null, organization: 'Polícia Federal', organizationAcronym: 'PF', board: 'Cebraspe', boardAcronym: 'CEBRASPE', path: '/concursos/pf-2026', updatedAt: '2026-08-19' };
 const detail = {
   ...summary, officialUrl: 'https://example.test/contest', dates: {}, canonicalPath: '/concursos/pf-2026', questionCount: 1,
+  readiness: { status: 'READY', reasonCodes: [] },
   organizations: [{ id: 2, slug: 'policia-federal', name: 'Polícia Federal', acronym: 'PF', path: '/orgaos/policia-federal', sourceExternalId: 'SECRET_IMPORTER' }],
   board: { id: 3, slug: 'cebraspe', name: 'Cebraspe', acronym: 'CEBRASPE', path: '/bancas/cebraspe' },
   positions: [{ id: 4, roleId: 5, slug: 'agente', name: 'Agente', path: '/cargos/agente', vacancies: 10, reserveRegistry: false, salaryMin: 1000, salaryMax: 2000, educationLevel: 'Superior', weeklyHours: 40, locationLabel: null }],

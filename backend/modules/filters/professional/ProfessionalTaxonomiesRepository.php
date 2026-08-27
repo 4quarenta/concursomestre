@@ -136,7 +136,7 @@ final class ProfessionalTaxonomiesRepository
             AND LOWER(TRIM({$alias}.name)) NOT IN ('outros','outras','diversos','diversas','geral','nao informado','não informado',
                 'sem classificacao','sem classificação','a definir','cargo nao identificado','cargo não identificado')
             AND CHAR_LENGTH({$alias}.slug) <= 190
-            AND BINARY {$alias}.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'";
+            AND CAST({$alias}.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)";
     }
 
     private function publicQuestionClause(string $alias): string
@@ -149,13 +149,13 @@ final class ProfessionalTaxonomiesRepository
     {
         return "{$alias}.archived_at IS NULL AND {$alias}.status_editorial='published' AND {$alias}.visibility_status='public'
             AND ({$alias}.scheduled_at IS NULL OR {$alias}.scheduled_at<=NOW()) AND TRIM({$alias}.nome)<>''
-            AND BINARY {$alias}.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'";
+            AND CAST({$alias}.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)";
     }
 
     private function publicContestClause(string $alias): string
     {
         return "{$alias}.publication_status='published' AND {$alias}.visibility_status='public' AND {$alias}.archived_at IS NULL
             AND ({$alias}.scheduled_at IS NULL OR {$alias}.scheduled_at<=NOW()) AND TRIM({$alias}.title)<>''
-            AND BINARY {$alias}.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'";
+            AND CAST({$alias}.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)";
     }
 }

@@ -77,7 +77,7 @@ final class PublicSimulationsRepository
             FROM public_simulation_filters sf INNER JOIN filters f ON f.id = sf.filter_id
             WHERE sf.simulation_id = :id AND TRIM(f.name) <> ''
               AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
-              AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$' AND CHAR_LENGTH(f.slug) <= 190
+              AND CAST(f.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY) AND CHAR_LENGTH(f.slug) <= 190
               AND ((sf.relation_type = 'discipline' AND f.type = 'assunto' AND (f.taxonomy_level = 'materia' OR f.meta_materia = 1))
                 OR (sf.relation_type = 'topic' AND f.type = 'assunto' AND f.taxonomy_level = 'topico')
                 OR (sf.relation_type = 'subject' AND f.type = 'assunto' AND f.taxonomy_level = 'assunto')
@@ -91,14 +91,14 @@ final class PublicSimulationsRepository
             WHERE sc.simulation_id = :id AND c.publication_status = 'published'
               AND c.visibility_status = 'public' AND c.archived_at IS NULL
               AND (c.scheduled_at IS NULL OR c.scheduled_at <= NOW())
-              AND TRIM(c.title) <> '' AND BINARY c.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+              AND TRIM(c.title) <> '' AND CAST(c.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
             ORDER BY c.title LIMIT 12", $id);
         $exams = $this->fetchAll("SELECT p.id, p.slug, p.nome AS title, p.ano AS year
             FROM public_simulation_exams se INNER JOIN provas p ON p.id = se.exam_id
             WHERE se.simulation_id = :id AND p.archived_at IS NULL
               AND p.status_editorial = 'published' AND p.visibility_status = 'public'
               AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())
-              AND TRIM(p.nome) <> '' AND BINARY p.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+              AND TRIM(p.nome) <> '' AND CAST(p.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
             ORDER BY p.ano DESC, p.id DESC LIMIT 12", $id);
         return compact('simulation', 'questions', 'taxonomies', 'contests', 'exams');
     }
@@ -120,7 +120,7 @@ final class PublicSimulationsRepository
             AND {$alias}.archived_at IS NULL
             AND ({$alias}.scheduled_at IS NULL OR {$alias}.scheduled_at <= NOW())
             AND TRIM({$alias}.title) <> ''
-            AND BINARY {$alias}.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND CAST({$alias}.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)
             AND CHAR_LENGTH({$alias}.slug) <= 190";
     }
 
