@@ -11,6 +11,7 @@ function phase05Assert(bool $condition, string $message): void
 
 $root = dirname(__DIR__);
 $repositoryPath = $root . '/modules/legal_commentary/repositories/LegalCommentaryRepository.php';
+$schemaInstallerPath = $root . '/modules/legal_commentary/schema/LegalCommentarySchemaInstaller.php';
 $servicePath = $root . '/modules/legal_commentary/services/LegalCommentaryService.php';
 $controllerPath = $root . '/modules/legal_commentary/controllers/LegalCommentaryController.php';
 $routesPath = $root . '/modules/legal_commentary/routes.php';
@@ -20,11 +21,12 @@ $notesEndpointPath = $root . '/api/legal-commentary/notes.php';
 $readerAnnotationsEndpointPath = $root . '/api/legal-commentary/reader-annotations.php';
 
 $repository = (string) file_get_contents($repositoryPath);
+$schemaInstaller = (string) file_get_contents($schemaInstallerPath);
 $service = (string) file_get_contents($servicePath);
 $controller = (string) file_get_contents($controllerPath);
 $routes = (string) file_get_contents($routesPath);
 
-phase05Assert(str_contains($repository, 'SchemaReadiness::assertTablesAndColumns'), 'Runtime da Lei Comentada deve validar o schema sem executar DDL.');
+phase05Assert(str_contains($repository, 'LegalCommentarySchemaInstaller::assertReady') && str_contains($schemaInstaller, 'SchemaReadiness::assertTablesAndColumns'), 'Runtime da Lei Comentada deve validar o schema sem executar DDL.');
 phase05Assert(!str_contains($repository, '$this->ensureSchema();'), 'Nenhuma leitura/escrita da Lei Comentada pode executar o bootstrap de schema em runtime.');
 phase05Assert(str_contains($repository, 'legal_user_notes'), 'Anotacoes do usuario devem possuir persistencia dedicada.');
 phase05Assert(str_contains($repository, 'legal_user_reader_annotations'), 'Marcacoes ricas do leitor devem possuir persistencia dedicada.');

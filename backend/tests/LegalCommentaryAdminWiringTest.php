@@ -24,6 +24,7 @@ function assertContainsLegalCommentaryAdmin(string $path, string $needle, string
 $base = dirname(__DIR__) . '';
 $routes = $base . '/modules/legal_commentary/routes.php';
 $repository = $base . '/modules/legal_commentary/repositories/LegalCommentaryRepository.php';
+$schemaInstaller = $base . '/modules/legal_commentary/schema/LegalCommentarySchemaInstaller.php';
 $service = $base . '/modules/legal_commentary/services/LegalCommentaryService.php';
 
 $adminHandlers = [
@@ -79,7 +80,7 @@ assertContainsLegalCommentaryAdmin(
     'Legal commentary admin import bridge must delegate to the admin route'
 );
 
-$repositoryContent = (string) file_get_contents($repository);
+$repositoryContent = (string) file_get_contents($schemaInstaller);
 $ensureColumnPosition = strpos($repositoryContent, 'private function ensureColumnExists');
 $nextFunctionPosition = $ensureColumnPosition === false ? false : strpos($repositoryContent, "\n    private function ", $ensureColumnPosition + 1);
 $ensureColumnBody = $ensureColumnPosition === false
@@ -95,25 +96,25 @@ foreach (['article_jurisprudence', 'article_exam_tips'] as $migrationTable) {
 }
 
 assertContainsLegalCommentaryAdmin(
-    $repository,
+    $schemaInstaller,
     "ensureColumnExists('article_jurisprudence', 'target_json'",
     'Legal commentary schema must migrate target_json for jurisprudence notes'
 );
 
 assertContainsLegalCommentaryAdmin(
-    $repository,
+    $schemaInstaller,
     "ensureColumnExists('article_exam_tips', 'target_json'",
     'Legal commentary schema must migrate target_json for exam tips'
 );
 
 assertContainsLegalCommentaryAdmin(
-    $repository,
+    $schemaInstaller,
     'published_at DATETIME NULL',
     'Legal commentary laws schema must store publication date and time'
 );
 
 assertContainsLegalCommentaryAdmin(
-    $repository,
+    $schemaInstaller,
     "ALTER TABLE laws MODIFY COLUMN published_at DATETIME NULL",
     'Legal commentary migrations must promote published_at from DATE to DATETIME'
 );

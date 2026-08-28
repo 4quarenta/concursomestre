@@ -17,11 +17,15 @@ npm test
 npm run build
 npm run release:manifest -- --revision=selective-r6.1
 npm run release:verify
+npm run release:package -- --output=.tmp/release-package --archive=.tmp/concursomestre-1.0.0.zip --commit=<commit> --revision=<revision>
 ```
 
-O ZIP deve excluir `.git`, `.next`, `.tmp`, `node_modules`, ambientes reais,
-logs, dumps, chaves e outros ZIPs. Depois de extrair o pacote em um diretorio
-limpo, execute `npm run check:release-package`.
+O builder usa somente arquivos rastreados e exclui `.git`, `.next`, `.tmp`,
+`.codex-tmp`, `.deploy`, backups, quarentena, ambientes reais, logs, dumps,
+chaves e arquivos compactados legados. Os downloads publicos em
+`public/downloads/*.zip` sao a unica excecao de arquivo compactado. Depois de
+extrair o pacote em um diretorio limpo, o builder executa
+`npm run check:release-package` automaticamente.
 
 Validacao do host e plano de deploy, sem alteracoes:
 
