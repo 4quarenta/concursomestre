@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/observability/RuntimeMutationEvidence.php';
+
 /**
  * Repositorio do dominio de transacoes.
  * Concentra acesso a materiais, usuarios, transacoes e reflexos de assinatura.
@@ -303,6 +305,7 @@ class TransactionsRepository
             WHERE user_id = :user_id
         ");
         $stmt->execute([':user_id' => $userId]);
+        RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_refund_unlock');
     }
 
     /**

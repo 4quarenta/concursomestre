@@ -19,6 +19,7 @@ final class DatasetResetPolicyV2
     public const SEMANTICS_VERSION = 'RESET_POLICY_V2_EXECUTION_AND_STEADY_STATE_V1';
     public const EXECUTION_TOKEN = 'RESET_DEFINITIVE_DATASET_V2';
     public const CLASS_PRESERVE = 'PRESERVE';
+    public const CLASS_MUTABLE_INFRASTRUCTURE = 'MUTABLE_INFRASTRUCTURE';
     public const CLASS_RESETTABLE_STRICT = 'RESETTABLE_STRICT';
     public const CLASS_RESETTABLE_RECREATABLE_RUNTIME = 'RESETTABLE_RECREATABLE_RUNTIME';
 
@@ -36,6 +37,11 @@ final class DatasetResetPolicyV2
         'security_ip_bans' => 'PRESERVE_SECURITY_INFRASTRUCTURE',
         'system_settings' => 'PRESERVE_SYSTEM_CONFIGURATION',
         'users' => 'PRESERVE_REQUIRED_USER_IDENTITY',
+    ];
+
+    /** @var array<string, string> */
+    private const MUTABLE_INFRASTRUCTURE_MANIFEST = [
+        'seo_dataset_revisions' => 'MUTABLE_DERIVED_ARTIFACT_AUTHORITY',
     ];
 
     /** @var array<string, list<string>> */
@@ -198,6 +204,8 @@ final class DatasetResetPolicyV2
                     'auth_social_callback',
                     'auth_two_factor_completion',
                     'auth_token_refresh',
+                    'auth_logout',
+                    'auth_session_revoked',
                 ],
             ],
         ],
@@ -209,6 +217,10 @@ final class DatasetResetPolicyV2
                     'auth_registration',
                     'auth_social_callback',
                     'auth_two_factor_completion',
+                    'auth_session_heartbeat',
+                    'auth_token_refresh',
+                    'auth_logout',
+                    'auth_session_revoked',
                 ],
             ],
         ],
@@ -219,14 +231,19 @@ final class DatasetResetPolicyV2
                     'profile_billing_card_sync',
                     'checkout_billing_card_sync',
                     'billing_card_save',
+                    'billing_card_delete',
+                    'billing_card_default_changed',
+                    'billing_card_state_sync',
+                    'billing_card_refund_unlock',
+                    'billing_card_subscription_unlock',
                 ],
             ],
         ],
         'user_statistics' => [
-            'reason' => 'RECREATED_BY_LAZY_AUTHENTICATED_STATISTICS_BOOTSTRAP',
+            'reason' => 'RECREATED_BY_LEGITIMATE_STUDY_ACTIVITY',
             'allowedWriters' => [
                 'http-practice-user-activity' => [
-                    'statistics_lazy_bootstrap',
+                    'statistics_study_session_recorded',
                 ],
             ],
         ],
@@ -248,6 +265,14 @@ final class DatasetResetPolicyV2
     public static function preserveTables(): array
     {
         $tables = array_keys(self::PRESERVE_MANIFEST);
+        sort($tables);
+        return $tables;
+    }
+
+    /** @return list<string> */
+    public static function mutableInfrastructureTables(): array
+    {
+        $tables = array_keys(self::MUTABLE_INFRASTRUCTURE_MANIFEST);
         sort($tables);
         return $tables;
     }
@@ -290,6 +315,9 @@ final class DatasetResetPolicyV2
     public static function classificationManifest(): array
     {
         $manifest = array_fill_keys(self::preserveTables(), self::CLASS_PRESERVE);
+        foreach (self::mutableInfrastructureTables() as $table) {
+            $manifest[$table] = self::CLASS_MUTABLE_INFRASTRUCTURE;
+        }
         foreach (self::strictResetTables() as $table) {
             $manifest[$table] = self::CLASS_RESETTABLE_STRICT;
         }
@@ -319,7 +347,7 @@ final class DatasetResetPolicyV2
     /** @return list<string> */
     public static function knownTables(): array
     {
-        $tables = array_merge(self::preserveTables(), self::resetTables());
+        $tables = array_merge(self::preserveTables(), self::mutableInfrastructureTables(), self::resetTables());
         sort($tables);
         return $tables;
     }
@@ -346,11 +374,15 @@ final class DatasetResetPolicyV2
         $preserve = self::preserveTables();
         $strict = self::strictResetTables();
         $runtime = self::runtimeRecreatableTables();
+        $mutableInfrastructure = self::mutableInfrastructureTables();
         $unknown = array_values(array_diff($schemaTables, $known));
         $missing = array_values(array_diff($known, $schemaTables));
         $overlap = array_values(array_unique(array_merge(
             array_intersect($preserve, $strict),
             array_intersect($preserve, $runtime),
+            array_intersect($preserve, $mutableInfrastructure),
+            array_intersect($strict, $mutableInfrastructure),
+            array_intersect($runtime, $mutableInfrastructure),
             array_intersect($strict, $runtime)
         )));
         sort($unknown);
@@ -364,6 +396,7 @@ final class DatasetResetPolicyV2
             'overlap' => $overlap,
             'classCounts' => [
                 self::CLASS_PRESERVE => count($preserve),
+                self::CLASS_MUTABLE_INFRASTRUCTURE => count($mutableInfrastructure),
                 self::CLASS_RESETTABLE_STRICT => count($strict),
                 self::CLASS_RESETTABLE_RECREATABLE_RUNTIME => count($runtime),
             ],

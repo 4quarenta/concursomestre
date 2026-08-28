@@ -27,6 +27,7 @@
 
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../config/stripe.php';
+require_once __DIR__ . '/../../../shared/observability/RuntimeMutationEvidence.php';
 
 /**
  * Busca um cartao Stripe local pelo id interno.
@@ -155,6 +156,7 @@ function updateLocalStripeCardMirrorById(
         ':is_default' => $isDefault ? 1 : 0,
         ':id' => $id,
     ]);
+    RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_state_sync');
 }
 
 /**
@@ -372,6 +374,7 @@ function setStripeLocalDefaultCard(PDO $db, string $userId, string $paymentMetho
     ")->execute([
         ':user_id' => $userId,
     ]);
+    RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_default_changed');
 
     $db->prepare("
         UPDATE user_cards
@@ -383,6 +386,7 @@ function setStripeLocalDefaultCard(PDO $db, string $userId, string $paymentMetho
         ':user_id' => $userId,
         ':payment_method_id' => $paymentMethodId,
     ]);
+    RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_default_changed');
 }
 
 /**
@@ -400,6 +404,7 @@ function setStripeRecurringCardLock(PDO $db, string $userId, ?string $paymentMet
     ")->execute([
         ':user_id' => $userId,
     ]);
+    RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_state_sync');
 
     if (!$paymentMethodId) {
         return;
@@ -415,6 +420,7 @@ function setStripeRecurringCardLock(PDO $db, string $userId, ?string $paymentMet
         ':user_id' => $userId,
         ':payment_method_id' => $paymentMethodId,
     ]);
+    RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_state_sync');
 }
 
 /**
@@ -919,7 +925,14 @@ function getStripeCustomerForUser(PDO $db, string $userId): array
  *
  * @since 1.0.0
  */
-function upsertLocalStripeCardMirror(PDO $db, string $userId, string $customerId, $remoteCard, bool $isDefault = false): string
+function upsertLocalStripeCardMirror(
+    PDO $db,
+    string $userId,
+    string $customerId,
+    $remoteCard,
+    bool $isDefault = false,
+    string $runtimeEvent = 'profile_billing_card_sync'
+): string
 {
     ensurePaymentProviderSchema($db);
 
@@ -967,6 +980,7 @@ function upsertLocalStripeCardMirror(PDO $db, string $userId, string $customerId
     if ($isDefault) {
         $db->prepare("UPDATE user_cards SET is_default = 0 WHERE user_id = :user_id AND payment_provider = 'stripe'")
             ->execute([':user_id' => $userId]);
+        RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_default_changed');
     }
 
     if ($existingId) {
@@ -982,6 +996,7 @@ function upsertLocalStripeCardMirror(PDO $db, string $userId, string $customerId
             $billingName,
             $isDefault
         );
+        RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', $runtimeEvent);
 
         return (string) $existingId;
     }
@@ -1043,9 +1058,12 @@ function upsertLocalStripeCardMirror(PDO $db, string $userId, string $customerId
             $billingName,
             $isDefault
         );
+        RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', $runtimeEvent);
 
         return $fallbackId;
     }
+
+    RuntimeMutationEvidence::record('user_cards', 'INSERT', 'http-auth-account', $runtimeEvent, 1);
 
     return $id;
 }
@@ -1085,11 +1103,21 @@ function syncStripeCardsForUser(PDO $db, string $userId, string $customerId): ar
     }
 
     if (empty($includedRemoteCards)) {
-        $db->prepare("
+        $delete = $db->prepare("
             DELETE FROM user_cards
             WHERE user_id = :user_id
               AND payment_provider = 'stripe'
-        ")->execute([':user_id' => $userId]);
+        ");
+        $delete->execute([':user_id' => $userId]);
+        if ($delete->rowCount() > 0) {
+            RuntimeMutationEvidence::record(
+                'user_cards',
+                'DELETE',
+                'http-auth-account',
+                'profile_billing_card_sync',
+                -$delete->rowCount()
+            );
+        }
     } else {
         $keepIds = array_keys($includedRemoteCards);
         $placeholders = implode(',', array_fill(0, count($keepIds), '?'));
@@ -1102,6 +1130,15 @@ function syncStripeCardsForUser(PDO $db, string $userId, string $customerId): ar
               AND stripe_payment_method_id NOT IN ({$placeholders})
         ");
         $stmt->execute($params);
+        if ($stmt->rowCount() > 0) {
+            RuntimeMutationEvidence::record(
+                'user_cards',
+                'DELETE',
+                'http-auth-account',
+                'profile_billing_card_sync',
+                -$stmt->rowCount()
+            );
+        }
     }
 
     $cardsStmt = $db->prepare("

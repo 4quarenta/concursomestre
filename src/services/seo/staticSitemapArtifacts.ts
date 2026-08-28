@@ -7,7 +7,8 @@ import { seoIndexPolicy } from './runtimeEnvironment';
 
 const SITEMAP_FILENAME = /^(?:sitemap|[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{5})\.xml$/;
 const SHA256 = /^[a-f0-9]{64}$/;
-const STATE_VERSION = 'database-driven-sitemap-state.v3';
+const STATE_VERSION = 'database-driven-sitemap-state.v4';
+const DATASET_REVISION_VERSION = 'sitemap-dataset-revision.v1';
 const MANIFEST_VERSION = 'sitemap-release-manifest.v1';
 const MANIFEST_FILENAME = 'sitemap-release-manifest.json';
 const execFileAsync = promisify(execFile);
@@ -37,27 +38,27 @@ const getPublicationStatePath = () => {
   return path.join(path.dirname(directory), `.${path.basename(directory)}-publication-state.json`);
 };
 
-const readCurrentEligibleDatasetFingerprint = async (): Promise<string | null> => {
+const readCurrentDatasetRevisionToken = async (): Promise<string | null> => {
   if (process.env.NODE_ENV === 'test') {
-    const fixture = String(process.env.SITEMAP_TEST_CURRENT_FINGERPRINT || '').trim();
+    const fixture = String(process.env.SITEMAP_TEST_CURRENT_REVISION_TOKEN || '').trim();
     return SHA256.test(fixture) ? fixture : null;
   }
   const phpBinary = String(process.env.SITEMAP_PHP_BINARY || 'php').trim();
-  const script = path.resolve(String(process.env.SITEMAP_FINGERPRINT_SCRIPT || 'backend/scripts/seo/generate_static_sitemaps.php').trim());
-  const configuredTimeout = Number.parseInt(String(process.env.SITEMAP_FINGERPRINT_TIMEOUT_MS || '120000'), 10);
-  const timeout = Number.isFinite(configuredTimeout) ? Math.min(300_000, Math.max(1_000, configuredTimeout)) : 120_000;
+  const script = path.resolve(String(process.env.SITEMAP_REVISION_SCRIPT || 'backend/scripts/seo/read_sitemap_dataset_revision.php').trim());
+  const configuredTimeout = Number.parseInt(String(process.env.SITEMAP_REVISION_TIMEOUT_MS || '5000'), 10);
+  const timeout = Number.isFinite(configuredTimeout) ? Math.min(30_000, Math.max(1_000, configuredTimeout)) : 5_000;
   try {
     const { stdout } = await execFileAsync(phpBinary, [script], {
-      cwd: process.cwd(), env: { ...process.env, SITEMAP_FINGERPRINT_ONLY: '1' }, timeout,
+      cwd: process.cwd(), env: process.env, timeout,
       maxBuffer: 1024 * 1024, windowsHide: true,
     });
     const payload = JSON.parse(stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1) || '{}') as Record<string, unknown>;
-    return payload.status === 'fingerprint' && typeof payload.eligibleDatasetFingerprint === 'string' && SHA256.test(payload.eligibleDatasetFingerprint)
-      ? payload.eligibleDatasetFingerprint : null;
+    return payload.status === 'revision' && payload.version === DATASET_REVISION_VERSION
+      && typeof payload.token === 'string' && SHA256.test(payload.token) ? payload.token : null;
   } catch { return null; }
 };
 
-const isCurrentStaticSitemapStatus = (value: unknown, state: unknown, currentFingerprint: string): boolean => {
+const isCurrentStaticSitemapStatus = (value: unknown, state: unknown, currentRevisionToken: string): boolean => {
   if (!value || typeof value !== 'object' || !state || typeof state !== 'object') return false;
   const status = value as Record<string, unknown>;
   const publicationState = state as Record<string, unknown>;
@@ -67,6 +68,8 @@ const isCurrentStaticSitemapStatus = (value: unknown, state: unknown, currentFin
     && status.canonicalBaseUrl === seoIndexPolicy.canonicalOrigin
     && status.artifactStateVersion === STATE_VERSION
     && status.logicalDatasetVersion === 'eligible-sitemap-dataset.v2'
+    && status.datasetRevisionVersion === DATASET_REVISION_VERSION
+    && typeof status.datasetRevisionToken === 'string' && SHA256.test(status.datasetRevisionToken)
     && status.releaseManifestVersion === MANIFEST_VERSION
     && status.releaseManifestFile === MANIFEST_FILENAME
     && typeof status.eligibleDatasetFingerprint === 'string' && SHA256.test(status.eligibleDatasetFingerprint)
@@ -74,7 +77,8 @@ const isCurrentStaticSitemapStatus = (value: unknown, state: unknown, currentFin
     && typeof status.releaseId === 'string' && SHA256.test(status.releaseId)
     && typeof status.manifestHash === 'string' && SHA256.test(status.manifestHash)
     && publicationState.version === STATE_VERSION && publicationState.state === 'CURRENT'
-    && currentFingerprint === status.eligibleDatasetFingerprint
+    && currentRevisionToken === status.datasetRevisionToken
+    && publicationState.datasetRevisionToken === status.datasetRevisionToken
     && publicationState.eligibleDatasetFingerprint === status.eligibleDatasetFingerprint
     && publicationState.artifactFingerprint === status.artifactFingerprint
     && publicationState.releaseId === status.releaseId
@@ -140,17 +144,17 @@ const validatePhysicalSet = async (directory: string, manifest: ReleaseManifest,
 const readValidatedRelease = async (): Promise<ValidatedRelease | null> => {
   try {
     const directory = await realpath(getArtifactDirectory());
-    const [rawStatus, rawState, rawManifest, currentFingerprint] = await Promise.all([
+    const [rawStatus, rawState, rawManifest, currentRevisionToken] = await Promise.all([
       readFile(path.join(directory, 'sitemap-status.json'), 'utf8'),
       readFile(getPublicationStatePath(), 'utf8'),
       readFile(path.join(directory, MANIFEST_FILENAME), 'utf8'),
-      readCurrentEligibleDatasetFingerprint(),
+      readCurrentDatasetRevisionToken(),
     ]);
     const status = JSON.parse(rawStatus) as Record<string, unknown>;
-    if (currentFingerprint === null || sha256(rawManifest) !== status.manifestHash) return null;
+    if (currentRevisionToken === null || sha256(rawManifest) !== status.manifestHash) return null;
     const state = JSON.parse(rawState) as unknown;
     const manifest = parseManifest(JSON.parse(rawManifest));
-    if (!manifest || !isCurrentStaticSitemapStatus(status, state, currentFingerprint)) return null;
+    if (!manifest || !isCurrentStaticSitemapStatus(status, state, currentRevisionToken)) return null;
     return await validatePhysicalSet(directory, manifest, status) ? { directory, status, manifest } : null;
   } catch { return null; }
 };
@@ -168,4 +172,4 @@ export const readStaticSitemapArtifact = async (filename: string): Promise<strin
 
 export const readStaticSitemapStatus = async (): Promise<unknown | null> => (await readValidatedRelease())?.status ?? null;
 
-export { isCurrentStaticSitemapStatus, readCurrentEligibleDatasetFingerprint };
+export { isCurrentStaticSitemapStatus, readCurrentDatasetRevisionToken };

@@ -26,12 +26,14 @@ $preserve = DatasetResetPolicyV2::preserveTables();
 $reset = DatasetResetPolicyV2::resetTables();
 $strict = DatasetResetPolicyV2::strictResetTables();
 $runtime = DatasetResetPolicyV2::runtimeRecreatableTables();
+$mutableInfrastructure = DatasetResetPolicyV2::mutableInfrastructureTables();
 $known = DatasetResetPolicyV2::knownTables();
 resetPolicyAssert(count($preserve) === 12, 'Preserve manifest count changed without review.');
 resetPolicyAssert(count($reset) === 113, 'Reset allowlist count changed without review.');
 resetPolicyAssert(count($strict) === 109, 'Strict resettable count changed without review.');
 resetPolicyAssert(count($runtime) === 4, 'Runtime recreatable count changed without review.');
-resetPolicyAssert(count($known) === 125, 'Policy must classify all 125 measured tables.');
+resetPolicyAssert(count($mutableInfrastructure) === 1, 'Mutable infrastructure manifest count changed without review.');
+resetPolicyAssert(count($known) === 126, 'Policy must classify all 126 measured tables.');
 resetPolicyAssert(array_intersect($preserve, $reset) === [], 'Preserve and reset tables overlap.');
 resetPolicyAssert(array_intersect($strict, $runtime) === [], 'Strict and runtime resettable tables overlap.');
 $resetClassUnion = array_values(array_unique([...$strict, ...$runtime]));
@@ -68,11 +70,16 @@ resetPolicyAssert(
     DatasetResetPolicyV2::classificationFor('users') === DatasetResetPolicyV2::CLASS_PRESERVE,
     'Users must remain preserve.'
 );
+resetPolicyAssert(
+    DatasetResetPolicyV2::classificationFor('seo_dataset_revisions') === DatasetResetPolicyV2::CLASS_MUTABLE_INFRASTRUCTURE,
+    'Sitemap revision authority must remain mutable infrastructure.'
+);
 
 $valid = DatasetResetPolicyV2::validateAgainstSchema($known);
 resetPolicyAssert($valid['ok'], 'Measured schema must match policy.');
 resetPolicyAssert($valid['classCounts'] === [
     DatasetResetPolicyV2::CLASS_PRESERVE => 12,
+    DatasetResetPolicyV2::CLASS_MUTABLE_INFRASTRUCTURE => 1,
     DatasetResetPolicyV2::CLASS_RESETTABLE_STRICT => 109,
     DatasetResetPolicyV2::CLASS_RESETTABLE_RECREATABLE_RUNTIME => 4,
 ], 'Policy class counts drifted.');

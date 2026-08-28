@@ -46,7 +46,7 @@ foreach (['http-auth-account', 'http-practice-user-activity'] as $writerId) {
 if (($byId['http-auth-account']['allowed_post_resume_events']['auth_sessions'] ?? []) === []) {
     throw new RuntimeException('Auth session post-resume event allowlist is missing.');
 }
-if (($byId['http-practice-user-activity']['allowed_post_resume_events']['user_statistics'] ?? []) !== ['statistics_lazy_bootstrap']) {
+if (($byId['http-practice-user-activity']['allowed_post_resume_events']['user_statistics'] ?? []) !== ['statistics_study_session_recorded']) {
     throw new RuntimeException('Statistics post-resume event allowlist drifted.');
 }
 if (($byId['systemd-question-ingestion-consumers']['may_write_after_resume'] ?? true) !== false) {

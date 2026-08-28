@@ -92,7 +92,7 @@ final class DatasetResetStateValidator
                 $event = trim((string) ($entry['event'] ?? ''));
                 $rows = (int) ($entry['attributedRows'] ?? 0);
 
-                if ($rows <= 0 || !DatasetResetPolicyV2::isRuntimeEvidenceAllowed($table, $writerId, $event)) {
+                if ($rows === 0 || !DatasetResetPolicyV2::isRuntimeEvidenceAllowed($table, $writerId, $event)) {
                     $invalidEvidence[] = [
                         'writerId' => $writerId,
                         'event' => $event,

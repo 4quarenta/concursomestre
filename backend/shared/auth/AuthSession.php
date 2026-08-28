@@ -16,6 +16,7 @@ require_once __DIR__ . '/AuthConfig.php';
 require_once __DIR__ . '/AuthCookies.php';
 require_once __DIR__ . '/AuthLogger.php';
 require_once __DIR__ . '/../database/SchemaReadiness.php';
+require_once __DIR__ . '/../observability/RuntimeMutationEvidence.php';
 
 /**
  * Garante que as tabelas de sessão e refresh token existam antes de operar auth.
@@ -59,7 +60,7 @@ function getBearerTokenFromRequest(): string
  *
  * @since 1.0.0
  */
-function createAuthSessionRow(PDO $db, string $userId, string $csrfToken): array
+function createAuthSessionRow(PDO $db, string $userId, string $csrfToken, string $runtimeEvent = 'auth_login'): array
 {
     ensureAuthTables($db);
 
@@ -89,6 +90,7 @@ function createAuthSessionRow(PDO $db, string $userId, string $csrfToken): array
         ':last_refreshed_at' => formatAuthDate($now),
         ':expires_at' => formatAuthDate($expiresAt),
     ]);
+    RuntimeMutationEvidence::record('auth_sessions', 'INSERT', 'http-auth-account', $runtimeEvent, 1);
 
     return [
         'id' => $sessionId,
@@ -102,7 +104,7 @@ function createAuthSessionRow(PDO $db, string $userId, string $csrfToken): array
  *
  * @since 1.0.0
  */
-function persistRefreshToken(PDO $db, string $sessionId, string $refreshToken, DateTimeImmutable $expiresAt, ?string $previousTokenId = null): array
+function persistRefreshToken(PDO $db, string $sessionId, string $refreshToken, DateTimeImmutable $expiresAt, ?string $previousTokenId = null, string $runtimeEvent = 'auth_login'): array
 {
     $tokenId = createAuthUuid();
     $now = authNow();
@@ -124,6 +126,7 @@ function persistRefreshToken(PDO $db, string $sessionId, string $refreshToken, D
         ':ip_address' => getAuthClientIp(),
         ':user_agent' => getAuthUserAgent(),
     ]);
+    RuntimeMutationEvidence::record('auth_refresh_tokens', 'INSERT', 'http-auth-account', $runtimeEvent, 1);
 
     if ($previousTokenId) {
         $updatePrevious = $db->prepare(
@@ -141,6 +144,7 @@ function persistRefreshToken(PDO $db, string $sessionId, string $refreshToken, D
             ':rotated_to_token_id' => $tokenId,
             ':id' => $previousTokenId,
         ]);
+        RuntimeMutationEvidence::record('auth_refresh_tokens', 'UPDATE', 'http-auth-account', $runtimeEvent);
     }
 
     return [
@@ -183,6 +187,12 @@ function updateSessionHeartbeat(PDO $db, string $sessionId, bool $isRefresh = fa
     }
 
     $stmt->execute($params);
+    RuntimeMutationEvidence::record(
+        'auth_sessions',
+        'UPDATE',
+        'http-auth-account',
+        $isRefresh ? 'auth_token_refresh' : 'auth_session_heartbeat'
+    );
 }
 
 /**
@@ -212,12 +222,12 @@ function buildAccessToken(array $user, string $sessionId, ?int $expiresIn = null
  *
  * @since 1.0.0
  */
-function issueUserAuthBundle(PDO $db, array $user, bool $exposeRefreshToken = false): array
+function issueUserAuthBundle(PDO $db, array $user, bool $exposeRefreshToken = false, string $runtimeEvent = 'auth_login'): array
 {
     $csrfToken = createOpaqueAuthToken(24);
-    $session = createAuthSessionRow($db, (string) $user['id'], $csrfToken);
+    $session = createAuthSessionRow($db, (string) $user['id'], $csrfToken, $runtimeEvent);
     $refreshToken = createOpaqueAuthToken(48);
-    $refresh = persistRefreshToken($db, $session['id'], $refreshToken, $session['expires_at']);
+    $refresh = persistRefreshToken($db, $session['id'], $refreshToken, $session['expires_at'], null, $runtimeEvent);
     $accessToken = buildAccessToken($user, $session['id']);
 
     setRefreshTokenCookie($refresh['token'], $refresh['expires_at']);
@@ -334,6 +344,8 @@ function revokeSessionFamily(PDO $db, string $sessionId, string $reason, bool $m
         ':updated_at' => $nowString,
         ':id' => $sessionId,
     ]);
+    $runtimeEvent = $reason === 'logout' ? 'auth_logout' : 'auth_session_revoked';
+    RuntimeMutationEvidence::record('auth_sessions', 'UPDATE', 'http-auth-account', $runtimeEvent);
 
     $tokenUpdate = $db->prepare(
         "UPDATE auth_refresh_tokens
@@ -352,6 +364,7 @@ function revokeSessionFamily(PDO $db, string $sessionId, string $reason, bool $m
         ':reuse_detected_at' => $nowString,
         ':session_id' => $sessionId,
     ]);
+    RuntimeMutationEvidence::record('auth_refresh_tokens', 'UPDATE', 'http-auth-account', $runtimeEvent);
 }
 
 /**
@@ -558,7 +571,14 @@ function refreshAccessTokenUsingToken(PDO $db, string $refreshToken, string $csr
 
     $newRefreshToken = createOpaqueAuthToken(48);
     $newRefreshExpiresAt = $now->modify('+' . getAuthRefreshTokenTtlSeconds() . ' seconds');
-    $newRefresh = persistRefreshToken($db, $sessionId, $newRefreshToken, $newRefreshExpiresAt, (string) $record['id']);
+    $newRefresh = persistRefreshToken(
+        $db,
+        $sessionId,
+        $newRefreshToken,
+        $newRefreshExpiresAt,
+        (string) $record['id'],
+        'auth_token_refresh'
+    );
     $accessToken = buildAccessToken($user, $sessionId);
 
     updateSessionHeartbeat($db, $sessionId, true);

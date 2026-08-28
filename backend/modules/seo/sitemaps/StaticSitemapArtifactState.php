@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class StaticSitemapArtifactState
 {
-    public const VERSION = 'database-driven-sitemap-state.v3';
+    public const VERSION = 'database-driven-sitemap-state.v4';
 
     private string $statePath;
 
@@ -33,6 +33,7 @@ final class StaticSitemapArtifactState
 
     public function markCurrent(
         string $eligibleDatasetFingerprint,
+        string $datasetRevisionToken,
         string $artifactFingerprint,
         string $releaseId,
         string $manifestHash,
@@ -41,6 +42,9 @@ final class StaticSitemapArtifactState
     {
         if (!preg_match('/^[a-f0-9]{64}$/', $eligibleDatasetFingerprint)) {
             throw new InvalidArgumentException('Fingerprint elegivel de sitemap invalido.');
+        }
+        if (!preg_match('/^[a-f0-9]{64}$/', $datasetRevisionToken)) {
+            throw new InvalidArgumentException('Token de revisao do dataset de sitemap invalido.');
         }
         if (!preg_match('/^[a-f0-9]{64}$/', $artifactFingerprint)) {
             throw new InvalidArgumentException('Fingerprint do artefato de sitemap invalido.');
@@ -53,6 +57,7 @@ final class StaticSitemapArtifactState
             'version' => self::VERSION,
             'state' => 'CURRENT',
             'eligibleDatasetFingerprint' => $eligibleDatasetFingerprint,
+            'datasetRevisionToken' => $datasetRevisionToken,
             'artifactFingerprint' => $artifactFingerprint,
             'releaseId' => $releaseId,
             'manifestHash' => $manifestHash,
@@ -78,7 +83,7 @@ final class StaticSitemapArtifactState
     }
 
     /** @param array<string, mixed> $status */
-    public function isCurrent(array $status, string $currentEligibleDatasetFingerprint): bool
+    public function isCurrent(array $status, string $currentDatasetRevisionToken): bool
     {
         $state = $this->read();
         $fingerprint = (string) ($status['eligibleDatasetFingerprint'] ?? '');
@@ -87,8 +92,10 @@ final class StaticSitemapArtifactState
             && ($state['version'] ?? null) === self::VERSION
             && ($state['state'] ?? null) === 'CURRENT'
             && preg_match('/^[a-f0-9]{64}$/', $fingerprint) === 1
-            && preg_match('/^[a-f0-9]{64}$/', $currentEligibleDatasetFingerprint) === 1
-            && hash_equals($fingerprint, $currentEligibleDatasetFingerprint)
+            && preg_match('/^[a-f0-9]{64}$/', $currentDatasetRevisionToken) === 1
+            && preg_match('/^[a-f0-9]{64}$/', (string) ($status['datasetRevisionToken'] ?? '')) === 1
+            && hash_equals((string) ($status['datasetRevisionToken'] ?? ''), $currentDatasetRevisionToken)
+            && hash_equals((string) ($state['datasetRevisionToken'] ?? ''), $currentDatasetRevisionToken)
             && hash_equals($fingerprint, (string) ($state['eligibleDatasetFingerprint'] ?? ''))
             && preg_match('/^[a-f0-9]{64}$/', (string) ($status['artifactFingerprint'] ?? '')) === 1
             && hash_equals(

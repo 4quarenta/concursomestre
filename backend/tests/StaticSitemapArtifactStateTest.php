@@ -36,20 +36,22 @@ $state = new StaticSitemapArtifactState($output);
 $dataset = new StaticSitemapLogicalDataset();
 $dataset->add(['family' => 'exam_detail', 'identity' => 'exam:1', 'canonicalUrl' => 'https://concursomestre.com/provas/a', 'lastModified' => null, 'policyVersion' => 'seo-policy.v1']);
 $datasetFingerprint = $dataset->fingerprint();
+$datasetRevisionToken = hash('sha256', 'revision:1');
 $manifest = StaticSitemapReleaseManifest::create($output, $datasetFingerprint);
 $manifestHash = StaticSitemapReleaseManifest::write($output, $manifest);
 $artifactFingerprint = (string) $manifest['physicalSetFingerprint'];
 $status = [
     'eligibleDatasetFingerprint' => $datasetFingerprint,
+    'datasetRevisionToken' => $datasetRevisionToken,
     'artifactFingerprint' => $artifactFingerprint,
     'releaseId' => $manifest['releaseId'],
     'manifestHash' => $manifestHash,
 ];
 
 $state->invalidate('CONTENT_ELIGIBILITY_CHANGED');
-sitemapStateAssert(!$state->isCurrent($status, $datasetFingerprint), 'DIRTY sitemap state must never be current.');
-$state->markCurrent($datasetFingerprint, $artifactFingerprint, (string) $manifest['releaseId'], $manifestHash, gmdate('c'));
-sitemapStateAssert($state->isCurrent($status, $datasetFingerprint), 'Matching materialized dataset and artifact fingerprints must be current.');
+sitemapStateAssert(!$state->isCurrent($status, $datasetRevisionToken), 'DIRTY sitemap state must never be current.');
+$state->markCurrent($datasetFingerprint, $datasetRevisionToken, $artifactFingerprint, (string) $manifest['releaseId'], $manifestHash, gmdate('c'));
+sitemapStateAssert($state->isCurrent($status, $datasetRevisionToken), 'Matching revision and artifact fingerprints must be current.');
 
 $changedFiles = $manifest['files'];
 foreach ($changedFiles as &$changedFile) {
@@ -61,11 +63,9 @@ sitemapStateAssert(
     'Changing a materialized XML file must change the artifact fingerprint.'
 );
 
-$changedDataset = new StaticSitemapLogicalDataset();
-$changedDataset->add(['family' => 'exam_detail', 'identity' => 'exam:2', 'canonicalUrl' => 'https://concursomestre.com/provas/b', 'lastModified' => null, 'policyVersion' => 'seo-policy.v1']);
 sitemapStateAssert(
-    !$state->isCurrent($status, $changedDataset->fingerprint()),
-    'Direct DB drift must invalidate unchanged artifact bytes without markDirty().'
+    !$state->isCurrent($status, hash('sha256', 'revision:2')),
+    'A database revision change must invalidate unchanged artifact bytes without markDirty().'
 );
 
 $publisher = new StaticSitemapPublisher($output);

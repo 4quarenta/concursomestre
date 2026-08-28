@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/observability/RuntimeMutationEvidence.php';
+
 /**
  * Service oficial do dominio de estatisticas.
  * Orquestra autorizacao de benefcio, agregacao do raio-x e scraping seguro.
@@ -102,7 +104,7 @@ class StatisticsService
     }
 
     /**
-     * Retorna o agregado persistido do usurio, criando baseline quando necessario.
+     * Retorna o agregado persistido do usuario ou uma visao neutra sem persistir.
      *
      * @since 1.0.0
      */
@@ -110,27 +112,20 @@ class StatisticsService
     {
         $requestedUserId = $this->validator->validateUserStatisticsQuery($query);
         $targetUserId = $this->validator->resolveScopedUserId($authenticatedUserPayload, $requestedUserId);
-        $this->repository->ensureStudyTimeSchema();
-        $this->repository->ensureSubjectStatisticsTable();
 
-        $row = $this->repository->findUserStatisticsByUserId($targetUserId);
-        if ($row === null) {
-            $this->repository->createUserStatistics($targetUserId);
-            $row = [
-                'user_id' => $targetUserId,
-                'total_questions_answered' => 0,
-                'correct_answers' => 0,
-                'wrong_answers' => 0,
-                'accuracy_rate' => 0.0,
-                'current_streak' => 0,
-                'best_streak' => 0,
-                'total_study_time' => 0,
-                'question_study_time' => 0,
-                'reading_study_time' => 0,
-                'last_activity' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s'),
-            ];
-        }
+        $row = $this->repository->findUserStatisticsByUserId($targetUserId) ?? [
+            'user_id' => $targetUserId,
+            'total_questions_answered' => 0,
+            'correct_answers' => 0,
+            'wrong_answers' => 0,
+            'accuracy_rate' => 0.0,
+            'current_streak' => 0,
+            'best_streak' => 0,
+            'total_study_time' => 0,
+            'question_study_time' => 0,
+            'reading_study_time' => 0,
+            'last_activity' => '',
+        ];
 
         $subjectBreakdown = array_map(static function (array $subjectRow): array {
             return [
@@ -195,7 +190,7 @@ class StatisticsService
                 'source_context' => $sourceContext,
             ]);
 
-            $this->repository->incrementUserStudyTimeTotals(
+            $statisticsRowDelta = $this->repository->incrementUserStudyTimeTotals(
                 $authenticatedUserId,
                 (int) $normalizedPayload['question_seconds'],
                 (int) $normalizedPayload['reading_seconds'],
@@ -203,6 +198,13 @@ class StatisticsService
             );
 
             $this->db->commit();
+            RuntimeMutationEvidence::record(
+                'user_statistics',
+                'UPSERT',
+                'http-practice-user-activity',
+                'statistics_study_session_recorded',
+                $statisticsRowDelta
+            );
         } catch (Throwable $exception) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();

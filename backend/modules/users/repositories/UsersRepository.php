@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/observability/RuntimeMutationEvidence.php';
+
 /**
  * Repositorio do dominio de Usuarios.
  * Centraliza leituras e escritas relacionadas ao perfil autenticado.
@@ -1018,6 +1020,16 @@ class UsersRepository
             ':user_id' => $userId,
         ]);
 
+        if ($stmt->rowCount() > 0) {
+            RuntimeMutationEvidence::record(
+                'user_cards',
+                'DELETE',
+                'http-auth-account',
+                'billing_card_delete',
+                -$stmt->rowCount()
+            );
+        }
+
         return $stmt->rowCount();
     }
 
@@ -1031,6 +1043,12 @@ class UsersRepository
             'UPDATE user_cards SET is_default = 0 WHERE user_id = :user_id'
         );
         $stmt->execute([':user_id' => $userId]);
+        RuntimeMutationEvidence::record(
+            'user_cards',
+            'UPDATE',
+            'http-auth-account',
+            'billing_card_default_changed'
+        );
     }
 
     /**
@@ -1046,6 +1064,12 @@ class UsersRepository
             ':card_id' => $cardId,
             ':user_id' => $userId,
         ]);
+        RuntimeMutationEvidence::record(
+            'user_cards',
+            'UPDATE',
+            'http-auth-account',
+            'billing_card_default_changed'
+        );
 
         return $stmt->rowCount();
     }
@@ -1204,6 +1228,7 @@ class UsersRepository
             ':holder_name' => $cardData['holder_name'],
             ':is_default' => $cardData['is_default'] ? 1 : 0,
         ]);
+        RuntimeMutationEvidence::record('user_cards', 'INSERT', 'http-auth-account', 'billing_card_save', 1);
 
         return $cardId;
     }

@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/observability/RuntimeMutationEvidence.php';
+
 /**
  * Repositorio do dominio de assinaturas para operacoes de portal e renovacao.
  */
@@ -1079,6 +1081,7 @@ class SubscriptionsRepository
             SET locked_by_recurring = 0
             WHERE user_id = :user_id
         ")->execute([':user_id' => $userId]);
+        RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_subscription_unlock');
     }
 
     /**

@@ -19,6 +19,7 @@ require_once dirname(__DIR__, 3) . '/config/payment_provider.php';
 require_once dirname(__DIR__, 3) . '/config/stripe.php';
 require_once dirname(__DIR__, 3) . '/modules/subscriptions/services/SubscriptionsBillingSupport.php';
 require_once dirname(__DIR__, 2) . '/finance/services/FinancialLedger.php';
+require_once dirname(__DIR__, 3) . '/shared/observability/RuntimeMutationEvidence.php';
 
 /**
  * Normaliza o rotulo do tipo de referencia bancaria do reembolso.
@@ -924,6 +925,7 @@ function syncUserSnapshotAfterRefundedSubscription(PDO $db, string $userId): voi
         SET locked_by_recurring = 0
         WHERE user_id = :user_id
     ")->execute([':user_id' => $safeUserId]);
+    RuntimeMutationEvidence::record('user_cards', 'UPDATE', 'http-auth-account', 'billing_card_refund_unlock');
 }
 
 /**

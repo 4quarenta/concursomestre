@@ -32,11 +32,12 @@ const createArtifacts = async () => {
     name, sha256: createHash('sha256').update(body, 'utf8').digest('hex'), size: Buffer.byteLength(body),
   })).sort((a, b) => a.name.localeCompare(b.name));
   const datasetFingerprint = createHash('sha256').update('eligible-db-rows', 'utf8').digest('hex');
-  vi.stubEnv('SITEMAP_TEST_CURRENT_FINGERPRINT', datasetFingerprint);
+  const datasetRevisionToken = createHash('sha256').update('dataset-revision:1', 'utf8').digest('hex');
+  vi.stubEnv('SITEMAP_TEST_CURRENT_REVISION_TOKEN', datasetRevisionToken);
   const artifactFingerprint = createHash('sha256').update(JSON.stringify(manifestFiles), 'utf8').digest('hex');
   const releaseId = createHash('sha256').update(['sitemap-release-manifest.v1', datasetFingerprint, artifactFingerprint].join('\0')).digest('hex');
   const manifest = JSON.stringify({
-    version: 'sitemap-release-manifest.v1', artifactStateVersion: 'database-driven-sitemap-state.v3', releaseId,
+    version: 'sitemap-release-manifest.v1', artifactStateVersion: 'database-driven-sitemap-state.v4', releaseId,
     logicalDatasetFingerprint: datasetFingerprint, physicalSetFingerprint: artifactFingerprint, files: manifestFiles,
     indexReferences: ['questions-00001.xml'],
   });
@@ -47,8 +48,10 @@ const createArtifacts = async () => {
     artifactSet: 'canonical-sitemap-index',
     indexPolicyVersion: 'index-policy-phase-6.v1',
     canonicalBaseUrl: 'https://concursomestre.com',
-    artifactStateVersion: 'database-driven-sitemap-state.v3',
+    artifactStateVersion: 'database-driven-sitemap-state.v4',
     logicalDatasetVersion: 'eligible-sitemap-dataset.v2',
+    datasetRevisionVersion: 'sitemap-dataset-revision.v1',
+    datasetRevisionToken,
     releaseManifestVersion: 'sitemap-release-manifest.v1',
     releaseManifestFile: 'sitemap-release-manifest.json',
     eligibleDatasetFingerprint: datasetFingerprint,
@@ -60,9 +63,10 @@ const createArtifacts = async () => {
   const statePath = path.join(path.dirname(directory), `.${path.basename(directory)}-publication-state.json`);
   stateFiles.push(statePath);
   await writeFile(statePath, JSON.stringify({
-    version: 'database-driven-sitemap-state.v3',
+    version: 'database-driven-sitemap-state.v4',
     state: 'CURRENT',
     eligibleDatasetFingerprint: datasetFingerprint,
+    datasetRevisionToken,
     artifactFingerprint,
     releaseId,
     manifestHash,

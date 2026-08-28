@@ -53,7 +53,7 @@ $evidence = [
         ['writerId' => 'http-auth-account', 'event' => 'profile_billing_card_sync', 'attributedRows' => 1],
     ],
     'user_statistics' => [
-        ['writerId' => 'http-practice-user-activity', 'event' => 'statistics_lazy_bootstrap', 'attributedRows' => 1],
+        ['writerId' => 'http-practice-user-activity', 'event' => 'statistics_study_session_recorded', 'attributedRows' => 1],
     ],
 ];
 

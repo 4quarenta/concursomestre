@@ -16,6 +16,7 @@ require_once __DIR__ . '/../../modules/seo/services/SeoSlugService.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticBlogSitemapGenerator.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/AuthoritativeSitemapEligibilityService.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapArtifactState.php';
+require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapDatasetRevision.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapLogicalDataset.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapReleaseManifest.php';
 require_once __DIR__ . '/../../modules/seo/sitemaps/StaticSitemapPublisher.php';
@@ -65,6 +66,7 @@ $httpValidationRequired = !$simulation && !$fingerprintOnly;
 $batchSize = $runtimeEnvironment->maxUrlsPerChild();
 $generatedAt = gmdate('c');
 $queryCount = 0;
+$datasetRevisionAtStart = StaticSitemapDatasetRevision::current($db);
 
 $lockPath = dirname($outputDir) . DIRECTORY_SEPARATOR . '.' . basename($outputDir) . '-generation.lock';
 if (!is_dir(dirname($lockPath)) && !mkdir(dirname($lockPath), 0775, true) && !is_dir(dirname($lockPath))) {
@@ -872,12 +874,18 @@ try {
     }
 
     $eligibleDatasetFingerprint = $logicalDataset->fingerprint();
+    $datasetRevisionAtEnd = StaticSitemapDatasetRevision::current($db);
+    if (!hash_equals($datasetRevisionAtStart['token'], $datasetRevisionAtEnd['token'])) {
+        throw new RuntimeException('O dataset elegivel mudou durante a materializacao do sitemap.');
+    }
     if ($fingerprintOnly) {
         $publisher->discard($stage);
         fwrite(STDOUT, json_encode([
             'status' => 'fingerprint',
             'logicalDatasetVersion' => StaticSitemapLogicalDataset::VERSION,
             'eligibleDatasetFingerprint' => $eligibleDatasetFingerprint,
+            'datasetRevisionVersion' => StaticSitemapDatasetRevision::VERSION,
+            'datasetRevisionToken' => $datasetRevisionAtEnd['token'],
             'logicalDatasetRecords' => $logicalDataset->count(),
             'queries' => $queryCount,
         ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL);
@@ -901,6 +909,8 @@ try {
         'logicalDatasetVersion' => StaticSitemapLogicalDataset::VERSION,
         'logicalDatasetRecords' => $logicalDataset->count(),
         'eligibleDatasetFingerprint' => $eligibleDatasetFingerprint,
+        'datasetRevisionVersion' => StaticSitemapDatasetRevision::VERSION,
+        'datasetRevisionToken' => $datasetRevisionAtEnd['token'],
         'artifactFingerprint' => $artifactFingerprint,
         'releaseManifestVersion' => StaticSitemapReleaseManifest::VERSION,
         'releaseManifestFile' => StaticSitemapReleaseManifest::FILENAME,
@@ -936,6 +946,7 @@ try {
         if ($artifactState !== null) {
             $artifactState->markCurrent(
                 $eligibleDatasetFingerprint,
+                $datasetRevisionAtEnd['token'],
                 $artifactFingerprint,
                 (string) $manifest['releaseId'],
                 $manifestHash,

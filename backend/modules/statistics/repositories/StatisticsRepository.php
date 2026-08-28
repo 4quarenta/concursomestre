@@ -226,19 +226,6 @@ class StatisticsRepository
     }
 
     /**
-     * Garante a linha padrao do usurio quando ela ainda no existe.
-     *
-     * @since 1.0.0
-     */
-    public function createUserStatistics(string $userId): void
-    {
-        $stmt = $this->db->prepare("INSERT INTO user_statistics (user_id) VALUES (:userId)");
-        $stmt->execute([
-            ':userId' => $userId,
-        ]);
-    }
-
-    /**
      * Registra uma sessao auditavel de estudo para o usuario autenticado.
      *
      * @since 1.0.0
@@ -295,7 +282,7 @@ class StatisticsRepository
         int $questionSeconds,
         int $readingSeconds,
         string $lastActivityAt
-    ): void {
+    ): int {
         $totalSeconds = max(0, $questionSeconds + $readingSeconds);
 
         $stmt = $this->db->prepare("
@@ -326,6 +313,8 @@ class StatisticsRepository
             ':reading_study_time' => max(0, $readingSeconds),
             ':last_activity' => $lastActivityAt,
         ]);
+
+        return $stmt->rowCount() === 1 ? 1 : 0;
     }
 
     /**

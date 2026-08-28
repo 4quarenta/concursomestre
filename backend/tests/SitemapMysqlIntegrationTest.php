@@ -212,16 +212,17 @@ try {
     $manifest = StaticSitemapReleaseManifest::create($stage, $ready['dataset']->fingerprint());
     $manifestHash = StaticSitemapReleaseManifest::write($stage, $manifest);
     $physical = (string) $manifest['physicalSetFingerprint'];
+    $datasetRevisionToken = hash('sha256', 'fixture-revision:1');
     file_put_contents($stage . '/sitemap-status.json', '{}');
     $publisher->promote($stage);
-    $status = ['eligibleDatasetFingerprint' => $ready['dataset']->fingerprint(), 'artifactFingerprint' => $physical, 'releaseId' => $manifest['releaseId'], 'manifestHash' => $manifestHash];
-    $state->markCurrent($ready['dataset']->fingerprint(), $physical, (string) $manifest['releaseId'], $manifestHash, gmdate('c'));
-    mysqlSitemapAssert($state->isCurrent($status, $ready['dataset']->fingerprint()), 'fresh artifact is not CURRENT.');
+    $status = ['eligibleDatasetFingerprint' => $ready['dataset']->fingerprint(), 'datasetRevisionToken' => $datasetRevisionToken, 'artifactFingerprint' => $physical, 'releaseId' => $manifest['releaseId'], 'manifestHash' => $manifestHash];
+    $state->markCurrent($ready['dataset']->fingerprint(), $datasetRevisionToken, $physical, (string) $manifest['releaseId'], $manifestHash, gmdate('c'));
+    mysqlSitemapAssert($state->isCurrent($status, $datasetRevisionToken), 'fresh artifact is not CURRENT.');
 
     $db->exec("UPDATE sitemap_fixture_entities SET publication_status='unpublished' WHERE slug='fixture-ready'");
     $noindex = mysqlSitemapEligible($db, $authority);
     mysqlSitemapAssert($noindex['dataset']->count() === 0, 'NOINDEX fixture remained eligible.');
-    mysqlSitemapAssert(!$state->isCurrent($status, $noindex['dataset']->fingerprint()), 'direct SQL mutation without markDirty was not detected.');
+    mysqlSitemapAssert(!$state->isCurrent($status, hash('sha256', 'fixture-revision:2')), 'direct SQL mutation without markDirty was not detected.');
 
     $insert->execute(['fixture-remove','fixture-remove','Remove fixture','published','public','READY','exists',null]);
     $beforeRemove = mysqlSitemapEligible($db, $authority);

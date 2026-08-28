@@ -335,7 +335,8 @@ class UsersCardsService
             $authenticatedUserId,
             $customerData['customer_id'],
             $paymentMethod,
-            true
+            true,
+            'billing_card_save'
         );
         $cards = syncStripeCardsForUser($this->db, $authenticatedUserId, $customerData['customer_id']);
 

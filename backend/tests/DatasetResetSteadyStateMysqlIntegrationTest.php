@@ -18,6 +18,7 @@ $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 $_SERVER['HTTP_USER_AGENT'] = 'dataset-steady-state-integration';
 
 require_once __DIR__ . '/../scripts/data/DatasetResetStateValidator.php';
+require_once __DIR__ . '/../scripts/data/DatasetRuntimeEvidenceCollector.php';
 require_once __DIR__ . '/../scripts/data/PostResetResidueReporter.php';
 require_once __DIR__ . '/../shared/auth/AuthSession.php';
 require_once __DIR__ . '/../modules/statistics/repositories/StatisticsRepository.php';
@@ -66,17 +67,23 @@ function steadyMysqlPreserveSnapshot(PDO $db): array
 /**
  * @param list<array<string, mixed>> $events
  * @param array<string, int> $previous
- * @param array<string, list<array{writerId: string, event: string, attributedRows: int}>> $evidence
  */
 function steadyMysqlRecord(
     PDO $db,
     array &$events,
     array &$previous,
     array $preserve,
-    array $evidence,
+    string $runtimeEvidenceLog,
     string $event
 ): void {
     $counts = steadyMysqlCounts($db);
+    $collected = DatasetRuntimeEvidenceCollector::collect(file($runtimeEvidenceLog, FILE_IGNORE_NEW_LINES) ?: []);
+    steadyMysqlAssert($collected['invalidRecords'] === 0, $event . ' emitted malformed runtime evidence.');
+    steadyMysqlAssert(
+        array_filter($collected['records'], static fn (array $record): bool => ($record['allowlisted'] ?? false) !== true) === [],
+        $event . ' emitted unknown runtime writer evidence.'
+    );
+    $evidence = DatasetRuntimeEvidenceCollector::validatorEvidence($collected['records']);
     $delta = [];
     foreach (DatasetResetPolicyV2::runtimeRecreatableTables() as $table) {
         $delta[$table] = $counts[$table] - ($previous[$table] ?? 0);
@@ -99,6 +106,10 @@ function steadyMysqlRecord(
 }
 
 try {
+    $runtimeEvidenceLog = sys_get_temp_dir() . '/cm-steady-runtime-evidence-' . bin2hex(random_bytes(6)) . '.log';
+    ini_set('log_errors', '1');
+    ini_set('error_log', $runtimeEvidenceLog);
+    file_put_contents($runtimeEvidenceLog, '');
     $db = new PDO($dsn, 'root', '', [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -287,19 +298,16 @@ SQL);
 
     $events = [];
     $previous = $initialCounts;
-    $evidence = [];
-    steadyMysqlRecord($db, $events, $previous, $preserve, $evidence, 'A_BOOT_NO_REQUEST');
-    steadyMysqlRecord($db, $events, $previous, $preserve, $evidence, 'B_PUBLIC_PAGE');
-    steadyMysqlRecord($db, $events, $previous, $preserve, $evidence, 'C_AUTH_PAGE');
+    steadyMysqlRecord($db, $events, $previous, $preserve, $runtimeEvidenceLog, 'A_BOOT_NO_REQUEST');
+    steadyMysqlRecord($db, $events, $previous, $preserve, $runtimeEvidenceLog, 'B_PUBLIC_PAGE');
+    steadyMysqlRecord($db, $events, $previous, $preserve, $runtimeEvidenceLog, 'C_AUTH_PAGE');
 
     $bundle = issueUserAuthBundle($db, $user, true);
-    $evidence['auth_sessions'][] = ['writerId' => 'http-auth-account', 'event' => 'auth_login', 'attributedRows' => 1];
-    $evidence['auth_refresh_tokens'][] = ['writerId' => 'http-auth-account', 'event' => 'auth_login', 'attributedRows' => 1];
-    steadyMysqlRecord($db, $events, $previous, $preserve, $evidence, 'D_LOGIN');
+    steadyMysqlRecord($db, $events, $previous, $preserve, $runtimeEvidenceLog, 'D_LOGIN');
 
     $verified = verifyAuthenticatedSession($db, (string) $bundle['token']);
     steadyMysqlAssert(($verified['user_id'] ?? '') === $user['id'], 'Authenticated bootstrap must validate the session.');
-    steadyMysqlRecord($db, $events, $previous, $preserve, $evidence, 'E_AUTHENTICATED_BOOTSTRAP');
+    steadyMysqlRecord($db, $events, $previous, $preserve, $runtimeEvidenceLog, 'E_AUTHENTICATED_BOOTSTRAP');
 
     $refreshed = refreshAccessTokenUsingToken(
         $db,
@@ -307,19 +315,14 @@ SQL);
         (string) $bundle['csrf_token'],
         (string) $bundle['csrf_token']
     );
-    $evidence['auth_refresh_tokens'][] = ['writerId' => 'http-auth-account', 'event' => 'auth_token_refresh', 'attributedRows' => 1];
-    steadyMysqlRecord($db, $events, $previous, $preserve, $evidence, 'F_REFRESH');
+    steadyMysqlRecord($db, $events, $previous, $preserve, $runtimeEvidenceLog, 'F_REFRESH');
 
     $statistics = new StatisticsService(new StatisticsRepository($db), new StatisticsValidator(), $db);
     $statistics->getUserStatistics(
         ['user_id' => $user['id'], 'role' => $user['role']],
         ['user_id' => $user['id']]
     );
-    $evidence['user_statistics'][] = [
-        'writerId' => 'http-practice-user-activity',
-        'event' => 'statistics_lazy_bootstrap',
-        'attributedRows' => 1,
-    ];
+    steadyMysqlAssert((int) $db->query('SELECT COUNT(*) FROM user_statistics')->fetchColumn() === 0, 'Statistics GET persisted a runtime row.');
 
     $remoteCard = (object) [
         'id' => 'pm_disposable_fixture',
@@ -327,12 +330,7 @@ SQL);
         'billing_details' => (object) ['name' => 'Disposable Fixture'],
     ];
     upsertLocalStripeCardMirror($db, $user['id'], 'cus_disposable_fixture', $remoteCard, true);
-    $evidence['user_cards'][] = [
-        'writerId' => 'http-auth-account',
-        'event' => 'profile_billing_card_sync',
-        'attributedRows' => 1,
-    ];
-    steadyMysqlRecord($db, $events, $previous, $preserve, $evidence, 'G_DASHBOARD_PROFILE_BILLING');
+    steadyMysqlRecord($db, $events, $previous, $preserve, $runtimeEvidenceLog, 'G_DASHBOARD_PROFILE_BILLING');
 
     foreach (['transactions', 'user_subscriptions', 'financial_ledger_entries', 'provider_webhook_events', 'coupon_reservations'] as $billingTable) {
         steadyMysqlAssert(
@@ -342,8 +340,10 @@ SQL);
     }
 
     revokeSessionFamily($db, (string) $refreshed['session_id'], 'disposable_logout');
-    steadyMysqlRecord($db, $events, $previous, $preserve, $evidence, 'H_LOGOUT');
+    steadyMysqlRecord($db, $events, $previous, $preserve, $runtimeEvidenceLog, 'H_LOGOUT');
 
+    $collectedEvidence = DatasetRuntimeEvidenceCollector::collect(file($runtimeEvidenceLog, FILE_IGNORE_NEW_LINES) ?: []);
+    $evidence = DatasetRuntimeEvidenceCollector::validatorEvidence($collectedEvidence['records']);
     $unknownEvidence = $evidence;
     $unknownEvidence['auth_sessions'][0]['writerId'] = 'uninventoried-writer';
     $unknownResult = DatasetResetStateValidator::evaluatePostResumeSteadyState(
@@ -391,6 +391,7 @@ SQL);
         'resetCompletionAfterRegression' => 'PASS',
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
     fwrite(STDOUT, "DatasetResetSteadyStateMysqlIntegrationTest: PASS\n");
+    @unlink($runtimeEvidenceLog);
 } catch (Throwable $exception) {
     fwrite(STDERR, 'DatasetResetSteadyStateMysqlIntegrationTest: FAIL - ' . $exception->getMessage() . PHP_EOL);
     exit(1);

@@ -17,7 +17,7 @@ mkdir($output, 0775, true);
 putenv('SITEMAP_OUTPUT_DIR=' . $output);
 
 $state = new StaticSitemapArtifactState($output);
-$state->markCurrent(str_repeat('a', 64), str_repeat('b', 64), str_repeat('c', 64), str_repeat('d', 64), gmdate('c'));
+$state->markCurrent(str_repeat('a', 64), str_repeat('b', 64), str_repeat('c', 64), str_repeat('d', 64), str_repeat('e', 64), gmdate('c'));
 StaticSitemapMutationInvalidator::invalidate('QUESTION_CONTENT_MUTATION');
 $dirty = $state->read();
 mutationInvalidatorAssert(($dirty['state'] ?? null) === 'DIRTY', 'Canonical content mutation must mark the sitemap DIRTY.');

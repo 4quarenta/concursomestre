@@ -914,7 +914,7 @@ class SubscriptionsService
                             ],
                         ]);
 
-                        upsertLocalStripeCardMirror($this->db, $userId, $stripeCustomerId, $paymentMethod, true);
+                        upsertLocalStripeCardMirror($this->db, $userId, $stripeCustomerId, $paymentMethod, true, 'checkout_billing_card_sync');
                         setStripeLocalDefaultCard($this->db, $userId, $paymentMethodId);
                         $cardSaved = true;
                     } catch (Throwable $cardSyncError) {

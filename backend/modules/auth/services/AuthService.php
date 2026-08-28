@@ -110,7 +110,7 @@ class AuthService
             'id' => $user['id'],
             'email' => $user['email'],
             'role' => $user['role'],
-        ]);
+        ], false, 'auth_login');
 
         return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
@@ -201,7 +201,7 @@ class AuthService
             'id' => $newUserId,
             'email' => $normalized['email'],
             'role' => 'student',
-        ]);
+        ], false, 'auth_registration');
 
         $emailDelivery = $this->sendVerificationEmail($normalized['email'], $normalized['name'], $verificationToken);
 
@@ -361,7 +361,7 @@ class AuthService
             'id' => $user['id'],
             'email' => $user['email'],
             'role' => $user['role'],
-        ]);
+        ], false, 'auth_social_callback');
 
         return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
@@ -614,7 +614,7 @@ class AuthService
             'id' => $user['id'],
             'email' => $user['email'],
             'role' => $user['role'],
-        ]);
+        ], false, 'auth_social_callback');
 
         return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
@@ -1102,7 +1102,7 @@ class AuthService
             'id' => $user['id'],
             'email' => $user['email'],
             'role' => $user['role'],
-        ]);
+        ], false, 'auth_two_factor_completion');
 
         return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],

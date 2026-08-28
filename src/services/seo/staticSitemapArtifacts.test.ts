@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readStaticSitemapArtifact, readStaticSitemapStatus } from './staticSitemapArtifacts';
 
 const originalOutputDirectory = process.env.SITEMAP_OUTPUT_DIR;
-const originalCurrentFingerprint = process.env.SITEMAP_TEST_CURRENT_FINGERPRINT;
+const originalCurrentRevisionToken = process.env.SITEMAP_TEST_CURRENT_REVISION_TOKEN;
 const directories: string[] = [];
 const stateFiles: string[] = [];
 const hash = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
@@ -18,20 +18,22 @@ const writeCurrentState = async (directory: string, files: Record<string, string
   const manifestFiles = Object.entries(files).map(([name, body]) => ({ name, sha256: hash(body), size: Buffer.byteLength(body) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const datasetFingerprint = hash('eligible-db-rows');
+  const datasetRevisionToken = hash('dataset-revision:1');
   const artifactFingerprint = hash(JSON.stringify(manifestFiles));
   const id = releaseId(datasetFingerprint, artifactFingerprint);
   const references = manifestFiles.filter((file) => file.name !== 'sitemap.xml').map((file) => file.name);
   const manifest = JSON.stringify({
-    version: 'sitemap-release-manifest.v1', artifactStateVersion: 'database-driven-sitemap-state.v3', releaseId: id,
+    version: 'sitemap-release-manifest.v1', artifactStateVersion: 'database-driven-sitemap-state.v4', releaseId: id,
     logicalDatasetFingerprint: datasetFingerprint, physicalSetFingerprint: artifactFingerprint,
     files: manifestFiles, indexReferences: references,
   });
   const manifestHash = hash(manifest);
-  process.env.SITEMAP_TEST_CURRENT_FINGERPRINT = datasetFingerprint;
+  process.env.SITEMAP_TEST_CURRENT_REVISION_TOKEN = datasetRevisionToken;
   await writeFile(path.join(directory, 'sitemap-release-manifest.json'), manifest, 'utf8');
   await writeFile(path.join(directory, 'sitemap-status.json'), JSON.stringify({
     artifactSet: 'canonical-sitemap-index', indexPolicyVersion: 'index-policy-phase-6.v1', canonicalBaseUrl: 'https://concursomestre.com',
-    artifactStateVersion: 'database-driven-sitemap-state.v3', logicalDatasetVersion: 'eligible-sitemap-dataset.v2',
+    artifactStateVersion: 'database-driven-sitemap-state.v4', logicalDatasetVersion: 'eligible-sitemap-dataset.v2',
+    datasetRevisionVersion: 'sitemap-dataset-revision.v1', datasetRevisionToken,
     releaseManifestVersion: 'sitemap-release-manifest.v1', releaseManifestFile: 'sitemap-release-manifest.json',
     eligibleDatasetFingerprint: datasetFingerprint, artifactFingerprint, releaseId: id, manifestHash,
     validation: { valid: true },
@@ -39,7 +41,8 @@ const writeCurrentState = async (directory: string, files: Record<string, string
   const statePath = path.join(path.dirname(directory), `.${path.basename(directory)}-publication-state.json`);
   if (!stateFiles.includes(statePath)) stateFiles.push(statePath);
   await writeFile(statePath, JSON.stringify({
-    version: 'database-driven-sitemap-state.v3', state: 'CURRENT', eligibleDatasetFingerprint: datasetFingerprint,
+    version: 'database-driven-sitemap-state.v4', state: 'CURRENT', eligibleDatasetFingerprint: datasetFingerprint,
+    datasetRevisionToken,
     artifactFingerprint, releaseId: id, manifestHash,
   }), 'utf8');
 };
@@ -60,8 +63,8 @@ const fixture = async (prefix: string) => {
 afterEach(async () => {
   if (originalOutputDirectory === undefined) delete process.env.SITEMAP_OUTPUT_DIR;
   else process.env.SITEMAP_OUTPUT_DIR = originalOutputDirectory;
-  if (originalCurrentFingerprint === undefined) delete process.env.SITEMAP_TEST_CURRENT_FINGERPRINT;
-  else process.env.SITEMAP_TEST_CURRENT_FINGERPRINT = originalCurrentFingerprint;
+  if (originalCurrentRevisionToken === undefined) delete process.env.SITEMAP_TEST_CURRENT_REVISION_TOKEN;
+  else process.env.SITEMAP_TEST_CURRENT_REVISION_TOKEN = originalCurrentRevisionToken;
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
   await Promise.all(stateFiles.splice(0).map((statePath) => rm(statePath, { force: true })));
 });
@@ -118,12 +121,12 @@ describe('static sitemap release integrity', () => {
   it('denies DIRTY state and direct database fingerprint drift', async () => {
     const dirty = await fixture('cm-sitemap-dirty-');
     await writeFile(path.join(path.dirname(dirty.directory), `.${path.basename(dirty.directory)}-publication-state.json`), JSON.stringify({
-      version: 'database-driven-sitemap-state.v3', state: 'DIRTY',
+      version: 'database-driven-sitemap-state.v4', state: 'DIRTY',
     }), 'utf8');
     await expect(readStaticSitemapArtifact('sitemap.xml')).resolves.toBeNull();
 
     await fixture('cm-sitemap-drift-');
-    process.env.SITEMAP_TEST_CURRENT_FINGERPRINT = hash('direct-sql-drift');
+    process.env.SITEMAP_TEST_CURRENT_REVISION_TOKEN = hash('direct-sql-drift');
     await expect(readStaticSitemapArtifact('sitemap.xml')).resolves.toBeNull();
   });
 });
