@@ -87,11 +87,11 @@ function restoreRunCommand(string $command): array
     ];
 }
 
-function restoreReadChecksum(string $path): ?string
+function restoreReadChecksum(string $path): string
 {
     $checksumPath = $path . '.sha256';
     if (!is_file($checksumPath)) {
-        return null;
+        throw new RuntimeException('Checksum obrigatorio ausente.');
     }
 
     $content = trim((string) file_get_contents($checksumPath));
@@ -100,6 +100,30 @@ function restoreReadChecksum(string $path): ?string
     }
 
     return strtolower($matches[0]);
+}
+
+/** @return array<string, mixed> */
+function restoreReadManifest(string $path, bool $allowLegacy): array
+{
+    $manifestPath = $path . '.manifest.json';
+    if (!is_file($manifestPath) || !is_readable($manifestPath)) {
+        if ($allowLegacy) {
+            return ['legacy' => true];
+        }
+        throw new RuntimeException('Manifest final obrigatorio ausente.');
+    }
+    $manifest = json_decode((string) file_get_contents($manifestPath), true);
+    if (!is_array($manifest) || (int) ($manifest['format_version'] ?? 0) < 1) {
+        throw new RuntimeException('Manifest final invalido.');
+    }
+    $checksum = restoreReadChecksum($path);
+    if (($manifest['dump_sha256'] ?? '') === '' || !hash_equals((string) $manifest['dump_sha256'], $checksum)) {
+        throw new RuntimeException('Manifest nao corresponde ao checksum do backup.');
+    }
+    if (isset($manifest['dump_size']) && (int) $manifest['dump_size'] !== (int) filesize($path)) {
+        throw new RuntimeException('Manifest nao corresponde ao tamanho do backup.');
+    }
+    return $manifest;
 }
 
 function restoreAssertBackupFileIsValid(string $path): array
@@ -120,7 +144,7 @@ function restoreAssertBackupFileIsValid(string $path): array
         throw new RuntimeException('Nao foi possivel calcular checksum.');
     }
 
-    if ($expectedChecksum !== null && strtolower($actualChecksum) !== $expectedChecksum) {
+    if (strtolower($actualChecksum) !== $expectedChecksum) {
         throw new RuntimeException('Checksum do backup nao confere.');
     }
 
@@ -141,7 +165,7 @@ function restoreAssertBackupFileIsValid(string $path): array
         'backup_file' => $path,
         'size_bytes' => $size,
         'sha256' => $actualChecksum,
-        'checksum_file_found' => $expectedChecksum !== null,
+        'checksum_file_found' => true,
     ];
 }
 
@@ -199,7 +223,9 @@ try {
         throw new RuntimeException('Restore no banco atual bloqueado. Use banco temporario ou --allow-current-db=RESTORE_CURRENT_DATABASE.');
     }
 
+    $allowLegacyManifest = restoreCliOption('allow-legacy-manifest') === 'REVIEWED_LEGACY_BACKUP';
     $validation = restoreAssertBackupFileIsValid($backupPath);
+    $validation['manifest'] = restoreReadManifest($backupPath, $allowLegacyManifest);
     $executeToken = (string) restoreCliOption('execute', '');
     $shouldExecute = $executeToken === 'RESTORE_BACKUP';
     $createDb = restoreCliOption('create-db', '1') !== '0';
@@ -213,6 +239,7 @@ try {
             'target_db' => $targetDb,
             'create_db' => $createDb,
             'drop_target_db' => $dropExistingTarget,
+            'legacy_manifest_allowed' => $allowLegacyManifest,
             'validation' => $validation,
             'checked_at' => gmdate(DATE_ATOM),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL;

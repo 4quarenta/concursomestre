@@ -31,11 +31,11 @@ function backupVerifyCliOption(string $name, ?string $fallback = null): ?string
     return $fallback;
 }
 
-function backupVerifyReadChecksum(string $path): ?string
+function backupVerifyReadChecksum(string $path): string
 {
     $checksumPath = $path . '.sha256';
     if (!is_file($checksumPath)) {
-        return null;
+        throw new RuntimeException('Checksum obrigatorio ausente.');
     }
 
     $content = trim((string) file_get_contents($checksumPath));
@@ -44,6 +44,26 @@ function backupVerifyReadChecksum(string $path): ?string
     }
 
     return strtolower($matches[0]);
+}
+
+/** @return array<string, mixed> */
+function backupVerifyReadManifest(string $path): array
+{
+    $manifestPath = $path . '.manifest.json';
+    if (!is_file($manifestPath) || !is_readable($manifestPath)) {
+        throw new RuntimeException('Manifest final obrigatorio ausente.');
+    }
+    $manifest = json_decode((string) file_get_contents($manifestPath), true);
+    if (!is_array($manifest) || (int) ($manifest['format_version'] ?? 0) < 1) {
+        throw new RuntimeException('Manifest final invalido.');
+    }
+    if (($manifest['dump_sha256'] ?? '') === '' || !hash_equals((string) $manifest['dump_sha256'], backupVerifyReadChecksum($path))) {
+        throw new RuntimeException('Manifest nao corresponde ao checksum do backup.');
+    }
+    if (isset($manifest['dump_size']) && (int) $manifest['dump_size'] !== (int) filesize($path)) {
+        throw new RuntimeException('Manifest nao corresponde ao tamanho do backup.');
+    }
+    return $manifest;
 }
 
 try {
@@ -63,12 +83,13 @@ try {
     }
 
     $expectedChecksum = backupVerifyReadChecksum($path);
+    $manifest = backupVerifyReadManifest($path);
     $actualChecksum = hash_file('sha256', $path);
     if ($actualChecksum === false) {
         throw new RuntimeException('Nao foi possivel calcular checksum.');
     }
 
-    if ($expectedChecksum !== null && strtolower($actualChecksum) !== $expectedChecksum) {
+    if (strtolower($actualChecksum) !== $expectedChecksum) {
         throw new RuntimeException('Checksum do backup nao confere.');
     }
 
@@ -88,7 +109,9 @@ try {
         'backup_file' => $path,
         'size_bytes' => $size,
         'sha256' => $actualChecksum,
-        'checksum_file_found' => $expectedChecksum !== null,
+        'checksum_file_found' => true,
+        'manifest_file_found' => true,
+        'manifest' => $manifest,
         'verified_at' => gmdate(DATE_ATOM),
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL;
     exit(0);

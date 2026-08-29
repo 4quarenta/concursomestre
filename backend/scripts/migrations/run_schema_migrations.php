@@ -10,21 +10,23 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../shared/database/SchemaMigrationRunner.php';
 
-$options = getopt('', ['status', 'dry-run', 'apply', 'baseline-legacy', 'migration::']);
+$options = getopt('', ['status', 'dry-run', 'audit', 'apply', 'baseline-legacy', 'migration::']);
 $actions = array_filter([
     isset($options['status']),
     isset($options['dry-run']),
+    isset($options['audit']),
     isset($options['apply']),
     isset($options['baseline-legacy']),
 ]);
 if (count($actions) > 1) {
-    fwrite(STDERR, "Escolha apenas uma acao: --status, --dry-run, --apply ou --baseline-legacy.\n");
+    fwrite(STDERR, "Escolha apenas uma acao: --status, --dry-run, --audit, --apply ou --baseline-legacy.\n");
     exit(2);
 }
 
 $action = isset($options['apply']) ? 'apply'
     : (isset($options['baseline-legacy']) ? 'baseline'
-        : (isset($options['dry-run']) ? 'dry-run' : 'status'));
+        : (isset($options['audit']) ? 'audit'
+            : (isset($options['dry-run']) ? 'dry-run' : 'status')));
 
 if (in_array($action, ['apply', 'baseline'], true)
     && filter_var(getenv('MIGRATIONS_ALLOW_APPLY') ?: 'false', FILTER_VALIDATE_BOOLEAN) !== true) {
@@ -54,6 +56,8 @@ try {
             'action' => 'apply',
             'executed' => $runner->apply(isset($options['migration']) ? (string) $options['migration'] : null),
         ];
+    } elseif ($action === 'audit') {
+        $result = ['action' => 'audit', 'audit' => $runner->audit()];
     } else {
         $status = $runner->status();
         $pending = array_values(array_filter($status, static fn (array $migration): bool => !$migration['applied']));

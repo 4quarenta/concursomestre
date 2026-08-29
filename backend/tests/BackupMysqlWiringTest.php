@@ -26,6 +26,7 @@ $script = $base . '/scripts/tasks/backup_mysql.php';
 $verifyScript = $base . '/scripts/tasks/verify_mysql_backup.php';
 $restoreScript = $base . '/scripts/tasks/restore_mysql_backup.php';
 $rehearsalScript = $base . '/scripts/tasks/backup_restore_rehearsal.php';
+$artifactPublisher = $base . '/shared/database/BackupArtifactPublisher.php';
 
 assertContainsBackupMysql(
     $script,
@@ -35,14 +36,50 @@ assertContainsBackupMysql(
 
 assertContainsBackupMysql(
     $script,
+    'BackupArtifactPublisher::publish',
+    'Backup must publish only after completing a private temporary artifact'
+);
+
+assertContainsBackupMysql(
+    $script,
+    'manifest_file',
+    'Backup must publish a non-secret manifest alongside the checksum'
+);
+
+assertContainsBackupMysql(
+    $script,
     'backupCreateDefaultsFile',
     'Backup must avoid passing the password directly in the command line'
 );
 
 assertContainsBackupMysql(
+    $verifyScript,
+    'Checksum obrigatorio ausente.',
+    'Verifier must reject backups without a checksum'
+);
+
+assertContainsBackupMysql(
+    $verifyScript,
+    'Manifest final obrigatorio ausente.',
+    'Verifier must reject backups without a final manifest'
+);
+
+assertContainsBackupMysql(
     $script,
-    'hash_file(\'sha256\', $backupPath)',
+    'hash_file(\'sha256\', $temporaryPath)',
     'Backup must write a sha256 checksum for restore verification'
+);
+
+assertContainsBackupMysql(
+    $restoreScript,
+    'REVIEWED_LEGACY_BACKUP',
+    'Legacy restore compatibility must require an explicit review token'
+);
+
+assertContainsBackupMysql(
+    $artifactPublisher,
+    'rename($temporaryPath, $finalPath)',
+    'Artifact publisher must use an atomic same-directory rename'
 );
 
 assertContainsBackupMysql(

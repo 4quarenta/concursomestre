@@ -375,7 +375,7 @@ SQL);
         $preserve,
         steadyMysqlPreserveSnapshot($db)
     );
-    steadyMysqlAssert($finalCompletion['ok'], 'Reset regression must return all 113 resettable tables to zero.');
+    steadyMysqlAssert($finalCompletion['ok'], 'Reset regression must return all 131 resettable tables to zero.');
     steadyMysqlAssert((int) $db->query('SELECT COUNT(*) FROM users')->fetchColumn() === 1, 'Preserved user was modified.');
 
     echo json_encode([

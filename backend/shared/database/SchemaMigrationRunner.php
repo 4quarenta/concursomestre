@@ -26,7 +26,7 @@ final class SchemaMigrationRunner
         $result = [];
 
         foreach ($migrations as $migration) {
-            $appliedRow = $applied[$migration['version']] ?? null;
+            $appliedRow = $this->resolveAppliedRow($migration, $applied);
             $checksumMatches = $appliedRow === null
                 || hash_equals((string) $appliedRow['checksum'], $migration['checksum']);
 
@@ -37,6 +37,7 @@ final class SchemaMigrationRunner
                 'applied_by' => $appliedRow['applied_by'] ?? null,
                 'execution_ms' => isset($appliedRow['execution_ms']) ? (int) $appliedRow['execution_ms'] : null,
                 'checksum_matches' => $checksumMatches,
+                'legacy_alias' => $appliedRow !== null && !isset($applied[$migration['version']]),
             ];
         }
 
@@ -84,7 +85,7 @@ final class SchemaMigrationRunner
             if ($onlyVersion !== null && $migration['version'] !== $onlyVersion) {
                 continue;
             }
-            if (isset($applied[$migration['version']])) {
+            if ($this->resolveAppliedRow($migration, $applied) !== null) {
                 continue;
             }
 
@@ -165,6 +166,132 @@ final class SchemaMigrationRunner
         return $migrations;
     }
 
+    /**
+     * Reports migration history problems without changing schema or metadata.
+     * Legacy date-only rows are matched by base version and name so that a
+     * duplicate date prefix does not become an invisible applied migration.
+     *
+     * @return array<string, mixed>
+     */
+    public function audit(): array
+    {
+        $migrations = $this->discoverMigrations();
+        $applied = $this->loadAppliedMigrations();
+        $matchedAppliedVersions = [];
+        $legacyAliases = [];
+        $checksumDrift = [];
+        $discoveredWithoutApplied = [];
+
+        foreach ($migrations as $migration) {
+            $appliedRow = $this->resolveAppliedRow($migration, $applied);
+            if ($appliedRow === null) {
+                $discoveredWithoutApplied[] = $migration['version'];
+                continue;
+            }
+            $matchedAppliedVersions[(string) ($appliedRow['version'] ?? $migration['version'])] = true;
+            if (!isset($applied[$migration['version']])) {
+                $legacyAliases[] = [
+                    'applied_version' => (string) ($appliedRow['version'] ?? ''),
+                    'discovered_version' => $migration['version'],
+                    'filename' => $migration['filename'],
+                ];
+            }
+            if (($appliedRow['checksum'] ?? '') !== '' && !hash_equals((string) $appliedRow['checksum'], $migration['checksum'])) {
+                $checksumDrift[] = [
+                    'applied_version' => (string) ($appliedRow['version'] ?? ''),
+                    'discovered_version' => $migration['version'],
+                    'filename' => $migration['filename'],
+                ];
+            }
+        }
+
+        $appliedWithoutDiscovered = [];
+        foreach ($applied as $version => $row) {
+            if (!isset($matchedAppliedVersions[$version])) {
+                $appliedWithoutDiscovered[] = [
+                    'version' => (string) $version,
+                    'name' => (string) ($row['name'] ?? ''),
+                    'applied_at' => $row['applied_at'] ?? null,
+                ];
+            }
+        }
+
+        $baseVersionGroups = [];
+        $logicalIdentityGroups = [];
+        foreach ($migrations as $migration) {
+            $baseVersionGroups[$migration['base_version']][] = $migration['filename'];
+            $logicalIdentity = $migration['base_version'] . ':' . $migration['name'];
+            $logicalIdentityGroups[$logicalIdentity][] = $migration['filename'];
+        }
+
+        $ambiguousPrefix = [];
+        foreach ($baseVersionGroups as $prefix => $files) {
+            if (count($files) > 1) {
+                $ambiguousPrefix[$prefix] = $files;
+            }
+        }
+        $duplicateLogicalIdentity = [];
+        foreach ($logicalIdentityGroups as $identity => $files) {
+            if (count($files) > 1) {
+                $duplicateLogicalIdentity[$identity] = $files;
+            }
+        }
+
+        $orderedApplied = array_values($applied);
+        usort($orderedApplied, static fn (array $left, array $right): int => strcmp(
+            (string) ($left['applied_at'] ?? ''),
+            (string) ($right['applied_at'] ?? '')
+        ));
+        $outOfOrderHistory = [];
+        $previousVersion = null;
+        foreach ($orderedApplied as $row) {
+            $version = (string) ($row['version'] ?? '');
+            if ($previousVersion !== null && strcmp($version, $previousVersion) < 0) {
+                $outOfOrderHistory[] = ['previous' => $previousVersion, 'current' => $version];
+            }
+            $previousVersion = $version;
+        }
+
+        $ignoredManualSql = [];
+        foreach (array_merge(glob($this->migrationDirectory . '/*.sql') ?: [], glob($this->migrationDirectory . '/*.php') ?: []) as $path) {
+            $filename = basename($path);
+            if (preg_match('/^\d{8}(?:_\d{6})?_[a-z0-9_]+\.(sql|php)$/i', $filename) === 1) {
+                continue;
+            }
+            $contents = file_get_contents($path);
+            if ($contents !== false && preg_match('/\b(CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE)\b/i', $contents) === 1) {
+                $ignoredManualSql[] = $filename;
+            }
+        }
+
+        sort($discoveredWithoutApplied);
+        usort($appliedWithoutDiscovered, static fn (array $left, array $right): int => strcmp($left['version'], $right['version']));
+        sort($checksumDrift);
+        sort($ignoredManualSql);
+
+        return [
+            'discovered_count' => count($migrations),
+            'applied_count' => count($applied),
+            'applied_without_discovered_file' => $appliedWithoutDiscovered,
+            'discovered_without_applied_row' => $discoveredWithoutApplied,
+            'checksum_drift' => $checksumDrift,
+            'duplicate_logical_identity' => $duplicateLogicalIdentity,
+            'ambiguous_prefix' => $ambiguousPrefix,
+            'out_of_order_history' => $outOfOrderHistory,
+            'ignored_manual_sql' => $ignoredManualSql,
+            'legacy_aliases_matched' => $legacyAliases,
+            'codes' => [
+                'APPLIED_WITHOUT_DISCOVERED_FILE' => count($appliedWithoutDiscovered),
+                'DISCOVERED_WITHOUT_APPLIED_ROW' => count($discoveredWithoutApplied),
+                'CHECKSUM_DRIFT' => count($checksumDrift),
+                'DUPLICATE_LOGICAL_IDENTITY' => count($duplicateLogicalIdentity),
+                'AMBIGUOUS_PREFIX' => count($ambiguousPrefix),
+                'OUT_OF_ORDER_HISTORY' => count($outOfOrderHistory),
+                'IGNORED_MANUAL_SQL' => count($ignoredManualSql),
+            ],
+        ];
+    }
+
     private function ensureMetadataTable(): void
     {
         $this->db->exec(
@@ -205,10 +332,24 @@ final class SchemaMigrationRunner
         return $applied;
     }
 
+    private function resolveAppliedRow(array $migration, array $applied): ?array
+    {
+        if (isset($applied[$migration['version']])) {
+            return $applied[$migration['version']];
+        }
+
+        $legacy = $applied[$migration['base_version']] ?? null;
+        if ($legacy !== null && (string) ($legacy['name'] ?? '') === (string) $migration['name']) {
+            return $legacy;
+        }
+
+        return null;
+    }
+
     private function assertNoChecksumDrift(array $migrations, array $applied): void
     {
         foreach ($migrations as $migration) {
-            $appliedRow = $applied[$migration['version']] ?? null;
+            $appliedRow = $this->resolveAppliedRow($migration, $applied);
             if ($appliedRow !== null && !hash_equals((string) $appliedRow['checksum'], $migration['checksum'])) {
                 throw new RuntimeException('Checksum divergente para migration ja aplicada: ' . $migration['version']);
             }
@@ -221,7 +362,7 @@ final class SchemaMigrationRunner
             if (strcmp($migration['version'], self::BASELINE_VERSION) >= 0) {
                 continue;
             }
-            if (!isset($applied[$migration['version']])) {
+            if ($this->resolveAppliedRow($migration, $applied) === null) {
                 throw new RuntimeException(
                     'Migrations legadas nao marcadas como baseline. Revise o schema real e execute --baseline-legacy antes de aplicar novas migrations.'
                 );

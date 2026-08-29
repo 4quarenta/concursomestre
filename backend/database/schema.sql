@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS users (
     preferences JSON, 
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
@@ -285,6 +286,8 @@ CREATE TABLE IF NOT EXISTS provas (
     tipo_prova_id INT, -- Link to filter of type 'tipo_prova'
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uq_provas_slug (slug),
     
     FOREIGN KEY (banca_id) REFERENCES filters(id) ON DELETE SET NULL,
     FOREIGN KEY (orgao_id) REFERENCES filters(id) ON DELETE SET NULL,

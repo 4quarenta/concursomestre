@@ -1,0 +1,16 @@
+# Candidate settings for an isolated/staging MySQL 8.4 rehearsal.
+# Do not copy this file directly to production. Set server-id and paths through
+# the host configuration process after backup, restore and rollback review.
+
+[mysqld]
+innodb_flush_log_at_trx_commit=1
+sync_binlog=1
+log_bin=concursomestre-bin
+binlog_format=ROW
+binlog_expire_logs_seconds=604800
+
+# Assign a unique server-id in the actual topology.
+# server-id=CHANGE_ME
+
+# GTID is optional for a single-primary PITR workflow; decide it with the
+# replication topology owner before enabling it.

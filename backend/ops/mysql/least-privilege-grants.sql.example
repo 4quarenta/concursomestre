@@ -1,0 +1,21 @@
+-- Candidate grants only. No users, passwords or production hosts belong here.
+-- Apply through the approved operational change process after rehearsal.
+
+-- Runtime application: use explicit table grants for the application schema.
+-- Keep credentials in the secret manager, never in this file.
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON `concursomestre`.<allowlisted_table>
+-- TO 'concursomestre_app'@'<approved-host>';
+
+-- Read-only backup principal: grant only the capabilities required by the
+-- selected backup tool (for example SELECT and SHOW VIEW on the app schema).
+-- Add TRIGGER/EVENT/LOCK TABLES/RELOAD only after verifying the exact dump
+-- command and host-level policy.
+-- GRANT SELECT, SHOW VIEW ON `concursomestre`.*
+-- TO 'concursomestre_backup_ro'@'<approved-backup-host>';
+
+-- Read-only audit/restore-rehearsal principal: no DML or DDL in production.
+-- GRANT SELECT ON `concursomestre`.*
+-- TO 'concursomestre_audit_ro'@'<approved-audit-host>';
+
+-- Migration principal is separate and time-bound. Do not grant it to the
+-- runtime account and do not store its credentials in source control.
