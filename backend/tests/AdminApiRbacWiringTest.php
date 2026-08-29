@@ -44,6 +44,18 @@ foreach ($bridgeFiles as $bridgePath) {
         );
         continue;
     }
+    if (basename($bridgePath) === 'files.php') {
+        $fileRouteSource = file_get_contents($base . '/modules/admin/file_library_routes.php');
+        assertAdminApiRbac(
+                is_string($bridgeSource)
+                && str_contains($bridgeSource, 'file_library_routes.php')
+                && str_contains($bridgeSource, 'handleAdminFileLibraryRoute(')
+                && is_string($fileRouteSource)
+                && str_contains($fileRouteSource, 'requirePlatformAdminSessionContext($db)'),
+            'Bridge de arquivos deve delegar ao modulo dedicado protegido por RBAC.'
+        );
+        continue;
+    }
     assertAdminApiRbac(
         is_string($bridgeSource) && str_contains($bridgeSource, "'/../../modules/admin/routes.php'"),
         'Bridge administrativo deve delegar ao modulo com RBAC: ' . basename($bridgePath)

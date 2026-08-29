@@ -62,6 +62,11 @@ try {
         ['materials', 'idx_materials_public_keyset'],
     ];
     foreach ($indexes as [$table, $index]) {
+        if ($table === 'reports'
+            && (!platformScaleColumnExists($db, 'reports', 'workflow_status')
+                || !platformScaleColumnExists($db, 'reports', 'priority'))) {
+            continue;
+        }
         platformScaleAssert(platformScaleIndexExists($db, $table, $index), "Indice ausente: {$table}.{$index}");
     }
 

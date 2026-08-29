@@ -82,37 +82,19 @@ function getRecaptchaSiteKey(PDO $db): string
 }
 
 /**
- * Recupera o secret do reCAPTCHA salvo nas configuracoes.
+ * Recupera o secret do reCAPTCHA exclusivamente do ambiente protegido.
+ *
+ * Segredos legados em system_settings nao sao mais uma fonte operacional:
+ * isso impede que uma credencial potencialmente comprometida seja reativada
+ * por uma configuracao de banco e mantem a rotacao sob controle do ambiente.
  *
  * @since 1.0.0
  */
 function getRecaptchaSecretKey(PDO $db): string
 {
-    $environmentSecret = trim((string) ($_ENV['RECAPTCHA_SECRET_KEY'] ?? getenv('RECAPTCHA_SECRET_KEY') ?? ''));
-    if ($environmentSecret !== '') {
-        return $environmentSecret;
-    }
+    unset($db);
 
-    $stmt = $db->prepare("SELECT value_json FROM system_settings WHERE key_name = 'recaptchaSecretKey' LIMIT 1");
-    $stmt->execute();
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$row || !array_key_exists('value_json', $row)) {
-        return '';
-    }
-
-    $rawValue = $row['value_json'];
-    $decodedValue = json_decode((string) $rawValue, true);
-
-    if (is_string($decodedValue) && trim($decodedValue) !== '') {
-        return trim($decodedValue);
-    }
-
-    if (is_array($decodedValue) && !empty($decodedValue['value'])) {
-        return trim((string) $decodedValue['value']);
-    }
-
-    return trim((string) $rawValue, " \t\n\r\0\x0B\"");
+    return trim((string) ($_ENV['RECAPTCHA_SECRET_KEY'] ?? getenv('RECAPTCHA_SECRET_KEY') ?? ''));
 }
 
 /**

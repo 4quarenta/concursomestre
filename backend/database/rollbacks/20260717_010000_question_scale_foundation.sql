@@ -14,7 +14,8 @@ DROP INDEX idx_user_answers_selected_option ON user_answers;
 DROP INDEX idx_user_answers_user_question_latest ON user_answers;
 ALTER TABLE user_answers DROP COLUMN selected_option_id;
 
-DROP INDEX idx_question_filters_filter_question ON question_filters;
+-- A FK legada para question_filters.filter_id depende deste indice. O rollback
+-- preserva o indice de suporte para nao remover a integridade da tabela base.
 DROP INDEX idx_filters_type_name_id ON filters;
 DROP INDEX idx_questions_public_keyset_v2 ON questions;
 ALTER TABLE questions

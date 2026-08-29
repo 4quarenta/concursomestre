@@ -81,6 +81,7 @@ assertApiInventoryByDirectory($base, [
         'comments_moderation_bulk.php',
         'comments_moderation_export.php',
         'feedback.php',
+        'files.php',
         'gran_crawler.php',
         'list_tables.php',
         'logs.php',
@@ -109,6 +110,8 @@ assertApiInventoryByDirectory($base, [
         'detail.php',
         'like.php',
         'list.php',
+        'tags.php',
+        'taxonomy.php',
     ],
     'blog/admin' => [
         'categories.php',
@@ -116,6 +119,14 @@ assertApiInventoryByDirectory($base, [
         'detail.php',
         'list.php',
         'save.php',
+        'tags.php',
+    ],
+    'changelog/admin' => [
+        'archive.php',
+        'detail.php',
+        'list.php',
+        'save.php',
+        'suggestions.php',
     ],
     'auth' => [
         'admin-route-access.php',
@@ -142,12 +153,19 @@ assertApiInventoryByDirectory($base, [
     'changelog' => [
         'list.php',
     ],
+    'contests' => [
+        'detail.php',
+        'index.php',
+        'open.php',
+    ],
     'comments' => [
         'handle.php',
         'list.php',
         'list_cached.php',
     ],
     'exams' => [
+        'detail.php',
+        'directory.php',
         'delete.php',
         'extraction_review.php',
         'extraction_show.php',
@@ -166,14 +184,22 @@ assertApiInventoryByDirectory($base, [
         'vote.php',
     ],
     'filters' => [
+        'board.php',
         'delete.php',
+        'directory.php',
+        'discipline.php',
+        'knowledge-taxonomy.php',
         'list.php',
+        'organization.php',
+        'professional-directory.php',
+        'professional-taxonomy.php',
         'save.php',
     ],
     'internal/questions' => [
         'ingest.php',
     ],
     'legal-commentary' => [
+        'article-detail.php',
         'comment.php',
         'cron_sync_updates.php',
         'detail.php',
@@ -211,6 +237,9 @@ assertApiInventoryByDirectory($base, [
         'get_note.php',
         'list.php',
         'moderate.php',
+        'public-detail.php',
+        'public-directory.php',
+        'public-legacy.php',
         'rate.php',
         'save_bookmark.php',
         'save_highlight.php',
@@ -288,6 +317,8 @@ assertApiInventoryByDirectory($base, [
     'simulations' => [
         'create.php',
         'list.php',
+        'public-detail.php',
+        'public-directory.php',
         'submit.php',
     ],
     'setup' => [

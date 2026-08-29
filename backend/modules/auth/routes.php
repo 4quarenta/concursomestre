@@ -348,6 +348,10 @@ function handleAuthAppleRoute(PDO $db): void
 function handleAuthLogoutRoute(PDO $db): void
 {
     try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+            Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
+        }
+
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_refresh');
         $controller = makeAuthController($db);

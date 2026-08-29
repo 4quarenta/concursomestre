@@ -28,7 +28,14 @@ function rollbackSchemaCount(PDO $db, string $kind, string $table, ?string $name
 }
 
 try {
-    $db = (new Database())->getConnection();
+    $rollbackDsn = trim((string) getenv('QUESTION_SCALE_ROLLBACK_TEST_MYSQL_DSN'));
+    $db = $rollbackDsn !== ''
+        ? new PDO($rollbackDsn, (string) getenv('QUESTION_SCALE_ROLLBACK_TEST_MYSQL_USER'), (string) getenv('QUESTION_SCALE_ROLLBACK_TEST_MYSQL_PASSWORD'), [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => true,
+        ])
+        : (new Database())->getConnection();
     $questionsBefore = (int) $db->query('SELECT COUNT(*) FROM questions')->fetchColumn();
     $optionsBefore = (int) $db->query('SELECT COUNT(*) FROM question_options')->fetchColumn();
     $typeBefore = (string) $db->query(
@@ -63,6 +70,10 @@ try {
     rollbackAssert($typeAfter === $typeBefore, 'Rollback alterou o enum legado de filters.type.');
     rollbackAssert((int) $db->query('SELECT COUNT(*) FROM questions')->fetchColumn() === $questionsBefore, 'Rollback alterou questoes.');
     rollbackAssert((int) $db->query('SELECT COUNT(*) FROM question_options')->fetchColumn() === $optionsBefore, 'Rollback alterou alternativas canonicas.');
+    rollbackAssert(
+        rollbackSchemaCount($db, 'column', 'question_filters', 'filter_id') === 1,
+        'Rollback removeu a coluna necessaria a FK legada de question_filters.'
+    );
 
     fwrite(STDOUT, json_encode([
         'test' => 'QuestionScaleRollbackIntegrationTest',

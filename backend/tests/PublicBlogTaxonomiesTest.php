@@ -128,7 +128,7 @@ blogTaxonomyAssert(str_contains($endpoint, "Database('read')"), 'Endpoint de tax
 $service = (string) file_get_contents($backend . '/modules/blog/services/BlogService.php');
 blogTaxonomyAssert(str_contains($service, 'PublicBlogTaxonomyProjection::articleCard'), 'Endpoint nao aplica projection allowlist aos cards.');
 $sitemap = (string) file_get_contents($backend . '/modules/seo/sitemaps/StaticBlogSitemapGenerator.php');
-blogTaxonomyAssert(str_contains($sitemap, 'blogCategoryDetail'), 'Categoria READY ausente do sitemap de producao.');
+blogTaxonomyAssert(str_contains($sitemap, 'quality PASS real'), 'Categorias sem quality real nao estao fail-closed.');
 blogTaxonomyAssert(!str_contains($sitemap, 'blogTagDetail'), 'Tag PERMANENT_NOINDEX entrou no sitemap.');
 
 $pageMap = json_decode((string) file_get_contents($root . '/config/seo/seo-production-page-map.v1.json'), true, 512, JSON_THROW_ON_ERROR);

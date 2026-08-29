@@ -76,7 +76,7 @@ $assert(str_contains($endpoint, "new Database('read')"), 'Public article endpoin
 $assert(str_contains($service, 'lawArticleDetail') && str_contains($service, 'redirectPath'), 'Canonical route and one-hop law alias are not wired.');
 $assert(str_contains($service, "['label' => 'Lei Comentada', 'path' => \$routes->lawsIndex()]"), 'Article breadcrumb must link to the law hub.');
 $assert(str_contains($importer, "\$article['slug'] = \$persistedSlug"), 'Importer must preserve an existing article slug.');
-$assert(str_contains($sitemap, "a.official_status IN ('active', 'revoked', 'vetoed')") && str_contains($sitemap, 'lawArticleDetail'), 'Sitemap readiness is not wired.');
+$assert(str_contains($sitemap, "a.official_status IN ('active', 'revoked', 'vetoed')") && str_contains($sitemap, "'law_article_detail'"), 'Sitemap readiness is not wired.');
 $assert(str_contains($reporter, 'SELECT COUNT(*) FROM laws') && str_contains($reporter, "'totalLaws'"), 'Read-only reporter must count canonical laws and articles.');
 $assert($family !== null && $family['launchStatus'] === 'ACTIVE' && $family['familyEligibility'] === 'INDEXABLE'
     && $family['targetProductionIndexability'] === 'INDEX' && $family['preLaunchIndexability'] === 'NOINDEX', 'Production Page Map contract is invalid.');

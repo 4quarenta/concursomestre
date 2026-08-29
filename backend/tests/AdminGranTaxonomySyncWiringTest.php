@@ -204,7 +204,7 @@ granTaxonomySyncAssert(
 granTaxonomySyncAssert(
     str_contains($section, 'fetchGranCrawlerBootstrap')
     && str_contains($section, 'BOOTSTRAP_CACHE_MS = 60_000')
-    && substr_count($section, 'apiClient.get(ENDPOINT)') === 1
+    && substr_count($section, 'apiClient.get(ENDPOINT') === 1
     && !str_contains($section, "action: 'taxonomy_status'")
     && !str_contains($section, "    handleVisibility();\n    document.addEventListener('visibilitychange'"),
     'O bootstrap deve carregar jobs, lotes e taxonomias uma vez e nao repetir o status em uma segunda rota.'

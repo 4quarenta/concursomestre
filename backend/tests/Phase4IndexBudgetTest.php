@@ -26,8 +26,8 @@ try {
     phase4BudgetAssert(!str_contains($generator, '/disciplinas/{slug}'), 'Sitemap contem template de disciplina.');
     phase4BudgetAssert(str_contains($generator, 'sitemapPublicationAllowed'), 'PRELAUNCH deixou de bloquear publicacao materializada do sitemap.');
     phase4BudgetAssert(
-        str_contains($generator, '$routes->simulationDetail($slug)')
-            && str_contains($generator, "publication_status = 'published'")
+        str_contains($generator, "'simulation_detail'")
+            && str_contains($generator, 'PublicSimulationReadinessValidator::publicationInput')
             && str_contains($generator, 'public_simulation_questions ready_sq'),
         'Sitemap futuro de simulados nao aplica publicacao e readiness.'
     );
