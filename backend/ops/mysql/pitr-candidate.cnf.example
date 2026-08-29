@@ -1,6 +1,5 @@
-# Candidate settings for an isolated/staging MySQL 8.4 rehearsal.
-# Do not copy this file directly to production. Set server-id and paths through
-# the host configuration process after backup, restore and rollback review.
+# ConcursoMestre Phase 13R PITR target for the current single-primary Percona 8.4 host.
+# Install only through the approved 13-X change after a verified recovery backup.
 
 [mysqld]
 innodb_flush_log_at_trx_commit=1
@@ -8,9 +7,9 @@ sync_binlog=1
 log_bin=concursomestre-bin
 binlog_format=ROW
 binlog_expire_logs_seconds=604800
+server-id=130001
 
-# Assign a unique server-id in the actual topology.
-# server-id=CHANGE_ME
-
-# GTID is optional for a single-primary PITR workflow; decide it with the
-# replication topology owner before enabling it.
+# GTID is intentionally OFF: there is no replication topology in the current
+# architecture, and PITR uses file/position replay.
+gtid_mode=OFF
+enforce_gtid_consistency=OFF

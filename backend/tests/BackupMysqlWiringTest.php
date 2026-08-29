@@ -30,8 +30,20 @@ $artifactPublisher = $base . '/shared/database/BackupArtifactPublisher.php';
 
 assertContainsBackupMysql(
     $script,
-    '--single-transaction --quick --routines --triggers --events --default-character-set=utf8mb4',
+    '--single-transaction --quick --routines --triggers --events --no-tablespaces --default-character-set=utf8mb4',
     'Backup must use production-safe mysqldump flags'
+);
+
+assertContainsBackupMysql(
+    $script,
+    'BackupDatabaseConfig::fromEnvironment',
+    'Backup must resolve a dedicated credential boundary instead of reading runtime DB_* directly'
+);
+
+assertContainsBackupMysql(
+    $script,
+    'BackupManifestInventory::collect',
+    'Backup must create a self-contained manifest inventory'
 );
 
 assertContainsBackupMysql(

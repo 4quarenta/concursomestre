@@ -73,7 +73,16 @@ chown -R mysql:mysql "$ROOT"
 "$MYSQL_HOME/bin/mysqld" --no-defaults --initialize-insecure --user=mysql --datadir="$ORIGINAL_DATA" >/dev/null 2>&1
 start_server "$ORIGINAL_DATA" "$ORIGINAL_SOCKET" "$ORIGINAL_PID" "$RUN/original.err" \
   --log-bin="$LOG_BIN_PREFIX" --server-id=130001 --binlog-format=ROW \
-  --sync-binlog=1 --innodb-flush-log-at-trx-commit=1 --binlog-expire-logs-seconds=604800
+  --sync-binlog=1 --innodb-flush-log-at-trx-commit=1 --binlog-expire-logs-seconds=604800 \
+  --gtid-mode=OFF --enforce-gtid-consistency=OFF
+
+[[ "$(mysql_exec "$ORIGINAL_SOCKET" -N -B -e 'SELECT @@log_bin')" == '1' ]]
+[[ "$(mysql_exec "$ORIGINAL_SOCKET" -N -B -e 'SELECT @@binlog_format')" == 'ROW' ]]
+[[ "$(mysql_exec "$ORIGINAL_SOCKET" -N -B -e 'SELECT @@sync_binlog')" == '1' ]]
+[[ "$(mysql_exec "$ORIGINAL_SOCKET" -N -B -e 'SELECT @@innodb_flush_log_at_trx_commit')" == '1' ]]
+[[ "$(mysql_exec "$ORIGINAL_SOCKET" -N -B -e 'SELECT @@binlog_expire_logs_seconds')" == '604800' ]]
+[[ "$(mysql_exec "$ORIGINAL_SOCKET" -N -B -e 'SELECT @@server_id')" == '130001' ]]
+[[ "$(mysql_exec "$ORIGINAL_SOCKET" -N -B -e 'SELECT @@gtid_mode')" == 'OFF' ]]
 
 mysql_exec "$ORIGINAL_SOCKET" -e "CREATE DATABASE ${DB}; CREATE TABLE ${DB}.events (id INT PRIMARY KEY, value_text VARCHAR(40) NOT NULL); INSERT INTO ${DB}.events VALUES (1, 'baseline');"
 BASELINE_DUMP="$ROOT/dumps/baseline.sql"
@@ -86,8 +95,10 @@ if [[ -z "$MASTER_FILE" || -z "$MASTER_POSITION" ]]; then
 fi
 
 mysql_exec "$ORIGINAL_SOCKET" -e "INSERT INTO ${DB}.events VALUES (2, 'after-baseline'); UPDATE ${DB}.events SET value_text = 'after-pitr' WHERE id = 2;"
+TARGET_POSITION="$(mysql_exec "$ORIGINAL_SOCKET" -N -B -e 'SHOW BINARY LOG STATUS' | awk 'NR == 1 {print $2}')"
+mysql_exec "$ORIGINAL_SOCKET" -e "INSERT INTO ${DB}.events VALUES (3, 'after-target-must-not-replay');"
 BINLOG_FILE="$LOG_BIN_PREFIX.$(printf '%06d' "${MASTER_FILE##*.}")"
-if [[ ! -f "$BINLOG_FILE" ]]; then
+if [[ ! -f "$BINLOG_FILE" || -z "$TARGET_POSITION" ]]; then
   echo "PITR rehearsal failed: binlog not found at $BINLOG_FILE." >&2
   exit 1
 fi
@@ -103,7 +114,7 @@ chown -R mysql:mysql "$RESTORED_DATA"
 start_server "$RESTORED_DATA" "$RESTORED_SOCKET" "$RESTORED_PID" "$RUN/restored.err" --skip-log-bin
 mysql_exec "$RESTORED_SOCKET" -e "CREATE DATABASE ${DB};"
 mysql_exec "$RESTORED_SOCKET" "$DB" < "$BASELINE_DUMP"
-"$MYSQL_BINLOG" --no-defaults --start-position="$MASTER_POSITION" "$BINLOG_FILE" \
+"$MYSQL_BINLOG" --no-defaults --start-position="$MASTER_POSITION" --stop-position="$TARGET_POSITION" "$BINLOG_FILE" \
   | "$MYSQL_CLIENT" --no-defaults --socket="$RESTORED_SOCKET" -uroot "$DB"
 PITR_ROWS="$(mysql_exec "$RESTORED_SOCKET" -N -B -e "SELECT COUNT(*) FROM ${DB}.events")"
 PITR_VALUE="$(mysql_exec "$RESTORED_SOCKET" -N -B -e "SELECT value_text FROM ${DB}.events WHERE id = 2")"
@@ -126,5 +137,8 @@ mysql_exec "$RESTORED_SOCKET" -e "DROP USER '${TEST_USER}'@'localhost';"
 
 echo "PITR_REHEARSAL=PASS"
 echo "PITR_BASELINE_POSITION=${MASTER_FILE}:${MASTER_POSITION}"
+echo "PITR_TARGET_POSITION=${MASTER_FILE}:${TARGET_POSITION}"
 echo "PITR_RESTORED_ROWS=${PITR_ROWS}"
+echo "GTID_TARGET=OFF"
+echo "PITR_DURABILITY_TARGET=PASS"
 echo "LEAST_PRIVILEGE_DDL_DENIED=PASS"

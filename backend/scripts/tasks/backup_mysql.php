@@ -20,6 +20,10 @@ if (PHP_SAPI !== 'cli') {
 
 require_once __DIR__ . '/../../config/env.php';
 require_once __DIR__ . '/../../shared/database/BackupArtifactPublisher.php';
+require_once __DIR__ . '/../../shared/database/BackupDatabaseConfig.php';
+require_once __DIR__ . '/../../shared/database/BackupManifestInventory.php';
+require_once __DIR__ . '/../../shared/database/BackupManifestContract.php';
+require_once __DIR__ . '/../../shared/health/ReleaseMetadata.php';
 
 function backupCliOption(string $name, ?string $fallback = null): ?string
 {
@@ -190,11 +194,12 @@ function backupWriteHealth(array $payload): void
 }
 
 try {
-    $dbName = backupRequireValue('DB_NAME');
-    $dbUser = backupRequireValue('DB_USER');
-    $dbPassword = getEnvString('DB_PASSWORD', getEnvString('DB_PASS'));
-    $dbHost = getEnvString('DB_HOST', 'localhost');
-    $dbPort = getEnvString('DB_PORT', '3306');
+    $databaseConfig = BackupDatabaseConfig::fromEnvironment();
+    $dbName = $databaseConfig['name'];
+    $dbUser = $databaseConfig['user'];
+    $dbPassword = $databaseConfig['password'];
+    $dbHost = $databaseConfig['host'];
+    $dbPort = $databaseConfig['port'];
     $mysqldumpPath = backupCliOption('mysqldump', getEnvString('MYSQLDUMP_PATH', 'mysqldump'));
     $retentionDays = max(0, (int) backupCliOption('retention-days', getEnvString('BACKUP_RETENTION_DAYS', '14')));
     $backupFileMode = backupConfiguredMode('BACKUP_FILE_MODE', 0600);
@@ -208,7 +213,7 @@ try {
     try {
         $command = escapeshellarg((string) $mysqldumpPath)
             . ' --defaults-extra-file=' . escapeshellarg($defaultsFile)
-            . ' --single-transaction --quick --routines --triggers --events --default-character-set=utf8mb4 '
+            . ' --single-transaction --quick --routines --triggers --events --no-tablespaces --default-character-set=utf8mb4 '
             . escapeshellarg($dbName)
             . ' --result-file=' . escapeshellarg($temporaryPath);
 
@@ -245,19 +250,28 @@ try {
     try {
         BackupArtifactPublisher::publish($temporaryPath, $backupPath, $backupFileMode);
         $checksumPath = BackupArtifactPublisher::writeChecksum($backupPath, $checksum, $backupFileMode);
+        $pdo = new PDO(
+            'mysql:host=' . $dbHost . ';port=' . $dbPort . ';dbname=' . $dbName . ';charset=utf8mb4',
+            $dbUser,
+            $dbPassword,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+        $release = ReleaseMetadata::read();
+        $applicationSha = getEnvString('BACKUP_APPLICATION_SHA', (string) ($release['commit'] ?? ''));
+        $inventory = BackupManifestInventory::collect(
+            $pdo,
+            $dbName,
+            dirname(__DIR__, 2) . '/database/migrations',
+            $applicationSha
+        );
         $manifest = [
-            'format_version' => 1,
+            'format_version' => 2,
             'created_at' => gmdate(DATE_ATOM),
-            'database' => $dbName,
-            'db_engine' => getEnvString('DB_ENGINE', 'mysql-compatible'),
-            'db_version' => getEnvString('DB_SERVER_VERSION', 'unknown'),
-            'application_sha' => getEnvString('APP_RELEASE_COMMIT', 'unknown'),
-            'migration_state' => getEnvString('DB_MIGRATION_STATE', 'unknown'),
-            'table_count' => null,
-            'trigger_count' => null,
+            ...$inventory,
             'dump_size' => filesize($backupPath),
             'dump_sha256' => $checksum,
         ];
+        BackupManifestContract::assertValid($manifest);
         $manifestPath = BackupArtifactPublisher::writeManifest($backupPath, $manifest, $backupFileMode);
     } catch (Throwable $exception) {
         @unlink($temporaryPath);
@@ -281,6 +295,7 @@ try {
         'size_bytes' => filesize($backupPath),
         'retention_days' => $retentionDays,
         'removed_old_files' => $removed,
+        'credential_source' => $databaseConfig['source'],
         'created_at' => gmdate(DATE_ATOM),
     ];
     backupWriteHealth($payload);

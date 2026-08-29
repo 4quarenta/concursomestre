@@ -13,6 +13,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../../shared/database/BackupManifestContract.php';
+
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
     exit("Este script so pode ser executado via CLI.\n");
@@ -56,6 +58,9 @@ function backupVerifyReadManifest(string $path): array
     $manifest = json_decode((string) file_get_contents($manifestPath), true);
     if (!is_array($manifest) || (int) ($manifest['format_version'] ?? 0) < 1) {
         throw new RuntimeException('Manifest final invalido.');
+    }
+    if ((int) ($manifest['format_version'] ?? 0) >= BackupManifestContract::FORMAT_VERSION) {
+        BackupManifestContract::assertValid($manifest);
     }
     if (($manifest['dump_sha256'] ?? '') === '' || !hash_equals((string) $manifest['dump_sha256'], backupVerifyReadChecksum($path))) {
         throw new RuntimeException('Manifest nao corresponde ao checksum do backup.');

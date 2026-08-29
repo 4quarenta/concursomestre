@@ -18,17 +18,22 @@ replicação, KMS ou cópia off-host.
 | migration operador | janela controlada | DDL das migrations aprovadas, temporário e separado | uso pelo runtime, credencial persistente no código |
 | restauração isolada | rehearsal | permissões no schema descartável | acesso ao schema de produção |
 
-Os grants candidatos sem credenciais estão em
-`backend/ops/mysql/least-privilege-grants.sql.example`. A matriz é uma proposta
-de mudança operacional e exige revisão do owner do banco antes de aplicação.
+Os grants exatos sem credenciais estão em
+`backend/ops/mysql/least-privilege-grants.sql.example`. O rehearsal 13-R em
+MySQL 8.4 comprovou os quatro principals, inclusive testes negativos. O backup
+usa `SELECT, SHOW VIEW, TRIGGER, EVENT` no schema e `SHOW_ROUTINE` global. Este
+ultimo permite ler metadata de rotinas exigida por `mysqldump --routines`, mas
+nao concede DML, DDL, execucao de rotina ou delegacao. `--no-tablespaces`
+remove a necessidade de `PROCESS`.
 
 ## Durabilidade e PITR
 
 O candidate `backend/ops/mysql/pitr-candidate.cnf.example` registra os controles
 de durabilidade para rehearsal: `innodb_flush_log_at_trx_commit=1`,
 `sync_binlog=1`, binlog em formato `ROW` e retenção explicitamente configurada.
-O `server-id`, diretório, retenção efetiva, monitoramento e topologia devem ser
-definidos no host. GTID permanece uma decisão de topologia, não uma suposição.
+O target atual usa `server-id=130001`, retencao de sete dias e GTID `OFF`.
+Esta decisao corresponde ao single-primary atual e ao replay por
+arquivo/posicao; deve ser revista se uma topologia de replicacao for criada.
 
 PITR só será considerado operacionalmente disponível quando houver:
 

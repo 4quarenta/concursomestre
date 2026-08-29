@@ -1,21 +1,32 @@
--- Candidate grants only. No users, passwords or production hosts belong here.
--- Apply through the approved operational change process after rehearsal.
+-- ConcursoMestre Phase 13R principal contract.
+-- Replace placeholders only in the approved 13-X operational change.
+-- This file never contains users, hosts or passwords from production.
 
--- Runtime application: use explicit table grants for the application schema.
--- Keep credentials in the secret manager, never in this file.
--- GRANT SELECT, INSERT, UPDATE, DELETE ON `concursomestre`.<allowlisted_table>
--- TO 'concursomestre_app'@'<approved-host>';
+-- Runtime application. Existing schema is a precondition; DDL is denied.
+GRANT SELECT, INSERT, UPDATE, DELETE
+ON `concursomestre`.*
+TO 'concursomestre_runtime'@'<approved-runtime-host>';
 
--- Read-only backup principal: grant only the capabilities required by the
--- selected backup tool (for example SELECT and SHOW VIEW on the app schema).
--- Add TRIGGER/EVENT/LOCK TABLES/RELOAD only after verifying the exact dump
--- command and host-level policy.
--- GRANT SELECT, SHOW VIEW ON `concursomestre`.*
--- TO 'concursomestre_backup_ro'@'<approved-backup-host>';
+-- Backup. --no-tablespaces avoids PROCESS; --single-transaction avoids LOCK TABLES.
+GRANT SELECT, SHOW VIEW, TRIGGER, EVENT
+ON `concursomestre`.*
+TO 'concursomestre_backup'@'<approved-backup-host>';
+GRANT SHOW_ROUTINE
+ON *.*
+TO 'concursomestre_backup'@'<approved-backup-host>';
 
--- Read-only audit/restore-rehearsal principal: no DML or DDL in production.
--- GRANT SELECT ON `concursomestre`.*
--- TO 'concursomestre_audit_ro'@'<approved-audit-host>';
+-- Read-only operational audit.
+GRANT SELECT, SHOW VIEW
+ON `concursomestre`.*
+TO 'concursomestre_readonly'@'<approved-readonly-host>';
 
--- Migration principal is separate and time-bound. Do not grant it to the
--- runtime account and do not store its credentials in source control.
+-- Migration operator. This principal is not used by HTTP/runtime processes.
+GRANT SELECT, INSERT, UPDATE, DELETE,
+      CREATE, ALTER, DROP, INDEX, REFERENCES,
+      CREATE VIEW, SHOW VIEW, TRIGGER, EVENT,
+      CREATE ROUTINE, ALTER ROUTINE, EXECUTE,
+      CREATE TEMPORARY TABLES, LOCK TABLES
+ON `concursomestre`.*
+TO 'concursomestre_migration'@'<approved-migration-host>';
+
+-- No principal above receives ALL PRIVILEGES or GRANT OPTION.
