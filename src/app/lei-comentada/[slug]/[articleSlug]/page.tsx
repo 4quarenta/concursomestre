@@ -6,18 +6,12 @@ import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
 import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
-import { buildNoIndexMetadata, buildPublicPageMetadata } from '../../../seoMetadata';
+import { buildNoIndexMetadata } from '../../../seoMetadata';
 import { fetchPublicLawArticle, type PublicLawArticleDetail } from '../../lawArticleServerData';
+import { buildLawArticleMetadata, lawArticleDescription, lawArticleHeading, lawArticleName } from '../../lawArticleMetadata';
 
 export const revalidate = 300;
 type Props = { params: Promise<{ slug: string; articleSlug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
-const tracking = (key: string) => key === 'gclid' || key === 'fbclid' || key.startsWith('utm_');
-export const lawArticleName = (item: PublicLawArticleDetail) => item.law.shortTitle || item.law.title;
-export const lawArticleHeading = (item: PublicLawArticleDetail) => `Art. ${item.article.number} da ${lawArticleName(item)}`;
-export const lawArticleDescription = (item: PublicLawArticleDetail) => {
-  const excerpt = item.article.officialText.replace(/\s+/g, ' ').trim();
-  return (excerpt || `Consulte o texto oficial do art. ${item.article.number} da ${lawArticleName(item)}.`).slice(0, 160);
-};
 const load = async (lawSlug: string, articleSlug: string) => {
   const result = await fetchPublicLawArticle(lawSlug, articleSlug);
   if (result && 'redirectPath' in result) permanentRedirect(result.redirectPath);
@@ -30,15 +24,6 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   if (!item) return buildNoIndexMetadata({ title: 'Artigo normativo não encontrado' });
   return buildLawArticleMetadata(item, await searchParams);
 }
-
-export const buildLawArticleMetadata = (item: PublicLawArticleDetail | null, searchParams: Record<string, string | string[] | undefined> = {}): Metadata => {
-  if (!item) return buildNoIndexMetadata({ title: 'Artigo normativo não encontrado' });
-  const title = lawArticleHeading(item); const summary = lawArticleDescription(item);
-  const metadata = buildPublicPageMetadata({ title, description: summary, path: item.canonicalPath });
-  const functionalParams = Object.keys(searchParams).some((key) => !tracking(key));
-  if (item.readiness.status === 'READY' && !functionalParams) return metadata;
-  return { ...metadata, robots: { index: false, follow: true, googleBot: { index: false, follow: true } } };
-};
 
 const statusLabel = (status: string) => ({ revoked: 'Revogado', vetoed: 'Vetado' }[status] || null);
 

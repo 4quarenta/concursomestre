@@ -1,10 +1,13 @@
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { assertApiSuccess, readApiData } from '@/services/api/response';
+import { sessionStore } from '@/services/auth/sessionStore';
 import type { AuthFlowResponse, UserProfile } from '@/types/auth';
 
 type RegisterPayload = {
   name: string;
+  cpf: string;
+  phone: string;
   email: string;
   password: string;
   referralCode?: string | null;
@@ -49,7 +52,19 @@ export const authFlowService = {
   },
 
   async logout(): Promise<void> {
-    await apiClient.post<any>(ENDPOINTS.auth.logout, undefined);
+    const refreshToken = sessionStore.getRefreshToken();
+    const csrfToken = sessionStore.getCsrfToken();
+    if (!refreshToken || !csrfToken) {
+      return;
+    }
+
+    await apiClient.post<any>(ENDPOINTS.auth.logout, { refreshToken, csrfToken });
+  },
+
+  async verifyTwoFactor(email: string, code: string): Promise<AuthFlowResponse> {
+    const response = await apiClient.post<any>(ENDPOINTS.auth.verifyTwoFactor, { email, code });
+    assertApiSuccess(response, 'Nao foi possivel validar o codigo de seguranca.');
+    return readApiData<AuthFlowResponse>(response, { success: true });
   },
 };
 

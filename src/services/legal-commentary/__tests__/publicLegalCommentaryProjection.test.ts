@@ -10,7 +10,7 @@
 */
 
 import { describe, expect, it } from 'vitest';
-import { buildLawJsonLd, descriptionForLaw } from '@/app/lei-comentada/[slug]/page';
+import { buildLawJsonLd, descriptionForLaw } from '@/app/lei-comentada/lawDetailSeo';
 import { parsePublicLawDetail } from '../publicLegalCommentaryProjection';
 import {
   createProtectedLawPayload,

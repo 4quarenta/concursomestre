@@ -222,7 +222,13 @@ function buildAccessToken(array $user, string $sessionId, ?int $expiresIn = null
  *
  * @since 1.0.0
  */
-function issueUserAuthBundle(PDO $db, array $user, bool $exposeRefreshToken = false, string $runtimeEvent = 'auth_login'): array
+function issueUserAuthBundle(
+    PDO $db,
+    array $user,
+    bool $exposeRefreshToken = false,
+    string $runtimeEvent = 'auth_login',
+    bool $setBrowserCookies = true
+): array
 {
     $csrfToken = createOpaqueAuthToken(24);
     $session = createAuthSessionRow($db, (string) $user['id'], $csrfToken, $runtimeEvent);
@@ -230,8 +236,10 @@ function issueUserAuthBundle(PDO $db, array $user, bool $exposeRefreshToken = fa
     $refresh = persistRefreshToken($db, $session['id'], $refreshToken, $session['expires_at'], null, $runtimeEvent);
     $accessToken = buildAccessToken($user, $session['id']);
 
-    setRefreshTokenCookie($refresh['token'], $refresh['expires_at']);
-    setCsrfCookie($csrfToken, $session['expires_at']);
+    if ($setBrowserCookies) {
+        setRefreshTokenCookie($refresh['token'], $refresh['expires_at']);
+        setCsrfCookie($csrfToken, $session['expires_at']);
+    }
 
     logAuthEvent('auth_session_created', [
         'user_id' => $user['id'] ?? null,
@@ -489,7 +497,13 @@ function recoverRotatedRefreshTokenRecord(PDO $db, array $record, DateTimeImmuta
  *
  * @since 1.0.0
  */
-function refreshAccessTokenUsingToken(PDO $db, string $refreshToken, string $csrfCookie, string $csrfHeader): array
+function refreshAccessTokenUsingToken(
+    PDO $db,
+    string $refreshToken,
+    string $csrfCookie,
+    string $csrfHeader,
+    bool $setBrowserCookies = true
+): array
 {
     ensureAuthTables($db);
 
@@ -516,18 +530,24 @@ function refreshAccessTokenUsingToken(PDO $db, string $refreshToken, string $csr
 
     if (!hash_equals((string) $record['csrf_token_hash'], hashOpaqueToken((string) $csrfCookie))) {
         revokeSessionFamily($db, $sessionId, 'csrf_mismatch', true);
-        clearAuthCookies();
+        if ($setBrowserCookies) {
+            clearAuthCookies();
+        }
         throw new RuntimeException('CSRF token invalido.');
     }
 
     if (($record['session_status'] ?? '') !== 'active' || !empty($record['session_revoked_at'])) {
-        clearAuthCookies();
+        if ($setBrowserCookies) {
+            clearAuthCookies();
+        }
         throw new RuntimeException('Sessão revogada.');
     }
 
     if (!empty($record['session_expires_at']) && strtotime((string) $record['session_expires_at']) < ($now->getTimestamp() - getAuthClockSkewSeconds())) {
         revokeSessionFamily($db, $sessionId, 'session_expired');
-        clearAuthCookies();
+        if ($setBrowserCookies) {
+            clearAuthCookies();
+        }
         throw new RuntimeException('Sessão expirada.');
     }
 
@@ -543,7 +563,9 @@ function refreshAccessTokenUsingToken(PDO $db, string $refreshToken, string $csr
             $record = $recoveredRecord;
         } else {
             revokeSessionFamily($db, $sessionId, 'refresh_token_reuse', true);
-            clearAuthCookies();
+            if ($setBrowserCookies) {
+                clearAuthCookies();
+            }
             logAuthEvent('refresh_reuse_detected', [
                 'session_id' => $sessionId,
                 'refresh_token_id' => $record['id'] ?? null,
@@ -555,7 +577,9 @@ function refreshAccessTokenUsingToken(PDO $db, string $refreshToken, string $csr
 
     if (!empty($record['expires_at']) && strtotime((string) $record['expires_at']) < ($now->getTimestamp() - getAuthClockSkewSeconds())) {
         revokeSessionFamily($db, $sessionId, 'refresh_token_expired');
-        clearAuthCookies();
+        if ($setBrowserCookies) {
+            clearAuthCookies();
+        }
         throw new RuntimeException('Refresh token expirado.');
     }
 
@@ -565,7 +589,9 @@ function refreshAccessTokenUsingToken(PDO $db, string $refreshToken, string $csr
 
     if (!$user) {
         revokeSessionFamily($db, $sessionId, 'user_not_found');
-        clearAuthCookies();
+        if ($setBrowserCookies) {
+            clearAuthCookies();
+        }
         throw new RuntimeException('Usuário não encontrado.');
     }
 
@@ -582,8 +608,10 @@ function refreshAccessTokenUsingToken(PDO $db, string $refreshToken, string $csr
     $accessToken = buildAccessToken($user, $sessionId);
 
     updateSessionHeartbeat($db, $sessionId, true);
-    setRefreshTokenCookie($newRefresh['token'], $newRefresh['expires_at']);
-    setCsrfCookie((string) $csrfCookie, $newRefresh['expires_at']);
+    if ($setBrowserCookies) {
+        setRefreshTokenCookie($newRefresh['token'], $newRefresh['expires_at']);
+        setCsrfCookie((string) $csrfCookie, $newRefresh['expires_at']);
+    }
 
     logAuthEvent('refresh_rotated', [
         'session_id' => $sessionId,
@@ -624,18 +652,39 @@ function refreshAccessTokenFromCookie(PDO $db): array
 }
 
 /**
+ * Renova uma sessao de cliente nativo usando credenciais armazenadas no
+ * keychain/keystore. Como esses valores nao sao cookies ambientes, a rota
+ * nativa os recebe explicitamente e nao altera cookies do navegador.
+ */
+function refreshNativeAccessToken(PDO $db, string $refreshToken, string $csrfToken): array
+{
+    return refreshAccessTokenUsingToken(
+        $db,
+        $refreshToken,
+        $csrfToken,
+        $csrfToken,
+        false
+    );
+}
+
+/**
  * Finaliza a sessão atual por access token ou refresh token e limpa os cookies do navegador.
  * O fluxo e tolerante aos dois modos porque o site pode sair logado por contextos diferentes.
  *
  * @since 1.0.0
  */
-function logoutAuthSession(PDO $db): void
+function logoutAuthSession(
+    PDO $db,
+    ?string $explicitRefreshToken = null,
+    ?string $explicitCsrfToken = null,
+    bool $clearBrowserCookies = true
+): void
 {
     ensureAuthTables($db);
 
-    $refreshToken = getRefreshTokenFromCookie();
-    $csrfCookie = getCsrfTokenFromCookie();
-    $csrfHeader = getCsrfTokenFromRequest();
+    $refreshToken = $explicitRefreshToken ?? getRefreshTokenFromCookie();
+    $csrfCookie = $explicitCsrfToken ?? getCsrfTokenFromCookie();
+    $csrfHeader = $explicitCsrfToken ?? getCsrfTokenFromRequest();
     $accessToken = getBearerTokenFromRequest();
     $sessionId = null;
 
@@ -652,7 +701,9 @@ function logoutAuthSession(PDO $db): void
             $sessionId = (string) $record['session_id'];
 
             if (!assertValidCsrfToken($csrfCookie, $csrfHeader)) {
-                clearAuthCookies();
+                if ($clearBrowserCookies) {
+                    clearAuthCookies();
+                }
                 throw new RuntimeException('CSRF token invalido.');
             }
         }
@@ -663,5 +714,7 @@ function logoutAuthSession(PDO $db): void
         logAuthEvent('auth_logout', ['session_id' => $sessionId]);
     }
 
-    clearAuthCookies();
+    if ($clearBrowserCookies) {
+        clearAuthCookies();
+    }
 }

@@ -21,7 +21,10 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     try {
-      await login({ email, password });
+      const result = await login({ email, password });
+      if (result.requiresTwoFactor) {
+        navigation.navigate('TwoFactor', { email: result.email || email });
+      }
     } catch (error: any) {
       Alert.alert('Falha no login', error?.message || 'Nao foi possivel realizar o login.');
     }

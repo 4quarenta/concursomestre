@@ -706,6 +706,7 @@ export const QuestionsScreen: React.FC = () => {
       const result = await questionService.submitUserAnswer({
         questionId: question.id,
         selectedOptionIndex: optionIndex,
+        selectedAlternativeId: question.itens?.[optionIndex]?.id ?? optionIndex,
       });
 
       if (!result.success) {

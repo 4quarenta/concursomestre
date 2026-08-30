@@ -162,6 +162,7 @@ export const SimulationRunScreen: React.FC = () => {
               result: await questionService.submitUserAnswer({
                 questionId: Number(entry.question.id),
                 selectedOptionIndex: Number(entry.selectedIndex),
+                selectedAlternativeId: entry.question.itens?.[Number(entry.selectedIndex)]?.id ?? Number(entry.selectedIndex),
                 timeTaken: 0,
               }),
             })),

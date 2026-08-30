@@ -26,19 +26,19 @@ class AuthController
         $this->service = $service;
     }
 
-    public function logout(): array
+    public function logout(?array $nativeCredentials = null): array
     {
-        return $this->service->logout();
+        return $this->service->logout($nativeCredentials);
     }
 
-    public function login(array $payload): array
+    public function login(array $payload, bool $nativeClient = false): array
     {
-        return $this->service->login($payload);
+        return $this->service->login($payload, $nativeClient);
     }
 
-    public function register(array $payload): array
+    public function register(array $payload, bool $nativeClient = false): array
     {
-        return $this->service->register($payload);
+        return $this->service->register($payload, $nativeClient);
     }
 
     public function googleLogin(array $payload): array
@@ -56,9 +56,9 @@ class AuthController
         return $this->service->appleLogin($payload);
     }
 
-    public function refreshSession(bool $includeUser = false): array
+    public function refreshSession(bool $includeUser = false, ?array $nativeCredentials = null): array
     {
-        return $this->service->refreshSession($includeUser);
+        return $this->service->refreshSession($includeUser, $nativeCredentials);
     }
 
     public function requestPasswordReset(array $payload): array
@@ -91,8 +91,8 @@ class AuthController
         return $this->service->enableTwoFactor($authenticatedUser, $payload);
     }
 
-    public function verifyTwoFactor(array $payload): array
+    public function verifyTwoFactor(array $payload, bool $nativeClient = false): array
     {
-        return $this->service->verifyTwoFactor($payload);
+        return $this->service->verifyTwoFactor($payload, $nativeClient);
     }
 }

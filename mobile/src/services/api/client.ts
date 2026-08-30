@@ -11,7 +11,7 @@ const resolveApiBaseUrl = (): string => {
   const expoBaseUrl =
     process.env.EXPO_PUBLIC_API_BASE_URL
     || (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined)
-    || 'http://localhost/questao-pro-backend/api/';
+    || 'https://concursomestre.com/api/';
 
   return expoBaseUrl.endsWith('/') ? expoBaseUrl : `${expoBaseUrl}/`;
 };
@@ -33,20 +33,24 @@ const parseJsonLikePayload = <T>(payload: T): T => {
 const authHttp = axios.create({
   baseURL: resolveApiBaseUrl(),
   timeout: 30000,
-  withCredentials: true,
+  withCredentials: false,
   headers: {
     'Content-Type': 'application/json',
+    'X-Client-Platform': 'concursomestre-mobile',
   },
 });
 
 export const apiClient = axios.create({
   baseURL: resolveApiBaseUrl(),
   timeout: 30000,
-  withCredentials: true,
+  withCredentials: false,
   headers: {
     'Content-Type': 'application/json',
+    'X-Client-Platform': 'concursomestre-mobile',
   },
 });
+
+let refreshPromise: Promise<string | null> | null = null;
 
 /**
  * Converte caminhos relativos do backend em URLs absolutas para abertura externa no mobile.
@@ -65,31 +69,61 @@ export const getAssetUrl = (resourcePath?: string | null): string => {
  * @since v1.0.0
  */
 const refreshSessionToken = async (): Promise<string | null> => {
-  const response = await authHttp.post<any>(ENDPOINTS.auth.refresh, undefined, {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
+    const refreshToken = sessionStore.getRefreshToken();
+    const csrfToken = sessionStore.getCsrfToken();
+    if (!refreshToken || !csrfToken) {
+      return null;
+    }
+
+    const response = await authHttp.post<any>(ENDPOINTS.auth.refresh, {
+      refreshToken,
+      csrfToken,
+      includeUser: true,
+    }, {
     headers: {
       Authorization: sessionStore.getAccessToken() ? `Bearer ${sessionStore.getAccessToken()}` : undefined,
-      'X-Auth-Token': sessionStore.getAccessToken() || undefined,
     },
+    });
+
+    const payload = parseJsonLikePayload(response.data);
+    if (!payload || payload.success === false) {
+      return null;
+    }
+
+    const data = payload?.data || payload;
+    const nextToken = data?.token || null;
+    const nextRefreshToken = data?.refreshToken || null;
+    const nextCsrfToken = data?.csrfToken || null;
+    if (!nextToken || !nextRefreshToken || !nextCsrfToken) {
+      return null;
+    }
+
+    await sessionStore.setSession(
+      nextToken,
+      data?.user || sessionStore.getCurrentUser(),
+      {
+        refreshToken: nextRefreshToken,
+        csrfToken: nextCsrfToken,
+      },
+    );
+
+    return nextToken;
+  })().finally(() => {
+    refreshPromise = null;
   });
 
-  const payload = parseJsonLikePayload(response.data);
-  if (!payload || payload.success === false) {
-    return null;
-  }
-
-  const nextToken = payload?.data?.token || payload?.token || null;
-  if (nextToken) {
-    await sessionStore.setSession(nextToken, payload?.data?.user || payload?.user || sessionStore.getCurrentUser());
-  }
-
-  return nextToken;
+  return refreshPromise;
 };
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = sessionStore.getAccessToken();
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
-    config.headers['X-Auth-Token'] = token;
   }
 
   if (config.data instanceof FormData && config.headers) {
@@ -107,11 +141,17 @@ apiClient.interceptors.response.use(
 
     if (status === 401 && !config._retry) {
       config._retry = true;
-      const refreshedToken = await refreshSessionToken();
+      let refreshedToken: string | null = null;
+
+      try {
+        refreshedToken = await refreshSessionToken();
+      } catch {
+        await sessionStore.clearSession();
+        throw error;
+      }
 
       if (refreshedToken && config.headers) {
         config.headers.Authorization = `Bearer ${refreshedToken}`;
-        config.headers['X-Auth-Token'] = refreshedToken;
         return apiClient(config);
       }
     }

@@ -1,15 +1,16 @@
 import { redirect } from 'next/navigation';
 
 type LegacyLawEntryPageProps = {
-  params: {
+  params: Promise<{
     lawId: string;
-  };
+  }>;
 };
 
 const normalizeLawId = (lawId: string) => String(lawId || '').trim();
 
-const LegacyLawEntryPage = ({ params }: LegacyLawEntryPageProps) => {
-  const rawLawId = normalizeLawId(params?.lawId || '');
+const LegacyLawEntryPage = async ({ params }: LegacyLawEntryPageProps) => {
+  const resolvedParams = await params;
+  const rawLawId = normalizeLawId(resolvedParams?.lawId || '');
   const normalizedLawId = rawLawId.toLowerCase();
 
   if (!rawLawId || ['new', 'novo', 'add'].includes(normalizedLawId)) {

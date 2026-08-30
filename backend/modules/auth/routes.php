@@ -21,6 +21,7 @@ require_once __DIR__ . '/../../shared/responses/Response.php';
 require_once __DIR__ . '/../../shared/security/Recaptcha.php';
 require_once __DIR__ . '/../../shared/security/IpBanGuard.php';
 require_once __DIR__ . '/../../shared/middleware/RateLimiter.php';
+require_once __DIR__ . '/../../shared/http/Request.php';
 
 /**
  * Le o body JSON do modulo auth sem espalhar parsing manual nas rotas.
@@ -29,17 +30,55 @@ require_once __DIR__ . '/../../shared/middleware/RateLimiter.php';
  */
 function readAuthJsonRequestBody(): array
 {
-    $rawBody = file_get_contents('php://input');
-    if (!is_string($rawBody) || trim($rawBody) === '') {
-        return [];
+    return Request::json();
+}
+
+/**
+ * Impede que endpoints de autenticacao aceitem verbos fora do contrato.
+ */
+function requireAuthRequestMethod(string $expected): void
+{
+    $actual = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    if ($actual !== strtoupper($expected)) {
+        Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
+    }
+}
+
+/**
+ * Negocia o transporte nativo sem alterar a protecao cookie + CSRF do web.
+ * O header seleciona o contrato; ele nao concede autenticacao ou privilegio.
+ */
+function isNativeMobileAuthRequest(): bool
+{
+    $platform = strtolower(trim((string) ($_SERVER['HTTP_X_CLIENT_PLATFORM'] ?? '')));
+    if ($platform !== 'concursomestre-mobile') {
+        return false;
     }
 
-    $decoded = json_decode($rawBody, true);
-    if (!is_array($decoded)) {
-        throw new InvalidArgumentException('Payload JSON invalido.');
+    // O contrato nativo nao deve ser usado por JavaScript executando em uma
+    // origem de navegador. Browsers continuam obrigatoriamente em cookie+CSRF.
+    return trim((string) ($_SERVER['HTTP_ORIGIN'] ?? '')) === '';
+}
+
+/**
+ * Valida as credenciais opacas usadas no refresh/logout do cliente nativo.
+ */
+function readNativeMobileAuthCredentials(array $payload): array
+{
+    $refreshToken = trim((string) ($payload['refreshToken'] ?? ''));
+    $csrfToken = trim((string) ($payload['csrfToken'] ?? ''));
+
+    foreach (['refreshToken' => $refreshToken, 'csrfToken' => $csrfToken] as $field => $value) {
+        $length = strlen($value);
+        if ($length < 24 || $length > 512 || preg_match('/[\x00-\x20\x7f]/', $value)) {
+            throw new InvalidArgumentException("{$field} invalido.");
+        }
     }
 
-    return $decoded;
+    return [
+        'refreshToken' => $refreshToken,
+        'csrfToken' => $csrfToken,
+    ];
 }
 
 /**
@@ -80,6 +119,7 @@ function makeAuthController(PDO $db): AuthController
 function handleAuthLoginRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         $payload = readAuthJsonRequestBody();
         $validator = new AuthValidator();
@@ -91,7 +131,7 @@ function handleAuthLoginRoute(PDO $db): void
         ]);
 
         $controller = makeAuthController($db);
-        $result = $controller->login($payload);
+        $result = $controller->login($payload, isNativeMobileAuthRequest());
         Response::success($result, !empty($result['require2FA']) ? '2FA verification required' : 'Login successful');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());
@@ -214,6 +254,7 @@ function handleAuthSessionRouteAccessRoute(PDO $db): void
 function handleAuthRegisterRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         $payload = readAuthJsonRequestBody();
         $validator = new AuthValidator();
@@ -225,7 +266,7 @@ function handleAuthRegisterRoute(PDO $db): void
         ]);
 
         $controller = makeAuthController($db);
-        $result = $controller->register($payload);
+        $result = $controller->register($payload, isNativeMobileAuthRequest());
         $emailDeliveryStatus = (string) ($result['emailDelivery']['status'] ?? 'sent');
         $message = $emailDeliveryStatus === 'sent'
             ? 'Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta.'
@@ -253,6 +294,7 @@ function handleAuthRegisterRoute(PDO $db): void
 function handleAuthGoogleRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_login', 'google');
         $payload = readAuthJsonRequestBody();
@@ -287,6 +329,7 @@ function handleAuthGoogleRoute(PDO $db): void
 function handleAuthFacebookRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_login', 'facebook');
         $payload = readAuthJsonRequestBody();
@@ -321,6 +364,7 @@ function handleAuthFacebookRoute(PDO $db): void
 function handleAuthAppleRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_login', 'apple');
         $payload = readAuthJsonRequestBody();
@@ -348,15 +392,19 @@ function handleAuthAppleRoute(PDO $db): void
 function handleAuthLogoutRoute(PDO $db): void
 {
     try {
-        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
-            Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
-        }
+        requireAuthRequestMethod('POST');
 
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_refresh');
+        $nativeCredentials = null;
+        if (isNativeMobileAuthRequest()) {
+            $nativeCredentials = readNativeMobileAuthCredentials(readAuthJsonRequestBody());
+        }
         $controller = makeAuthController($db);
-        $result = $controller->logout();
+        $result = $controller->logout($nativeCredentials);
         Response::success($result, 'Logout realizado com sucesso');
+    } catch (InvalidArgumentException $e) {
+        Response::validationError($e->getMessage());
     } catch (RuntimeException $e) {
         clearAuthCookies();
         Response::unauthorized($e->getMessage());
@@ -374,13 +422,19 @@ function handleAuthLogoutRoute(PDO $db): void
 function handleAuthRefreshRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         $payload = readAuthJsonRequestBody();
         $includeUser = !empty($payload['includeUser']);
+        $nativeCredentials = isNativeMobileAuthRequest()
+            ? readNativeMobileAuthCredentials($payload)
+            : null;
 
         $controller = makeAuthController($db);
-        $result = $controller->refreshSession($includeUser);
+        $result = $controller->refreshSession($includeUser, $nativeCredentials);
         Response::success($result, 'Sessao renovada com sucesso');
+    } catch (InvalidArgumentException $e) {
+        Response::validationError($e->getMessage());
     } catch (RuntimeException $e) {
         clearAuthCookies();
         Response::unauthorized($e->getMessage());
@@ -397,6 +451,7 @@ function handleAuthRefreshRoute(PDO $db): void
 function handleAuthForgotPasswordRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         $payload = readAuthJsonRequestBody();
         $validator = new AuthValidator();
@@ -432,6 +487,7 @@ function handleAuthForgotPasswordRoute(PDO $db): void
 function handleAuthResetPasswordRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_password');
         $payload = readAuthJsonRequestBody();
@@ -464,6 +520,7 @@ function handleAuthResetPasswordRoute(PDO $db): void
 function handleAuthResendConfirmationRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_password');
         $authenticatedPayload = verifyAuthenticatedUserPayload();
@@ -491,6 +548,7 @@ function handleAuthResendConfirmationRoute(PDO $db): void
 function handleAuthConfirmEmailRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_password');
         $controller = makeAuthController($db);
@@ -513,6 +571,7 @@ function handleAuthConfirmEmailRoute(PDO $db): void
 function handleAuthSetupTwoFactorRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('GET');
         enforceAuthIpSecurityPolicy($db);
         $authenticatedPayload = verifyAuthenticatedUserPayload();
         $controller = makeAuthController($db);
@@ -535,6 +594,7 @@ function handleAuthSetupTwoFactorRoute(PDO $db): void
 function handleAuthEnableTwoFactorRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         $authenticatedPayload = verifyAuthenticatedUserPayload();
         $controller = makeAuthController($db);
@@ -559,10 +619,11 @@ function handleAuthEnableTwoFactorRoute(PDO $db): void
 function handleAuthVerifyTwoFactorRoute(PDO $db): void
 {
     try {
+        requireAuthRequestMethod('POST');
         enforceAuthIpSecurityPolicy($db);
         RateLimiter::enforceProfile('auth_2fa');
         $controller = makeAuthController($db);
-        $result = $controller->verifyTwoFactor(readAuthJsonRequestBody());
+        $result = $controller->verifyTwoFactor(readAuthJsonRequestBody(), isNativeMobileAuthRequest());
         Response::success($result, '2FA Verification successful');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());

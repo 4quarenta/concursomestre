@@ -8,12 +8,14 @@ describe('public launch SEO readiness', () => {
   it('uses the production apex host and only materialized sitemap endpoints', () => {
     const website = readSource('config/platform/website.json');
     const robots = readSource('src/app/robots.txt/route.ts');
+    const robotsText = readSource('src/services/seo/robotsText.ts');
 
     expect(website).toContain('https://concursomestre.com');
     expect(website).not.toContain('https://concursomestre.com.br');
-    expect(robots).toContain('seoIndexPolicy.sitemap.indexPath');
-    expect(robots).not.toContain('blog-sitemap.xml');
-    expect(robots).not.toContain('google-news.xml');
+    expect(robots).toContain('buildRobotsText');
+    expect(robotsText).toContain('seoIndexPolicy.sitemap.indexPath');
+    expect(robotsText).not.toContain('blog-sitemap.xml');
+    expect(robotsText).not.toContain('google-news.xml');
   });
 
   it('renders the questions semantics in the real page while preserving the interactive client', () => {

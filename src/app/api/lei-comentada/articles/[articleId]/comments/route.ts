@@ -7,7 +7,7 @@ const volatileComments: LegalUserComment[] = [];
 
 export async function GET(
   _request: Request,
-  context: { params: Promise<{ articleId: string }> | { articleId: string } },
+  context: { params: Promise<{ articleId: string }> },
 ) {
   const params = await context.params;
   return NextResponse.json({
@@ -21,7 +21,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ articleId: string }> | { articleId: string } },
+  context: { params: Promise<{ articleId: string }> },
 ) {
   const params = await context.params;
   const payload = await request.json().catch(() => ({}));

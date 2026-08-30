@@ -12,17 +12,19 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
   const { register, isLoading } = useAuth();
   const [name, setName] = React.useState('');
+  const [cpf, setCpf] = React.useState('');
+  const [phone, setPhone] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
 
   const handleRegister = async () => {
-    if (!name || !email || !password) {
-      Alert.alert('Campos obrigatorios', 'Preencha nome, e-mail e senha.');
+    if (!name || !cpf || !phone || !email || !password) {
+      Alert.alert('Campos obrigatorios', 'Preencha nome, CPF, telefone, e-mail e senha.');
       return;
     }
 
     try {
-      await register({ name, email, password });
+      await register({ name, cpf, phone, email, password });
     } catch (error: any) {
       Alert.alert('Falha no cadastro', error?.message || 'Nao foi possivel criar a conta.');
     }
@@ -45,6 +47,20 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
             onChangeText={setName}
             autoCapitalize="words"
             placeholder="Seu nome completo"
+          />
+          <TextField
+            label="CPF"
+            value={cpf}
+            onChangeText={setCpf}
+            keyboardType="number-pad"
+            placeholder="000.000.000-00"
+          />
+          <TextField
+            label="Telefone"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            placeholder="(00) 00000-0000"
           />
           <TextField
             label="E-mail"

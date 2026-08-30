@@ -13,40 +13,12 @@ import {
   fetchLegalCommentaryModuleAvailability,
 } from '../legalCommentaryServerData';
 import LawDetailClient from './LawDetailClient';
-import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
+import { buildLawJsonLd, descriptionForLaw, plainText } from '../lawDetailSeo';
 
 export const revalidate = 300;
 
 type LawDetailPageProps = {
   params: Promise<{ slug: string }>;
-};
-
-const plainText = (value: unknown): string => String(value || '')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim();
-
-export const descriptionForLaw = (law: Awaited<ReturnType<typeof fetchLawDetailForServer>>): string => {
-  if (!law) return '';
-  const description = plainText(law.summary || law.ementa || law.description || law.preamble);
-  return (description || `Estude ${law.title} com texto legal atualizado e coment\u00e1rios para concursos p\u00fablicos.`).slice(0, 160);
-};
-
-export const buildLawJsonLd = (
-  law: NonNullable<Awaited<ReturnType<typeof fetchLawDetailForServer>>>,
-) => {
-  const description = descriptionForLaw(law);
-
-  const path = publicRoutes.laws.detail(law.slug);
-  const breadcrumbs = [
-    { label: 'Início', path: '/' },
-    { label: 'Lei Comentada', path: publicRoutes.laws.index() },
-    { label: law.shortTitle || law.title, path },
-  ];
-  return buildStructuredDataGraph([
-    buildWebPage({ path, name: law.title, description }),
-    buildBreadcrumbList(breadcrumbs),
-  ]);
 };
 
 export async function generateMetadata({ params }: LawDetailPageProps): Promise<Metadata> {

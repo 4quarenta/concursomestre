@@ -65,8 +65,15 @@ export interface UserProfile {
 export interface AuthFlowPayload {
   user?: UserProfile;
   token?: string | null;
+  refreshToken?: string | null;
+  csrfToken?: string | null;
   require2FA?: boolean;
   email?: string;
+  authSession?: {
+    id?: string;
+    accessExpiresIn?: number;
+    refreshExpiresAt?: string;
+  };
 }
 
 export interface AuthFlowResponse {
@@ -75,6 +82,8 @@ export interface AuthFlowResponse {
   data?: AuthFlowPayload;
   user?: UserProfile;
   token?: string | null;
+  refreshToken?: string | null;
+  csrfToken?: string | null;
   require2FA?: boolean;
   email?: string;
 }

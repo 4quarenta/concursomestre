@@ -10,6 +10,7 @@ export const ENDPOINTS = {
     user: 'auth/me.php',
     refresh: 'auth/refresh.php',
     logout: 'auth/logout.php',
+    verifyTwoFactor: 'auth/verify_2fa.php',
     resendConfirmation: 'auth/resend-confirmation.php',
   },
   plans: {
@@ -17,7 +18,7 @@ export const ENDPOINTS = {
   },
   questions: {
     list: 'questionsList',
-    submit: 'questionsAnswer',
+    submit: 'v2/questions/answer.php',
     stats: 'questionsStats',
     history: 'questionsHistory',
     toggleSave: 'questionsToggleSave',

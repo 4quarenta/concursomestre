@@ -15,6 +15,8 @@ type LoginInput = {
 
 type RegisterInput = {
   name: string;
+  cpf: string;
+  phone: string;
   email: string;
   password: string;
 };
@@ -26,7 +28,8 @@ type AuthContextValue = {
   systemSettings: MobileSystemSettings;
   isLoading: boolean;
   isBootstrapped: boolean;
-  login: (input: LoginInput) => Promise<void>;
+  login: (input: LoginInput) => Promise<{ requiresTwoFactor: boolean; email?: string }>;
+  verifyTwoFactor: (email: string, code: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (input: UpdateUserInput) => Promise<void>;
@@ -60,20 +63,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const applySessionFromResponse = React.useCallback(async (response: any) => {
     const payload = response?.data || response;
     const token = payload?.token || response?.token || null;
+    const refreshToken = payload?.refreshToken || response?.refreshToken || null;
+    const csrfToken = payload?.csrfToken || response?.csrfToken || null;
     const sessionUser = payload?.user || response?.user || null;
 
-    if (!token || !sessionUser) {
+    if (!token || !refreshToken || !csrfToken || !sessionUser) {
       throw new Error('Sessao invalida retornada pelo backend.');
-    }
-
-    if (payload?.require2FA || response?.require2FA) {
-      throw new Error('Fluxo 2FA ainda nao mapeado no app mobile. Faça login no web para concluir.');
     }
 
     const normalizedUser = normalizeUserProfile(sessionUser as UserProfile);
 
     setUser(normalizedUser);
-    await sessionStore.setSession(token, normalizedUser);
+    await sessionStore.setSession(token, normalizedUser, { refreshToken, csrfToken });
   }, []);
 
   const refreshSystemSettings = React.useCallback(async () => {
@@ -100,10 +101,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       const response = await authFlowService.login(input);
+      const payload = response?.data || response;
+      if (payload?.require2FA || response?.require2FA) {
+        return {
+          requiresTwoFactor: true,
+          email: payload?.email || response?.email || input.email,
+        };
+      }
+      await applySessionFromResponse(response);
+      await refreshSystemSettings();
+      return { requiresTwoFactor: false };
+    } catch (error) {
+      throw new Error(readApiErrorMessage(error, 'Nao foi possivel realizar o login.'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [applySessionFromResponse, refreshSystemSettings]);
+
+  const verifyTwoFactor = React.useCallback(async (email: string, code: string) => {
+    setIsLoading(true);
+    try {
+      const response = await authFlowService.verifyTwoFactor(email, code);
       await applySessionFromResponse(response);
       await refreshSystemSettings();
     } catch (error) {
-      throw new Error(readApiErrorMessage(error, 'Nao foi possivel realizar o login.'));
+      throw new Error(readApiErrorMessage(error, 'Nao foi possivel validar o codigo de seguranca.'));
     } finally {
       setIsLoading(false);
     }
@@ -205,7 +227,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(normalizeUserProfile(snapshot.user));
         }
 
-        if (snapshot.accessToken) {
+        if (snapshot.accessToken && snapshot.refreshToken && snapshot.csrfToken) {
           try {
             const profile = await authFlowService.me();
             const normalizedProfile = normalizeUserProfile(profile);
@@ -219,6 +241,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSystemSettings(systemSettingsService.createDefaultSystemSettings());
           }
         } else {
+          if (snapshot.accessToken || snapshot.refreshToken || snapshot.csrfToken) {
+            await sessionStore.clearSession();
+            setUser(null);
+          }
           setSystemSettings(systemSettingsService.createDefaultSystemSettings());
         }
       } finally {
@@ -243,6 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading,
     isBootstrapped,
     login,
+    verifyTwoFactor,
     register,
     logout,
     updateUser,
@@ -255,6 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isFeatureEnabled,
     isLoading,
     login,
+    verifyTwoFactor,
     logout,
     updateUser,
     refreshProfile,

@@ -1,25 +1,12 @@
-import { SEO_ROBOT_DISALLOW_PATHS } from '@/services/seo/sitemapData';
 import { getSeoLaunchMode } from '@/services/seo/launchControl';
 import {
   isProductionSitemapPublicationAllowed,
-  seoIndexPolicy,
 } from '@/services/seo/runtimeEnvironment';
 import { readStaticSitemapArtifact } from '@/services/seo/staticSitemapArtifacts';
+import { buildRobotsText } from '@/services/seo/robotsText';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const buildRobotsText = (sitemapPublished: boolean): string => {
-  const lines = [
-    'User-agent: *',
-    'Allow: /',
-    ...SEO_ROBOT_DISALLOW_PATHS.map((path) => `Disallow: ${path}`),
-  ];
-  if (sitemapPublished) {
-    lines.push(`Sitemap: ${seoIndexPolicy.canonicalOrigin}${seoIndexPolicy.sitemap.indexPath}`);
-  }
-  return `${lines.join('\n')}\n`;
-};
 
 export async function GET(request: Request) {
   const requestOrigin = new URL(request.url).origin;
@@ -36,5 +23,3 @@ export async function GET(request: Request) {
 }
 
 export const HEAD = GET;
-
-export { buildRobotsText };

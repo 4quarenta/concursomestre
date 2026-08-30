@@ -80,5 +80,6 @@ export interface Question {
 export interface UserAnswerInput {
   questionId: number;
   selectedOptionIndex: number;
+  selectedAlternativeId: string | number;
   timeTaken?: number;
 }

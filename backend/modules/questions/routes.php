@@ -22,6 +22,7 @@ require_once __DIR__ . '/../../shared/utils/SimpleCache.php';
 require_once __DIR__ . '/../../shared/auth/request_auth.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
 require_once __DIR__ . '/../../shared/middleware/RateLimiter.php';
+require_once __DIR__ . '/../../shared/http/Request.php';
 
 /**
  * Le o body JSON das rotas do modulo questions.
@@ -29,17 +30,7 @@ require_once __DIR__ . '/../../shared/middleware/RateLimiter.php';
  */
 function readQuestionsJsonRequestBody(): array
 {
-    $rawBody = file_get_contents('php://input');
-    if (!is_string($rawBody) || trim($rawBody) === '') {
-        return [];
-    }
-
-    $decoded = json_decode($rawBody, true);
-    if (!is_array($decoded)) {
-        throw new InvalidArgumentException('Payload JSON invalido.');
-    }
-
-    return $decoded;
+    return Request::json();
 }
 
 /**
@@ -199,6 +190,9 @@ function handleQuestionsListRoute(PDO $db): void
 function handleQuestionsV2ListRoute(PDO $db): void
 {
     try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
+        }
         $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
         $role = (string) ($authenticatedUserPayload['role'] ?? '');
@@ -256,6 +250,9 @@ function handleQuestionDetailsRoute(PDO $db): void
 function handleQuestionsV2ShowRoute(PDO $db): void
 {
     try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
+        }
         $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
         $role = (string) ($authenticatedUserPayload['role'] ?? '');
@@ -286,6 +283,9 @@ function handleQuestionsV2ShowRoute(PDO $db): void
 function handleQuestionsV2AdminShowRoute(PDO $db): void
 {
     try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
+        }
         $authenticatedUserPayload = verifyAuthenticatedUserPayload();
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
         $isAdmin = in_array((string) ($authenticatedUserPayload['role'] ?? ''), ['admin', 'staff'], true);
@@ -759,6 +759,9 @@ function handleQuestionsAnswerRoute(PDO $db): void
 function handleQuestionsV2AnswerRoute(PDO $db): void
 {
     try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+            Response::error('Metodo nao permitido.', 405, null, 'method_not_allowed');
+        }
         $authenticatedUserPayload = verifyAuthenticatedUserPayload();
         $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
         $isAdmin = in_array((string) ($authenticatedUserPayload['role'] ?? ''), ['admin', 'staff'], true);

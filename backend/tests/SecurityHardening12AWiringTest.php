@@ -25,9 +25,13 @@ security12aAssert(
         && str_contains($settings, "!empty(\$envRecaptchaSecretKey)"),
     'Admin settings must report reCAPTCHA configuration from the environment.'
 );
+$logoutRoute = '';
+if (preg_match('/function handleAuthLogoutRoute\(PDO \$db\): void(.*?)function handleAuthRefreshRoute/s', $authRoutes, $matches) === 1) {
+    $logoutRoute = (string) ($matches[1] ?? '');
+}
 security12aAssert(
-    str_contains($authRoutes, "REQUEST_METHOD")
-        && str_contains($authRoutes, "!== 'POST'")
+    str_contains($authRoutes, 'function requireAuthRequestMethod')
+        && str_contains($logoutRoute, "requireAuthRequestMethod('POST')")
         && str_contains($authRoutes, "'method_not_allowed'"),
     'Logout must reject unsafe GET requests.'
 );

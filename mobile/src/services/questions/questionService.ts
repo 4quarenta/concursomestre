@@ -28,35 +28,25 @@ export const questionService = {
   },
 
   async getAllQuestions(pageSize = 200): Promise<Question[]> {
-    const allRows: Question[] = [];
-    let page = 1;
-    let total = Number.POSITIVE_INFINITY;
+    const boundedPageSize = Math.max(1, Math.min(50, pageSize));
+    const result = await this.getQuestionPage({
+      page: 1,
+      limit: boundedPageSize,
+    });
 
-    while (allRows.length < total) {
-      const result = await this.getQuestionPage({
-        page,
-        limit: pageSize,
-      });
-
-      allRows.push(...result.rows);
-      total = Number(result.total || allRows.length || 0);
-
-      if (result.rows.length === 0 || result.rows.length < pageSize) {
-        break;
-      }
-
-      page += 1;
-    }
-
-    return allRows;
+    return result.rows;
   },
 
   async submitUserAnswer(answer: UserAnswerInput): Promise<{ success: boolean; message?: string; newXp?: number; newLevel?: number; answer?: { selectedOptionIndex: number; correctOptionIndex: number; isCorrect: boolean } }> {
     try {
+      const idempotencyKey = typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : `mobile-answer-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
       const response: any = await apiClient.post<any>(ENDPOINTS.questions.submit, {
-        question_id: answer.questionId,
-        selected_option: answer.selectedOptionIndex,
-        time_taken: answer.timeTaken || 0,
+        questionId: answer.questionId,
+        selectedAlternativeId: answer.selectedAlternativeId,
+        idempotencyKey,
+        timeTaken: answer.timeTaken || 0,
       });
 
       const backendMessage = readApiErrorMessage(response, '');

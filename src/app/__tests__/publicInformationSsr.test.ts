@@ -48,13 +48,15 @@ describe('public information SSR snapshots', () => {
     const routeFrameSource = readSource('src/providers/NextRouteFrame.tsx');
     const blogSource = readSource('src/app/blog/page.tsx');
     const robotsSource = readSource('src/app/robots.txt/route.ts');
+    const robotsTextSource = readSource('src/services/seo/robotsText.ts');
 
     expect(routeFrameSource).toMatch(/ROUTES_WITHOUT_PLATFORM_SHELL[\s\S]*'\/blog'/);
     expect(blogSource).toContain('<BlogHeader />');
     expect(blogSource).not.toContain("'use client'");
-    expect(robotsSource).toContain('seoIndexPolicy.sitemap.indexPath');
-    expect(robotsSource).not.toContain('blog-sitemap.xml');
-    expect(robotsSource).not.toContain('google-news.xml');
+    expect(robotsSource).toContain('buildRobotsText');
+    expect(robotsTextSource).toContain('seoIndexPolicy.sitemap.indexPath');
+    expect(robotsTextSource).not.toContain('blog-sitemap.xml');
+    expect(robotsTextSource).not.toContain('google-news.xml');
   });
 
   it('renders novidades on the server and sanitizes private entries', () => {

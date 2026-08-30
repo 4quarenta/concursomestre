@@ -25,7 +25,7 @@
       "expo-font"
     ],
     "extra": {
-      "apiBaseUrl": "http://localhost/questao-pro-backend/api/"
+      "apiBaseUrl": "https://concursomestre.com/api/"
     }
   }
 }

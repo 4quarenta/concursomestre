@@ -5,6 +5,7 @@ import type { MobileSimulationSeed } from '@/types/simulation';
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
+  TwoFactor: { email: string };
 };
 
 export type CheckoutRoutePlan = {
