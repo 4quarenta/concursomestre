@@ -1251,10 +1251,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
+              <label htmlFor="social-signup-name" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
               <div className="relative">
                 <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
+                  id="social-signup-name"
                   type="text"
                   required
                   autoFocus
@@ -1270,10 +1271,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
+              <label htmlFor="social-signup-cpf" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
               <div className="relative">
                 <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
+                  id="social-signup-cpf"
                   type="text"
                   required
                   inputMode="numeric"
@@ -1290,10 +1292,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
+              <label htmlFor="social-signup-phone" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
               <div className="relative">
                 <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
+                  id="social-signup-phone"
                   type="tel"
                   required
                   inputMode="tel"
@@ -1337,10 +1340,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignup && (
               <div className="space-y-2">
-                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
+                <label htmlFor="signup-name" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
                 <div className="relative">
                   <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
+                    id="signup-name"
                     type="text"
                     required
                     autoFocus
@@ -1355,10 +1359,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {isSignup && (
               <div className="space-y-2">
-                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
+                <label htmlFor="signup-cpf" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
                 <div className="relative">
                   <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
+                    id="signup-cpf"
                     type="text"
                     required
                     inputMode="numeric"
@@ -1374,10 +1379,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {isSignup && (
               <div className="space-y-2">
-                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
+                <label htmlFor="signup-phone" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
                 <div className="relative">
                   <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
+                    id="signup-phone"
                     type="tel"
                     required
                     inputMode="tel"
@@ -1392,12 +1398,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             )}
 
             <div className="space-y-2">
-              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">
+              <label htmlFor={isForgot ? 'forgot-email' : 'auth-email'} className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">
                 {isForgot ? 'E-mail cadastrado' : 'E-mail'}
               </label>
               <div className="relative">
                 <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
+                    id={isForgot ? 'forgot-email' : 'auth-email'}
                     type="email"
                     required
                     autoFocus={!isSignup}
@@ -1412,10 +1419,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {!isForgot && (
               <div className="space-y-2">
-                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Senha</label>
+                <label htmlFor="auth-password" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Senha</label>
                 <div className="relative">
                   <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
+                    id="auth-password"
                     type={showPassword ? 'text' : 'password'}
                     required
                     autoComplete={isSignup ? 'new-password' : 'current-password'}
@@ -1437,10 +1445,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {isSignup && (
               <div className="space-y-2">
-                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Confirmar senha</label>
+                <label htmlFor="auth-confirm-password" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Confirmar senha</label>
                 <div className="relative">
                   <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
+                    id="auth-confirm-password"
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
                     autoComplete="new-password"
