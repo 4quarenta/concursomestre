@@ -3,9 +3,20 @@
 Date: 2026-08-30
 Candidate base: `b4ab179d5ab9bea3a52e070bc6f599be0ec544f4`
 
-Candidate code fingerprint V1 (seven tracked remediation files, excluding audit
-artifacts): `7994a010ec6cd15ab05e4fcd9476b49fac6c91ac5139beb36783ee5f3c1be637`
-Candidate code fingerprint V2: `5046c7517cfbd5debe0b8a2c9d674f113e61c446494108be0dae89e8606d8ab2`
+The retrospective is frozen by commit `876383cacdaf97c09ab84a3733938eb8707586e2`,
+whose parent is the candidate base above. The authoritative fingerprints are:
+
+- Functional files only: `7b20e30e824801dc99dfd850e6f90bbd0068fb3b24d71ba7954e5d3bc856baed`
+- Complete commit tree: `af7b6a1dc6cb2ba71d3bc3b026a53cf5cba9ab6ab3de8d0a6b68bba1b595057c`
+
+The earlier values `7994a010ec6cd15ab05e4fcd9476b49fac6c91ac5139beb36783ee5f3c1be637`
+and `5046c7517cfbd5debe0b8a2c9d674f113e61c446494108be0dae89e8606d8ab2` are
+`LEGACY_NON_CANONICAL` / `AUXILIARY_PRECHECKPOINT_FINGERPRINT` values. They were
+computed before the commit with worktree/auxiliary serialization variants and
+are not competing authorities.
+
+Fingerprint V1 uses UTF-8 bytewise path ordering, Git blob bytes, serialization
+`path UTF-8 + NUL + blob bytes + NUL`, SHA-256, and rename detection disabled.
 
 ## Scope
 
@@ -58,8 +69,10 @@ separate decisions.
 
 All known P2/deferred findings from the available Macrostep 01-15 reports are
 classified in [the cross-cutting ledger](cross-cutting-improvement-ledger.md).
-The ledger intentionally retains owners and temporal gates instead of marking
-them resolved because a local audit cannot prove production controls.
+The ledger now gives every transferred item an explicit owner, separates
+pre-GO synthetic validation from post-GO real-data validation, and does not
+claim closure for Macrostep 13 controls that the authoritative operational
+record still marks open.
 
 ## Candidate files
 
@@ -72,12 +85,44 @@ The candidate contains only the focused remediation set plus this audit record:
 - `src/app/auth/components/Auth.tsx`
 - `docs/audit/*`
 
-No commit, push, deploy, production migration, production DML, production DDL,
-or real-data insertion was performed.
+The audit commit was created and pushed. No deploy, production migration,
+production DML, production DDL, or real-data insertion was performed.
 
 ## Outcome
 
-`MACROSTEP_15_PRODUCT_UX_VERIFICATION = PASS_WITH_DEFERRED_PRODUCTION_GATES`
+```text
+RETROSPECTIVE_CROSS_CUTTING_AUDIT_01_15 = PASS
+READINESS_AUDIT_01_15 = PASS
+IMPROVEMENT_AUDIT_01_15 = COMPLETE
+IMPROVEMENT_LEDGER_COMPLETE = SIM
+ALL_P2_ACCOUNTED_FOR = SIM
+ALL_DEFERRED_ACCOUNTED_FOR = SIM
+OPEN_FINDINGS_WITH_COMPLETED_TARGET = 0
+TRANSFERRED_WITHOUT_EXPLICIT_OWNER = 0
+P2_WITHOUT_STATUS = 0
+DEFERRED_WITHOUT_OWNER = 0
+REAL_DATA_PRE_GO_CONTRADICTIONS = 0
+
+MACROSTEP_15_READINESS_AUDIT = PASS
+MACROSTEP_15_IMPROVEMENT_AUDIT = COMPLETE
+PRODUCT_UX_READINESS = PASS
+P0_REMAINING = 0
+P1_REMAINING = 0
+MACROSTEP_15_REMOTE_CHECKPOINT = PASS
+MACROSTEP_15_READY_FOR_CONTROLLED_ROLLOUT = SIM
+MACROSTEP_15_COMPLETED = NAO
+
+RETROSPECTIVE_01_15_COMMIT_SHA = 876383cacdaf97c09ab84a3733938eb8707586e2
+REMOTE_CHECKPOINT = PASS
+COMMIT = SIM
+PUSH = SIM
+DEPLOY = NAO
+CURRENT_PRODUCTION_SHA = b4ab179d5ab9bea3a52e070bc6f599be0ec544f4
+MACROSTEP_13_OBSERVATION_INTERFERENCE = 0
+REAL_DATA_INSERTION_AUTHORIZED = NAO
+REAL_DATA_LOADED = NAO
+PRODUCTION_GO = NAO
+```
 
 `MACROSTEP_13_OBSERVATION_INTERFERENCE = 0`
 
