@@ -36,7 +36,9 @@ $context = [
     'now' => $now,
 ];
 $unitStates = [];
-foreach (DatasetWriterSystemdFreezePolicy::units() as $unit) {
+$units = DatasetWriterSystemdFreezePolicy::units();
+$representativeUnit = (string) $units[0]['unit'];
+foreach ($units as $unit) {
     $unitStates[(string) $unit['unit']] = [
         'kind' => (string) $unit['kind'],
         'activeState' => 'inactive',
@@ -131,11 +133,11 @@ $cases = [
     'FREEZE_STATE_NOT_FROZEN' => DatasetWriterFreezeEvidence::sign([...$base, 'freezeStateStatus' => 'RESUMED'], $key),
     'FREEZE_UNIT_ACTIVE' => DatasetWriterFreezeEvidence::sign([
         ...$base,
-        'suppression' => [...$base['suppression'], 'unitStates' => [...$unitStates, 'nginx.service' => [...$unitStates['nginx.service'], 'activeState' => 'active']]],
+        'suppression' => [...$base['suppression'], 'unitStates' => [...$unitStates, $representativeUnit => [...$unitStates[$representativeUnit], 'activeState' => 'active']]],
     ], $key),
     'FREEZE_DROPIN_MISSING' => DatasetWriterFreezeEvidence::sign([
         ...$base,
-        'suppression' => [...$base['suppression'], 'unitStates' => [...$unitStates, 'nginx.service' => [...$unitStates['nginx.service'], 'dropInLoaded' => false]]],
+        'suppression' => [...$base['suppression'], 'unitStates' => [...$unitStates, $representativeUnit => [...$unitStates[$representativeUnit], 'dropInLoaded' => false]]],
     ], $key),
     'TRIGGER_ACTIVE_UNEXPECTEDLY' => DatasetWriterFreezeEvidence::sign([...$base, 'suppression' => [...$base['suppression'], 'triggersFrozen' => false]], $key),
     'CRON_NOT_FROZEN' => DatasetWriterFreezeEvidence::sign([...$base, 'suppression' => [...$base['suppression'], 'cronFrozen' => false]], $key),
@@ -156,8 +158,8 @@ foreach ($cases as $expected => $evidence) {
     $result = DatasetWriterFreezeEvidence::validate($evidence, $context, $key);
     $expectedBlocker = match ($expected) {
         'FREEZE_EVIDENCE_STALE_OBSERVATION' => 'FREEZE_EVIDENCE_STALE',
-        'FREEZE_UNIT_ACTIVE' => 'FREEZE_UNIT_ACTIVE:nginx.service',
-        'FREEZE_DROPIN_MISSING' => 'FREEZE_DROPIN_MISSING:nginx.service',
+        'FREEZE_UNIT_ACTIVE' => 'FREEZE_UNIT_ACTIVE:' . $representativeUnit,
+        'FREEZE_DROPIN_MISSING' => 'FREEZE_DROPIN_MISSING:' . $representativeUnit,
         default => $expected,
     };
     freezeEvidenceAssert(!$result['valid'] && in_array($expectedBlocker, $result['blockers'], true), 'Freeze guard did not reject: ' . $expected . ' (' . implode(', ', $result['blockers']) . ')');

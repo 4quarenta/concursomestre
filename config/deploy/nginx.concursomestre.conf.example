@@ -38,6 +38,14 @@ server {
 
     # Nunca exponha diretorios de implementacao, a rota legada do backend ou
     # instaladores/diagnosticos. A API publica entra somente por /api/.
+    location = /questao-pro-backend {
+        return 404;
+    }
+
+    location ^~ /questao-pro-backend/ {
+        return 404;
+    }
+
     location ~ ^/(?:questao-pro-backend|backend)/(?:config|database|modules|scripts|storage|runtime|vendor|tests)(?:/|$) {
         return 404;
     }

@@ -145,3 +145,31 @@ tokens e política de sessão).
 `TRANSFERRED_WITHOUT_OWNER = 0`
 
 `MACROSTEP_17_IMPROVEMENT_AUDIT = COMPLETE`
+
+## Macrostep 18 disposition (2026-08-31)
+
+| ID | Origin | Area | Finding | Status | Owner / acceptance condition |
+| --- | --- | --- | --- | --- | --- |
+| INFRA18-P1-01 | 18 | availability / freeze | The versioned systemd freeze policy included Nginx, PHP-FPM and the frontend in its suppression inventory. | CLOSED_LOCAL | Versioned policy now excludes serving units, classifies them explicitly, and regression tests the availability-safe boundary. Production rollout remains separately planned. |
+| INFRA18-P1-02 | 18 | network exposure | MySQL classic/X were publicly bound; additional legacy listeners include FTP, SMTP and Varnish. | CLOSED | MySQL classic/X and SMTP now bind loopback; FTP and Varnish are inactive; final listener inventory contains no targeted wildcard listener and public probes remain blocked. |
+| INFRA18-P1-03 | 18 | TLS / availability | The certificate expires on 2026-09-12. Renewal is panel-managed and the installed implementation renews at seven days before expiry. | TIME_BOUND_PREGO_VALIDATION | Owner: Infrastructure. Validate from 2026-09-05 05:10 UTC: certificate serial/fingerprint or issuance evidence changes, expiry extends, issuer/SANs remain valid, HTTPS stays healthy, and external expiry alerting is proven. Hard deadline: 2026-09-12. |
+| INFRA18-P1-04 | 18 | service health | `systemctl is-system-running` remains `degraded` because `motd-news` fails with `203/EXEC`; two stale failure records were cleared. | RECLASSIFIED_P2_OS_HYGIENE | The only remaining failed unit is static `motd-news` with an absent script and no application/security/backup/availability dependency; no `reset-failed` was used in V2. |
+| INFRA18-P1-05 | 18 | public surface | The production Nginx configuration exposed the legacy `/questao-pro-backend/` route surface. | CLOSED | Exact and slash variants now return 404 after syntax validation and safe reload; public health/readiness stayed healthy. |
+| INFRA18-P1-06 | 18 | monitoring independence | Health/heartbeat files and local timers existed, but independent alert delivery and host-loss detection were not proven. | PENDING_NEXT_SCHEDULE | Workflow `666a04e3` is on the GitHub default branch with read-only probes and a stable User-Agent; no matching external access-log request has appeared yet. Validate the next eligible scheduled run and failure-state persistence. Owner: Operations. Personal alert receipt remains a separate pre-GO manual check. |
+| INFRA18-P1-07 | 18 | configuration drift | Production uses manually maintained release, cron and Nginx paths that cannot be compared byte-for-byte with a versioned production snapshot. Runtime DB grants also conflicted with the successful public health evidence. | CLOSED | Production identity and effective grants match the exact disposable MySQL rehearsal; the rehearsal proved required writes and denied DDL/grant paths, so no persistent production DML smoke was required. |
+| INFRA18-P1-08 | 18 | TLS key permissions | The active TLS private-key path was observed with mode `0644`, which was broader than the required private-key boundary. | TIME_BOUND_PREGO_VALIDATION | Owner: Infrastructure. Immediately after the first eligible real renewal, verify root-owned mode `0600` or stricter; reopen as P1 if renewal recreates `0644`. Validation window starts 2026-09-05 05:10 UTC; hard deadline: 2026-09-12. |
+| INFRA18-DR-01 | 18 | disaster recovery | Off-host backup, managed encryption/KMS and immutability remain unproven. | BLOCKED | User decision required: select a provider/storage policy, accept the residual single-host risk, or defer Production GO. |
+| INFRA18-P2-01 | 18 | TLS | Nginx emits non-blocking OCSP stapling and deprecated `listen ... http2` warnings. | ACCEPTED_DEBT_WITH_REASON | Recheck during TLS hardening; no blind production change during Macrostep 13 observation. |
+| INFRA18-P2-02 | 18 | capacity | Swap use is material despite healthy available memory; journal and legacy service inventory need capacity review. | ACCEPTED_DEBT_WITH_REASON | Monitor with real traffic and review limits before scale-up. |
+| INFRA18-P2-03 | 18 | backup | Local DB backup is current and verified, but asset backup freshness and a full combined restore signal are not independently proven in this run. | TRANSFERRED | Macrostep 13 / recovery owner; preserve existing backup evidence and prove asset/combined restore in the next approved gate. |
+| INFRA18-P2-04 | 18 | OS hygiene | `motd-news.service` has no production dependency but remains failed with `203/EXEC` because its package-owned script is absent. | OPEN | OS owner should repair or intentionally retire the static unit; do not use failure-state reset as remediation. |
+
+`MACROSTEP_18_IMPORTED_LEDGER_FINDINGS_ACCOUNTED_FOR = SIM`
+
+`ALL_NEW_P2_ACCOUNTED_FOR = SIM`
+
+`ALL_NEW_DEFERRED_ACCOUNTED_FOR = SIM`
+
+`TRANSFERRED_WITHOUT_OWNER = 0`
+
+`DEFERRED_WITHOUT_ACCEPTANCE_CONDITION = 0`

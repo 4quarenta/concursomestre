@@ -11,7 +11,15 @@ function systemdPolicyAssert(bool $condition, string $message): void
 
 $units = DatasetWriterSystemdFreezePolicy::units();
 $names = DatasetWriterSystemdFreezePolicy::unitNames();
-systemdPolicyAssert(count($units) === 15 && count($names) === 15, 'The exact systemd control inventory must contain 15 units.');
+systemdPolicyAssert(count($units) === 11 && count($names) === 11, 'The strict-writer systemd control inventory must contain 11 units.');
+systemdPolicyAssert(DatasetWriterSystemdFreezePolicy::availabilitySafeFreezeGuard()['valid'], 'Public serving units must remain outside the strict freeze inventory.');
+foreach (DatasetWriterSystemdFreezePolicy::publicServingLayerUnits() as $unit) {
+    systemdPolicyAssert(DatasetWriterSystemdFreezePolicy::classifyUnit($unit) === DatasetWriterSystemdFreezePolicy::CLASS_SERVING_LAYER, 'Serving unit classification drifted: ' . $unit);
+    systemdPolicyAssert(!in_array($unit, $names, true), 'Serving unit must never be stopped by strict freeze: ' . $unit);
+}
+systemdPolicyAssert(DatasetWriterSystemdFreezePolicy::classifyUnit('unknown.service') === DatasetWriterSystemdFreezePolicy::CLASS_UNKNOWN, 'Unknown units must fail closed as UNKNOWN.');
+systemdPolicyAssert(DatasetWriterSystemdFreezePolicy::freezeDecision('nginx.service') === 'LEAVE_RUNNING', 'Serving units must remain running during a strict freeze.');
+systemdPolicyAssert(DatasetWriterSystemdFreezePolicy::freezeDecision('unknown.service') === 'REJECT_UNKNOWN', 'Unknown units must be rejected rather than broadly suppressed.');
 systemdPolicyAssert(count(DatasetWriterFreezeReporter::requiredFreezeWriterIds()) === 20, 'The authoritative MUST_FREEZE inventory must contain 20 writers.');
 systemdPolicyAssert(DatasetWriterSystemdFreezePolicy::controlCoverageBlockers() === [], 'Every MUST_FREEZE writer requires explicit suppression controls.');
 

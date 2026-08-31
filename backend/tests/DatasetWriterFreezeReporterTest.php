@@ -29,7 +29,7 @@ foreach ($matrix as $entry) {
     if (($entry['pause_required'] ?? false) && (($entry['pause_mechanism'] ?? '') === '' || ($entry['resume_mechanism'] ?? '') === '')) {
         throw new RuntimeException('Pause/resume contract is incomplete for ' . ($entry['writer_id'] ?? 'unknown'));
     }
-    if (!in_array(($entry['classification'] ?? ''), ['MUST_FREEZE', 'SAFE_TO_CONTINUE', 'MUST_CONTINUE', 'NOT_A_WRITER'], true)) {
+    if (!in_array(($entry['classification'] ?? ''), ['MUST_FREEZE', 'SAFE_TO_CONTINUE', 'MUST_CONTINUE', 'NOT_A_WRITER', 'SERVING_LAYER', 'MAINTENANCE'], true)) {
         throw new RuntimeException('Unknown writer classification: ' . ($entry['writer_id'] ?? 'unknown'));
     }
     if (($entry['must_freeze_during_reset'] ?? null) !== (($entry['classification'] ?? '') === 'MUST_FREEZE')) {

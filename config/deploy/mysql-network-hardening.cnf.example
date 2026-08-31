@@ -1,0 +1,8 @@
+# Candidate only. Apply after consumer inventory and an approved maintenance
+# window. This file must never contain credentials.
+[mysqld]
+bind-address = 127.0.0.1
+mysqlx-bind-address = 127.0.0.1
+
+# If MySQL X has no approved consumer, disabling the plugin is preferable to
+# exposing it. The final decision belongs in the production change window.

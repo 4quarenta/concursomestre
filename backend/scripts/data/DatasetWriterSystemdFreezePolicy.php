@@ -22,14 +22,27 @@ final class DatasetWriterSystemdFreezePolicy
     public const STATE_SCHEMA_VERSION = 'SYSTEMD_FREEZE_STATE_V1';
     public const DROP_IN_FILE = '90-concursomestre-dataset-reset-freeze.conf';
     public const RUNTIME_ROOT = '/run/concursomestre-dataset-reset-freeze';
+    public const CLASS_STRICT_WRITER = 'STRICT_WRITER';
+    public const CLASS_SERVING_LAYER = 'SERVING_LAYER';
+    public const CLASS_OBSERVABILITY = 'OBSERVABILITY';
+    public const CLASS_MAINTENANCE = 'MAINTENANCE';
+    public const CLASS_UNKNOWN = 'UNKNOWN';
+
+    /** @return list<string> */
+    public static function publicServingLayerUnits(): array
+    {
+        return [
+            'nginx.service',
+            'clp-nginx.service',
+            'concursomestre-frontend.service',
+            'php8.4-fpm.service',
+        ];
+    }
 
     /** @return list<array<string, mixed>> */
     public static function units(): array
     {
         return [
-            self::unit('nginx.service', 'service', ['/usr/lib/systemd/system/nginx.service'], [], []),
-            self::unit('clp-nginx.service', 'service', ['/usr/lib/systemd/system/clp-nginx.service'], [], []),
-            self::unit('concursomestre-frontend.service', 'service', ['/etc/systemd/system/concursomestre-frontend.service'], [], []),
             self::unit('concursomestre-sitemap.timer', 'timer', ['/etc/systemd/system/concursomestre-sitemap.timer'], ['concursomestre-sitemap.service'], []),
             self::unit('concursomestre-blog-sitemap.timer', 'timer', ['/etc/systemd/system/concursomestre-blog-sitemap.timer'], ['concursomestre-blog-sitemap.service'], []),
             self::unit('concursomestre-answer-archive.timer', 'timer', ['/etc/systemd/system/concursomestre-answer-archive.timer'], ['concursomestre-answer-archive.service'], []),
@@ -38,7 +51,6 @@ final class DatasetWriterSystemdFreezePolicy
             self::unit('concursomestre-question-ingestion@2.service', 'service', ['/etc/systemd/system/concursomestre-question-ingestion@.service'], [], []),
             self::unit('concursomestre-platform-events@1.service', 'service', ['/etc/systemd/system/concursomestre-platform-events@.service'], [], []),
             self::unit('concursomestre-python-extractor.service', 'service', ['/etc/systemd/system/concursomestre-python-extractor.service'], [], []),
-            self::unit('php8.4-fpm.service', 'service', ['/usr/lib/systemd/system/php8.4-fpm.service'], [], []),
             self::unit('concursomestre-sitemap.service', 'service', ['/etc/systemd/system/concursomestre-sitemap.service'], [], ['concursomestre-sitemap.timer']),
             self::unit('concursomestre-blog-sitemap.service', 'service', ['/etc/systemd/system/concursomestre-blog-sitemap.service'], [], ['concursomestre-blog-sitemap.timer']),
             self::unit('concursomestre-answer-archive.service', 'service', ['/etc/systemd/system/concursomestre-answer-archive.service'], [], ['concursomestre-answer-archive.timer']),
@@ -61,7 +73,6 @@ final class DatasetWriterSystemdFreezePolicy
     public static function resumeOrder(): array
     {
         return [
-            'php8.4-fpm.service',
             'concursomestre-python-extractor.service',
             'concursomestre-question-ingestion@1.service',
             'concursomestre-question-ingestion@2.service',
@@ -70,16 +81,47 @@ final class DatasetWriterSystemdFreezePolicy
             'concursomestre-blog-sitemap.timer',
             'concursomestre-answer-archive.timer',
             'cron.service',
-            'concursomestre-frontend.service',
-            'nginx.service',
-            'clp-nginx.service',
         ];
+    }
+
+    public static function classifyUnit(string $unit): string
+    {
+        if (in_array($unit, self::publicServingLayerUnits(), true)) return self::CLASS_SERVING_LAYER;
+        if (in_array($unit, self::unitNames(), true)) return self::CLASS_STRICT_WRITER;
+        return self::CLASS_UNKNOWN;
+    }
+
+    public static function freezeDecision(string $unit): string
+    {
+        return match (self::classifyUnit($unit)) {
+            self::CLASS_STRICT_WRITER => 'SUPPRESS',
+            self::CLASS_SERVING_LAYER => 'LEAVE_RUNNING',
+            default => 'REJECT_UNKNOWN',
+        };
+    }
+
+    /** @return array{valid: bool, blockers: list<string>, classifications: array<string, string>} */
+    public static function availabilitySafeFreezeGuard(): array
+    {
+        $classifications = [];
+        $blockers = [];
+        foreach (self::publicServingLayerUnits() as $unit) {
+            $classifications[$unit] = self::classifyUnit($unit);
+            if (in_array($unit, self::unitNames(), true)) $blockers[] = 'PUBLIC_SERVING_UNIT_IN_FREEZE:' . $unit;
+        }
+        foreach (self::unitNames() as $unit) {
+            $classifications[$unit] = self::classifyUnit($unit);
+            if (self::classifyUnit($unit) !== self::CLASS_STRICT_WRITER) $blockers[] = 'NON_WRITER_UNIT_IN_FREEZE:' . $unit;
+        }
+        ksort($classifications);
+        sort($blockers);
+        return ['valid' => $blockers === [], 'blockers' => $blockers, 'classifications' => $classifications];
     }
 
     /** @return array<string, list<string>> */
     public static function writerControls(): array
     {
-        $ingress = ['nginx.service', 'clp-nginx.service', 'php8.4-fpm.service'];
+        $ingress = ['http-writer-boundary'];
         $cron = ['cron.service'];
         return [
             'http-auth-account' => $ingress,
@@ -108,8 +150,8 @@ final class DatasetWriterSystemdFreezePolicy
     /** @return list<string> */
     public static function controlCoverageBlockers(): array
     {
+        $blockers = self::availabilitySafeFreezeGuard()['blockers'];
         $controls = self::writerControls();
-        $blockers = [];
         foreach (DatasetWriterFreezeReporter::requiredFreezeWriterIds() as $writerId) {
             if (($controls[$writerId] ?? []) === []) $blockers[] = 'WRITER_CONTROL_MISSING:' . $writerId;
         }
@@ -130,7 +172,7 @@ final class DatasetWriterSystemdFreezePolicy
 
     public static function dropInPath(string $unit): string
     {
-        if (!in_array($unit, self::unitNames(), true)) throw new InvalidArgumentException('Unit is outside the freeze allowlist.');
+        if (!in_array($unit, self::unitNames(), true)) throw new InvalidArgumentException('Unit is outside the strict-writer freeze allowlist.');
         return '/run/systemd/system/' . $unit . '.d/' . self::DROP_IN_FILE;
     }
 
