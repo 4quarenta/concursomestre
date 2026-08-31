@@ -20,6 +20,7 @@ require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSuppor
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../finance/services/ReferralFinance.php';
 require_once __DIR__ . '/../../../shared/storage/ObjectStorage.php';
+require_once __DIR__ . '/../../../shared/auth/AuthSession.php';
 
 /**
  * Service do dominio de Usuarios.
@@ -832,7 +833,28 @@ class UsersService
             throw new OutOfBoundsException('Usuario Nao encontrado.');
         }
 
-        $this->repository->markDeletionRequested($userId, $reason);
+        $ownsTransaction = !$this->repository->inTransaction();
+        if ($ownsTransaction) {
+            $this->repository->beginTransaction();
+        }
+
+        try {
+            $this->repository->markDeletionRequested($userId, $reason);
+            revokeAllUserSessionFamilies(
+                $this->repository->getDb(),
+                $userId,
+                'account_deletion_requested'
+            );
+
+            if ($ownsTransaction) {
+                $this->repository->commit();
+            }
+        } catch (Throwable $e) {
+            if ($ownsTransaction && $this->repository->inTransaction()) {
+                $this->repository->rollBack();
+            }
+            throw $e;
+        }
 
         return [
             'message' => 'Account deletion requested successfully',

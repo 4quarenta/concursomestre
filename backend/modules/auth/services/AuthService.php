@@ -114,6 +114,8 @@ class AuthService
             throw new RuntimeException('Invalid email or password');
         }
 
+        $this->assertUserCanAuthenticate($user);
+
         if ($this->shouldRequireTwoFactor($user)) {
             return [
                 'require2FA' => true,
@@ -380,6 +382,8 @@ class AuthService
             throw new RuntimeException('Nao foi possivel localizar a conta autenticada pelo Google.');
         }
 
+        $this->assertUserCanAuthenticate($user, 'Conta indisponivel para autenticacao.');
+
         if ($this->shouldRequireTwoFactor($user)) {
             return [
                 'require2FA' => true,
@@ -632,6 +636,8 @@ class AuthService
         if (!$user) {
             throw new RuntimeException('Nao foi possivel localizar a conta autenticada pelo provedor social.');
         }
+
+        $this->assertUserCanAuthenticate($user, 'Conta indisponivel para autenticacao.');
 
         if ($this->shouldRequireTwoFactor($user)) {
             return [
@@ -1689,6 +1695,21 @@ class AuthService
         );
 
         return $usersService->getAuthenticatedSession($userId);
+    }
+
+    /**
+     * Impede novas sessoes para contas que ja solicitaram exclusao ou foram
+     * encerradas. O estado de exclusao continua separado do status operacional
+     * para preservar o fluxo de retencao/anonymizacao decidido posteriormente.
+     *
+     * @since 1.0.0
+     */
+    private function assertUserCanAuthenticate(array $user, string $message = 'Invalid email or password'): void
+    {
+        $status = strtolower(trim((string) ($user['status'] ?? '')));
+        if (!empty($user['deletion_requested_at']) || in_array($status, ['deleted', 'pending_deletion'], true)) {
+            throw new RuntimeException($message);
+        }
     }
 
     /**

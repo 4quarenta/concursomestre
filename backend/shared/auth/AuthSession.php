@@ -376,6 +376,33 @@ function revokeSessionFamily(PDO $db, string $sessionId, string $reason, bool $m
 }
 
 /**
+ * Revoga todas as sessoes ativas de um usuario sem apagar o historico de auth.
+ * A operacao e usada quando a conta entra em fluxo de exclusao para impedir
+ * que outra sessao continue acessando dados enquanto a solicitacao e tratada.
+ *
+ * @since 1.0.0
+ */
+function revokeAllUserSessionFamilies(PDO $db, string $userId, string $reason = 'account_deletion_requested'): int
+{
+    ensureAuthTables($db);
+
+    $stmt = $db->prepare(
+        "SELECT id
+         FROM auth_sessions
+         WHERE user_id = :user_id
+           AND status = 'active'"
+    );
+    $stmt->execute([':user_id' => $userId]);
+    $sessionIds = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
+    foreach ($sessionIds as $sessionId) {
+        revokeSessionFamily($db, (string) $sessionId, $reason);
+    }
+
+    return count($sessionIds);
+}
+
+/**
  * Localiza o refresh token persistido e traz junto o estado atual da sessão associada.
  * Essa consulta sustenta refresh, logout e investigacoes de erro no fluxo de auth.
  *
@@ -387,9 +414,11 @@ function findRefreshTokenRecord(PDO $db, string $refreshToken): ?array
 
     $tokenHash = hashOpaqueToken($refreshToken);
     $stmt = $db->prepare(
-        "SELECT rt.*, s.user_id, s.status AS session_status, s.revoked_at AS session_revoked_at, s.expires_at AS session_expires_at, s.csrf_token_hash
+        "SELECT rt.*, s.user_id, s.status AS session_status, s.revoked_at AS session_revoked_at, s.expires_at AS session_expires_at, s.csrf_token_hash,
+                u.status AS user_status, u.deletion_requested_at
          FROM auth_refresh_tokens rt
          JOIN auth_sessions s ON s.id = rt.session_id
+         JOIN users u ON u.id = s.user_id
          WHERE rt.token_hash = :token_hash
          LIMIT 1"
     );
@@ -410,9 +439,11 @@ function findRefreshTokenRecordById(PDO $db, string $refreshTokenId): ?array
     ensureAuthTables($db);
 
     $stmt = $db->prepare(
-        "SELECT rt.*, s.user_id, s.status AS session_status, s.revoked_at AS session_revoked_at, s.expires_at AS session_expires_at, s.csrf_token_hash
+        "SELECT rt.*, s.user_id, s.status AS session_status, s.revoked_at AS session_revoked_at, s.expires_at AS session_expires_at, s.csrf_token_hash,
+                u.status AS user_status, u.deletion_requested_at
          FROM auth_refresh_tokens rt
          JOIN auth_sessions s ON s.id = rt.session_id
+         JOIN users u ON u.id = s.user_id
          WHERE rt.id = :id
          LIMIT 1"
     );
@@ -541,6 +572,16 @@ function refreshAccessTokenUsingToken(
             clearAuthCookies();
         }
         throw new RuntimeException('Sessão revogada.');
+    }
+
+    if (!empty($record['deletion_requested_at'])
+        || in_array(strtolower((string) ($record['user_status'] ?? '')), ['deleted', 'pending_deletion'], true)
+    ) {
+        revokeSessionFamily($db, $sessionId, 'account_deletion_requested');
+        if ($setBrowserCookies) {
+            clearAuthCookies();
+        }
+        throw new RuntimeException('Sessão indisponível.');
     }
 
     if (!empty($record['session_expires_at']) && strtotime((string) $record['session_expires_at']) < ($now->getTimestamp() - getAuthClockSkewSeconds())) {

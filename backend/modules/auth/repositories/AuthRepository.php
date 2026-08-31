@@ -146,7 +146,9 @@ class AuthRepository
                 plan,
                 email_verified,
                 two_factor_enabled,
-                two_factor_secret
+                two_factor_secret,
+                status,
+                deletion_requested_at
              FROM users
              WHERE email = :email
              LIMIT 1"
@@ -261,7 +263,8 @@ class AuthRepository
     public function findUserForSocialByGoogleSub(string $googleSub): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, name, email, role, plan, email_verified, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub
+            "SELECT id, name, email, role, plan, email_verified, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub,
+                    status, deletion_requested_at
              FROM users
              WHERE google_sub = :google_sub
              LIMIT 1"
@@ -280,7 +283,8 @@ class AuthRepository
     public function findUserForSocialByEmail(string $email): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, name, email, role, plan, email_verified, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub
+            "SELECT id, name, email, role, plan, email_verified, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub,
+                    status, deletion_requested_at
              FROM users
              WHERE email = :email
              LIMIT 1"
@@ -394,7 +398,8 @@ class AuthRepository
     public function findUserForSocialByFacebookId(string $facebookId): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, name, email, role, plan, email_verified, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub
+            "SELECT id, name, email, role, plan, email_verified, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub,
+                    status, deletion_requested_at
              FROM users
              WHERE facebook_id = :facebook_id
              LIMIT 1"
@@ -413,7 +418,8 @@ class AuthRepository
     public function findUserForSocialByAppleSub(string $appleSub): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, name, email, role, plan, email_verified, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub
+            "SELECT id, name, email, role, plan, email_verified, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub,
+                    status, deletion_requested_at
              FROM users
              WHERE apple_sub = :apple_sub
              LIMIT 1"
@@ -622,7 +628,8 @@ class AuthRepository
     public function findUserById(string $userId): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, name, email, xp, email_verified, role, plan, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub
+            "SELECT id, name, email, xp, email_verified, role, plan, two_factor_enabled, two_factor_secret, google_sub, facebook_id, apple_sub,
+                    status, deletion_requested_at
              FROM users
              WHERE id = :id
              LIMIT 1"

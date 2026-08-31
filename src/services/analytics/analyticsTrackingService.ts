@@ -11,6 +11,7 @@
 
 import { apiClient, ENDPOINTS } from '@services/api';
 import { clientLog } from '@services/monitoring/clientLog';
+import { readCookieConsent } from '@services/privacy/cookieConsent';
 
 export type LifecycleAnalyticsEventName =
   | 'identifiable_visit'
@@ -76,6 +77,8 @@ export const analyticsTrackingService = {
   },
 
   async trackLifecycleEvent(input: TrackLifecycleEventInput): Promise<void> {
+    if (readCookieConsent()?.analytics !== true) return;
+
     try {
       const searchParams = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search)

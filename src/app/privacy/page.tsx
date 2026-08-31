@@ -125,7 +125,7 @@ const PrivacyPolicy: React.FC = () => {
                 </div>
                 <div className="space-y-6">
                   <p className="text-base md:text-lg text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-                    A transparência é a base da nossa relação. Coletamos e processamos única e exclusivamente as informações que são essenciais para a prestação plena e segura de nossos serviços educacionais, visando uma jornada de estudo customizada.
+                    A transparência é a base da nossa relação. Coletamos e processamos as informações necessárias para prestar e proteger nossos serviços educacionais, incluindo dados de cadastro, autenticação, cobrança e uso da plataforma quando aplicáveis.
                   </p>
 
                   <div className="mt-8 grid grid-cols-1 gap-6">
@@ -147,7 +147,7 @@ const PrivacyPolicy: React.FC = () => {
                       </div>
                       <div className="relative z-10 flex-1">
                         <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Dados Fiscais Sensíveis</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">CPF e Endereço são requeridos apenas no ato da conversão para plano pago (Pagar.me/Stripe) ou para credenciamento obrigatório &quot;Know Your Customer&quot;. <strong className="text-slate-700 dark:text-slate-200">Nós NUNCA guardamos números integrais de seu cartão.</strong></p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">CPF e telefone podem ser solicitados no cadastro ou em fluxos de cobrança e validação. Endereço é solicitado quando necessário para a operação de cobrança. O processamento de pagamentos usa Stripe; <strong className="text-slate-700 dark:text-slate-200">nós não armazenamos o número integral do cartão.</strong></p>
                       </div>
                     </div>
 
@@ -250,9 +250,9 @@ const PrivacyPolicy: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {[
-                    { title: "Direito de Esquecimento", desc: "A exclusão integral da sua conta remove suas notas sistêmicas, dados e correlações.", highlight: "text-red-500", borderColor: "hover:border-red-400 dark:hover:border-red-500/50" },
+                    { title: "Solicitação de exclusão", desc: "O pedido autenticado inicia o fluxo de tratamento da conta. Remoção, anonimização e eventuais retenções seguem a política técnica aplicável.", highlight: "text-red-500", borderColor: "hover:border-red-400 dark:hover:border-red-500/50" },
                     { title: "Direito de Correção", desc: "Painéis de edição transparentes para ajustar nome, avatar e vínculos de pagamento a qualquer instante.", highlight: "text-emerald-500", borderColor: "hover:border-emerald-400 dark:hover:border-emerald-500/50" },
-                    { title: "Direito de Portabilidade", desc: "Caso requerido, empacotaremos seu histórico de banco em JSON legível formatado.", highlight: "text-indigo-500", borderColor: "hover:border-indigo-400 dark:hover:border-indigo-500/50" },
+                    { title: "Acesso e portabilidade", desc: "Solicitações de acesso ou portabilidade devem ser encaminhadas ao canal de privacidade para avaliação e atendimento conforme os dados disponíveis.", highlight: "text-indigo-500", borderColor: "hover:border-indigo-400 dark:hover:border-indigo-500/50" },
                     { title: "Revogação de Anuência", desc: "Newsletters e E-mails massivos podem ser opostos com simples de-check na área de Configurações.", highlight: "text-amber-500", borderColor: "hover:border-amber-400 dark:hover:border-amber-500/50" }
                   ].map((right, idx) => (
                     <div key={idx} className={`p-6 bg-white dark:bg-slate-800/80 rounded-[1.5rem] border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${right.borderColor}`}>

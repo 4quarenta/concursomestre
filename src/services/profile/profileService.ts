@@ -11,6 +11,7 @@
 
 import { apiClient, assertApiSuccess, readApiData, ENDPOINTS } from '@services/api';
 import type { ApiResponse } from '@services/api';
+import { getCsrfToken } from '@services/auth/session';
 
 const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
 
@@ -440,12 +441,14 @@ export const profileService = {
    * Registra a solicitação real de exclusão de conta do usuário autenticado.
    */
   async requestAccountDeletion(reason: string, captchaToken?: string | null): Promise<MessageMutationResult> {
+    const csrfToken = getCsrfToken();
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(
       ENDPOINTS.users.delete,
       {
         reason,
         captchaToken: captchaToken || '',
       },
+      csrfToken ? { headers: { 'X-CSRF-Token': csrfToken } } : undefined,
     ));
     const envelope = assertApiSuccess(response, 'Não foi possível solicitar a exclusão da conta.');
 

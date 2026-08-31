@@ -119,3 +119,29 @@ REAL_DATA_PRE_GO_CONTRADICTIONS = 0
 `READINESS_BLOCKER = none`
 
 `SECONDARY_BLOCKERS = none`
+
+## Macrostep 17 disposition (2026-08-30)
+
+| ID | Finding | Status | Destination / acceptance condition |
+| --- | --- | --- | --- |
+| P17-01 | Pedido de exclusao nao revogava sessoes concorrentes | IMPLEMENTED | `revokeAllUserSessionFamilies` revoga sessoes e refresh tokens na mesma transacao do marcador. |
+| P17-02 | Rota de exclusao nao declarava POST-only | IMPLEMENTED | `POST /api/users/delete.php`; metodo diferente e rejeitado. |
+| P17-03 | Login/refresh/JWT podiam continuar apos pedido de exclusao | IMPLEMENTED | Marker/status sao verificados nas entradas de senha, social, refresh, cookie e JWT. |
+| P17-04 | Apagamento/anonymizacao final e prazos dependem de politica aprovada | OPEN_WITH_OWNER | Owner juridico + Macrostep 17; definir grafo e prazos antes do Production GO. |
+| P17-05 | Exportacao self-service nao existe | OPEN_WITH_OWNER | Macrostep 17; manter atendimento controlado e avaliar contrato de exportacao. |
+| P17-06 | Email em analytics e retencao de logs precisam minimizacao | TRANSFERRED | Macrostep 19 para instrumentacao; Macrostep 18 para log pipeline/retencao. |
+| P17-07 | Consentimento analytics/marketing nao tinha enforcement runtime provado | IMPLEMENTED | Consent manager versionado nega opcionais por padrao, bloqueia GA/ads/analytics proprio, sincroniza abas e permite retirada; revisao juridica permanece separada. |
+| P17-08 | Versionamento formal dos documentos publicos e incompleto | OPEN_WITH_OWNER | Macrostep 20 + owner juridico/editorial. |
+
+`MACROSTEP_17_IMPORTED_LEDGER_FINDINGS = 1` (CC-17, por retenção de refresh
+tokens e política de sessão).
+
+`ALL_IMPORTED_LEDGER_FINDINGS_ACCOUNTED_FOR = SIM`
+
+`ALL_NEW_P2_ACCOUNTED_FOR = SIM`
+
+`ALL_NEW_DEFERRED_ACCOUNTED_FOR = SIM`
+
+`TRANSFERRED_WITHOUT_OWNER = 0`
+
+`MACROSTEP_17_IMPROVEMENT_AUDIT = COMPLETE`

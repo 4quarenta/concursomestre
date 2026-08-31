@@ -544,6 +544,15 @@ function handleUsersDeleteNoteRoute(PDO $db): void
 function handleUsersDeleteAccountRoute(PDO $db): void
 {
     try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+            Response::badRequest('Metodo nao suportado para exclusao de conta.');
+        }
+
+        $csrfCookie = getCsrfTokenFromCookie();
+        if ($csrfCookie !== null && !assertValidCsrfToken($csrfCookie, getCsrfTokenFromRequest())) {
+            Response::forbidden('CSRF token invalido.');
+        }
+
         $payload = verifyAuthenticatedUserPayload();
         $authenticatedUserId = trim((string) ($payload['user_id'] ?? ''));
         $validator = new UsersValidator();

@@ -14,6 +14,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { hasPlanBenefit } from '@services/plans/planAccess';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import { useCookieConsent } from '../privacy/CookieConsentManager';
 
 declare global {
     interface Window {
@@ -36,6 +37,8 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = '' }) => {
     const hidesAds = hasPlanBenefit(currentUser, 'no_ads', systemSettings.planEntitlements);
     const canReceiveAds = hasPlanBenefit(currentUser, 'ads.adsense_banner', systemSettings.planEntitlements);
     const hasReducedAds = hasPlanBenefit(currentUser, 'ads.reduced', systemSettings.planEntitlements);
+    const { preferences: cookiePreferences } = useCookieConsent();
+    const marketingConsent = cookiePreferences?.marketing === true;
     const placementEnabledMap: Record<AdBannerProps['type'], boolean> = {
         top: systemSettings.adPlacementTopEnabled !== false,
         sidebar: systemSettings.adPlacementSidebarEnabled !== false && !hasReducedAds,
@@ -44,7 +47,7 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = '' }) => {
     const isPlacementEnabled = placementEnabledMap[type];
 
     useEffect(() => {
-        if (!systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled) return;
+        if (!marketingConsent || !systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled) return;
 
         const scriptId = 'adsense-script-loader';
         const configuredClientId = String(systemSettings.adsenseClientId || '').trim();
@@ -78,10 +81,11 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = '' }) => {
         hidesAds,
         canReceiveAds,
         isPlacementEnabled,
+        marketingConsent,
     ]);
 
     useEffect(() => {
-        if (!systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled || !bannerRef.current) return;
+        if (!marketingConsent || !systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled || !bannerRef.current) return;
 
         const contentMap: Record<AdBannerProps['type'], string | undefined> = {
             top: systemSettings.adBannerTop,
@@ -160,9 +164,10 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = '' }) => {
         hidesAds,
         canReceiveAds,
         isPlacementEnabled,
+        marketingConsent,
     ]);
 
-    if (!systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled) return null;
+    if (!marketingConsent || !systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled) return null;
 
     return (
         <div

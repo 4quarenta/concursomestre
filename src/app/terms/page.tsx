@@ -244,7 +244,7 @@ const TermsOfUse: React.FC = () => {
                   </div>
                   <div className="flex gap-4 p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all hover:border-red-200 dark:hover:border-red-900/50">
                     <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0 font-black text-xs text-slate-500">2</div>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">Interrupções e manutenções repentinas e emergenciais das nossas APIs. Quedas prolongadas geram bônus de dias para assinantes, sempre que superada a margem crítica técnica tolerável.</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">Interrupções e manutenções repentinas e emergenciais das nossas APIs. Em caso de indisponibilidade prolongada, eventuais medidas de suporte ou ajustes serão avaliados conforme o caso e as condições aplicáveis.</p>
                   </div>
                   <div className="flex gap-4 p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all hover:border-red-200 dark:hover:border-red-900/50">
                     <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0 font-black text-xs text-slate-500">3</div>

@@ -174,9 +174,11 @@ class JWTAuth
             }
 
             $stmt = $db->prepare(
-                "SELECT id, user_id, status, expires_at, revoked_at
-                 FROM auth_sessions
-                 WHERE id = :id
+                "SELECT s.id, s.user_id, s.status, s.expires_at, s.revoked_at,
+                        u.status AS user_status, u.deletion_requested_at
+                 FROM auth_sessions s
+                 JOIN users u ON u.id = s.user_id
+                 WHERE s.id = :id
                  LIMIT 1"
             );
             $stmt->execute([':id' => (string) $payload['session_id']]);
@@ -192,6 +194,12 @@ class JWTAuth
 
             if (!empty($session['revoked_at']) || ($session['status'] ?? '') !== 'active') {
                 return ['valid' => false, 'reason' => 'session_revoked'];
+            }
+
+            if (!empty($session['deletion_requested_at'])
+                || in_array(strtolower((string) ($session['user_status'] ?? '')), ['deleted', 'pending_deletion'], true)
+            ) {
+                return ['valid' => false, 'reason' => 'account_deletion_requested'];
             }
 
             if (!empty($session['expires_at'])) {

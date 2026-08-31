@@ -175,6 +175,8 @@ function handleAuthAdminRouteAccessRoute(PDO $db): void
             || (string) ($record['status'] ?? '') !== 'active'
             || (string) ($record['session_status'] ?? '') !== 'active'
             || !empty($record['session_revoked_at'])
+            || !empty($record['deletion_requested_at'])
+            || in_array(strtolower((string) ($record['user_status'] ?? '')), ['deleted', 'pending_deletion'], true)
             || (!empty($record['expires_at']) && strtotime((string) $record['expires_at']) < time())
             || (!empty($record['session_expires_at']) && strtotime((string) $record['session_expires_at']) < time())
         ) {
