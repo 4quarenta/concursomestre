@@ -14,31 +14,33 @@
  * respostas cruas, `{ success, data }` e payloads parcialmente achatados.
  * @since 1.0.0
  */
+type ApiEnvelopeObject = Record<string, unknown>;
+
 export type NormalizedApiEnvelope<T = unknown> = {
   success: boolean;
   message?: string;
   data?: T;
-  raw: any;
+  raw: ApiEnvelopeObject;
 };
 
 /**
  * Detecta e padroniza o shape principal da resposta para os serviços.
  * @since 1.0.0
  */
-export const normalizeApiEnvelope = <T = unknown>(response: any): NormalizedApiEnvelope<T> => {
-  if (response && typeof response === 'object' && typeof response.success === 'boolean') {
+export const normalizeApiEnvelope = <T = unknown>(response: unknown): NormalizedApiEnvelope<T> => {
+  if (response && typeof response === 'object' && 'success' in response && typeof response.success === 'boolean') {
     return {
       success: response.success,
-      message: typeof response.message === 'string' ? response.message : undefined,
-      data: response.data as T | undefined,
-      raw: response,
+      message: 'message' in response && typeof response.message === 'string' ? response.message : undefined,
+      data: 'data' in response ? response.data as T | undefined : undefined,
+      raw: response as ApiEnvelopeObject,
     };
   }
 
   return {
     success: true,
     data: response as T,
-    raw: response,
+    raw: response && typeof response === 'object' ? response as ApiEnvelopeObject : {},
   };
 };
 
@@ -46,7 +48,7 @@ export const normalizeApiEnvelope = <T = unknown>(response: any): NormalizedApiE
  * Extrai o payload util independentemente de a resposta vir envelopada ou não.
  * @since 1.0.0
  */
-export const readApiData = <T>(response: any, fallback: T): T => {
+export const readApiData = <T>(response: unknown, fallback: T): T => {
   const envelope = normalizeApiEnvelope<T>(response);
 
   if (envelope.data !== undefined) {
@@ -65,11 +67,14 @@ export const readApiData = <T>(response: any, fallback: T): T => {
  * mesma regra de mensagem/erro.
  * @since 1.0.0
  */
-export const assertApiSuccess = <T = unknown>(response: any, fallbackMessage: string): NormalizedApiEnvelope<T> => {
+export const assertApiSuccess = <T = unknown>(response: unknown, fallbackMessage: string): NormalizedApiEnvelope<T> => {
   const envelope = normalizeApiEnvelope<T>(response);
 
   if (!envelope.success) {
-    const rawMessage = typeof envelope.raw?.error === 'string' ? envelope.raw.error : undefined;
+    const rawMessage =
+      envelope.raw && typeof envelope.raw === 'object' && 'error' in envelope.raw && typeof envelope.raw.error === 'string'
+        ? envelope.raw.error
+        : undefined;
     throw new Error(envelope.message || rawMessage || fallbackMessage);
   }
 
@@ -81,17 +86,38 @@ export const assertApiSuccess = <T = unknown>(response: any, fallbackMessage: st
  * excecao simples, evitando parsing manual repetido na UI.
  * @since 1.0.0
  */
-export const readApiErrorMessage = (error: any, fallbackMessage: string): string => {
-  if (typeof error?.response?.data?.message === 'string' && error.response.data.message.trim()) {
-    return error.response.data.message;
-  }
+export const readApiErrorMessage = (error: unknown, fallbackMessage: string): string => {
+  if (error && typeof error === 'object') {
+    const message = 'message' in error && typeof error.message === 'string' ? error.message.trim() : '';
+    const code = 'code' in error && typeof error.code === 'string' ? error.code.trim() : '';
+    const hasRequestWithoutResponse = 'request' in error && !('response' in error);
 
-  if (typeof error?.response?.data?.error === 'string' && error.response.data.error.trim()) {
-    return error.response.data.error;
-  }
+    if (
+      code === 'ERR_NETWORK'
+      || message === 'Network Error'
+      || message.includes('ERR_INTERNET_DISCONNECTED')
+      || message.includes('ERR_NAME_NOT_RESOLVED')
+      || hasRequestWithoutResponse
+    ) {
+      return 'Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.';
+    }
 
-  if (typeof error?.message === 'string' && error.message.trim()) {
-    return error.message;
+    const response = 'response' in error ? error.response : undefined;
+    const responseData = response && typeof response === 'object' && 'data' in response ? response.data : undefined;
+
+    if (responseData && typeof responseData === 'object') {
+      if ('message' in responseData && typeof responseData.message === 'string' && responseData.message.trim()) {
+        return responseData.message;
+      }
+
+      if ('error' in responseData && typeof responseData.error === 'string' && responseData.error.trim()) {
+        return responseData.error;
+      }
+    }
+
+    if (message) {
+      return message;
+    }
   }
 
   return fallbackMessage;
@@ -102,6 +128,22 @@ export const readApiErrorMessage = (error: any, fallbackMessage: string): string
  * ainda não esta 100% padronizado.
  * @since 1.0.0
  */
-export const readApiErrorCode = (error: any): string | number | undefined => {
-  return error?.response?.data?.error_code;
+export const readApiErrorCode = (error: unknown): string | number | undefined => {
+  if (!error || typeof error !== 'object' || !('response' in error)) {
+    return undefined;
+  }
+
+  const response = error.response;
+  if (!response || typeof response !== 'object' || !('data' in response)) {
+    return undefined;
+  }
+
+  const responseData = response.data;
+  if (!responseData || typeof responseData !== 'object' || !('error_code' in responseData)) {
+    return undefined;
+  }
+
+  return typeof responseData.error_code === 'string' || typeof responseData.error_code === 'number'
+    ? responseData.error_code
+    : undefined;
 };

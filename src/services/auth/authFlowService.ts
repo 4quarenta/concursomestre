@@ -11,6 +11,7 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import { readApiErrorMessage } from '@services/api/response';
+import type { ApiResponse } from '@services/api/types';
 import type { UserProfile } from '@types';
 
 export type AuthFlowSuccessPayload = {
@@ -20,15 +21,25 @@ export type AuthFlowSuccessPayload = {
     token?: string | null;
     require2FA?: boolean;
     email?: string;
+    emailDelivery?: AuthEmailDelivery;
   };
   user?: UserProfile;
   token?: string | null;
   require2FA?: boolean;
   email?: string;
+  emailDelivery?: AuthEmailDelivery;
+};
+
+export type AuthEmailDelivery = {
+  status?: 'sent' | 'failed' | 'disabled' | string;
+  message?: string;
+  reason?: string;
 };
 
 type RegisterPayload = {
   name: string;
+  cpf: string;
+  phone: string;
   email: string;
   password: string;
   captchaToken?: string | null;
@@ -49,6 +60,7 @@ export type ConfirmEmailResult = {
 export type ResetPasswordPayload = {
   token: string;
   password: string;
+  captchaToken?: string | null;
 };
 
 export type ForgotPasswordPayload = {
@@ -61,13 +73,42 @@ export type VerifyTwoFactorPayload = {
   code: string;
 };
 
+type AuthFlowApiData = {
+  user?: UserProfile;
+  token?: string | null;
+  require2FA?: boolean;
+  email?: string;
+  emailDelivery?: AuthEmailDelivery;
+};
+
+type AuthFlowApiResponse = ApiResponse<AuthFlowApiData> | AuthFlowApiData;
+type AuthMessageResponse = ApiResponse<Record<string, never>> | { message?: string };
+type ConfirmEmailApiResponse = ApiResponse<{ newXp?: number }> | { newXp?: number };
+type VerifyTwoFactorApiResponse = ApiResponse<{ token?: string | null }> | { token?: string | null };
+
 const normalizeAuthFlowError = (error: unknown, fallbackMessage: string): Error => {
   return new Error(readApiErrorMessage(error, fallbackMessage));
 };
 
+const buildAuthFlowSuccessPayload = (data: AuthFlowApiData): AuthFlowSuccessPayload => ({
+  success: true,
+  data: {
+    user: data.user,
+    token: data.token ?? null,
+    require2FA: Boolean(data.require2FA),
+    email: data.email,
+    emailDelivery: data.emailDelivery,
+  },
+  user: data.user,
+  token: data.token ?? null,
+  require2FA: Boolean(data.require2FA),
+  email: data.email,
+  emailDelivery: data.emailDelivery,
+});
+
 /**
- * Centraliza os fluxos de autenticação usados por telas de entrada e checkout.
- * Mantem cadastro, login, confirmacao e 2FA alinhados ao contrato oficial do backend.
+ * Centraliza os fluxos de autenticacao usados por telas de entrada e checkout.
+ * Mantém cadastro, login, confirmação e 2FA alinhados ao contrato oficial do backend.
  * @since 1.0.0
  */
 export const authFlowService = {
@@ -77,69 +118,45 @@ export const authFlowService = {
    * @since 1.0.0
    */
   async register(payload: RegisterPayload): Promise<AuthFlowSuccessPayload> {
-    const response = await apiClient.post<any>(ENDPOINTS.auth.register, payload) as any;
-    assertApiSuccess(response, 'Não foi possível criar a conta.');
+    const response = await apiClient.post<AuthFlowApiResponse>(ENDPOINTS.auth.register, payload);
+    assertApiSuccess<AuthFlowApiData>(response, 'Não foi possível criar a conta.');
 
-    const data = readApiData<AuthFlowSuccessPayload>(response, {} as AuthFlowSuccessPayload);
-    return {
-      success: true,
-      data: {
-        user: data.user,
-        token: data.token ?? null,
-        require2FA: Boolean(data.require2FA),
-        email: data.email,
-      },
-      user: data.user,
-      token: data.token ?? null,
-      require2FA: Boolean(data.require2FA),
-      email: data.email,
-    };
+    const data = readApiData<AuthFlowApiData>(response, {});
+    return buildAuthFlowSuccessPayload(data);
   },
 
   /**
    * Realiza login com email e senha usando o contrato oficial do backend.
-   * O resultado desta funcao alimenta o bootstrap de sessão do shell principal do site.
+   * O resultado desta funcao alimenta o bootstrap de sessao do shell principal do site.
    * @since 1.0.0
    */
   async login(payload: LoginPayload): Promise<AuthFlowSuccessPayload> {
-    const response = await apiClient.post<any>(ENDPOINTS.auth.login, payload) as any;
-    assertApiSuccess(response, 'Não foi possível realizar o login.');
+    const response = await apiClient.post<AuthFlowApiResponse>(ENDPOINTS.auth.login, payload);
+    assertApiSuccess<AuthFlowApiData>(response, 'Não foi possível realizar o login.');
 
-    const data = readApiData<AuthFlowSuccessPayload>(response, {} as AuthFlowSuccessPayload);
-    return {
-      success: true,
-      data: {
-        user: data.user,
-        token: data.token ?? null,
-        require2FA: Boolean(data.require2FA),
-        email: data.email,
-      },
-      user: data.user,
-      token: data.token ?? null,
-      require2FA: Boolean(data.require2FA),
-      email: data.email,
-    };
+    const data = readApiData<AuthFlowApiData>(response, {});
+    return buildAuthFlowSuccessPayload(data);
   },
 
   /**
-   * Dispara o fluxo inicial de recuperacao de senha para o e-mail informado.
+   * Dispara o fluxo inicial de recuperação de senha para o e-mail informado.
    * @since 1.0.0
    */
   async forgotPassword(payload: ForgotPasswordPayload): Promise<string> {
-    const response = await apiClient.post<any>(ENDPOINTS.auth.forgotPassword, payload) as any;
-    const envelope = assertApiSuccess(response, 'Não foi possível enviar as instrucoes de recuperacao.');
+    const response = await apiClient.post<AuthMessageResponse>(ENDPOINTS.auth.forgotPassword, payload);
+    const envelope = assertApiSuccess(response, 'Não foi possível enviar as instruções de recuperação.');
 
-    return envelope.message || 'Enviamos as instrucoes para redefinir sua senha.';
+    return envelope.message || 'Enviamos as instruções para redefinir sua senha.';
   },
 
   /**
-   * Reenvia o email de confirmacao para a conta informada.
+   * Reenvia o e-mail de confirmação para a conta informada.
    * @since 1.0.0
    */
   async resendConfirmation(email: string): Promise<string> {
-    const response = await apiClient.post<any>(ENDPOINTS.auth.resendConfirmation, { email }) as any;
-    const envelope = assertApiSuccess(response, 'Não foi possível reenviar o e-mail de confirmacao.');
-    return envelope.message || 'E-mail de confirmacao reenviado com sucesso.';
+    const response = await apiClient.post<AuthMessageResponse>(ENDPOINTS.auth.resendConfirmation, { email });
+    const envelope = assertApiSuccess(response, 'Não foi possível reenviar o e-mail de confirmação.');
+    return envelope.message || 'E-mail de confirmação reenviado com sucesso.';
   },
 
   /**
@@ -148,7 +165,7 @@ export const authFlowService = {
    */
   async confirmEmail(token: string): Promise<ConfirmEmailResult> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.auth.confirmEmail, { token }) as any;
+      const response = await apiClient.post<ConfirmEmailApiResponse>(ENDPOINTS.auth.confirmEmail, { token });
       const envelope = assertApiSuccess(response, 'Não foi possível confirmar o e-mail.');
       const data = readApiData<{ newXp?: number }>(response, {});
 
@@ -166,7 +183,7 @@ export const authFlowService = {
    * @since 1.0.0
    */
   async resetPassword(payload: ResetPasswordPayload): Promise<string> {
-    const response = await apiClient.post<any>(ENDPOINTS.auth.resetPassword, payload) as any;
+    const response = await apiClient.post<AuthMessageResponse>(ENDPOINTS.auth.resetPassword, payload);
     const envelope = assertApiSuccess(response, 'Não foi possível redefinir a senha.');
 
     return envelope.message || 'Senha alterada com sucesso.';
@@ -174,11 +191,11 @@ export const authFlowService = {
 
   /**
    * Valida o código do segundo fator e devolve o token de sessão liberado.
-   * Esse retorno e usado pelo login para concluir a entrada sem duplicar regras na UI.
+   * Esse retorno é usado pelo login para concluir a entrada sem duplicar regras na UI.
    * @since 1.0.0
    */
   async verifyTwoFactor(payload: VerifyTwoFactorPayload): Promise<{ token: string | null; message: string }> {
-    const response = await apiClient.post<any>(ENDPOINTS.auth.verifyTwoFactor, payload) as any;
+    const response = await apiClient.post<VerifyTwoFactorApiResponse>(ENDPOINTS.auth.verifyTwoFactor, payload);
     const envelope = assertApiSuccess(response, 'Não foi possível validar o código de segurança.');
     const data = readApiData<{ token?: string | null }>(response, {});
 

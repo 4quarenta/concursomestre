@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-08T02:46:02.218Z",
+  "generated_at": "2026-05-16T13:20:24.572Z",
   "verdict": "GO",
   "counts": {
     "OK": 7,
@@ -14,11 +14,11 @@
       "objective": "Provar criacao, renovacao remota e persistencia local com Stripe real em modo teste.",
       "method": "Stripe Test Clock + createStripeInlineSubscription + finalizeStripeSubscription + runStripeReconciliationCron.",
       "evidence": [
-        "subscription=sub_1TJm5rHTtB22su0xLFxWeHPn",
-        "initial_invoice=in_1TJm5rHTtB22su0xPwQRchQv",
-        "renewal_invoice=in_1TJm65HTtB22su0xxB8l9Uff",
+        "subscription=sub_1TXi6MHTtB22su0xcObZBKNv",
+        "initial_invoice=in_1TXi6MHTtB22su0xcls2BTEc",
+        "renewal_invoice=in_1TXi6ZHTtB22su0xflSyABDY",
         "transactions_after=2",
-        "synced_period_end=2026-06-07 23:43:43"
+        "synced_period_end=2026-07-16 10:17:52"
       ],
       "files": [
         "C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php",
@@ -28,24 +28,69 @@
       "result": "OK",
       "recommendation": "Manter este cenario no pre-deploy para validar renovacao real em modo teste.",
       "summary": {
-        "checked": 1,
+        "checked": 4,
         "synced_status": 0,
         "synced_amount": 0,
         "synced_term_cycles": 0,
         "synced_periods": 1,
         "synced_flags": 0,
         "materialized_invoices": 1,
-        "issues": 1,
+        "issues": 4,
         "rows": [
           {
-            "subscription_id": 1,
-            "provider_subscription_id": "sub_1TJm5rHTtB22su0xLFxWeHPn",
-            "user_id": "billing-e2e-be4fa704",
-            "plan_name": "Pro E2E Renovacao BE4FA704",
+            "subscription_id": 134,
+            "provider_subscription_id": "sub_1TXi6MHTtB22su0xcObZBKNv",
+            "user_id": "billing-e2e-d1722f49",
+            "plan_name": "Pro E2E Renovacao D1722F49",
             "status": "active",
             "paid_installments": 2,
             "total_installments": 1,
             "recurring_amount": 19.9,
+            "upcoming_amount": null,
+            "upcoming_date": null,
+            "issues": [
+              "missing_upcoming_invoice"
+            ]
+          },
+          {
+            "subscription_id": 60,
+            "provider_subscription_id": "sub_1TPtnqHTtB22su0xsX5eQSYK",
+            "user_id": "3033b863-0997-49e1-a45a-41f362c74936",
+            "plan_name": "Elite - Trimestral",
+            "status": "active",
+            "paid_installments": 1,
+            "total_installments": 3,
+            "recurring_amount": 33.27,
+            "upcoming_amount": null,
+            "upcoming_date": null,
+            "issues": [
+              "missing_upcoming_invoice"
+            ]
+          },
+          {
+            "subscription_id": 15,
+            "provider_subscription_id": "sub_1TOphhHTtB22su0xd8v8DTYY",
+            "user_id": "59495111-d705-4d61-9553-3430f4d0338f",
+            "plan_name": "Elite - Anual",
+            "status": "active",
+            "paid_installments": 1,
+            "total_installments": 12,
+            "recurring_amount": 25.87,
+            "upcoming_amount": null,
+            "upcoming_date": null,
+            "issues": [
+              "missing_upcoming_invoice"
+            ]
+          },
+          {
+            "subscription_id": 13,
+            "provider_subscription_id": "sub_1TLRuiHTtB22su0xtZrAgAKs",
+            "user_id": "u-admin",
+            "plan_name": "Elite - Mensal",
+            "status": "active",
+            "paid_installments": 2,
+            "total_installments": 1,
+            "recurring_amount": 36.97,
             "upcoming_amount": null,
             "upcoming_date": null,
             "issues": [
@@ -64,7 +109,7 @@
         "off_message=Renovacao automatica desativada. A assinatura sera encerrada ao fim do periodo atual.",
         "missing_card_error=Nenhum cartao padrao foi encontrado no Stripe para religar a renovacao automatica.",
         "on_message=Renovacao automatica ativada com sucesso.",
-        "payment_method=pm_1TJm5nHTtB22su0xIOJEam7i"
+        "payment_method=pm_1TXi6IHTtB22su0xLgLXO64r"
       ],
       "files": [
         "C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php",
@@ -83,7 +128,7 @@
       "method": "createStripeInlineSubscription + calculateSafeProratedCredit + persistencia de transacoes locais.",
       "evidence": [
         "credit=19.33",
-        "coupon=E2EUP52678",
+        "coupon=E2EUP5D879",
         "upgrade_final=5.67",
         "local_credit_mode=local_credit"
       ],
@@ -115,8 +160,8 @@
       "status": "OK",
       "result": "OK",
       "recommendation": "Manter approveRefund idempotente e reprocessar webhooks apenas como confirmacao final.",
-      "transaction_id": 5,
-      "payment_intent_id": "pi_3TJm6pHTtB22su0x0x8U44fh"
+      "transaction_id": 88,
+      "payment_intent_id": "pi_3TXi7YHTtB22su0x0c7mFbgQ"
     },
     {
       "id": "webhook_duplicate",
@@ -124,7 +169,7 @@
       "objective": "Garantir que o mesmo event_id nao gere efeito financeiro duplicado.",
       "method": "Fixture invoice.paid + processStripeWebhookEventObject com Stripe real e banco local.",
       "evidence": [
-        "event_id=evt_dup_bd9df505",
+        "event_id=evt_dup_af77d010",
         "first_duplicate={\"received\":true}",
         "second_duplicate={\"received\":true,\"duplicate\":true}",
         "transactions=1"
@@ -161,7 +206,7 @@
       "objective": "Garantir que o cron recupere a renovacao perdida e que o webhook tardio nao duplique efeitos.",
       "method": "Stripe Test Clock + runStripeReconciliationCron + fixture invoice.paid atrasado.",
       "evidence": [
-        "renewal_invoice=in_1TJm7hHTtB22su0xRDUsXY3J",
+        "renewal_invoice=in_1TXi8GHTtB22su0x7JJt2UxD",
         "recovery_transactions=2",
         "delayed_result={\"received\":true}"
       ],

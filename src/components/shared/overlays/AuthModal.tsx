@@ -13,7 +13,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { LogIn, UserPlus, X, Lock, Sparkles } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 
 interface AuthModalProps {
     isOpen: boolean;
@@ -27,17 +27,16 @@ const AuthModal: React.FC<AuthModalProps> = ({
     isOpen,
     onClose,
     title = "Acesso Restrito",
-    description = "Para utilizar esta funcionalidade e salvar seu progresso, você precisa estar conectado à sua conta.",
-    actionSource = "funcionalidade"
+    description = "Para utilizar esta funcionalidade e salvar seu progresso, você precisa estar conectado à sua conta."
 }) => {
-    const navigate = useNavigate();
+    const router = useRouter();
 
     if (!isOpen) return null;
 
     return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
             <div
-                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-500"
+                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-500"
             >
                 {/* Header Decorativo */}
                 <div className="relative h-32 bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center overflow-hidden">
@@ -45,7 +44,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                         <div className="absolute top-0 left-0 w-20 h-20 bg-white rounded-full -translate-x-10 -translate-y-10" />
                         <div className="absolute bottom-0 right-0 w-32 h-32 bg-white rounded-full translate-x-16 translate-y-16" />
                     </div>
-                    <div className="relative bg-white/20 p-4 rounded-3xl backdrop-blur-md border border-white/30 shadow-xl">
+                    <div className="relative bg-white/20 p-4 rounded-2xl backdrop-blur-md border border-white/30 shadow-xl">
                         <Lock size={32} className="text-white" />
                     </div>
                     <button
@@ -68,7 +67,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                         <button
                             onClick={() => {
                                 onClose();
-                                navigate('/auth?mode=login');
+                                router.push('/auth?mode=login');
                             }}
                             className="group flex items-center justify-center gap-3 w-full h-14 bg-slate-900 dark:bg-indigo-600 hover:bg-indigo-600 dark:hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-[0.15em] shadow-lg shadow-indigo-100 dark:shadow-none transition-all active:scale-95"
                         >
@@ -78,7 +77,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                         <button
                             onClick={() => {
                                 onClose();
-                                navigate('/auth?mode=signup');
+                                router.push('/auth?mode=signup');
                             }}
                             className="group flex items-center justify-center gap-3 w-full h-14 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-600 text-slate-900 dark:text-slate-100 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all active:scale-95"
                         >

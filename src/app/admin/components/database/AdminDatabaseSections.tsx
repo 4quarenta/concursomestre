@@ -10,11 +10,15 @@
 */
 
 import React from 'react';
+import type { Material, Prova, Question, Ranking, SystemSettings, UserProfile } from '@types';
 import FiltersManagementSection from './FiltersManagementSection';
 import AdminMaterialsSection from '../materials/AdminMaterialsSection';
 import BlockedMaterialsSection from '../materials/BlockedMaterialsSection';
 import AdminExamBankSection from '../exams/AdminExamBankSection';
 import AdminImportSection from '../import/AdminImportSection';
+import AdminGranCrawlerSection from '../import/AdminGranCrawlerSection';
+import AdminLegalCommentarySection from '../legal-commentary/AdminLegalCommentarySection';
+import AdminQuestionGroupsSection from '../questions/AdminQuestionGroupsSection';
 import AdminQuestionsSection from '../questions/AdminQuestionsSection';
 import AdminRankingsSection from '../rankings/AdminRankingsSection';
 import AdminReportsSection from '../reports/AdminReportsSection';
@@ -24,54 +28,65 @@ import {
 } from '../reports/reportModeration';
 import AdminUsersSection from '../users/AdminUsersSection';
 
+type AdminQuestionsSectionProps = React.ComponentProps<typeof AdminQuestionsSection>;
+type AdminExamBankSectionProps = React.ComponentProps<typeof AdminExamBankSection>;
+type AdminUsersSectionProps = React.ComponentProps<typeof AdminUsersSection>;
+type AdminMaterialsSectionProps = React.ComponentProps<typeof AdminMaterialsSection>;
+type AdminReportsSectionProps = React.ComponentProps<typeof AdminReportsSection>;
+type AdminRankingsSectionProps = React.ComponentProps<typeof AdminRankingsSection>;
+type BlockedMaterialsSectionProps = React.ComponentProps<typeof BlockedMaterialsSection>;
+type FiltersManagementSectionProps = React.ComponentProps<typeof FiltersManagementSection>;
+type AdminImportSectionProps = React.ComponentProps<typeof AdminImportSection>;
+
 interface AdminDatabaseSectionsProps {
   activeSubTab: string;
-  adminQuestions: any[];
-  filteredExams: any[];
+  adminQuestions: Question[];
+  filteredExams: Prova[];
   totalExams: number;
   linkedCountByExamId: Map<string, number>;
-  pagination: any;
-  filteredUsers: any[];
-  filteredMaterials: any[];
-  groupedReports: any[];
-  rankings: any[];
-  blockedMaterials: any[];
-  systemSettings: any;
-  filterTypes: any[];
+  pagination: AdminQuestionsSectionProps['pagination'];
+  filteredUsers: UserProfile[];
+  filteredMaterials: Material[];
+  groupedReports: AdminReportsSectionProps['reports'];
+  rankings: Ranking[];
+  blockedMaterials: Material[];
+  systemSettings: SystemSettings;
+  filterTypes: FiltersManagementSectionProps['filterTypes'];
   activeFilterType: string;
   filterSearch: string;
-  importWorkflowProps: any;
+  importWorkflowProps: Omit<AdminImportSectionProps, 'systemSettings' | 'onGeminiApiKeyChange' | 'onSaveSettings' | 'isSavingSettings'>;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   sortData: <T>(data: T[]) => T[];
+  filter: string;
+  onFilterChange: (value: string) => void;
   onQuestionsPageChange: (page: number) => void;
-  onQuestionEdit: (question?: any) => void;
-  onQuestionDelete: (questionId: any) => Promise<any> | any;
-  editingExamId: string | null;
-  examDraft: any;
-  onExamDraftChange: (value: any) => void;
-  onStartEditExam: (exam: any) => void;
-  onCancelEditExam: () => void;
-  onSaveEditExam: () => void;
-  deletingExam: any;
-  onRequestDeleteExam: (exam: any) => void;
+  onCreateQuestion: () => void;
+  onQuestionEdit: AdminQuestionsSectionProps['onEdit'];
+  onAddQuestions: AdminQuestionsSectionProps['onAddQuestions'];
+  onQuestionUpdate: AdminQuestionsSectionProps['onUpdate'];
+  onQuestionDelete: AdminQuestionsSectionProps['onDelete'];
+  onQuestionsRefresh?: () => Promise<void> | void;
+  deletingExam: AdminExamBankSectionProps['deletingExam'];
+  onRequestDeleteExam: AdminExamBankSectionProps['onRequestDelete'];
   onCancelDeleteExam: () => void;
   onConfirmDeleteExam: () => void;
   examActionLoading: 'save' | 'delete' | null;
   onOpenUserProfile: (userId: string) => void;
-  onModerateMaterial: (material: any) => void;
-  onDeleteMaterial: (materialId: string) => Promise<any> | any;
-  onInspectReport: (report: any) => void;
-  onResolveReport: (reportId: any, reason?: string) => Promise<any>;
-  onEditRanking: (ranking: any) => void;
-  onReanalyzeBlockedMaterial: (material: any) => void;
+  onDeleteUser: AdminUsersSectionProps['onDeleteUser'];
+  onModerateMaterial: AdminMaterialsSectionProps['onModerate'];
+  onDeleteMaterial: AdminMaterialsSectionProps['onDelete'];
+  onInspectReport: AdminReportsSectionProps['onInspect'];
+  onResolveReport: AdminReportsSectionProps['onResolve'];
+  onEditRanking: AdminRankingsSectionProps['onEdit'];
+  onReanalyzeBlockedMaterial: BlockedMaterialsSectionProps['onReanalyze'];
   onActiveFilterTypeChange: (value: string) => void;
   onFilterSearchChange: (value: string) => void;
   onCreateFilter: () => void;
-  onCreateChildFilter: (item: any) => void;
-  onEditFilter: (item: any) => void;
-  onDeleteFilter: (item: any) => Promise<any> | any;
+  onCreateChildFilter: FiltersManagementSectionProps['onAddChild'];
+  onEditFilter: FiltersManagementSectionProps['onEdit'];
+  onDeleteFilter: FiltersManagementSectionProps['onDelete'];
   onGeminiApiKeyChange: (value: string) => void;
-  onSaveImportSettings: () => Promise<any> | any;
+  onSaveImportSettings: () => Promise<unknown> | unknown;
   isSavingImportSettings?: boolean;
 }
 
@@ -94,21 +109,22 @@ const AdminDatabaseSections = ({
   importWorkflowProps,
   renderSortableHeader,
   sortData,
+  filter,
+  onFilterChange,
   onQuestionsPageChange,
+  onCreateQuestion,
   onQuestionEdit,
+  onAddQuestions,
+  onQuestionUpdate,
   onQuestionDelete,
-  editingExamId,
-  examDraft,
-  onExamDraftChange,
-  onStartEditExam,
-  onCancelEditExam,
-  onSaveEditExam,
+  onQuestionsRefresh,
   deletingExam,
   onRequestDeleteExam,
   onCancelDeleteExam,
   onConfirmDeleteExam,
   examActionLoading,
   onOpenUserProfile,
+  onDeleteUser,
   onModerateMaterial,
   onDeleteMaterial,
   onInspectReport,
@@ -130,12 +146,23 @@ const AdminDatabaseSections = ({
       <AdminQuestionsSection
         questions={sortData(adminQuestions)}
         pagination={pagination}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
+        onCreate={onCreateQuestion}
         onEdit={onQuestionEdit}
+        onAddQuestions={onAddQuestions}
+        onUpdate={onQuestionUpdate}
         onDelete={onQuestionDelete}
         onPageChange={onQuestionsPageChange}
+        onRefresh={onQuestionsRefresh}
+        systemSettings={systemSettings}
       />
     );
+  }
+
+  if (activeSubTab === 'question-groups') {
+    return <AdminQuestionGroupsSection />;
   }
 
   if (activeSubTab === 'exams') {
@@ -144,12 +171,8 @@ const AdminDatabaseSections = ({
         exams={filteredExams}
         totalExams={totalExams}
         linkedCountByExamId={linkedCountByExamId}
-        editingExamId={editingExamId}
-        examDraft={examDraft}
-        onExamDraftChange={onExamDraftChange}
-        onStartEdit={onStartEditExam}
-        onCancelEdit={onCancelEditExam}
-        onSaveEdit={onSaveEditExam}
+        filter={filter}
+        onFilterChange={onFilterChange}
         deletingExam={deletingExam}
         onRequestDelete={onRequestDeleteExam}
         onCancelDelete={onCancelDeleteExam}
@@ -163,8 +186,11 @@ const AdminDatabaseSections = ({
     return (
       <AdminUsersSection
         users={sortData(filteredUsers)}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         onOpenProfile={onOpenUserProfile}
+        onDeleteUser={onDeleteUser}
       />
     );
   }
@@ -173,6 +199,8 @@ const AdminDatabaseSections = ({
     return (
       <AdminMaterialsSection
         materials={sortData(filteredMaterials)}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         onModerate={onModerateMaterial}
         onDelete={onDeleteMaterial}
@@ -184,6 +212,8 @@ const AdminDatabaseSections = ({
     return (
       <AdminReportsSection
         reports={sortData(groupedReports)}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         getReportTargetBadgeClass={getReportTargetBadgeClass}
         getReportTargetLabel={getReportTargetLabel}
@@ -197,6 +227,8 @@ const AdminDatabaseSections = ({
     return (
       <AdminRankingsSection
         rankings={sortData(rankings)}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         onEdit={onEditRanking}
       />
@@ -229,6 +261,10 @@ const AdminDatabaseSections = ({
     );
   }
 
+  if (activeSubTab === 'lei-comentada') {
+    return <AdminLegalCommentarySection filter={filterSearch} />;
+  }
+
   if (activeSubTab === 'import') {
     return (
       <AdminImportSection
@@ -239,6 +275,10 @@ const AdminDatabaseSections = ({
         {...importWorkflowProps}
       />
     );
+  }
+
+  if (activeSubTab === 'gran-crawler') {
+    return <AdminGranCrawlerSection />;
   }
 
   return null;

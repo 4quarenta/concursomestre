@@ -11,6 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
 const { mockGet, mockPost, mockDelete } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -35,11 +42,11 @@ vi.mock('@services/api', () => ({
       saveNote: 'materials/save_note.php',
     },
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
   },
-  assertApiSuccess: (response: any, fallbackMessage: string) => {
+  assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
     }

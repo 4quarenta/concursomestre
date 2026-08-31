@@ -10,9 +10,8 @@
 */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { adminService } from '@services/admin/adminService';
 import { planService } from '@services/plans';
 import {
@@ -23,6 +22,7 @@ import {
 } from '@services/marketing/landingPages';
 import { websiteManifest } from '../../../config/platform';
 import type { MarketingLandingPage, Plan } from '@types';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 interface UseMarketingPlansLandingOptions {
   slug: string;
@@ -38,14 +38,15 @@ const ADMIN_PREVIEW_ROLES = new Set(['admin', 'staff']);
  */
 export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptions) => {
   const { currentUser } = useAuth();
-  const { systemSettings, isSystemSettingsLoaded } = useData();
-  const location = useLocation();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const searchParams = useSearchParams();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansLoaded, setPlansLoaded] = useState(false);
   const [previewPages, setPreviewPages] = useState<MarketingLandingPage[] | null>(null);
   const [previewLoaded, setPreviewLoaded] = useState(false);
 
-  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const queryParams = useMemo(() => new URLSearchParams(searchParams?.toString()), [searchParams]);
   const previewId = String(queryParams.get('preview') || '').trim();
   const siteName = systemSettings.siteName || websiteManifest.website.applicationName || 'ConcursoMestre';
   const normalizedSlug = normalizeLandingSlug(slug);
@@ -73,13 +74,19 @@ export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptio
 
   useEffect(() => {
     if (!previewId || !canAccessPreview) {
-      setPreviewPages(null);
-      setPreviewLoaded(!previewId);
-      return;
+      const frameId = window.requestAnimationFrame(() => {
+        setPreviewPages(null);
+        setPreviewLoaded(!previewId);
+      });
+      return () => window.cancelAnimationFrame(frameId);
     }
 
     let active = true;
-    setPreviewLoaded(false);
+    const loadingFrameId = window.requestAnimationFrame(() => {
+      if (active) {
+        setPreviewLoaded(false);
+      }
+    });
 
     adminService.getSystemSettings()
       .then((settings) => {
@@ -102,6 +109,7 @@ export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptio
 
     return () => {
       active = false;
+      window.cancelAnimationFrame(loadingFrameId);
     };
   }, [canAccessPreview, previewId, siteName]);
 

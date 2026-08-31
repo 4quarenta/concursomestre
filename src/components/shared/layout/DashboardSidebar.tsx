@@ -11,21 +11,10 @@
 
 
 import React from 'react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import {
-    LayoutDashboard,
-    Database,
-    DollarSign,
-    Megaphone,
-    MessageSquare,
-    Settings,
     Shield,
     Store,
-    ArrowLeft,
-    ChevronRight,
-    User,
-    Package,
-    FileText,
     Home,
     LogOut
 } from 'lucide-react';
@@ -34,7 +23,7 @@ import LogoutConfirmButton from './LogoutConfirmButton';
 
 interface SidebarItemProps {
     label: string;
-    icon: any;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
     active: boolean;
     onClick: () => void;
     badge?: string | number;
@@ -61,17 +50,30 @@ const SidebarItem = ({ label, icon: Icon, active, onClick, badge }: SidebarItemP
     </button>
 );
 
-interface DashboardSidebarProps {
+type SidebarTabItem<K extends string = string> = {
+    key: K;
+    label: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    badge?: number;
+    group?: string;
+};
+
+interface DashboardSidebarProps<K extends string = string> {
     type: 'admin' | 'partner';
-    activeTab: string;
-    onTabChange: (tab: any) => void;
-    tabs: { key: string; label: string; icon: any; badge?: number; group?: string }[];
+    activeTab: K;
+    onTabChange: React.Dispatch<React.SetStateAction<K>>;
+    tabs: SidebarTabItem<K>[];
 }
 
-export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ type, activeTab, onTabChange, tabs }) => {
+export const DashboardSidebar = <K extends string>({
+    type,
+    activeTab,
+    onTabChange,
+    tabs,
+}: DashboardSidebarProps<K>) => {
     const { currentUser } = useAuth();
 
-    const groupedTabs = tabs.reduce<Array<{ group: string; items: DashboardSidebarProps['tabs'] }>>((acc, tab) => {
+    const groupedTabs = tabs.reduce<Array<{ group: string; items: SidebarTabItem<K>[] }>>((acc, tab) => {
         const group = tab.group || 'Geral';
         const existingGroup = acc.find((entry) => entry.group === group);
 
@@ -136,7 +138,8 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ type, active
 
                 <div className="grid grid-cols-2 gap-2">
                     <Link
-                        to="/"
+                        href="/dashboard"
+                        prefetch={false}
                         className="flex items-center justify-center gap-2 py-3 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 transition-all group"
                     >
                         <Home size={14} className="group-hover:-translate-x-1 transition-transform" />

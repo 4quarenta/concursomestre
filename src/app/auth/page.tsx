@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -10,18 +12,28 @@
 */
 
 import React from 'react';
-import type { UserProfile } from '@types';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@providers/AuthProvider';
 import Auth from './components/Auth';
-
-interface AuthPageProps {
-  onLogin: (user: UserProfile | null, token?: string | null) => Promise<void>;
-}
 
 /**
  * Entry point oficial da autenticação.
  */
-const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
-  return <Auth onLogin={onLogin} />;
+const AuthPage: React.FC = () => {
+  const router = useRouter();
+  const { currentUser, login, isLoading } = useAuth();
+
+  React.useEffect(() => {
+    if (isLoading || !currentUser) {
+      return;
+    }
+
+    const redirect = window.sessionStorage.getItem('redirectAfterLogin') || '/dashboard';
+    window.sessionStorage.removeItem('redirectAfterLogin');
+    router.replace(redirect);
+  }, [currentUser, isLoading, router]);
+
+  return <Auth onLogin={login} />;
 };
 
 export default AuthPage;

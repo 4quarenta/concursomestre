@@ -11,6 +11,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+} | null | undefined;
+
 const { mockGet, mockPost } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -21,7 +27,7 @@ vi.mock('@services/api', () => ({
     get: mockGet,
     post: mockPost,
   },
-  assertApiSuccess: (response: any) => {
+  assertApiSuccess: (response: MockApiResponse) => {
     if (!response?.success) {
       throw new Error(response?.message || 'erro');
     }
@@ -33,7 +39,7 @@ vi.mock('@services/api', () => ({
       raw: response,
     };
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) {
       return response.data;
     }
@@ -42,21 +48,30 @@ vi.mock('@services/api', () => ({
   },
   ENDPOINTS: {
     notifications: {
-      list: 'notificationsList',
-      markRead: 'notificationsMarkRead',
-      markAllRead: 'notificationsMarkAllRead',
-      delete: 'notificationsDelete',
-      clearAll: 'notificationsClearAll',
-      send: 'notificationsSend',
+      list: 'notifications/list.php',
+      markRead: 'notifications/mark_read.php',
+      markAllRead: 'notifications/mark_all_read.php',
+      delete: 'notifications/delete.php',
+      clearAll: 'notifications/clear_all.php',
+      restore: 'notifications/restore.php',
+      permanentDelete: 'notifications/permanent-delete.php',
+      send: 'notifications/send.php',
     },
   },
 }));
 
+vi.mock('@services/auth/session', () => ({
+  getAccessToken: () => 'valid-token',
+  isAccessTokenExpired: () => false,
+}));
+
 import { notificationService } from '../index';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 describe('notificationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAppConfigStore.getState().resetAppConfig();
   });
 
   it('normalizes notification lists from the official endpoint', async () => {
@@ -69,7 +84,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.getNotifications();
 
-    expect(mockGet).toHaveBeenCalledWith('notificationsList');
+    expect(mockGet).toHaveBeenCalledWith('notifications/list.php');
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('n1');
   });
@@ -79,7 +94,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.markAsRead('n2');
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsMarkRead', {
+    expect(mockPost).toHaveBeenCalledWith('notifications/mark_read.php', {
       notification_id: 'n2',
     });
     expect(result.success).toBe(true);
@@ -90,7 +105,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.markAllAsRead();
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsMarkAllRead');
+    expect(mockPost).toHaveBeenCalledWith('notifications/mark_all_read.php');
     expect(result.success).toBe(true);
   });
 
@@ -99,7 +114,40 @@ describe('notificationService', () => {
 
     const result = await notificationService.clearAll();
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsClearAll');
+    expect(mockPost).toHaveBeenCalledWith('notifications/clear_all.php');
+    expect(result.success).toBe(true);
+  });
+
+  it('moves a notification to trash through the official mutation', async () => {
+    mockPost.mockResolvedValueOnce({ success: true });
+
+    const result = await notificationService.deleteNotification('n3');
+
+    expect(mockPost).toHaveBeenCalledWith('notifications/delete.php', {
+      notification_id: 'n3',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('restores a trashed notification through the official mutation', async () => {
+    mockPost.mockResolvedValueOnce({ success: true });
+
+    const result = await notificationService.restoreNotification('n4');
+
+    expect(mockPost).toHaveBeenCalledWith('notifications/restore.php', {
+      notification_id: 'n4',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('permanently deletes a notification through the official mutation', async () => {
+    mockPost.mockResolvedValueOnce({ success: true });
+
+    const result = await notificationService.permanentDeleteNotification('n5');
+
+    expect(mockPost).toHaveBeenCalledWith('notifications/permanent-delete.php', {
+      notification_id: 'n5',
+    });
     expect(result.success).toBe(true);
   });
 
@@ -116,7 +164,7 @@ describe('notificationService', () => {
       'https://evidência.local',
     );
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsSend', {
+    expect(mockPost).toHaveBeenCalledWith('notifications/send.php', {
       user_id: 'user-1',
       title: 'Título',
       message: 'Mensagem',
@@ -126,5 +174,39 @@ describe('notificationService', () => {
       evidence_url: 'https://evidência.local',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('does not send notifications disabled by admin settings', async () => {
+    useAppConfigStore.getState().mergeSystemSettings({
+      notificationSettings: {
+        enabled: true,
+        rules: [
+          {
+            key: 'xp_bonus',
+            category: 'Gamificacao',
+            label: 'Bonus de XP',
+            trigger: 'Quando um marco de XP e desbloqueado.',
+            title: 'Bonus de XP desbloqueado',
+            message: 'Mensagem dinamica com o marco e a quantidade de XP.',
+            type: 'success',
+            enabled: false,
+          },
+        ],
+      },
+    });
+
+    const result = await notificationService.sendNotification(
+      'user-1',
+      'XP',
+      'Mensagem',
+      'success',
+      'system',
+      '/levels',
+      undefined,
+      'xp_bonus',
+    );
+
+    expect(result.success).toBe(false);
+    expect(mockPost).not.toHaveBeenCalled();
   });
 });

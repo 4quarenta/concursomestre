@@ -25,21 +25,27 @@ type TransactionListParams = {
 
 type PurchaseTransactionResponse = {
   transaction: Transaction;
+  rows?: Transaction[];
 };
 
 type RefundMutationResponse = {
   message?: string;
 };
 
+type RefundMutationPayload = {
+  message?: string;
+  data?: {
+    message?: string;
+  };
+};
+
 /**
- * Normaliza respostas da API para manter os consumidores desacoplados do
- * formato legado dos endpoints PHP.
+ * Normaliza respostas da API para manter os consumidores desacoplados do formato legado.
  * @since 1.0.0
  */
 export const transactionsService = {
   /**
-   * Lista transações com filtros de usuário, escopo e período.
-   * Essa consulta alimenta marketplace, perfil, financeiro e modais do admin.
+   * Lista transacoes com filtros de usuario, escopo e periodo.
    * @since 1.0.0
    */
   async list(params: TransactionListParams = {}): Promise<Transaction[]> {
@@ -54,12 +60,12 @@ export const transactionsService = {
     if (params.status) queryParams.status = params.status;
     if (params.type) queryParams.type = params.type;
 
-    const response = await apiClient.get<any>(ENDPOINTS.transactions.list, {
+    const response = await apiClient.get<PurchaseTransactionResponse>(ENDPOINTS.transactions.list, {
       params: queryParams,
-    }) as any;
+    });
 
-    const payload = readApiData<any>(response, {});
-    return payload?.rows || [];
+    const payload = readApiData<{ rows?: Transaction[] }>(response, {});
+    return payload.rows || [];
   },
 
   /**
@@ -67,13 +73,13 @@ export const transactionsService = {
    * @since 1.0.0
    */
   async createMaterialPurchase(materialId: string | number, couponCode?: string): Promise<Transaction> {
-    const response = await apiClient.post<any>(ENDPOINTS.transactions.create, {
+    const response = await apiClient.post<PurchaseTransactionResponse>(ENDPOINTS.transactions.create, {
       material_id: materialId,
       coupon_code: couponCode,
-    }) as any;
+    });
 
-    const raw = assertApiSuccess(response, 'Não foi possível registrar a compra.').raw;
-    const payload = readApiData<PurchaseTransactionResponse>(raw, { transaction: {} as Transaction });
+    assertApiSuccess(response, 'Não foi possível registrar a compra.');
+    const payload = readApiData<PurchaseTransactionResponse>(response, { transaction: {} as Transaction });
     return payload.transaction;
   },
 
@@ -82,31 +88,35 @@ export const transactionsService = {
    * @since 1.0.0
    */
   async requestRefund(transactionId: string, reason: string): Promise<RefundMutationResponse> {
-    const response = await apiClient.post<any>(ENDPOINTS.transactions.refund, {
+    const response = await apiClient.post<RefundMutationPayload>(ENDPOINTS.transactions.refund, {
       transaction_id: transactionId,
       reason,
-    }) as any;
+    });
 
-    const raw = assertApiSuccess(response, 'Não foi possível solicitar o reembolso.').raw;
+    const envelope = assertApiSuccess(response, 'Não foi possível solicitar o reembolso.');
+    const payload = readApiData<RefundMutationPayload>(response, {});
+
     return {
-      message: raw?.message || raw?.data?.message,
+      message: payload.message || payload.data?.message || envelope.message,
     };
   },
 
   /**
-   * Cancela uma solicitacao de estorno pendente.
+   * Cancela uma solicitação de estorno pendente.
    * @since 1.0.0
    */
   async cancelRefundRequest(transactionId: string | number): Promise<RefundMutationResponse> {
-    const response = await apiClient.delete<any>(ENDPOINTS.transactions.refund, {
+    const response = await apiClient.delete<RefundMutationPayload>(ENDPOINTS.transactions.refund, {
       data: {
         transaction_id: transactionId,
       },
-    }) as any;
+    });
 
-    const raw = assertApiSuccess(response, 'Não foi possível cancelar a solicitacao de reembolso.').raw;
+    const envelope = assertApiSuccess(response, 'Não foi possível cancelar a solicitação de reembolso.');
+    const payload = readApiData<RefundMutationPayload>(response, {});
+
     return {
-      message: raw?.message || raw?.data?.message,
+      message: payload.message || payload.data?.message || envelope.message,
     };
   },
 
@@ -123,14 +133,16 @@ export const transactionsService = {
       ? ENDPOINTS.transactions.approveRefund
       : ENDPOINTS.transactions.rejectRefund;
 
-    const response = await apiClient.post<any>(endpoint, {
+    const response = await apiClient.post<RefundMutationPayload>(endpoint, {
       transaction_id: transactionId,
       reason,
-    }) as any;
+    });
 
-    const raw = assertApiSuccess(response, 'Não foi possível atualizar o estorno.').raw;
+    const envelope = assertApiSuccess(response, 'Não foi possível atualizar o estorno.');
+    const payload = readApiData<RefundMutationPayload>(response, {});
+
     return {
-      message: raw?.message || raw?.data?.message,
+      message: payload.message || payload.data?.message || envelope.message,
     };
   },
 };

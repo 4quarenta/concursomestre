@@ -1,0 +1,16 @@
+{
+  "id": "evt_fixture_invoice_failed",
+  "object": "event",
+  "type": "invoice.payment_failed",
+  "created": 1700000000,
+  "data": {
+    "object": {
+      "id": "in_fixture_failed",
+      "object": "invoice",
+      "status": "open",
+      "customer": "cus_fixture",
+      "subscription": "sub_fixture",
+      "payment_intent": "pi_fixture_failed"
+    }
+  }
+}

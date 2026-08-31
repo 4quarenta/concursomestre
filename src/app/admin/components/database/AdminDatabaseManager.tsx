@@ -20,13 +20,13 @@ import {
 
 /**
  * Shell da aba "Base de Dados" do admin.
- * Ele existe para manter a composicao enxuta: navegacao, secoes e modais sao plugados a partir do controller oficial da feature.
+ * Ele existe para manter a composição enxuta: navegação, seções e modais são plugados a partir do controller oficial da feature.
  */
 const AdminDatabaseManager = (props: AdminDatabaseManagerControllerProps) => {
   const { navigationProps, sectionsProps, modalsProps } = useAdminDatabaseManagerController(props);
   return (
     <div className="relative space-y-6">
-      <AdminDatabaseNavigation {...navigationProps} />
+      {navigationProps.standaloneSection ? null : <AdminDatabaseNavigation {...navigationProps} />}
       <AdminDatabaseSections {...sectionsProps} />
       <AdminDatabaseModals {...modalsProps} />
     </div>

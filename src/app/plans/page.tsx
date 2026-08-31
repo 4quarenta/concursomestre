@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -10,18 +12,20 @@
 */
 
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
-import type { Plan } from '@types';
+import type { Plan, PlanName } from '@types';
 import { planService } from '@services/plans';
-import { calculateSubscriptionProRatedCredit, getConfiguredPlanDisplayName, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
+import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfiguredPlanDisplayName, hasActivePlanAccess, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanCycleKey, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { PlanCard } from './components/PlanCard';
 import { useToast } from '@providers/ToastProvider';
 import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { buildProfilePath } from '../profile/profileNavigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 
 const BILLING_CYCLE_OPTIONS = [
     { key: 'monthly', label: 'Mensal' },
@@ -31,11 +35,40 @@ const BILLING_CYCLE_OPTIONS = [
 
 type BillingCycle = typeof BILLING_CYCLE_OPTIONS[number]['key'];
 
-export const PlansPage: React.FC = () => {
+const PLAN_DISPLAY_ORDER: Record<PlanName, number> = {
+    Gratuito: 0,
+    Essencial: 1,
+    Pro: 2,
+    Elite: 3,
+};
+
+const getCatalogPlanName = (plan: Plan): PlanName => plan.canonical_name || getCanonicalPlanName(plan.name);
+
+const planNameMatchesCycle = (plan: Plan, cycle: BillingCycle): boolean => {
+    const normalizedName = String(plan.name || '').toLowerCase();
+
+    if (cycle === 'monthly') return normalizedName.includes('mensal');
+    if (cycle === 'quarterly') return normalizedName.includes('trimestral');
+    return normalizedName.includes('anual');
+};
+
+const shouldReplaceVisiblePlan = (current: Plan, candidate: Plan, cycle: BillingCycle): boolean => {
+    const candidateMatchesCycle = planNameMatchesCycle(candidate, cycle);
+    const currentMatchesCycle = planNameMatchesCycle(current, cycle);
+
+    if (candidateMatchesCycle !== currentMatchesCycle) {
+        return candidateMatchesCycle;
+    }
+
+    return Number(candidate.id || 0) > Number(current.id || 0);
+};
+
+const PlansPage: React.FC = () => {
     const { currentUser } = useAuth();
-    const { systemSettings, isSystemSettingsLoaded } = useData();
+    const systemSettings = useAppConfigStore((state) => state.systemSettings);
+    const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
     const { addToast } = useToast();
-    const navigate = useNavigate();
+    const router = useRouter();
     const [plans, setPlans] = useState<Plan[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<number | null>(null);
@@ -43,11 +76,7 @@ export const PlansPage: React.FC = () => {
     const [showDowngradeModal, setShowDowngradeModal] = useState(false);
     const [pendingDowngradePlan, setPendingDowngradePlan] = useState<Plan | null>(null);
 
-    useEffect(() => {
-        void loadPlans();
-    }, []);
-
-    const loadPlans = async () => {
+    const loadPlans = useCallback(async () => {
         try {
             const data = await planService.getPlans();
             setPlans(data);
@@ -56,28 +85,75 @@ export const PlansPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [addToast]);
+
+    useEffect(() => {
+        const timerId = window.setTimeout(() => {
+            void loadPlans();
+        }, 0);
+
+        return () => window.clearTimeout(timerId);
+    }, [loadPlans]);
 
     const planDisplayNames = useMemo(() => {
         return plans.reduce<Record<number, string>>((accumulator, plan) => {
-            accumulator[plan.id] = getConfiguredPlanDisplayName(plan.name, systemSettings.planDetails, plan.name);
+            const isCustomShortCycle = plan.interval_unit === 'day' || plan.interval_unit === 'week';
+            accumulator[plan.id] = isCustomShortCycle
+                ? plan.name
+                : getConfiguredPlanDisplayName(plan.name, systemSettings.planDetails, plan.name);
             return accumulator;
         }, {});
     }, [plans, systemSettings.planDetails]);
 
     const filteredPlans = useMemo(() => {
-        return plans.filter((plan) => {
-            if (!isPlanEnabledByName(plan.name, systemSettings.planDetails)) return false;
-            if (plan.price === 0) return true;
+        const visiblePlansByKey = new Map<string, Plan>();
 
-            const isMonthly = plan.interval_unit === 'month' && plan.interval_count === 1;
-            const isQuarterly = plan.interval_unit === 'month' && plan.interval_count === 3;
-            const isAnnual = plan.interval_unit === 'year' || (plan.interval_unit === 'month' && plan.interval_count === 12);
+        plans.forEach((plan) => {
+            const canonicalName = getCatalogPlanName(plan);
+            const price = Number(plan.price || 0);
+            const cycleKey = resolvePlanCycleKey(plan);
+            const isCustomShortCycle = plan.interval_unit === 'day' || plan.interval_unit === 'week';
+            const isFreePlan = canonicalName === 'Gratuito' && price <= 0;
 
-            if (billingCycle === 'monthly') return isMonthly;
-            if (billingCycle === 'quarterly') return isQuarterly;
-            if (billingCycle === 'annual') return isAnnual;
-            return false;
+            if (!isPlanEnabledByName(canonicalName, systemSettings.planDetails)) return;
+            if (canonicalName !== 'Gratuito' && price <= 0) return;
+
+            if (isFreePlan) {
+                const key = 'Gratuito:free';
+                if (!visiblePlansByKey.has(key)) {
+                    visiblePlansByKey.set(key, plan);
+                }
+                return;
+            }
+
+            if (isCustomShortCycle) {
+                if (billingCycle !== 'monthly') return;
+
+                const key = `${canonicalName}:short:${plan.id}`;
+                visiblePlansByKey.set(key, plan);
+                return;
+            }
+
+            if (!cycleKey || cycleKey !== billingCycle) return;
+
+            const key = `${canonicalName}:${cycleKey}`;
+            const current = visiblePlansByKey.get(key);
+            if (!current || shouldReplaceVisiblePlan(current, plan, cycleKey)) {
+                visiblePlansByKey.set(key, plan);
+            }
+        });
+
+        const visiblePlans = Array.from(visiblePlansByKey.values());
+
+        return visiblePlans.sort((left, right) => {
+            const leftPlanOrder = PLAN_DISPLAY_ORDER[getCatalogPlanName(left)] ?? 99;
+            const rightPlanOrder = PLAN_DISPLAY_ORDER[getCatalogPlanName(right)] ?? 99;
+            if (leftPlanOrder !== rightPlanOrder) return leftPlanOrder - rightPlanOrder;
+
+            const leftPrice = Number(left.price || 0);
+            const rightPrice = Number(right.price || 0);
+            if (leftPrice !== rightPrice) return leftPrice - rightPrice;
+            return String(left.name || '').localeCompare(String(right.name || ''), 'pt-BR');
         });
     }, [billingCycle, plans, systemSettings.planDetails]);
 
@@ -120,12 +196,12 @@ export const PlansPage: React.FC = () => {
         if (plan.price === 0) {
             if (!currentUser) {
                 addToast('Faca login para ativar o plano gratuito', 'info');
-                navigate('/auth');
+                router.push('/auth');
             }
             return;
         }
 
-        const activeSub = currentUser?.subscription?.status === 'active';
+        const activeSub = hasActivePlanAccess(currentUser);
         if (activeSub) {
             const getTier = (name: string) => {
                 const normalized = name.toLowerCase();
@@ -134,17 +210,8 @@ export const PlansPage: React.FC = () => {
                 if (normalized.includes('essencial')) return 1;
                 return 0;
             };
-            const getTimeScore = (currentPlan: Plan) => {
-                if (currentPlan.interval_unit === 'year') return 12;
-                if (currentPlan.interval_unit === 'month') return currentPlan.interval_count || 1;
-                return 1;
-            };
-
             const currentTier = getTier(currentUser.subscription?.plan?.name || '');
             const targetTier = getTier(plan.name);
-            const currentPlanInList = plans.find((currentPlan) => currentPlan.id === currentUser?.subscription?.plan_id);
-            const currentTimeScore = currentPlanInList ? getTimeScore(currentPlanInList) : 0;
-            const targetTimeScore = getTimeScore(plan);
 
             if (currentUser.subscription?.plan_id === plan.id) {
                 addToast('Esse já é o plano ativo da sua assinatura.', 'info');
@@ -164,7 +231,7 @@ export const PlansPage: React.FC = () => {
         }
 
         setProcessingId(plan.id);
-        navigate(`/checkout/${plan.id}`, { state: { from: '/plans' } });
+        router.push(`/checkout/${plan.id}`);
     };
 
     if (loading || !isSystemSettingsLoaded) {
@@ -179,7 +246,7 @@ export const PlansPage: React.FC = () => {
         <div className="relative mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             <div className="relative mb-10 text-center md:mb-12">
                 <Link
-                    to={buildProfilePath('personal')}
+                    href={buildProfilePath('personal')}
                     className="mb-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 transition-colors hover:text-slate-700 dark:hover:text-white md:absolute md:left-0 md:top-2 md:mb-0"
                 >
                     <ArrowLeft size={16} />
@@ -232,7 +299,7 @@ export const PlansPage: React.FC = () => {
                             return 1;
                         };
 
-                        const activeSub = currentUser?.subscription?.status === 'active';
+                        const activeSub = hasActivePlanAccess(currentUser);
                         const currentPlanName = currentUser?.subscription?.plan?.name || '';
                         const currentTier = activeSub ? getTier(currentPlanName) : 0;
                         const currentPlanInList = plans.find((currentPlan) => currentPlan.id === currentUser?.subscription?.plan_id);
@@ -255,6 +322,7 @@ export const PlansPage: React.FC = () => {
                                 plan={plan}
                                 displayName={planDisplayNames[plan.id]}
                                 offer={planOffersById[plan.id]}
+                                featuresOverride={getPublicPlanFeaturesForPlan(getCatalogPlanName(plan), systemSettings.planEntitlements)}
                                 onSubscribe={handleSubscribe}
                                 isCurrent={isCurrent}
                                 isDisabled={isLower}
@@ -267,7 +335,7 @@ export const PlansPage: React.FC = () => {
 
             {showDowngradeModal && pendingDowngradePlan && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+                    <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
                         <div className="p-8 text-center">
                             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl border border-amber-500/20 bg-amber-500/10">
                                 <AlertTriangle size={40} className="text-amber-500" />
@@ -297,7 +365,7 @@ export const PlansPage: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         setShowDowngradeModal(false);
-                                        navigate(`/checkout/${pendingDowngradePlan.id}`, { state: { from: '/plans' } });
+                                        router.push(`/checkout/${pendingDowngradePlan.id}`);
                                     }}
                                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-4 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-500 active:scale-95"
                                 >

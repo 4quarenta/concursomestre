@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -15,6 +15,7 @@ import { accountService } from '@services/auth';
 import { notificationService } from '@services/notifications';
 import { questionService } from '@services/questions';
 import { simulationsService } from '@services/simulations';
+import { clientLog } from '@services/monitoring/clientLog';
 import { useToast } from '@providers/ToastProvider';
 import {
   bootstrapAuthSession,
@@ -22,11 +23,18 @@ import {
   fetchAuthenticatedUser,
   getAccessToken,
   logoutAuthSession,
+  refreshAuthSession,
   subscribeToAuthSession,
   updateCurrentUserSnapshot,
 } from '@services/auth/session';
 
 const XP_PER_LEVEL = 1000;
+const LEVEL_MILESTONES: Record<number, string> = {
+  5: 'Impressionante! Você atingiu o Nivel 5.',
+  10: 'Nivel 10 alcancado! Você esta entre os mais dedicados da plataforma.',
+  25: 'Nivel 25! Uma conquista rara.',
+  50: 'Nivel 50! Você virou lenda no ConcursoMestre.',
+};
 
 interface AuthState {
   currentUser: UserProfile | null;
@@ -47,11 +55,11 @@ const EDITABLE_PROFILE_FIELDS: Array<keyof UserProfile> = [
   'name',
   'email',
   'cpf',
+  'phone',
   'address',
   'bankAccount',
   'targetExam',
   'preferences',
-  'photoUrl',
   'role',
 ];
 
@@ -69,7 +77,7 @@ type AuthAction =
 
 /**
  * Reducer central da sessão autenticada.
- * Ele consolida mutacoes de usuário que abastecem todo o site, incluindo perfil, XP, simulados e materiais comprados.
+ * Ele consolida mutações de usuário que abastecem todo o site, incluindo perfil, XP, simulados e materiais comprados.
  * @since 1.0.0
  */
 function authReducer(state: AuthState, action: AuthAction): AuthState {
@@ -187,6 +195,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
   const { addToast } = useToast();
+  const missingPhotoHydrationRef = React.useRef<Set<string>>(new Set());
+  const photoHydrationUserId = state.currentUser?.id || '';
+  const photoHydrationPhotoUrl = state.currentUser?.photoUrl || '';
   
   /**
    * Escuta o estado global da sessão e executa o bootstrap inicial ao subir o app.
@@ -199,6 +210,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return;
       }
 
+      // Durante o bootstrap pode existir token renovado antes de resolver o usuario.
+      // Nesse estado transitorio evitamos derrubar para LOGOUT e aguardamos o fetch de /auth/me.
+      if (snapshot.accessToken && !snapshot.currentUser) {
+        return;
+      }
+
       if (snapshot.currentUser) {
         dispatch({ type: 'LOGIN', payload: snapshot.currentUser });
       } else {
@@ -207,12 +224,58 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     void bootstrapAuthSession().catch((error) => {
-      console.error('Failed to bootstrap auth session:', error);
+      clientLog.error('Failed to bootstrap auth session:', error);
       dispatch({ type: 'LOGOUT' });
     });
 
     return unsubscribe;
   }, []);
+
+  /**
+   * Algumas sessoes antigas ou reusadas por HMR podem chegar com dados basicos
+   * do usuario, mas sem o campo `photoUrl`. Nesse caso buscamos uma unica vez o
+   * snapshot completo, que vem da rota oficial de perfil e inclui `photoUrl`.
+   */
+  React.useEffect(() => {
+    if (!photoHydrationUserId || photoHydrationPhotoUrl) {
+      return;
+    }
+
+    if (missingPhotoHydrationRef.current.has(photoHydrationUserId)) {
+      return;
+    }
+
+    missingPhotoHydrationRef.current.add(photoHydrationUserId);
+
+    void (async () => {
+      if (!getAccessToken()) {
+        const refreshedSession = await refreshAuthSession({
+          reason: 'manual',
+          force: true,
+          allowAnonymousFailure: true,
+        });
+
+        if (refreshedSession?.currentUser?.photoUrl) {
+          updateCurrentUserSnapshot(refreshedSession.currentUser);
+          dispatch({ type: 'LOGIN', payload: refreshedSession.currentUser });
+          return;
+        }
+      }
+
+      if (!getAccessToken()) {
+        return;
+      }
+
+      const freshUser = await fetchAuthenticatedUser();
+      if (freshUser) {
+        updateCurrentUserSnapshot(freshUser);
+        dispatch({ type: 'LOGIN', payload: freshUser });
+      }
+    })()
+      .catch((error) => {
+        clientLog.warn('Failed to hydrate authenticated user photo:', error);
+      });
+  }, [photoHydrationPhotoUrl, photoHydrationUserId]);
 
   /**
    * Conclui o login no provider a partir do token e do usuário recebidos pelo fluxo de auth.
@@ -268,20 +331,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           resolve();
         })
         .catch(err => {
-          console.error('Failed to update user profile', err);
+          clientLog.error('Failed to update user profile', err);
           const errorMessage = err.response?.data?.message || err.message || 'Erro ao atualizar perfil. Tente novamente.';
           addToast(errorMessage, 'error');
           reject(err);
         });
     });
   }, [addToast, state.currentUser]);
-
-  const LEVEL_MILESTONES: Record<number, string> = {
-    5: 'Impressionante! Você atingiu o Nivel 5.',
-    10: 'Nivel 10 alcancado! Você esta entre os mais dedicados da plataforma.',
-    25: 'Nivel 25! Uma conquista rara.',
-    50: 'Nivel 50! Você virou lenda no ConcursoMestre.',
-  };
 
   /**
    * Soma XP localmente e dispara notificações de recompensa e level up.
@@ -306,7 +362,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         `Você ganhou ${payload} pontos de experiencia. Continue assim!`,
         'info',
         'system',
-      ).catch(err => console.warn('Falha ao criar notificação de XP:', err));
+        '/levels',
+        undefined,
+        'xp_bonus',
+      ).catch(err => clientLog.warn('Falha ao criar notificacao de XP:', err));
     }
 
     if (newLevel > previousLevel) {
@@ -321,7 +380,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         'success',
         'system',
         '/profile/personal',
-      ).catch(err => console.warn('Falha ao criar notificação de level up:', err));
+        undefined,
+        'level_bonus',
+      ).catch(err => clientLog.warn('Falha ao criar notificacao de level up:', err));
     }
   }, [state.currentUser]);
 
@@ -334,9 +395,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     dispatch({ type: 'TOGGLE_SAVED', payload });
 
     if (state.currentUser) {
-      questionService.toggleSavedQuestion(state.currentUser.id, payload).catch(err => {
-        console.error('Failed to toggle save', err);
-      });
+      questionService.toggleSavedQuestion(state.currentUser.id, payload)
+        .then((result) => {
+          if (!state.currentUser || !result.success || result.newXp === undefined) {
+            return;
+          }
+
+          const nextUser = {
+            ...state.currentUser,
+            xp: result.newXp,
+            level: result.newLevel ?? state.currentUser.level,
+          };
+          dispatch({ type: 'UPDATE_USER', payload: { xp: nextUser.xp, level: nextUser.level } });
+          updateCurrentUserSnapshot(nextUser);
+        })
+        .catch(err => {
+          clientLog.error('Failed to toggle save', err);
+        });
     }
   }, [state.currentUser]);
 
@@ -352,8 +427,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     simulationsService.saveSimulation(payload)
-        .catch(e => console.error('Failed to save sim', e));
-  }, [state.currentUser?.id]);
+      .then((result) => {
+        if (!state.currentUser || result.newXp === undefined) {
+          return;
+        }
+
+        const nextUser = {
+          ...state.currentUser,
+          xp: result.newXp,
+          level: result.newLevel ?? state.currentUser.level,
+        };
+        dispatch({ type: 'UPDATE_USER', payload: { xp: nextUser.xp, level: nextUser.level } });
+        updateCurrentUserSnapshot(nextUser);
+      })
+      .catch(e => clientLog.error('Failed to save sim', e));
+  }, [state.currentUser]);
 
   /**
    * Libera localmente o acesso a um material comprado.
@@ -390,7 +478,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           resolve(true);
         })
         .catch(err => {
-          console.error('Failed to update user to partner role', err);
+          clientLog.error('Failed to update user to partner role', err);
           resolve(false);
         });
     });
@@ -407,9 +495,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     try {
       const user = await fetchAuthenticatedUser();
+      updateCurrentUserSnapshot(user);
       dispatch({ type: 'LOGIN', payload: user });
     } catch (err) {
-      console.error('Failed to refresh user data:', err);
+      clientLog.error('Failed to refresh user data:', err);
     }
   }, []);
 

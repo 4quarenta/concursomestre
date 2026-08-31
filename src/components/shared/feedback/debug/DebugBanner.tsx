@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -23,7 +23,7 @@ const DEBUG_MONITOR_QUERY_PARAM = 'debug-monitor';
  * @since v1.0.0
  */
 const getInitialDebugMonitorState = () => {
-  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  if (process.env.NODE_ENV !== 'development' || typeof window === 'undefined') return false;
 
   const url = new URL(window.location.href);
   const queryValue = url.searchParams.get(DEBUG_MONITOR_QUERY_PARAM);
@@ -59,7 +59,7 @@ const DebugBanner: React.FC = () => {
   }, [isEnabled]);
 
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    if (process.env.NODE_ENV !== 'development') return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey && event.shiftKey && event.code === 'KeyD')) {
@@ -84,7 +84,7 @@ const DebugBanner: React.FC = () => {
     }
   }, [isEnabled, isOpen, logs]);
 
-  if (!import.meta.env.DEV || !isEnabled) return null;
+  if (process.env.NODE_ENV !== 'development' || !isEnabled) return null;
 
   const filteredLogs = logs.filter(log => {
     if (filter === 'errors') return log.type === 'error' || log.type === 'api-error';
@@ -126,7 +126,7 @@ const DebugBanner: React.FC = () => {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="w-[450px] max-h-[600px] bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col mb-4 pointer-events-auto"
+            className="w-[450px] max-h-[600px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col mb-4 pointer-events-auto"
           >
             <div className="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center bg-gradient-to-r from-slate-800 to-indigo-950">
               <div className="flex items-center gap-2">

@@ -10,8 +10,9 @@
 */
 
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { Rocket, HelpCircle, FileText, Shield, Heart, BrainCircuit } from 'lucide-react';
+import Link from 'next/link';
+import { Rocket, HelpCircle, FileText, Shield, Heart } from 'lucide-react';
+import PublicBrandLink from './PublicBrandLink';
 
 const Footer: React.FC = () => {
     const currentYear = new Date().getFullYear();
@@ -28,10 +29,7 @@ const Footer: React.FC = () => {
         <footer className="mt-20 pb-10 border-t border-slate-200 dark:border-slate-800 pt-10">
             <div className="flex flex-col md:flex-row justify-between items-center gap-8">
                 <div className="flex flex-col items-center md:items-start gap-4">
-                    <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl">
-                        <BrainCircuit className="w-6 h-6" />
-                        <span>ConcursoMestre</span>
-                    </div>
+                    <PublicBrandLink width={220} />
                     <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-xs text-center md:text-left">
                         A plataforma completa para sua aprovação. Estude com inteligência e conquiste sua vaga.
                     </p>
@@ -41,7 +39,7 @@ const Footer: React.FC = () => {
                     {footerLinks.map((link) => (
                         <Link
                             key={link.path}
-                            to={link.path}
+                            href={link.path}
                             className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors group"
                         >
                             <link.icon size={16} className="group-hover:scale-110 transition-transform" />

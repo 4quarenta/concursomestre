@@ -12,6 +12,12 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import {
+  ADMIN_MODAL_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+} from '../shared/adminPanelStyles';
 
 interface AdminConfirmDialogProps {
   isOpen: boolean;
@@ -27,7 +33,7 @@ interface AdminConfirmDialogProps {
 
 /**
  * Modal padrao de confirmacao do admin.
- * Centraliza confirmacoes destrutivas para evitar `window.confirm`
+ * Centraliza confirmacoes destrutivas em modal oficial.
  * e manter feedback visual, loading e foco no contexto da acao.
  *
  * @since 1.0.0
@@ -49,23 +55,23 @@ export const AdminConfirmDialog = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl transition-colors dark:border-slate-800 dark:bg-slate-900">
-        <div className="mb-5 flex items-start gap-4">
-          <div className={`rounded-2xl p-3 ${tone === 'danger' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400'}`}>
-            <AlertTriangle size={20} />
+      <div className={`${ADMIN_MODAL_PANEL_CLASS} w-full max-w-md`}>
+        <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex items-start gap-4 px-5 py-4`}>
+          <div className={`rounded-sm p-2 ${tone === 'danger' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'}`}>
+            <AlertTriangle size={18} />
           </div>
           <div className="space-y-1">
-            <h3 className="text-base font-black text-slate-900 dark:text-slate-100">{title}</h3>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
             <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-end gap-3 px-5 py-4">
           <button
             type="button"
             onClick={onCancel}
             disabled={loading}
-            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.24em] text-slate-600 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            className={ADMIN_SECONDARY_BUTTON_CLASS}
           >
             {cancelLabel}
           </button>
@@ -73,7 +79,7 @@ export const AdminConfirmDialog = ({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className={`inline-flex min-w-[132px] items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.24em] text-white transition-all disabled:cursor-not-allowed disabled:opacity-70 ${tone === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+            className={`${tone === 'danger' ? 'border-red-700 bg-red-700 hover:border-red-800 hover:bg-red-800' : ''} ${ADMIN_PRIMARY_BUTTON_CLASS} min-w-[132px] justify-center`}
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : null}
             {loading ? 'Processando' : confirmLabel}

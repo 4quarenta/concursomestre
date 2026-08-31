@@ -36,14 +36,17 @@ export interface Banca {
   id: number;
   sigla: string;
   nome: string;
+  name?: string;
   slug: string;
   descrição?: string;
+  descricao?: string;
   oab?: boolean;
 }
 
 export interface Orgao {
   id: number;
   nome: string;
+  name?: string;
   sigla?: string;
   slug: string;
   uf?: string;
@@ -54,11 +57,16 @@ export interface Cargo {
   id: number;
   slug: string;
   descrição: string;
+  descricao?: string;
+  name?: string;
+  parentId?: number | string;
+  parent_id?: number | string;
 }
 
 export interface Assunto {
   id: number;
   nome: string;
+  name?: string;
   nome_clean?: string;
   slug: string;
   materia: boolean;
@@ -66,6 +74,18 @@ export interface Assunto {
   pai?: number | null;
   palavrasChave?: string[];
 }
+
+export interface QuestionTaxonomyLabel {
+  id?: number | string;
+  nome?: string;
+  name?: string;
+  descricao?: string;
+  sigla?: string;
+  slug?: string;
+  [key: string]: unknown;
+}
+
+export type QuestionLevelValue = string | number | QuestionTaxonomyLabel | null;
 
 export interface QuestionItem {
   id: number;
@@ -75,17 +95,158 @@ export interface QuestionItem {
   corpo_clean?: string;
 }
 
+export type QuestionAssetUsage = 'statement' | 'support' | 'alternative' | 'context' | 'reference';
+
+export interface QuestionAsset {
+  tempId?: string;
+  id?: string;
+  type: 'image';
+  usage: QuestionAssetUsage;
+  url?: string;
+  base64?: string;
+  alt?: string;
+  caption?: string;
+  sourcePage?: number | string | null;
+  order?: number;
+}
+
+export interface QuestionContextPayload {
+  id?: number | string | null;
+  tempId?: string;
+  type?: 'shared' | 'individual' | string;
+  body?: string;
+  bodyClean?: string;
+  reference?: string;
+  sourcePage?: number | string | null;
+  assets: QuestionAsset[];
+  questionNumbers?: Array<number | string>;
+  texto?: string;
+  questionIds?: Array<number | string>;
+}
+
+export interface QuestionSourcePayload {
+  origin: 'platform' | 'exam' | 'manual' | 'ai' | string;
+  examId?: number | string | null;
+  questionNumber?: number | string | null;
+  contextTempId?: number | string | null;
+  questionGroupId?: number | string | null;
+  sourcePage?: number | string | null;
+}
+
+export interface QuestionContentPayload {
+  statement: string;
+  statementClean?: string;
+  supportText?: string;
+  reference?: string;
+}
+
+export interface QuestionFilterValuePayload {
+  id?: number | string | null;
+  label: string;
+  slug?: string;
+}
+
+export interface QuestionFiltersPayload {
+  subjects?: QuestionFilterValuePayload[];
+  topics?: QuestionFilterValuePayload[];
+  subtopics?: QuestionFilterValuePayload[];
+  examBoards?: QuestionFilterValuePayload[];
+  organizations?: QuestionFilterValuePayload[];
+  roles?: QuestionFilterValuePayload[];
+  careers?: QuestionFilterValuePayload[];
+  years?: QuestionFilterValuePayload[];
+  levels?: QuestionFilterValuePayload[];
+  examTypes?: QuestionFilterValuePayload[];
+  materias?: QuestionFilterValuePayload[];
+  topicos?: QuestionFilterValuePayload[];
+  assuntos?: QuestionFilterValuePayload[];
+  bancas?: QuestionFilterValuePayload[];
+  orgaos?: QuestionFilterValuePayload[];
+  cargos?: QuestionFilterValuePayload[];
+  carreiras?: QuestionFilterValuePayload[];
+  anos?: QuestionFilterValuePayload[];
+  niveis?: QuestionFilterValuePayload[];
+  tiposProva?: QuestionFilterValuePayload[];
+  provas?: QuestionFilterValuePayload[];
+}
+
+export interface QuestionAlternativePayload {
+  tempId?: string;
+  id?: string;
+  order: number;
+  label: string;
+  text: string;
+  textClean?: string;
+  assets?: QuestionAsset[];
+}
+
+export interface QuestionAnswerPayload {
+  mode?: 'single' | 'multiple' | 'boolean' | 'text' | string;
+  raw?: string | number | Array<string | number> | null | unknown;
+  correctAlternativeTempIds?: string[];
+  type?: 'single' | 'multiple' | 'boolean' | 'text' | string;
+  value?: string | number | Array<string | number> | null;
+  alternativeId?: string | null;
+}
+
+export interface QuestionEditorialCommentsPayload {
+  teacherComment?: string;
+  detailedComment?: string;
+}
+
+export interface QuestionEditorialPayload {
+  type: 'teacher_comment' | 'detailed_analysis' | string;
+  title?: string;
+  body: string;
+  status: 'draft' | 'published' | string;
+}
+
+export interface QuestionPublicationPayload {
+  status: 'draft' | 'published' | 'scheduled' | string;
+  visibility: 'public' | 'elite' | 'internal' | string;
+  scheduledAt?: string | null;
+}
+
+export interface QuestionReviewPayload {
+  required?: boolean;
+  status?: 'pending' | 'reviewed' | 'approved' | string;
+  reasons?: string[];
+  needsReview?: boolean;
+  statusReasons?: string[];
+}
+
+export interface QuestionPayload {
+  tempId?: string;
+  id?: number | string | null;
+  source: QuestionSourcePayload;
+  content: QuestionContentPayload;
+  assets: QuestionAsset[];
+  filters: QuestionFiltersPayload;
+  type?: string;
+  questionType?: string;
+  difficulty: string;
+  alternatives: QuestionAlternativePayload[];
+  answer: QuestionAnswerPayload;
+  editorial?: QuestionEditorialPayload[];
+  editorialComments?: QuestionEditorialCommentsPayload;
+  publication: QuestionPublicationPayload;
+  review: QuestionReviewPayload;
+}
+
 export interface QuestaoComentario {
   id: string;
   userId: string;
   userName: string;
   userAvatar?: string;
   userPlan?: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
+  userRole?: 'admin' | 'user' | 'partner' | 'staff' | string;
   text: string;
   date: string;
   likes: number;
   isLiked?: boolean;
+  userHasPendingReport?: boolean;
   parentId?: string;
+  moderationStatus?: 'pending' | 'approved' | 'spam';
   replies: QuestaoComentario[];
 }
 
@@ -98,10 +259,11 @@ export interface QuestionStats {
 
 export interface ErrorReport {
   id: string;
-  targetType: 'question' | 'material' | 'comment';
+  targetType: 'question' | 'material' | 'comment' | 'law_section';
   questionId?: number;
   materialId?: string;
   commentId?: string;
+  lawSectionId?: string;
   userName: string;
   userId?: string;
   reason: string;
@@ -113,6 +275,14 @@ export interface ErrorReport {
   status: 'pending' | 'resolved' | 'ignored';
   timestamp: number;
   evidenceUrl?: string; // Evidência enviada pelo usuário na denúncia
+  targetContent?: string;
+  targetLabel?: string;
+  targetContext?: string;
+  targetUrl?: string;
+  resolution?: string;
+  userResponse?: string;
+  internalNote?: string;
+  moderationActionApplied?: string;
   resolvedAt?: number;
 }
 
@@ -124,29 +294,200 @@ export interface Prova {
   tipo: number;
   index: string;
   nivel: string;
+  caderno?: string;
+  tipoCaderno?: string;
+  corCaderno?: string;
+  bookletType?: string;
+  bookletColor?: string;
+  examType?: string;
+  publishStatus?: 'published' | 'draft' | 'scheduled';
+  visibilityStatus?: 'public' | 'elite' | 'internal';
+  scheduledAt?: string;
+  pdfUrl?: string;
+  proofUrl?: string;
+  editalUrl?: string;
+  gabaritoUrl?: string;
+  answerKeyUrl?: string;
+  files?: ExamFileAttachment[];
+  examFiles?: ExamFileAttachment[];
   banca: Banca;
   orgao: Orgao;
+  orgaos?: Orgao[];
   cargo: Cargo;
+  cargos?: Cargo[];
+  foco?: QuestionTaxonomyLabel;
+  focos?: QuestionTaxonomyLabel[];
+  carreira?: QuestionTaxonomyLabel;
+  carreiras?: QuestionTaxonomyLabel[];
+  roles?: string[];
+  dataInscricaoInicio?: string;
+  dataInscricaoFim?: string;
+  dataProva?: string;
+  valorInscricao?: string | number;
+  totalQuestoes?: string | number;
+  etapas?: ExamStage[];
+  requisitosDetalhados?: ExamScopedTextItem[];
+  requirementsDetailed?: ExamScopedTextItem[];
+  remuneracoesDetalhadas?: ExamScopedTextItem[];
+  remunerationsDetailed?: ExamScopedTextItem[];
+  vagasDetalhadas?: ExamScopedTextItem[];
+  vacanciesDetailed?: ExamScopedTextItem[];
+  conteudoProgramaticoDetalhado?: ExamProgrammaticContentItem[];
+  programmaticContentDetailed?: ExamProgrammaticContentItem[];
+  questoesVinculadas?: Array<string | number>;
+  platformQuestionIds?: Array<string | number>;
+  vagas?: Array<string | {
+    descricao?: string;
+    description?: string;
+    ampla?: number;
+    pcd?: number;
+    cotas?: number;
+    cadastroReserva?: number;
+    cadastro_reserva?: number;
+  }>;
+  vacancies?: Array<string | {
+    descricao?: string;
+    description?: string;
+    ampla?: number;
+    pcd?: number;
+    cotas?: number;
+    cadastroReserva?: number;
+    cadastro_reserva?: number;
+  }>;
+  requisitos?: string[];
+  requirements?: string[];
+  remuneracoes?: string[];
+  remunerations?: string[];
+  conteudoProgramatico?: string[];
+  programmaticContent?: string[];
+  cadernos?: ExamBooklet[];
+}
+
+export interface ExamScopedTextItem {
+  id?: string | number;
+  scopeType?: 'geral' | 'orgao' | 'cargo' | 'foco';
+  scope?: string;
+  orgao?: string;
+  cargo?: string;
+  foco?: string;
+  chave?: string;
+  key?: string;
+  texto?: string;
+  text?: string;
+  value?: string;
+  description?: string;
+}
+
+export interface ExamProgrammaticContentItem {
+  id?: string | number;
+  materia?: string;
+  subject?: string;
+  topico?: string;
+  topic?: string;
+  assunto?: string;
+  specificSubject?: string;
+  questoes?: string | number;
+  questions?: string | number;
+  orgao?: string;
+  cargo?: string;
+  foco?: string;
+}
+
+export interface ExamStage {
+  id?: string | number;
+  nome?: string;
+  name?: string;
+  criterio?: 'eliminatorio' | 'classificatorio' | 'eliminatorio_classificatorio' | string;
+  criterion?: string;
+  data?: string;
+  date?: string;
+  descricao?: string;
+  description?: string;
+}
+
+export type ExamFileKind = 'prova' | 'gabarito' | 'edital' | 'outro';
+
+export interface ExamBookletContent {
+  id?: number;
+  nome?: string;
+  name?: string;
+  slug?: string;
+  type?: string;
+  role?: string;
+  ordem?: number;
+  parentId?: number | null;
+  taxonomyLevel?: string | null;
+}
+
+export interface ExamBooklet {
+  id?: number;
+  nome?: string;
+  name?: string;
+  tipo?: string | null;
+  type?: string | null;
+  cor?: string | null;
+  color?: string | null;
+  ordem?: number;
+  conteudoProgramatico?: ExamBookletContent[];
+  programmaticContent?: ExamBookletContent[];
+}
+
+export interface ExamFileAttachment {
+  id?: string | number;
+  kind: ExamFileKind;
+  type?: ExamFileKind;
+  label?: string;
+  name: string;
+  url: string;
+  mimeType?: string;
+  size?: number;
+  version?: number;
+  versao?: number;
+  visibilityStatus?: string;
+  uploadedByUserId?: string | null;
+  uploadedAt?: string;
+  archivedAt?: string | null;
 }
 
 export interface GrupoQuestao {
   id: number;
-  enunciado: string;
-  enunciado_clean: string;
-  rotulo: string | null;
-  texto: string | null;
+  texto: string;
+  assets?: QuestionAsset[];
+  questionIds?: Array<number | string> | string;
+  enunciado?: string;
+  enunciado_clean?: string;
+  enunciadoClean?: string;
+  rotulo?: string | null;
   descrição: string;
-  ordem: number;
+  ordem?: number;
   image_url?: string;
+  imageUrl?: string;
+  question_count?: number;
+  questionCount?: number;
+  question_ids?: Array<number | string> | string;
 }
 
 export interface Question {
   id?: number;
   hashId?: string;
   hash?: string;
+  source?: QuestionSourcePayload;
+  content?: QuestionContentPayload;
+  assets?: QuestionAsset[];
+  filters?: QuestionFiltersPayload;
+  questionType?: string;
+  alternatives?: QuestionAlternativePayload[];
+  answer?: QuestionAnswerPayload;
+  publication?: QuestionPublicationPayload;
+  review?: QuestionReviewPayload;
+  editorial?: QuestionEditorialPayload[];
+  editorialComments?: QuestionEditorialCommentsPayload;
   enunciado: string;
   enunciado_clean?: string;
   introText?: string;
+  intro_text?: string;
+  referenceText?: string;
+  reference_text?: string;
   imageUrl?: string;
   hasImage?: boolean;
   hasImageItens?: boolean;
@@ -157,15 +498,15 @@ export interface Question {
   cargos: Cargo[];
   assuntos: Assunto[];
   anos: number[];
-  carreiras?: any[];
-  areas?: any[];
+  carreiras?: QuestionTaxonomyLabel[];
+  areas?: QuestionTaxonomyLabel[];
   tiposProva?: number[];
   ultimoAno?: {
     rank: number;
     stamp: string;
   };
-  nivel?: string | any;
-  level?: string | any; // Can be string "Superior" or many object from backend
+  nivel?: QuestionLevelValue;
+  level?: QuestionLevelValue; // Can be string "Superior" or object from backend
   isCanceled?: boolean;
   isOutdated?: boolean;
 
@@ -178,9 +519,13 @@ export interface Question {
   itens: QuestionItem[];
   resposta: number; // ID do item correto
 
-  provas?: Prova[];
-  provaId?: string | number;
-  grupoQuestao?: GrupoQuestao;
+    provas?: Prova[];
+    provaId?: string | number;
+    questionOrigin?: 'platform' | 'exam' | string;
+    question_origin?: 'platform' | 'exam' | string;
+    grupoQuestao?: GrupoQuestao;
+    grupoQuestaoId?: number | string | null;
+    grupo_questao_id?: number | string | null;
 
   teacherComment?: string;
   detailedComment?: string;
@@ -207,6 +552,13 @@ export interface Question {
   isSaved?: boolean;
   savedCount?: number;
   commentsCount?: number;
+  publishStatus?: 'published' | 'draft' | 'scheduled';
+  visibilityStatus?: 'public' | 'elite' | 'internal';
+  scheduledAt?: string;
+  createdAt?: string;
+  created_at?: string;
+  publishedAt?: string;
+  published_at?: string;
 }
 
 export interface FilterResponse {
@@ -226,6 +578,18 @@ export interface UserAnswer {
   timestamp: number;
   simulationId?: string;
   timeTaken?: number;
+  subjectName?: string;
+  subject?: string;
+  materia?: string;
+  assuntos?: Array<{
+    id?: number | string;
+    nome?: string;
+    name?: string;
+    slug?: string;
+    parentId?: number | string | null;
+    materia?: boolean;
+    meta_materia?: boolean;
+  }>;
 }
 
 export interface UserNote {
@@ -280,9 +644,10 @@ export interface SimulationSession {
   id: string;
   config: SimulationConfig;
   questions: Question[];
-  answers: Record<string, number>;
+  answers: Record<string, number | { index?: number; is_correct?: boolean | number; time_taken?: number }>;
   startTime: number;
   endTime?: number;
+  durationSeconds?: number;
   status: 'in_progress' | 'completed';
   score?: number;
 }
@@ -349,6 +714,7 @@ export interface UserProfile {
   email: string;
   emailVerified: boolean;
   cpf?: string;
+  phone?: string;
   address?: Address;
   bankAccount?: BankAccount;
   targetExam: string;
@@ -372,11 +738,16 @@ export interface UserProfile {
     shareData: boolean;
     notifications: boolean;
     isPublic?: boolean;
+    showProfilePhoto?: boolean;
+    defaultTheme?: 'system' | 'light' | 'dark';
+    defaultPracticeView?: 'card' | 'list';
+    defaultSimulationView?: 'focus' | 'list';
   };
   photoUrl?: string;
   referralCode?: string;
   googleId?: string;
   facebookId?: string;
+  appleId?: string;
   studyStreak?: {
     current: number;
     best: number;
@@ -387,7 +758,14 @@ export interface UserProfile {
   paymentIssue?: {
     message?: string;
     code?: string;
+    type?: string;
+    severity?: 'warning' | 'blocking' | string;
+    interactionLock?: boolean;
+    actionLabel?: string;
+    actionTarget?: string;
+    blockingReason?: string;
   };
+  planDisplayName?: string;
   billing: {
     plan: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
     billingCycle: 'monthly' | 'quarterly' | 'annual';
@@ -444,6 +822,10 @@ export interface DiscountCode {
   autoApply?: boolean;
   targetType?: 'all' | 'plan' | 'item';
   targetId?: string | null;
+  newUsersOnly?: boolean;
+  firstPurchaseOnly?: boolean;
+  allowedUserIds?: string[];
+  allowedUserEmails?: string[];
 }
 
 export interface PlanPricing {
@@ -467,6 +849,36 @@ export interface Promotion {
   landingPageHeadline: string;
   landingPageSubheadline: string;
   featuresHighlight: string[];
+  notificationTitle?: string;
+  notificationMessage?: string;
+  notificationActionUrl?: string;
+  emailEnabled?: boolean;
+  emailSubject?: string;
+  emailPreview?: string;
+  emailBody?: string;
+  siteBanners?: MarketingCampaignBanner[];
+  automationRules?: MarketingCampaignAutomationRule[];
+}
+
+export interface MarketingCampaignBanner {
+  id: string;
+  enabled: boolean;
+  placement: 'topbar' | 'home-hero' | 'question-sidebar' | 'practice-sidebar' | 'checkout' | 'marketplace';
+  headline: string;
+  description?: string;
+  ctaLabel?: string;
+  actionUrl?: string;
+  backgroundColor?: string;
+}
+
+export interface MarketingCampaignAutomationRule {
+  id: string;
+  enabled: boolean;
+  condition: 'recent_signup' | 'near_subscription' | 'inactive_7_days' | 'trial_ending' | 'saved_questions' | 'elite_upgrade';
+  channel: 'email' | 'notification' | 'both';
+  delayHours: number;
+  subject: string;
+  message: string;
 }
 
 export interface LimitedOfferCountdownSettings {
@@ -630,19 +1042,68 @@ export interface PlanFeature {
 }
 
 export type PlanBenefitKey =
-  | 'unlimited_questions'
-  | 'basic_statistics'
-  | 'community_comments'
+    | 'module.dashboard'
+    | 'module.practice'
+    | 'module.lei_comentada'
+    | 'module.flashcards'
+    | 'module.simulations'
+    | 'module.xray'
+    | 'module.schedule'
+    | 'module.marketplace'
+    | 'practice.filter_keyword'
+    | 'practice.filter_subject'
+    | 'practice.filter_difficulty'
+    | 'practice.filter_bank'
+    | 'practice.filter_organization'
+    | 'practice.filter_year'
+    | 'practice.filter_level'
+    | 'practice.filter_role'
+    | 'practice.filter_modality'
+    | 'practice.filter_topic'
+    | 'practice.filter_saved'
+    | 'practice.filter_teacher_comment'
+    | 'practice.filter_detailed_analysis'
+    | 'practice.filter_answered_correct'
+    | 'practice.filter_answered_wrong'
+    | 'question.resolve'
+    | 'question.answer_key'
+    | 'question.detailed_analysis'
+    | 'question.save'
+    | 'question.notes'
+    | 'question.share'
+    | 'question.full_statistics'
+    | 'ads.adsense_banner'
+    | 'ads.facebook_banner'
+    | 'ads.between_questions'
+    | 'ads.in_comments'
+    | 'ads.web_interstitial'
+    | 'ads.navigation_pop'
+    | 'ads.internal_sponsorships'
+    | 'ads.reduced'
+    | 'unlimited_questions'
+    | 'basic_statistics'
+    | 'community_comments'
   | 'no_ads'
   | 'teacher_comments'
   | 'detailed_analysis'
-  | 'ai_explanations'
   | 'error_notebook'
   | 'exclusive_simulations'
   | 'xray_banca'
   | 'mentor_chat'
   | 'priority_support'
-  | 'early_access';
+  | 'early_access'
+  | 'lei.comentario_basico'
+  | 'lei.doutrina'
+  | 'lei.macete'
+  | 'lei.como_cai'
+  | 'lei.jurisprudencia'
+  | 'lei.sumulas'
+  | 'lei.questoes'
+  | 'lei.raiox'
+  | 'lei.anotacoes'
+  | 'lei.modo_foco'
+  | 'lei.favoritos'
+  | 'lei.solicitar_comentario';
 
 export interface PlanBenefitDefinition {
   key: PlanBenefitKey;
@@ -669,8 +1130,49 @@ export type PlanUsageLimitKey =
   | 'comments_per_day'
   | 'simulations_per_week'
   | 'simulations_per_month'
-  | 'ai_explanations_per_day'
-  | 'saved_questions_limit';
+  | 'saved_questions_limit'
+  | 'lei_related_questions_limit'
+  | 'lei_annotations_limit'
+  | 'lei_favorites_limit'
+  | 'ad_interstitial_answer_interval';
+
+export type LegalCommentaryFeatureKey =
+  | 'lei.texto'
+  | 'lei.comentario_basico'
+  | 'lei.doutrina'
+  | 'lei.macete'
+  | 'lei.como_cai'
+  | 'lei.jurisprudencia'
+  | 'lei.sumulas'
+  | 'lei.questoes'
+  | 'lei.raiox'
+  | 'lei.anotacoes'
+  | 'lei.modo_foco'
+  | 'lei.favoritos'
+  | 'lei.solicitar_comentario';
+
+export type LegalCommentaryFeatureConfigurableKey = Exclude<LegalCommentaryFeatureKey, 'lei.texto'>;
+
+export type LegalCommentaryFeatureFallbackMode = 'preview' | 'locked' | 'hidden';
+
+export interface LegalCommentaryFeatureConfigEntry {
+  fallbackMode: LegalCommentaryFeatureFallbackMode;
+}
+
+export type LegalCommentaryFeatureConfig = Record<
+  LegalCommentaryFeatureConfigurableKey,
+  LegalCommentaryFeatureConfigEntry
+>;
+
+export interface LegalCommentaryFeatureAccessState {
+  feature_key: LegalCommentaryFeatureKey;
+  requires_plan: PlanName;
+  enabled: boolean;
+  mode: 'full' | LegalCommentaryFeatureFallbackMode;
+  fallback_mode: 'full' | LegalCommentaryFeatureFallbackMode;
+  limit_key?: PlanUsageLimitKey | null;
+  limit_value?: number | null;
+}
 
 export interface PlanUsageLimitDefinition {
   key: PlanUsageLimitKey;
@@ -708,20 +1210,36 @@ export interface TaxonomyItem {
   name: string;
   slug?: string;
   parentId?: string;
-  type?: 'agency' | 'subject' | 'topic' | 'role' | 'year' | 'modality' | 'career';
+  rootSubjectId?: string;
+  taxonomyLevel?: 'materia' | 'topico' | 'assunto' | string;
+  type?: 'agency' | 'subject' | 'topic' | 'role' | 'year' | 'modality' | 'career' | string;
   description?: string;
   website?: string;
 }
 
 export interface GlobalTaxonomies {
+  areas?: TaxonomyItem[];
   agencies: TaxonomyItem[];
   organizations: TaxonomyItem[];
   subjects: TaxonomyItem[];
   topics: TaxonomyItem[];
+  subjectTopics?: TaxonomyItem[];
+  specificSubjects?: TaxonomyItem[];
   roles: TaxonomyItem[];
   careers: TaxonomyItem[];
   years: string[];
   modalities: string[];
+}
+
+export interface FirebaseClientConfig {
+  apiKey?: string;
+  authDomain?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  measurementId?: string;
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 export type StripePaymentMethodId = 'card' | 'pix' | 'boleto' | 'apple_pay' | 'google_pay' | string;
@@ -741,7 +1259,57 @@ export interface StripePaymentMethodsSettings {
   methods: StripePaymentMethodSetting[];
 }
 
+export interface EmailTemplateModel {
+  key: string;
+  name: string;
+  description: string;
+  subject: string;
+  htmlBody: string;
+  textBody: string;
+  enabled: boolean;
+  updatedAt?: string;
+}
+
+export interface GamificationRuleSettings {
+  key: string;
+  eventName: string;
+  category: string;
+  label: string;
+  description: string;
+  xp: number;
+  maxXp?: number;
+  reputation?: number;
+  repeatability?: string;
+  enabled: boolean;
+}
+
+export interface GamificationSettings {
+  enabled: boolean;
+  rules: GamificationRuleSettings[];
+  updatedAt?: string;
+}
+
+export interface NotificationRuleSettings {
+  key: string;
+  category: string;
+  label: string;
+  trigger: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error' | string;
+  link?: string | null;
+  audience?: string;
+  enabled: boolean;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  rules: NotificationRuleSettings[];
+  updatedAt?: string;
+}
+
 export interface SystemSettings {
+  appName?: string;
   activeTheme: AppPromotionTheme;
   paymentProvider?: 'stripe';
   paymentCheckoutMode?: 'internal' | 'redirect';
@@ -761,6 +1329,7 @@ export interface SystemSettings {
   };
   planEntitlements?: PlanEntitlements;
   planUsageLimits?: PlanUsageLimits;
+  legalCommentaryFeatureConfig?: LegalCommentaryFeatureConfig;
   activePromotion: Promotion;
   limitedOfferCountdown: LimitedOfferCountdownSettings;
   landingPageContent?: LandingPageContent;
@@ -779,6 +1348,7 @@ export interface SystemSettings {
     reportsEnabled: boolean;
     notificationsEnabled: boolean;
     simulationsEnabled: boolean;
+    studyScheduleEnabled: boolean;
     maintenanceMode: boolean;
     registrationEnabled: boolean;
     landingPagePromoEnabled: boolean;
@@ -787,21 +1357,51 @@ export interface SystemSettings {
     partnerRegistrationEnabled: boolean;
     recurringEnabled: boolean;
     sameTierCycleChangeEnabled: boolean;
+    autoRefundEnabled: boolean;
   };
   adsEnabled?: boolean;
+  adsenseTestMode?: boolean;
   adsenseClientId?: string;
+  adsTxtContent?: string;
+  adsenseTopSlotId?: string;
+  adsenseSidebarSlotId?: string;
+  adsenseBottomSlotId?: string;
+  adPlacementTopEnabled?: boolean;
+  adPlacementSidebarEnabled?: boolean;
+  adPlacementBottomEnabled?: boolean;
+  adPlacementInterstitialEnabled?: boolean;
+  adPlacementNavigationPopEnabled?: boolean;
   facebookAdsId?: string;
   adBannerTop?: string;
   adBannerSidebar?: string;
   adBannerBottom?: string;
+  adInterstitialSlotId?: string;
+  adNavigationPopUrl?: string;
+  aiProvider?: 'gemini' | 'openai' | 'auto' | string;
   geminiApiKey?: string;
+  geminiModel?: string;
+  hasGeminiApiKeyConfigured?: boolean;
+  openaiApiKey?: string;
+  openAiModel?: string;
+  hasOpenAiApiKeyConfigured?: boolean;
   recaptchaEnabled?: boolean;
   recaptchaSiteKey?: string;
   recaptchaSecretKey?: string;
+  hasRecaptchaSecretConfigured?: boolean;
 
   googleAnalyticsId?: string;
+  googleAuthClientId?: string;
+  hasGoogleAuthClientConfigured?: boolean;
+  facebookAuthAppId?: string;
+  facebookAuthAppSecret?: string;
+  hasFacebookAuthConfigured?: boolean;
+  appleAuthClientId?: string;
+  appleAuthRedirectUri?: string;
+  hasAppleAuthConfigured?: boolean;
   metaPixelId?: string;
   supportPhone?: string;
+  legalContactEmail?: string;
+  privacyContactEmail?: string;
   pixKey?: string;
   siteName?: string;
   dailyMotivationMarkdown?: string;
@@ -812,15 +1412,20 @@ export interface SystemSettings {
   smtpSecure?: 'tls' | 'ssl';
   smtpUser?: string;
   smtpPass?: string;
+  hasSmtpPasswordConfigured?: boolean;
   mailFromAddress?: string;
   mailFromName?: string;
+  emailLogoUrl?: string;
+  emailTemplates?: EmailTemplateModel[];
+  gamification?: GamificationSettings;
+  notificationSettings?: NotificationSettings;
   stripeKey?: string;
   stripePublishableKey?: string;
   stripeSecretKey?: string;
   stripeWebhookSecret?: string;
   hasStripeSecretConfigured?: boolean;
   hasStripeWebhookConfigured?: boolean;
-  firebaseConfig?: any;
+  firebaseConfig?: FirebaseClientConfig;
   taxonomies?: GlobalTaxonomies;
   examBank?: Prova[];
   seo?: SeoSettings;
@@ -889,13 +1494,16 @@ export interface UserSubscription {
   id: number;
   user_id: string;
   plan_id: number;
+  created_at?: string | number | null;
+  createdAt?: string | number | null;
   status: 'active' | 'past_due' | 'canceled' | 'incomplete' | 'trialing';
   auto_renew?: boolean;
-  payment_provider?: 'stripe';
+  payment_provider?: 'stripe' | 'manual_admin';
   payment_checkout_mode?: 'internal' | 'redirect';
   card_vault_provider?: 'local' | 'stripe';
   provider_subscription_id?: string | null;
   provider_customer_id?: string | null;
+  provider_schedule_id?: string | null;
   provider_current_period_start?: string | number | null;
   provider_current_period_end?: string | number | null;
   next_billing_at?: string | number | null;
@@ -908,4 +1516,11 @@ export interface UserSubscription {
   total_installments?: number;
   paid_installments?: number;
   recurring_amount?: number;
+  renewal_iteration?: number;
+  next_renewal_amount?: number;
+  next_renewal_date?: string | number | null;
+  next_renewal_price_source?: string | null;
+  next_renewal_cycle_label?: string | null;
+  payment_block_reason?: string | null;
+  payment_blocking?: boolean;
 }

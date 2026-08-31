@@ -14,9 +14,15 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle, ChevronRight, CreditCard, X } from 'lucide-react';
 import type { Material } from '@types';
 
+type PaymentModalUser = {
+    id?: string;
+    name?: string;
+    email?: string;
+} | null;
+
 interface PaymentModalProps {
     material: Material;
-    currentUser: any;
+    currentUser: PaymentModalUser;
     onClose: () => void;
     onSuccess: () => void;
 }

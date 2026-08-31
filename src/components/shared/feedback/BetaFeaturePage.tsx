@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -54,7 +54,7 @@ const BetaFeaturePage: React.FC<BetaFeaturePageProps> = ({
                 <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>{description}</p>
               </div>
             </div>
-            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/20">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/20">
               <Icon size={28} />
             </div>
           </div>

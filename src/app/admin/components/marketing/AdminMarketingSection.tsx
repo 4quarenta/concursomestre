@@ -10,10 +10,19 @@
 */
 
 import React, { useEffect, useState } from 'react';
-import { LayoutTemplate, Megaphone } from 'lucide-react';
+import { LayoutTemplate, Link2, Megaphone, Palette } from 'lucide-react';
 import type { SystemSettings } from '@types';
 import type { AdminMarketingSection as AdminMarketingSectionKey } from '../shared/useAdminPageController';
+import {
+  ADMIN_MUTED_SURFACE_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_SEGMENTED_TABS_CLASS,
+  ADMIN_TAB_BUTTON_ACTIVE_CLASS,
+  ADMIN_TAB_BUTTON_IDLE_CLASS,
+} from '../shared/adminPanelStyles';
+import AdminMarketing from '../finance/AdminMarketing';
 import AdminLandingPagesManager from './AdminLandingPagesManager';
+import AdminSocialLinksManager from './AdminSocialLinksManager';
 
 interface AdminMarketingSectionProps {
   systemSettings: SystemSettings;
@@ -21,6 +30,7 @@ interface AdminMarketingSectionProps {
   saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
   initialSection?: AdminMarketingSectionKey;
   onSectionChange?: (section: AdminMarketingSectionKey) => void;
+  standaloneSection?: boolean;
 }
 
 const SECTIONS: Array<{
@@ -31,13 +41,29 @@ const SECTIONS: Array<{
   {
     key: 'landing-pages',
     label: 'Landing Pages',
-    description: 'Páginas comerciais para aquisição, campanhas e testes futuros.',
+    description: 'Paginas comerciais para aquisicao, campanhas e testes futuros.',
+  },
+  {
+    key: 'campaigns',
+    label: 'Campanhas',
+    description: 'Promocoes ativas, campanha global e countdown comercial.',
+  },
+  {
+    key: 'visual-themes',
+    label: 'Temas visuais',
+    description: 'Identidade visual promocional aplicada na plataforma.',
+  },
+  {
+    key: 'social-links',
+    label: 'Redes sociais',
+    description: 'Links sociais exibidos na homepage da plataforma.',
   },
 ];
 
 /**
- * Domínio administrativo de marketing.
- * Centraliza a gestão de landing pages sem misturar a operação comercial com financeiro ou settings.
+ * Dominio administrativo de marketing.
+ * Centraliza landing pages, campanhas e temas visuais sem misturar
+ * a operacao comercial com financeiro ou settings.
  *
  * @since v1.0.0
  */
@@ -47,11 +73,16 @@ const AdminMarketingSection = ({
   saveSystemSettingsNow,
   initialSection = 'landing-pages',
   onSectionChange,
+  standaloneSection = false,
 }: AdminMarketingSectionProps) => {
   const [activeSection, setActiveSection] = useState<AdminMarketingSectionKey>(initialSection);
 
   useEffect(() => {
-    setActiveSection(initialSection);
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveSection(initialSection);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [initialSection]);
 
   const changeSection = (section: AdminMarketingSectionKey) => {
@@ -59,55 +90,101 @@ const AdminMarketingSection = ({
     onSectionChange?.(section);
   };
 
+  const activeSectionMeta = SECTIONS.find((section) => section.key === activeSection) || SECTIONS[0];
+
   return (
     <div className="space-y-6">
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Marketing comercial</p>
-            <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">Aquisição, campanhas e páginas de conversão</p>
-          </div>
+      <div className={ADMIN_PAGE_PANEL_CLASS}>
+        {standaloneSection ? null : (
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                Marketing comercial
+              </p>
+              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">
+                Aquisicao, campanhas e paginas de conversao
+              </p>
+            </div>
 
-          <div className="flex flex-wrap gap-2">
-            {SECTIONS.map((section) => (
-              <button
-                key={section.key}
-                type="button"
-                onClick={() => changeSection(section.key)}
-                className={`rounded-2xl px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-all ${
-                  activeSection === section.key
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'border border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-800'
-                }`}
-              >
-                {section.label}
-              </button>
-            ))}
+            <div className={`${ADMIN_SEGMENTED_TABS_CLASS} max-w-full`}>
+              {SECTIONS.map((section) => (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() => changeSection(section.key)}
+                  className={`rounded-md border px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-all ${
+                    activeSection === section.key
+                      ? ADMIN_TAB_BUTTON_ACTIVE_CLASS
+                      : ADMIN_TAB_BUTTON_IDLE_CLASS
+                  }`}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/60">
+        <div className={`mt-5 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
           <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
-              {activeSection === 'landing-pages' ? <LayoutTemplate size={18} /> : <Megaphone size={18} />}
+            <div className="rounded-md bg-indigo-50 p-3 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
+              {activeSection === 'landing-pages' ? (
+                <LayoutTemplate size={18} />
+              ) : activeSection === 'campaigns' ? (
+                <Megaphone size={18} />
+              ) : activeSection === 'visual-themes' ? (
+                <Palette size={18} />
+              ) : (
+                <Link2 size={18} />
+              )}
             </div>
             <div>
               <p className="text-sm font-black text-slate-900 dark:text-slate-100">
-                {SECTIONS.find((section) => section.key === activeSection)?.label}
+                {activeSectionMeta.label}
               </p>
               <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                {SECTIONS.find((section) => section.key === activeSection)?.description}
+                {activeSectionMeta.description}
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      <AdminLandingPagesManager
-        systemSettings={systemSettings}
-        updateSystemSettings={updateSystemSettings}
-        saveSystemSettingsNow={saveSystemSettingsNow}
-      />
+      {activeSection === 'landing-pages' ? (
+        <AdminLandingPagesManager
+          systemSettings={systemSettings}
+          updateSystemSettings={updateSystemSettings}
+          saveSystemSettingsNow={saveSystemSettingsNow}
+        />
+      ) : null}
+
+      {activeSection === 'campaigns' ? (
+        <AdminMarketing
+          systemSettings={systemSettings}
+          updateSystemSettings={updateSystemSettings}
+          saveSystemSettingsNow={saveSystemSettingsNow}
+          forcedSection="promo"
+          hideSectionTabs
+        />
+      ) : null}
+
+      {activeSection === 'visual-themes' ? (
+        <AdminMarketing
+          systemSettings={systemSettings}
+          updateSystemSettings={updateSystemSettings}
+          saveSystemSettingsNow={saveSystemSettingsNow}
+          forcedSection="themes"
+          hideSectionTabs
+        />
+      ) : null}
+
+      {activeSection === 'social-links' ? (
+        <AdminSocialLinksManager
+          systemSettings={systemSettings}
+          updateSystemSettings={updateSystemSettings}
+          saveSystemSettingsNow={saveSystemSettingsNow}
+        />
+      ) : null}
     </div>
   );
 };

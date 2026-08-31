@@ -10,13 +10,14 @@
 */
 
 import React, { useEffect, useRef } from 'react';
-import { useData } from '@providers/DataProvider';
 import { useAuth } from '@providers/AuthProvider';
 import { hasPlanBenefit } from '@services/plans/planAccess';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 
 declare global {
     interface Window {
-        adsbygoogle: any[];
+        adsbygoogle: unknown[];
     }
 }
 
@@ -25,90 +26,104 @@ interface AdBannerProps {
     className?: string;
 }
 
-const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
+const OFFICIAL_TEST_PUB_ID = 'ca-pub-3940256099942544';
+const OFFICIAL_TEST_SLOT_ID = '6300978111';
+
+const AdBanner: React.FC<AdBannerProps> = ({ type, className = '' }) => {
     const { currentUser } = useAuth();
     const bannerRef = useRef<HTMLDivElement>(null);
-    const { systemSettings } = useData();
+    const systemSettings = useAppConfigStore((state) => state.systemSettings);
     const hidesAds = hasPlanBenefit(currentUser, 'no_ads', systemSettings.planEntitlements);
+    const canReceiveAds = hasPlanBenefit(currentUser, 'ads.adsense_banner', systemSettings.planEntitlements);
+    const hasReducedAds = hasPlanBenefit(currentUser, 'ads.reduced', systemSettings.planEntitlements);
+    const placementEnabledMap: Record<AdBannerProps['type'], boolean> = {
+        top: systemSettings.adPlacementTopEnabled !== false,
+        sidebar: systemSettings.adPlacementSidebarEnabled !== false && !hasReducedAds,
+        bottom: systemSettings.adPlacementBottomEnabled !== false,
+    };
+    const isPlacementEnabled = placementEnabledMap[type];
 
-    // Efeito para carregar o script global do AdSense se necessário
     useEffect(() => {
-        if (!systemSettings.adsEnabled || hidesAds) return;
+        if (!systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled) return;
 
         const scriptId = 'adsense-script-loader';
-        const officialTestId = 'ca-pub-3940256099942544';
-        const clientId = systemSettings.adsenseClientId && systemSettings.adsenseClientId !== 'ca-pub-test'
-            ? systemSettings.adsenseClientId
-            : officialTestId;
+        const configuredClientId = String(systemSettings.adsenseClientId || '').trim();
+        const slotMap: Record<AdBannerProps['type'], string | undefined> = {
+            top: systemSettings.adsenseTopSlotId,
+            sidebar: systemSettings.adsenseSidebarSlotId,
+            bottom: systemSettings.adsenseBottomSlotId,
+        };
+        const configuredSlotId = String(slotMap[type] || '').trim();
+        const forceGoogleTestMode = systemSettings.adsenseTestMode === true;
+        const clientId = !forceGoogleTestMode && configuredClientId && configuredClientId !== 'ca-pub-test' && configuredSlotId
+            ? configuredClientId
+            : OFFICIAL_TEST_PUB_ID;
 
         if (!document.getElementById(scriptId) && !document.querySelector('script[src*="adsbygoogle.js"]')) {
             const script = document.createElement('script');
             script.id = scriptId;
             script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${clientId}`;
             script.async = true;
-            script.crossOrigin = "anonymous";
+            script.crossOrigin = 'anonymous';
             document.head.appendChild(script);
         }
-    }, [systemSettings.adsEnabled, systemSettings.adsenseClientId, hidesAds]);
+    }, [
+        type,
+        systemSettings.adsEnabled,
+        systemSettings.adsenseTestMode,
+        systemSettings.adsenseClientId,
+        systemSettings.adsenseTopSlotId,
+        systemSettings.adsenseSidebarSlotId,
+        systemSettings.adsenseBottomSlotId,
+        hidesAds,
+        canReceiveAds,
+        isPlacementEnabled,
+    ]);
 
-    // Efeito principal de renderização/injeção de anúncios
     useEffect(() => {
-        if (!systemSettings.adsEnabled || hidesAds || !bannerRef.current) return;
+        if (!systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled || !bannerRef.current) return;
 
-        const contentMap: any = {
+        const contentMap: Record<AdBannerProps['type'], string | undefined> = {
             top: systemSettings.adBannerTop,
             sidebar: systemSettings.adBannerSidebar,
-            bottom: systemSettings.adBannerBottom
+            bottom: systemSettings.adBannerBottom,
         };
         const customContent = contentMap[type];
+        const forceGoogleTestMode = systemSettings.adsenseTestMode === true;
 
-        // Caso 1: Conteúdo Customizado (HTML/Scripts do DB)
-        if (customContent) {
-            bannerRef.current.innerHTML = customContent;
-            const scripts = bannerRef.current.getElementsByTagName('script');
-            for (let i = 0; i < scripts.length; i++) {
-                const script = document.createElement('script');
-                if (scripts[i].src) {
-                    script.src = scripts[i].src;
-                    script.async = true;
-                } else {
-                    script.textContent = scripts[i].textContent;
-                }
-                document.body.appendChild(script);
-            }
+        if (customContent && !forceGoogleTestMode) {
+            bannerRef.current.innerHTML = normalizeQuestionRichHtml(customContent);
             return;
         }
 
-        // Caso 2: AdSense
-        // IDs Oficiais de Teste do Google
-        const officialTestPubId = 'ca-pub-3940256099942544';
-        const officialTestSlotId = '6300978111';
+        const slotMap: Record<AdBannerProps['type'], string | undefined> = {
+            top: systemSettings.adsenseTopSlotId,
+            sidebar: systemSettings.adsenseSidebarSlotId,
+            bottom: systemSettings.adsenseBottomSlotId,
+        };
+        const configuredClientId = String(systemSettings.adsenseClientId || '').trim();
+        const configuredSlotId = String(slotMap[type] || '').trim();
+        const isTest = forceGoogleTestMode || !configuredClientId || configuredClientId === 'ca-pub-test' || !configuredSlotId;
+        const clientId = isTest ? OFFICIAL_TEST_PUB_ID : configuredClientId;
+        const slotId = isTest ? OFFICIAL_TEST_SLOT_ID : configuredSlotId;
 
-        const clientId = systemSettings.adsenseClientId && systemSettings.adsenseClientId !== 'ca-pub-test'
-            ? systemSettings.adsenseClientId
-            : officialTestPubId;
-
-        const isTest = clientId === officialTestPubId;
-        const slotId = isTest ? officialTestSlotId : '8707198108'; // Slot real ou genérico
-
-        // Limpa e injeta
         bannerRef.current.innerHTML = '';
 
-        const container = document.createElement('div');
-        container.className = 'flex flex-col items-center justify-center w-full h-full p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 min-h-[100px]';
+        if (!slotId) {
+            return;
+        }
 
         const ins = document.createElement('ins');
         ins.className = 'adsbygoogle';
         ins.style.display = 'block';
         ins.style.width = '100%';
 
-        // Formatos retangulares sugeridos pela Google para testes
         if (type === 'sidebar') {
             ins.style.height = '250px';
             ins.setAttribute('data-ad-format', 'rectangle');
         } else {
             ins.style.height = '90px';
-            ins.setAttribute('data-ad-format', 'horizontal');
+            ins.setAttribute('data-ad-format', 'auto');
         }
 
         ins.setAttribute('data-ad-client', clientId);
@@ -120,26 +135,39 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
         }
 
         const label = document.createElement('div');
-        label.className = 'text-[9px] font-black uppercase tracking-widest text-slate-400 mt-2';
-        label.textContent = isTest ? 'Ads de Teste (Google Official)' : 'Publicidade';
+        label.className = 'pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] font-black uppercase tracking-widest text-slate-400';
+        label.textContent = isTest ? 'Ads de teste Google' : 'Publicidade';
 
-        container.appendChild(ins);
-        container.appendChild(label);
-        bannerRef.current.appendChild(container);
+        bannerRef.current.appendChild(ins);
+        bannerRef.current.appendChild(label);
 
         try {
             (window.adsbygoogle = window.adsbygoogle || []).push({});
-        } catch (e) {
-            console.debug('[AdBanner] Push attempted during render/HMR');
+        } catch {
+            // AdSense pode recusar pushes duplicados durante hot reload.
         }
-    }, [type, systemSettings.adsEnabled, systemSettings.adsenseClientId, systemSettings.adBannerTop, systemSettings.adBannerSidebar, systemSettings.adBannerBottom, hidesAds]);
+    }, [
+        type,
+        systemSettings.adsEnabled,
+        systemSettings.adsenseTestMode,
+        systemSettings.adsenseClientId,
+        systemSettings.adsenseTopSlotId,
+        systemSettings.adsenseSidebarSlotId,
+        systemSettings.adsenseBottomSlotId,
+        systemSettings.adBannerTop,
+        systemSettings.adBannerSidebar,
+        systemSettings.adBannerBottom,
+        hidesAds,
+        canReceiveAds,
+        isPlacementEnabled,
+    ]);
 
-    if (!systemSettings.adsEnabled || hidesAds) return null;
+    if (!systemSettings.adsEnabled || hidesAds || !canReceiveAds || !isPlacementEnabled) return null;
 
     return (
         <div
             ref={bannerRef}
-            className={`ad-banner ad-banner-${type} ${className} relative flex items-center justify-center bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 overflow-hidden w-full my-6 transition-all group shadow-sm min-h-[100px]`}
+            className={`ad-banner ad-banner-${type} ${className} relative my-6 flex min-h-[100px] w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-white shadow-sm transition-all dark:border-slate-800 dark:bg-slate-900`}
         />
     );
 };

@@ -14,12 +14,21 @@ import { AlertTriangle, RefreshCcw, ShieldCheck, Terminal } from 'lucide-react';
 import AdminDashboard from '../dashboard/AdminDashboard';
 import { subscriptionsService } from '@services/subscriptions';
 import { seoService } from '@services/seo';
+import type { ErrorReport } from '@types';
 import type { AdminPanelSection as AdminPanelSectionKey } from '../shared/useAdminPageController';
+import {
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_SEGMENTED_TABS_CLASS,
+  ADMIN_TAB_BUTTON_ACTIVE_CLASS,
+  ADMIN_TAB_BUTTON_IDLE_CLASS,
+} from '../shared/adminPanelStyles';
 import { calculateSeoCompletenessScore, mergeSeoSettings } from '../settings/seoSettings';
 
 interface AdminPanelSectionProps extends React.ComponentProps<typeof AdminDashboard> {
+  allReports: ErrorReport[];
   initialSection?: AdminPanelSectionKey;
   onSectionChange?: (section: AdminPanelSectionKey) => void;
+  standaloneSection?: boolean;
 }
 
 const PANEL_SECTIONS: { key: AdminPanelSectionKey; label: string }[] = [
@@ -27,6 +36,44 @@ const PANEL_SECTIONS: { key: AdminPanelSectionKey; label: string }[] = [
   { key: 'alerts', label: 'Alertas' },
   { key: 'billing-health', label: 'Saude do billing' },
 ];
+
+type AutomationHelperInfo = {
+  cli_command?: string;
+  configured?: boolean;
+  cron_health?: {
+    checked?: number | string | null;
+    issues?: number | string | null;
+    last_run_at?: string | null;
+    materialized_invoices?: number | string | null;
+    message?: string | null;
+    status?: 'ok' | 'warning' | 'error' | 'stale' | 'unknown' | string | null;
+    success?: boolean | null;
+    synced_amount?: number | string | null;
+    synced_periods?: number | string | null;
+    synced_status?: number | string | null;
+  };
+  webhook_health?: {
+    event_id?: string | null;
+    event_type?: string | null;
+    last_event_at?: string | null;
+    message?: string | null;
+    object_id?: string | null;
+    status?: 'processed' | 'ignored' | 'duplicate' | 'error' | 'unknown' | string | null;
+    success?: boolean | null;
+  };
+  download_url?: string;
+  error?: string;
+  linux_command?: string;
+  warning?: string;
+};
+
+type StatusRecord = {
+  status?: string | null;
+};
+
+type AdminSettingsWithInbox = NonNullable<AdminPanelSectionProps['systemSettings']> & {
+  adminFeedbackCount?: number | string | null;
+};
 
 /**
  * Organiza a area "Painel" em tres subareas menores.
@@ -36,6 +83,7 @@ const PANEL_SECTIONS: { key: AdminPanelSectionKey; label: string }[] = [
 const AdminPanelSection = ({
   initialSection = 'dashboard',
   onSectionChange,
+  standaloneSection = false,
   allTransactions,
   allReports,
   allMaterials,
@@ -44,11 +92,15 @@ const AdminPanelSection = ({
   ...dashboardProps
 }: AdminPanelSectionProps) => {
   const [activeSection, setActiveSection] = useState<AdminPanelSectionKey>(initialSection);
-  const [automationHelper, setAutomationHelper] = useState<any | null>(null);
+  const [automationHelper, setAutomationHelper] = useState<AutomationHelperInfo | null>(null);
   const [sitemapCoveragePercent, setSitemapCoveragePercent] = useState<number | null>(null);
 
   useEffect(() => {
-    setActiveSection(initialSection);
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveSection(initialSection);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [initialSection]);
 
   useEffect(() => {
@@ -86,12 +138,46 @@ const AdminPanelSection = ({
     onSectionChange?.(section);
   };
 
-  const unresolvedReports = (allReports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase()));
-  const refundRequests = (allTransactions || []).filter((transaction: any) => transaction.status === 'refund_requested');
-  const rejectedTransactions = (allTransactions || []).filter((transaction: any) => transaction.status === 'rejected');
-  const pendingMaterials = (allMaterials || []).filter((material: any) => String(material.status || '').toLowerCase() === 'pending');
-  const feedbackInboxCount = Number((systemSettings as any)?.adminFeedbackCount || 0);
+  const unresolvedReports = ((allReports || []) as StatusRecord[])
+    .filter((report) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase()));
+  const refundRequests = ((allTransactions || []) as StatusRecord[])
+    .filter((transaction) => transaction.status === 'refund_requested');
+  const rejectedTransactions = ((allTransactions || []) as StatusRecord[])
+    .filter((transaction) => transaction.status === 'rejected');
+  const pendingMaterials = ((allMaterials || []) as StatusRecord[])
+    .filter((material) => String(material.status || '').toLowerCase() === 'pending');
+  const feedbackInboxCount = Number((systemSettings as AdminSettingsWithInbox | undefined)?.adminFeedbackCount || 0);
   const seoScore = calculateSeoCompletenessScore(mergeSeoSettings(systemSettings?.seo));
+  const cronHealth = automationHelper?.cron_health;
+  const cronHealthStatus = String(cronHealth?.status || (automationHelper?.configured ? 'unknown' : 'error')).toLowerCase();
+  const cronHealthTone = cronHealthStatus === 'ok'
+    ? 'emerald'
+    : cronHealthStatus === 'warning'
+      ? 'amber'
+      : cronHealthStatus === 'stale' || cronHealthStatus === 'unknown'
+        ? 'amber'
+        : 'rose';
+  const cronHealthDate = cronHealth?.last_run_at ? new Date(cronHealth.last_run_at) : null;
+  const cronHealthLabel = cronHealthDate && !Number.isNaN(cronHealthDate.getTime())
+    ? new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(cronHealthDate)
+    : 'Nunca executado';
+  const webhookHealth = automationHelper?.webhook_health;
+  const webhookHealthStatus = String(webhookHealth?.status || (systemSettings?.hasStripeWebhookConfigured ? 'unknown' : 'error')).toLowerCase();
+  const webhookHealthTone = ['processed', 'ignored', 'duplicate'].includes(webhookHealthStatus)
+    ? 'emerald'
+    : webhookHealthStatus === 'unknown'
+      ? 'amber'
+      : 'rose';
+  const webhookHealthDate = webhookHealth?.last_event_at ? new Date(webhookHealth.last_event_at) : null;
+  const webhookHealthLabel = webhookHealthDate && !Number.isNaN(webhookHealthDate.getTime())
+    ? new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(webhookHealthDate)
+    : 'Nunca recebido';
 
   const billingHealthItems = useMemo(() => ([
     {
@@ -101,13 +187,23 @@ const AdminPanelSection = ({
     },
     {
       label: 'Webhook Stripe',
-      value: systemSettings?.hasStripeWebhookConfigured || systemSettings?.stripeWebhookSecret ? 'Configurado' : 'Nao comprovado',
-      tone: systemSettings?.hasStripeWebhookConfigured || systemSettings?.stripeWebhookSecret ? 'emerald' : 'amber',
+      value: systemSettings?.hasStripeWebhookConfigured ? 'Configurado' : 'Nao comprovado',
+      tone: systemSettings?.hasStripeWebhookConfigured ? 'emerald' : 'amber',
     },
     {
       label: 'Cron oficial',
-      value: automationHelper?.linux_command ? 'Disponivel' : 'Nao comprovado',
-      tone: automationHelper?.linux_command ? 'indigo' : 'amber',
+      value: automationHelper?.cli_command || automationHelper?.linux_command ? 'Disponivel' : 'Nao comprovado',
+      tone: automationHelper?.cli_command || automationHelper?.linux_command ? 'indigo' : 'amber',
+    },
+    {
+      label: 'Ultima reconciliacao',
+      value: cronHealthLabel,
+      tone: cronHealthTone,
+    },
+    {
+      label: 'Ultimo webhook',
+      value: webhookHealthLabel,
+      tone: webhookHealthTone,
     },
     {
       label: 'Recorrencia',
@@ -137,6 +233,9 @@ const AdminPanelSection = ({
     },
   ]), [
     automationHelper?.linux_command,
+    automationHelper?.cli_command,
+    cronHealthLabel,
+    cronHealthTone,
     refundRequests.length,
     seoScore,
     sitemapCoveragePercent,
@@ -144,32 +243,35 @@ const AdminPanelSection = ({
     systemSettings?.hasStripeWebhookConfigured,
     systemSettings?.stripeKey,
     systemSettings?.stripePublishableKey,
-    systemSettings?.stripeWebhookSecret,
+    webhookHealthLabel,
+    webhookHealthTone,
   ]);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2 rounded-3xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        {PANEL_SECTIONS.map((section) => (
-          <button
-            key={section.key}
-            onClick={() => changeSection(section.key)}
-            className={`rounded-2xl px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-all ${
-              activeSection === section.key
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
-            }`}
-          >
-            {section.label}
-          </button>
-        ))}
-      </div>
+      {standaloneSection ? null : (
+        <div className={ADMIN_SEGMENTED_TABS_CLASS}>
+          {PANEL_SECTIONS.map((section) => (
+            <button
+              key={section.key}
+              onClick={() => changeSection(section.key)}
+              className={`rounded-md border px-4 py-2 text-[11px] font-semibold transition-colors ${
+                activeSection === section.key
+                  ? ADMIN_TAB_BUTTON_ACTIVE_CLASS
+                  : ADMIN_TAB_BUTTON_IDLE_CLASS
+              }`}
+            >
+              {section.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {activeSection === 'dashboard' && (
         <AdminDashboard
           {...dashboardProps}
           allTransactions={allTransactions}
-          allReports={allReports}
+          allMaterials={allMaterials}
           systemSettings={systemSettings}
           onNavigate={onNavigate}
         />
@@ -179,7 +281,7 @@ const AdminPanelSection = ({
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
           <button
             onClick={() => onNavigate?.('support', 'reports')}
-            className="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 text-left transition-all hover:border-amber-300 dark:border-amber-900/30 dark:bg-amber-900/10"
+            className="rounded-md border border-amber-200 bg-amber-50 p-5 text-left transition-all hover:border-amber-300 dark:border-amber-900/30 dark:bg-amber-900/10"
           >
             <AlertTriangle size={18} className="text-amber-600 dark:text-amber-300" />
             <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">Denuncias abertas</p>
@@ -188,8 +290,8 @@ const AdminPanelSection = ({
           </button>
 
           <button
-            onClick={() => onNavigate?.('finance', 'refunds')}
-            className="rounded-[2rem] border border-rose-200 bg-rose-50 p-6 text-left transition-all hover:border-rose-300 dark:border-rose-900/30 dark:bg-rose-900/10"
+            onClick={() => onNavigate?.('support', 'refunds')}
+            className="rounded-md border border-rose-200 bg-rose-50 p-5 text-left transition-all hover:border-rose-300 dark:border-rose-900/30 dark:bg-rose-900/10"
           >
             <RefreshCcw size={18} className="text-rose-600 dark:text-rose-300" />
             <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 dark:text-rose-300">Reembolsos pendentes</p>
@@ -199,7 +301,7 @@ const AdminPanelSection = ({
 
           <button
             onClick={() => onNavigate?.('finance', 'transactions')}
-            className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left transition-all hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900"
+            className={ADMIN_PAGE_PANEL_CLASS}
           >
             <Terminal size={18} className="text-slate-600 dark:text-slate-300" />
             <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Falhas recentes</p>
@@ -209,17 +311,17 @@ const AdminPanelSection = ({
 
           <button
             onClick={() => onNavigate?.('support', 'feedback')}
-            className="rounded-[2rem] border border-indigo-200 bg-indigo-50 p-6 text-left transition-all hover:border-indigo-300 dark:border-indigo-900/30 dark:bg-indigo-900/10"
+            className="rounded-md border border-sky-200 bg-sky-50 p-5 text-left transition-all hover:border-sky-300 dark:border-sky-900/30 dark:bg-sky-900/10"
           >
-            <ShieldCheck size={18} className="text-indigo-600 dark:text-indigo-300" />
-            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Inbox de suporte</p>
+            <ShieldCheck size={18} className="text-sky-700 dark:text-sky-300" />
+            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Inbox de suporte</p>
             <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{feedbackInboxCount}</p>
             <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Feedbacks e conversas que ainda exigem retorno.</p>
           </button>
 
           <button
-            onClick={() => onNavigate?.('operation', 'materials')}
-            className="rounded-[2rem] border border-emerald-200 bg-emerald-50 p-6 text-left transition-all hover:border-emerald-300 dark:border-emerald-900/30 dark:bg-emerald-900/10"
+            onClick={() => onNavigate?.('support', 'materials')}
+            className="rounded-md border border-emerald-200 bg-emerald-50 p-5 text-left transition-all hover:border-emerald-300 dark:border-emerald-900/30 dark:bg-emerald-900/10"
           >
             <RefreshCcw size={18} className="text-emerald-600 dark:text-emerald-300" />
             <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">Materiais aguardando</p>
@@ -235,7 +337,7 @@ const AdminPanelSection = ({
             {billingHealthItems.map((item) => (
               <div
                 key={item.label}
-                className={`rounded-[2rem] border p-5 ${
+                className={`rounded-md border p-5 ${
                   item.tone === 'emerald'
                     ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10'
                     : item.tone === 'rose'
@@ -243,7 +345,7 @@ const AdminPanelSection = ({
                       : item.tone === 'amber'
                         ? 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'
                         : item.tone === 'indigo'
-                          ? 'border-indigo-200 bg-indigo-50 dark:border-indigo-900/30 dark:bg-indigo-900/10'
+                          ? 'border-sky-200 bg-sky-50 dark:border-sky-900/30 dark:bg-sky-900/10'
                           : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
                 }`}
               >
@@ -254,9 +356,9 @@ const AdminPanelSection = ({
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+            <div className={ADMIN_PAGE_PANEL_CLASS}>
               <div className="flex items-center gap-3">
-                <ShieldCheck size={18} className="text-indigo-600 dark:text-indigo-300" />
+                <ShieldCheck size={18} className="text-sky-700 dark:text-sky-300" />
                 <div>
                   <p className="text-sm font-black text-slate-900 dark:text-slate-100">Webhook e cron</p>
                   <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use esta area para validar a automacao oficial antes do deploy.</p>
@@ -264,12 +366,17 @@ const AdminPanelSection = ({
               </div>
               <div className="mt-5 space-y-3 text-xs font-medium text-slate-500 dark:text-slate-400">
                 <p>Webhook ativo: `/subscriptions/stripe_webhook.php`.</p>
-                <p>Cron oficial: {automationHelper?.linux_command || 'NAO COMPROVADO'}.</p>
+                <p>Cron CLI recomendado: {automationHelper?.cli_command || 'NAO COMPROVADO'}.</p>
+                <p>Cron HTTP alternativo: {automationHelper?.linux_command || 'NAO COMPROVADO'}.</p>
                 <p>Download helper: {automationHelper?.download_url || 'NAO COMPROVADO'}.</p>
+                <p>Ultimo webhook: {webhookHealthLabel} - {webhookHealth?.message || 'Sem heartbeat registrado.'}</p>
+                <p>Evento Stripe: {webhookHealth?.event_type || 'NAO COMPROVADO'} ({webhookHealth?.status || 'unknown'}).</p>
+                <p>Ultima execucao: {cronHealthLabel} - {cronHealth?.message || automationHelper?.warning || 'Sem heartbeat registrado.'}</p>
+                <p>Resumo: {Number(cronHealth?.checked || 0)} assinatura(s) checada(s), {Number(cronHealth?.issues || 0)} alerta(s), {Number(cronHealth?.materialized_invoices || 0)} invoice(s) materializada(s).</p>
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+            <div className={ADMIN_PAGE_PANEL_CLASS}>
               <p className="text-sm font-black text-slate-900 dark:text-slate-100">Pendencias reais</p>
               <ul className="mt-5 space-y-3 text-xs font-medium text-slate-500 dark:text-slate-400">
                 <li>Execute `npm run check:billing-renewal` antes de cada deploy financeiro.</li>

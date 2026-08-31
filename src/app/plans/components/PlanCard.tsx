@@ -11,7 +11,7 @@
 
 import React, { useMemo } from 'react';
 import { CheckCircle2, Star } from 'lucide-react';
-import type { Plan } from '@types';
+import type { Plan, PlanFeature } from '@types';
 import type { ResolvedPlanOffer } from '@services/plans';
 
 interface PlanCardProps {
@@ -23,6 +23,7 @@ interface PlanCardProps {
   isLoading?: boolean;
   isDisabled?: boolean;
   proRatedCredit?: number;
+  featuresOverride?: PlanFeature[];
 }
 
 export const PlanCard: React.FC<PlanCardProps> = ({
@@ -34,6 +35,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({
   isLoading,
   isDisabled,
   proRatedCredit = 0,
+  featuresOverride,
 }) => {
   const isFree = plan.price === 0;
 
@@ -45,6 +47,21 @@ export const PlanCard: React.FC<PlanCardProps> = ({
 
     return (displayName || fallbackName).trim().toUpperCase();
   }, [displayName, plan.name]);
+
+  const billingSuffixLabel = useMemo(() => {
+    const unit = String(plan.interval_unit || '').toLowerCase();
+    const count = Math.max(1, Number(plan.interval_count || 1));
+
+    if (unit === 'day') {
+      return count === 1 ? '/dia' : `/${count} dias`;
+    }
+
+    if (unit === 'week') {
+      return count === 1 ? '/semana' : `/${count} semanas`;
+    }
+
+    return '/mes';
+  }, [plan.interval_count, plan.interval_unit]);
 
   const { monthlyPrice, totalPrice, originalMonthlyPrice, originalTotalPrice, isDiscounted, discountLabel } = useMemo(() => {
     if (isFree) {
@@ -58,7 +75,11 @@ export const PlanCard: React.FC<PlanCardProps> = ({
       };
     }
 
-    const fallbackCycleDivisor = plan.interval_unit === 'year' ? 12 : (plan.interval_count || 1);
+    const fallbackCycleDivisor = plan.interval_unit === 'year'
+      ? 12
+      : plan.interval_unit === 'month'
+        ? (plan.interval_count || 1)
+        : 1;
     const resolvedOffer = offer || null;
     const resolvedMonthlyPrice = resolvedOffer?.discountedMonthlyAmount ?? (plan.price / fallbackCycleDivisor);
     const resolvedTotalPrice = resolvedOffer?.discountedCycleAmount ?? plan.price;
@@ -76,10 +97,21 @@ export const PlanCard: React.FC<PlanCardProps> = ({
     };
   }, [isFree, offer, plan]);
 
-  const cycleDivisor = offer?.cycleCount || (plan.interval_unit === 'year' ? 12 : (plan.interval_count || 1));
+  const cycleDivisor = offer?.cycleCount || (
+    plan.interval_unit === 'year'
+      ? 12
+      : plan.interval_unit === 'month'
+        ? (plan.interval_count || 1)
+        : 1
+  );
   const finalPrice = Math.max(0, totalPrice - proRatedCredit);
   const hasUpgradeDiscount = proRatedCredit > 0 && !isCurrent && !isDisabled;
   const displayMonthlyPrice = hasUpgradeDiscount ? finalPrice / cycleDivisor : monthlyPrice;
+  const displayFeatures = Array.isArray(featuresOverride) && featuresOverride.length > 0
+    ? featuresOverride
+    : Array.isArray(plan.features)
+      ? plan.features
+      : [];
 
   return (
     <div
@@ -121,7 +153,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({
                     maximumFractionDigits: 2,
                   })}
             </span>
-            <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-500">/mes</span>
+            <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-500">{billingSuffixLabel}</span>
           </div>
 
           {hasUpgradeDiscount && (
@@ -172,8 +204,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({
       <div className="mb-6 flex-1">
         <div className="mb-4 h-px w-full bg-slate-200 dark:bg-slate-800" />
         <ul className="space-y-2.5">
-          {Array.isArray(plan.features)
-            ? plan.features.map((feature, index) => (
+          {displayFeatures.map((feature, index) => (
                 <li key={index} className="flex items-start gap-2">
                   <CheckCircle2
                     className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${feature.included ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-600'}`}
@@ -184,14 +215,6 @@ export const PlanCard: React.FC<PlanCardProps> = ({
                     }`}
                   >
                     {feature.text}
-                  </span>
-                </li>
-              ))
-            : Object.entries(plan.features || {}).map(([key, value]) => (
-                <li key={key} className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                  <span className="text-[11px] text-slate-700 dark:text-slate-300">
-                    <strong className="capitalize text-slate-900 dark:text-white">{key}:</strong> {String(value)}
                   </span>
                 </li>
           ))}

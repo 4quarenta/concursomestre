@@ -11,6 +11,23 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 
+type ReaderRect = Record<string, unknown>;
+
+type BookmarksResponse = {
+  bookmarks?: MaterialBookmark[];
+  bookmark?: MaterialBookmark;
+  id?: number | string;
+};
+
+type HighlightsResponse = {
+  highlights?: MaterialHighlight[];
+  highlight?: MaterialHighlight;
+};
+
+type NoteResponse = {
+  note?: MaterialNote;
+};
+
 export type MaterialBookmark = {
   id: number;
   page_num: number;
@@ -22,7 +39,7 @@ export type MaterialHighlight = {
   id: number;
   page_num: number;
   color: string;
-  rects: any[];
+  rects: ReaderRect[];
   text: string;
   type: string;
   created_at: string;
@@ -45,7 +62,7 @@ export const readerService = {
    * @since 1.0.0
    */
   async getBookmarks(materialId: string, userId?: string): Promise<MaterialBookmark[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.materials.getBookmarks, {
+    const response = await apiClient.get<BookmarksResponse>(ENDPOINTS.materials.getBookmarks, {
       params: {
         material_id: materialId,
         user_id: userId || undefined,
@@ -53,11 +70,11 @@ export const readerService = {
     });
 
     const raw = assertApiSuccess(response, 'Erro ao carregar os marcadores.').raw;
-    const payload = readApiData<any>(raw, {});
-    return Array.isArray(payload?.bookmarks)
+    const payload = readApiData<BookmarksResponse>(response, {});
+    return Array.isArray(payload.bookmarks)
       ? payload.bookmarks
-      : Array.isArray(raw?.bookmarks)
-        ? raw.bookmarks
+      : Array.isArray(raw.bookmarks)
+        ? raw.bookmarks as MaterialBookmark[]
         : [];
   },
 
@@ -66,7 +83,7 @@ export const readerService = {
    * @since 1.0.0
    */
   async saveBookmark(materialId: string, pageNum: number, label: string, userId?: string): Promise<MaterialBookmark> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.saveBookmark, {
+    const response = await apiClient.post<BookmarksResponse>(ENDPOINTS.materials.saveBookmark, {
       user_id: userId,
       material_id: materialId,
       page_num: pageNum,
@@ -74,9 +91,9 @@ export const readerService = {
     });
 
     const raw = assertApiSuccess(response, 'Erro ao salvar o marcador.').raw;
-    const payload = readApiData<any>(raw, {});
-    return payload?.bookmark ?? raw?.bookmark ?? {
-      id: Number(raw?.id || 0),
+    const payload = readApiData<BookmarksResponse>(response, {});
+    return payload.bookmark ?? (raw.bookmark as MaterialBookmark | undefined) ?? {
+      id: Number(raw.id || 0),
       page_num: pageNum,
       label,
       created_at: new Date().toISOString(),
@@ -88,7 +105,7 @@ export const readerService = {
    * @since 1.0.0
    */
   async deleteBookmark(bookmarkId: number): Promise<void> {
-    const response = await apiClient.delete<any>(ENDPOINTS.materials.deleteBookmark, {
+    const response = await apiClient.delete(ENDPOINTS.materials.deleteBookmark, {
       params: { id: bookmarkId },
     });
 
@@ -100,7 +117,7 @@ export const readerService = {
    * @since 1.0.0
    */
   async getHighlights(materialId: string, userId?: string): Promise<MaterialHighlight[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.materials.getHighlights, {
+    const response = await apiClient.get<HighlightsResponse>(ENDPOINTS.materials.getHighlights, {
       params: {
         material_id: materialId,
         user_id: userId || undefined,
@@ -108,11 +125,11 @@ export const readerService = {
     });
 
     const raw = assertApiSuccess(response, 'Erro ao carregar os destaques.').raw;
-    const payload = readApiData<any>(raw, {});
-    return Array.isArray(payload?.highlights)
+    const payload = readApiData<HighlightsResponse>(response, {});
+    return Array.isArray(payload.highlights)
       ? payload.highlights
-      : Array.isArray(raw?.highlights)
-        ? raw.highlights
+      : Array.isArray(raw.highlights)
+        ? raw.highlights as MaterialHighlight[]
         : [];
   },
 
@@ -125,7 +142,7 @@ export const readerService = {
     data: Pick<MaterialHighlight, 'page_num' | 'color' | 'rects' | 'text' | 'type'>,
     userId?: string,
   ): Promise<MaterialHighlight> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.saveHighlight, {
+    const response = await apiClient.post<HighlightsResponse>(ENDPOINTS.materials.saveHighlight, {
       user_id: userId,
       material_id: materialId,
       page_num: data.page_num,
@@ -136,8 +153,8 @@ export const readerService = {
     });
 
     const raw = assertApiSuccess(response, 'Erro ao salvar o destaque.').raw;
-    const payload = readApiData<any>(raw, {});
-    return payload?.highlight ?? raw?.highlight;
+    const payload = readApiData<HighlightsResponse>(response, {});
+    return payload.highlight ?? (raw.highlight as MaterialHighlight);
   },
 
   /**
@@ -145,7 +162,7 @@ export const readerService = {
    * @since 1.0.0
    */
   async deleteHighlight(highlightId: number): Promise<void> {
-    const response = await apiClient.delete<any>(ENDPOINTS.materials.deleteHighlight, {
+    const response = await apiClient.delete(ENDPOINTS.materials.deleteHighlight, {
       params: { id: highlightId },
     });
 
@@ -157,7 +174,7 @@ export const readerService = {
    * @since 1.0.0
    */
   async getNote(materialId: string, userId?: string): Promise<MaterialNote | null> {
-    const response = await apiClient.get<any>(ENDPOINTS.materials.getNote, {
+    const response = await apiClient.get<NoteResponse>(ENDPOINTS.materials.getNote, {
       params: {
         material_id: materialId,
         user_id: userId || undefined,
@@ -165,8 +182,8 @@ export const readerService = {
     });
 
     const raw = assertApiSuccess(response, 'Erro ao carregar a anotacao.').raw;
-    const payload = readApiData<any>(raw, {});
-    return payload?.note ?? raw?.note ?? null;
+    const payload = readApiData<NoteResponse>(response, {});
+    return payload.note ?? (raw.note as MaterialNote | undefined) ?? null;
   },
 
   /**
@@ -174,15 +191,15 @@ export const readerService = {
    * @since 1.0.0
    */
   async saveNote(materialId: string, noteText: string, userId?: string): Promise<MaterialNote> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.saveNote, {
+    const response = await apiClient.post<NoteResponse>(ENDPOINTS.materials.saveNote, {
       user_id: userId,
       material_id: materialId,
       note_text: noteText,
     });
 
     const raw = assertApiSuccess(response, 'Erro ao salvar a anotacao.').raw;
-    const payload = readApiData<any>(raw, {});
-    return payload?.note ?? raw?.note ?? {
+    const payload = readApiData<NoteResponse>(response, {});
+    return payload.note ?? (raw.note as MaterialNote | undefined) ?? {
       note_text: noteText,
       updated_at: new Date().toISOString(),
     };

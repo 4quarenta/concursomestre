@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
 import ConfirmModal from '../overlays/ConfirmModal';
 
@@ -31,7 +31,7 @@ const LogoutConfirmButton: React.FC<LogoutConfirmButtonProps> = ({
   description = 'Tem certeza que deseja sair da sua conta agora?',
 }) => {
   const { logout } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const [isOpen, setIsOpen] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
 
@@ -51,19 +51,16 @@ const LogoutConfirmButton: React.FC<LogoutConfirmButtonProps> = ({
     setIsLoggingOut(true);
 
     try {
-      sessionStorage.removeItem('redirectAfterLogin');
+      window.sessionStorage.removeItem('redirectAfterLogin');
       await logout();
       setIsOpen(false);
       setIsLoggingOut(false);
-      navigate('/auth', {
-        replace: true,
-        state: { skipRouteRestore: true },
-      });
+      router.replace('/auth');
     } catch {
       setIsOpen(false);
       setIsLoggingOut(false);
     }
-  }, [isLoggingOut, logout, navigate]);
+  }, [isLoggingOut, logout, router]);
 
   return (
     <>

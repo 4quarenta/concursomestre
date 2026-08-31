@@ -54,6 +54,14 @@ describe('api response helpers', () => {
     }, 'fallback')).toBe('Mensagem do backend');
   });
 
+  it('turns network failures into a helpful user message', () => {
+    expect(readApiErrorMessage({
+      code: 'ERR_NETWORK',
+      message: 'Network Error',
+      request: {},
+    }, 'fallback')).toBe('Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.');
+  });
+
   it('reads technical error codes from axios-like responses', () => {
     expect(readApiErrorCode({
       response: {

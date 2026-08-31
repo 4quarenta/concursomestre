@@ -1,0 +1,147 @@
+{
+  "success": true,
+  "baseUrl": "http://localhost:3000",
+  "measuredAt": "2026-05-08T01:47:08.717Z",
+  "routes": [
+    {
+      "route": "/dashboard",
+      "finalUrl": "http://localhost:3000/dashboard",
+      "totals": {
+        "requests": 37,
+        "xhrFetchRequests": 3,
+        "transferBytes": 15887,
+        "encodedBytes": 1507268,
+        "decodedBytes": 8894618,
+        "domContentLoadedMs": 323,
+        "loadMs": 587
+      },
+      "statusCounts": {
+        "200": 36,
+        "304": 1
+      },
+      "duplicateRequests": [],
+      "failedRequests": [],
+      "xhrFetchSummary": [
+        {
+          "request": "GET /questao-pro-backend/api/settings.php",
+          "count": 1
+        },
+        {
+          "request": "GET /questao-pro-backend/api/statistics/user/u-admin",
+          "count": 1
+        },
+        {
+          "request": "POST /questao-pro-backend/api/auth/refresh.php",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "route": "/practice",
+      "finalUrl": "http://localhost:3000/practice",
+      "totals": {
+        "requests": 33,
+        "xhrFetchRequests": 4,
+        "transferBytes": 14129,
+        "encodedBytes": 1459782,
+        "decodedBytes": 8359136,
+        "domContentLoadedMs": 285,
+        "loadMs": 512
+      },
+      "statusCounts": {
+        "200": 32,
+        "304": 1
+      },
+      "duplicateRequests": [],
+      "failedRequests": [],
+      "xhrFetchSummary": [
+        {
+          "request": "GET /questao-pro-backend/api/filtersList",
+          "count": 1
+        },
+        {
+          "request": "GET /questao-pro-backend/api/questionsList?publication_scope=public&publish_status=published&user_id=u-admin",
+          "count": 1
+        },
+        {
+          "request": "GET /questao-pro-backend/api/settings.php",
+          "count": 1
+        },
+        {
+          "request": "POST /questao-pro-backend/api/auth/refresh.php",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "route": "/admin/panel/dashboard",
+      "finalUrl": "http://localhost:3000/admin/panel/dashboard",
+      "totals": {
+        "requests": 48,
+        "xhrFetchRequests": 3,
+        "transferBytes": 20648,
+        "encodedBytes": 1786094,
+        "decodedBytes": 12783947,
+        "domContentLoadedMs": 348,
+        "loadMs": 689
+      },
+      "statusCounts": {
+        "200": 47,
+        "304": 1
+      },
+      "duplicateRequests": [],
+      "failedRequests": [],
+      "xhrFetchSummary": [
+        {
+          "request": "GET /questao-pro-backend/api/admin/analytics_dashboard.php?period=all",
+          "count": 1
+        },
+        {
+          "request": "GET /questao-pro-backend/api/admin/stats.php?period=all",
+          "count": 1
+        },
+        {
+          "request": "POST /questao-pro-backend/api/auth/refresh.php",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "route": "/admin/support/comments",
+      "finalUrl": "http://localhost:3000/admin/support/comments",
+      "totals": {
+        "requests": 49,
+        "xhrFetchRequests": 4,
+        "transferBytes": 20645,
+        "encodedBytes": 1782216,
+        "decodedBytes": 12768335,
+        "domContentLoadedMs": 338,
+        "loadMs": 816
+      },
+      "statusCounts": {
+        "200": 47,
+        "304": 2
+      },
+      "duplicateRequests": [],
+      "failedRequests": [],
+      "xhrFetchSummary": [
+        {
+          "request": "GET /questao-pro-backend/api/admin/comments_moderation.php?origin=all&page=1&perPage=20&search=&status=pending",
+          "count": 1
+        },
+        {
+          "request": "GET /questao-pro-backend/api/admin/settings.php",
+          "count": 1
+        },
+        {
+          "request": "GET /questao-pro-backend/api/admin/stats.php?period=all",
+          "count": 1
+        },
+        {
+          "request": "POST /questao-pro-backend/api/auth/refresh.php",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

@@ -29,7 +29,9 @@ function Get-FrontendTargets {
     )
 
     $targets = @(
-        (Join-Path $Root 'vite.config.ts')
+        (Join-Path $Root 'next.config.ts')
+        (Join-Path $Root 'postcss.config.mjs')
+        (Join-Path $Root 'eslint.config.mjs')
     ) | Where-Object { Test-Path $_ }
 
     $sourceFiles = Get-ChildItem -Path (Join-Path $Root 'src') -Recurse -File -Include *.ts, *.tsx, *.js, *.jsx |

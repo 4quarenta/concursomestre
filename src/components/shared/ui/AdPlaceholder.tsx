@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -26,7 +26,7 @@ export const AdPlaceholder: React.FC<AdPlaceholderProps> = ({ className = '', ty
 
     return (
         <div
-            className={`w-full ${heights[type]} bg-white dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl flex items-center justify-center group overflow-hidden relative transition-all hover:bg-slate-50 dark:hover:bg-slate-800/50 ${className}`}
+            className={`w-full ${heights[type]} bg-white dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl flex items-center justify-center group overflow-hidden relative transition-all hover:bg-slate-50 dark:hover:bg-slate-800/50 ${className}`}
         >
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex flex-col items-center gap-2">

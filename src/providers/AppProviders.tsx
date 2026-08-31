@@ -10,13 +10,17 @@
 */
 
 import React from 'react';
+import { QueryProvider } from './QueryProvider';
 import { ToastProvider } from './ToastProvider';
 import { AuthProvider } from './AuthProvider';
+import { AppConfigProvider } from './AppConfigProvider';
 import { ModalProvider } from './ModalProvider';
-import { DataProvider } from './DataProvider';
+import { NotificationsProvider } from './NotificationsProvider';
 import { MarketplaceProvider } from './MarketplaceProvider';
 import { PlatformMetadataProvider } from './PlatformMetadataProvider';
 import { ThemeProvider } from './ThemeProvider';
+import { SetupGate } from './SetupGate';
+import AdNavigationPopController from '@/components/shared/feedback/AdNavigationPopController';
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -32,15 +36,22 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
   return (
     <PlatformMetadataProvider>
       <ThemeProvider>
-        <ToastProvider>
-          <AuthProvider>
-            <ModalProvider>
-              <DataProvider>
-                <MarketplaceProvider>{children}</MarketplaceProvider>
-              </DataProvider>
-            </ModalProvider>
-          </AuthProvider>
-        </ToastProvider>
+        <QueryProvider>
+          <ToastProvider>
+            <SetupGate>
+              <AuthProvider>
+                <AppConfigProvider>
+                  <AdNavigationPopController />
+                  <ModalProvider>
+                    <NotificationsProvider>
+                      <MarketplaceProvider>{children}</MarketplaceProvider>
+                    </NotificationsProvider>
+                  </ModalProvider>
+                </AppConfigProvider>
+              </AuthProvider>
+            </SetupGate>
+          </ToastProvider>
+        </QueryProvider>
       </ThemeProvider>
     </PlatformMetadataProvider>
   );

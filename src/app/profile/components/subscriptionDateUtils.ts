@@ -15,9 +15,12 @@ export const SUBSCRIPTION_TIME_ZONE = 'America/Sao_Paulo';
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 type SubscriptionWithProviderWindow = UserSubscription & {
+  created_at?: string | number | null;
+  createdAt?: string | number | null;
   provider_current_period_start?: string | number | null;
   provider_current_period_end?: string | number | null;
   next_billing_at?: string | number | null;
+  next_renewal_date?: string | number | null;
 };
 
 interface ResolveProfileSubscriptionTimelineInput {
@@ -160,7 +163,7 @@ export const formatDateInSaoPaulo = (value?: string | number | Date | null, fall
  * Formata data e hora no horario de Sao Paulo para historicos e trilha operacional.
  * @since v1.0.0
  */
-export const formatDateTimeInSaoPaulo = (value?: string | number | Date | null, fallback = 'Data nao informada'): string => {
+export const formatDateTimeInSaoPaulo = (value?: string | number | Date | null, fallback = 'Data não informada'): string => {
   const parsedDate = parseSubscriptionDate(value);
   return parsedDate ? zonedDateTimeFormatter.format(parsedDate) : fallback;
 };
@@ -180,6 +183,13 @@ const getCalendarDayOrdinal = (date: Date) => {
 };
 
 const getCalendarDayDifference = (start: Date, end: Date) => getCalendarDayOrdinal(end) - getCalendarDayOrdinal(start);
+const getPositiveCeilDayDifference = (start: Date, end: Date) => (
+  Math.max(0, Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY))
+);
+const addDaysInSaoPauloCalendar = (date: Date, dayDelta: number) => {
+  const targetOrdinal = getCalendarDayOrdinal(date) + dayDelta;
+  return new Date((targetOrdinal * MS_PER_DAY) + (12 * 60 * 60 * 1000));
+};
 
 const getDaysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0, 12, 0, 0)).getUTCDate();
 
@@ -201,31 +211,86 @@ const resolveBillingCycle = (
   billing: UserProfile['billing'] | null | undefined,
   subscription: SubscriptionWithProviderWindow | null | undefined,
 ): BillingCycle => {
-  if (billing?.billingCycle === 'annual' || billing?.billingCycle === 'quarterly' || billing?.billingCycle === 'monthly') {
-    return billing.billingCycle;
-  }
+  const intervalUnit = String(subscription?.plan?.interval_unit || '').toLowerCase();
+  const intervalCount = Math.max(1, Number(subscription?.plan?.interval_count || 1));
 
-  if (subscription?.plan?.interval_unit === 'year') {
+  if (intervalUnit === 'year') {
     return 'annual';
   }
 
-  if (subscription?.plan?.interval_count === 3) {
+  if (intervalUnit === 'month' && intervalCount >= 12) {
+    return 'annual';
+  }
+
+  if (intervalUnit === 'month' && intervalCount === 3) {
     return 'quarterly';
+  }
+
+  if (intervalUnit === 'month') {
+    return 'monthly';
+  }
+
+  // Billing pode estar atrasado para ciclos curtos; usamos mensal como fallback visual.
+  if (billing?.billingCycle === 'annual' || billing?.billingCycle === 'quarterly' || billing?.billingCycle === 'monthly') {
+    return billing.billingCycle;
   }
 
   return 'monthly';
 };
 
-const getExpectedCycleMonths = (billingCycle: BillingCycle) => {
-  if (billingCycle === 'annual') return 12;
-  if (billingCycle === 'quarterly') return 3;
-  return 1;
-};
+type ExpectedTermDuration =
+  | { mode: 'months'; value: number; minimumExpectedDays: number }
+  | { mode: 'days'; value: number; minimumExpectedDays: number };
 
-const getMinimumExpectedDays = (billingCycle: BillingCycle) => {
-  if (billingCycle === 'annual') return 330;
-  if (billingCycle === 'quarterly') return 75;
-  return 25;
+const resolveExpectedTermDuration = (
+  subscription: SubscriptionWithProviderWindow | null | undefined,
+  billingCycle: BillingCycle,
+): ExpectedTermDuration => {
+  const intervalUnit = String(subscription?.plan?.interval_unit || '').toLowerCase();
+  const intervalCount = Math.max(1, Number(subscription?.plan?.interval_count || 1));
+
+  if (intervalUnit === 'day') {
+    return {
+      mode: 'days',
+      value: intervalCount,
+      minimumExpectedDays: Math.max(1, intervalCount - 1),
+    };
+  }
+
+  if (intervalUnit === 'week') {
+    const expectedDays = intervalCount * 7;
+    return {
+      mode: 'days',
+      value: expectedDays,
+      minimumExpectedDays: Math.max(1, expectedDays - 1),
+    };
+  }
+
+  if (intervalUnit === 'month') {
+    const monthCount = Math.max(1, intervalCount);
+    return {
+      mode: 'months',
+      value: monthCount,
+      minimumExpectedDays: monthCount >= 12 ? 330 : monthCount >= 3 ? 75 : 25,
+    };
+  }
+
+  if (intervalUnit === 'year') {
+    return {
+      mode: 'months',
+      value: Math.max(1, intervalCount) * 12,
+      minimumExpectedDays: 330,
+    };
+  }
+
+  if (billingCycle === 'annual') {
+    return { mode: 'months', value: 12, minimumExpectedDays: 330 };
+  }
+  if (billingCycle === 'quarterly') {
+    return { mode: 'months', value: 3, minimumExpectedDays: 75 };
+  }
+
+  return { mode: 'months', value: 1, minimumExpectedDays: 25 };
 };
 
 /**
@@ -239,59 +304,145 @@ export const resolveProfileSubscriptionTimeline = ({
   now = new Date(),
 }: ResolveProfileSubscriptionTimelineInput): ResolvedProfileSubscriptionTimeline => {
   const billingCycle = resolveBillingCycle(billing, subscription);
-  const expectedMonths = getExpectedCycleMonths(billingCycle);
+  const expectedTermDuration = resolveExpectedTermDuration(subscription, billingCycle);
+  const totalInstallments = Math.max(1, Number(subscription?.total_installments || 1));
+  const isInstallmentTerm = totalInstallments > 1
+    && expectedTermDuration.mode === 'months'
+    && expectedTermDuration.value > 1;
 
   const providerStart = parseSubscriptionDate(subscription?.provider_current_period_start ?? null);
   const providerEnd = parseSubscriptionDate(subscription?.provider_current_period_end ?? null);
   const localStart = parseSubscriptionDate(subscription?.current_period_start ?? null);
   const localEnd = parseSubscriptionDate(subscription?.current_period_end ?? null);
+  const createdAt = parseSubscriptionDate(subscription?.created_at ?? subscription?.createdAt ?? null);
   const nextChargeAt = parseSubscriptionDate(
     billing?.nextBilling
+      ?? subscription?.next_renewal_date
       ?? subscription?.next_billing_at
       ?? ((localEnd && providerEnd && localEnd.getTime() !== providerEnd.getTime()) ? localEnd : null),
   );
 
-  let termStartAt = providerStart ?? localStart ?? null;
-  let termEndAt = providerEnd ?? localEnd ?? null;
+  let termStartAt = isInstallmentTerm ? (localStart ?? providerStart ?? null) : (providerStart ?? localStart ?? null);
+  let termEndAt = isInstallmentTerm ? (localEnd ?? providerEnd ?? null) : (providerEnd ?? localEnd ?? null);
 
   if (termStartAt && !termEndAt) {
-    termEndAt = addMonthsInSaoPauloCalendar(termStartAt, expectedMonths);
+    termEndAt = expectedTermDuration.mode === 'months'
+      ? addMonthsInSaoPauloCalendar(termStartAt, expectedTermDuration.value)
+      : addDaysInSaoPauloCalendar(termStartAt, expectedTermDuration.value);
   }
 
   if (!termStartAt && termEndAt) {
-    termStartAt = addMonthsInSaoPauloCalendar(termEndAt, -expectedMonths);
+    termStartAt = expectedTermDuration.mode === 'months'
+      ? addMonthsInSaoPauloCalendar(termEndAt, -expectedTermDuration.value)
+      : addDaysInSaoPauloCalendar(termEndAt, -expectedTermDuration.value);
+  }
+
+  // Para ciclos curtos (dia/semana), prioriza a próxima cobrança quando o período local vier inconsistente.
+  if (expectedTermDuration.mode === 'days' && termStartAt && nextChargeAt) {
+    const expectedDays = expectedTermDuration.value;
+    const nextChargeDays = getCalendarDayDifference(termStartAt, nextChargeAt);
+    const currentTermDays = termEndAt ? getCalendarDayDifference(termStartAt, termEndAt) : null;
+    const nextChargeLooksValid = nextChargeDays >= expectedTermDuration.minimumExpectedDays
+      && nextChargeDays <= (expectedDays + 2);
+    const termLooksOutlier = currentTermDays !== null && currentTermDays > (expectedDays + 2);
+
+    if (nextChargeLooksValid && (termEndAt === null || termLooksOutlier)) {
+      termEndAt = nextChargeAt;
+    }
+  }
+
+  if (isInstallmentTerm) {
+    const renewalIteration = Math.max(0, Number(subscription?.renewal_iteration || 0));
+    const anchorStart = createdAt
+      ? addMonthsInSaoPauloCalendar(createdAt, expectedTermDuration.value * renewalIteration)
+      : null;
+    const anchorEnd = anchorStart
+      ? addMonthsInSaoPauloCalendar(anchorStart, expectedTermDuration.value)
+      : null;
+
+    if (
+      anchorStart
+      && anchorEnd
+      && getCalendarDayDifference(anchorStart, now) >= 0
+      && getCalendarDayDifference(now, anchorEnd) >= 0
+    ) {
+      termStartAt = anchorStart;
+      termEndAt = anchorEnd;
+    } else if (termEndAt) {
+      const canonicalStart = addMonthsInSaoPauloCalendar(termEndAt, -expectedTermDuration.value);
+      const currentTermDays = termStartAt ? getCalendarDayDifference(termStartAt, termEndAt) : 0;
+      if (!termStartAt || currentTermDays < expectedTermDuration.minimumExpectedDays) {
+        termStartAt = canonicalStart;
+      }
+    }
+
+    if (termStartAt) {
+      termEndAt = addMonthsInSaoPauloCalendar(termStartAt, expectedTermDuration.value);
+    }
   }
 
   if (termStartAt && termEndAt) {
     const actualDays = getCalendarDayDifference(termStartAt, termEndAt);
-    if (actualDays <= 0 || actualDays < getMinimumExpectedDays(billingCycle)) {
-      termEndAt = addMonthsInSaoPauloCalendar(termStartAt, expectedMonths);
+    const exceedsShortCycleWindow = expectedTermDuration.mode === 'days'
+      && actualDays > (expectedTermDuration.value + 2);
+    if (actualDays <= 0 || actualDays < expectedTermDuration.minimumExpectedDays || exceedsShortCycleWindow) {
+      termEndAt = expectedTermDuration.mode === 'months'
+        ? addMonthsInSaoPauloCalendar(termStartAt, expectedTermDuration.value)
+        : addDaysInSaoPauloCalendar(termStartAt, expectedTermDuration.value);
     }
   }
 
   const totalDays = termStartAt && termEndAt
     ? Math.max(1, getCalendarDayDifference(termStartAt, termEndAt))
     : 0;
+  const totalDurationMs = termStartAt && termEndAt
+    ? Math.max(1, termEndAt.getTime() - termStartAt.getTime())
+    : 0;
+  const elapsedDurationMs = termStartAt && totalDurationMs > 0
+    ? Math.max(0, Math.min(totalDurationMs, now.getTime() - termStartAt.getTime()))
+    : 0;
+  const isShortCycle = expectedTermDuration.mode === 'days';
 
   const daysSinceStart = termStartAt
     ? Math.max(0, getCalendarDayDifference(termStartAt, now))
     : null;
 
-  const usedDays = totalDays > 0 && daysSinceStart !== null
-    ? Math.min(totalDays, daysSinceStart)
-    : 0;
-
-  const remainingDays = termEndAt
+  let remainingDays = termEndAt
     ? (
       termStartAt && getCalendarDayDifference(now, termStartAt) > 0
         ? totalDays
-        : Math.max(0, getCalendarDayDifference(now, termEndAt))
+        : Math.min(totalDays, getPositiveCeilDayDifference(now, termEndAt))
     )
     : 0;
 
-  const progressPercent = totalDays > 0
+  let usedDays = totalDays > 0
+    ? Math.min(totalDays, Math.max(0, totalDays - remainingDays))
+    : 0;
+
+  let progressPercent = totalDays > 0
     ? Math.min(100, Math.max(0, Math.round((usedDays / totalDays) * 100)))
     : 0;
+
+  if (isShortCycle && totalDays > 0 && termStartAt && termEndAt) {
+    const hasStarted = now.getTime() >= termStartAt.getTime();
+    const hasEnded = now.getTime() >= termEndAt.getTime();
+
+    usedDays = hasEnded
+      ? totalDays
+      : hasStarted && elapsedDurationMs > 0
+        ? Math.min(totalDays, Math.max(1, Math.round(elapsedDurationMs / MS_PER_DAY)))
+        : 0;
+    remainingDays = hasEnded
+      ? 0
+      : hasStarted
+        ? Math.max(0, totalDays - usedDays)
+        : totalDays;
+    progressPercent = hasEnded
+      ? 100
+      : hasStarted && totalDurationMs > 0
+        ? Math.min(99, Math.max(1, Math.round((elapsedDurationMs / totalDurationMs) * 100)))
+        : 0;
+  }
 
   return {
     termStartAt,

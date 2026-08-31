@@ -32,6 +32,7 @@ export interface StudyTrackerState {
   isWidgetExpanded: boolean;
   persisted: StudyTimeTotals;
   session: StudyTrackerSessionState;
+  statistics: UserStatistics | null;
 }
 
 export interface StudyTrackerSnapshot extends StudyTrackerState {
@@ -60,6 +61,7 @@ let state: StudyTrackerState = {
   isWidgetExpanded: true,
   persisted: buildEmptyTotals(),
   session: buildEmptySession(),
+  statistics: null,
 };
 
 let cachedSnapshot: StudyTrackerSnapshot;
@@ -152,6 +154,7 @@ export const resetStudyTrackerState = (): void => {
     isWidgetExpanded: true,
     persisted: buildEmptyTotals(),
     session: buildEmptySession(),
+    statistics: null,
   });
 };
 
@@ -210,6 +213,23 @@ export const recordSimulationStudyTime = (simulationId: string, elapsedSeconds: 
 };
 
 export const syncPersistedStudyTotals = (statistics: Partial<UserStatistics> | null | undefined): void => {
+  const normalizedStatistics = statistics
+    ? {
+      userId: String(statistics.userId || ''),
+      totalQuestionsAnswered: Math.max(0, Number(statistics.totalQuestionsAnswered || 0)),
+      correctAnswers: Math.max(0, Number(statistics.correctAnswers || 0)),
+      wrongAnswers: Math.max(0, Number(statistics.wrongAnswers || 0)),
+      accuracyRate: Math.max(0, Number(statistics.accuracyRate || 0)),
+      currentStreak: Math.max(0, Number(statistics.currentStreak || 0)),
+      bestStreak: Math.max(0, Number(statistics.bestStreak || 0)),
+      questionStudyTime: Math.max(0, Number(statistics.questionStudyTime || 0)),
+      readingStudyTime: Math.max(0, Number(statistics.readingStudyTime || 0)),
+      totalStudyTime: Math.max(0, Number(statistics.totalStudyTime || 0)),
+      lastActivity: String(statistics.lastActivity || ''),
+      subjectBreakdown: Array.isArray(statistics.subjectBreakdown) ? statistics.subjectBreakdown : [],
+    }
+    : null;
+
   commitState({
     ...state,
     persisted: {
@@ -219,5 +239,6 @@ export const syncPersistedStudyTotals = (statistics: Partial<UserStatistics> | n
       readingSeconds: Math.max(0, Number(statistics?.readingStudyTime || 0)),
       totalSeconds: Math.max(0, Number(statistics?.totalStudyTime || 0)),
     },
+    statistics: normalizedStatistics,
   });
 };

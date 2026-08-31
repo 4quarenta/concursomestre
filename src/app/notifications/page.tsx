@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -10,6 +12,7 @@
 */
 
 import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import {
   AlertTriangle,
   ArrowRight,
@@ -26,33 +29,143 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useConfirm } from '@providers/ModalProvider';
 import type { Notification } from '@types';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
 
 type TabType = 'all' | 'system' | 'social' | 'marketplace' | 'report' | 'trash';
 
+const TRASH_RETENTION_DAYS = 30;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const CATEGORY_LABELS: Record<Exclude<TabType, 'all' | 'trash'>, string> = {
+  system: 'Sistema',
+  social: 'Interações',
+  marketplace: 'Loja',
+  report: 'Suporte',
+};
+
+const normalizeNotificationText = (value: string): string => (
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+);
+
+const resolveNotificationCategory = (notification: Notification): Exclude<TabType, 'all' | 'trash'> => {
+  const rawCategory = String(notification.category || '').toLowerCase();
+  const haystack = normalizeNotificationText([
+    rawCategory,
+    notification.title,
+    notification.message,
+    notification.link || '',
+  ].join(' '));
+
+  if (/(pagamento|assinatura|plano|checkout|compra|cartao|fatura|loja|marketplace|material|cortesia|voucher)/.test(haystack)) {
+    return 'marketplace';
+  }
+
+  if (/(suporte|atendimento|denuncia|denuncias|report|reembolso|feedback|avaliacao|moderacao|moderar|erro|bug|cancelamento)/.test(haystack)) {
+    return 'report';
+  }
+
+  if (/(comentario|resposta|curtiu|like|favorito|salvo|anotacao|social|ranking|xp|sequencia|estudo)/.test(haystack)) {
+    return 'social';
+  }
+
+  if (rawCategory === 'marketplace') {
+    return 'marketplace';
+  }
+
+  if (rawCategory === 'report') {
+    return 'report';
+  }
+
+  if (rawCategory === 'social') {
+    return 'social';
+  }
+
+  return 'system';
+};
+
+const getNotificationCategoryLabel = (notification: Notification): string => (
+  CATEGORY_LABELS[resolveNotificationCategory(notification)]
+);
+
+const getTrashDaysLeft = (deletedAt: number, referenceTimeMs: number): number | null => {
+  if (!referenceTimeMs) {
+    return null;
+  }
+
+  return Math.max(0, TRASH_RETENTION_DAYS - Math.floor((referenceTimeMs - deletedAt) / MS_PER_DAY));
+};
+
+const formatNotificationDateTime = (timestamp: string | number | Date): string => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
+type TabButtonProps = {
+  id: TabType;
+  label: string;
+  icon: React.ComponentType<{ size?: number }>;
+  activeTab: TabType;
+  onSelect: (id: TabType) => void;
+};
+
+const TabButton: React.FC<TabButtonProps> = ({ id, label, icon: Icon, activeTab, onSelect }) => (
+  <button
+    onClick={() => onSelect(id)}
+    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+      activeTab === id
+        ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-lg'
+        : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-800'
+    }`}
+  >
+    <Icon size={14} />
+    {label}
+  </button>
+);
+
 const Page: React.FC = () => {
+  const notifications = useNotificationsStore((store) => store.notifications);
   const {
-    notifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
     deleteNotification,
     restoreNotification,
     permanentDeleteNotification,
     clearNotifications,
-  } = useData();
+  } = useNotificationsActions();
   const { currentUser } = useAuth();
-  const navigate = useNavigate();
+  const confirmDialog = useConfirm();
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [referenceTimeMs, setReferenceTimeMs] = useState(0);
   const itemsPerPage = 7;
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab]);
+    const frame = window.requestAnimationFrame(() => {
+      setReferenceTimeMs(Date.now());
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   if (!currentUser) {
     return null;
@@ -68,7 +181,7 @@ const Page: React.FC = () => {
       return visibleNotifications;
     }
 
-    return visibleNotifications.filter((notification) => notification.category === activeTab);
+    return visibleNotifications.filter((notification) => resolveNotificationCategory(notification) === activeTab);
   };
 
   const filteredNotifications = getFilteredNotifications();
@@ -105,7 +218,7 @@ const Page: React.FC = () => {
     markNotificationAsRead(notification.id);
 
     if (notification.link) {
-      navigate(notification.link);
+      router.push(notification.link);
 
       if (notification.link.includes('#')) {
         const targetId = notification.link.split('#')[1];
@@ -121,19 +234,10 @@ const Page: React.FC = () => {
     }
   };
 
-  const TabButton = ({ id, label, icon: Icon }: { id: TabType; label: string; icon: React.ComponentType<{ size?: number }> }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-        activeTab === id
-          ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-lg'
-          : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-800'
-      }`}
-    >
-      <Icon size={14} />
-      {label}
-    </button>
-  );
+  const handleSelectTab = (tab: TabType) => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
 
   return (
     <div className="max-w-4xl mx-auto animate-fade-in pb-20 space-y-6">
@@ -157,10 +261,16 @@ const Page: React.FC = () => {
           </button>
           {activeTab !== 'trash' && (
             <button
-              onClick={() => {
-                if (confirm('Tem certeza que deseja mover todas as notificações para a lixeira?')) {
-                  clearNotifications(currentUser.id);
-                }
+              onClick={async () => {
+                const confirmed = await confirmDialog({
+                  title: 'Mover notificações para a lixeira?',
+                  description: 'Todas as notificações visíveis serão movidas para a lixeira.',
+                  confirmText: 'Mover para lixeira',
+                  cancelText: 'Cancelar',
+                  type: 'warning',
+                });
+                if (!confirmed) return;
+                clearNotifications(currentUser.id);
               }}
               className="px-4 py-2 bg-white dark:bg-slate-900 text-red-500 dark:text-red-400 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-900/10 hover:border-red-100 dark:hover:border-red-900/30 transition-all flex items-center gap-2 shadow-sm"
               disabled={notifications.filter((notification) => !notification.deletedAt).length === 0}
@@ -172,12 +282,12 @@ const Page: React.FC = () => {
       </header>
 
       <div className="flex flex-wrap gap-2 pb-2 overflow-x-auto no-scrollbar">
-        <TabButton id="all" label="Geral" icon={Inbox} />
-        <TabButton id="system" label="Sistema" icon={Info} />
-        <TabButton id="social" label="Social" icon={MessageSquare} />
-        <TabButton id="marketplace" label="Loja" icon={ShoppingBag} />
-        <TabButton id="report" label="Relatórios" icon={Shield} />
-        <TabButton id="trash" label="Lixeira" icon={Trash2} />
+        <TabButton id="all" label="Geral" icon={Inbox} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="system" label="Sistema" icon={Info} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="social" label="Interações" icon={MessageSquare} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="marketplace" label="Loja" icon={ShoppingBag} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="report" label="Suporte" icon={Shield} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="trash" label="Lixeira" icon={Trash2} activeTab={activeTab} onSelect={handleSelectTab} />
       </div>
 
       <div className="space-y-4">
@@ -210,9 +320,12 @@ const Page: React.FC = () => {
                     <p className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1 transition-colors">
                       <Info size={10} /> Prova anexada
                     </p>
-                    <img
+                    <Image
                       src={notification.evidenceUrl}
                       alt="Prova"
+                      width={420}
+                      height={192}
+                      unoptimized
                       className="rounded-xl border border-slate-200 dark:border-slate-800 max-h-48 object-contain bg-slate-50 dark:bg-slate-800 transition-colors"
                     />
                   </div>
@@ -220,7 +333,7 @@ const Page: React.FC = () => {
 
                 <div className="flex items-center gap-3 pt-1">
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider transition-colors">
-                    {new Date(notification.timestamp).toLocaleString()}
+                    {formatNotificationDateTime(notification.timestamp)}
                   </p>
                   {notification.link && (
                     <span className="flex items-center gap-1 text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
@@ -228,12 +341,12 @@ const Page: React.FC = () => {
                     </span>
                   )}
                   <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase transition-colors">
-                    {notification.category}
+                    {getNotificationCategoryLabel(notification)}
                   </span>
                   {activeTab === 'trash' && notification.deletedAt && (
                     <span className="flex items-center gap-1 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30 transition-colors">
                       <RefreshCcw size={10} />
-                      {Math.max(0, 30 - Math.floor((Date.now() - notification.deletedAt) / (1000 * 60 * 60 * 24)))} dias p/ excluir
+                      {getTrashDaysLeft(notification.deletedAt, referenceTimeMs) ?? TRASH_RETENTION_DAYS} dias p/ excluir
                     </span>
                   )}
                 </div>
@@ -250,10 +363,16 @@ const Page: React.FC = () => {
                       <RefreshCcw size={18} />
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm('Excluir permanentemente?')) {
-                          permanentDeleteNotification(notification.id);
-                        }
+                      onClick={async () => {
+                        const confirmed = await confirmDialog({
+                          title: 'Excluir permanentemente?',
+                          description: 'Essa ação remove a notificação e não pode ser desfeita.',
+                          confirmText: 'Excluir',
+                          cancelText: 'Cancelar',
+                          type: 'danger',
+                        });
+                        if (!confirmed) return;
+                        permanentDeleteNotification(notification.id);
                       }}
                       className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                       title="Excluir permanentemente"
@@ -285,7 +404,7 @@ const Page: React.FC = () => {
             </div>
           ))
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 border-dashed text-slate-300 dark:text-slate-700 space-y-4 transition-colors">
+          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed text-slate-300 dark:text-slate-700 space-y-4 transition-colors">
             <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-full transition-colors">
               <Inbox size={48} className="opacity-50" />
             </div>

@@ -12,6 +12,8 @@
 /**
  * Fachada oficial dos serviços de questões e extracao por IA.
  */
-export type { PageExtractionResult } from './aiService';
+export type { GeneratedOriginalQuestion, OriginalQuestionModality, PageExtractionResult } from './aiService';
 export { aiService } from './aiService';
+export { isPlatformOriginalQuestion, isQuestionCanceled, readQuestionBooleanFlag } from './questionFlags';
 export { questionService } from './questionService';
+export type { QuestionEditorialFeedbackKind, QuestionEditorialFeedbackSnapshot, QuestionEditorialFeedbackValue } from './questionService';

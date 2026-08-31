@@ -10,26 +10,29 @@
 */
 
 import { describe, expect, it } from 'vitest';
+import type { SystemSettings } from '@types';
 import { resolveSystemFeatureFlag } from '../moduleFlags';
+
+const asSystemSettingsPatch = (settings: Record<string, unknown>) => settings as Partial<SystemSettings>;
 
 describe('resolveSystemFeatureFlag', () => {
   it('prioritizes nested feature flags when present', () => {
-    expect(resolveSystemFeatureFlag({
+    expect(resolveSystemFeatureFlag(asSystemSettingsPatch({
       features: {
         annotatedLawsEnabled: false,
       },
       annotatedLawsEnabled: true,
-    } as any, 'annotatedLawsEnabled')).toBe(false);
+    }), 'annotatedLawsEnabled')).toBe(false);
   });
 
   it('falls back to flat aliases when nested feature flags are absent', () => {
-    expect(resolveSystemFeatureFlag({
+    expect(resolveSystemFeatureFlag(asSystemSettingsPatch({
       flashcardsEnabled: false,
-    } as any, 'flashcardsEnabled')).toBe(false);
+    }), 'flashcardsEnabled')).toBe(false);
   });
 
   it('keeps fallback when value is not defined in any payload shape', () => {
-    expect(resolveSystemFeatureFlag({} as any, 'rankingsEnabled', true)).toBe(true);
-    expect(resolveSystemFeatureFlag({} as any, 'rankingsEnabled', false)).toBe(false);
+    expect(resolveSystemFeatureFlag(asSystemSettingsPatch({}), 'rankingsEnabled', true)).toBe(true);
+    expect(resolveSystemFeatureFlag(asSystemSettingsPatch({}), 'rankingsEnabled', false)).toBe(false);
   });
 });

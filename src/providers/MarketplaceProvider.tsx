@@ -9,15 +9,19 @@
 *
 */
 
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { Material, Transaction } from '@types';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import type { Material, QuestaoComentario, Transaction } from '@types';
 import { useAuth } from './AuthProvider';
-import { useData } from './DataProvider';
 import { useToast } from './ToastProvider';
 import { readApiErrorMessage } from '@services/api';
 import { marketplaceService } from '@services/marketplace';
 import { reputationService } from '@services/auth';
 import { commentService } from '@services/comments';
+import { notificationService } from '@services/notifications';
+import { clientLog } from '@services/monitoring/clientLog';
+import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 
 interface MarketplaceContextType {
   materials: Material[];
@@ -33,7 +37,7 @@ interface MarketplaceContextType {
     reason?: string,
     evidenceUrl?: string,
   ) => Promise<void>;
-  addMaterialComment: (materialId: string, text: string, parentId?: string) => Promise<any>;
+  addMaterialComment: (materialId: string, text: string, parentId?: string) => Promise<QuestaoComentario | null>;
   likeMaterialComment: (materialId: string, commentId: string) => Promise<void>;
   requestRefund: (transactionId: string, reason: string) => void;
   fetchUserTransactions: () => void;
@@ -71,6 +75,27 @@ const mapTransactionById = (
 ));
 
 const ADMIN_TRANSACTION_LIST_LIMIT = 100;
+const MATERIAL_ROUTE_PREFIXES = [
+  '/marketplace',
+  '/material',
+  '/read',
+  '/partner-dashboard',
+  '/admin/marketplace',
+  '/admin/finance',
+] as const;
+const TRANSACTION_ROUTE_PREFIXES = [
+  '/profile',
+  '/checkout',
+  '/marketplace',
+  '/partner-dashboard',
+  '/admin/finance',
+  '/admin/support/refunds',
+  '/admin/marketplace',
+] as const;
+
+const routeMatchesAnyPrefix = (pathname: string, prefixes: readonly string[]) => (
+  prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+);
 
 /**
  * Identifica papeis que podem auditar transacoes globais no painel.
@@ -80,6 +105,13 @@ const isPrivilegedTransactionViewer = (
   user?: { role?: string; isAdmin?: boolean } | null,
 ): boolean => Boolean(user?.isAdmin || user?.role === 'admin' || user?.role === 'staff');
 
+type TransactionMergeFields = Transaction & {
+  internalId?: string | number;
+  providerTransactionId?: string | number;
+  providerInvoiceId?: string | number;
+  timestamp?: string | number;
+};
+
 /**
  * Mescla consultas complementares de transacoes sem duplicar registros.
  * @since 1.0.0
@@ -88,7 +120,7 @@ const mergeTransactionsById = (transactionGroups: Transaction[][]): Transaction[
   const merged = new Map<string, Transaction>();
 
   transactionGroups.flat().forEach((transaction, index) => {
-    const transactionLike = transaction as any;
+    const transactionLike = transaction as TransactionMergeFields;
     const key = String(
       transactionLike.id
       || transactionLike.internalId
@@ -101,7 +133,7 @@ const mergeTransactionsById = (transactionGroups: Transaction[][]): Transaction[
   });
 
   return Array.from(merged.values()).sort((left, right) => (
-    Number((right as any).timestamp || 0) - Number((left as any).timestamp || 0)
+    Number((right as TransactionMergeFields).timestamp || 0) - Number((left as TransactionMergeFields).timestamp || 0)
   ));
 };
 
@@ -112,14 +144,47 @@ const mergeTransactionsById = (transactionGroups: Transaction[][]): Transaction[
  * @since 1.0.0
  */
 export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const pathname = usePathname() || '/';
   const [materials, setMaterials] = useState<Material[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoadingMaterials, setIsLoadingMaterials] = useState(true);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const { currentUser, isLoading: authLoading, purchaseMaterial: authPurchase, removeMaterialAccess } = useAuth();
-  const { sendNotification, users, updateUserStatus } = useData();
+  const currentUserId = currentUser?.id ?? null;
+  const currentUserRole = currentUser?.role ?? null;
+  const currentUserIsAdmin = Boolean(currentUser?.isAdmin);
+  const canViewAllTransactions = isPrivilegedTransactionViewer({
+    role: currentUserRole ?? undefined,
+    isAdmin: currentUserIsAdmin,
+  });
   const { addToast } = useToast();
+  const users = useAdminDataStore((store) => store.users);
+  const { updateUserStatus, ensureUsersLoaded } = useAdminDataActions();
+  const shouldLoadMaterials = routeMatchesAnyPrefix(pathname, MATERIAL_ROUTE_PREFIXES);
+  const shouldLoadTransactions = routeMatchesAnyPrefix(pathname, TRANSACTION_ROUTE_PREFIXES);
+
+  const sendNotification = useCallback((
+    userId: string,
+    title: string,
+    message: string,
+    type: 'success' | 'error' | 'info' | 'warning' = 'info',
+    category: 'system' | 'social' | 'marketplace' | 'moderation' = 'system',
+    actionUrl?: string,
+    evidenceUrl?: string,
+    eventKey?: string,
+  ) => {
+    void notificationService.sendNotification(
+      userId,
+      title,
+      message,
+      type,
+      category,
+      actionUrl,
+      evidenceUrl,
+      eventKey,
+    );
+  }, []);
 
   // Carrega os materiais uma unica vez para abastecer vitrine, dashboard do parceiro e administracao.
   const materialsInitRef = useRef(false);
@@ -128,8 +193,16 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * @since 1.0.0
    */
   useEffect(() => {
+    if (!shouldLoadMaterials) {
+      const frameId = window.requestAnimationFrame(() => {
+        setIsLoadingMaterials(false);
+      });
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
     if (materialsInitRef.current) return;
     materialsInitRef.current = true;
+    setIsLoadingMaterials(true);
 
     marketplaceService.listMaterials()
       .then((materialsList) => {
@@ -137,24 +210,24 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           setMaterials(materialsList);
         }
       })
-      .catch((error) => console.error('Failed to load materials:', error))
+      .catch((error) => clientLog.warn('Failed to load materials:', error))
       .finally(() => setIsLoadingMaterials(false));
-  }, []);
+  }, [shouldLoadMaterials]);
 
   /**
    * Recarrega as transações do usuário autenticado para biblioteca e histórico.
    * @since 1.0.0
    */
-  const fetchUserTransactions = async () => {
-    if (!currentUser) return;
+  const fetchUserTransactions = useCallback(async () => {
+    if (!currentUserId) return;
 
     try {
-      const txs = await marketplaceService.getUserTransactions(currentUser.id);
+      const txs = await marketplaceService.getUserTransactions(currentUserId);
       setTransactions(txs);
     } catch (error) {
-      console.error('Error fetching user transactions:', error);
+      clientLog.warn('Error fetching user transactions:', error);
     }
-  };
+  }, [currentUserId]);
 
   // Carrega transações do usuário atual ou todas as transações quando o admin abre o painel.
   /**
@@ -165,31 +238,56 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   useEffect(() => {
     if (authLoading) return;
 
-    if (currentUser) {
-      setIsLoadingTransactions(true);
-
-      if (isPrivilegedTransactionViewer(currentUser)) {
-        Promise.all([
-          marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
-          marketplaceService.listTransactions({
-            scope: 'all',
-            status: 'refund_requested',
-            limit: ADMIN_TRANSACTION_LIST_LIMIT,
-          }),
-        ])
-          .then(([latestTransactions, pendingRefundTransactions]) => {
-            setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
-          })
-          .catch((error) => console.error('Failed to load all transactions:', error))
-          .finally(() => setIsLoadingTransactions(false));
-      } else {
-        fetchUserTransactions().finally(() => setIsLoadingTransactions(false));
-      }
-    } else {
-      setTransactions([]);
-      setIsLoadingTransactions(false);
+    if (!shouldLoadTransactions) {
+      const frameId = window.requestAnimationFrame(() => {
+        setIsLoadingTransactions(false);
+      });
+      return () => window.cancelAnimationFrame(frameId);
     }
-  }, [authLoading, currentUser?.id, currentUser?.isAdmin, currentUser?.role]);
+
+    let isCancelled = false;
+    const frameId = window.requestAnimationFrame(() => {
+      if (currentUserId) {
+        setIsLoadingTransactions(true);
+
+        if (canViewAllTransactions) {
+          Promise.all([
+            marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
+            marketplaceService.listTransactions({
+              scope: 'all',
+              status: 'refund_requested',
+              limit: ADMIN_TRANSACTION_LIST_LIMIT,
+            }),
+          ])
+            .then(([latestTransactions, pendingRefundTransactions]) => {
+              if (!isCancelled) {
+                setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
+              }
+            })
+            .catch((error) => clientLog.warn('Failed to load all transactions:', error))
+            .finally(() => {
+              if (!isCancelled) {
+                setIsLoadingTransactions(false);
+              }
+            });
+        } else {
+          fetchUserTransactions().finally(() => {
+            if (!isCancelled) {
+              setIsLoadingTransactions(false);
+            }
+          });
+        }
+      } else {
+        setTransactions([]);
+        setIsLoadingTransactions(false);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [authLoading, canViewAllTransactions, currentUserId, fetchUserTransactions, shouldLoadTransactions]);
 
   /**
    * Efetiva a compra local de um material e dispara as notificações relacionadas.
@@ -215,6 +313,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         `Você adquiriu "${material.title}". Protocolo: ${String(transaction.id).substring(0, 12)}`,
         'success',
         'marketplace',
+        '/profile?tab=materials',
+        undefined,
+        'material_released',
       );
 
       if (material.authorId) {
@@ -224,6 +325,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           `Você vendeu "${material.title}" para ${currentUser.name}. Protocolo: ${String(transaction.id).substring(0, 12)}`,
           'success',
           'marketplace',
+          '/partner',
+          undefined,
+          'marketplace_sale',
         );
       }
 
@@ -233,13 +337,17 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         `Venda realizada: "${material.title}" por ${currentUser.name}.`,
         'success',
         'marketplace',
+        '/admin/finance/transactions',
+        undefined,
+        'marketplace_purchase_admin',
       );
 
       addToast('Compra realizada com sucesso! O material foi adicionado a sua biblioteca.', 'success');
-    } catch (error: any) {
-      console.error('Error purchasing material:', error);
-      if (error.message !== 'KYC_REQUIRED') {
-        addToast(`Erro na compra: ${error.message}`, 'error');
+    } catch (error: unknown) {
+      clientLog.error('Error purchasing material:', error);
+      const errorMessage = readApiErrorMessage(error, 'Erro ao processar compra.');
+      if (errorMessage !== 'KYC_REQUIRED') {
+        addToast(`Erro na compra: ${errorMessage}`, 'error');
       }
     }
   };
@@ -256,11 +364,20 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         status: 'refund_requested',
         refundReason: reason,
       })));
-      sendNotification(currentUser!.id, 'Reembolso Solicitado', 'Sua solicitacao esta em análise.', 'info', 'marketplace');
+      sendNotification(
+        currentUser!.id,
+        'Reembolso Solicitado',
+        'Sua solicitacao esta em análise.',
+        'info',
+        'marketplace',
+        '/profile?tab=billing',
+        undefined,
+        'refund_requested',
+      );
       addToast('Solicitacao de reembolso enviada.', 'success');
-    } catch (error: any) {
-      console.error('Refund request error:', error);
-      addToast(error.message || 'Erro ao processar solicitacao.', 'error');
+    } catch (error: unknown) {
+      clientLog.error('Refund request error:', error);
+      addToast(readApiErrorMessage(error, 'Erro ao processar solicitacao.'), 'error');
     }
   };
 
@@ -272,11 +389,20 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const createdMaterial = await marketplaceService.createMaterial(newMaterial);
       setMaterials((prev) => [createdMaterial, ...prev]);
-      sendNotification('admin', 'Novo Material', `Material "${newMaterial.title}" aguardando aprovação.`, 'info', 'marketplace');
+      sendNotification(
+        'admin',
+        'Novo Material',
+        `Material "${newMaterial.title}" aguardando aprovação.`,
+        'info',
+        'marketplace',
+        '/admin/marketplace/materials',
+        undefined,
+        'material_pending_admin',
+      );
       addToast('Material enviado para aprovação com sucesso!', 'success');
       return true;
     } catch (error) {
-      console.error('Error publishing material:', error);
+      clientLog.error('Error publishing material:', error);
       addToast('Erro ao publicar material. Verifique sua conexão.', 'error');
       return false;
     }
@@ -296,7 +422,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         },
       });
     } catch (error) {
-      console.error('Upload error:', error);
+      clientLog.error('Upload error:', error);
       addToast('Erro no upload do arquivo.', 'error');
       return null;
     } finally {
@@ -317,8 +443,8 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       })));
       addToast('Material atualizado com sucesso!', 'success');
       return true;
-    } catch (error: any) {
-      console.error('Update material error:', error);
+    } catch (error: unknown) {
+      clientLog.error('Update material error:', error);
       addToast(readApiErrorMessage(error, 'Erro ao atualizar material.'), 'error');
       return false;
     }
@@ -345,10 +471,14 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (material) {
         const action = status === 'approved' ? 'ignored' : 'resolved';
         const impact = reputationService.calculateImpact(action, 'author');
-        const author = users.find((user) => user.id === material.authorId);
+        let author = users.find((user) => user.id === material.authorId);
+        if (!author) {
+          await ensureUsersLoaded();
+          author = useAdminDataStore.getState().users.find((user) => user.id === material.authorId);
+        }
         if (author) {
           const newRep = reputationService.updateScore(author.reputation, impact);
-          updateUserStatus(author.id, {
+          await updateUserStatus(author.id, {
             reputation: newRep,
             status: reputationService.checkAccountStatus(newRep),
           });
@@ -357,7 +487,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       addToast('Moderação aplicada com sucesso!', 'success');
     } catch (error) {
-      console.error('Moderation error:', error);
+      clientLog.error('Moderation error:', error);
       addToast('Erro ao processar moderação.', 'error');
     }
   };
@@ -376,7 +506,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         removeMaterialAccess?.(transaction.materialId);
       }
 
-      if (isPrivilegedTransactionViewer(currentUser)) {
+      if (canViewAllTransactions) {
         const [latestTransactions, pendingRefundTransactions] = await Promise.all([
           marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
           marketplaceService.listTransactions({
@@ -386,8 +516,8 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }),
         ]);
         setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
-      } else if (currentUser?.id) {
-        const refreshedTransactions = await marketplaceService.getUserTransactions(currentUser.id);
+      } else if (currentUserId) {
+        const refreshedTransactions = await marketplaceService.getUserTransactions(currentUserId);
         setTransactions(refreshedTransactions);
       } else {
         setTransactions((prev) => mapTransactionById(prev, transactionId, (currentTransaction) => ({
@@ -403,7 +533,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         'success',
       );
     } catch (error) {
-      console.error('Resolve refund error:', error);
+      clientLog.error('Resolve refund error:', error);
       setTransactions(previousTransactions);
       addToast('Erro ao processar reembolso.', 'error');
     }
@@ -413,36 +543,46 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * Adiciona um comentário em um material e atualiza a arvore local.
    * @since 1.0.0
    */
-  const addMaterialComment = async (materialId: string, text: string, parentId?: string) => {
+  const addMaterialComment = async (materialId: string, text: string, parentId?: string): Promise<QuestaoComentario | null> => {
     if (!currentUser) return null;
 
     try {
-      const newComment = await commentService.addComment({
+      const result = await commentService.addComment({
         questionId: materialId,
         content: text,
         userId: currentUser.id,
         userName: currentUser.name,
+        userAvatar: currentUser.photoUrl,
+        userPlan: currentUser.planDisplayName || currentUser.plan,
+        userRole: currentUser.role,
         parentId,
         targetType: 'material',
       });
 
-      setMaterials((prev) => mapMaterialById(prev, materialId, (material) => {
-        if (parentId) {
+      if (result.comment) {
+        setMaterials((prev) => mapMaterialById(prev, materialId, (material) => {
+          if (parentId) {
+            return {
+              ...material,
+              comments: commentService.addReplyToComments(material.comments || [], parentId, result.comment),
+            };
+          }
+
           return {
             ...material,
-            comments: commentService.addReplyToComments(material.comments || [], parentId, newComment),
+            comments: [result.comment, ...(material.comments || [])],
           };
-        }
+        }));
+      }
 
-        return {
-          ...material,
-          comments: [newComment, ...(material.comments || [])],
-        };
-      }));
+      addToast(
+        result.message || (result.requiresModeration ? 'Comentário enviado para moderação.' : 'Comentário publicado com sucesso.'),
+        'success',
+      );
 
-      return newComment;
+      return result.comment ?? null;
     } catch (error) {
-      console.error('Failed to add comment:', error);
+      clientLog.error('Failed to add comment:', error);
       addToast('Erro ao adicionar comentário.', 'error');
       return null;
     }
@@ -458,7 +598,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       await commentService.likeComment(commentId, currentUser.id);
     } catch (error) {
-      console.error('Falha ao curtir comentário:', error);
+      clientLog.error('Falha ao curtir comentario:', error);
       return;
     }
 
@@ -477,6 +617,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           `${currentUser.name} curtiu seu comentário em "${material.title}".`,
           'success',
           'social',
+          undefined,
+          undefined,
+          'comment_like_received',
         );
       }
     }
@@ -492,7 +635,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       await commentService.deleteComment(commentId, currentUser.id);
     } catch (error) {
-      console.error('Falha ao deletar comentário no backend:', error);
+      clientLog.error('Falha ao deletar comentario no backend:', error);
       addToast('Erro ao deletar comentário.', 'error');
       return;
     }
@@ -516,7 +659,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setMaterials((prev) => prev.filter((material) => material.id !== id));
       addToast('Material removido com sucesso!', 'success');
     } catch (error) {
-      console.error('Delete material error:', error);
+      clientLog.error('Delete material error:', error);
       addToast('Erro ao remover material.', 'error');
     }
   };

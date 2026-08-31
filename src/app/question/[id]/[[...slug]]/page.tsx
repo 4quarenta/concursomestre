@@ -1,0 +1,130 @@
+﻿import type { Metadata } from 'next';
+import type { Question } from '@types';
+import { ENDPOINTS } from '@services/api/endpoints';
+import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
+import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from '@services/questions/questionPublication';
+import { buildAbsoluteUrl, buildQuestionPath } from '@services/seo/slug';
+import QuestionPublicPage from '../../QuestionPublicPage';
+import {
+  buildQuestionKeywords,
+  buildQuestionMetaDescription,
+  buildQuestionMetaTitle,
+} from '../../questionSeo';
+
+type QuestionPageParams = {
+  id?: string;
+  slug?: string[];
+};
+
+const readEnv = (key: string) => {
+  const value = process.env[key];
+  return typeof value === 'string' ? value.trim() : '';
+};
+
+const getApiBaseUrl = () => resolveAbsoluteApiBaseUrl(
+  readEnv('NEXT_PUBLIC_API_BASE_URL') || readEnv('API_BASE_URL') || undefined,
+);
+
+const readEnvelopeData = (payload: unknown): unknown => {
+  if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data')) {
+    return (payload as { data?: unknown }).data;
+  }
+
+  return payload;
+};
+
+const readQuestionPayload = (payload: unknown): Question | null => {
+  const data = readEnvelopeData(payload);
+  const dataRecord = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+  const question = Array.isArray(data)
+    ? data[0]
+    : dataRecord.question || dataRecord.row || dataRecord.item || data;
+
+  if (!question || typeof question !== 'object') {
+    return null;
+  }
+
+  return withQuestionPublicationAliases(question);
+};
+
+const fetchQuestionForPage = async (id?: string): Promise<Question | null> => {
+  const questionId = String(id || '').trim();
+  if (!questionId) return null;
+
+  try {
+    const url = new URL(ENDPOINTS.questions.show, getApiBaseUrl());
+    url.searchParams.set('id', questionId);
+
+    const response = await fetch(url.toString(), {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const question = readQuestionPayload(await response.json());
+    if (!question || !isQuestionPubliclyVisible(question)) {
+      return null;
+    }
+
+    return question;
+  } catch {
+    return null;
+  }
+};
+
+export async function generateMetadata({ params }: { params: Promise<QuestionPageParams> }): Promise<Metadata> {
+  const resolvedParams = await params;
+  const question = await fetchQuestionForPage(resolvedParams.id);
+
+  if (!question) {
+    return {
+      title: 'Questão de concurso',
+      description: 'Resolva questões de concursos por banca, órgão, cargo, ano e assunto no ConcursoMestre.',
+      robots: {
+        index: false,
+        follow: true,
+      },
+    };
+  }
+
+  const title = buildQuestionMetaTitle(question);
+  const description = buildQuestionMetaDescription(question);
+  const canonicalPath = buildQuestionPath(question);
+  const canonicalUrl = buildAbsoluteUrl(canonicalPath);
+
+  return {
+    title,
+    description,
+    keywords: buildQuestionKeywords(question),
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title,
+      description,
+      type: 'article',
+      url: canonicalUrl,
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
+    robots: {
+      index: true,
+      follow: true,
+    },
+  };
+}
+
+export default async function Page({ params }: { params: Promise<QuestionPageParams> }) {
+  const resolvedParams = await params;
+  const initialQuestion = await fetchQuestionForPage(resolvedParams.id);
+
+  return <QuestionPublicPage initialQuestion={initialQuestion} />;
+}

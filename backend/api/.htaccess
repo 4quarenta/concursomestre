@@ -1,0 +1,127 @@
+# Enable Rewrite Engine
+RewriteEngine On
+RewriteBase /questao-pro-backend/api/
+
+# Pass Authorization header to PHP
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+
+
+# General Rule: Map camelCase flattened URLs to folder/file structure
+# Example: rankingsList -> rankings/list.php
+
+# MAPPINGS
+
+# Rankings
+RewriteRule ^rankingsList$ rankings/list.php [L,QSA]
+RewriteRule ^rankingsCreate$ rankings/create.php [L,QSA]
+RewriteRule ^rankingsJoin$ rankings/join.php [L,QSA]
+RewriteRule ^rankingsUpdate$ rankings/update.php [L,QSA]
+
+# Bank Analysis
+RewriteRule ^bankAnalysisAnalyze$ bank-analysis/analyze.php [L,QSA]
+RewriteRule ^bankAnalysisPatterns$ bank-analysis/patterns.php [L,QSA]
+
+# Marketplace / Materials
+RewriteRule ^materialsList$ materials/list.php [L,QSA]
+RewriteRule ^materialsCreate$ materials/create.php [L,QSA]
+RewriteRule ^materialsRate$ materials/rate.php [L,QSA]
+RewriteRule ^materialsModerate$ materials/moderate.php [L]
+RewriteRule ^materialsUpdate$ materials/update.php [L,QSA]
+RewriteRule ^materialsDelete$ materials/delete.php [L,QSA]
+RewriteRule ^marketplaceList$ marketplace/list.php [L,QSA]
+RewriteRule ^marketplacePurchase$ marketplace/purchase.php [L,QSA]
+RewriteRule ^marketplaceCreate$ marketplace/create.php [L,QSA]
+RewriteRule ^marketplaceUserTransactions$ marketplace/user-transactions.php [L,QSA]
+RewriteRule ^marketplaceProcessTransaction$ marketplace/process-transaction.php [L,QSA]
+RewriteRule ^marketplaceRefund$ marketplace/request-refund.php [L,QSA]
+RewriteRule ^marketplaceMyMaterials$ marketplace/my-materials.php [L,QSA]
+
+# Simulations
+RewriteRule ^simulationsList$ simulations/list.php [L,QSA]
+RewriteRule ^simulationsCreate$ simulations/create.php [L,QSA]
+RewriteRule ^simulationsSubmit$ simulations/submit.php [L,QSA]
+
+# Notifications
+RewriteRule ^notificationsList$ notifications/list.php [L,QSA]
+RewriteRule ^notificationsMarkRead$ notifications/mark-read.php [L,QSA]
+RewriteRule ^notificationsMarkAllRead$ notifications/mark-all-read.php [L,QSA]
+RewriteRule ^notificationsDelete$ notifications/delete.php [L,QSA]
+RewriteRule ^notificationsSend$ notifications/send.php [L,QSA]
+RewriteRule ^notificationsClearAll$ notifications/clear_all.php [L,QSA]
+RewriteRule ^notificationsRestore$ notifications/restore.php [L,QSA]
+RewriteRule ^notificationsPermanentDelete$ notifications/permanent-delete.php [L,QSA]
+RewriteRule ^notificationsClear$ notifications/clear.php [L,QSA]
+
+# Comments
+RewriteRule ^commentsList$ comments/list.php [L,QSA]
+RewriteRule ^commentsAdd$ comments/handle.php [L,QSA]
+RewriteRule ^commentsLike$ comments/handle.php [L,QSA]
+RewriteRule ^commentsReport$ comments/handle.php [L,QSA]
+RewriteRule ^commentsHandle$ comments/handle.php [L,QSA]
+
+# Questions
+RewriteRule ^questionsList$ questions/list.php [L,QSA]
+RewriteRule ^questionsCreate$ questions/create.php [L,QSA]
+RewriteRule ^questionsExamImport$ questions/exam_import.php [L,QSA]
+RewriteRule ^questionsBulkImport$ questions/bulk_import.php [L,QSA]
+RewriteRule ^questionsUpdate$ questions/update.php [L,QSA]
+RewriteRule ^questionsDelete$ questions/delete.php [L,QSA]
+RewriteRule ^questionsAnswer$ questions/answer.php [L,QSA]
+RewriteRule ^questionsSave$ questions/save.php [L,QSA]
+RewriteRule ^questionsStats$ questions/get_stats.php [L,QSA]
+RewriteRule ^questionsHistory$ questions/history.php [L,QSA]
+RewriteRule ^questionsFilter$ questions/filter.php [L,QSA]
+RewriteRule ^questionsToggleSave$ questions/toggle_save.php [L,QSA]
+RewriteRule ^questionsResetAnswers$ questions/reset_answers.php [L,QSA]
+
+# Auth
+RewriteRule ^authLogin$ auth/login.php [L,QSA]
+RewriteRule ^authRegister$ auth/register.php [L,QSA]
+RewriteRule ^authLogout$ auth/logout.php [L,QSA]
+RewriteRule ^authRefresh$ auth/refresh.php [L,QSA]
+RewriteRule ^authUser$ auth/me.php [L,QSA]
+
+# Users
+RewriteRule ^usersList$ users/list.php [L,QSA]
+RewriteRule ^usersProfile$ users/profile.php [L,QSA]
+RewriteRule ^usersUpdate$ users/update.php [L,QSA]
+RewriteRule ^usersComments$ users/comments.php [L,QSA]
+
+# Filters
+RewriteRule ^filtersList$ filters/list.php [L,QSA]
+RewriteRule ^filtersSave$ filters/save.php [L,QSA]
+RewriteRule ^filtersDelete$ filters/delete.php [L,QSA]
+
+# Reports
+RewriteRule ^reportsCreate$ reports/handle.php [L,QSA]
+RewriteRule ^reportsList$ reports/list.php [L,QSA]
+
+# Transactions
+RewriteRule ^transactionsList$ transactions/list.php [L,QSA]
+
+# Statistics
+RewriteRule ^statistics/user(?:/(.+))?$ statistics/user.php [L,QSA]
+RewriteRule ^statistics/study-session$ statistics/study-session.php [L,QSA]
+RewriteRule ^statistics/platform$ statistics/platform.php [L,QSA]
+RewriteRule ^statistics/question(?:/(.+))?$ statistics/question.php [L,QSA]
+RewriteRule ^statistics/xray$ statistics/xray.php [L,QSA]
+RewriteRule ^statistics/banca-info$ statistics/banca_info.php [L,QSA]
+
+# Settings (Fixing 404)
+# Maps api/settings to api/settings.php
+RewriteRule ^settings$ settings.php [L,QSA]
+RewriteRule ^settingsUpdate$ admin/settings.php [L,QSA]
+RewriteRule ^adminSettings$ admin/settings.php [L,QSA]
+
+# AI
+RewriteRule ^aiGenerate$ ai/generate.php [L,QSA]
+
+# Payments
+RewriteRule ^paymentsTokenizeCard$ payments/tokenize_card.php [L,QSA]
+
+# Upload
+RewriteRule ^upload$ upload.php [L,QSA]
+

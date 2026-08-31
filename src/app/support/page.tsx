@@ -1,4 +1,6 @@
-﻿/*
+'use client';
+
+/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -10,6 +12,7 @@
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Bug,
   CheckCircle2,
@@ -21,10 +24,13 @@ import {
   MessageSquare,
   Send,
   Shield,
+  ThumbsDown,
+  ThumbsUp,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
-import { useData } from '@providers/DataProvider';
+import { useSearchParams } from 'next/navigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import {
   PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -33,7 +39,8 @@ import {
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import { readApiErrorMessage } from '@services/api';
-import { supportService, type SupportReply, type SupportThread } from '@services/support/supportService';
+import { clientLog } from '@services/monitoring/clientLog';
+import { supportService, type PublicSuggestion, type PublicSuggestionVote, type SupportThread } from '@services/support/supportService';
 
 type SupportTab = 'bug' | 'feedback' | 'info' | 'donation';
 
@@ -55,9 +62,9 @@ const SUPPORT_CATEGORIES: SupportCategoryConfig[] = [
     id: 'bug',
     title: 'Reportar problema',
     eyebrow: 'Estabilidade',
-    description: 'Use esta area para erros de navegacao, travamentos, telas em branco e comportamentos inesperados.',
-    placeholder: 'Conte o que aconteceu, quais passos voce fez e o que esperava ver.',
-    subjectPlaceholder: 'Ex: erro ao salvar questao',
+    description: 'Use esta área para erros de acesso, páginas que não carregam, lentidão, travamentos, falha no login, pagamento ou recursos indisponíveis.',
+    placeholder: 'Conte o que aconteceu, quais passos você fez e o que esperava ver.',
+    subjectPlaceholder: 'Ex: erro ao salvar questão',
     serviceType: 'bug',
     icon: Bug,
     accentClassName: 'text-rose-600 dark:text-rose-300',
@@ -65,11 +72,11 @@ const SUPPORT_CATEGORIES: SupportCategoryConfig[] = [
   },
   {
     id: 'feedback',
-    title: 'Enviar sugestao',
+    title: 'Enviar sugestão',
     eyebrow: 'Produto',
-    description: 'Use esta area para ideias de melhoria, ajustes de UX e novas funcionalidades para a plataforma.',
-    placeholder: 'Descreva a melhoria, o beneficio para o estudo e o contexto em que ela faria diferenca.',
-    subjectPlaceholder: 'Ex: melhorar filtros de questoes',
+    description: 'Use esta área para novas funcionalidades, melhorias de interface, experiência de estudo, IA, aplicativo e desempenho.',
+    placeholder: 'Descreva a melhoria, o benefício para o estudo e o contexto em que ela faria diferença.',
+    subjectPlaceholder: 'Ex: melhorar filtros de questões',
     serviceType: 'suggestion',
     icon: MessageSquare,
     accentClassName: 'text-indigo-600 dark:text-indigo-300',
@@ -79,9 +86,9 @@ const SUPPORT_CATEGORIES: SupportCategoryConfig[] = [
     id: 'info',
     title: 'Solicitar ajuda',
     eyebrow: 'Suporte',
-    description: 'Use esta area para duvidas operacionais sobre assinatura, acesso, materiais e fluxos da conta.',
-    placeholder: 'Explique a duvida com o maximo de contexto para acelerar a resposta.',
-    subjectPlaceholder: 'Ex: duvida sobre renovacao',
+    description: 'Use esta área para dúvidas sobre conta, assinatura, cobranças, renovação, reembolso, materiais e uso da plataforma.',
+    placeholder: 'Explique a dúvida com o máximo de contexto para acelerar a resposta.',
+    subjectPlaceholder: 'Ex: dúvida sobre renovação',
     serviceType: 'support',
     icon: Info,
     accentClassName: 'text-sky-600 dark:text-sky-300',
@@ -91,7 +98,7 @@ const SUPPORT_CATEGORIES: SupportCategoryConfig[] = [
     id: 'donation',
     title: 'Apoiar a plataforma',
     eyebrow: 'Comunidade',
-    description: 'Aqui ficam as formas de contribuir financeiramente com a manutencao e a evolucao do ConcursoMestre.',
+    description: 'Aqui ficam as formas de contribuir financeiramente com a manutenção e a evolução do ConcursoMestre.',
     placeholder: '',
     subjectPlaceholder: '',
     serviceType: null,
@@ -116,16 +123,56 @@ const STATUS_META: Record<SupportThread['status'], { label: string; className: s
   },
 };
 
+const mergeSupportThreads = (officialThreads: SupportThread[], localThreads: SupportThread[]) => {
+  const officialIds = new Set(officialThreads.map((thread) => thread.id));
+  const localOnlyThreads = localThreads.filter((thread) => !officialIds.has(thread.id));
+
+  return [...localOnlyThreads, ...officialThreads].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+};
+
+const applyPublicSuggestionVote = (
+  suggestion: PublicSuggestion,
+  nextVote: PublicSuggestionVote | null,
+): PublicSuggestion => {
+  let likes = Number(suggestion.likes || 0);
+  let dislikes = Number(suggestion.dislikes || 0);
+  const previousVote = suggestion.user_vote || null;
+
+  if (previousVote === 'like') {
+    likes = Math.max(0, likes - 1);
+  }
+  if (previousVote === 'dislike') {
+    dislikes = Math.max(0, dislikes - 1);
+  }
+  if (nextVote === 'like') {
+    likes += 1;
+  }
+  if (nextVote === 'dislike') {
+    dislikes += 1;
+  }
+
+  return {
+    ...suggestion,
+    likes,
+    dislikes,
+    score: likes - dislikes,
+    user_vote: nextVote,
+  };
+};
+
 /**
  * Organiza a central de suporte em um workspace mais claro.
- * A pagina separa categoria, formulario, historico e doacao sem misturar prioridades.
+ * A página separa categoria, formulário, histórico e doação sem misturar prioridades.
  *
  * @since 1.0.0
  */
 const Support: React.FC = () => {
-  const { currentUser, isLoading } = useAuth();
+  const { currentUser, isLoading, updateUser } = useAuth();
   const { addToast } = useToast();
-  const { systemSettings } = useData();
+  const searchParams = useSearchParams();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const pixKey = systemSettings?.pixKey || 'pix@concursomestre.com.br';
   const [activeTab, setActiveTab] = useState<SupportTab>('bug');
   const [composeStep, setComposeStep] = useState<1 | 2>(1);
@@ -133,11 +180,9 @@ const Support: React.FC = () => {
   const [details, setDetails] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedbackHistory, setFeedbackHistory] = useState<SupportThread[]>([]);
-  const [expandedFeedbackId, setExpandedFeedbackId] = useState<number | null>(null);
-  const [replies, setReplies] = useState<Record<number, SupportReply[]>>({});
-  const [loadingReplies, setLoadingReplies] = useState<number | null>(null);
-  const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
-  const [sendingReplyId, setSendingReplyId] = useState<number | null>(null);
+  const [publicSuggestions, setPublicSuggestions] = useState<PublicSuggestion[]>([]);
+  const [isLoadingPublicSuggestions, setIsLoadingPublicSuggestions] = useState(false);
+  const [votingSuggestionId, setVotingSuggestionId] = useState<number | null>(null);
 
   const activeCategory = useMemo(
     () => SUPPORT_CATEGORIES.find((category) => category.id === activeTab) ?? SUPPORT_CATEGORIES[0],
@@ -145,19 +190,37 @@ const Support: React.FC = () => {
   );
   const canSubmitThread = Boolean(currentUser && !isLoading && activeCategory.serviceType);
 
+  useEffect(() => {
+    const requestedCategory = String(searchParams?.get('category') || searchParams?.get('tab') || '').trim();
+    if (!['bug', 'feedback', 'info', 'donation'].includes(requestedCategory)) {
+      return;
+    }
+
+    const categoryFrame = window.requestAnimationFrame(() => {
+      setActiveTab(requestedCategory as SupportTab);
+      if (requestedCategory !== 'donation') {
+        setComposeStep(2);
+      }
+    });
+
+    return () => window.cancelAnimationFrame(categoryFrame);
+  }, [searchParams]);
+
   /**
-   * Busca o historico oficial do usuario ao trocar de contexto.
+   * Busca o histórico oficial do usuário ao trocar de contexto.
    *
    * @since 1.0.0
    */
-  const fetchHistory = React.useCallback(async (notifyOnError = true) => {
+  const fetchHistory = React.useCallback(async (notifyOnError = true, preserveLocalThreads = false) => {
     try {
       const threads = await supportService.listThreads();
-      setFeedbackHistory(threads);
+      setFeedbackHistory((currentThreads) => (
+        preserveLocalThreads ? mergeSupportThreads(threads, currentThreads) : threads
+      ));
     } catch (error) {
-      console.error('Error fetching feedback history', error);
+      clientLog.warn('Error fetching feedback history', error);
       if (notifyOnError) {
-        addToast(readApiErrorMessage(error, 'Nao foi possivel carregar seu historico agora.'), 'error');
+        addToast(readApiErrorMessage(error, 'Não foi possível carregar seu histórico agora.'), 'error');
       }
     }
   }, [addToast]);
@@ -178,11 +241,50 @@ const Support: React.FC = () => {
     });
   }, []);
 
-  useEffect(() => {
-    if (activeTab !== 'donation') {
-      void fetchHistory(false);
+  const fetchPublicSuggestions = React.useCallback(async (notifyOnError = false) => {
+    if (!currentUser) {
+      setPublicSuggestions([]);
+      return;
     }
+
+    setIsLoadingPublicSuggestions(true);
+
+    try {
+      const suggestions = await supportService.listPublicSuggestions();
+      setPublicSuggestions(suggestions);
+    } catch (error) {
+      clientLog.warn('Error fetching public suggestions', error);
+      if (notifyOnError) {
+        addToast(readApiErrorMessage(error, 'Nao foi possivel carregar as sugestoes da comunidade.'), 'error');
+      }
+    } finally {
+      setIsLoadingPublicSuggestions(false);
+    }
+  }, [addToast, currentUser]);
+
+  useEffect(() => {
+    if (activeTab === 'donation') {
+      return;
+    }
+
+    const historyTimer = window.setTimeout(() => {
+      void fetchHistory(false);
+    }, 0);
+
+    return () => window.clearTimeout(historyTimer);
   }, [activeTab, fetchHistory]);
+
+  useEffect(() => {
+    if (activeTab !== 'feedback') {
+      return;
+    }
+
+    const suggestionsTimer = window.setTimeout(() => {
+      void fetchPublicSuggestions(false);
+    }, 0);
+
+    return () => window.clearTimeout(suggestionsTimer);
+  }, [activeTab, fetchPublicSuggestions]);
 
   /**
    * Envia um novo chamado do usuario.
@@ -193,7 +295,7 @@ const Support: React.FC = () => {
     event.preventDefault();
 
     if (!canSubmitThread || !activeCategory.serviceType) {
-      addToast('Sua sessao ainda nao esta pronta para enviar.', 'warning');
+      addToast('Sua sessão ainda não está pronta para enviar.', 'warning');
       return;
     }
 
@@ -218,113 +320,75 @@ const Support: React.FC = () => {
         reason: normalizedSubject,
         details: normalizedDetails,
       });
-
-      if (createdThread.id > 0) {
-        appendCreatedThread({
-          id: createdThread.id,
-          type: createdThread.type || activeCategory.serviceType,
-          reason: normalizedSubject,
-          details: normalizedDetails,
-          status: 'new',
-          created_at: new Date().toISOString(),
-          reply_count: 0,
+      if (createdThread.newXp !== undefined || createdThread.newLevel !== undefined) {
+        await updateUser({
+          ...(createdThread.newXp !== undefined ? { xp: createdThread.newXp } : {}),
+          ...(createdThread.newLevel !== undefined ? { level: createdThread.newLevel } : {}),
         });
       }
 
-      addToast('Solicitacao enviada com sucesso.', 'success');
+      const createdThreadId = Number(createdThread.id || 0);
+      const localThreadId = createdThreadId > 0 ? createdThreadId : -Date.now();
+      appendCreatedThread({
+        id: localThreadId,
+        type: createdThread.type || activeCategory.serviceType,
+        reason: normalizedSubject,
+        details: normalizedDetails,
+        status: 'new',
+        created_at: new Date().toISOString(),
+        reply_count: 0,
+      });
+
+      addToast(
+        createdThread.xpGain
+          ? `Solicitacao enviada com sucesso. +${createdThread.xpGain} XP.`
+          : 'Solicitacao enviada com sucesso.',
+        'success',
+      );
       setSubject('');
       setDetails('');
       setComposeStep(1);
-      void fetchHistory();
+      void fetchHistory(true, true);
+      if (activeCategory.serviceType === 'suggestion') {
+        void fetchPublicSuggestions(false);
+      }
     } catch (error) {
-      console.error('Error creating support thread', error);
-      addToast(readApiErrorMessage(error, 'Nao foi possivel enviar sua solicitacao.'), 'error');
+      clientLog.warn('Error creating support thread', error);
+      addToast(readApiErrorMessage(error, 'Não foi possível enviar sua solicitação.'), 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  /**
-   * Abre ou fecha uma conversa e carrega as respostas oficiais sob demanda.
-   *
-   * @since 1.0.0
-   */
-  const toggleFeedback = async (threadId: number) => {
-    if (expandedFeedbackId === threadId) {
-      setExpandedFeedbackId(null);
+  const handlePublicSuggestionVote = async (suggestion: PublicSuggestion, value: PublicSuggestionVote) => {
+    if (!currentUser) {
+      addToast('Faca login para votar em sugestoes.', 'warning');
       return;
     }
 
-    setExpandedFeedbackId(threadId);
-
-    if (replies[threadId]) {
-      return;
-    }
-
-    setLoadingReplies(threadId);
+    const nextVote = suggestion.user_vote === value ? null : value;
+    setVotingSuggestionId(suggestion.id);
+    setPublicSuggestions((currentSuggestions) => currentSuggestions.map((item) => (
+      item.id === suggestion.id ? applyPublicSuggestionVote(item, nextVote) : item
+    )));
 
     try {
-      const threadReplies = await supportService.listReplies(threadId);
-      setReplies((currentReplies) => ({ ...currentReplies, [threadId]: threadReplies }));
+      const updatedSuggestion = await supportService.votePublicSuggestion(suggestion.id, nextVote);
+      if (updatedSuggestion) {
+        setPublicSuggestions((currentSuggestions) => currentSuggestions.map((item) => (
+          item.id === updatedSuggestion.id ? updatedSuggestion : item
+        )));
+      }
     } catch (error) {
-      console.error('Error fetching support replies', error);
-      addToast(readApiErrorMessage(error, 'Nao foi possivel carregar a conversa completa.'), 'error');
+      clientLog.warn('Error voting public suggestion', error);
+      setPublicSuggestions((currentSuggestions) => currentSuggestions.map((item) => (
+        item.id === suggestion.id ? suggestion : item
+      )));
+      addToast(readApiErrorMessage(error, 'Nao foi possivel registrar seu voto.'), 'error');
     } finally {
-      setLoadingReplies(null);
+      setVotingSuggestionId(null);
     }
   };
-
-  /**
-   * Envia uma resposta do usuario em uma thread ja aberta.
-   *
-   * @since 1.0.0
-   */
-  const handleReplySubmit = async (thread: SupportThread) => {
-    const draft = (replyDrafts[thread.id] || '').trim();
-
-    if (!draft) {
-      addToast('Escreva uma resposta antes de enviar.', 'warning');
-      return;
-    }
-
-    setSendingReplyId(thread.id);
-
-    try {
-      await supportService.replyToThread(thread.id, thread.type, draft);
-      const threadReplies = await supportService.listReplies(thread.id);
-      setReplies((currentReplies) => ({ ...currentReplies, [thread.id]: threadReplies }));
-      setReplyDrafts((currentDrafts) => ({ ...currentDrafts, [thread.id]: '' }));
-      await fetchHistory(false);
-      addToast('Resposta enviada com sucesso.', 'success');
-    } catch (error) {
-      console.error('Error sending support reply', error);
-      addToast(readApiErrorMessage(error, 'Nao foi possivel enviar sua resposta.'), 'error');
-    } finally {
-      setSendingReplyId(null);
-    }
-  };
-
-  const filteredHistory = useMemo(() => {
-    if (activeTab === 'donation') {
-      return feedbackHistory;
-    }
-
-    return feedbackHistory.filter((thread) => {
-      if (activeTab === 'bug') {
-        return thread.type === 'bug';
-      }
-
-      if (activeTab === 'feedback') {
-        return thread.type === 'suggestion' || thread.type === 'other';
-      }
-
-      if (activeTab === 'info') {
-        return thread.type === 'support';
-      }
-
-      return true;
-    });
-  }, [activeTab, feedbackHistory]);
 
   const supportStats = useMemo(() => ({
     total: feedbackHistory.length,
@@ -359,7 +423,7 @@ const Support: React.FC = () => {
     }
 
     return [
-      'A chave PIX fica disponivel logo abaixo.',
+      'A chave PIX fica disponível logo abaixo.',
       'As contribuicoes ajudam servidor, manutencao e melhorias.',
       'Use apenas os canais oficiais mostrados nesta tela.',
     ];
@@ -384,7 +448,7 @@ const Support: React.FC = () => {
                   Central de Suporte e Feedback
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-slate-300">
-                  Um lugar unico para reportar problemas, enviar sugestoes, pedir ajuda e acompanhar as respostas do time.
+                  Um lugar unico para reportar problemas, enviar sugestoes, pedir ajuda e iniciar conversas com o time.
                 </p>
               </div>
             </div>
@@ -418,7 +482,7 @@ const Support: React.FC = () => {
                 {[
                   'Escolha a categoria certa para evitar retrabalho.',
                   'Descreva o contexto com clareza.',
-                  'Acompanhe as respostas no historico logo abaixo.',
+                  'Acompanhe as respostas em Meu Perfil.',
                 ].map((step, index) => (
                   <div key={step} className="flex items-start gap-3">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-black text-white dark:bg-indigo-500">
@@ -462,7 +526,7 @@ const Support: React.FC = () => {
                     </div>
                   </div>
                   <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-600 dark:text-slate-300">
-                    O projeto continua evoluindo com manutencao constante, servidor, desenvolvimento e revisao de conteudo. Se a plataforma te ajuda de verdade, esta e a area oficial para contribuir.
+                    O projeto continua evoluindo com manutenção constante, servidor, desenvolvimento e revisão de conteúdo. Se a plataforma te ajuda de verdade, esta é a área oficial para contribuir.
                   </p>
                   <div className="mt-6 grid gap-3 md:grid-cols-2">
                     <div className="rounded-[1.6rem] border border-emerald-200 bg-white p-5 dark:border-emerald-500/20 dark:bg-slate-900">
@@ -587,7 +651,7 @@ const Support: React.FC = () => {
                   </div>
                   {!canSubmitThread ? (
                     <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium leading-5 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                      Aguarde a sessao carregar para enviar.
+                      Aguarde a sessão carregar para enviar.
                     </p>
                   ) : null}
                   {composeStep === 1 ? (
@@ -610,7 +674,7 @@ const Support: React.FC = () => {
                         className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
                       >
                         <Send size={16} />
-                        {isSubmitting ? 'Enviando...' : 'Enviar solicitacao'}
+                        {isSubmitting ? 'Enviando...' : 'Enviar solicitação'}
                       </button>
                       <button
                         type="button"
@@ -626,80 +690,102 @@ const Support: React.FC = () => {
             </section>
           )}
 
-          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 md:p-8`}>
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Historico</p>
-                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Suas conversas recentes</h2>
-                <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>Acompanhe chamados abertos, respostas do suporte e novas interacoes no mesmo lugar.</p>
-              </div>
-              <div className="inline-flex rounded-2xl bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:bg-slate-800 dark:text-slate-400">{filteredHistory.length} item(ns)</div>
-            </div>
-            <div className="mt-6 space-y-4">
-              {filteredHistory.length === 0 ? (
-                <div className="rounded-[1.8rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center dark:border-slate-700 dark:bg-slate-950">
-                  <p className="text-base font-black text-slate-900 dark:text-slate-100">Nenhuma conversa nesta categoria ainda.</p>
-                  <p className="mt-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">Assim que voce enviar algo, o historico vai aparecer aqui com status e respostas.</p>
+          {activeTab === 'feedback' ? (
+            <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 md:p-8`}>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Comunidade</p>
+                  <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Sugestoes dos alunos</h2>
+                  <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>Vote nas melhorias que tambem fariam diferenca no seu estudo.</p>
                 </div>
-              ) : filteredHistory.map((thread) => {
-                const statusMeta = STATUS_META[thread.status];
-                const isExpanded = expandedFeedbackId === thread.id;
-                const threadReplies = replies[thread.id] || [];
-                return (
-                  <div key={thread.id} className="overflow-hidden rounded-[1.8rem] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                    <button type="button" onClick={() => void toggleFeedback(thread.id)} className="w-full px-5 py-5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70">
+                <button
+                  type="button"
+                  onClick={() => void fetchPublicSuggestions(true)}
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+                >
+                  Atualizar
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                {isLoadingPublicSuggestions ? (
+                  <div className="rounded-[1.8rem] border border-slate-200 bg-slate-50 px-6 py-8 text-center text-sm font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+                    Carregando sugestoes...
+                  </div>
+                ) : publicSuggestions.length === 0 ? (
+                  <div className="rounded-[1.8rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-8 text-center dark:border-slate-700 dark:bg-slate-950">
+                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">Nenhuma sugestao publicada ainda.</p>
+                    <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Quando alunos enviarem sugestoes, elas aparecerao aqui para votacao.</p>
+                  </div>
+                ) : publicSuggestions.map((suggestion) => {
+                  const isVoting = votingSuggestionId === suggestion.id;
+                  const liked = suggestion.user_vote === 'like';
+                  const disliked = suggestion.user_vote === 'dislike';
+
+                  return (
+                    <article key={suggestion.id} className="rounded-[1.8rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusMeta.className}`}>{statusMeta.label}</span>
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{new Date(thread.created_at).toLocaleDateString()}</span>
+                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${STATUS_META[suggestion.status]?.className || STATUS_META.new.className}`}>
+                              {STATUS_META[suggestion.status]?.label || 'Aberto'}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                              {suggestion.created_at ? new Date(suggestion.created_at).toLocaleDateString() : 'Sem data'}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                              {suggestion.user_name || 'Aluno'}
+                            </span>
                           </div>
-                          <p className="mt-3 text-base font-black text-slate-900 dark:text-slate-100">{thread.reason || 'Sem resumo'}</p>
-                          <p className="mt-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">{thread.details}</p>
+                          <h3 className="mt-3 text-base font-black text-slate-900 dark:text-slate-100">{suggestion.reason || 'Sugestao sem titulo'}</h3>
+                          <p className="mt-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">{suggestion.details}</p>
                         </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Respostas</p>
-                          <p className="mt-1 text-xl font-black text-slate-900 dark:text-slate-100">{thread.reply_count || 0}</p>
-                          <p className="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-300">{isExpanded ? 'Ocultar conversa' : 'Abrir conversa'}</p>
+                        <div className="flex shrink-0 items-center gap-2 lg:flex-col lg:items-stretch">
+                          <button
+                            type="button"
+                            onClick={() => void handlePublicSuggestionVote(suggestion, 'like')}
+                            disabled={isVoting}
+                            aria-pressed={liked}
+                            className={`inline-flex h-10 min-w-20 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black transition-all disabled:cursor-wait disabled:opacity-70 ${liked ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'border-slate-200 text-slate-500 hover:border-emerald-200 hover:text-emerald-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-emerald-700 dark:hover:text-emerald-300'}`}
+                          >
+                            <ThumbsUp size={15} />
+                            {suggestion.likes}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handlePublicSuggestionVote(suggestion, 'dislike')}
+                            disabled={isVoting}
+                            aria-pressed={disliked}
+                            className={`inline-flex h-10 min-w-20 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black transition-all disabled:cursor-wait disabled:opacity-70 ${disliked ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-500/10 dark:text-red-300' : 'border-slate-200 text-slate-500 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-red-700 dark:hover:text-red-300'}`}
+                          >
+                            <ThumbsDown size={15} />
+                            {suggestion.dislikes}
+                          </button>
                         </div>
                       </div>
-                    </button>
-                    {isExpanded ? (
-                      <div className="border-t border-slate-100 bg-slate-50 px-5 py-5 dark:border-slate-800 dark:bg-slate-950/70">
-                        <div className="space-y-3">
-                          {loadingReplies === thread.id ? (
-                            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Carregando respostas...</div>
-                          ) : threadReplies.length > 0 ? threadReplies.map((reply) => {
-                            const isUserReply = reply.user_id === currentUser?.id;
-                            return (
-                              <div key={reply.id} className={`rounded-2xl border px-4 py-4 ${isUserReply ? 'ml-6 border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900' : 'mr-6 border-indigo-200 bg-indigo-50/80 dark:border-indigo-500/20 dark:bg-indigo-500/10'}`}>
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">{isUserReply ? 'Voce' : 'Suporte'}</p>
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{new Date(reply.created_at).toLocaleString()}</p>
-                                </div>
-                                <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{reply.details}</p>
-                              </div>
-                            );
-                          }) : (
-                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-center text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">Nenhuma resposta ainda.</div>
-                          )}
-                        </div>
-                        <div className="mt-4 rounded-[1.6rem] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Responder conversa</p>
-                          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                            <input type="text" value={replyDrafts[thread.id] || ''} onChange={(event) => setReplyDrafts((currentDrafts) => ({ ...currentDrafts, [thread.id]: event.target.value }))} placeholder="Escreva sua resposta..." className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 dark:focus:bg-slate-900" />
-                            <button type="button" onClick={() => void handleReplySubmit(thread)} disabled={sendingReplyId === thread.id || !(replyDrafts[thread.id] || '').trim()} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500">
-                              <Send size={15} />
-                              {sendingReplyId === thread.id ? 'Enviando...' : 'Responder'}
-                            </button>
-                          </div>
-                          <p className="mt-3 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Quando houver resposta do suporte pelo painel administrativo, a conversa continua aqui e o historico fica centralizado.</p>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 md:p-8`}>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Histórico</p>
+                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Conversas no perfil</h2>
+                <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
+                  O acompanhamento de chamados e respostas agora fica centralizado em Meu Perfil.
+                </p>
+              </div>
+              <Link
+                href="/profile/support-history"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 text-xs font-black uppercase tracking-[0.16em] text-white transition-all hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+              >
+                <MessageSquare size={15} />
+                Abrir histórico
+              </Link>
             </div>
           </section>
         </div>

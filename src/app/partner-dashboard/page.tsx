@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -10,51 +12,160 @@
 */
 
 import React, { useState, useMemo } from 'react';
-import { Material, Transaction, Subject, BankAccount } from '../../types';
+import Image from 'next/image';
+import { Material, BankAccount, Notification } from '../../types';
 import {
-  BarChart3, DollarSign, UploadCloud, FileText, CheckCircle2, XCircle,
-  Clock, AlertTriangle, ShieldCheck, TrendingUp, Package, Wallet, Eye,
-  Landmark, CreditCard, Lock, Edit, X, ChevronRight, ArrowUpRight,
-  Users, Activity, Download, LayoutDashboard, ShoppingBag, ListChecks, Store,
+  BarChart3, DollarSign, UploadCloud, FileText, CheckCircle2,
+  AlertTriangle, ShieldCheck, TrendingUp, Package, Wallet, Eye,
+  Landmark, Lock, Edit, X,
+  Activity, Download, LayoutDashboard, ShoppingBag, ListChecks, Store,
   Sun, Moon, Bell, HelpCircle, ArrowRight, MessageSquare, Send, CornerDownRight, Star
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, BarChart, Bar, Cell
+  AreaChart, Area, XAxis, YAxis, Tooltip,
+  CartesianGrid
 } from 'recharts';
+import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import { useToast } from '@providers/ToastProvider';
 import ProgressBar from '../../components/shared/ui/ProgressBar';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { useTheme } from '@providers/ThemeProvider';
 import { DashboardSidebar } from '../../components/shared/layout/DashboardSidebar';
 import Footer from '../../components/shared/layout/Footer';
 import { getAssetUrl } from '@services/api';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { clientLog } from '@services/monitoring/clientLog';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
+
+type FinanceSubTab = 'extrato' | 'pagamentos' | 'saque';
+
+type PartnerBankForm = BankAccount & {
+  pixKeyType: string;
+  pixKey: string;
+  birthDate: string;
+  zipCode: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  isCnpj: boolean;
+  cnpj: string;
+  companyName: string;
+  docPhotoUrl: string;
+};
+
+type PartnerNotificationDropdownProps = {
+  notifications: Notification[];
+  unreadCount: number;
+  onNotificationClick: (notification: Notification) => void;
+  onViewAll: () => void;
+};
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const createBankFormDefaults = (holderName = ''): PartnerBankForm => ({
+  bankCode: '',
+  bankName: '',
+  agency: '',
+  account: '',
+  accountDigit: '',
+  holderName,
+  holderDocument: '',
+  type: 'checking',
+  pixKeyType: '',
+  pixKey: '',
+  birthDate: '',
+  zipCode: '',
+  street: '',
+  number: '',
+  complement: '',
+  neighborhood: '',
+  city: '',
+  state: '',
+  isCnpj: false,
+  cnpj: '',
+  companyName: '',
+  docPhotoUrl: '',
+});
+
+const PartnerNotificationDropdown: React.FC<PartnerNotificationDropdownProps> = ({
+  notifications,
+  unreadCount,
+  onNotificationClick,
+  onViewAll,
+}) => {
+  const visibleNotifications = notifications.filter((notification) => !notification.deletedAt);
+
+  return (
+    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in text-left">
+      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificacoes</h3>
+        {unreadCount > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span>}
+      </div>
+      <div className="max-h-80 overflow-y-auto no-scrollbar">
+        {visibleNotifications.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificacao.</div>
+        ) : (
+          visibleNotifications.slice(0, 5).map((notification) => (
+            <div key={notification.id} onClick={() => onNotificationClick(notification)} className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!notification.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
+              <div className="flex gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className={`text-xs font-bold ${notification.type === 'error' ? 'text-red-600 dark:text-red-400' : notification.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{notification.title}</span>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{new Date(notification.timestamp).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{notification.message}</p>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+        <button
+          onClick={onViewAll}
+          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
+        >
+          Ver Todas <ArrowRight size={12} />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const PartnerDashboard: React.FC = () => {
   const { materials, transactions, publishMaterial, updateMaterial, uploadFile, uploadProgress, addMaterialComment } = useMarketplace();
   const { currentUser, becomePartner, updateUser } = useAuth();
-  const { systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const notifications = useNotificationsStore((state) => state.notifications);
+  const { markNotificationAsRead } = useNotificationsActions();
   const { addToast } = useToast();
-  const navigate = useNavigate();
+  const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'upload' | 'finance' | 'reviews'>('overview');
-  const [financeSubTab, setFinanceSubTab] = useState<'extrato' | 'pagamentos' | 'saque'>('extrato');
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [financeSubTab, setFinanceSubTab] = useState<FinanceSubTab>('extrato');
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
-  const [isHovering, setIsHovering] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ materialId: string, commentId: string } | null>(null);
   const [replyText, setReplyText] = useState('');
   const [isReplying, setIsReplying] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [referenceTimeMs, setReferenceTimeMs] = useState(0);
 
   React.useEffect(() => {
-    if (!currentUser) {
-      setShowAuthModal(true);
-    }
-  }, [currentUser]);
+    const frame = window.requestAnimationFrame(() => {
+      setReferenceTimeMs(Date.now());
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const [newMaterial, setNewMaterial] = useState<Partial<Material>>({
     title: '', description: '', price: 0, type: 'PDF',
@@ -66,24 +177,14 @@ const PartnerDashboard: React.FC = () => {
   const [fullFile, setFullFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
-  // Valores padrão para todos os campos do formulário de saque
-  const bankFormDefaults = {
-    bankCode: '', bankName: '', agency: '', account: '', accountDigit: '',
-    holderName: currentUser?.name || '', holderDocument: '',
-    type: 'checking',
-    pixKeyType: '', pixKey: '',
-    birthDate: '',
-    zipCode: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '',
-    isCnpj: false, cnpj: '', companyName: '',
-    docPhotoUrl: '',
-  };
+  const bankFormDefaults = useMemo(
+    () => createBankFormDefaults(currentUser?.name || ''),
+    [currentUser?.name]
+  );
 
   // Mescla defaults com dados já salvos: campos existentes preenchem o form,
   // novos campos recebem o valor padrão
-  const [bankForm, setBankForm] = useState<any>({
-    ...bankFormDefaults,
-    ...(currentUser?.bankAccount || {}),
-  });
+  const [bankForm, setBankForm] = useState<PartnerBankForm>(() => createBankFormDefaults());
   const [docFile, setDocFile] = useState<File | null>(null);
   const [savingBank, setSavingBank] = useState(false);
   const [bankAgeError, setBankAgeError] = useState('');
@@ -91,23 +192,25 @@ const PartnerDashboard: React.FC = () => {
   // Sincroniza o formulário quando o usuário for carregado/atualizado do contexto
   React.useEffect(() => {
     if (currentUser?.bankAccount) {
-      setBankForm((prev: any) => ({
-        ...bankFormDefaults,
-        ...currentUser.bankAccount,
-        // mantém qualquer alteração local ainda não salva se o objeto for o mesmo
-        ...Object.fromEntries(
-          Object.entries(prev).filter(([k]) => !(k in bankFormDefaults))
-        ),
-      }));
+      const frame = window.requestAnimationFrame(() => {
+        setBankForm((prev) => ({
+          ...bankFormDefaults,
+          ...currentUser.bankAccount,
+          // Mantem qualquer alteracao local ainda nao salva se o objeto for o mesmo.
+          ...Object.fromEntries(
+            Object.entries(prev).filter(([k]) => !(k in bankFormDefaults))
+          ),
+        }));
+      });
+
+      return () => window.cancelAnimationFrame(frame);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.bankAccount]);
+  }, [bankFormDefaults, currentUser?.bankAccount]);
 
   const myMaterials = useMemo(() => materials.filter(m => m.authorId === currentUser?.id), [materials, currentUser?.id]);
   const myTransactions = useMemo(() => transactions.filter(t => t.sellerId === currentUser?.id), [transactions, currentUser?.id]);
 
-  const now = Date.now();
-  const msPerDay = 1000 * 60 * 60 * 24;
+  const now = referenceTimeMs;
 
   const { availableBalance, heldBalance, totalRevenue } = useMemo(() => {
     return myTransactions.reduce((acc, curr) => {
@@ -115,7 +218,7 @@ const PartnerDashboard: React.FC = () => {
       if (curr.status === 'refunded') return acc;
 
       const netAmount = curr.amount - curr.platformFee;
-      const daysSincePurchase = (now - curr.timestamp) / msPerDay;
+      const daysSincePurchase = now ? (now - curr.timestamp) / MS_PER_DAY : 0;
       const isRefundUnderReview = curr.status === 'refund_requested';
 
       acc.totalRevenue += netAmount;
@@ -152,7 +255,7 @@ const PartnerDashboard: React.FC = () => {
     myTransactions.forEach(t => {
       // Ignorar reembolsados no gráfico
       if (t.status === 'refunded') return;
-      const diasAtras = (Date.now() - t.timestamp) / (1000 * 60 * 60 * 24);
+      const diasAtras = now ? (now - t.timestamp) / MS_PER_DAY : 0;
       const sem = data.find(s => diasAtras <= s.startDay && diasAtras >= s.endDay);
       if (sem) {
         sem.vendas += 1;
@@ -161,13 +264,13 @@ const PartnerDashboard: React.FC = () => {
     });
 
     return data;
-  }, [myTransactions]);
+  }, [myTransactions, now]);
 
   if (!currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 transition-colors">
         <AuthModal
-          isOpen={showAuthModal || !currentUser}
+          isOpen={!currentUser}
           onClose={() => { }}
           title="Acesso de Parceiros"
           description="Para acessar o painel de vendas, gerenciar produtos e financeiro, faça login na sua conta."
@@ -176,8 +279,6 @@ const PartnerDashboard: React.FC = () => {
       </div>
     );
   }
-
-  const [isPublishing, setIsPublishing] = useState(false);
 
   // ... (keeping methods below for briefly)
   // handlePublishSubmit, handleEditSubmit, handleSaveBank, isAlreadyPartner logic follows...
@@ -201,6 +302,7 @@ const PartnerDashboard: React.FC = () => {
     try {
       let fileUrl = '';
       let coverUrl = '';
+      let uploadedPageCount = newMaterial.pageCount || 0;
 
       if (fullFile) {
         const uploadResult = await uploadFile(fullFile, newMaterial.pdfPassword);
@@ -209,7 +311,7 @@ const PartnerDashboard: React.FC = () => {
           return; // Stop if upload fails
         }
         fileUrl = uploadResult.url;
-        newMaterial.pageCount = uploadResult.pageCount || 0;
+        uploadedPageCount = uploadResult.pageCount || 0;
       }
 
       // Upload Cover if exists
@@ -227,13 +329,13 @@ const PartnerDashboard: React.FC = () => {
         authorId: currentUser.id!,
         authorName: currentUser.name,
         price: Number(newMaterial.price),
-        type: newMaterial.type as any,
-        subject: newMaterial.subject as any,
+        type: newMaterial.type || 'PDF',
+        subject: newMaterial.subject || newMaterial.subjectText || '',
         subjectId: newMaterial.subjectId,
         subjectText: newMaterial.subjectText,
         topicId: newMaterial.topicId,
         topic: newMaterial.topic,
-        pageCount: newMaterial.pageCount,
+        pageCount: uploadedPageCount,
         year: newMaterial.year,
         examTarget: newMaterial.examTarget,
         previewUrl: newMaterial.previewUrl,
@@ -264,7 +366,7 @@ const PartnerDashboard: React.FC = () => {
         // Note: Toast is handled in context
       }
     } catch (err) {
-      console.error(err);
+      clientLog.warn('Partner material submit failed:', err);
       addToast("Ocorreu um erro inesperado ao enviar o formulário.", "error");
     } finally {
       setIsPublishing(false);
@@ -316,7 +418,7 @@ const PartnerDashboard: React.FC = () => {
         setCoverFile(null);
       }
     } catch (err) {
-      console.error(err);
+      clientLog.warn('Partner material update failed:', err);
       addToast("Erro ao atualizar material.", "error");
     } finally {
       setIsPublishing(false);
@@ -351,8 +453,9 @@ const PartnerDashboard: React.FC = () => {
       const dataToSave = { ...bankForm, docPhotoUrl: docUrl };
       updateUser({ bankAccount: dataToSave });
       addToast('Dados bancários salvos! Seus recebimentos futuros cairão nesta conta.', 'success');
-    } catch (err) {
+    } catch {
       addToast('Erro ao salvar dados bancários.', 'error');
+    } finally {
       setSavingBank(false);
     }
   };
@@ -367,7 +470,7 @@ const PartnerDashboard: React.FC = () => {
         setReplyingTo(null);
         setReplyText("");
       }
-    } catch (error) {
+    } catch {
       addToast("Erro ao enviar resposta.", "error");
     } finally {
       setIsReplying(false);
@@ -418,55 +521,21 @@ const PartnerDashboard: React.FC = () => {
     );
   }
 
-  const { theme, toggleTheme } = useTheme();
-  const { notifications, markNotificationAsRead } = useData();
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
   const unreadCount = (notifications || []).filter(n => !n.isRead && !n.deletedAt).length;
 
   const userInitials = currentUser?.name?.charAt(0) || 'A';
   const userLevel = currentUser?.level || 0;
 
-  const handleNotificationClick = (n: any) => {
+  const handleNotificationClick = (n: Notification) => {
     markNotificationAsRead(n.id);
-    if (n.link) navigate(n.link);
+    if (n.link) router.push(n.link);
     setIsNotifOpen(false);
   };
 
-  const NotificationDropdown = () => (
-    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in text-left">
-      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
-        {unreadCount > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span>}
-      </div>
-      <div className="max-h-80 overflow-y-auto no-scrollbar">
-        {notifications.filter(n => !n.deletedAt).length === 0 ? (
-          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
-        ) : (
-          notifications.filter(n => !n.deletedAt).slice(0, 5).map(n => (
-            <div key={n.id} onClick={() => handleNotificationClick(n)} className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!n.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
-              <div className="flex gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className={`text-xs font-bold ${n.type === 'error' ? 'text-red-600 dark:text-red-400' : n.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{n.title}</span>
-                    <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{new Date(n.timestamp).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{n.message}</p>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
-        <button
-          onClick={() => { setIsNotifOpen(false); navigate('/notifications'); }}
-          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
-        >
-          Ver Todas <ArrowRight size={12} />
-        </button>
-      </div>
-    </div>
-  );
+  const handleViewAllNotifications = () => {
+    setIsNotifOpen(false);
+    router.push('/notifications');
+  };
 
   return (
     <div className="flex h-[100dvh] max-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden transition-colors duration-300">
@@ -490,7 +559,7 @@ const PartnerDashboard: React.FC = () => {
             </button>
 
             <button
-              onClick={() => navigate('/support')}
+              onClick={() => router.push('/support')}
               className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all"
               title="Suporte e Feedback"
             >
@@ -510,7 +579,12 @@ const PartnerDashboard: React.FC = () => {
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
                     <div className="absolute right-0 top-full mt-2">
-                      <NotificationDropdown />
+                      <PartnerNotificationDropdown
+                        notifications={notifications}
+                        unreadCount={unreadCount}
+                        onNotificationClick={handleNotificationClick}
+                        onViewAll={handleViewAllNotifications}
+                      />
                     </div>
                   </>
                 )}
@@ -589,7 +663,7 @@ const PartnerDashboard: React.FC = () => {
                       gradient: 'from-purple-500/20 to-pink-500/20'
                     },
                   ].map((stat, i) => (
-                    <div key={i} className="group relative bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-indigo-500/5 transition-all duration-500 overflow-hidden">
+                    <div key={i} className="group relative bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-indigo-500/5 transition-all duration-500 overflow-hidden">
                       <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${stat.gradient} blur-3xl -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700 opacity-50`}></div>
                       <div className="relative z-10 flex flex-col h-full justify-between gap-4">
                         <div className={`w-12 h-12 rounded-2xl bg-${stat.color}-50 dark:bg-${stat.color}-900/20 flex items-center justify-center text-${stat.color}-600 dark:text-${stat.color}-400`}>
@@ -618,15 +692,15 @@ const PartnerDashboard: React.FC = () => {
                 {/* Chart and Recent Sales */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Chart */}
-                  <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                  <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <div className="flex justify-between items-center mb-10">
                       <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3">
                         <BarChart3 size={18} className="text-indigo-600 dark:text-indigo-400" />
                         Desempenho Mensal
                       </h3>
                     </div>
-                    <div className="w-full h-[320px]">
-                      <ResponsiveContainer width="100%" height="100%">
+                    <div className="w-full h-[320px] min-w-0">
+                      <StableResponsiveContainer height={320}>
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                           <defs>
                             <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">
@@ -668,12 +742,12 @@ const PartnerDashboard: React.FC = () => {
                             fill="url(#colorReceita)"
                           />
                         </AreaChart>
-                      </ResponsiveContainer>
+                      </StableResponsiveContainer>
                     </div>
                   </div>
 
                   {/* Recent Activity */}
-                  <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full">
+                  <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full">
                     <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-8">
                       <Activity size={18} className="text-indigo-600 dark:text-indigo-400" />
                       Últimas Vendas
@@ -724,7 +798,7 @@ const PartnerDashboard: React.FC = () => {
                 </div>
 
                 {/* Recent Reviews and Questions */}
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                   <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-8">
                     <HelpCircle size={18} className="text-indigo-600 dark:text-indigo-400" />
                     Avaliações e Perguntas Recentes
@@ -788,7 +862,7 @@ const PartnerDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm p-8">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8">
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {(() => {
                       const allComments = myMaterials.flatMap(m =>
@@ -804,7 +878,7 @@ const PartnerDashboard: React.FC = () => {
                         );
                       }
 
-                      return allComments.map((c, idx) => (
+                      return allComments.map((c) => (
                         <div key={c.id} className="py-8 first:pt-4 last:pb-4">
                           <div className="flex items-start gap-4">
                             <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold shrink-0">
@@ -933,7 +1007,7 @@ const PartnerDashboard: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
                       <tr>
@@ -1060,7 +1134,7 @@ const PartnerDashboard: React.FC = () => {
                           rows={5}
                           value={newMaterial.description}
                           onChange={e => setNewMaterial({ ...newMaterial, description: e.target.value })}
-                          className="w-full p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-[2.5rem] text-sm font-medium text-slate-600 dark:text-slate-300 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none"
+                          className="w-full p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-medium text-slate-600 dark:text-slate-300 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none"
                           placeholder="Descreva o que seu material aborda, para quem é indicado e seus diferenciais..."
                         />
                       </div>
@@ -1161,7 +1235,7 @@ const PartnerDashboard: React.FC = () => {
                           <FileText size={16} className="text-indigo-500" />
                           Arquivo Principal (PDF)
                         </label>
-                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group">
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group">
                           <input type="file" accept=".pdf" className="hidden" onChange={e => setFullFile(e.target.files?.[0] || null)} />
                           <div className="flex flex-col items-center gap-2">
                             <UploadCloud size={20} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
@@ -1178,12 +1252,15 @@ const PartnerDashboard: React.FC = () => {
                           <Eye size={16} className="text-indigo-500" />
                           Imagem de Capa (JPG/PNG)
                         </label>
-                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
                           <input type="file" accept="image/*" className="hidden" onChange={e => setCoverFile(e.target.files?.[0] || null)} />
                           {coverFile ? (
-                            <img
+                            <Image
                               src={URL.createObjectURL(coverFile)}
                               alt="Preview"
+                              fill
+                              unoptimized
+                              sizes="320px"
                               className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity"
                             />
                           ) : null}
@@ -1277,7 +1354,7 @@ const PartnerDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="bg-white/5 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 flex flex-col justify-between gap-6">
+                    <div className="bg-white/5 backdrop-blur-xl p-8 rounded-2xl border border-white/10 flex flex-col justify-between gap-6">
                       <div>
                         <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-4">Conta de Recebimento</p>
                         <div className="flex items-center gap-4 mb-2">
@@ -1293,7 +1370,10 @@ const PartnerDashboard: React.FC = () => {
                         </div>
                       </div>
                       <button
-                        onClick={() => { setBankForm(currentUser.bankAccount || bankForm); setFinanceSubTab('saque'); }}
+                        onClick={() => {
+                          setBankForm({ ...bankFormDefaults, ...(currentUser.bankAccount || {}) });
+                          setFinanceSubTab('saque');
+                        }}
                         className="w-full py-3 bg-white text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-50 transition-colors"
                       >
                         Alterar Dados Bancários
@@ -1312,7 +1392,7 @@ const PartnerDashboard: React.FC = () => {
                   ].map(tab => (
                     <button
                       key={tab.key}
-                      onClick={() => setFinanceSubTab(tab.key as any)}
+                      onClick={() => setFinanceSubTab(tab.key as FinanceSubTab)}
                       className={`flex items-center gap-2 px-5 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all -mb-px ${financeSubTab === tab.key
                         ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                         : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
@@ -1607,7 +1687,7 @@ const PartnerDashboard: React.FC = () => {
                           </div>
                           <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Conta</label>
-                            <select value={bankForm.type} onChange={e => setBankForm({ ...bankForm, type: e.target.value })}
+                            <select value={bankForm.type} onChange={e => setBankForm({ ...bankForm, type: e.target.value as BankAccount['type'] })}
                               className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all">
                               <option value="checking">Corrente</option>
                               <option value="savings">Poupança</option>
@@ -1647,7 +1727,7 @@ const PartnerDashboard: React.FC = () => {
                       <div className="space-y-3">
                         <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Documento de Identidade</p>
                         <p className="text-[9px] text-slate-400 font-bold">Envie uma foto do RG, CNH ou Passaporte (frente e verso em uma única imagem). Necessário para autorizar os saques.</p>
-                        <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all group">
+                        <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all group">
                           <input type="file" accept="image/*,application/pdf" className="hidden"
                             onChange={e => setDocFile(e.target.files?.[0] || null)} />
                           {docFile ? (
@@ -1721,7 +1801,7 @@ const PartnerDashboard: React.FC = () => {
                   </div>
 
                   {editingMaterial.status === 'approved' && (
-                    <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-[2rem] border border-amber-100 dark:border-amber-900/40 flex gap-4">
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-2xl border border-amber-100 dark:border-amber-900/40 flex gap-4">
                       <AlertTriangle className="text-amber-600 flex-shrink-0" size={20} />
                       <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 leading-relaxed uppercase">
                         Este material já foi aprovado. Alterações críticas (como o arquivo PDF) exigem uma nova solicitação caso queira mudar o conteúdo principal.
@@ -1842,12 +1922,15 @@ const PartnerDashboard: React.FC = () => {
                         <Eye size={16} className="text-indigo-500" />
                         Alterar Imagem de Capa
                       </label>
-                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
                         <input type="file" accept="image/*" className="hidden" onChange={e => setCoverFile(e.target.files?.[0] || null)} />
                         {(coverFile || editingMaterial.coverUrl) ? (
-                          <img
+                          <Image
                             src={coverFile ? URL.createObjectURL(coverFile) : getAssetUrl(editingMaterial.coverUrl)}
                             alt="Preview"
+                            fill
+                            unoptimized
+                            sizes="320px"
                             className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity"
                           />
                         ) : null}

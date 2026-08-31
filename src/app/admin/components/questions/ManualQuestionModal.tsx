@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -14,11 +14,34 @@ import { createPortal } from 'react-dom';
 import { AlertCircle, AlertTriangle, Check, Image as ImageIcon, Loader2, Plus, Save, Search, Sparkles, Trash2, X } from 'lucide-react';
 import type { Prova, Question } from '@types';
 import { SmartTagSelector } from '../database/SmartTagSelector';
-import { buildProvaSearchText, formatProvaLabel, normalizeProvaRecord } from '../exams/examBankUtils';
+import { buildProvaSearchText, formatProvaLabel } from '../exams/examBankUtils';
+import {
+  getQuestionOptionLabel,
+  getRoleDisplayLabel,
+  createQuestionImageAsset,
+  isQuestionTaxonomyRecord,
+  insertQuestionImageMarker,
+  removeQuestionImageMarker,
+  type ManualQuestionItem,
+  type ManualQuestionPatch,
+  type ManualQuestionSetter,
+  type ManualQuestionState,
+  mergeProvaSources,
+} from './questionEditorShared';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_MODAL_FOOTER_CLASS,
+  ADMIN_MODAL_HEADER_CLASS,
+  ADMIN_MODAL_PANEL_CLASS,
+  ADMIN_MUTED_SURFACE_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_TEXTAREA_CLASS,
+} from '../shared/adminPanelStyles';
 
 interface ManualQuestionModalProps {
-  manualQ: any;
-  setManualQ: React.Dispatch<React.SetStateAction<any>>;
+  manualQ: ManualQuestionState;
+  setManualQ: ManualQuestionSetter;
   editingQuestion: Question | null;
   editingExtractedIndex: number | null;
   existingAgencies: string[];
@@ -34,51 +57,9 @@ interface ManualQuestionModalProps {
   onGenerateDetailedComment: () => void;
   onClose: () => void;
   onSave: () => void;
+  presentation?: 'modal' | 'page';
+  reportContext?: React.ReactNode;
 }
-
-/**
- * Normaliza o nome exibido de um cargo no modal manual.
- * Evita falhas quando a origem chega nula ou com formatos legados.
- *
- * @since 1.0.0
- */
-const getRoleDisplayLabel = (value: any) => {
-  if (typeof value === 'string' || typeof value === 'number') {
-    return String(value).trim();
-  }
-
-  if (value && typeof value === 'object') {
-    return String(
-      value.descricao
-      ?? value['descrição']
-      ?? value.name
-      ?? value.nome
-      ?? value.sigla
-      ?? '',
-    ).trim();
-  }
-
-  return '';
-};
-
-const mergeProvaSources = (primary: Prova[], fallback: any[]) => {
-  const provaMap = new Map<string, Prova>();
-
-  [...primary, ...fallback]
-    .map((item) => normalizeProvaRecord(item))
-    .filter(Boolean)
-    .forEach((item) => {
-      provaMap.set(String((item as Prova).id), item as Prova);
-    });
-
-  return Array.from(provaMap.values()).sort((left, right) => {
-    if (right.ano !== left.ano) {
-      return right.ano - left.ano;
-    }
-
-    return left.nome.localeCompare(right.nome, 'pt-BR');
-  });
-};
 
 const ManualQuestionModal = ({
   manualQ,
@@ -98,9 +79,11 @@ const ManualQuestionModal = ({
   onGenerateDetailedComment,
   onClose,
   onSave,
+  presentation = 'modal',
+  reportContext,
 }: ManualQuestionModalProps) => {
-  const updateManualQ = (patch: Record<string, unknown>) => {
-    setManualQ((prev: any) => ({ ...prev, ...patch }));
+  const updateManualQ = (patch: ManualQuestionPatch) => {
+    setManualQ((prev) => ({ ...prev, ...patch }));
   };
 
   const [provaSearch, setProvaSearch] = React.useState('');
@@ -110,7 +93,7 @@ const ManualQuestionModal = ({
   const MID_LEVEL_LABEL = 'Médio';
 
   const handleTypeChange = (newType: string) => {
-    setManualQ((prev: any) => {
+    setManualQ((prev) => {
       const currentItems = prev.itens || [];
       const newItens =
         newType === 'Certo/Errado'
@@ -137,13 +120,86 @@ const ManualQuestionModal = ({
     });
   };
 
-  const handleImageSelected = (file: File | null) => {
+  const handleImageSelected = (file: File | null, usage: 'statement' | 'support' = 'statement') => {
     if (!file) return;
-    updateManualQ({ imageUrl: URL.createObjectURL(file) });
+
+    const url = URL.createObjectURL(file);
+    setManualQ((prev) => {
+      const asset = createQuestionImageAsset({
+        assets: prev.assets,
+        usage,
+        url,
+        alt: usage === 'support' ? 'Imagem do texto de apoio.' : 'Imagem do enunciado.',
+      });
+      const assets = [...(prev.assets || []), asset];
+
+      return {
+        ...prev,
+        assets,
+        imageUrl: usage === 'statement' && !prev.imageUrl ? url : prev.imageUrl,
+        enunciado: usage === 'statement' ? insertQuestionImageMarker(prev.enunciado || '', asset.id) : prev.enunciado,
+        enunciado_clean: usage === 'statement'
+          ? insertQuestionImageMarker(prev.enunciado_clean || '', asset.id)
+          : prev.enunciado_clean,
+        introText: usage === 'support' ? insertQuestionImageMarker(prev.introText || '', asset.id) : prev.introText,
+      };
+    });
+  };
+
+  const handleAlternativeImageSelected = (index: number, file: File | null) => {
+    if (!file) return;
+
+    const url = URL.createObjectURL(file);
+    setManualQ((prev) => {
+      const current = prev.itens?.[index];
+      if (!current) {
+        return prev;
+      }
+
+      const asset = createQuestionImageAsset({
+        assets: prev.assets,
+        usage: 'alternative',
+        url,
+        label: current.rotulo,
+        alt: `Imagem da alternativa ${current.rotulo}.`,
+      });
+      const nextItems = [...(prev.itens || [])];
+      const nextBody = insertQuestionImageMarker(current.corpo || '', asset.id);
+      nextItems[index] = {
+        ...current,
+        corpo: nextBody,
+        corpo_clean: nextBody.replace(/<[^>]*>?/gm, ''),
+      };
+
+      return {
+        ...prev,
+        assets: [...(prev.assets || []), asset],
+        itens: nextItems,
+      };
+    });
+  };
+
+  const handleRemoveAsset = (assetId: string) => {
+    setManualQ((prev) => ({
+      ...prev,
+      assets: (prev.assets || []).filter((asset) => asset.id !== assetId),
+      imageUrl: (prev.assets || []).find((asset) => asset.id === assetId)?.url === prev.imageUrl ? '' : prev.imageUrl,
+      enunciado: removeQuestionImageMarker(prev.enunciado || '', assetId),
+      enunciado_clean: removeQuestionImageMarker(prev.enunciado_clean || '', assetId),
+      introText: removeQuestionImageMarker(prev.introText || '', assetId),
+      itens: (prev.itens || []).map((item) => {
+        const nextBody = removeQuestionImageMarker(item.corpo || '', assetId);
+        return {
+          ...item,
+          corpo: nextBody,
+          corpo_clean: nextBody.replace(/<[^>]*>?/gm, ''),
+        };
+      }),
+    }));
   };
 
   const handleAddOption = () => {
-    setManualQ((prev: any) => ({
+    setManualQ((prev) => ({
       ...prev,
       itens: [
         ...(prev.itens || []),
@@ -158,7 +214,7 @@ const ManualQuestionModal = ({
   };
 
   const handleOptionChange = (index: number, value: string) => {
-    setManualQ((prev: any) => {
+    setManualQ((prev) => {
       const nextItems = [...(prev.itens || [])];
       nextItems[index] = {
         ...nextItems[index],
@@ -171,13 +227,14 @@ const ManualQuestionModal = ({
   };
 
   const handleOptionDelete = (index: number) => {
-    setManualQ((prev: any) => ({
+    setManualQ((prev) => ({
       ...prev,
-      itens: (prev.itens || []).filter((_: any, itemIndex: number) => itemIndex !== index),
+      itens: (prev.itens || []).filter((_item: ManualQuestionItem, itemIndex: number) => itemIndex !== index),
     }));
   };
 
   const manualItems = manualQ.itens || [];
+  const questionAssets = manualQ.assets || [];
   const manualTitle =
     editingExtractedIndex !== null
       ? `Revisar Questão Extraida #${editingExtractedIndex + 1}`
@@ -190,7 +247,7 @@ const ManualQuestionModal = ({
     [existingProvas, manualQ.provas],
   );
   const selectedProva = manualQ.provaId
-    ? provaList.find((item: any) => String(item.id) === String(manualQ.provaId))
+    ? provaList.find((item) => String(item.id) === String(manualQ.provaId))
     : null;
   const filteredProvas = React.useMemo(() => {
     const normalizedSearch = provaSearch.trim().toLowerCase();
@@ -204,18 +261,24 @@ const ManualQuestionModal = ({
   }, [provaList, provaSearch]);
 
   React.useEffect(() => {
-    if (selectedProva) {
-      setProvaSearch(formatProvaLabel(selectedProva));
-      return;
-    }
+    const frameId = window.requestAnimationFrame(() => {
+      if (selectedProva) {
+        setProvaSearch(formatProvaLabel(selectedProva));
+        return;
+      }
 
-    if (!manualQ.provaId) {
-      setProvaSearch('');
-    }
+      if (!manualQ.provaId) {
+        setProvaSearch('');
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [manualQ.provaId, selectedProva]);
 
   const handleSelectProva = (prova: Prova) => {
     updateManualQ({
+      questionOrigin: 'exam',
+      question_origin: 'exam',
       provaId: prova.id,
       provas: [prova],
     });
@@ -225,6 +288,8 @@ const ManualQuestionModal = ({
 
   const handleClearProva = () => {
     updateManualQ({
+      questionOrigin: 'platform',
+      question_origin: 'platform',
       provaId: '',
       provas: [],
     });
@@ -232,13 +297,16 @@ const ManualQuestionModal = ({
     setIsProvaSearchOpen(false);
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950">
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-white p-8 transition-colors dark:border-slate-800 dark:bg-slate-900">
+  const editorFrame = (
+    <div className={presentation === 'page'
+      ? 'flex min-h-[100dvh] flex-col overflow-hidden bg-slate-50 dark:bg-slate-950'
+      : 'fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950'}
+    >
+      <div className={`${presentation === 'page' ? '' : 'm-4'} ${ADMIN_MODAL_PANEL_CLASS} flex flex-1 flex-col overflow-hidden`}>
+        <div className={ADMIN_MODAL_HEADER_CLASS}>
           <div>
-            <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">{manualTitle}</h3>
-            <p className="font-display text-sm font-medium text-slate-500 dark:text-slate-400">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{manualTitle}</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Gerencie o conteúdo e os filtros inteligentes para garantir a qualidade.
             </p>
           </div>
@@ -248,10 +316,10 @@ const ManualQuestionModal = ({
               <button
                 type="button"
                 onClick={() => updateManualQ({ anulada: !manualQ.anulada })}
-                className={`rounded-xl border-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
                   manualQ.anulada
-                    ? 'border-red-600 bg-red-600 text-white shadow-lg'
-                    : 'border-slate-200 bg-white text-slate-400 hover:border-red-400 dark:border-slate-700 dark:bg-slate-800'
+                    ? 'border-red-600 bg-red-600 text-white'
+                    : 'border-slate-300 bg-white text-slate-500 hover:border-red-400 dark:border-slate-700 dark:bg-slate-900'
                 }`}
               >
                 {manualQ.anulada ? 'Questão Anulada' : 'Anular Questão'}
@@ -259,10 +327,10 @@ const ManualQuestionModal = ({
               <button
                 type="button"
                 onClick={() => updateManualQ({ desatualizada: !manualQ.desatualizada })}
-                className={`rounded-xl border-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
                   manualQ.desatualizada
-                    ? 'border-amber-600 bg-amber-600 text-white shadow-lg'
-                    : 'border-slate-200 bg-white text-slate-400 hover:border-amber-400 dark:border-slate-700 dark:bg-slate-800'
+                    ? 'border-amber-600 bg-amber-600 text-white'
+                    : 'border-slate-300 bg-white text-slate-500 hover:border-amber-400 dark:border-slate-700 dark:bg-slate-900'
                 }`}
               >
                 {manualQ.desatualizada ? 'Desatualizada' : 'Marcar Desatualizada'}
@@ -272,55 +340,63 @@ const ManualQuestionModal = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 transition-all hover:text-slate-600 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300"
+              className="flex h-10 w-10 items-center justify-center rounded-sm bg-slate-100 text-slate-400 transition-all hover:text-slate-600 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300"
             >
               <X size={24} />
             </button>
           </div>
         </div>
 
-        <div className="no-scrollbar flex-1 overflow-y-auto space-y-8 bg-slate-50 p-8 dark:bg-slate-950">
+        {reportContext ? (
+          <div className="border-b border-slate-300 bg-slate-100 px-5 py-4 dark:border-slate-700 dark:bg-slate-950/50">
+            {reportContext}
+          </div>
+        ) : null}
+
+        <div className="no-scrollbar flex-1 overflow-y-auto space-y-6 bg-slate-50 p-5 dark:bg-slate-950">
           {(manualQ.anulada || manualQ.desatualizada) && (
             <div className="flex flex-col gap-2">
               {manualQ.anulada && (
-                <div className="flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
-                  <AlertCircle size={18} /> Esta questão sera exibida como ANULADA para os alunos.
+                <div className="flex items-center gap-3 rounded-sm border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
+                  <AlertCircle size={18} /> Esta questão será exibida como ANULADA para os alunos.
                 </div>
               )}
               {manualQ.desatualizada && (
-                <div className="flex items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs font-bold text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400">
-                  <AlertTriangle size={18} /> Esta questão sera exibida como DESATUALIZADA.
+                <div className="flex items-center gap-3 rounded-sm border border-amber-200 bg-amber-50 p-4 text-xs font-bold text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400">
+                  <AlertTriangle size={18} /> Esta questão será exibida como DESATUALIZADA.
                 </div>
               )}
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-2">
+          <div className={`grid grid-cols-1 gap-6 p-5 md:grid-cols-2 ${ADMIN_MUTED_SURFACE_CLASS}`}>
             <SmartTagSelector
               label="Banca(s)"
               options={existingAgencies}
-              selected={(manualQ.bancas || []).map((item: any) => (typeof item === 'string' ? item : item.sigla || item.name))}
+              selected={(manualQ.bancas || [])
+                .map((item) => (isQuestionTaxonomyRecord(item) ? String(item.sigla ?? item.name ?? item.nome ?? '') : String(item ?? '').trim()))
+                .filter(Boolean)}
               onChange={(value) => updateManualQ({ bancas: value })}
               placeholder="Ex: Cebraspe, FGV..."
             />
             <SmartTagSelector
-              label="Orgao(s)"
+              label="Órgão(s)"
               options={existingOrgaos}
-              selected={(manualQ.orgaos || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
+              selected={(manualQ.orgaos || []).map(getQuestionOptionLabel).filter(Boolean)}
               onChange={(value) => updateManualQ({ orgaos: value })}
               placeholder="Ex: TJ-SP, PF, Receita Federal..."
             />
             <SmartTagSelector
               label="Materia(s)"
               options={existingSubjects}
-              selected={(manualQ.subjects || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
+              selected={(manualQ.subjects || []).map(getQuestionOptionLabel).filter(Boolean)}
               onChange={(value) => updateManualQ({ subjects: value })}
               placeholder="Ex: Direito Administrativo..."
             />
             <SmartTagSelector
               label="Assunto(s) / Topicos"
               options={existingTopics}
-              selected={(manualQ.assuntos || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
+              selected={(manualQ.assuntos || []).map(getQuestionOptionLabel).filter(Boolean)}
               onChange={(value) => updateManualQ({ assuntos: value })}
               placeholder="Ex: Crase, Atos..."
             />
@@ -338,28 +414,28 @@ const ManualQuestionModal = ({
                       setIsProvaSearchOpen(true);
                     }}
                     onFocus={() => setIsProvaSearchOpen(true)}
-                    placeholder="Digite nome, banca, orgao, cargo, ano ou ID"
-                    className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-24 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    placeholder="Digite nome, banca, órgão, cargo, ano ou ID"
+                    className={`${ADMIN_FIELD_CLASS} h-10 w-full pl-10 pr-24 font-semibold`}
                   />
                   <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
                     {manualQ.provaId ? (
                       <button
                         type="button"
                         onClick={handleClearProva}
-                        className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 transition-all hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition-all hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         Limpar
                       </button>
                     ) : null}
                     {manualQ.provaId ? (
-                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
+                      <span className="rounded-sm border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">
                         #{manualQ.provaId}
                       </span>
                     ) : null}
                   </div>
 
                   {isProvaSearchOpen ? (
-                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-sm border border-slate-300 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
                       <div className="max-h-72 overflow-y-auto">
                         {filteredProvas.map((prova) => (
                           <button
@@ -411,14 +487,14 @@ const ManualQuestionModal = ({
                     type="text"
                     value={manualQ.provaId || ''}
                     onChange={(event) => updateManualQ({ provaId: event.target.value })}
-                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                     placeholder="ID manual, se necessario"
                   />
                 </div>
               </div>
               </div>
             {manualQ.provaId && (
-              <div className="md:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-slate-700 shadow-sm dark:border-indigo-900/40 dark:bg-indigo-900/10 dark:text-slate-200">
+              <div className="md:col-span-2 rounded-sm border border-sky-200 bg-sky-50/70 p-4 text-slate-700 dark:border-sky-900/40 dark:bg-sky-900/10 dark:text-slate-200">
                 <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">
                   Prova vinculada
                 </p>
@@ -433,7 +509,7 @@ const ManualQuestionModal = ({
                       <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.banca?.sigla || selectedProva.banca?.nome || '-'}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Orgao</p>
+                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Órgão</p>
                       <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.orgao?.sigla || selectedProva.orgao?.nome || '-'}</p>
                     </div>
                     <div>
@@ -453,7 +529,7 @@ const ManualQuestionModal = ({
                   </div>
                 ) : (
                   <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Prova nao encontrada para este ID. Verifique se o cadastro existe no banco de provas.
+                    Prova não encontrada para este ID. Verifique se o cadastro existe no banco de provas.
                   </p>
                 )}
               </div>
@@ -465,7 +541,7 @@ const ManualQuestionModal = ({
                 <select
                   value={manualQ.difficulty}
                   onChange={(event) => updateManualQ({ difficulty: Number(event.target.value) })}
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 >
                   <option value={1}>Facil</option>
                   <option value={2}>Medio</option>
@@ -488,9 +564,9 @@ const ManualQuestionModal = ({
                 <select
                   value={manualQ.modality || (manualItems.length === 2 ? 'Certo/Errado' : MULTIPLE_CHOICE_LABEL)}
                   onChange={(event) => handleTypeChange(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 >
-                  <option value={MULTIPLE_CHOICE_LABEL}>Multipla Escolha</option>
+                  <option value={MULTIPLE_CHOICE_LABEL}>Múltipla escolha</option>
                   <option value="Certo/Errado">Certo/Errado</option>
                 </select>
               </div>
@@ -499,7 +575,7 @@ const ManualQuestionModal = ({
                 <select
                   value={manualQ.level}
                   onChange={(event) => updateManualQ({ level: event.target.value })}
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 >
                   <option value="Superior">Superior</option>
                   <option value={MID_LEVEL_LABEL}>Medio</option>
@@ -511,11 +587,26 @@ const ManualQuestionModal = ({
 
           <div className="space-y-6">
             <div className="space-y-2">
-              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Texto de Apoio (Opcional)</label>
+              <div className="flex items-center justify-between gap-3">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Texto de Apoio (Opcional)</label>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                  <ImageIcon size={13} />
+                  Imagem no apoio
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      handleImageSelected(event.target.files?.[0] || null, 'support');
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+              </div>
               <textarea
                 value={manualQ.introText || ''}
                 onChange={(event) => updateManualQ({ introText: event.target.value })}
-                className="min-h-[100px] w-full rounded-2xl border border-slate-300 bg-white p-4 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className={`${ADMIN_TEXTAREA_CLASS} min-h-[100px] font-medium`}
                 placeholder="Insira textos auxiliares aqui..."
               />
             </div>
@@ -531,23 +622,41 @@ const ManualQuestionModal = ({
                     enunciado_clean: event.target.value.replace(/<[^>]*>?/gm, ''),
                   })
                 }
-                className="min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white p-4 text-base font-bold text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className={`${ADMIN_TEXTAREA_CLASS} min-h-[140px] text-base font-semibold`}
                 placeholder="Qual o comando da questão? Aceita HTML."
               />
             </div>
 
             <div className="flex items-center gap-4">
-              <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-300 bg-white px-6 py-3 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-indigo-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700">
-                <ImageIcon size={18} className="text-indigo-500" /> Upload de Imagem
-                <input type="file" className="hidden" onChange={(event) => handleImageSelected(event.target.files?.[0] || null)} />
+              <label className={ADMIN_SECONDARY_BUTTON_CLASS}>
+                <ImageIcon size={18} className="text-indigo-500" /> Imagem no enunciado
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    handleImageSelected(event.target.files?.[0] || null, 'statement');
+                    event.currentTarget.value = '';
+                  }}
+                />
               </label>
-              {manualQ.imageUrl && (
-                <div className="animate-fade-in flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-400">
-                  <Check size={14} /> Imagem Anexada
-                  <button type="button" onClick={() => updateManualQ({ imageUrl: '' })} className="ml-2 hover:text-red-500">
-                    <X size={14} />
-                  </button>
+              {questionAssets.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {questionAssets.map((asset) => (
+                    <span
+                      key={asset.id}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-400"
+                    >
+                      <Check size={14} />
+                      {asset.id}
+                      <button type="button" onClick={() => handleRemoveAsset(asset.id)} className="hover:text-red-500">
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
                 </div>
+              ) : (
+                <div className="text-xs font-semibold text-slate-400">Nenhuma imagem vinculada.</div>
               )}
             </div>
 
@@ -564,7 +673,7 @@ const ManualQuestionModal = ({
               </div>
 
               <div className="grid grid-cols-1 gap-3">
-                {manualItems.map((item: any, index: number) => (
+                {manualItems.map((item: ManualQuestionItem, index: number) => (
                   <div key={item.id} className="group flex items-start gap-3">
                     <button
                       type="button"
@@ -581,9 +690,21 @@ const ManualQuestionModal = ({
                       type="text"
                       value={item.corpo}
                       onChange={(event) => handleOptionChange(index, event.target.value)}
-                      className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-xs font-medium text-slate-900 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      className={`${ADMIN_FIELD_CLASS} h-10 flex-1 text-xs font-medium`}
                       placeholder={`Corpo da alternativa ${item.rotulo}...`}
                     />
+                    <label className="flex h-10 cursor-pointer items-center justify-center rounded-sm border border-slate-300 bg-white px-3 text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                      <ImageIcon size={15} />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          handleAlternativeImageSelected(index, event.target.files?.[0] || null);
+                          event.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
                     <button
                       type="button"
                       onClick={() => handleOptionDelete(index)}
@@ -612,7 +733,7 @@ const ManualQuestionModal = ({
                 <textarea
                   value={manualQ.teacherComment || ''}
                   onChange={(event) => updateManualQ({ teacherComment: event.target.value })}
-                  className="min-h-[120px] w-full rounded-3xl border border-slate-200 bg-slate-50 p-6 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-200"
+                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] bg-slate-50 font-medium dark:bg-slate-950/40`}
                   placeholder="Breve comentário ou dica do professor..."
                 />
               </div>
@@ -632,7 +753,7 @@ const ManualQuestionModal = ({
                 <textarea
                   value={manualQ.detailedComment || ''}
                   onChange={(event) => updateManualQ({ detailedComment: event.target.value })}
-                  className="min-h-[150px] w-full rounded-3xl border border-indigo-100 bg-indigo-50/50 p-6 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-indigo-300 dark:border-indigo-900/30 dark:bg-indigo-900/10 dark:text-slate-200"
+                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[150px] border-sky-200 bg-sky-50/60 font-medium dark:border-sky-900/30 dark:bg-sky-900/10`}
                   placeholder="Análise alternativa por alternativa..."
                 />
               </div>
@@ -640,26 +761,33 @@ const ManualQuestionModal = ({
           </div>
         </div>
 
-        <div className="flex justify-end gap-4 rounded-b-[2.4rem] border-t border-slate-100 bg-white p-8 transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
+        <div className={`${ADMIN_MODAL_FOOTER_CLASS} flex justify-end gap-3`}>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl px-8 py-3 text-xs font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+            className={ADMIN_SECONDARY_BUTTON_CLASS}
           >
             Descartar
           </button>
           <button
             type="button"
             onClick={onSave}
-            className="flex items-center gap-2 rounded-2xl bg-slate-900 px-10 py-4 text-xs font-black uppercase tracking-widest text-white shadow-2xl shadow-slate-200 transition-all hover:bg-indigo-600 dark:bg-indigo-600 dark:shadow-none dark:hover:bg-indigo-700"
+            className={ADMIN_PRIMARY_BUTTON_CLASS}
           >
             <Save size={18} /> {editingExtractedIndex !== null ? 'Atualizar Revisao' : 'Salvar Questão'}
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+
+  if (presentation === 'page') {
+    return editorFrame;
+  }
+
+  return createPortal(editorFrame, document.body);
 };
 
 export default ManualQuestionModal;
+
+

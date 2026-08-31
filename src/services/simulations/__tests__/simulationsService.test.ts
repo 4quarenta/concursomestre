@@ -11,15 +11,24 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockPost } = vi.hoisted(() => ({
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
+const { mockPost, mockGet } = vi.hoisted(() => ({
   mockPost: vi.fn(),
+  mockGet: vi.fn(),
 }));
 
 vi.mock('@services/api', () => ({
   apiClient: {
+    get: mockGet,
     post: mockPost,
   },
-  assertApiSuccess: (response: any, fallbackMessage: string) => {
+  assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
     }
@@ -31,14 +40,18 @@ vi.mock('@services/api', () => ({
       raw: response,
     };
   },
+  readApiData: (response: MockApiResponse, fallback: unknown) => response?.data ?? response ?? fallback,
   ENDPOINTS: {
     simulations: {
+      list: 'simulationsList',
       create: 'simulationsCreate',
     },
   },
 }));
 
 import { simulationsService } from '../index';
+
+type SimulationSavePayload = Parameters<typeof simulationsService.saveSimulation>[0];
 
 describe('simulationsService', () => {
   beforeEach(() => {
@@ -59,16 +72,45 @@ describe('simulationsService', () => {
       answers: { '10': 2 },
       startTime: 1712010000000,
       endTime: 1712010300000,
+      durationSeconds: 180,
       status: 'completed',
       score: 8,
-    } as any;
+    } as SimulationSavePayload;
 
     const result = await simulationsService.saveSimulation(session);
 
     expect(mockPost).toHaveBeenCalledWith('simulationsCreate', {
       ...session,
+      duration_seconds: 180,
     });
     expect(result.success).toBe(true);
     expect(result.id).toBe('sim-123');
+  });
+  it('lista sessoes persistidas pelo endpoint oficial', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        simulations: [
+          {
+            id: 'sim-1',
+            config: { name: 'Treino' },
+            questionIds: ['10', '11'],
+            answers: { '10': { index: 1, is_correct: 1 } },
+            startTime: 1712010000000,
+            endTime: 1712010300000,
+            durationSeconds: 180,
+            status: 'completed',
+            score: 1,
+          },
+        ],
+      },
+    });
+
+    const result = await simulationsService.listSimulations();
+
+    expect(mockGet).toHaveBeenCalledWith('simulationsList');
+    expect(result[0].id).toBe('sim-1');
+    expect(result[0].questionIds).toEqual([10, 11]);
+    expect(result[0].durationSeconds).toBe(180);
   });
 });

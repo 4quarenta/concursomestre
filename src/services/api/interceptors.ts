@@ -11,13 +11,49 @@
 
 import type { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { logger } from '../../utils/helpers/DebugLogger';
-import { getAccessToken, refreshAuthSession } from '@services/auth/session';
+import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth/session';
+import { dispatchAuthSessionExpiredNotice } from '@services/auth/sessionExpiredNotice';
+import { clientLog } from '@services/monitoring/clientLog';
 
 export interface AuthAwareRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
     _authTokenUsed?: string | null;
     _skipRefreshHandling?: boolean;
 }
+
+type AxiosInterceptorClient = {
+    interceptors: {
+        request: {
+            use: (
+                onFulfilled: (config: InternalAxiosRequestConfig) => InternalAxiosRequestConfig | Promise<InternalAxiosRequestConfig>,
+                onRejected?: (error: AxiosError) => Promise<unknown>,
+            ) => unknown;
+        };
+        response: {
+            use: (
+                onFulfilled: (response: AxiosResponse) => unknown,
+                onRejected?: (error: AxiosError) => Promise<unknown>,
+            ) => unknown;
+        };
+    };
+    (config: AuthAwareRequestConfig): Promise<unknown>;
+};
+
+const readResponseMessage = (payload: unknown): string | undefined => {
+    if (!payload || typeof payload !== 'object') {
+        return undefined;
+    }
+
+    if ('message' in payload && typeof payload.message === 'string' && payload.message.trim()) {
+        return payload.message;
+    }
+
+    if ('error' in payload && typeof payload.error === 'string' && payload.error.trim()) {
+        return payload.error;
+    }
+
+    return undefined;
+};
 
 /**
  * Tenta converter payloads de texto que na pratica contem JSON.
@@ -52,6 +88,9 @@ const isAuthEndpoint = (url?: string | null): boolean => {
     const normalizedUrl = url.toLowerCase();
     return normalizedUrl.includes('auth/login.php')
         || normalizedUrl.includes('auth/register.php')
+        || normalizedUrl.includes('auth/google.php')
+        || normalizedUrl.includes('auth/facebook.php')
+        || normalizedUrl.includes('auth/apple.php')
         || normalizedUrl.includes('auth/refresh.php')
         || normalizedUrl.includes('auth/logout.php')
         || normalizedUrl.includes('auth/forgot-password.php')
@@ -63,12 +102,40 @@ const isAuthEndpoint = (url?: string | null): boolean => {
  * Eles ligam token em memoria, refresh automático e telemetria de debug da aplicação.
  * @since 1.0.0
  */
-export const registerApiInterceptors = (apiClient: any): void => {
+export const registerApiInterceptors = (apiClient: AxiosInterceptorClient): void => {
     apiClient.interceptors.request.use(
-        (config: InternalAxiosRequestConfig) => {
-            const token = getAccessToken();
+        async (config: InternalAxiosRequestConfig) => {
+            const authAwareConfig = config as AuthAwareRequestConfig;
+            let token = getAccessToken();
 
-            (config as AuthAwareRequestConfig)._authTokenUsed = token;
+            if (
+                token
+                && authAwareConfig._skipRefreshHandling
+                && isAccessTokenExpired(token, 0)
+            ) {
+                token = null;
+            }
+
+            if (
+                token
+                && !authAwareConfig._skipRefreshHandling
+                && !isAuthEndpoint(config.url)
+                && isAccessTokenExpired(token, 30)
+            ) {
+                try {
+                    await refreshAuthSession({
+                        reason: 'manual',
+                        allowAnonymousFailure: true,
+                    });
+                    token = getAccessToken();
+                } catch (refreshError) {
+                    if (process.env.NODE_ENV === 'development') {
+                        logger.addLog('api-error', `Pre-request refresh failed: ${config.url}`, refreshError);
+                    }
+                }
+            }
+
+            authAwareConfig._authTokenUsed = token;
 
             if (token && config.headers) {
                 config.headers.Authorization = `Bearer ${token}`;
@@ -79,7 +146,7 @@ export const registerApiInterceptors = (apiClient: any): void => {
                 delete config.headers['Content-Type'];
             }
 
-            if (import.meta.env.DEV) {
+            if (process.env.NODE_ENV === 'development') {
                 logger.addLog('request', `${config.method?.toUpperCase()} ${config.url}`, config.data);
             }
 
@@ -92,7 +159,7 @@ export const registerApiInterceptors = (apiClient: any): void => {
         (response: AxiosResponse) => {
             const data = parseJsonLikePayload(response.data);
 
-            if (import.meta.env.DEV) {
+            if (process.env.NODE_ENV === 'development') {
                 logger.addLog('response', `SUCCESS: ${response.config.url}`, data);
             }
 
@@ -103,10 +170,10 @@ export const registerApiInterceptors = (apiClient: any): void => {
 
             if (error.response) {
                 const status = error.response.status;
-                const data = parseJsonLikePayload(error.response.data as any);
+                const data = parseJsonLikePayload(error.response.data as unknown);
                 error.response.data = data;
 
-                if (import.meta.env.DEV) {
+                if (process.env.NODE_ENV === 'development') {
                     logger.addLog('api-error', `ERROR ${status}: ${error.config?.url}`, data);
                 }
 
@@ -119,21 +186,27 @@ export const registerApiInterceptors = (apiClient: any): void => {
                 if (shouldAttemptRefresh) {
                     try {
                         requestConfig._retry = true;
-                        await refreshAuthSession({
-                            reason: 'http-401',
-                            force: true,
-                        });
-
                         const nextToken = getAccessToken();
-                        if (nextToken && requestConfig.headers) {
+                        if (nextToken && nextToken !== requestConfig._authTokenUsed && requestConfig.headers) {
                             requestConfig.headers.Authorization = `Bearer ${nextToken}`;
                             requestConfig.headers['X-Auth-Token'] = nextToken;
+                            return apiClient(requestConfig);
+                        }
+
+                        await refreshAuthSession({
+                            reason: 'http-401',
+                        });
+
+                        const refreshedToken = getAccessToken();
+                        if (refreshedToken && requestConfig.headers) {
+                            requestConfig.headers.Authorization = `Bearer ${refreshedToken}`;
+                            requestConfig.headers['X-Auth-Token'] = refreshedToken;
                         }
 
                         return apiClient(requestConfig);
                     } catch (refreshError) {
-                        if (import.meta.env.DEV) {
-                            logger.addLog('auth-refresh-failed', `401 without recovery: ${error.config?.url}`, {
+                        if (process.env.NODE_ENV === 'development') {
+                            logger.addLog('api-error', `401 without recovery: ${error.config?.url}`, {
                                 originalError: data,
                                 refreshError,
                             });
@@ -143,28 +216,34 @@ export const registerApiInterceptors = (apiClient: any): void => {
 
                 switch (status) {
                     case 401:
-                        console.error('Unauthorized request:', error.config?.url, data?.message);
+                        clientLog.error('Unauthorized request:', error.config?.url, readResponseMessage(data));
+                        if (!isAuthEndpoint(error.config?.url)) {
+                            dispatchAuthSessionExpiredNotice({
+                                status,
+                                url: error.config?.url,
+                            });
+                        }
                         break;
                     case 403:
-                        console.error('Access forbidden:', data?.message);
+                        clientLog.error('Access forbidden:', readResponseMessage(data));
                         break;
                     case 404:
-                        console.error('Resource not found:', error.config?.url);
+                        clientLog.error('Resource not found:', error.config?.url);
                         break;
                     case 429:
-                        console.error('Rate limit exceeded. Please try again later.');
+                        clientLog.error('Rate limit exceeded. Please try again later.');
                         break;
                     case 500:
-                        console.error('Server error:', data?.message);
+                        clientLog.error('Server error:', readResponseMessage(data));
                         break;
                     default:
-                        console.error('API Error:', data?.message || 'Unknown error');
+                        clientLog.error('API Error:', readResponseMessage(data) || 'Unknown error');
                 }
             } else if (error.request) {
-                console.error('Network Error: No response from server');
+                clientLog.error('Network Error: No response from server');
             } else {
-                console.error('Request Setup Error:', error.message);
-                if (import.meta.env.DEV) {
+                clientLog.error('Request Setup Error:', error.message);
+                if (process.env.NODE_ENV === 'development') {
                     logger.addLog('error', `Setup Error: ${error.message}`);
                 }
             }

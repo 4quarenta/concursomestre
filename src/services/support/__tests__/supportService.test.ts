@@ -11,6 +11,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+} | null | undefined;
+
 const { mockGet, mockPost } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -25,9 +31,10 @@ vi.mock('@services/api', () => ({
     feedback: {
       list: 'feedback/list.php',
       create: 'feedback/create.php',
+      vote: 'feedback/vote.php',
     },
   },
-  assertApiSuccess: (response: any) => {
+  assertApiSuccess: (response: MockApiResponse) => {
     if (!response?.success) {
       throw new Error(response?.message || 'erro');
     }
@@ -39,7 +46,7 @@ vi.mock('@services/api', () => ({
       raw: response,
     };
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) {
       return response.data;
     }
@@ -71,7 +78,7 @@ describe('supportService', () => {
   it('loads replies for a thread', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
-      replies: [{ id: 7, details: 'Resposta' }],
+      replies: [{ id: 7, details: 'Resposta', user_name: 'Administrador', user_role: 'admin' }],
     });
 
     const result = await supportService.listReplies(7);
@@ -79,6 +86,10 @@ describe('supportService', () => {
     expect(mockGet).toHaveBeenCalledWith('feedback/list.php?id=7');
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe(7);
+    expect(result[0]).toEqual(expect.objectContaining({
+      user_name: 'Administrador',
+      user_role: 'admin',
+    }));
   });
 
   it('creates a support thread through the official endpoint', async () => {
@@ -97,8 +108,44 @@ describe('supportService', () => {
       type: 'support',
       reason: 'Ajuda',
       details: 'Preciso de ajuda',
+      gamification_event: 'support_feedback_submitted',
+      notification_event: 'support_opened',
     });
     expect(result).toEqual({ id: 9, type: 'support', parent_id: null });
+  });
+
+  it('lists and votes public suggestions through the official endpoints', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        suggestions: [
+          { id: 31, type: 'suggestion', reason: 'Filtro novo', likes: 4, dislikes: 1, score: 3 },
+        ],
+      },
+    });
+
+    const suggestions = await supportService.listPublicSuggestions();
+
+    expect(mockGet).toHaveBeenCalledWith('feedback/list.php?public_suggestions=1');
+    expect(suggestions[0].id).toBe(31);
+
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        suggestion: { id: 31, likes: 5, dislikes: 1, score: 4, user_vote: 'like' },
+      },
+    });
+
+    const voted = await supportService.votePublicSuggestion(31, 'like');
+
+    expect(mockPost).toHaveBeenCalledWith('feedback/vote.php', {
+      feedback_id: 31,
+      value: 'like',
+      gamification_event: 'public_suggestion_vote',
+      notification_event: 'suggestion_vote',
+    });
+    expect(voted?.user_vote).toBe('like');
+    expect(voted?.likes).toBe(5);
   });
 
   it('replies to an existing support thread through the official endpoint', async () => {
@@ -112,8 +159,10 @@ describe('supportService', () => {
     expect(mockPost).toHaveBeenCalledWith('feedback/create.php', {
       parent_id: 12,
       type: 'bug',
-      reason: 'Resposta do usuario',
+      reason: 'Resposta do usuário',
       details: 'Tenho mais contexto para esse caso.',
+      gamification_event: 'support_thread_reply',
+      notification_event: 'support_reply',
     });
     expect(result).toEqual({ id: 22, type: 'bug', parent_id: 12 });
   });

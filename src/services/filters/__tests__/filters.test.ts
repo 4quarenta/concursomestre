@@ -11,6 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
 const { mockGet, mockPost } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -21,11 +28,18 @@ vi.mock('@services/api', () => ({
     get: mockGet,
     post: mockPost,
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
   },
-  assertApiSuccess: (response: any, fallbackMessage: string) => {
+  readApiErrorMessage: (error: unknown, fallback = '') => {
+    if (error && typeof error === 'object' && 'response' in error) {
+      const response = (error as { response?: { data?: { message?: string } } }).response;
+      return response?.data?.message || fallback;
+    }
+    return error instanceof Error ? error.message : fallback;
+  },
+  assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
     }
@@ -64,12 +78,20 @@ describe('filtersService', () => {
   it('normalizes taxonomy payload into app structure', () => {
     const taxonomies = normalizeFiltersToTaxonomies({
       bancas: [{ id: 1, nome: 'FGV', sigla: 'FGV', slug: 'fgv' }],
-      assuntos: [{ id: 2, nome: 'Direito', slug: 'direito', materia: true }],
+      assuntos: [
+        { id: 2, nome: 'Direito', slug: 'direito', materia: true },
+        { id: 3, nome: 'Direito Constitucional', slug: 'direito-constitucional', materia: false, parent_id: 2 },
+        { id: 4, nome: 'Controle de constitucionalidade', slug: 'controle-de-constitucionalidade', materia: false, parent_id: 3 },
+      ],
       anos: [2024],
     });
 
     expect(taxonomies.agencies[0].name).toBe('FGV');
     expect(taxonomies.subjects[0].name).toBe('Direito');
+    expect(taxonomies.subjectTopics?.[0].name).toBe('Direito Constitucional');
+    expect(taxonomies.subjectTopics?.[0].taxonomyLevel).toBe('topico');
+    expect(taxonomies.specificSubjects?.[0].name).toBe('Controle de constitucionalidade');
+    expect(taxonomies.specificSubjects?.[0].rootSubjectId).toBe('2');
     expect(taxonomies.years).toEqual(['2024']);
   });
 
@@ -81,11 +103,19 @@ describe('filtersService', () => {
     ]);
   });
 
-  it('normalizes focus labels to a single slash-based pattern', () => {
+  it('canonicalizes ENEM focus labels without duplicating taxonomy values', () => {
+    expect(injectEnemFocusOption(['Enem', 'Policial', 'enem'])).toEqual([
+      ENEM_FOCUS_NAME,
+      'Policial',
+    ]);
+    expect(normalizeCareerSelectorLabel('Enem')).toBe(ENEM_FOCUS_NAME);
+  });
+
+  it('normalizes focus labels to parent focus names', () => {
     expect(normalizeCareerSelectorLabel('Educação (Professores, Especialistas e outros)')).toBe(
-      'Educação / Professores, Especialistas e outros',
+      'Educação',
     );
-    expect(normalizeCareerSelectorLabel('Educação / Professor')).toBe('Educação / Professor');
+    expect(normalizeCareerSelectorLabel('Educação / Professor')).toBe('Educação');
   });
 
   it('detects ENEM questions and maps subject areas', () => {
@@ -99,7 +129,7 @@ describe('filtersService', () => {
       ],
       areas: [],
       provas: [{ nome: 'ENEM 2025', orgao: { nome: 'INEP' }, banca: { nome: 'INEP' } }],
-    } as any;
+    } as Record<string, unknown>;
 
     expect(isEnemQuestion(enemQuestion)).toBe(true);
     expect(getEnemSubjectAreasForQuestion(enemQuestion)).toContain('Ciencias Humanas e suas Tecnologias');
@@ -137,6 +167,36 @@ describe('filtersService', () => {
       slug: 'nova-banca',
     });
     expect(id).toBe(9);
+  });
+
+  it('reuses an existing year when the API reports a slug conflict', async () => {
+    const conflictError = {
+      response: {
+        status: 409,
+        data: { message: "O slug '2018' ja esta em uso por outra taxonomia." },
+      },
+    };
+    mockPost.mockRejectedValueOnce(conflictError);
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        anos: [2018, 2023],
+      },
+    });
+
+    const id = await filtersService.save({
+      type: 'ano',
+      name: '2018',
+      slug: '2018',
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('filtersSave', {
+      type: 'ano',
+      name: '2018',
+      slug: '2018',
+    });
+    expect(mockGet).toHaveBeenCalledWith('filtersList');
+    expect(id).toBe(2018);
   });
 
   it('removes filters through the official endpoint', async () => {

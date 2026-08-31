@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -9,8 +9,9 @@
 *
 */
 
-import React, { useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useCallback, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   CheckCircle2,
@@ -35,6 +36,7 @@ import {
   resolvePlanOffer,
 } from '@services/plans';
 import { themeConfig } from '@constants/themes';
+import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 import { websiteManifest } from '../../../config/platform';
 import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
 import LandingSectionHeader from '../../landing/components/LandingSectionHeader';
@@ -42,6 +44,7 @@ import { ThemeOrnaments } from '../../landing/components/ThemeOrnaments';
 import useMarketingPlansLanding from '../hooks/useMarketingPlansLanding';
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
+type PlanPricingByName = Partial<Record<PlanName, Partial<Record<BillingCycle, number>>>>;
 
 interface MarketingPlansLandingPageProps {
   slug: string;
@@ -61,7 +64,7 @@ const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleStrin
 const getCycleCount = (cycle: BillingCycle) => (cycle === 'annual' ? 12 : cycle === 'quarterly' ? 3 : 1);
 const getCycleLabel = (cycle: BillingCycle) => (cycle === 'annual' ? 'ano' : cycle === 'quarterly' ? 'cada 3 meses' : 'mes');
 
-const getConfiguredCycleAmount = (planName: PlanName, cycle: BillingCycle, pricing: any) => {
+const getConfiguredCycleAmount = (planName: PlanName, cycle: BillingCycle, pricing: PlanPricingByName) => {
   if (cycle === 'annual') {
     return Number(pricing?.[planName]?.annual || 0);
   }
@@ -74,9 +77,12 @@ const getConfiguredCycleAmount = (planName: PlanName, cycle: BillingCycle, prici
 };
 
 const isPlanInCycle = (plan: Plan, cycle: BillingCycle) => {
-  const isMonthly = plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 1;
-  const isQuarterly = plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 3;
-  const isAnnual = plan.interval_unit === 'year' || (plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 12);
+  const intervalUnit = String(plan.interval_unit || '').toLowerCase();
+  const intervalCount = Number(plan.interval_count || 1);
+  const isMonthly = intervalUnit === 'month' && intervalCount === 1;
+  const isQuarterly = intervalUnit === 'month' && intervalCount === 3;
+  const isAnnual = intervalUnit === 'year' || (intervalUnit === 'month' && intervalCount === 12);
+  const isCustomShortCycle = intervalUnit === 'day' || intervalUnit === 'week';
 
   if (Number(plan.price || 0) === 0) {
     return true;
@@ -90,7 +96,7 @@ const isPlanInCycle = (plan: Plan, cycle: BillingCycle) => {
     return isAnnual;
   }
 
-  return isMonthly;
+  return isMonthly || isCustomShortCycle;
 };
 
 const buildCanonicalUrl = (slug: string, customCanonical?: string) => {
@@ -146,7 +152,7 @@ const getLandingCardsGridClassName = (count: number) => {
 };
 
 const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => {
-  const location = useLocation();
+  const searchParams = useSearchParams();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
   const {
     siteName,
@@ -168,13 +174,13 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
       : '';
 
   const trackingQueryString = useMemo(() => {
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(searchParams?.toString());
     params.delete('preview');
     const serialized = params.toString();
     return serialized ? `?${serialized}` : '';
-  }, [location.search]);
+  }, [searchParams]);
 
-  const appendTracking = (path: string) => `${path}${trackingQueryString}`;
+  const appendTracking = useCallback((path: string) => `${path}${trackingQueryString}`, [trackingQueryString]);
 
   const availablePlansByCanonical = useMemo(() => {
     return plans
@@ -234,10 +240,11 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
       const configuredMonthlyAmount = cycleCount > 0 ? configuredCycleAmount / cycleCount : configuredCycleAmount;
       const offer = plan ? offersByPlanId[plan.id] : null;
       const displayName = getConfiguredPlanDisplayName(canonicalPlanName, systemSettings.planDetails, card.title);
-      const includedConfiguredFeatures = (systemSettings.planDetails?.[canonicalPlanName]?.features || [])
-        .filter((feature) => feature?.included)
-        .map((feature) => String(feature.text || '').trim())
-        .filter(Boolean);
+      const entitlementFeatures = getPublicPlanFeaturesForPlan(canonicalPlanName, systemSettings.planEntitlements, {
+        maxItems: 6,
+        includeDisabled: false,
+        usageLimits: systemSettings.planUsageLimits,
+      }).map((feature) => feature.text);
 
       return {
         ...card,
@@ -255,10 +262,10 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
           ? (Number(plan.price || 0) === 0 ? appendTracking('/auth?register=true') : appendTracking(`/checkout/${plan.id}`))
           : appendTracking('/plans'),
         isAvailable: Boolean(plan),
-        featureList: card.summaryBenefits.length > 0 ? card.summaryBenefits : includedConfiguredFeatures.slice(0, 5),
+        featureList: entitlementFeatures.length > 0 ? entitlementFeatures : card.summaryBenefits,
       };
     });
-  }, [appendTracking, availablePlansByCanonical, billingCycle, landingPage, offersByPlanId, systemSettings.planDetails, systemSettings.pricing]);
+  }, [appendTracking, availablePlansByCanonical, billingCycle, landingPage, offersByPlanId, systemSettings.planDetails, systemSettings.planEntitlements, systemSettings.planUsageLimits, systemSettings.pricing]);
 
   const featuredCard = landingPlanCards.find((card) => card.featured) || landingPlanCards.find((card) => card.planName === 'Elite') || landingPlanCards[0] || null;
   const comparisonColumns = landingPage?.planCards.map((card) => ({
@@ -266,12 +273,10 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
     label: card.title,
     featured: Boolean(card.featured || card.planName === 'Elite'),
   })) || [];
-  const hasVisibleOffer = landingPlanCards.some((card) => card.hasDiscount);
   const limitedOfferEndsAt = systemSettings.limitedOfferCountdown?.endsAt || '';
   const hasActiveLimitedOfferCountdown = Boolean(
     systemSettings.limitedOfferCountdown?.enabled
-    && limitedOfferEndsAt
-    && new Date(limitedOfferEndsAt).getTime() > Date.now(),
+    && limitedOfferEndsAt,
   );
 
   const seoPayload = useMemo(() => ({
@@ -281,7 +286,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
     robots: 'index,follow',
     ogTitle: landingPage?.seo?.ogTitle || `${siteName} | Escolha o plano ideal para acelerar sua preparacao`,
     ogDescription: landingPage?.seo?.ogDescription || landingPage?.seo?.metaDescription || `Acesse questoes, simulados, gabaritos comentados e recursos premium do ${siteName}.`,
-  }), [landingPage?.seo?.canonicalUrl, landingPage?.seo?.metaDescription, landingPage?.seo?.ogDescription, landingPage?.seo?.ogTitle, siteName, slug]);
+  }), [landingPage?.seo?.canonicalUrl, landingPage?.seo?.metaDescription, landingPage?.seo?.ogDescription, landingPage?.seo?.ogTitle, landingPage?.seo?.title, siteName, slug]);
 
   useDocumentSeo(seoPayload);
 
@@ -299,8 +304,8 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
   if (!landingPage) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-20 dark:bg-slate-950">
-        <div className="max-w-xl rounded-[2.5rem] border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
+        <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
             <LayoutTemplate size={28} />
           </div>
           <h1 className="mt-6 text-2xl font-black text-slate-900 dark:text-slate-100">Landing nao encontrada</h1>
@@ -309,7 +314,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
               ? 'O preview administrativo exige perfil com acesso ao painel.'
               : 'Esta campanha nao esta publicada ou nao existe no catalogo atual.'}
           </p>
-          <Link to="/" className="mt-6 inline-flex items-center justify-center rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+          <Link href="/" className="mt-6 inline-flex items-center justify-center rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">
             Voltar ao inicio
           </Link>
         </div>
@@ -327,7 +332,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
 
       <header className="sticky top-0 z-40 border-b border-slate-100 bg-white/88 px-6 py-4 backdrop-blur-md dark:border-slate-900 dark:bg-slate-950/88">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <Link to="/" className="flex items-center gap-2 text-2xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">
+          <Link href="/" className="flex items-center gap-2 text-2xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">
             <ThemeIcon className="h-8 w-8" />
             <span>{siteName}</span>
           </Link>
@@ -357,14 +362,14 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             <div className="flex flex-col gap-4 sm:flex-row">
               <a
                 href={featuredCard?.checkoutHref || appendTracking('/plans')}
-                className={`inline-flex items-center justify-center gap-3 rounded-[2rem] px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-[1.01] active:scale-95 ${currentTheme.button}`}
+                className={`inline-flex items-center justify-center gap-3 rounded-2xl px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-[1.01] active:scale-95 ${currentTheme.button}`}
               >
                 {landingPage.hero.primaryCtaLabel}
                 <ArrowRight size={16} />
               </a>
               <a
                 href="#comparar-planos"
-                className="inline-flex items-center justify-center gap-3 rounded-[2rem] border border-slate-200 bg-white px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-slate-900 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/60"
+                className="inline-flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-slate-900 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/60"
               >
                 {landingPage.hero.secondaryCtaLabel}
               </a>
@@ -380,7 +385,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
               {featuredCard?.description || landingPage.eliteSection.description}
             </p>
-            <div className="mt-6 rounded-[2rem] bg-slate-950 p-6 text-white dark:bg-slate-950">
+            <div className="mt-6 rounded-2xl bg-slate-950 p-6 text-white dark:bg-slate-950">
               {featuredCard?.hasDiscount ? (
                 <>
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300 line-through">
@@ -452,7 +457,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             </div>
           </div>
 
-          <div className="mb-8 rounded-[2rem] border border-emerald-200 bg-emerald-50/90 p-5 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <div className="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-5 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-950/20">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
               <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm dark:bg-slate-900 dark:text-emerald-300">
                 <CreditCard size={18} />
@@ -475,7 +480,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
               return (
                 <article
                   key={card.id}
-                  className={`relative flex h-full flex-col overflow-hidden rounded-[2.5rem] border p-8 transition-all ${
+                  className={`relative flex h-full flex-col overflow-hidden rounded-2xl border p-8 transition-all ${
                     card.featured
                       ? 'border-slate-900 bg-slate-900 text-white shadow-2xl dark:border-indigo-500 dark:bg-indigo-600'
                       : 'border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900'
@@ -558,7 +563,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             })}
           </div>
 
-          {hasVisibleOffer && hasActiveLimitedOfferCountdown && (
+          {hasActiveLimitedOfferCountdown && (
             <LimitedOfferCountdown enabled endsAt={limitedOfferEndsAt} className="mx-auto mt-10 max-w-5xl" />
           )}
         </div>
@@ -600,7 +605,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
               { title: 'O que voce recebe', items: landingPage.valueMatrix.whatYouReceive },
               { title: 'O que voce conquista', items: landingPage.valueMatrix.whatYouConquer },
             ].map((column) => (
-              <article key={column.title} className="rounded-[2.5rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <article key={column.title} className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{column.title}</h3>
                 <ul className="mt-6 space-y-3">
                   {column.items.map((item) => (
@@ -632,7 +637,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             </ul>
           </div>
 
-          <div className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-8">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-200">Plano Elite</p>
             <h3 className="mt-3 text-3xl font-black">{featuredCard?.displayName || 'Elite'}</h3>
             <p className="mt-3 text-sm font-medium leading-relaxed text-slate-300">
@@ -657,7 +662,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             description="A tabela abaixo ajuda a comparar volume, profundidade e maturidade de recursos entre as opcoes comerciais."
           />
 
-          <div className="overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse">
                 <thead>
@@ -714,7 +719,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
 
       <section className="px-6 py-24">
         <div className="mx-auto max-w-5xl rounded-[2.75rem] border border-emerald-200 bg-emerald-50 p-10 text-center shadow-sm dark:border-emerald-900/30 dark:bg-emerald-900/10">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-emerald-600 shadow-sm dark:bg-slate-900 dark:text-emerald-300">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm dark:bg-slate-900 dark:text-emerald-300">
             <ShieldCheck size={28} />
           </div>
           <h2 className="mt-6 text-4xl font-black tracking-tight text-slate-900 dark:text-white">{landingPage.guarantee.title}</h2>
@@ -732,7 +737,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
 
           <div className="space-y-4">
             {landingPage.faq.map((item) => (
-              <details key={item.id} className="group rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <details key={item.id} className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">

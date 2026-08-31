@@ -55,4 +55,4 @@ export const PLATFORM_METRIC_VALUE_CLASS = 'text-2xl md:text-3xl font-black trac
  *
  * @since 1.0.0
  */
-export const PLATFORM_SURFACE_CARD_CLASS = 'rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900';
+export const PLATFORM_SURFACE_CARD_CLASS = 'rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none';

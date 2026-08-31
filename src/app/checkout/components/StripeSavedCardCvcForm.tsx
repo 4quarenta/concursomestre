@@ -65,6 +65,12 @@ const buildElementOptions = (isDarkMode: boolean) => ({
 const fieldShellClassName =
   'min-h-[50px] rounded-lg border border-slate-200 bg-white px-4 py-3 transition-all focus-within:border-slate-900 focus-within:ring-1 focus-within:ring-slate-900 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
 
+const readErrorMessage = (error: unknown, fallback: string): string => (
+  error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : fallback
+);
+
 /**
  * Formulário de CVV para cartão salvo da Stripe.
  * O objetivo aqui é manter a confirmação oficial, mas no estilo mais seco do checkout.
@@ -142,8 +148,8 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
 
     try {
       await onConfirm({ stripe, cvcElement });
-    } catch (submitError: any) {
-      setError(submitError?.message || 'Não foi possível confirmar o cartão salvo.');
+    } catch (submitError: unknown) {
+      setError(readErrorMessage(submitError, 'Não foi possível confirmar o cartão salvo.'));
     } finally {
       setSubmitting(false);
     }

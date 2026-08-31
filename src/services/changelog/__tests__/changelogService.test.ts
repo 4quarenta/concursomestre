@@ -11,6 +11,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+} | null | undefined;
+
 const { mockGet } = vi.hoisted(() => ({
   mockGet: vi.fn(),
 }));
@@ -19,7 +23,7 @@ vi.mock('@services/api', () => ({
   apiClient: {
     get: mockGet,
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
   },
@@ -57,5 +61,50 @@ describe('changelogService', () => {
     expect(mockGet).toHaveBeenCalledWith('changelog/list.php');
     expect(versions).toHaveLength(1);
     expect(versions[0]?.version).toBe('1.0.0');
+  });
+
+  it('removes private dev versions, categories and items from the public changelog', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        versions: [
+          {
+            id: 2,
+            version: '1.1.0',
+            release_date: '2026-06-10',
+            title: 'Melhorias publicas',
+            description: 'Atualizacao visivel ao aluno.',
+            content_json: [
+              {
+                title: 'Experiencia',
+                icon: 'BookOpen',
+                items: ['Novo painel de estudo.', '[dev] Ajuste interno do deploy.'],
+              },
+              {
+                title: '(dev) Infraestrutura',
+                icon: 'Shield',
+                items: ['Item interno.'],
+              },
+            ],
+          },
+          {
+            id: 3,
+            version: '1.1.1-dev',
+            release_date: '2026-06-11',
+            title: 'Release interna',
+            description: 'Nao deve aparecer.',
+            content_json: [],
+          },
+        ],
+      },
+    });
+
+    const versions = await changelogService.listVersions();
+    const publicRelease = versions.find((version) => version.version === '1.1.0');
+
+    expect(versions.some((version) => version.version === '1.1.1-dev')).toBe(false);
+    expect(versions[0]?.version).toBe('1.0.0');
+    expect(publicRelease?.content_json).toHaveLength(1);
+    expect(publicRelease?.content_json[0]?.title).toBe('Experiencia');
+    expect(publicRelease?.content_json[0]?.items).toEqual(['Novo painel de estudo.']);
   });
 });

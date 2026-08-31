@@ -10,7 +10,10 @@
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
+  ArrowLeft,
   Copy,
   ExternalLink,
   Eye,
@@ -20,14 +23,13 @@ import {
   Plus,
   Rocket,
   Save,
+  Search,
   Trash2,
 } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import type {
   MarketingLandingComparisonRow,
-  MarketingLandingContentBlockItem,
   MarketingLandingFaqItem,
-  MarketingLandingObjectionItem,
   MarketingLandingPage,
   MarketingLandingPlanCard,
   Plan,
@@ -42,17 +44,34 @@ import {
   mergeMarketingLandingPages,
   normalizeLandingSlug,
 } from '@services/marketing/landingPages';
+import { buildAdminLandingPageEditPath } from '../../config/adminPageNavigationConfig';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+} from '../shared/adminPanelStyles';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 interface AdminLandingPagesManagerProps {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => void;
   saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
+  initialScreen?: 'list' | 'editor';
+  initialLandingId?: string;
+  editorOnly?: boolean;
+  onReturnToList?: () => void;
+  onSavedLanding?: (landingPage: MarketingLandingPage) => void;
 }
 
-const inputClassName = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
+const inputClassName = 'w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-sky-700 focus:ring-1 focus:ring-sky-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
-const sectionClassName = 'rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900';
+const sectionClassName = ADMIN_PAGE_PANEL_CLASS;
+type LandingAdminScreen = 'list' | 'editor';
+type LandingStatusFilter = 'all' | 'published' | 'draft';
+type LandingBulkAction = '' | 'publish' | 'draft' | 'delete';
 
 const listToTextareaValue = (items?: string[] | null) => (Array.isArray(items) ? items.join('\n') : '');
 const textAreaToList = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -104,20 +123,10 @@ const createEmptyPlanCard = (): MarketingLandingPlanCard => ({
   summaryBenefits: ['Beneficio principal 1', 'Beneficio principal 2'],
 });
 
-const createEmptyAuthorityItem = (): MarketingLandingContentBlockItem => ({
-  title: 'Novo bloco de autoridade',
-  description: 'Explique o valor prático deste bloco.',
-});
-
 const createEmptyComparisonRow = (): MarketingLandingComparisonRow => ({
   id: `comparison-row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   label: 'Novo diferencial',
   values: { Essencial: '', Pro: '', Elite: '' },
-});
-
-const createEmptyObjection = (): MarketingLandingObjectionItem => ({
-  title: 'Nova objecao',
-  description: 'Responda a inseguranca do usuario.',
 });
 
 const createEmptyFaq = (): MarketingLandingFaqItem => ({
@@ -136,16 +145,38 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
   systemSettings,
   updateSystemSettings,
   saveSystemSettingsNow,
+  initialScreen = 'list',
+  initialLandingId = '',
+  editorOnly = false,
+  onReturnToList,
+  onSavedLanding,
 }) => {
+  const router = useRouter();
   const { addToast } = useToast();
   const siteName = systemSettings.siteName || 'ConcursoMestre';
+  const normalizedInitialLandingId = String(initialLandingId || '').trim();
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [draftPages, setDraftPages] = useState<MarketingLandingPage[]>(() => mergeMarketingLandingPages(systemSettings.landingPages, siteName));
-  const [selectedLandingId, setSelectedLandingId] = useState('');
+  const [selectedLandingId, setSelectedLandingId] = useState(normalizedInitialLandingId !== 'new' ? normalizedInitialLandingId : '');
+  const [screen, setScreen] = useState<LandingAdminScreen>(initialScreen);
+  const [landingSearch, setLandingSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<LandingStatusFilter>('all');
+  const [selectedLandingIds, setSelectedLandingIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<LandingBulkAction>('');
   const [pendingDelete, setPendingDelete] = useState<MarketingLandingPage | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const createdLandingIdRef = React.useRef('');
+  const hasLoadedPlansRef = React.useRef(false);
 
   useEffect(() => {
+    if (!editorOnly && screen !== 'editor') {
+      return;
+    }
+    if (hasLoadedPlansRef.current) {
+      return;
+    }
+
+    hasLoadedPlansRef.current = true;
     let mounted = true;
     planService.getPlans()
       .then((plans) => {
@@ -162,23 +193,88 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [editorOnly, screen]);
 
   useEffect(() => {
     const mergedPages = mergeMarketingLandingPages(systemSettings.landingPages, siteName);
-    setDraftPages(mergedPages);
-    setSelectedLandingId((currentId) => (mergedPages.some((page) => page.id === currentId) ? currentId : (mergedPages[0]?.id || '')));
-  }, [siteName, systemSettings.landingPages]);
+    const timeout = window.setTimeout(() => {
+      let nextPages = mergedPages;
+      let preferredLandingId = '';
+
+      if (initialScreen === 'editor') {
+        if (normalizedInitialLandingId === 'new') {
+          const existingDraft = createdLandingIdRef.current
+            ? mergedPages.find((page) => page.id === createdLandingIdRef.current)
+            : null;
+
+          if (existingDraft) {
+            preferredLandingId = existingDraft.id;
+          } else {
+            const nextLanding = createNewLandingDraft(siteName, mergedPages);
+            createdLandingIdRef.current = nextLanding.id;
+            nextPages = [...mergedPages, nextLanding];
+            preferredLandingId = nextLanding.id;
+          }
+        } else if (normalizedInitialLandingId) {
+          preferredLandingId = normalizedInitialLandingId;
+        }
+      }
+
+      setDraftPages(nextPages);
+      setScreen(initialScreen);
+      setSelectedLandingId((currentId) => {
+        if (preferredLandingId) {
+          return nextPages.some((page) => page.id === preferredLandingId) ? preferredLandingId : '';
+        }
+
+        return nextPages.some((page) => page.id === currentId) ? currentId : (nextPages[0]?.id || '');
+      });
+      setSelectedLandingIds(new Set());
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [initialScreen, normalizedInitialLandingId, siteName, systemSettings.landingPages]);
 
   const selectedLanding = useMemo(
-    () => draftPages.find((page) => page.id === selectedLandingId) || draftPages[0] || null,
-    [draftPages, selectedLandingId],
+    () => draftPages.find((page) => page.id === selectedLandingId) || (editorOnly ? null : draftPages[0] || null),
+    [draftPages, editorOnly, selectedLandingId],
   );
 
   const linkedPlanOptions = useMemo(() => availablePlans.map((plan) => ({
     value: String(plan.id),
     label: `${plan.name} (#${plan.id})`,
   })), [availablePlans]);
+
+  const landingCounts = useMemo(() => ({
+    all: draftPages.length,
+    published: draftPages.filter((page) => page.status === 'published').length,
+    draft: draftPages.filter((page) => page.status !== 'published').length,
+  }), [draftPages]);
+
+  const filteredLandingPages = useMemo(() => {
+    const needle = landingSearch.trim().toLowerCase();
+
+    return draftPages.filter((page) => {
+      if (statusFilter !== 'all' && page.status !== statusFilter) {
+        return false;
+      }
+
+      if (!needle) {
+        return true;
+      }
+
+      return [
+        page.title,
+        page.slug,
+        page.hero?.title,
+        page.seo?.title,
+        page.status,
+      ].filter(Boolean).join(' ').toLowerCase().includes(needle);
+    });
+  }, [draftPages, landingSearch, statusFilter]);
+
+  const allFilteredSelected = filteredLandingPages.length > 0
+    && filteredLandingPages.every((page) => selectedLandingIds.has(page.id));
 
   const previewHref = selectedLanding ? `${buildMarketingLandingPath(selectedLanding.slug)}?preview=${selectedLanding.id}` : '#';
   const publishedHref = selectedLanding ? buildMarketingLandingPath(selectedLanding.slug) : '#';
@@ -208,6 +304,40 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
     }
   };
 
+  const returnToLandingList = () => {
+    if (onReturnToList) {
+      onReturnToList();
+      return;
+    }
+
+    setScreen('list');
+    setSelectedLandingIds(new Set());
+  };
+
+  const toggleSelectedLanding = (landingId: string) => {
+    setSelectedLandingIds((current) => {
+      const next = new Set(current);
+      if (next.has(landingId)) {
+        next.delete(landingId);
+      } else {
+        next.add(landingId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllFilteredLandings = () => {
+    setSelectedLandingIds((current) => {
+      const next = new Set(current);
+      if (allFilteredSelected) {
+        filteredLandingPages.forEach((page) => next.delete(page.id));
+      } else {
+        filteredLandingPages.forEach((page) => next.add(page.id));
+      }
+      return next;
+    });
+  };
+
   const patchSelectedLanding = (updater: (landingPage: MarketingLandingPage) => MarketingLandingPage) => {
     if (!selectedLanding) {
       return;
@@ -217,24 +347,34 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
   };
 
   const handleCreateLanding = () => {
-    const nextLanding = createNewLandingDraft(siteName, draftPages);
-    setDraftPages((currentPages) => [...currentPages, nextLanding]);
-    setSelectedLandingId(nextLanding.id);
-  };
-
-  const handleDuplicateLanding = () => {
-    if (!selectedLanding) {
+    if (!editorOnly) {
+      router.push(buildAdminLandingPageEditPath('new'));
       return;
     }
 
-    const duplicated = duplicateMarketingLandingPage(selectedLanding);
+    const nextLanding = createNewLandingDraft(siteName, draftPages);
+    createdLandingIdRef.current = nextLanding.id;
+    setDraftPages((currentPages) => [...currentPages, nextLanding]);
+    setSelectedLandingId(nextLanding.id);
+    setScreen('editor');
+  };
+
+  const handleDuplicateLanding = async (landingPage = selectedLanding) => {
+    if (!landingPage) {
+      return;
+    }
+
+    const duplicated = duplicateMarketingLandingPage(landingPage);
     const nextLanding = {
       ...duplicated,
       slug: buildUniqueSlug(draftPages, duplicated.slug),
     };
 
-    setDraftPages((currentPages) => [...currentPages, nextLanding]);
-    setSelectedLandingId(nextLanding.id);
+    const nextPages = [...draftPages, nextLanding];
+    if (await persistLandingPages(nextPages, 'Landing duplicada com sucesso.')) {
+      setDraftPages(nextPages);
+      router.push(buildAdminLandingPageEditPath(nextLanding.id));
+    }
   };
 
   const handleSaveSelectedLanding = async () => {
@@ -250,6 +390,10 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
 
     if (await persistLandingPages(nextPages, 'Landing page salva com sucesso.')) {
       setDraftPages(nextPages);
+      const savedLanding = nextPages.find((page) => page.id === selectedLanding.id);
+      if (savedLanding) {
+        onSavedLanding?.(savedLanding);
+      }
     }
   };
 
@@ -258,14 +402,61 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
       return;
     }
 
-    const nextPages = draftPages.map((page) => (page.id === selectedLanding.id ? {
+    const nextPages: MarketingLandingPage[] = draftPages.map((page) => (page.id === selectedLanding.id ? {
       ...page,
-      status: page.status === 'published' ? 'draft' : 'published',
+      status: page.status === 'published' ? 'draft' as const : 'published' as const,
       updatedAt: new Date().toISOString(),
     } : page));
 
     if (await persistLandingPages(nextPages, selectedLanding.status === 'published' ? 'Landing despublicada.' : 'Landing publicada com sucesso.')) {
       setDraftPages(nextPages);
+      const savedLanding = nextPages.find((page) => page.id === selectedLanding.id);
+      if (savedLanding) {
+        onSavedLanding?.(savedLanding);
+      }
+    }
+  };
+
+  const handleToggleLandingStatus = async (landingPage: MarketingLandingPage) => {
+    const nextPages: MarketingLandingPage[] = draftPages.map((page) => (page.id === landingPage.id ? {
+      ...page,
+      status: page.status === 'published' ? 'draft' as const : 'published' as const,
+      updatedAt: new Date().toISOString(),
+    } : page));
+
+    if (await persistLandingPages(nextPages, landingPage.status === 'published' ? 'Landing despublicada.' : 'Landing publicada com sucesso.')) {
+      setDraftPages(nextPages);
+    }
+  };
+
+  const handleApplyBulkAction = async () => {
+    const selectedIds = Array.from(selectedLandingIds);
+    if (!bulkAction || selectedIds.length === 0) {
+      addToast('Selecione uma acao em massa e ao menos uma landing.', 'error');
+      return;
+    }
+
+    if (bulkAction === 'delete') {
+      const nextPages = draftPages.filter((page) => !selectedLandingIds.has(page.id));
+      if (await persistLandingPages(nextPages, 'Landing pages removidas com sucesso.')) {
+        setDraftPages(nextPages);
+        setSelectedLandingIds(new Set());
+        setBulkAction('');
+      }
+      return;
+    }
+
+    const nextStatus = bulkAction === 'publish' ? 'published' as const : 'draft' as const;
+    const nextPages = draftPages.map((page) => (selectedLandingIds.has(page.id) ? {
+      ...page,
+      status: nextStatus,
+      updatedAt: new Date().toISOString(),
+    } : page));
+
+    if (await persistLandingPages(nextPages, bulkAction === 'publish' ? 'Landing pages publicadas.' : 'Landing pages movidas para rascunho.')) {
+      setDraftPages(nextPages);
+      setSelectedLandingIds(new Set());
+      setBulkAction('');
     }
   };
 
@@ -278,7 +469,12 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
     if (await persistLandingPages(nextPages, 'Landing removida com sucesso.')) {
       setDraftPages(nextPages);
       setSelectedLandingId(nextPages[0]?.id || '');
+      setSelectedLandingIds(new Set());
+      setScreen('list');
       setPendingDelete(null);
+      if (editorOnly) {
+        onReturnToList?.();
+      }
     }
   };
 
@@ -295,7 +491,190 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
         onCancel={() => setPendingDelete(null)}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]">
+      {screen === 'list' ? (
+        <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+          <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-slate-100">
+                  <FileText size={18} className="text-sky-700 dark:text-sky-300" />
+                  Landing pages
+                </h3>
+                <Link
+                  href={buildAdminLandingPageEditPath('new')}
+                  className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-3 py-1.5 text-[10px] uppercase tracking-[0.18em]`}
+                >
+                  <Plus size={13} />
+                  Adicionar nova
+                </Link>
+              </div>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                Gerencie paginas comerciais publicadas, rascunhos, slugs e campanhas no mesmo padrao operacional do WordPress.
+              </p>
+            </div>
+            <div className="relative w-full lg:max-w-xs">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={landingSearch}
+                onChange={(event) => setLandingSearch(event.target.value)}
+                className={`${ADMIN_FIELD_CLASS} w-full pl-9`}
+                placeholder="Buscar landing..."
+              />
+            </div>
+          </div>
+
+          <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+              {[
+                { key: 'all' as const, label: 'Todas', count: landingCounts.all },
+                { key: 'published' as const, label: 'Publicadas', count: landingCounts.published },
+                { key: 'draft' as const, label: 'Rascunhos', count: landingCounts.draft },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setStatusFilter(item.key)}
+                  className={statusFilter === item.key
+                    ? 'text-sky-700 underline underline-offset-4 dark:text-sky-300'
+                    : 'text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-300'
+                  }
+                >
+                  {item.label} <span className="text-slate-400">({item.count})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={bulkAction}
+                onChange={(event) => setBulkAction(event.target.value as LandingBulkAction)}
+                className={`${ADMIN_FIELD_CLASS} min-w-[180px]`}
+              >
+                <option value="">Acoes em massa</option>
+                <option value="publish">Publicar</option>
+                <option value="draft">Mover para rascunho</option>
+                <option value="delete">Excluir</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => void handleApplyBulkAction()}
+                disabled={isSaving || selectedLandingIds.size === 0}
+                className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                Aplicar
+              </button>
+            </div>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              {filteredLandingPages.length} item(ns)
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40">
+                <tr className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                  <th className="w-12 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleAllFilteredLandings}
+                      className="h-4 w-4 rounded-sm border-slate-300 text-sky-700"
+                    />
+                  </th>
+                  <th className="px-4 py-3">Titulo</th>
+                  <th className="px-4 py-3">Slug</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Plano</th>
+                  <th className="px-4 py-3">Atualizada</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                {filteredLandingPages.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
+                      Nenhuma landing encontrada.
+                    </td>
+                  </tr>
+                ) : filteredLandingPages.map((page) => {
+                  const landingPath = buildMarketingLandingPath(page.slug);
+                  const previewPath = `${landingPath}?preview=${page.id}`;
+                  const linkedPlan = availablePlans.find((plan) => Number(plan.id) === Number(page.linkedPlanId));
+                  const updatedAt = new Date(page.updatedAt || page.createdAt);
+
+                  return (
+                    <tr key={page.id} className="group bg-white align-top transition-colors hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-950/60">
+                      <td className="px-4 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedLandingIds.has(page.id)}
+                          onChange={() => toggleSelectedLanding(page.id)}
+                          className="h-4 w-4 rounded-sm border-slate-300 text-sky-700"
+                        />
+                      </td>
+                      <td className="px-4 py-4">
+                        <Link
+                          href={buildAdminLandingPageEditPath(page.id)}
+                          className="text-left text-sm font-bold text-sky-700 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-200"
+                        >
+                          {page.title}
+                        </Link>
+                        <p className="mt-1 line-clamp-2 max-w-xl text-xs font-medium text-slate-500 dark:text-slate-400">
+                          {page.hero.title}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <Link href={buildAdminLandingPageEditPath(page.id)} className="text-sky-700 hover:underline dark:text-sky-300">
+                            Editar
+                          </Link>
+                          <span className="text-slate-300">|</span>
+                          <button type="button" onClick={() => void handleToggleLandingStatus(page)} className="text-sky-700 hover:underline dark:text-sky-300">
+                            {page.status === 'published' ? 'Despublicar' : 'Publicar'}
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <button type="button" onClick={() => void handleDuplicateLanding(page)} className="text-sky-700 hover:underline dark:text-sky-300">
+                            Duplicar
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <a href={previewPath} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline dark:text-sky-300">
+                            Preview
+                          </a>
+                          <span className="text-slate-300">|</span>
+                          <a href={landingPath} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline dark:text-sky-300">
+                            Ver
+                          </a>
+                          <span className="text-slate-300">|</span>
+                          <button type="button" onClick={() => setPendingDelete(page)} className="text-rose-600 hover:underline dark:text-rose-300">
+                            Excluir
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 font-mono text-xs text-slate-600 dark:text-slate-300">/{page.slug}</td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex rounded-sm px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                          page.status === 'published'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                            : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                        }`}>
+                          {page.status === 'published' ? 'Publicado' : 'Rascunho'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-xs font-medium text-slate-600 dark:text-slate-300">
+                        {linkedPlan ? `${linkedPlan.name} (#${linkedPlan.id})` : 'Sem vinculo'}
+                      </td>
+                      <td className="px-4 py-4 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {Number.isNaN(updatedAt.getTime()) ? '-' : updatedAt.toLocaleDateString('pt-BR')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+      <div className={editorOnly ? 'space-y-6' : 'grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]'}>
+        {!editorOnly ? (
         <aside className={`${sectionClassName} space-y-4 xl:sticky xl:top-24 xl:self-start`}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -308,7 +687,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
             <button
               type="button"
               onClick={handleCreateLanding}
-              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white"
+              className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
             >
               <Plus size={14} />
               Nova
@@ -323,15 +702,15 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                   key={page.id}
                   type="button"
                   onClick={() => setSelectedLandingId(page.id)}
-                  className={`w-full rounded-[1.5rem] border px-4 py-4 text-left transition-all ${
+                  className={`w-full rounded-sm border px-4 py-4 text-left transition-all ${
                     isSelected
-                      ? 'border-indigo-500 bg-indigo-50 shadow-sm dark:border-indigo-500 dark:bg-indigo-500/10'
-                      : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50 dark:hover:border-slate-700'
+                      ? 'border-sky-700 bg-sky-50 dark:border-sky-700 dark:bg-sky-950/20'
+                      : 'border-slate-300 bg-slate-50 hover:bg-white dark:border-slate-700 dark:bg-slate-950/40 dark:hover:bg-slate-900'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-black text-slate-900 dark:text-slate-100">{page.title}</p>
-                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] ${
+                    <span className={`rounded-sm px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] ${
                       page.status === 'published'
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
                         : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
@@ -351,9 +730,9 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
           <div className="grid gap-3 sm:grid-cols-2">
             <button
               type="button"
-              onClick={handleDuplicateLanding}
+              onClick={() => void handleDuplicateLanding()}
               disabled={!selectedLanding}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-50`}
             >
               <Copy size={14} />
               Duplicar
@@ -362,13 +741,14 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
               type="button"
               onClick={() => selectedLanding && setPendingDelete(selectedLanding)}
               disabled={!selectedLanding}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/30 dark:text-rose-300"
+              className="inline-flex items-center justify-center gap-2 rounded-sm border border-rose-300 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/30 dark:bg-slate-900 dark:text-rose-300"
             >
               <Trash2 size={14} />
               Remover
             </button>
           </div>
         </aside>
+        ) : null}
 
         <div className="space-y-6">
           {!selectedLanding ? (
@@ -387,20 +767,24 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                     </p>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <a href={previewHref} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <button type="button" onClick={returnToLandingList} className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
+                      <ArrowLeft size={14} />
+                      Lista
+                    </button>
+                    <a href={previewHref} target="_blank" rel="noreferrer" className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
                       <Eye size={14} />
                       Preview
                     </a>
-                    <a href={publishedHref} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100">
+                    <a href={publishedHref} target="_blank" rel="noreferrer" className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
                       <ExternalLink size={14} />
                       Publica
                     </a>
-                    <button type="button" onClick={() => void handleTogglePublish()} disabled={isSaving} className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60 ${selectedLanding.status === 'published' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                    <button type="button" onClick={() => void handleTogglePublish()} disabled={isSaving} className={`inline-flex items-center justify-center gap-2 rounded-sm border px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60 ${selectedLanding.status === 'published' ? 'border-slate-700 bg-slate-700 hover:bg-slate-800' : 'border-emerald-700 bg-emerald-700 hover:bg-emerald-800'}`}>
                       {selectedLanding.status === 'published' ? <EyeOff size={14} /> : <Rocket size={14} />}
                       {selectedLanding.status === 'published' ? 'Despublicar' : 'Publicar'}
                     </button>
-                    <button type="button" onClick={() => void handleSaveSelectedLanding()} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60">
+                    <button type="button" onClick={() => void handleSaveSelectedLanding()} disabled={isSaving} className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em] disabled:opacity-60`}>
                       <Save size={14} />
                       Salvar
                     </button>
@@ -462,7 +846,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                   <button
                     type="button"
                     onClick={() => patchSelectedLanding((page) => ({ ...page, planCards: [...page.planCards, createEmptyPlanCard()] }))}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100"
+                    className="inline-flex items-center gap-2 rounded-sm border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100"
                   >
                     <Plus size={14} />
                     Adicionar card
@@ -471,13 +855,13 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
 
                 <div className="space-y-5">
                   {selectedLanding.planCards.map((card, index) => (
-                    <div key={card.id} className="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/50">
+                    <div key={card.id} className="rounded-sm border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/50">
                       <div className="mb-4 flex items-center justify-between gap-3">
                         <p className="text-sm font-black text-slate-900 dark:text-slate-100">Card {index + 1}</p>
                         <button
                           type="button"
                           onClick={() => patchSelectedLanding((page) => ({ ...page, planCards: page.planCards.filter((item) => item.id !== card.id) }))}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 dark:border-rose-900/30 dark:text-rose-300"
+                          className="inline-flex items-center gap-2 rounded-sm border border-rose-200 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 dark:border-rose-900/30 dark:text-rose-300"
                         >
                           <Trash2 size={12} />
                           Remover
@@ -636,7 +1020,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                     <button
                       type="button"
                       onClick={() => patchSelectedLanding((page) => ({ ...page, comparisonRows: [...page.comparisonRows, createEmptyComparisonRow()] }))}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100"
+                      className="inline-flex items-center gap-2 rounded-sm border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100"
                     >
                       <Plus size={14} />
                       Linha
@@ -644,7 +1028,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                     <button
                       type="button"
                       onClick={() => patchSelectedLanding((page) => ({ ...page, faq: [...page.faq, createEmptyFaq()] }))}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100"
+                      className="inline-flex items-center gap-2 rounded-sm border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100"
                     >
                       <Plus size={14} />
                       FAQ
@@ -654,13 +1038,13 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
 
                 <div className="space-y-5">
                   {selectedLanding.comparisonRows.map((row) => (
-                    <div key={row.id} className="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/50">
+                    <div key={row.id} className="rounded-sm border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/50">
                       <div className="mb-4 flex items-center justify-between gap-3">
                         <p className="text-sm font-black text-slate-900 dark:text-slate-100">Linha comparativa</p>
                         <button
                           type="button"
                           onClick={() => patchSelectedLanding((page) => ({ ...page, comparisonRows: page.comparisonRows.filter((item) => item.id !== row.id) }))}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 dark:border-rose-900/30 dark:text-rose-300"
+                          className="inline-flex items-center gap-2 rounded-sm border border-rose-200 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 dark:border-rose-900/30 dark:text-rose-300"
                         >
                           <Trash2 size={12} />
                           Remover
@@ -715,7 +1099,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                         value={selectedLanding.faq.map((item) => `${item.question} :: ${item.answer}`).join('\n')}
                         onChange={(event) => patchSelectedLanding((page) => ({
                           ...page,
-                          faq: event.target.value.split('\n').map((line, index) => line.trim()).filter(Boolean).map((line) => {
+                          faq: event.target.value.split('\n').map((line) => line.trim()).filter(Boolean).map((line, index) => {
                             const [question, ...answerParts] = line.split('::');
                             return {
                               id: page.faq[index]?.id || createEmptyFaq().id,
@@ -788,6 +1172,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };

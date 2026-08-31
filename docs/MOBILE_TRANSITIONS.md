@@ -1356,7 +1356,8 @@ Essa separacao evita misturar a base Expo com a camada publica/indexavel da web.
 - origem web/plataforma:
   - `src/app/practice/page.tsx`
   - `src/app/questions/components/QuestionCard.tsx`
-  - `src/providers/DataProvider.tsx`
+  - `src/state/user-progress/useUserProgressActions.ts`
+  - `src/state/user-progress/userProgressStore.ts`
   - `src/services/progress/userProgressService.ts`
   - endpoint `users/notes.php`
   - endpoint legado `users/delete_note.php`

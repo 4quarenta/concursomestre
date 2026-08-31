@@ -24,6 +24,8 @@ Documentar a operacao do cofre Stripe usada no checkout e no perfil, com a mesma
 - A listagem nao depende de `user_id` manual no frontend; o backend resolve pelo usuario autenticado.
 - O espelho local (`user_cards`) e sincronizado a partir da Stripe em toda listagem.
 - O campo `users.has_saved_card` e apenas indicativo operacional, nao fonte final.
+- O customer Stripe canônico deve priorizar o `provider_customer_id` da assinatura ativa. Isso evita fragmentar cartoes salvos quando customers duplicados acabam sendo criados para o mesmo usuario.
+- O fluxo detalhado de prevencao contra customers duplicados esta em `docs/STRIPE_CUSTOMER_CANONICALIZATION.md`.
 
 ## Casos operacionais (o que e feito em cada caso)
 
@@ -56,6 +58,22 @@ Documentar a operacao do cofre Stripe usada no checkout e no perfil, com a mesma
 - Checkout:
   - Usa os mesmos cartoes salvos da Stripe
   - Permite selecionar cartao salvo ou novo cartao
+
+## Relacao com renovacao e inadimplencia
+
+- O cartao padrao da Stripe e a base das proximas invoices de assinatura.
+- Se o usuario estiver com assinatura ativa e sem cartao salvo visivel, a plataforma sinaliza `paymentIssue`.
+- Se a assinatura entrar em `past_due`:
+  - o acesso premium e bloqueado;
+  - o usuario recebe banner/notificacao;
+  - a regularizacao precisa acontecer pela area de billing/cartoes.
+- O fluxo completo de:
+  - preco vigente da proxima renovacao;
+  - reminder de 5 dias;
+  - recibos por email;
+  - falha de cobranca;
+  - desbloqueio apos regularizacao
+  esta documentado em `docs/STRIPE_RENEWAL_PRICING_AND_COLLECTIONS.md`.
 
 ## Mensagens de bloqueio esperadas
 

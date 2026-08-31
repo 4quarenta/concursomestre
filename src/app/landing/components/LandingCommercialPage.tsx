@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -9,788 +11,1023 @@
 *
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, BrainCircuit, CheckCircle2, Globe, GraduationCap, LineChart, MessageSquareQuote, ShieldCheck, Sparkles, Star, Target, Trophy, XCircle, Zap } from 'lucide-react';
-import type { Plan, PlanConfig } from '@types';
+import React from 'react';
+import Link from 'next/link';
+import {
+  BarChart3,
+  BookOpenCheck,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  FileText,
+  GraduationCap,
+  Instagram,
+  Landmark,
+  Menu,
+  Repeat2,
+  Scale,
+  Send,
+  ShieldCheck,
+  Smartphone,
+  Star,
+  Target,
+  X,
+  Youtube,
+  Zap,
+} from 'lucide-react';
+import type { Plan } from '@types';
+import { getAssetUrl } from '@services/api';
+import { homeTestimonialsService, resolveHomeTestimonials, type HomeTestimonial } from '@services/marketing/homeTestimonials';
+import {
+  getCanonicalPlanName,
+  getConfiguredPlanDisplayName,
+  isPlanEnabledByName,
+  planService,
+  resolvePlanAutoCouponsById,
+  resolvePlanDiscountBadgesByCycle,
+  resolvePlanOffer,
+} from '@services/plans';
+import { BILLING_CYCLE_OPTIONS, PLAN_COPY_BY_TIER, type LandingBillingCycle } from '../homepageContent';
+import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
-import { useData } from '@providers/DataProvider';
-import { themeConfig } from '@constants/themes';
-import { planService, getCanonicalPlanName, getConfiguredPlanDisplayName, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
-import { useDocumentSeo } from '@services/seo';
-import { websiteManifest } from '../../../config/platform';
-import { ThemeOrnaments } from './ThemeOrnaments';
-import LandingSectionHeader from './LandingSectionHeader';
-import { mergeLandingPageContent, landingFeatureIconMap, landingSocialIconMap, createDefaultLandingPageContent } from '../landingContent';
-import { BILLING_CYCLE_OPTIONS, type LandingBillingCycle, FEEDBACK_ITEMS, FINAL_CONVERSION_CONTENT, HERO_BENEFITS, HOW_IT_HELPS, OBJECTIVE_FOCUS_ITEMS, PLAN_COPY_BY_TIER, PROOF_STRIP } from '../homepageContent';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
+
+const NAV_ITEMS = [
+  { label: 'Recursos', href: '#recursos' },
+  { label: 'Planos', href: '#planos' },
+  { label: 'Depoimentos', href: '#depoimentos' },
+  { label: 'Blog', href: '#blog' },
+];
+
+const HERO_BULLETS = [
+  'Estude com foco no que realmente cai',
+  'Acompanhe sua evolução de verdade',
+  'Tenha um plano personalizado para você',
+];
+
+const FEATURES = [
+  {
+    title: 'Concursos realizados',
+    text: 'Pratique por provas anteriores e entenda como cada banca costuma cobrar.',
+    icon: ClipboardList,
+  },
+  {
+    title: 'Plano de estudos',
+    text: 'Plano personalizado de acordo com seu tempo, edital e objetivo.',
+    icon: BookOpenCheck,
+  },
+  {
+    title: 'Raio-X da banca',
+    text: 'Veja assuntos mais cobrados, perfil da banca e prioridades de estudo.',
+    icon: Zap,
+  },
+  {
+    title: 'Simulados',
+    text: 'Simulados inéditos com correção automática e rankings.',
+    icon: Target,
+  },
+  {
+    title: 'Revisões',
+    text: 'Revise o que importa com resumos e questões por assunto.',
+    icon: Repeat2,
+  },
+  {
+    title: 'Desempenho',
+    text: 'Acompanhe sua evolução com gráficos claros e objetivos.',
+    icon: BarChart3,
+  },
+  {
+    title: 'Lei comentada',
+    text: 'Estude a legislação com comentários objetivos e contexto para concursos.',
+    icon: FileText,
+  },
+  {
+    title: 'Cronograma Elite',
+    text: 'Monte sua rotina semanal com metas, revisões e blocos de questões.',
+    icon: CalendarDays,
+  },
+];
+
+const PROCESS_STEPS = [
+  {
+    title: 'Diagnóstico inicial',
+    text: 'Entenda seu nível antes de decidir o próximo estudo.',
+  },
+  {
+    title: 'Prioridade por edital',
+    text: 'Veja o que merece mais atenção na sua prova.',
+  },
+  {
+    title: 'Treino direcionado',
+    text: 'Resolva questões ligadas aos seus pontos fracos.',
+  },
+  {
+    title: 'Revisão inteligente',
+    text: 'Volte nos erros certos antes que eles virem padrão.',
+  },
+  {
+    title: 'Decisão com dados',
+    text: 'Ajuste sua rotina com base na sua evolução real.',
+  },
+];
+
+const APPROVAL_CONTEXTS = [
+  {
+    title: 'Concursos públicos',
+    text: 'Edital, banca e histórico de cobrança importam. O estudo precisa priorizar o que mais aparece e medir acertos por matéria.',
+    icon: Landmark,
+  },
+  {
+    title: 'ENEM',
+    text: 'A prova exige consistência, interpretação e treino por área. Simulados e revisão dos erros ajudam a ganhar ritmo sem estudar no escuro.',
+    icon: GraduationCap,
+  },
+  {
+    title: 'OAB',
+    text: 'Na primeira fase, lei comentada e questões por assunto encurtam o caminho entre leitura, entendimento e aplicação prática.',
+    icon: Scale,
+  },
+];
 
 const PLAN_ORDER_INDEX: Record<string, number> = { Gratuito: 0, Essencial: 1, Pro: 2, Elite: 3 };
-const HOW_IT_HELPS_ICONS = [Target, BookOpen, Sparkles, LineChart, BrainCircuit, ShieldCheck] as const;
-const OBJECTIVE_ICONS = [Trophy, GraduationCap, Zap] as const;
-const formatCurrency = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleString('pt-BR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})}`;
 
 const isPlanInCycle = (plan: Plan, cycle: LandingBillingCycle) => {
-  const isMonthly = plan.interval_unit === 'month' && plan.interval_count === 1;
-  const isQuarterly = plan.interval_unit === 'month' && plan.interval_count === 3;
-  const isAnnual = plan.interval_unit === 'year' || (plan.interval_unit === 'month' && plan.interval_count === 12);
-  if (plan.price === 0) return true;
-  if (cycle === 'monthly') return isMonthly;
+  const intervalUnit = String(plan.interval_unit || '').toLowerCase();
+  const intervalCount = Number(plan.interval_count || 1);
+  const isMonthly = intervalUnit === 'month' && intervalCount === 1;
+  const isQuarterly = intervalUnit === 'month' && intervalCount === 3;
+  const isAnnual = intervalUnit === 'year' || (intervalUnit === 'month' && intervalCount === 12);
+  const isCustomShortCycle = intervalUnit === 'day' || intervalUnit === 'week';
+
+  if (Number(plan.price || 0) === 0) return true;
+  if (cycle === 'monthly') return isMonthly || isCustomShortCycle;
   if (cycle === 'quarterly') return isQuarterly;
   return isAnnual;
 };
 
-const getMonthlyEquivalent = (plan: Plan) => {
-  if (plan.price === 0) return 0;
-  if (plan.interval_unit === 'year') return plan.price / 12;
-  if (plan.interval_unit === 'month' && plan.interval_count > 1) return plan.price / plan.interval_count;
-  return plan.price;
-};
-
 const getPlanTotalLabel = (plan: Plan) => {
-  if (plan.price === 0) return 'Sem cobranÃ§a';
-  if (plan.interval_unit === 'year') return `${formatCurrency(plan.price)} por ano`;
-  if (plan.interval_unit === 'month' && plan.interval_count === 3) return `${formatCurrency(plan.price)} a cada 3 meses`;
-  return `${formatCurrency(plan.price)} por mÃªs`;
+  if (Number(plan.price || 0) === 0) return 'Sem cobrança';
+  if (plan.interval_unit === 'year') return `${formatCurrency(Number(plan.price || 0))} por ano`;
+  if (plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 3) return `${formatCurrency(Number(plan.price || 0))} a cada 3 meses`;
+  return `${formatCurrency(Number(plan.price || 0))} por mês`;
 };
 
-const getPlanFeatureList = (plan: Plan) => {
-  if (!Array.isArray(plan.features)) return [];
-  return plan.features.filter((feature) => feature.included).map((feature) => feature.text).filter(Boolean).slice(0, 5);
-};
-
-const normalizeFeatureKey = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-
-const LANDING_PLAN_FEATURE_COPY: Array<{ match: string[]; text: string }> = [
-  { match: ['banco de questoes', 'questoes ilimitadas'], text: 'Acesso completo a milhares de questÃµes para treinar todos os dias.' },
-  { match: ['simulados', 'simulados ilimitados'], text: 'Simulados ilimitados com anÃ¡lise detalhada do seu desempenho.' },
-  { match: ['comentarios', 'comentarios da comunidade'], text: 'ComentÃ¡rios e contexto para revisar melhor e aprender com cada erro.' },
-  { match: ['desempenho', 'estatisticas', 'estatisticas basicas'], text: 'Leitura clara da sua evoluÃ§Ã£o para saber onde ajustar a rota.' },
-  { match: ['revisao', 'materiais', 'materiais de estudo'], text: 'RevisÃ£o mais eficiente com apoio para voltar no que realmente importa.' },
+const FINAL_BENEFITS = [
+  { label: 'Sem cartão de crédito', icon: ShieldCheck },
+  { label: 'Cancele quando quiser', icon: CheckCircle2 },
+  { label: 'Comece em menos de 1 minuto', icon: Smartphone },
 ];
 
-const formatPlanFeatureForLanding = (feature: string) => {
-  const normalized = normalizeFeatureKey(feature);
-  const mapped = LANDING_PLAN_FEATURE_COPY.find((item) => item.match.some((term) => normalized.includes(term)));
-  return mapped?.text || feature;
+const FAQ_ITEMS = [
+  {
+    question: 'Posso começar sem pagar?',
+    answer: 'Sim. O plano gratuito permite explorar a plataforma, resolver questões e entender se o método faz sentido para sua rotina.',
+  },
+  {
+    question: 'Preciso cadastrar cartão?',
+    answer: 'Não. Para criar a conta gratuita, você não precisa informar cartão de crédito.',
+  },
+  {
+    question: 'Os planos trimestral e anual têm desconto?',
+    answer: 'Quando houver desconto ativo no catálogo, ele aparece automaticamente na área de planos.',
+  },
+  {
+    question: 'Serve para qualquer concurso?',
+    answer: 'A plataforma funciona melhor para quem quer estudar por banca, provas anteriores, assuntos e desempenho real.',
+  },
+  {
+    question: 'Posso cancelar depois?',
+    answer: 'Sim. Você pode cancelar quando quiser pela sua conta, sem precisar falar com suporte para isso.',
+  },
+];
+
+const FOOTER_COLUMNS = [
+  {
+    title: 'Navegação',
+    links: [
+      { label: 'Recursos', href: '#recursos' },
+      { label: 'Planos', href: '#planos' },
+      { label: 'Depoimentos', href: '#depoimentos' },
+      { label: 'Blog', href: '#blog' },
+    ],
+  },
+  {
+    title: 'Suporte',
+    links: [
+      { label: 'Central de ajuda', href: '/support' },
+      { label: 'Fale conosco', href: '/support' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { label: 'Termos de uso', href: '/terms' },
+      { label: 'Política de privacidade', href: '/privacy' },
+    ],
+  },
+];
+
+const SectionTitle = ({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <h2 className={`text-center text-2xl font-black leading-tight tracking-tight text-[#07103a] md:text-3xl ${className}`}>
+    {children}
+  </h2>
+);
+
+export const Header = () => {
+  const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-slate-100/80 bg-white/90 backdrop-blur-xl">
+      <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-5 sm:px-8">
+        <PublicBrandLink width={205} priority surface="light" />
+
+        <nav className="hidden items-center gap-10 text-sm font-semibold text-[#1d284f] lg:flex" aria-label="Navegação principal">
+          {NAV_ITEMS.map((item) => (
+            <Link key={item.href} href={item.href} className="transition-colors hover:text-[#684cff]">
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="hidden items-center gap-5 lg:flex">
+          <Link href="/auth?mode=login" className="text-sm font-bold text-[#07103a] transition-colors hover:text-[#684cff]">
+            Entrar
+          </Link>
+          <Link href="/auth?mode=signup" className="rounded-xl bg-[#07103a] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#111d52]">
+            Começar grátis
+          </Link>
+        </div>
+
+        <button
+          type="button"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-[#07103a] lg:hidden"
+          onClick={() => setIsMenuOpen((current) => !current)}
+          aria-label={isMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+          aria-expanded={isMenuOpen}
+        >
+          {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
+
+      {isMenuOpen && (
+        <div className="border-t border-slate-100 bg-white px-5 py-5 shadow-lg lg:hidden">
+          <nav className="mx-auto flex max-w-7xl flex-col gap-4 text-sm font-bold text-[#07103a]" aria-label="Navegação mobile">
+            {NAV_ITEMS.map((item) => (
+              <Link key={item.href} href={item.href} onClick={() => setIsMenuOpen(false)}>
+                {item.label}
+              </Link>
+            ))}
+            <div className="mt-2 grid grid-cols-2 gap-3">
+              <Link href="/auth?mode=login" className="rounded-xl border border-slate-200 px-4 py-3 text-center">
+                Entrar
+              </Link>
+              <Link href="/auth?mode=signup" className="rounded-xl bg-[#07103a] px-4 py-3 text-center text-white">
+                Começar grátis
+              </Link>
+            </div>
+          </nav>
+        </div>
+      )}
+    </header>
+  );
 };
 
-const getConfiguredPlanFeatures = (
-  plan: Plan,
-  configuredPlanDetails?: Partial<Record<'Gratuito' | 'Essencial' | 'Pro' | 'Elite', PlanConfig>> | null,
-) => {
-  const canonicalPlan = getCanonicalPlanName(plan.name);
-  const configuredFeatures = configuredPlanDetails?.[canonicalPlan]?.features;
-  if (Array.isArray(configuredFeatures) && configuredFeatures.length > 0) {
-    return configuredFeatures
-      .filter((feature) => feature?.included)
-      .map((feature) => String(feature.text || '').trim())
-      .filter(Boolean)
-      .slice(0, 5);
-  }
+const MetricCard = ({
+  label,
+  value,
+  trend,
+}: {
+  label: string;
+  value: string;
+  trend: string;
+}) => (
+  <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</p>
+    <p className="mt-2 text-xl font-black text-[#07103a]">{value}</p>
+    <p className="mt-1 text-[11px] font-bold text-emerald-600">{trend}</p>
+  </div>
+);
 
-  return getPlanFeatureList(plan);
+const PlatformMockup = () => (
+  <div className="relative mx-auto w-full max-w-3xl">
+    <div className="rounded-2xl border-[10px] border-slate-950 bg-slate-950 shadow-2xl shadow-indigo-100">
+      <div className="rounded-[1.35rem] bg-white p-5">
+        <div className="grid gap-5 md:grid-cols-[155px_1fr]">
+          <aside className="hidden rounded-2xl bg-[#f6f7ff] p-4 md:block">
+            <p className="text-xs font-black text-[#07103a]">Olá, Concurseiro</p>
+            <div className="mt-5 space-y-3 text-[11px] font-bold text-slate-500">
+              {['Início', 'Plano de estudos', 'Questões', 'Simulados', 'Revisões'].map((item, index) => (
+                <div key={item} className={`flex items-center gap-2 rounded-lg px-2 py-2 ${index === 0 ? 'bg-white text-[#684cff] shadow-sm' : ''}`}>
+                  <span className="h-2 w-2 rounded-full bg-[#7a5cff]" />
+                  {item}
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <div className="min-w-0">
+            <p className="text-sm font-black text-[#07103a]">Seu desempenho</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <MetricCard label="Questões resolvidas" value="1.248" trend="+15% no mês" />
+              <MetricCard label="Taxa de acerto" value="76%" trend="+4,8% de evolução" />
+              <MetricCard label="Sequência" value="12 dias" trend="Parabéns" />
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_180px]">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                <p className="text-xs font-black text-[#07103a]">Evolução semanal</p>
+                <svg viewBox="0 0 420 190" role="img" aria-label="Gráfico de evolução semanal" className="mt-4 h-40 w-full">
+                  <defs>
+                    <linearGradient id="mockupLineFill" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor="#7059ff" stopOpacity="0.16" />
+                      <stop offset="100%" stopColor="#7059ff" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M20 150 L70 92 L115 110 L160 64 L205 102 L250 72 L295 98 L340 69 L390 38 L390 174 L20 174 Z" fill="url(#mockupLineFill)" />
+                  <path d="M20 150 L70 92 L115 110 L160 64 L205 102 L250 72 L295 98 L340 69 L390 38" fill="none" stroke="#6b55ff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+                  {[20, 70, 115, 160, 205, 250, 295, 340, 390].map((x, index) => (
+                    <circle key={x} cx={x} cy={[150, 92, 110, 64, 102, 72, 98, 69, 38][index]} r="5" fill="#6b55ff" />
+                  ))}
+                </svg>
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <p className="text-xs font-black text-[#07103a]">Próximos estudos</p>
+                <div className="mt-4 space-y-3">
+                  {[
+                    ['D. Administrativo', 'Aula 12'],
+                    ['Português', 'Revisão'],
+                    ['Raciocínio lógico', 'Questões'],
+                  ].map(([title, label], index) => (
+                    <div key={title} className="flex items-center gap-3">
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black text-white ${index === 0 ? 'bg-rose-400' : index === 1 ? 'bg-teal-400' : 'bg-amber-400'}`}>
+                        {index + 1}
+                      </span>
+                      <div>
+                        <p className="text-[11px] font-black text-[#07103a]">{title}</p>
+                        <p className="text-[10px] font-semibold text-slate-400">{label}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div className="absolute -bottom-8 left-2 w-36 rounded-[1.6rem] border-[8px] border-slate-950 bg-slate-950 shadow-2xl shadow-slate-300 sm:left-0 sm:w-48 lg:-left-10 lg:bottom-2">
+      <div className="rounded-[1rem] bg-white p-4">
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-950" />
+        <p className="text-[11px] font-black text-[#07103a]">Plano de estudos</p>
+        <div className="mt-4 space-y-3">
+          {[
+            ['Dir. Constitucional', 'Concluído', 'bg-emerald-400'],
+            ['Português', 'Em andamento', 'bg-amber-400'],
+            ['Raciocínio lógico', 'Pendente', 'bg-slate-300'],
+          ].map(([title, label, color]) => (
+            <div key={title}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-[10px] font-bold text-[#07103a]">{title}</p>
+                <p className="text-[8px] font-black text-slate-400">{label}</p>
+              </div>
+              <div className="mt-1 h-1.5 rounded-full bg-slate-100">
+                <div className={`h-full rounded-full ${color}`} style={{ width: label === 'Concluído' ? '100%' : label === 'Em andamento' ? '58%' : '24%' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 grid grid-cols-4 gap-2 text-center text-[8px] font-bold text-slate-400">
+          {['Início', 'Questões', 'Estat.', 'Mais'].map((item) => <span key={item}>{item}</span>)}
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+export const HeroSection = () => (
+  <section className="mx-auto grid w-full max-w-7xl items-center gap-12 px-5 pb-18 pt-14 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:pb-20 lg:pt-16">
+    <div className="max-w-2xl">
+      <h1 className="text-3xl font-black leading-[1.1] tracking-tight text-[#07103a] sm:text-4xl lg:text-5xl">
+        Se você quer passar, <span className="text-[#684cff]">precisa estudar</span> com estratégia.
+      </h1>
+      <p className="mt-5 max-w-xl text-sm font-medium leading-6 text-slate-600 md:text-base md:leading-7">
+        A plataforma completa para estudar com mais direção, menos promessa e mais resultado.
+      </p>
+
+      <div className="mt-7 space-y-3">
+        {HERO_BULLETS.map((item) => (
+          <div key={item} className="flex items-center gap-3 text-sm font-semibold text-[#1d284f]">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#edeaff] text-[#684cff]">
+              <Check size={13} strokeWidth={3} />
+            </span>
+            {item}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-9 flex flex-col gap-4 sm:flex-row">
+        <Link href="/auth?mode=signup" className="inline-flex h-12 items-center justify-center rounded-xl bg-[#07103a] px-7 text-sm font-bold text-white shadow-sm transition hover:bg-[#111d52]">
+          Começar grátis
+        </Link>
+        <Link href="#planos" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-200 bg-white px-7 text-sm font-bold text-[#07103a] transition hover:border-[#684cff] hover:text-[#684cff]">
+          Ver planos
+        </Link>
+      </div>
+      <p className="mt-4 text-xs font-medium text-slate-500">Grátis para sempre. Sem cartão de crédito.</p>
+    </div>
+
+    <PlatformMockup />
+  </section>
+);
+
+export const FeatureCard = ({
+  title,
+  text,
+  icon: Icon,
+}: {
+  title: string;
+  text: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}) => (
+  <article className="rounded-2xl border border-indigo-100 bg-white p-5 text-center shadow-sm transition hover:-translate-y-1 hover:border-[#8b78ff] hover:shadow-xl hover:shadow-indigo-100/60">
+    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f0edff] text-[#684cff]">
+      <Icon size={24} />
+    </div>
+    <h3 className="mt-5 text-sm font-black text-[#07103a]">{title}</h3>
+    <p className="mt-3 text-sm font-medium leading-6 text-slate-600">{text}</p>
+  </article>
+);
+
+const FeaturesSection = () => (
+  <section id="recursos" className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
+    <SectionTitle>Tudo que você precisa em um só lugar</SectionTitle>
+    <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {FEATURES.map((feature) => (
+        <FeatureCard key={feature.title} {...feature} />
+      ))}
+    </div>
+  </section>
+);
+
+const ApprovalContextSection = () => (
+  <section className="mx-auto w-full max-w-7xl px-5 py-12 sm:px-8">
+    <div className="grid gap-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#684cff]">Aprovação com direção</p>
+        <h2 className="mt-3 text-2xl font-black leading-tight tracking-tight text-[#07103a] md:text-3xl">
+          Cada prova cobra de um jeito. Sua preparação também precisa mudar.
+        </h2>
+        <p className="mt-4 text-sm font-medium leading-6 text-slate-600">
+          Concurso público, ENEM e OAB têm lógicas diferentes, mas uma coisa é comum: quem acompanha dados, revisa erros e treina com método sai na frente.
+        </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-1">
+        {APPROVAL_CONTEXTS.map(({ title, text, icon: Icon }) => (
+          <article key={title} className="rounded-2xl border border-indigo-100 bg-slate-50 p-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#edeaff] text-[#684cff]">
+                <Icon size={18} />
+              </span>
+              <div>
+                <h3 className="text-sm font-black text-[#07103a]">{title}</h3>
+                <p className="mt-1 text-sm font-medium leading-6 text-slate-600">{text}</p>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+export const ProcessSection = () => (
+  <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
+    <SectionTitle>Estude menos no escuro, mais no que dá resultado</SectionTitle>
+    <p className="mx-auto mt-4 max-w-2xl text-center text-sm font-medium leading-6 text-slate-500">
+      A plataforma mostra onde você está perdendo ponto e transforma isso em prática, revisão e acompanhamento.
+    </p>
+    <div className="mt-12 grid gap-8 md:grid-cols-5">
+      {PROCESS_STEPS.map((step, index) => (
+        <article key={step.title} className="relative text-center">
+          {index < PROCESS_STEPS.length - 1 && (
+            <ChevronRight className="absolute -right-5 top-4 hidden text-slate-300 md:block" size={22} />
+          )}
+          <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#684cff] text-sm font-black text-white shadow-lg shadow-indigo-200">
+            {index + 1}
+          </div>
+          <h3 className="mt-5 text-sm font-black text-[#07103a]">{step.title}</h3>
+          <p className="mt-3 text-sm font-medium leading-6 text-slate-500">{step.text}</p>
+        </article>
+      ))}
+    </div>
+  </section>
+);
+
+const getTestimonialInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const initials = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : parts[0]?.slice(0, 2);
+  return (initials || 'CM').toUpperCase();
 };
 
-const getConfiguredPlanFeatureItems = (
-  plan: Plan,
-  configuredPlanDetails?: Partial<Record<'Gratuito' | 'Essencial' | 'Pro' | 'Elite', PlanConfig>> | null,
-) => {
-  const canonicalPlan = getCanonicalPlanName(plan.name);
-  const configuredFeatures = configuredPlanDetails?.[canonicalPlan]?.features;
-  if (Array.isArray(configuredFeatures) && configuredFeatures.length > 0) {
-    return configuredFeatures
-      .map((feature) => ({
-        included: Boolean(feature?.included),
-        text: String(feature?.text || '').trim(),
-      }))
-      .filter((feature) => feature.text);
-  }
+const StarsRating = ({ rating = 5 }: { rating?: number }) => {
+  const safeRating = Math.max(1, Math.min(5, Math.round(Number(rating) || 5)));
 
-  if (!Array.isArray(plan.features)) {
-    return [];
-  }
-
-  return plan.features
-    .map((feature) => ({
-      included: Boolean(feature?.included),
-      text: String(feature?.text || '').trim(),
-    }))
-    .filter((feature) => feature.text);
+  return (
+    <div className="flex items-center gap-1" aria-label={`Avaliação ${safeRating} de 5`}>
+      {Array.from({ length: 5 }).map((_, index) => (
+        <Star
+          key={index}
+          size={15}
+          className={index < safeRating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}
+        />
+      ))}
+    </div>
+  );
 };
 
-const buildCanonicalUrl = (url?: string | null) => String(url || '').trim() || websiteManifest.website.canonicalUrl || `${window.location.origin}/`;
+export const TestimonialsSection = () => {
+  const [activeSlide, setActiveSlide] = React.useState(0);
+  const [approvedTestimonials, setApprovedTestimonials] = React.useState<HomeTestimonial[]>([]);
+  const testimonialsPerSlide = 3;
+  const testimonials = React.useMemo(() => resolveHomeTestimonials(approvedTestimonials), [approvedTestimonials]);
+  const totalSlides = Math.max(1, Math.ceil(testimonials.length / testimonialsPerSlide));
+  const currentSlide = Math.min(activeSlide, totalSlides - 1);
+  const visibleTestimonials = React.useMemo(() => {
+    const start = currentSlide * testimonialsPerSlide;
+    return testimonials.slice(start, start + testimonialsPerSlide);
+  }, [currentSlide, testimonials]);
 
-const LandingCommercialPage: React.FC = () => {
-  const { systemSettings, isSystemSettingsLoaded } = useData();
-  const [billingCycle, setBillingCycle] = useState<LandingBillingCycle>('annual');
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [plansLoaded, setPlansLoaded] = useState(false);
-
-  const currentTheme = themeConfig[systemSettings.activeTheme || 'default'] || themeConfig.default;
-  const ThemeIcon = currentTheme.icon;
-  const siteName = systemSettings.siteName || websiteManifest.website.applicationName || 'ConcursoMestre';
-  const landingContent = useMemo(() => mergeLandingPageContent(systemSettings.landingPageContent || createDefaultLandingPageContent()), [systemSettings.landingPageContent]);
-  const forceModeClass = currentTheme.forceMode === 'dark' ? 'dark bg-slate-950 text-white' : currentTheme.forceMode === 'light' ? 'light bg-white text-slate-950' : '';
-
-  useEffect(() => {
+  React.useEffect(() => {
     let isMounted = true;
-    planService.getPlans().then((catalog) => {
-      if (isMounted) setPlans(Array.isArray(catalog) ? catalog : []);
-    }).finally(() => {
-      if (isMounted) setPlansLoaded(true);
-    });
-    return () => { isMounted = false; };
+
+    homeTestimonialsService.getApproved()
+      .then((items) => {
+        if (isMounted) setApprovedTestimonials(items);
+      })
+      .catch(() => {
+        if (isMounted) setApprovedTestimonials([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const visibleFeatureCards = useMemo(() => landingContent.featureCards.filter((card) => card.enabled !== false), [landingContent.featureCards]);
-  const activeSocialLinks = useMemo(() => landingContent.socialLinks.filter((link) => link.enabled && link.url), [landingContent.socialLinks]);
-  const planCatalog = useMemo(() => plans
+  const goToPrevious = () => setActiveSlide((current) => {
+    const safeCurrent = Math.min(current, totalSlides - 1);
+    return safeCurrent === 0 ? totalSlides - 1 : safeCurrent - 1;
+  });
+  const goToNext = () => setActiveSlide((current) => (Math.min(current, totalSlides - 1) + 1) % totalSlides);
+
+  return (
+    <section id="depoimentos" className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
+      <div className="rounded-2xl bg-[#f3f1ff] p-6 sm:p-7 lg:p-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="md:max-w-xl">
+            <SectionTitle className="md:text-left">Quem usa, aprova</SectionTitle>
+            <p className="mt-3 text-center text-sm font-medium leading-6 text-slate-600 md:text-left">
+              Relatos curtos de quem usou dados, questões e revisão para estudar com mais direção.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 md:justify-end">
+            <button
+              type="button"
+              onClick={goToPrevious}
+              disabled={totalSlides <= 1}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-100 bg-white text-[#07103a] shadow-sm transition hover:border-[#684cff] hover:text-[#684cff] disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Depoimentos anteriores"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={goToNext}
+              disabled={totalSlides <= 1}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-100 bg-white text-[#07103a] shadow-sm transition hover:border-[#684cff] hover:text-[#684cff] disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Próximos depoimentos"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-8 grid gap-5 lg:grid-cols-3">
+          {visibleTestimonials.map((testimonial) => {
+            const photoUrl = getAssetUrl(testimonial.photoUrl || '');
+
+            return (
+              <article key={testimonial.id} className="flex min-h-[260px] flex-col rounded-2xl border border-indigo-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    {photoUrl ? (
+                      // Testimonial avatars can come from user uploads or Google accounts, so the host list is intentionally dynamic.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={photoUrl}
+                        alt={`Foto de ${testimonial.name}`}
+                        className="h-12 w-12 rounded-full border border-indigo-100 object-cover"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-indigo-100 bg-[#f3f1ff] text-xs font-black uppercase tracking-wider text-[#684cff]">
+                        {getTestimonialInitials(testimonial.name)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-black text-[#07103a]">{testimonial.name}</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">{testimonial.role}</p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                    Verificado
+                  </span>
+                </div>
+
+                <div className="mt-5">
+                  <StarsRating rating={testimonial.rating} />
+                </div>
+                <p className="mt-5 flex-1 text-sm font-medium leading-7 text-[#1d284f]">{testimonial.text}</p>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 flex items-center justify-center gap-2">
+          {Array.from({ length: totalSlides }).map((_, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => setActiveSlide(index)}
+              className={`h-2.5 rounded-full transition-all ${currentSlide === index ? 'w-8 bg-[#684cff]' : 'w-2.5 bg-indigo-200'}`}
+              aria-label={`Ir para grupo de depoimentos ${index + 1}`}
+              aria-current={currentSlide === index}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export const PricingSection = () => {
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const [billingCycle, setBillingCycle] = React.useState<LandingBillingCycle>('annual');
+  const [plans, setPlans] = React.useState<Plan[]>([]);
+  const [plansLoaded, setPlansLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    planService.getPlans()
+      .then((catalog) => {
+        if (isMounted) setPlans(Array.isArray(catalog) ? catalog : []);
+      })
+      .finally(() => {
+        if (isMounted) setPlansLoaded(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const planCatalog = React.useMemo(() => plans
     .filter((plan) => plan.is_active !== false)
     .filter((plan) => isPlanEnabledByName(plan.name, systemSettings.planDetails))
     .sort((left, right) => {
       const leftOrder = PLAN_ORDER_INDEX[getCanonicalPlanName(left.name)] ?? 99;
       const rightOrder = PLAN_ORDER_INDEX[getCanonicalPlanName(right.name)] ?? 99;
-      return leftOrder === rightOrder ? left.price - right.price : leftOrder - rightOrder;
+      return leftOrder === rightOrder ? Number(left.price || 0) - Number(right.price || 0) : leftOrder - rightOrder;
     }), [plans, systemSettings.planDetails]);
-  const freePlan = useMemo(() => planCatalog.find((plan) => plan.price === 0) || null, [planCatalog]);
-  const visiblePlans = useMemo(() => {
+
+  const freePlan = React.useMemo(() => planCatalog.find((plan) => Number(plan.price || 0) === 0) || null, [planCatalog]);
+  const visiblePlans = React.useMemo(() => {
     const cyclePlans = planCatalog.filter((plan) => isPlanInCycle(plan, billingCycle));
-    const paidPlans = cyclePlans.filter((plan) => plan.price > 0);
+    const paidPlans = cyclePlans.filter((plan) => Number(plan.price || 0) > 0);
     return freePlan ? [freePlan, ...paidPlans] : paidPlans;
   }, [billingCycle, freePlan, planCatalog]);
-  const featuredPlanId = useMemo(() => visiblePlans.find((plan) => getCanonicalPlanName(plan.name) === 'Pro')?.id ?? visiblePlans.find((plan) => plan.price > 0)?.id ?? null, [visiblePlans]);
 
-  const autoCouponsByPlanId = useMemo(
+  const featuredPlanId = React.useMemo(
+    () => visiblePlans.find((plan) => getCanonicalPlanName(plan.name) === 'Pro')?.id
+      ?? visiblePlans.find((plan) => Number(plan.price || 0) > 0)?.id
+      ?? null,
+    [visiblePlans],
+  );
+
+  const autoCouponsByPlanId = React.useMemo(
     () => resolvePlanAutoCouponsById(visiblePlans, systemSettings.coupons || []),
     [systemSettings.coupons, visiblePlans],
   );
 
-  const planOffersById = useMemo(() => {
-    return Object.fromEntries(visiblePlans.map((plan) => [
-      plan.id,
-      resolvePlanOffer({
-        plan,
-        pricing: systemSettings.pricing,
-        planDetails: systemSettings.planDetails,
-        discountAmount: autoCouponsByPlanId[plan.id]?.discountAmount || 0,
-      }),
-    ]));
-  }, [autoCouponsByPlanId, systemSettings.planDetails, systemSettings.pricing, visiblePlans]);
+  const planOffersById = React.useMemo(() => Object.fromEntries(visiblePlans.map((plan) => [
+    plan.id,
+    resolvePlanOffer({
+      plan,
+      pricing: systemSettings.pricing,
+      planDetails: systemSettings.planDetails,
+      discountAmount: autoCouponsByPlanId[plan.id]?.discountAmount || 0,
+    }),
+  ])), [autoCouponsByPlanId, systemSettings.planDetails, systemSettings.pricing, visiblePlans]);
 
-  const eliteDiscountBadgesByCycle = useMemo(() => (
+  const discountBadgesByCycle = React.useMemo(() => (
     resolvePlanDiscountBadgesByCycle({
       plans: planCatalog,
-      canonicalPlanName: 'Elite',
+      canonicalPlanName: planCatalog.some((plan) => getCanonicalPlanName(plan.name) === 'Elite') ? 'Elite' : 'Pro',
       coupons: systemSettings.coupons || [],
       pricing: systemSettings.pricing,
       planDetails: systemSettings.planDetails,
     })
   ), [planCatalog, systemSettings.coupons, systemSettings.planDetails, systemSettings.pricing]);
-
-  const hasVisibleOffer = useMemo(
-    () => visiblePlans.some((plan) => planOffersById[plan.id]?.hasDiscount),
-    [planOffersById, visiblePlans],
-  );
   const limitedOfferEndsAt = systemSettings.limitedOfferCountdown?.endsAt || '';
-  const hasActiveLimitedOfferCountdown = Boolean(
-    systemSettings.limitedOfferCountdown?.enabled
-    && limitedOfferEndsAt
-    && new Date(limitedOfferEndsAt).getTime() > Date.now(),
-  );
-
-  const globalSeo = systemSettings.seo?.global;
-  const landingSeo = systemSettings.seo?.pages?.landing;
-  const seoPayload = useMemo(() => ({
-    title: landingSeo?.title || `${siteName} | Estude com estratÃ©gia e evolua com mais direÃ§Ã£o`,
-    description: landingSeo?.meta_description || globalSeo?.meta_description || 'Banco de questÃµes, simulados e anÃ¡lise de desempenho para concursos, OAB e ENEM. Comece grÃ¡tis, descubra onde melhorar e evolua com mais clareza.',
-    canonical: buildCanonicalUrl(landingSeo?.canonical_url || globalSeo?.canonical_base_url),
-    robots: landingSeo?.robots_override || globalSeo?.robots_default || 'index,follow',
-    ogTitle: landingSeo?.og_title || globalSeo?.default_og_title || `${siteName} | Se vocÃª quer passar, precisa estudar com estratÃ©gia`,
-    ogDescription: landingSeo?.og_description || globalSeo?.default_og_description || 'Pratique com foco, acompanhe seu desempenho e entenda exatamente como melhorar.',
-    ogImage: landingSeo?.og_image || globalSeo?.default_og_image || '',
-    twitterTitle: globalSeo?.default_twitter_title || landingSeo?.title || `${siteName} | Comece grÃ¡tis`,
-    twitterDescription: globalSeo?.default_twitter_description || landingSeo?.meta_description || 'Teste a plataforma, pratique com direÃ§Ã£o e veja sua evoluÃ§Ã£o com mais clareza.',
-    twitterImage: globalSeo?.default_twitter_image || landingSeo?.og_image || '',
-  }), [globalSeo, landingSeo, siteName]);
-
-  useDocumentSeo(seoPayload);
-
-  const navLinks = [
-    { label: 'Recursos', href: '#recursos' },
-    { label: 'Como ajuda', href: '#como-ajuda' },
-    { label: 'Focos', href: '#focos' },
-    { label: 'Planos', href: '#planos' },
-  ];
 
   return (
-    <div className={`min-h-screen font-sans selection:bg-indigo-100 transition-colors duration-300 dark:selection:bg-indigo-900/30 ${forceModeClass || 'bg-white dark:bg-slate-950'}`}>
-      {systemSettings.activePromotion.isActive && (
-        <div className="border-b border-white/10 bg-slate-900 px-6 py-2.5 text-center text-[10px] font-black uppercase tracking-[0.2em] text-white dark:bg-indigo-950">
-          <div className="mx-auto flex max-w-7xl items-center justify-center gap-3">
-            <Zap size={14} className="text-amber-400" />
-            <span>{systemSettings.activePromotion.bannerText}</span>
-            <Link to="/auth?register=true" className="rounded-full bg-white px-3 py-1 text-[9px] text-slate-900 transition-colors hover:bg-slate-100">
-              ComeÃ§ar grÃ¡tis
-            </Link>
-          </div>
-        </div>
-      )}
-      <nav className="sticky top-0 z-50 border-b border-slate-100 bg-white/85 px-6 py-4 backdrop-blur-md dark:border-slate-900 dark:bg-slate-950/85">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6">
-          <Link to="/" className="flex shrink-0 items-center gap-2 text-2xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">
-            <ThemeIcon className="h-8 w-8" />
-            <span>{siteName}</span>
-          </Link>
+    <section id="planos" className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-8">
+      <SectionTitle>Escolha o plano ideal para você</SectionTitle>
+      <p className="mt-4 text-center text-sm font-medium text-slate-500">Planos oficiais do catálogo, com ciclos e descontos aplicados automaticamente.</p>
 
-          <div className="hidden flex-1 items-center justify-center gap-6 md:flex">
-            {navLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 transition-colors hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300"
-              >
-                {link.label}
-              </a>
-            ))}
-          </div>
+      <LimitedOfferCountdown
+        enabled={Boolean(systemSettings.limitedOfferCountdown?.enabled)}
+        endsAt={limitedOfferEndsAt}
+        className="mx-auto mt-8 max-w-4xl"
+      />
 
-          <div className="flex shrink-0 items-center gap-4">
-            <Link to="/auth" className="text-[11px] font-black uppercase tracking-widest text-slate-900 transition-colors hover:text-indigo-600 dark:text-slate-100 dark:hover:text-indigo-400">
-              Entrar
-            </Link>
-            <Link
-              to="/auth?register=true"
-              className={`rounded-xl px-6 py-2.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg transition-all hover:scale-105 active:scale-95 ${currentTheme.button}`}
+      <div className="mt-8 flex justify-center">
+        <div className="inline-flex flex-wrap items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+          {BILLING_CYCLE_OPTIONS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => setBillingCycle(option.key)}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+                billingCycle === option.key
+                  ? 'bg-white text-[#07103a] shadow-sm'
+                  : 'text-slate-500 hover:text-[#07103a]'
+              }`}
             >
-              Criar conta grÃ¡tis
-            </Link>
-          </div>
-        </div>
-      </nav>
-      <section className="relative isolate overflow-hidden px-6 pb-28 pt-20">
-        <ThemeOrnaments themeId={systemSettings.activeTheme} />
-
-        <div className="absolute left-1/2 top-0 -z-10 h-full w-full max-w-7xl -translate-x-1/2 opacity-10 dark:opacity-20">
-          <div className={`absolute left-10 top-20 h-96 w-96 rounded-full blur-[120px] ${currentTheme.bgOverlay}`} />
-          <div className={`absolute bottom-20 right-10 h-96 w-96 rounded-full blur-[120px] ${currentTheme.bgOverlay} opacity-60`} />
-        </div>
-
-        <div className="mx-auto max-w-5xl">
-          <div className="space-y-8 text-center">
-            <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] ${currentTheme.accent}`}>
-              <CheckCircle2 size={14} />
-              Estude com direÃ§Ã£o, nÃ£o no escuro
-            </div>
-
-            <div className="space-y-5">
-              <h1 className="text-5xl font-black leading-[1.05] tracking-tight text-slate-950 dark:text-white md:text-7xl">
-                Se vocÃª quer passar,
-                {' '}
-                <span className={`bg-gradient-to-r bg-clip-text text-transparent ${currentTheme.heroGradient}`}>
-                  precisa estudar com estratÃ©gia
+              {option.label}
+              {discountBadgesByCycle[option.key] > 0 && (
+                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-black text-emerald-600">
+                  {discountBadgesByCycle[option.key]}% OFF
                 </span>
-                .
-              </h1>
-              <p className="mx-auto max-w-3xl text-lg font-medium leading-relaxed text-slate-500 dark:text-slate-400 md:text-xl">
-                Banco de questÃµes, simulados e anÃ¡lise de desempenho para te mostrar exatamente onde vocÃª estÃ¡ e como melhorar.
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              {HERO_BENEFITS.map((benefit) => (
-                <div key={benefit} className="rounded-[1.75rem] border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/80">
-                  <p className="flex items-start gap-2 text-sm font-semibold leading-relaxed text-slate-700 dark:text-slate-300">
-                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-500" />
-                    <span>{benefit}</span>
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex flex-col gap-4 pt-2 sm:flex-row">
-              <Link
-                to="/auth?register=true"
-                className={`flex items-center justify-center gap-3 rounded-[2rem] px-10 py-5 text-sm font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-105 active:scale-95 sm:flex-1 ${currentTheme.button}`}
-              >
-                ComeÃ§ar grÃ¡tis <ArrowRight size={18} />
-              </Link>
-              <a
-                href="#planos"
-                className="flex items-center justify-center gap-3 rounded-[2rem] border border-slate-200 bg-white px-10 py-5 text-sm font-black uppercase tracking-[0.2em] text-slate-900 shadow-md transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/60 sm:flex-1"
-              >
-                Ver planos
-              </a>
-            </div>
-
-            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-              Sem cartÃ£o â€¢ Comece em menos de 1 minuto
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-slate-950 px-6 py-16">
-        <div className="mx-auto grid max-w-7xl gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {PROOF_STRIP.map((item) => (
-            <div key={item.title} className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300">{item.title}</p>
-              <p className="mt-3 text-sm font-medium leading-relaxed text-slate-300">{item.description}</p>
-            </div>
+              )}
+            </button>
           ))}
         </div>
-      </section>
-      <section id="recursos" className="bg-slate-50 px-6 py-28 transition-colors dark:bg-slate-950">
-        <div className="mx-auto max-w-7xl">
-          <LandingSectionHeader
-            eyebrow="O que vocÃª encontra na plataforma"
-            title="Recursos pensados para fazer vocÃª estudar melhor"
-            description="Tudo aqui existe para te dar mais clareza, mais direÃ§Ã£o e mais chance de evoluir sem desperdiÃ§ar tempo."
-          />
+      </div>
 
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {visibleFeatureCards.map((card) => {
-              const Icon = landingFeatureIconMap[card.iconKey];
-              return (
-                <article key={card.id} className="group rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl dark:border-slate-800 dark:bg-slate-900">
-                  <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 transition-transform group-hover:scale-110 dark:bg-indigo-900/20 dark:text-indigo-300">
-                    <Icon size={24} />
-                  </div>
-                  <h3 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">{card.title}</h3>
-                  <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">{card.description}</p>
-                </article>
-              );
-            })}
-          </div>
+      {!plansLoaded || !isSystemSettingsLoaded ? (
+        <div className="mt-10 rounded-2xl border border-indigo-100 bg-white p-10 text-center shadow-sm">
+          <p className="text-sm font-bold text-slate-500">Carregando catálogo oficial de planos...</p>
         </div>
-      </section>
-
-      <section id="como-ajuda" className="px-6 py-28">
-        <div className="mx-auto max-w-7xl">
-          <LandingSectionHeader
-            eyebrow={`Como o ${siteName} vai te ajudar`}
-            title="Um fluxo para estudar com mais direÃ§Ã£o"
-            description="VocÃª pratica, revisa e acompanha sua evoluÃ§Ã£o no mesmo lugar, sem depender de tentativa e erro para saber o que fazer depois."
-          />
-
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {HOW_IT_HELPS.map((item, index) => {
-              const Icon = HOW_IT_HELPS_ICONS[index % HOW_IT_HELPS_ICONS.length];
-              return (
-                <div key={item.title} className="rounded-[2.25rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <div className="mb-5 flex items-center gap-3">
-                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-indigo-600 dark:bg-slate-800 dark:text-indigo-300">
-                      <Icon size={20} />
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Etapa {index + 1}</span>
-                  </div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">{item.title}</h3>
-                  <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">{item.description}</p>
-                </div>
-              );
-            })}
-          </div>
+      ) : visiblePlans.length === 0 ? (
+        <div className="mt-10 rounded-2xl border border-indigo-100 bg-white p-10 text-center shadow-sm">
+          <p className="text-sm font-bold text-slate-500">Nenhum plano ativo encontrado para este ciclo.</p>
         </div>
-      </section>
+      ) : (
+        <div className="mt-10 grid justify-center gap-6 [grid-template-columns:repeat(auto-fit,minmax(280px,330px))]">
+          {visiblePlans.map((plan) => {
+            const canonicalName = getCanonicalPlanName(plan.name);
+            const displayName = getConfiguredPlanDisplayName(plan.name, systemSettings.planDetails, plan.name);
+            const planCopy = PLAN_COPY_BY_TIER[canonicalName] || PLAN_COPY_BY_TIER.Gratuito;
+            const featureItems = getPublicPlanFeaturesForPlan(canonicalName, systemSettings.planEntitlements, {
+              maxItems: 6,
+              includeDisabled: true,
+              usageLimits: systemSettings.planUsageLimits,
+            });
+            const offer = planOffersById[plan.id];
+            const isFeatured = plan.id === featuredPlanId;
+            const showOffer = Boolean(offer?.hasDiscount && Number(plan.price || 0) > 0);
+            const showCycleTotal = Boolean(Number(plan.price || 0) > 0 && offer?.cycleCount && offer.cycleCount > 1);
+            const cycleSuffix = offer?.cycleLabel === 'ano'
+              ? '/ano'
+              : offer?.cycleLabel === 'cada 3 meses'
+                ? '/cada 3 meses'
+                : '/mês';
+            const ctaHref = Number(plan.price || 0) === 0 ? '/auth?mode=signup' : `/checkout/${plan.id}`;
+            const ctaLabel = Number(plan.price || 0) === 0 ? 'Começar grátis' : (planCopy.cta || `Assinar ${displayName}`);
 
-      <section className="bg-slate-50 px-6 py-28 dark:bg-slate-950">
-        <div className="mx-auto max-w-7xl">
-          <LandingSectionHeader
-            eyebrow="RecomendaÃ§Ãµes e feedback"
-            title="Quem usa, evolui"
-            description="A plataforma precisa fazer sentido na rotina real de quem quer estudar melhor, com mais clareza e menos improviso."
-          />
+            return (
+              <article
+                key={plan.id}
+                className={`relative flex h-full flex-col rounded-2xl border bg-white p-6 shadow-sm transition ${
+                  isFeatured ? 'border-[#684cff] shadow-indigo-100' : 'border-indigo-100'
+                }`}
+              >
+                {isFeatured && (
+                  <span className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-[#684cff] px-4 py-1.5 text-xs font-black text-white">
+                    Mais escolhido
+                  </span>
+                )}
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            {FEEDBACK_ITEMS.map((item) => (
-              <article key={item.author} className="rounded-[2.25rem] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
-                  <MessageSquareQuote size={20} />
+                <div className="text-center">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#684cff]">{planCopy.eyebrow}</p>
+                  <h3 className="mt-3 text-xl font-black text-[#07103a]">{displayName}</h3>
+                  <p className="mt-2 min-h-10 text-sm font-medium leading-5 text-slate-500">{planCopy.description}</p>
                 </div>
-                <p className="text-base font-semibold leading-relaxed text-slate-700 dark:text-slate-200">{item.quote}</p>
-                <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-800">
-                  <p className="text-sm font-black text-slate-900 dark:text-white">{item.author}</p>
-                  <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{item.context}</p>
+
+                <div className="mt-7 text-center">
+                  {showOffer ? (
+                    <>
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400 line-through">
+                        De {formatCurrency(offer.originalMonthlyAmount)}/mês
+                      </p>
+                      <p className="mt-1 text-3xl font-black text-[#07103a]">
+                        {formatCurrency(offer.discountedMonthlyAmount)}
+                        <span className="ml-1 text-sm font-semibold text-slate-500">/mês</span>
+                      </p>
+                      <span className="mt-3 inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">
+                        {offer.effectiveDiscountPercent}% OFF
+                      </span>
+                    </>
+                  ) : (
+                    <p className="text-3xl font-black text-[#07103a]">
+                      {Number(plan.price || 0) === 0 ? 'R$ 0' : formatCurrency(offer?.discountedMonthlyAmount || Number(plan.price || 0))}
+                      <span className="ml-1 text-sm font-semibold text-slate-500">{Number(plan.price || 0) === 0 ? '/mês' : '/mês'}</span>
+                    </p>
+                  )}
+
+                  <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                    {showCycleTotal ? `${formatCurrency(offer.discountedCycleAmount)}${cycleSuffix}` : getPlanTotalLabel(plan)}
+                  </p>
                 </div>
+
+                <ul className="mt-8 flex-1 space-y-4">
+                  {featureItems.map((feature) => (
+                    <li key={`${plan.id}-${feature.text}`} className={`flex gap-3 text-sm font-medium ${feature.included ? 'text-[#1d284f]' : 'text-slate-400'}`}>
+                      <Check size={17} className={`mt-0.5 shrink-0 ${feature.included ? 'text-[#07103a]' : 'text-slate-300'}`} />
+                      {feature.text}
+                    </li>
+                  ))}
+                </ul>
+
+                <Link
+                  href={ctaHref}
+                  className={`mt-8 inline-flex h-12 w-full items-center justify-center rounded-xl text-sm font-bold transition ${
+                    isFeatured
+                      ? 'bg-[#684cff] text-white shadow-lg shadow-indigo-200 hover:bg-[#563fe0]'
+                      : 'border border-slate-200 text-[#07103a] hover:border-[#684cff] hover:text-[#684cff]'
+                  }`}
+                >
+                  {ctaLabel}
+                </Link>
               </article>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      </section>
+      )}
+    </section>
+  );
+};
 
-      <section id="focos" className="px-6 py-28">
-        <div className="mx-auto max-w-7xl">
-          <LandingSectionHeader
-            eyebrow="EspecializaÃ§Ã£o por objetivo"
-            title="A sua chave para concursos e exames mais disputados do paÃ­s"
-            description="Cada objetivo pede uma estratÃ©gia diferente. A plataforma te ajuda a estudar com mais precisÃ£o no contexto da prova que vocÃª quer enfrentar."
-          />
+export const FAQSection = () => {
+  const [openQuestion, setOpenQuestion] = React.useState(FAQ_ITEMS[0]?.question || '');
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            {OBJECTIVE_FOCUS_ITEMS.map((item, index) => {
-              const Icon = OBJECTIVE_ICONS[index % OBJECTIVE_ICONS.length];
-              return (
-                <article key={item.title} className="rounded-[2.5rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
-                    <Icon size={24} />
-                  </div>
-                  <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{item.title}</h3>
-                  <p className="mt-4 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">{item.description}</p>
-                  <ul className="mt-6 space-y-3">
-                    {item.bullets.map((bullet) => (
-                      <li key={bullet} className="flex items-start gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-500" />
-                        <span>{bullet}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              );
-            })}
+  return (
+    <section className="mx-auto w-full max-w-4xl px-5 py-16 sm:px-8">
+      <SectionTitle>Dúvidas frequentes</SectionTitle>
+      <div className="mt-10 space-y-3">
+        {FAQ_ITEMS.map((item) => {
+          const isOpen = openQuestion === item.question;
+          const answerId = `faq-${item.question.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+          return (
+            <article key={item.question} className="rounded-2xl border border-indigo-100 bg-white shadow-sm">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-5 px-6 py-5 text-left"
+                onClick={() => setOpenQuestion((current) => current === item.question ? '' : item.question)}
+                aria-expanded={isOpen}
+                aria-controls={answerId}
+              >
+                <span className="text-sm font-black text-[#07103a]">{item.question}</span>
+                <ChevronDown className={`shrink-0 text-[#684cff] transition-transform ${isOpen ? 'rotate-180' : ''}`} size={20} />
+              </button>
+              <div id={answerId} className={`${isOpen ? 'block' : 'hidden'} px-6 pb-5`}>
+                <p className="text-sm font-medium leading-6 text-slate-600">{item.answer}</p>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
+export const FinalCTA = () => (
+  <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
+    <div className="grid gap-8 rounded-2xl bg-[#07103a] p-7 text-white sm:p-9 lg:grid-cols-[1fr_1.45fr] lg:items-center lg:p-10">
+      <div>
+        <h2 className="text-2xl font-black leading-tight tracking-tight md:text-3xl">Comece grátis hoje e veja a diferença na prática</h2>
+        <p className="mt-4 max-w-xl text-sm font-medium leading-6 text-indigo-100">
+          Crie sua conta e tenha acesso liberado para explorar a plataforma completa.
+        </p>
+        <Link href="/auth?mode=signup" className="mt-7 inline-flex h-12 items-center justify-center rounded-xl bg-[#684cff] px-7 text-sm font-bold text-white transition hover:bg-[#563fe0]">
+          Começar grátis
+        </Link>
+      </div>
+
+      <div className="grid gap-4 border-t border-white/10 pt-8 sm:grid-cols-3 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0">
+        {FINAL_BENEFITS.map(({ label, icon: Icon }) => (
+          <div key={label} className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-indigo-100">
+              <Icon size={18} />
+            </span>
+            <span className="text-sm font-semibold text-indigo-50">{label}</span>
           </div>
-        </div>
-      </section>
-      <section className="bg-slate-950 px-6 py-24 text-white">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="space-y-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-300">Comece grÃ¡tis</p>
-            <h2 className="text-3xl font-black tracking-tight md:text-5xl">Comece grÃ¡tis e veja sua evoluÃ§Ã£o na prÃ¡tica</h2>
-            <p className="max-w-3xl text-base font-medium leading-relaxed text-slate-300">
-              Crie sua conta, teste a plataforma e entenda rapidamente onde vocÃª precisa melhorar.
-            </p>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <Link to="/auth?register=true" className="inline-flex items-center justify-center gap-3 rounded-[2rem] bg-white px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-slate-950 transition-all hover:bg-slate-100">
-                ComeÃ§ar grÃ¡tis <ArrowRight size={16} />
-              </Link>
-              <a href="#planos" className="inline-flex items-center justify-center gap-3 rounded-[2rem] border border-white/15 px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-white/5">
-                Ver planos
-              </a>
-            </div>
-            <p className="text-sm font-semibold text-slate-400">Sem compromisso. Sem cartÃ£o.</p>
-          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
 
-          <div className="rounded-[2.5rem] border border-white/10 bg-white/5 p-7">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-200">Plano de entrada</p>
-            <h3 className="mt-3 text-2xl font-black">{freePlan ? getConfiguredPlanDisplayName(freePlan.name, systemSettings.planDetails, freePlan.name) : 'Acesso gratuito'}</h3>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-slate-300">
-              {freePlan?.description || 'Ideal para conhecer a plataforma, praticar com foco e descobrir rapidamente como seu estudo pode ganhar mais direÃ§Ã£o.'}
-            </p>
-            <ul className="mt-6 space-y-3">
-              {(freePlan ? getConfiguredPlanFeatures(freePlan, systemSettings.planDetails).map(formatPlanFeatureForLanding) : [
-                'Teste a plataforma sem pagar.',
-                'Comece com prÃ¡tica, revisÃ£o e mais clareza.',
-                'Suba de plano quando fizer sentido para vocÃª.',
-              ]).map((item) => (
-                <li key={item} className="flex items-start gap-2 text-sm font-semibold text-white">
-                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
-                  <span>{item}</span>
+export const Footer = () => (
+  <footer id="blog" className="mx-auto w-full max-w-7xl px-5 pb-10 pt-6 sm:px-8">
+    <div className="grid gap-10 border-t border-slate-100 pt-10 lg:grid-cols-[1.4fr_2fr_0.8fr]">
+      <div>
+        <PublicBrandLink width={205} surface="light" />
+        <p className="mt-5 max-w-xs text-sm font-medium leading-6 text-slate-500">
+          Estude com estratégia. Aprove com consistência.
+        </p>
+      </div>
+
+      <div className="grid gap-8 sm:grid-cols-3">
+        {FOOTER_COLUMNS.map((column) => (
+          <div key={column.title}>
+            <h3 className="text-sm font-black text-[#07103a]">{column.title}</h3>
+            <ul className="mt-4 space-y-3">
+              {column.links.map((link) => (
+                <li key={`${column.title}-${link.label}`}>
+                  <Link href={link.href} className="text-sm font-medium text-slate-500 transition hover:text-[#684cff]">
+                    {link.label}
+                  </Link>
                 </li>
               ))}
             </ul>
           </div>
+        ))}
+      </div>
+
+      <div>
+        <h3 className="text-sm font-black text-[#07103a]">Siga a gente</h3>
+        <div className="mt-4 flex gap-3">
+          {[
+            { label: 'Instagram', icon: Instagram, href: 'https://instagram.com' },
+            { label: 'YouTube', icon: Youtube, href: 'https://youtube.com' },
+            { label: 'Telegram', icon: Send, href: 'https://telegram.org' },
+          ].map(({ label, icon: Icon, href }) => (
+            <Link
+              key={label}
+              href={href}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-[#07103a] transition hover:border-[#684cff] hover:text-[#684cff]"
+              aria-label={label}
+            >
+              <Icon size={17} />
+            </Link>
+          ))}
         </div>
-      </section>
-
-      <section id="planos" className="px-6 py-28">
-        <div className="mx-auto max-w-7xl">
-          <LandingSectionHeader
-            eyebrow="Planos e preÃ§os"
-            title="Entre grÃ¡tis agora e avance para o plano certo quando quiser ir alÃ©m"
-            description="VocÃª pode comeÃ§ar sem pagar e subir de plano quando quiser mais profundidade, mais volume de treino e mais anÃ¡lise para acelerar seu resultado."
-          />
-
-          <div className="mb-12 flex justify-center">
-            <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900">
-              {BILLING_CYCLE_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => setBillingCycle(option.key)}
-                  className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] transition-all ${
-                    billingCycle === option.key
-                      ? 'bg-white text-slate-900 shadow-sm dark:bg-indigo-600 dark:text-white'
-                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
-                  }`}
-                >
-                  {option.label}
-                  {eliteDiscountBadgesByCycle[option.key] > 0 && (
-                    <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${
-                      billingCycle === option.key
-                        ? 'bg-white/20 text-current dark:bg-white/15'
-                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
-                    }`}>
-                      {eliteDiscountBadgesByCycle[option.key]}% OFF
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {!plansLoaded || !isSystemSettingsLoaded ? (
-            <div className="rounded-[2.5rem] border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Carregando catÃ¡logo oficial de planos...</p>
-            </div>
-          ) : visiblePlans.length === 0 ? (
-            <div className="rounded-[2.5rem] border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Nenhum plano ativo encontrado no catÃ¡logo atual.</p>
-            </div>
-          ) : (
-            <div className="grid justify-center gap-6 [grid-template-columns:repeat(auto-fit,minmax(280px,320px))]">
-              {visiblePlans.map((plan) => {
-                const canonicalName = getCanonicalPlanName(plan.name);
-                const displayName = getConfiguredPlanDisplayName(plan.name, systemSettings.planDetails, plan.name);
-                const isFeatured = plan.id === featuredPlanId;
-                const planCopy = PLAN_COPY_BY_TIER[canonicalName] || PLAN_COPY_BY_TIER.Gratuito;
-                  const featureItems = getConfiguredPlanFeatureItems(plan, systemSettings.planDetails).map((feature) => ({
-                    ...feature,
-                    text: formatPlanFeatureForLanding(feature.text),
-                  }));
-                  const offer = planOffersById[plan.id];
-                  const showOffer = Boolean(offer?.hasDiscount);
-                  const showCycleTotal = Boolean(showOffer && offer.cycleCount > 1);
-                const cycleSuffix = offer?.cycleLabel === 'ano'
-                  ? '/ano'
-                  : offer?.cycleLabel === 'cada 3 meses'
-                    ? '/cada 3 meses'
-                    : '/mÃªs';
-                const pricingFooterLabel = showOffer
-                  ? (hasActiveLimitedOfferCountdown ? 'Oferta por tempo limitado' : 'Desconto aplicado')
-                  : (plan.price === 0 ? 'Sem cobranÃ§a' : getPlanTotalLabel(plan));
-
-                return (
-                  <article
-                    key={plan.id}
-                    className={`relative isolate flex h-full flex-col overflow-hidden rounded-[2.5rem] border p-8 text-center transition-all ${
-                      isFeatured
-                        ? 'scale-[1.02] border-slate-900 bg-slate-900 text-white shadow-2xl dark:border-indigo-500 dark:bg-indigo-600'
-                        : 'border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900'
-                    }`}
-                  >
-                    {isFeatured && (
-                      <>
-                        <div className="pointer-events-none absolute inset-x-10 top-10 -z-10 h-32 rounded-full bg-emerald-400/30 blur-3xl animate-pulse" />
-                        <div className="pointer-events-none absolute right-8 top-20 -z-10 h-28 w-28 rounded-full bg-cyan-300/20 blur-3xl animate-pulse" />
-                      </>
-                    )}
-                    <div className="mb-6 flex flex-col items-center justify-center gap-4">
-                      <div className="space-y-3">
-                        <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${isFeatured ? 'text-indigo-200' : 'text-indigo-600 dark:text-indigo-300'}`}>
-                          {planCopy.eyebrow}
-                        </p>
-                        <h3 className="text-2xl font-black tracking-tight">{displayName}</h3>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-center gap-2">
-                        {isFeatured && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white backdrop-blur-md">
-                            <Star size={12} className="fill-white" />
-                            Mais escolhido
-                          </span>
-                        )}
-                        {showOffer && offer.effectiveDiscountPercent > 0 && (
-                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] animate-pulse ${
-                            isFeatured ? 'bg-emerald-300 text-slate-950' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
-                          }`}>
-                            {offer.effectiveDiscountPercent}% OFF
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col items-center space-y-2">
-                      {showOffer && plan.price > 0 ? (
-                        <>
-                          <p className={`text-xs font-bold uppercase tracking-[0.16em] line-through ${isFeatured ? 'text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
-                            De {formatCurrency(offer.originalMonthlyAmount)}/mÃªs
-                          </p>
-                          <p className={`text-4xl font-black tracking-tight ${isFeatured ? 'text-emerald-300' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                            {formatCurrency(offer.discountedMonthlyAmount)}
-                            <span className={`ml-1 text-sm font-bold ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>/mÃªs</span>
-                          </p>
-                          {showCycleTotal && (
-                            <p className={`text-xs font-bold uppercase tracking-[0.16em] ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>
-                              {formatCurrency(offer.discountedCycleAmount)}{cycleSuffix}
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <p className={`text-4xl font-black tracking-tight ${isFeatured ? 'text-emerald-300' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                            {plan.price === 0 ? 'GrÃ¡tis' : formatCurrency(offer?.discountedMonthlyAmount || 0)}
-                            {plan.price > 0 && <span className={`ml-1 text-sm font-bold ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>/mÃªs</span>}
-                          </p>
-                        </>
-                      )}
-                      <p className={`text-xs font-bold uppercase tracking-[0.16em] ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>
-                        {pricingFooterLabel}
-                      </p>
-                    </div>
-
-                    <p className={`mt-5 max-w-sm text-sm font-medium leading-relaxed ${isFeatured ? 'text-slate-100' : 'text-slate-500 dark:text-slate-400'}`}>
-                      {planCopy.description}
-                    </p>
-
-                      <ul className="mt-8 flex-1 self-stretch space-y-3 text-left">
-                        {featureItems.map((feature) => {
-                          const isEnabled = feature.included;
-                          const iconClass = isFeatured
-                            ? (isEnabled ? 'text-white' : 'text-white/60')
-                            : (isEnabled ? 'text-emerald-500' : 'text-slate-400');
-                          const textClass = isFeatured
-                            ? (isEnabled ? 'text-white' : 'text-white/70')
-                            : (isEnabled ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500');
-
-                          return (
-                            <li key={`${feature.text}-${isEnabled ? 'on' : 'off'}`} className="flex items-start gap-2 text-sm font-semibold">
-                              {isEnabled ? (
-                                <CheckCircle2 size={16} className={`mt-0.5 shrink-0 ${iconClass}`} />
-                              ) : (
-                                <XCircle size={16} className={`mt-0.5 shrink-0 ${iconClass}`} />
-                              )}
-                              <span className={textClass}>{feature.text}</span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-
-                    <Link
-                      to={`/checkout/${plan.id}`}
-                      className={`mt-8 inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] px-6 py-4 text-[10px] font-black uppercase tracking-[0.18em] transition-all ${
-                        isFeatured ? 'bg-white text-slate-950 hover:bg-slate-100' : `${currentTheme.button} text-white hover:opacity-90`
-                      }`}
-                    >
-                      {planCopy.cta}
-                    </Link>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-
-          {hasVisibleOffer && hasActiveLimitedOfferCountdown && (
-            <LimitedOfferCountdown enabled endsAt={limitedOfferEndsAt} className="mx-auto mt-10 max-w-5xl" />
-          )}
-        </div>
-      </section>
-      <section className="bg-slate-50 px-6 py-28 dark:bg-slate-950">
-        <div className="mx-auto max-w-7xl">
-          <LandingSectionHeader
-            eyebrow="Comunidade e presenÃ§a"
-            title="ConteÃºdos e dicas para estudar melhor todos os dias"
-            description="Acompanhe novidades, orientaÃ§Ãµes prÃ¡ticas e os canais da plataforma para manter o estudo vivo fora da rotina de questÃµes."
-          />
-
-          <div className="grid gap-6 md:grid-cols-3">
-            {(activeSocialLinks.length > 0 ? activeSocialLinks : landingContent.socialLinks).map((item) => {
-              const Icon = landingSocialIconMap[item.iconKey];
-              const isClickable = Boolean(item.url);
-              const content = (
-                <div className="rounded-[2.25rem] border border-slate-200 bg-white p-7 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl dark:border-slate-800 dark:bg-slate-900">
-                  <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
-                    <Icon size={20} />
-                  </div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">{item.label}</h3>
-                  <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-                    {item.handle || 'Acompanhe novidades, dicas prÃ¡ticas e atualizaÃ§Ãµes da plataforma.'}
-                  </p>
-                  <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">
-                    {isClickable ? 'Acessar canal' : 'Canal em configuraÃ§Ã£o'}
-                  </p>
-                </div>
-              );
-
-              if (!isClickable) return <div key={item.id}>{content}</div>;
-              return <a key={item.id} href={item.url} target="_blank" rel="noreferrer" className="block">{content}</a>;
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-6 py-28">
-        <div className="mx-auto max-w-7xl">
-          <LandingSectionHeader
-            eyebrow="PrÃ³ximo passo"
-            title="Se vocÃª quer estudar com mais direÃ§Ã£o, o prÃ³ximo passo Ã© comeÃ§ar"
-            description="Sem promessas vazias. A ideia aqui Ã© simples: usar uma rotina mais clara para transformar esforÃ§o em progresso real."
-            align="left"
-          />
-
-          <div className="grid gap-8 lg:grid-cols-2">
-            {FINAL_CONVERSION_CONTENT.map((block) => (
-              <article key={block.title} className="rounded-[2.5rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{block.title}</h3>
-                <div className="mt-5 space-y-4">
-                  {block.paragraphs.map((paragraph) => {
-                    const resolvedParagraph = paragraph.replace('ConcursoMestre', siteName);
-                    return <p key={resolvedParagraph} className="text-sm font-medium leading-relaxed text-slate-600 dark:text-slate-400">{resolvedParagraph}</p>;
-                  })}
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <div className="mt-10 rounded-[2.5rem] border border-indigo-100 bg-indigo-50 p-8 dark:border-indigo-900/30 dark:bg-indigo-900/10">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Criar conta</p>
-                <h3 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-                  Comece grÃ¡tis e veja na prÃ¡tica onde vocÃª pode evoluir mais rÃ¡pido.
-                </h3>
-                <p className="max-w-3xl text-sm font-medium leading-relaxed text-slate-600 dark:text-slate-400">
-                  Crie sua conta, conheÃ§a o fluxo da plataforma e descubra como questÃµes, simulados, revisÃ£o e desempenho podem trabalhar juntos no seu resultado.
-                </p>
-              </div>
-              <Link to="/auth?register=true" className={`inline-flex items-center justify-center gap-3 rounded-[2rem] px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition-all hover:scale-105 active:scale-95 ${currentTheme.button}`}>
-                Criar conta grÃ¡tis <ArrowRight size={16} />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t border-slate-100 px-6 py-20 shadow-inner dark:border-slate-900">
-        <div className="mx-auto grid max-w-7xl gap-12 md:grid-cols-4">
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 text-xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">
-              <ThemeIcon size={24} />
-              <span>{siteName}</span>
-            </div>
-            <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-              Plataforma de estudos para concurso, OAB e ENEM com banco de questÃµes, simulados, revisÃ£o e anÃ¡lise de desempenho.
-            </p>
-          </div>
-
-          <div>
-            <h4 className="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Produto</h4>
-            <ul className="space-y-4 text-sm font-bold text-slate-600 dark:text-slate-400">
-              <li><a href="#recursos" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Recursos</a></li>
-              <li><a href="#focos" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Focos de preparaÃ§Ã£o</a></li>
-              <li><a href="#planos" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Planos</a></li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Acesso</h4>
-            <ul className="space-y-4 text-sm font-bold text-slate-600 dark:text-slate-400">
-              <li><Link to="/auth" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Entrar</Link></li>
-              <li><Link to="/auth?register=true" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Criar conta grÃ¡tis</Link></li>
-              <li><Link to="/plans" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Ver planos completos</Link></li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Institucional</h4>
-            <div className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
-              <Globe size={18} />
-              <span>PortuguÃªs (Brasil)</span>
-            </div>
-            <p className="mt-4 text-[10px] font-medium leading-relaxed text-slate-400">
-              Â© 2026 {siteName}. Plataforma focada em clareza, prÃ¡tica e evoluÃ§Ã£o real de estudos.
-            </p>
-          </div>
-        </div>
-      </footer>
+      </div>
     </div>
-  );
-};
+    <p className="mt-10 text-center text-xs font-medium text-slate-400">© 2026 ConcursoMestre. Todos os direitos reservados.</p>
+  </footer>
+);
+
+const LandingCommercialPage: React.FC = () => (
+  <div className="min-h-screen bg-white text-[#07103a]">
+    <Header />
+    <main>
+      <HeroSection />
+      <FeaturesSection />
+      <ApprovalContextSection />
+      <ProcessSection />
+      <TestimonialsSection />
+      <PricingSection />
+      <FAQSection />
+      <FinalCTA />
+    </main>
+    <Footer />
+  </div>
+);
 
 export default LandingCommercialPage;

@@ -10,8 +10,9 @@
 */
 
 import React from 'react';
-import { useLocation } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@providers/ToastProvider';
+import type { ErrorReport, Material, Question, Ranking, SystemSettings, UserProfile } from '@types';
 import AdminDatabaseNavigation from './AdminDatabaseNavigation';
 import AdminDatabaseModals from './AdminDatabaseModals';
 import AdminDatabaseSections from './AdminDatabaseSections';
@@ -28,30 +29,92 @@ import { useAdminQuestionsWorkflow } from '../questions/useAdminQuestionsWorkflo
 import { useAdminQuestionWorkbench } from '../questions/useAdminQuestionWorkbench';
 import { useRankingEditorWorkflow } from '../rankings/useRankingEditorWorkflow';
 import { useAdminUserProfileWorkflow } from '../users/useAdminUserProfileWorkflow';
+import { buildAdminQuestionEditPath } from '../../config/adminPageNavigationConfig';
+import { adminService } from '@services/admin/adminService';
+
+type AdminDatabaseSubTab =
+  | 'questions'
+  | 'question-groups'
+  | 'exams'
+  | 'users'
+  | 'materials'
+  | 'rankings'
+  | 'import'
+  | 'gran-crawler'
+  | 'reports'
+  | 'blocked'
+  | 'filters'
+  | 'lei-comentada';
+
+type MutationResult = { success?: boolean; message?: string } | null | void;
+type SettingsMutationResult = SystemSettings | MutationResult;
+type TaxonomyTriggerItem = {
+  id?: number | string;
+  type?: string;
+};
+type FilterTableItem = {
+  id?: number | string;
+  name?: string;
+  slug?: string;
+  type?: string;
+  parentId?: number | string | null;
+  parent_id?: number | string | null;
+  description?: string;
+  website?: string;
+  taxonomyLevel?: string;
+  metadata?: Record<string, unknown>;
+};
+
+const VALID_ADMIN_DATABASE_SUBTABS: AdminDatabaseSubTab[] = [
+  'questions',
+  'question-groups',
+  'exams',
+  'users',
+  'materials',
+  'rankings',
+  'import',
+  'gran-crawler',
+  'reports',
+  'blocked',
+  'filters',
+  'lei-comentada',
+];
+
+const resolveInitialDatabaseTab = (value?: string): AdminDatabaseSubTab => (
+  value && VALID_ADMIN_DATABASE_SUBTABS.includes(value as AdminDatabaseSubTab)
+    ? value as AdminDatabaseSubTab
+    : 'questions'
+);
+
+const isMutationFailure = (result: MutationResult): result is { success?: boolean; message?: string } => (
+  typeof result === 'object' && result !== null
+);
 
 export interface AdminDatabaseManagerControllerProps {
-  questions: any[];
-  allUsers: any[];
-  allMaterials: any[];
-  allReports: any[];
-  rankings?: any[];
-  onDeleteQuestion: (questionId: any) => Promise<any> | any;
-  onAddQuestion: (question: any) => Promise<any> | any;
-  onAddQuestions: (questions: any[]) => Promise<any> | any;
-  onUpdateQuestion: (question: any) => Promise<any> | any;
-  resolveReport: (reportId: any, status: string, reason?: string) => Promise<any> | any;
-  moderateMaterial: (...args: any[]) => Promise<any> | any;
-  onDeleteMaterial: (materialId: string) => Promise<any> | any;
-  systemSettings: any;
-  updateSystemSettings: (settings: any) => Promise<any> | any;
-  saveSystemSettingsNow: (settings?: any) => Promise<void> | void;
-  updateRanking: (ranking: any) => Promise<void> | void;
+  questions: Question[];
+  allUsers: UserProfile[];
+  allMaterials: Material[];
+  allReports: ErrorReport[];
+  rankings?: Ranking[];
+  onDeleteQuestion: (questionId: string | number) => Promise<MutationResult> | MutationResult;
+  onAddQuestion: (question: Question) => Promise<MutationResult> | MutationResult;
+  onAddQuestions: (questions: Question[]) => Promise<MutationResult> | MutationResult;
+  onUpdateQuestion: (question: Question) => Promise<MutationResult> | MutationResult;
+  resolveReport: (reportId: string | number, status: string, reason?: string) => Promise<MutationResult> | MutationResult;
+  moderateMaterial: (...args: unknown[]) => Promise<unknown> | unknown;
+  onDeleteMaterial: (materialId: string) => Promise<MutationResult> | MutationResult;
+  systemSettings: SystemSettings;
+  updateSystemSettings: (settings: SystemSettings) => Promise<SettingsMutationResult> | SettingsMutationResult;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SettingsMutationResult> | SettingsMutationResult;
+  updateRanking: (ranking: Ranking) => Promise<void> | void;
+  ensureUsersLoaded?: (force?: boolean) => Promise<void>;
   initialTab?: string;
+  standaloneSection?: boolean;
 }
 
 /**
  * Controller central da aba "Base de Dados".
- * Ele orquestra navegacao interna, datasets filtrados, workbenches de questões/importacao, moderação, perfil de usuário, ranking e taxonomias.
+ * Ele orquestra navegação interna, datasets filtrados, workbenches de questões/importação, moderação, perfil de usuário, ranking e taxonomias.
  */
 export const useAdminDatabaseManagerController = ({
   questions,
@@ -70,10 +133,13 @@ export const useAdminDatabaseManagerController = ({
   updateSystemSettings,
   saveSystemSettingsNow,
   updateRanking,
+  ensureUsersLoaded = async () => undefined,
   initialTab = 'questions',
+  standaloneSection = false,
 }: AdminDatabaseManagerControllerProps) => {
   const { addToast } = useToast();
-  const location = useLocation();
+  const router = useRouter();
+  const resolvedInitialTab = resolveInitialDatabaseTab(initialTab);
 
   /**
    * Controla categoria ativa, subaba e filtro textual da area de base de dados.
@@ -86,9 +152,9 @@ export const useAdminDatabaseManagerController = ({
     handleSelectCategory,
     handleSelectSubTab,
   } = useAdminDatabaseNavigationState({
-    initialTab,
+    initialTab: resolvedInitialTab,
     searchTab: initialTab,
-    locationHash: location.hash,
+    locationHash: typeof window !== 'undefined' ? window.location.hash : '',
   });
 
   /**
@@ -127,7 +193,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Padroniza ordenacao compartilhada entre tabelas da feature.
+   * Padroniza ordenação compartilhada entre tabelas da feature.
    */
   const { sortConfig, requestSort, sortData } = useAdminTableSorting();
 
@@ -194,13 +260,14 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Carrega a listagem administrativa de questões com paginacao e reload da pagina atual.
+   * Carrega a listagem administrativa de questões com paginação e reload da página atual.
    */
   const {
     adminQuestions,
     pagination,
     loadQuestions,
     reloadCurrentPage,
+    removeQuestionFromPage,
   } = useAdminQuestionsWorkflow({
     keyword: filter,
     activeSubTab,
@@ -229,18 +296,13 @@ export const useAdminDatabaseManagerController = ({
     examBank,
     filteredExamBank,
     linkedCountByExamId,
-    editingExamId,
-    examDraft,
-    setExamDraft,
-    startEditingExam,
-    cancelEditingExam,
-    handleSaveExam,
     deletingExam,
     requestDeleteExam,
     cancelDeleteExam,
     handleDeleteExam,
     actionLoading: examActionLoading,
   } = useAdminExamBankWorkflow({
+    enabled: activeSubTab === 'exams',
     questions,
     systemSettings,
     updateSystemSettings,
@@ -251,22 +313,74 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Unifica o fluxo de importacao e de criacao/edicao manual de questões.
+   * Unifica o fluxo de importação e de criação/edição manual de questões.
    */
   const {
-    openManualModal,
     isManualQuestionModalOpen,
     manualQuestionModalProps,
     importWorkflowProps,
   } = useAdminQuestionWorkbench({
+    importEnabled: activeSubTab === 'import',
     questions,
     systemSettings,
     addToast,
     onAddQuestion,
-    onAddQuestions,
     onUpdateQuestion,
     onRefreshQuestions: reloadCurrentPage,
+    onImportedQuestionsSaved: () => {
+      void reloadCurrentPage();
+    },
+    updateSystemSettings,
+    saveSystemSettingsNow,
   });
+
+  const openQuestionEditPage = React.useCallback((question?: Partial<Question> | null, report?: Partial<ErrorReport> | null) => {
+    const questionId = question?.id ?? report?.questionId;
+
+    if (!questionId) {
+      addToast('Não foi possível identificar a questão para edição.', 'error');
+      return;
+    }
+
+    router.push(buildAdminQuestionEditPath(questionId, report?.id));
+  }, [addToast, router]);
+
+  const handleDeleteQuestion = React.useCallback(async (questionId: string | number) => {
+    const result = await onDeleteQuestion(questionId);
+
+    if (isMutationFailure(result) && result.success === false) {
+      throw new Error(result.message || 'Não foi possível remover a questão.');
+    }
+
+    removeQuestionFromPage(questionId);
+    if (adminQuestions.length <= 1 && pagination.page > 1) {
+      await loadQuestions(pagination.page - 1);
+    }
+    return result;
+  }, [adminQuestions.length, loadQuestions, onDeleteQuestion, pagination.page, removeQuestionFromPage]);
+
+  const handleDeleteUser = React.useCallback(async (user: Partial<UserProfile>) => {
+    const userId = String(user?.id || '');
+
+    if (!userId) {
+      addToast('Não foi possível identificar o usuário para remoção.', 'error');
+      return null;
+    }
+
+    try {
+      const result = await adminService.performUserActionWithResult({
+        action: 'delete_user',
+        user_id: userId,
+      });
+      await ensureUsersLoaded(true);
+      addToast(result.message || 'Usuário removido com sucesso.', 'success');
+      return result;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Não foi possível remover o usuário.';
+      addToast(message, 'error');
+      throw error;
+    }
+  }, [addToast, ensureUsersLoaded]);
 
   /**
    * Concentra a moderação cruzada de materiais e reports, incluindo atalhos para questões e perfis.
@@ -284,12 +398,12 @@ export const useAdminDatabaseManagerController = ({
     addToast,
     moderateMaterial,
     resolveReport,
-    openManualModal,
+    openManualModal: openQuestionEditPage,
     openUserProfile,
   });
 
   /**
-   * Props prontas da navegacao lateral/interna da aba de base de dados.
+   * Props prontas da navegação lateral/interna da aba de base de dados.
    */
   const navigationProps: React.ComponentProps<typeof AdminDatabaseNavigation> = {
     categories: ADMIN_DATABASE_CATEGORIES,
@@ -299,10 +413,8 @@ export const useAdminDatabaseManagerController = ({
     onSelectSubTab: handleSelectSubTab,
     subTabLabels: ADMIN_DATABASE_SUBTAB_LABELS,
     subTabMeta: ADMIN_DATABASE_SUBTAB_META,
-    filter,
-    onFilterChange: setFilter,
     bulkImportEnabled: Boolean(systemSettings.features?.bulkImportEnabled),
-    onCreateQuestion: () => openManualModal(),
+    standaloneSection,
   };
 
   /**
@@ -327,33 +439,51 @@ export const useAdminDatabaseManagerController = ({
     importWorkflowProps,
     renderSortableHeader,
     sortData,
+    filter,
+    onFilterChange: setFilter,
     onQuestionsPageChange: loadQuestions,
-    onQuestionEdit: openManualModal,
-    onQuestionDelete: onDeleteQuestion,
-    editingExamId,
-    examDraft,
-    onExamDraftChange: setExamDraft,
-    onStartEditExam: startEditingExam,
-    onCancelEditExam: cancelEditingExam,
-    onSaveEditExam: handleSaveExam,
+    onCreateQuestion: () => router.push(buildAdminQuestionEditPath('new')),
+    onQuestionEdit: openQuestionEditPage,
+    onAddQuestions,
+    onQuestionUpdate: onUpdateQuestion,
+    onQuestionDelete: handleDeleteQuestion,
+    onQuestionsRefresh: reloadCurrentPage,
     deletingExam,
     onRequestDeleteExam: requestDeleteExam,
     onCancelDeleteExam: cancelDeleteExam,
     onConfirmDeleteExam: handleDeleteExam,
     examActionLoading,
     onOpenUserProfile: openUserProfile,
+    onDeleteUser: handleDeleteUser,
     onModerateMaterial: openMaterialModerationFromList,
     onDeleteMaterial,
-    onInspectReport: inspectReportTarget,
-    onResolveReport: resolveReportQuickly,
+    onInspectReport: (group) => inspectReportTarget(group.lastReport),
+    onResolveReport: (group) => Promise.all(group.reports.map((report) => Promise.resolve(resolveReportQuickly(report)))),
     onEditRanking: openRankingEditor,
     onReanalyzeBlockedMaterial: openBlockedMaterialForReview,
     onActiveFilterTypeChange: setActiveFilterType,
     onFilterSearchChange: setFilterSearch,
     onCreateFilter: openCreateFilterModal,
-    onCreateChildFilter: openCreateChildFilterModal,
-    onEditFilter: startEditingFilter,
-    onDeleteFilter: requestDeleteFilter,
+    onCreateChildFilter: (item: TaxonomyTriggerItem | number | string) => {
+      const parentId = typeof item === 'object' && item !== null ? item.id : item;
+      const parentType = typeof item === 'object' && item !== null ? item.type : undefined;
+      openCreateChildFilterModal(String(parentType || activeFilterType), Number(parentId || item));
+    },
+    onEditFilter: (item: FilterTableItem) => startEditingFilter({
+      id: typeof item.id === 'number' ? item.id : Number(item.id || 0) || undefined,
+      name: item.name,
+      slug: item.slug,
+      type: item.type,
+      parentId: item.parentId ?? item.parent_id,
+      parent_id: item.parent_id ?? item.parentId,
+      description: item.description,
+      website: item.website,
+      metadata: item.metadata,
+    }),
+    onDeleteFilter: (item: FilterTableItem) => requestDeleteFilter({
+      id: typeof item.id === 'number' ? item.id : Number(item.id || 0),
+      name: item.name,
+    }),
     onGeminiApiKeyChange: handleGeminiApiKeyChange,
     onSaveImportSettings: handleSaveImportSettings,
     isSavingImportSettings,

@@ -9,17 +9,18 @@
 *
 */
 
-import { useEffect, useState } from 'react';
-import { useData } from '@providers/DataProvider';
+import { useCallback, useEffect, useState } from 'react';
 import { filtersService } from '@services/filters';
 import { readApiErrorMessage } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { slugify } from './slugify';
 
 type ToastHandler = (message: string, type?: string) => void;
 
 interface EditingFilterItem {
   id?: number;
-  item: any;
+  item: TaxonomyItem;
   originalName: string;
   type?: string;
 }
@@ -33,21 +34,48 @@ interface UseAdminTaxonomyWorkflowOptions {
   addToast: ToastHandler;
 }
 
+type TaxonomyItem = {
+  id?: number;
+  name?: string;
+  slug?: string;
+  type?: string;
+  description?: string;
+  website?: string;
+  parent_id?: number | string | null;
+  parentId?: number | string | null;
+  metadata?: Record<string, unknown>;
+};
+
 export const FILTER_TYPES = [
   { key: 'all', label: 'Todos os Tipos' },
   { key: 'banca', label: 'Bancas' },
   { key: 'orgao', label: 'Orgaos' },
   { key: 'cargo', label: 'Cargos' },
-  { key: 'assunto', label: 'Assuntos (Materias/Topicos)', hierarchical: true },
+  { key: 'materia', label: 'Materias', hierarchical: true },
+  { key: 'topico', label: 'Topicos', hierarchical: true },
+  { key: 'assunto', label: 'Assuntos', hierarchical: false },
   { key: 'ano', label: 'Anos' },
-  { key: 'carreira', label: 'Carreiras' },
+  { key: 'carreira', label: 'Focos' },
   { key: 'area', label: 'Areas' },
 ];
+
+const KNOWLEDGE_TAXONOMY_TYPES = ['materia', 'topico', 'assunto'];
+
+const getSaveTypeForFilterType = (type: string) => (
+  KNOWLEDGE_TAXONOMY_TYPES.includes(type) ? 'assunto' : type
+);
+
+const getChildFilterType = (type: string) => {
+  if (type === 'materia') return 'topico';
+  if (type === 'topico') return 'assunto';
+  if (type === 'carreira') return 'cargo';
+  return type;
+};
 
 export const useAdminTaxonomyWorkflow = ({
   addToast,
 }: UseAdminTaxonomyWorkflowOptions) => {
-  const { dispatch } = useData();
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
   const [activeFilterType, setActiveFilterType] = useState<string>('all');
   const [filterInput, setFilterInput] = useState('');
   const [filterSlug, setFilterSlug] = useState('');
@@ -57,17 +85,16 @@ export const useAdminTaxonomyWorkflow = ({
   const [editingFilterItem, setEditingFilterItem] = useState<EditingFilterItem | null>(null);
   const [pendingDeleteFilter, setPendingDeleteFilter] = useState<PendingDeleteFilterItem | null>(null);
   const [isDeletingFilter, setIsDeletingFilter] = useState(false);
-  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+  const [selectedParentId, setSelectedParentId] = useState<number | string | null>(null);
   const [showTaxonomyModal, setShowTaxonomyModal] = useState(false);
 
-  const fetchFilters = async () => {
+  const fetchFilters = useCallback(async () => {
     try {
-      const taxonomies = await filtersService.listTaxonomies();
-      dispatch({ type: 'SET_TAXONOMIES', payload: taxonomies });
+      await ensureTaxonomiesLoaded(true);
     } catch (error) {
-      console.error('Error fetching filters:', error);
+      clientLog.warn('Error fetching filters:', error);
     }
-  };
+  }, [ensureTaxonomiesLoaded]);
 
   const resetTaxonomyForm = () => {
     setFilterInput('');
@@ -82,28 +109,51 @@ export const useAdminTaxonomyWorkflow = ({
     if (!filterInput.trim()) return;
 
     try {
-      const typeToSave = editingFilterItem?.type || activeFilterType;
+      const uiTypeToSave = editingFilterItem?.type || activeFilterType;
+      const typeToSave = getSaveTypeForFilterType(uiTypeToSave);
       if (typeToSave === 'all') {
         addToast('Selecione um tipo de filtro especifico no modal.', 'error');
         return;
       }
+
+      if (uiTypeToSave === 'topico' && !selectedParentId) {
+        addToast('Todo topico precisa estar vinculado a uma materia.', 'error');
+        return;
+      }
+
+      if (uiTypeToSave === 'assunto' && !selectedParentId) {
+        addToast('Todo assunto precisa estar vinculado a um topico.', 'error');
+        return;
+      }
+
+      if (uiTypeToSave === 'cargo' && !selectedParentId) {
+        addToast('Todo cargo precisa estar vinculado a um foco.', 'error');
+        return;
+      }
+
+      const parentIdToSave = uiTypeToSave === 'materia' || !selectedParentId ? null : Number(selectedParentId);
 
       await filtersService.save({
         id: editingFilterItem?.id,
         type: typeToSave,
         name: filterInput.trim(),
         slug: filterSlug,
+        materia: uiTypeToSave === 'materia',
+        taxonomy_level: KNOWLEDGE_TAXONOMY_TYPES.includes(uiTypeToSave) ? uiTypeToSave : undefined,
         description: filterDescription,
         website: filterWebsite,
-        parent_id: selectedParentId,
-        metadata: editingFilterItem?.item?.metadata || {},
+        parent_id: parentIdToSave,
+        metadata: {
+          ...(editingFilterItem?.item?.metadata || {}),
+          ...(KNOWLEDGE_TAXONOMY_TYPES.includes(uiTypeToSave) ? { taxonomy_level: uiTypeToSave } : {}),
+        },
       });
 
       resetTaxonomyForm();
       setShowTaxonomyModal(false);
       await fetchFilters();
       addToast(editingFilterItem ? 'Item atualizado!' : 'Item adicionado!', 'success');
-    } catch (error: any) {
+    } catch (error: unknown) {
       addToast(readApiErrorMessage(error, 'Erro ao salvar filtro'), 'error');
     }
   };
@@ -141,15 +191,23 @@ export const useAdminTaxonomyWorkflow = ({
     }
   };
 
-  const startEditingFilter = (item: any) => {
-    setFilterInput(item.name);
-    setFilterSlug(item.slug || slugify(item.name));
+  const startEditingFilter = (item: TaxonomyItem) => {
+    const itemName = item.name || '';
+    setFilterInput(itemName);
+    setFilterSlug(item.slug || slugify(itemName));
     setFilterDescription(item.description || '');
     setFilterWebsite(item.website || '');
-    setEditingFilterItem({ id: item.id, item, originalName: item.name, type: item.type });
+    setEditingFilterItem({ id: item.id, item, originalName: itemName, type: item.type });
     setSelectedParentId(item.parent_id || item.parentId);
     setShowTaxonomyModal(true);
   };
+
+  const handleFilterInputChange = useCallback((nextValue: string) => {
+    setFilterInput(nextValue);
+    if (showTaxonomyModal && !editingFilterItem) {
+      setFilterSlug(slugify(nextValue));
+    }
+  }, [editingFilterItem, showTaxonomyModal]);
 
   const cancelEditingFilter = () => {
     resetTaxonomyForm();
@@ -158,32 +216,29 @@ export const useAdminTaxonomyWorkflow = ({
 
   const openCreateFilterModal = () => {
     cancelEditingFilter();
+    if (activeFilterType === 'all') {
+      setActiveFilterType('materia');
+    }
     setShowTaxonomyModal(true);
   };
 
-  const openCreateChildFilterModal = (type: string, parentId: number) => {
+  const openCreateChildFilterModal = (type: string, parentId: number | string) => {
     cancelEditingFilter();
-    setActiveFilterType(type);
+    setActiveFilterType(getChildFilterType(type));
     setSelectedParentId(parentId);
     setShowTaxonomyModal(true);
   };
 
   useEffect(() => {
     fetchFilters();
-  }, []);
-
-  useEffect(() => {
-    if (showTaxonomyModal && !editingFilterItem) {
-      setFilterSlug(slugify(filterInput));
-    }
-  }, [filterInput, showTaxonomyModal, editingFilterItem]);
+  }, [fetchFilters]);
 
   return {
     filterTypes: FILTER_TYPES,
     activeFilterType,
     setActiveFilterType,
     filterInput,
-    setFilterInput,
+    setFilterInput: handleFilterInputChange,
     filterSlug,
     setFilterSlug,
     filterDescription,

@@ -1,3 +1,5 @@
+'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -11,11 +13,11 @@
 
 import React from 'react';
 import { Layers } from 'lucide-react';
-import { useData } from '@providers/DataProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import BetaFeaturePage from '../../components/shared/feedback/BetaFeaturePage';
 
 const FlashcardsPage: React.FC = () => {
-  const { systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
 
   return (
     <BetaFeaturePage

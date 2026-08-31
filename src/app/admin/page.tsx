@@ -1,3 +1,5 @@
+'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -17,16 +19,19 @@ import { useAdminPageController } from './components/shared/useAdminPageControll
 // Entrada oficial da area administrativa: casca fina entre controller, shell e conteudo por aba.
 const Admin: React.FC = () => {
   const controller = useAdminPageController();
+  const shouldShowPageHeader = controller.activeTab !== 'operation' && controller.activeTabLabel !== 'Conteudo';
 
   return (
     <AdminShellLayout
       activeTab={controller.activeTab}
-      onTabChange={controller.setActiveTab}
+      activeSectionKey={controller.activeSectionKey}
+      onNavigateAdmin={controller.navigateAdminDestination}
       adminTabs={controller.adminTabs}
+      sectionBadges={controller.sectionBadges}
       pageTitle={controller.activeTabLabel ?? 'Admin'}
       pageDescription={controller.activeTabDescription}
-      activeSectionLabel={controller.activeSectionLabel}
       topBarProps={controller.topBarProps}
+      showPageHeader={shouldShowPageHeader}
     >
       <AdminPageContent {...controller} />
     </AdminShellLayout>

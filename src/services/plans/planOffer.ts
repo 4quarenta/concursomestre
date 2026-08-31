@@ -46,6 +46,10 @@ const getCycleCount = (plan: Plan) => {
     return Number(plan.interval_count || 1);
   }
 
+  if ((plan.interval_unit === 'day' || plan.interval_unit === 'week') && Number(plan.interval_count || 1) > 0) {
+    return Number(plan.interval_count || 1);
+  }
+
   return 1;
 };
 
@@ -82,14 +86,51 @@ const getConfiguredCycleAmount = (
   }
 
   if (plan.interval_unit === 'year') {
+    const monthlyAmount = Number(configuredPricing.monthly || 0);
+    if (monthlyAmount > 0 && configuredPricing.annualDiscountPercent !== undefined) {
+      return monthlyAmount * 12 * (1 - Number(configuredPricing.annualDiscountPercent || 0) / 100);
+    }
+
     return Number(configuredPricing.annual || 0);
   }
 
   if (plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 3) {
+    const monthlyAmount = Number(configuredPricing.monthly || 0);
+    if (monthlyAmount > 0 && configuredPricing.quarterlyDiscountPercent !== undefined) {
+      return monthlyAmount * 3 * (1 - Number(configuredPricing.quarterlyDiscountPercent || 0) / 100);
+    }
+
     return Number(configuredPricing.quarterly || 0);
   }
 
+  if (plan.interval_unit !== 'month') {
+    return Number(plan.price || 0);
+  }
+
   return Number(configuredPricing.monthly || 0);
+};
+
+const getConfiguredFullCycleAmount = (
+  plan: Plan,
+  cycleCount: number,
+  configuredPricing?: PlanPricing | null,
+) => {
+  const fallbackCycleAmount = Number(plan.price || 0);
+
+  if (!configuredPricing || cycleCount <= 1) {
+    return fallbackCycleAmount;
+  }
+
+  const monthlyAmount = Number(configuredPricing.monthly || 0);
+  if (monthlyAmount <= 0) {
+    return fallbackCycleAmount;
+  }
+
+  if (plan.interval_unit === 'year' || plan.interval_unit === 'month') {
+    return monthlyAmount * cycleCount;
+  }
+
+  return fallbackCycleAmount;
 };
 
 export const resolvePlanCycleKey = (plan: Plan): PlanBillingCycleKey | null => {
@@ -108,7 +149,15 @@ export const resolvePlanCycleKey = (plan: Plan): PlanBillingCycleKey | null => {
   return null;
 };
 
-const getCycleLabel = (cycleCount: number) => {
+const getCycleLabel = (plan: Plan, cycleCount: number) => {
+  if (plan.interval_unit === 'day') {
+    return cycleCount <= 1 ? 'dia' : `${cycleCount} dias`;
+  }
+
+  if (plan.interval_unit === 'week') {
+    return cycleCount <= 1 ? 'semana' : `${cycleCount} semanas`;
+  }
+
   if (cycleCount === 12) {
     return 'ano';
   }
@@ -132,18 +181,24 @@ export const resolvePlanOffer = ({
   const cycleCount = getCycleCount(plan);
   const fallbackCycleAmount = Number(plan.price || 0);
   const configuredCycleAmount = getConfiguredCycleAmount(plan, configuredPricing);
-  const originalCycleAmount = Math.max(
+  const currentCycleAmount = Math.max(
     0,
     configuredCycleAmount > 0 ? configuredCycleAmount : fallbackCycleAmount,
   );
+  const fullCycleAmount = Math.max(
+    currentCycleAmount,
+    getConfiguredFullCycleAmount(plan, cycleCount, configuredPricing),
+  );
+  const originalCycleAmount = fullCycleAmount;
   const originalAmounts = resolveCanonicalTermAmounts(originalCycleAmount, cycleCount);
 
-  // Usa a mesma base do valor original para evitar "1% OFF" fantasma por mismatch de origem.
+  // Cupons entram sobre o valor efetivo do ciclo. O "de" pode ser maior quando o ciclo tem desconto
+  // comercial configurado no admin em relacao ao preco mensal cheio.
   const safeDiscountAmount = Math.min(
-    originalCycleAmount,
+    currentCycleAmount,
     Math.max(0, Number(discountAmount || 0)),
   );
-  const rawDiscountedCycleAmount = Math.max(0, originalCycleAmount - safeDiscountAmount);
+  const rawDiscountedCycleAmount = Math.max(0, currentCycleAmount - safeDiscountAmount);
   const discountedAmounts = resolveCanonicalTermAmounts(rawDiscountedCycleAmount, cycleCount);
   const originalMonthlyAmount = originalAmounts.monthlyAmount;
   const discountedCycleAmount = discountedAmounts.cycleAmount;
@@ -151,9 +206,8 @@ export const resolvePlanOffer = ({
   const effectiveDiscountPercent = originalCycleAmount > 0
     ? Math.max(0, Math.round(((originalCycleAmount - discountedCycleAmount) / originalCycleAmount) * 100))
     : 0;
-  const hasDiscount = safeDiscountAmount > 0
-    && originalCycleAmount > 0
-    && discountedCycleAmount < originalCycleAmount
+  const hasDiscount = originalCycleAmount > 0
+    && toCents(discountedCycleAmount) < toCents(originalCycleAmount)
     && effectiveDiscountPercent > 0;
 
   return {
@@ -163,7 +217,7 @@ export const resolvePlanOffer = ({
     originalCycleAmount,
     discountedCycleAmount,
     cycleCount,
-    cycleLabel: getCycleLabel(cycleCount),
+    cycleLabel: getCycleLabel(plan, cycleCount),
     effectiveDiscountPercent,
     displayName: configuredDisplayName || plan.name,
   };

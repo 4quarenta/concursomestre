@@ -1,0 +1,177 @@
+﻿# URL Rewriting Configuration for Apache
+# Place this in the root of questao-pro-backend
+
+Options -MultiViews
+RewriteEngine On
+RewriteBase /questao-pro-backend/
+
+# Security Headers
+Header set X-Content-Type-Options "nosniff"
+
+# NOTE: Generic router.php rule removed - using specific endpoint rules below instead
+# This was causing 404s because it matched before specific rules
+
+# Bloqueia scripts e artefatos internos de diagnostico que nao fazem parte da API publica.
+# Isso evita exposicao acidental de dumps, testes manuais e utilitarios operacionais.
+RewriteRule ^api/.*(?:^|[_/])(check|debug|test|dump|temp).*\.php$ - [F,L,NC]
+RewriteRule ^api/.*(?:manual_fix|db_check|settings_debug).*\.php$ - [F,L,NC]
+RewriteRule ^api/.*(?:keys|debug_output|table_structure|settings_log).*\.(txt|json)$ - [F,L,NC]
+
+# Bloqueia diretorios internos. Endpoints publicos devem passar por /api ou pelas pontes legadas explicitas abaixo.
+RewriteRule ^(?:config|database|modules|runtime|shared|storage|tests|vendor)(?:/|$) - [F,L,NC]
+
+# A pasta scripts contem ferramentas operacionais. Somente o crawler da Gran permanece acessivel
+# porque ainda possui uma entrada oficial no painel admin; todo o restante fica bloqueado por URL.
+RewriteRule ^scripts/importers/questions/gran/(?:index|import_worker)\.php$ - [L,NC]
+RewriteRule ^scripts/ - [F,L,NC]
+
+# Arquivos operacionais e backups nunca devem ser servidos diretamente pelo Apache.
+<FilesMatch "\.(zip|rar|7z|tar|gz|sql|bak|backup|old)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Prevent direct access to environment files
+<FilesMatch "^\.env(?:\..*)?$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "^\.htaccess$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+Options -Indexes
+Header set X-Frame-Options "DENY"
+Header set X-XSS-Protection "1; mode=block"
+Header set Referrer-Policy "strict-origin-when-cross-origin"
+Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+# Force HTTPS (uncomment in production)
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# API URL Rewrites - Flattened URLs (User Request)
+
+# Auth
+RewriteRule ^api/authLogin$ api/auth/login.php [L]
+RewriteRule ^api/authRegister$ api/auth/register.php [L]
+RewriteRule ^api/authLogout$ api/auth/logout.php [L]
+RewriteRule ^api/authRefresh$ api/auth/refresh.php [L]
+RewriteRule ^api/authUser$ api/auth/me.php [L]
+
+# Questions
+RewriteRule ^api/questionsList$ api/questions/list.php [L]
+RewriteRule ^api/questionsCreate$ api/questions/save.php [L]
+RewriteRule ^api/questionsExamImport$ api/questions/exam_import.php [L]
+RewriteRule ^api/questionsBulkImport$ api/questions/bulk_import.php [L]
+RewriteRule ^api/questionsSave$ api/questions/save.php [L]
+RewriteRule ^api/questionsUpdate$ api/questions/update.php [L]
+RewriteRule ^api/questionsDelete$ api/questions/delete.php [L]
+RewriteRule ^api/questionsAnswer$ api/questions/answer.php [L]
+RewriteRule ^api/questionsFilter$ api/questions/filter.php [L]
+RewriteRule ^api/questionsStats$ api/questions/get_stats.php [L]
+RewriteRule ^api/questionsHistory$ api/questions/history.php [L]
+RewriteRule ^api/questionsToggleSave$ api/questions/toggle_save.php [L]
+RewriteRule ^api/questionsResetAnswers$ api/questions/reset_answers.php [L]
+
+# Comments
+RewriteRule ^api/commentsList$ api/comments/list.php [L]
+RewriteRule ^api/commentsHandle$ api/comments/handle.php [L]
+RewriteRule ^api/commentsAdd$ api/comments/add.php [L]
+RewriteRule ^api/commentsLike$ api/comments/like.php [L]
+RewriteRule ^api/commentsReport$ api/comments/report.php [L]
+
+# Notifications
+RewriteRule ^api/notificationsList$ api/notifications/list.php [L]
+RewriteRule ^api/notificationsMarkRead$ api/notifications/mark_read.php [L]
+RewriteRule ^api/notificationsMarkAllRead$ api/notifications/mark_all_read.php [L]
+RewriteRule ^api/notificationsDelete$ api/notifications/delete.php [L]
+RewriteRule ^api/notificationsClearAll$ api/notifications/clear_all.php [L]
+RewriteRule ^api/notificationsRestore$ api/notifications/restore.php [L]
+RewriteRule ^api/notificationsPermanentDelete$ api/notifications/permanent-delete.php [L]
+RewriteRule ^api/notificationsSend$ api/notifications/send.php [L]
+RewriteRule ^api/notifications/send$ api/notifications/send.php [L,QSA]
+
+# Rankings
+RewriteRule ^api/rankingsList$ api/rankings/list.php [L]
+RewriteRule ^api/rankingsCreate$ api/rankings/create.php [L]
+RewriteRule ^api/rankingsJoin$ api/rankings/join.php [L]
+RewriteRule ^api/rankingsUpdate$ api/rankings/update.php [L]
+
+# Marketplace / Materials rules are now handled in api/.htaccess
+
+# Simulations
+RewriteRule ^api/simulationsList$ api/simulations/list.php [L]
+RewriteRule ^api/simulationsCreate$ api/simulations/create.php [L]
+RewriteRule ^api/simulationsSubmit$ api/simulations/submit.php [L]
+
+# Users
+RewriteRule ^api/usersList$ api/users/list.php [L]
+RewriteRule ^api/usersProfile$ api/users/profile.php [L]
+RewriteRule ^api/usersUpdate$ api/users/update.php [L]
+RewriteRule ^api/usersComments$ api/users/comments.php [L]
+
+# Reports
+RewriteRule ^api/reportsCreate$ api/reports/handle.php [L]
+RewriteRule ^api/reportsList$ api/reports/list.php [L]
+
+# Filters
+RewriteRule ^api/filtersList$ api/filters/list.php [L]
+RewriteRule ^api/filtersSave$ api/filters/save.php [L]
+RewriteRule ^api/filtersDelete$ api/filters/delete.php [L]
+
+# Cache
+RewriteRule ^api/cacheManage$ api/admin/cache.php [L]
+
+# Bank Analysis
+RewriteRule ^api/bankAnalysisAnalyze$ api/bank-analysis/analyze.php [L]
+RewriteRule ^api/bankAnalysisPatterns$ api/bank-analysis/patterns.php [L]
+
+# AI
+RewriteRule ^api/aiGenerate$ api/ai/generate.php [L]
+
+# Transactions
+RewriteRule ^api/transactionsList$ api/transactions/list.php [L]
+
+# Legacy root bridges
+# Mantem URLs antigas fora de /api funcionando enquanto remove os diretorios espelho da raiz.
+RewriteRule ^plans/list\.php$ api/plans/list.php [L,QSA,NC]
+RewriteRule ^transactions/(create|list|refund|approve_refund|reject_refund)\.php$ api/transactions/$1.php [L,QSA,NC]
+RewriteRule ^subscriptions/(create|process_payment|create_stripe_checkout|create_stripe_portal|create_stripe_subscription|finalize_stripe_subscription|validate_coupon|update_renewal|cancel|cancel_refund|undo_cancel|webhook|webhook_mp|stripe_webhook|cron_recurring|cron_scheduled_payments|cron_stripe_reconciliation)\.php$ api/subscriptions/$1.php [L,QSA,NC]
+
+# Settings (Fixing 404)
+RewriteRule ^api/settings$ api/settings.php [L]
+RewriteRule ^api/settingsUpdate$ api/admin/settings.php [L]
+
+# Legacy / Fallback (Support old URL structure to prevent 404s)
+RewriteRule ^api/questions/list$ api/questions/list.php [L,QSA]
+RewriteRule ^api/reports/list$ api/reports/list.php [L,QSA]
+RewriteRule ^api/materials/list$ api/materials/list.php [L,QSA]
+
+# Prevent direct access to PHP files
+# RewriteCond %{THE_REQUEST} \.php [NC]
+# RewriteRule ^(.*)\.php$ - [R=404,L]
+
+# Deny access to sensitive files
+<FilesMatch "^\.env(?:\..*)?$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "^\.htaccess$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Disable directory listing
+Options -Indexes
+
+# Protect config files
+<FilesMatch "\.(ini|log|conf)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+

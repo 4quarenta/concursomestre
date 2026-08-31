@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -24,7 +26,7 @@ import {
   ShoppingBag,
   Zap,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import { changelogService, type ChangelogVersion } from '@services/changelog';
 import { readApiErrorMessage } from '@services/api/response';
 
@@ -145,7 +147,7 @@ const Page: React.FC = () => {
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-12">
         {errorMessage ? (
-          <div className="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/40 rounded-3xl p-8 text-center text-red-600 dark:text-red-300 font-semibold shadow-sm">
+          <div className="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/40 rounded-2xl p-8 text-center text-red-600 dark:text-red-300 font-semibold shadow-sm">
             {errorMessage}
           </div>
         ) : (
@@ -183,7 +185,7 @@ const Page: React.FC = () => {
             <div className="lg:col-span-3 space-y-10">
               {selectedVersion ? (
                 <div className="animate-fade-in space-y-10">
-                  <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                  <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <div className="flex flex-wrap items-center gap-3 mb-6">
                       <span className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-lg">
                         v{selectedVersion.version}
@@ -244,7 +246,7 @@ const Page: React.FC = () => {
         <p className="text-slate-400 text-sm font-medium">ConcursoMestre © 2026</p>
         <div className="mt-8">
           <Link
-            to="/"
+            href="/"
             className="inline-flex items-center gap-2 px-8 py-3.5 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl hover:shadow-indigo-500/20"
           >
             <Layout size={16} /> Voltar ao inicio

@@ -13,3 +13,4 @@
  * Fachada oficial dos serviços de simulados.
  */
 export { simulationsService } from './simulationsService';
+export type { StoredSimulationAnswer, StoredSimulationSession } from './simulationsService';

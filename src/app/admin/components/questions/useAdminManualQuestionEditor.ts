@@ -19,8 +19,8 @@ interface UseAdminManualQuestionEditorOptions {
   questions: Question[];
   systemSettings: SystemSettings;
   addToast: ToastHandler;
-  onAddQuestion: (question: Question) => Promise<any> | any;
-  onUpdateQuestion: (question: Question) => Promise<any> | any;
+  onAddQuestion: (question: Question) => Promise<unknown> | unknown;
+  onUpdateQuestion: (question: Question) => Promise<unknown> | unknown;
   onRefreshQuestions: () => Promise<void> | void;
   replaceExtractedQuestion: (index: number, question: Question) => void;
 }
@@ -43,7 +43,11 @@ export const useAdminManualQuestionEditor = ({
     replaceExtractedQuestion,
   });
 
-  const manualQuestionReferenceData = useManualQuestionReferenceData(systemSettings, questions);
+  const manualQuestionReferenceData = useManualQuestionReferenceData(
+    systemSettings,
+    questions,
+    manualQuestionWorkflow.showAddManual,
+  );
 
   return {
     openManualModal: manualQuestionWorkflow.openManualModal,
@@ -58,7 +62,10 @@ export const useAdminManualQuestionEditor = ({
       existingOrgaos: manualQuestionReferenceData.existingOrgaos,
       existingSubjects: manualQuestionReferenceData.existingSubjects,
       existingTopics: manualQuestionReferenceData.existingTopics,
+      existingSubjectTopics: manualQuestionReferenceData.existingSubjectTopics,
+      existingSpecificSubjects: manualQuestionReferenceData.existingSpecificSubjects,
       existingYears: manualQuestionReferenceData.existingYears,
+      existingFocuses: manualQuestionReferenceData.existingFocuses,
       existingRoles: manualQuestionReferenceData.existingRoles,
       existingProvas: manualQuestionReferenceData.existingProvas,
       isGeneratingTeacher: manualQuestionWorkflow.isGeneratingTeacher,

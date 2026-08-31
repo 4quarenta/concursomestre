@@ -10,11 +10,11 @@
 */
 
 import { describe, expect, it } from 'vitest';
-import { buildAdminPath, resolveAdminRoute } from '../../../app/admin/config/adminPageNavigationConfig';
+import { buildAdminPath, resolveAdminRoute, resolveSupportLandingSection } from '../../../app/admin/config/adminPageNavigationConfig';
 
 describe('admin routing', () => {
   it('builds canonical admin paths with path segments', () => {
-    expect(buildAdminPath('finance', 'plans-coupons')).toBe('/admin/finance/plans-coupons');
+    expect(buildAdminPath('finance', 'plans-coupons')).toBe('/admin/finance/plans');
     expect(buildAdminPath('support', 'reports', '#42')).toBe('/admin/support/reports#42');
   });
 
@@ -33,14 +33,34 @@ describe('admin routing', () => {
   it('maps legacy finance aliases to the plans and coupons section', () => {
     expect(resolveAdminRoute('finance', 'prices')).toEqual({
       tab: 'finance',
-      section: 'plans-coupons',
+      section: 'plans',
     });
+  });
+
+  it('routes the support top-level click to the first actionable pending queue', () => {
+    expect(resolveSupportLandingSection({ comments: 2, reports: 1, threads: 1, feedback: 1, refunds: 1 })).toBe('comments');
+    expect(resolveSupportLandingSection({ reports: 1, threads: 1, feedback: 1, refunds: 1 })).toBe('reports');
+    expect(resolveSupportLandingSection({ threads: 1, feedback: 1, refunds: 1 })).toBe('threads');
+    expect(resolveSupportLandingSection({ feedback: 1, refunds: 1 })).toBe('feedback');
+    expect(resolveSupportLandingSection({ refunds: 1 })).toBe('refunds');
+    expect(resolveSupportLandingSection()).toBe('feedback');
   });
 
   it('maps the marketing tab to landing pages', () => {
     expect(resolveAdminRoute('marketing')).toEqual({
       tab: 'marketing',
       section: 'landing-pages',
+    });
+  });
+
+  it('routes gamification and notification settings sections', () => {
+    expect(resolveAdminRoute('settings', 'gamification')).toEqual({
+      tab: 'settings',
+      section: 'gamification',
+    });
+    expect(resolveAdminRoute('notificacoes')).toEqual({
+      tab: 'settings',
+      section: 'notifications',
     });
   });
 });

@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -10,7 +12,7 @@
 */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, CheckCircle2, Gift, Loader2, XCircle } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -28,10 +30,10 @@ const pageCopy = {
 };
 
 const resolvePostConfirmationPath = (): string => {
-  const redirectAfterLogin = sessionStorage.getItem('redirectAfterLogin');
+  const redirectAfterLogin = window.sessionStorage.getItem('redirectAfterLogin');
 
   if (redirectAfterLogin && redirectAfterLogin !== '/auth') {
-    sessionStorage.removeItem('redirectAfterLogin');
+    window.sessionStorage.removeItem('redirectAfterLogin');
     return redirectAfterLogin;
   }
 
@@ -39,20 +41,18 @@ const resolvePostConfirmationPath = (): string => {
   return currentUserSnapshot ? '/' : '/auth?mode=login';
 };
 
-const navigateWithCanonicalExit = (navigate: ReturnType<typeof useNavigate>, path: string) => {
-  navigate(path, {
-    replace: true,
-    state: path === '/' ? { skipRouteRestore: true } : undefined,
-  });
+const navigateWithCanonicalExit = (router: ReturnType<typeof useRouter>, path: string) => {
+  router.replace(path);
 };
 
 const Page: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { currentUser, refreshUser, isLoading: authLoading } = useAuth();
   const { addToast } = useToast();
   const token = searchParams.get('token');
   const hasFetched = useRef(false);
+  const currentUserRef = useRef(currentUser);
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState(pageCopy.loading);
@@ -60,11 +60,15 @@ const Page: React.FC = () => {
   const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
-    if (!token) {
-      if (authLoading) {
-        return;
-      }
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
+  useEffect(() => {
+    if (token || authLoading) {
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
       if (currentUser && !currentUser.emailVerified) {
         setStatus('loading');
         setMessage(pageCopy.pendingConfirmation);
@@ -73,11 +77,18 @@ const Page: React.FC = () => {
 
       setStatus('error');
       setMessage(pageCopy.missingToken);
-      return;
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [authLoading, currentUser, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return undefined;
     }
 
     if (hasFetched.current) {
-      return;
+      return undefined;
     }
 
     hasFetched.current = true;
@@ -95,9 +106,9 @@ const Page: React.FC = () => {
         setStatus('success');
         setMessage(result.message || pageCopy.successFallback);
         setXpGained(result.newXp > 0 ? result.newXp : 50);
-        addToast('Conta ativada! Voce ganhou bonus de XP.', 'success');
+        addToast('Conta ativada! Você ganhou bônus de XP.', 'success');
 
-        if (currentUser) {
+        if (currentUserRef.current) {
           await refreshUser();
         }
 
@@ -110,7 +121,7 @@ const Page: React.FC = () => {
                 clearInterval(timer);
               }
 
-              navigateWithCanonicalExit(navigate, nextPath);
+          navigateWithCanonicalExit(router, nextPath);
               return 0;
             }
 
@@ -138,17 +149,17 @@ const Page: React.FC = () => {
         clearInterval(timer);
       }
     };
-  }, [addToast, authLoading, currentUser, navigate, refreshUser, token]);
+  }, [addToast, refreshUser, router, token]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
       <PublicBrandLink
-        className="mb-8 flex items-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400 transition-opacity hover:opacity-90"
-        iconSize={28}
-        labelClassName="tracking-tight"
+        className="mb-8 inline-flex items-center transition-opacity hover:opacity-90"
+        width={220}
+        priority
       />
 
-      <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900 animate-scale-in">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900 animate-scale-in">
         {status === 'loading' && (
           <div className="flex flex-col items-center space-y-6 py-8">
             {!token && currentUser && !currentUser.emailVerified ? (
@@ -161,18 +172,18 @@ const Page: React.FC = () => {
                     Bem-vindo(a) ao Time!
                   </h2>
                   <p className="mx-auto max-w-xs text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                    Enviamos um link de confirmacao para <strong>{currentUser.email}</strong>. Confirme para desbloquear questoes, simulados e rankings.
+                    Enviamos um link de confirmação para <strong>{currentUser.email}</strong>. Confirme para desbloquear questões, simulados e rankings.
                   </p>
                 </div>
                 <div className="w-full space-y-3 pt-2">
                   <button
-                    onClick={() => navigateWithCanonicalExit(navigate, '/')}
+                    onClick={() => navigateWithCanonicalExit(router, '/')}
                     className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-xs font-black uppercase tracking-widest text-white shadow-lg transition-all hover:bg-indigo-700 active:scale-95"
                   >
                     Ir para Dashboard <ArrowRight size={16} />
                   </button>
                   <button
-                    onClick={() => navigateWithCanonicalExit(navigate, '/')}
+                    onClick={() => navigateWithCanonicalExit(router, '/')}
                     className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 transition-all hover:text-indigo-600 dark:hover:text-indigo-400"
                   >
                     Pular por enquanto
@@ -205,7 +216,7 @@ const Page: React.FC = () => {
             {xpGained > 0 && (
               <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-600 shadow-sm dark:border-amber-800 dark:bg-amber-900/10 dark:text-amber-400">
                 <Gift size={16} />
-                +{xpGained} XP de bonus recebido!
+                +{xpGained} XP de bônus recebido!
               </div>
             )}
 
@@ -214,7 +225,7 @@ const Page: React.FC = () => {
                 Redirecionando automaticamente em <span className="font-black text-indigo-500">{countdown}s</span>...
               </p>
               <button
-                onClick={() => navigateWithCanonicalExit(navigate, resolvePostConfirmationPath())}
+            onClick={() => navigateWithCanonicalExit(router, resolvePostConfirmationPath())}
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-xs font-black uppercase tracking-widest text-white shadow-lg transition-all hover:bg-indigo-700 active:scale-95"
               >
                 Continuar na Plataforma <ArrowRight size={16} />
@@ -242,7 +253,7 @@ const Page: React.FC = () => {
             </div>
 
             <button
-              onClick={() => navigateWithCanonicalExit(navigate, currentUser ? '/' : '/auth?mode=login')}
+              onClick={() => navigateWithCanonicalExit(router, currentUser ? '/' : '/auth?mode=login')}
               className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 text-xs font-black uppercase tracking-widest text-slate-900 shadow-sm transition-all hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
             >
               {currentUser ? 'Voltar ao inicio' : 'Voltar para o login'}

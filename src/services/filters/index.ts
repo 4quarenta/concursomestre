@@ -9,27 +9,59 @@
 *
 */
 
-import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
+import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { Question } from '@types';
 
+type RawFilterNode = Record<string, unknown>;
+
+type RawQuestionArea = {
+  nome?: string;
+  name?: string;
+  descricao?: string;
+  ['descrição']?: string;
+};
+
+type RawQuestionExam = {
+  nome?: string;
+  name?: string;
+  orgao?: RawFilterNode;
+  banca?: RawFilterNode;
+};
+
+type QuestionWithTaxonomyExtras = Question & {
+  areas?: RawQuestionArea[];
+  provas?: RawQuestionExam[];
+};
+
+type FiltersSaveResponse = {
+  id?: number | string;
+  data?: {
+    id?: number | string;
+  };
+};
+
 export interface FiltersApiPayload {
-  bancas?: Record<string, any>[];
-  orgaos?: Record<string, any>[];
-  assuntos?: Record<string, any>[];
-  cargos?: Record<string, any>[];
+  bancas?: RawFilterNode[];
+  orgaos?: RawFilterNode[];
+  assuntos?: RawFilterNode[];
+  cargos?: RawFilterNode[];
   anos?: Array<string | number>;
-  carreiras?: Record<string, any>[];
+  carreiras?: RawFilterNode[];
 }
 
 export interface FilterSavePayload {
   id?: number;
   type: string;
   name: string;
+  sigla?: string;
   slug?: string;
   parent_id?: number | null;
+  materia?: boolean;
+  taxonomy_level?: 'materia' | 'topico' | 'assunto' | string;
   description?: string;
   website?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export const ENEM_FOCUS_NAME = 'ENEM';
@@ -81,6 +113,18 @@ const normalizeFilterText = (value: unknown) =>
     .toLowerCase()
     .trim();
 
+const normalizeFilterSlug = (value: unknown) => normalizeFilterText(value)
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const isFilterSlugConflict = (error: unknown) => {
+  const status = typeof error === 'object' && error && 'response' in error
+    ? Number((error as { response?: { status?: unknown } }).response?.status)
+    : 0;
+  const message = readApiErrorMessage(error, '').toLowerCase();
+  return status === 409 || (message.includes('slug') && (message.includes('uso') || message.includes('use')));
+};
+
 const ENEM_SUBJECT_AREA_KEYWORDS: Record<(typeof ENEM_SUBJECT_AREA_OPTIONS)[number], string[]> = {
   'Linguagens, Codigos e suas Tecnologias': [
     'lingua portuguesa',
@@ -118,7 +162,7 @@ const ENEM_SUBJECT_AREA_KEYWORDS: Record<(typeof ENEM_SUBJECT_AREA_OPTIONS)[numb
   ],
 };
 
-const readNamedValue = (entry: any, keys: string[]) => {
+const readNamedValue = (entry: unknown, keys: string[]) => {
   if (entry == null) {
     return '';
   }
@@ -127,8 +171,13 @@ const readNamedValue = (entry: any, keys: string[]) => {
     return String(entry);
   }
 
+  if (typeof entry !== 'object') {
+    return '';
+  }
+
+  const objectEntry = entry as Record<string, unknown>;
   for (const key of keys) {
-    const value = entry?.[key];
+    const value = objectEntry[key];
     if (typeof value === 'string' || typeof value === 'number') {
       return String(value);
     }
@@ -138,16 +187,17 @@ const readNamedValue = (entry: any, keys: string[]) => {
 };
 
 const collectQuestionTexts = (question: Question) => {
+  const extendedQuestion = question as QuestionWithTaxonomyExtras;
   const values = [
-    ...(question.carreiras || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])),
-    ...(question.orgaos || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'sigla'])),
-    ...(question.bancas || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'sigla'])),
-    ...(question.assuntos || []).map((item: any) => readNamedValue(item, ['nome', 'name'])),
-    ...((question as any).areas || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])),
-    ...((question as any).provas || []).flatMap((item: any) => [
+    ...(question.carreiras || []).map((item) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])),
+    ...(question.orgaos || []).map((item) => readNamedValue(item, ['nome', 'name', 'sigla'])),
+    ...(question.bancas || []).map((item) => readNamedValue(item, ['nome', 'name', 'sigla'])),
+    ...(question.assuntos || []).map((item) => readNamedValue(item, ['nome', 'name'])),
+    ...(extendedQuestion.areas || []).map((item) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])),
+    ...(extendedQuestion.provas || []).flatMap((item) => [
       readNamedValue(item, ['nome', 'name']),
-      readNamedValue(item?.orgao, ['nome', 'name', 'sigla']),
-      readNamedValue(item?.banca, ['nome', 'name', 'sigla']),
+      readNamedValue(item.orgao, ['nome', 'name', 'sigla']),
+      readNamedValue(item.banca, ['nome', 'name', 'sigla']),
     ]),
   ];
 
@@ -155,11 +205,20 @@ const collectQuestionTexts = (question: Question) => {
 };
 
 export const injectEnemFocusOption = (careers: string[]) => {
-  const next = careers.filter(Boolean);
-  const hasEnem = next.some((career) => normalizeFilterText(career) === normalizeFilterText(ENEM_FOCUS_NAME));
-  if (hasEnem) {
-    return next;
-  }
+  const enemKey = normalizeFilterText(ENEM_FOCUS_NAME);
+  const seen = new Set<string>();
+  const next = careers
+    .map((career) => String(career || '').trim())
+    .filter(Boolean)
+    .filter((career) => normalizeFilterText(career) !== enemKey)
+    .filter((career) => {
+      const key = normalizeFilterText(career);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
 
   return [ENEM_FOCUS_NAME, ...next];
 };
@@ -172,16 +231,21 @@ export const normalizeCareerSelectorLabel = (value: unknown) => {
 
   const trailingGroupMatch = rawValue.match(/^(.+?)\s*\(([^()]+)\)$/);
   if (!trailingGroupMatch) {
-    return rawValue;
+    const [baseLabel] = rawValue.split('/');
+    const normalizedBaseLabel = String(baseLabel || rawValue).trim();
+    return normalizeFilterText(normalizedBaseLabel) === normalizeFilterText(ENEM_FOCUS_NAME)
+      ? ENEM_FOCUS_NAME
+      : normalizedBaseLabel;
   }
 
   const baseLabel = trailingGroupMatch[1].trim();
-  const detailLabel = trailingGroupMatch[2].trim();
-  if (!baseLabel || !detailLabel) {
+  if (!baseLabel) {
     return rawValue;
   }
 
-  return `${baseLabel} / ${detailLabel}`;
+  return normalizeFilterText(baseLabel) === normalizeFilterText(ENEM_FOCUS_NAME)
+    ? ENEM_FOCUS_NAME
+    : baseLabel;
 };
 
 export const isEnemQuestion = (question: Question) => {
@@ -205,90 +269,218 @@ export const getEnemSubjectAreasForQuestion = (question: Question) => {
   return Array.from(new Set(matchedAreas));
 };
 
+const getTaxonomyParentId = (item: RawFilterNode) => {
+  const parentId = item.pai ?? item.parent_id ?? item.parentId ?? item.assunto_raiz ?? null;
+  return parentId === null || parentId === undefined || parentId === '' ? undefined : String(parentId);
+};
+
+const getTaxonomyLevelFromPayload = (item: RawFilterNode) => {
+  const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata as Record<string, unknown> : {};
+  const rawLevel = String(
+    item.taxonomy_level
+    || item.taxonomyLevel
+    || item.nivel_taxonomia
+    || metadata.taxonomy_level
+    || '',
+  ).toLowerCase();
+
+  return rawLevel === 'materia' || rawLevel === 'topico' || rawLevel === 'assunto'
+    ? rawLevel
+    : '';
+};
+
 /**
  * Converte o payload bruto da API para o formato de taxonomias usado no app.
+ * A hierarquia de estudo passa a ser: Materia -> Topico -> Assunto.
  */
-export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => ({
-  agencies: data.bancas?.map((b: any) => ({
-    id: b.id,
-    name: b.nome || b.name,
-    sigla: b.sigla,
-    slug: b.slug,
-    description: b.description,
-    website: b.website,
-    type: 'agency',
-  })) || [],
-  organizations: data.orgaos?.map((o: any) => ({
-    id: o.id,
-    name: o.nome || o.name,
-    sigla: o.sigla,
-    slug: o.slug,
-    description: o.description,
-    website: o.website,
-    type: 'organization',
-  })) || [],
-  subjects: data.assuntos?.filter((a: any) => a.materia).map((a: any) => ({
-    id: a.id,
-    name: a.nome || a.name,
-    slug: a.slug,
-    description: a.description,
-    website: a.website,
+export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
+  const rawSubjects = data.assuntos || [];
+  const subjectIds = new Set(
+    rawSubjects
+      .filter((item) => Boolean(item.materia))
+      .map((item) => String(item.id)),
+  );
+  const nonSubjectIds = new Set(
+    rawSubjects
+      .filter((item) => !item.materia)
+      .map((item) => String(item.id)),
+  );
+
+  const subjects = rawSubjects.filter((item) => item.materia).map((item) => ({
+    id: String(item.id),
+    name: readNamedValue(item, ['nome', 'name']),
+    slug: typeof item.slug === 'string' ? item.slug : undefined,
+    description: typeof item.description === 'string' ? item.description : undefined,
+    website: typeof item.website === 'string' ? item.website : undefined,
     materia: true,
+    taxonomyLevel: 'materia',
     type: 'subject',
-  })) || [],
-  topics: data.assuntos?.filter((a: any) => !a.materia).map((a: any) => ({
-    id: a.id,
-    name: a.nome || a.name,
-    slug: a.slug,
-    description: a.description,
-    website: a.website,
-    parentId: a.pai || a.parent_id,
-    materia: false,
-    type: 'topic',
-  })) || [],
-  roles: data.cargos?.map((c: any) => ({
-    id: c.id,
-    name: c['descrição'] || c.descricao || c.name,
-    slug: c.slug,
-    description: c.description,
-    website: c.website,
-    parentId: c.pai || c.parent_id,
-    type: 'role',
-  })) || [],
-  careers: data.carreiras?.map((c: any) => ({
-    id: c.id,
-    name: c.nome || c.name,
-    slug: c.slug,
-    description: c.description,
-    website: c.website,
-    parentId: c.pai || c.parent_id,
-    type: 'career',
-  })) || [],
-  years: data.anos?.map(String) || [],
-  modalities: ['Múltipla Escolha', 'Certo/Errado'],
-});
+  }));
+
+  const nonSubjectTaxonomies = rawSubjects.filter((item) => !item.materia).map((item) => {
+    const parentId = getTaxonomyParentId(item);
+    const explicitLevel = getTaxonomyLevelFromPayload(item);
+    const taxonomyLevel = explicitLevel || (parentId && nonSubjectIds.has(parentId) ? 'assunto' : 'topico');
+    const parentTopic = taxonomyLevel === 'assunto'
+      ? rawSubjects.find((rawItem) => String(rawItem.id) === parentId)
+      : null;
+    const rootSubjectId = taxonomyLevel === 'topico'
+      ? parentId
+      : parentTopic
+        ? getTaxonomyParentId(parentTopic)
+        : undefined;
+
+    return {
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      parentId,
+      rootSubjectId: rootSubjectId && subjectIds.has(String(rootSubjectId)) ? String(rootSubjectId) : undefined,
+      materia: false,
+      taxonomyLevel,
+      type: 'topic',
+    };
+  });
+
+  return {
+    agencies: (data.bancas || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      sigla: typeof item.sigla === 'string' ? item.sigla : undefined,
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      type: 'agency',
+    })),
+    organizations: (data.orgaos || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      sigla: typeof item.sigla === 'string' ? item.sigla : undefined,
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      type: 'organization',
+    })),
+    subjects,
+    topics: nonSubjectTaxonomies,
+    subjectTopics: nonSubjectTaxonomies.filter((item) => item.taxonomyLevel === 'topico'),
+    specificSubjects: nonSubjectTaxonomies.filter((item) => item.taxonomyLevel === 'assunto'),
+    roles: (data.cargos || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['descrição', 'descricao', 'name']),
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      parentId: item.pai || item.parent_id ? String(item.pai || item.parent_id) : undefined,
+      type: 'role',
+    })),
+    careers: (data.carreiras || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      parentId: item.pai || item.parent_id ? String(item.pai || item.parent_id) : undefined,
+      type: 'career',
+    })),
+    years: (data.anos || []).map(String),
+    modalities: ['Múltipla Escolha', 'Certo/Errado'],
+  };
+};
 
 export const filtersService = {
-  async list(): Promise<FiltersApiPayload> {
-    const response = await apiClient.get<any>(ENDPOINTS.filters.list) as any;
-    return readApiData(response, {});
+  async list(force = false): Promise<FiltersApiPayload> {
+    const cacheKey = buildRequestCacheKey('filters:list');
+    if (force) {
+      clearRequestCoalescing(cacheKey);
+    }
+
+    return withRequestCoalescing(
+      cacheKey,
+      async () => {
+        const response = await apiClient.get<FiltersApiPayload>(ENDPOINTS.filters.list);
+        return readApiData<FiltersApiPayload>(response, {});
+      },
+      60_000,
+    );
   },
 
-  async listTaxonomies() {
-    const payload = await this.list();
+  async listTaxonomies(force = false) {
+    const payload = await this.list(force);
     return normalizeFiltersToTaxonomies(payload);
   },
 
   async save(payload: FilterSavePayload): Promise<number> {
-    const response = await apiClient.post<any>(ENDPOINTS.filters.save, payload) as any;
-    const raw = assertApiSuccess(response, 'Erro ao salvar filtro').raw;
+    let response;
+    try {
+      response = await apiClient.post<FiltersSaveResponse>(ENDPOINTS.filters.save, payload);
+    } catch (error) {
+      if (!payload.id && isFilterSlugConflict(error)) {
+        const taxonomies = await this.listTaxonomies(true);
+        const requestedType = normalizeFilterText(payload.type);
+        const requestedName = normalizeFilterText(payload.name);
+        const requestedSlug = normalizeFilterSlug(payload.slug || payload.name);
 
-    return raw?.data?.id ?? raw?.id ?? 0;
+        if (['ano', 'anos', 'year', 'years'].includes(requestedType)) {
+          const existingYear = (taxonomies.years || []).find((year) => (
+            normalizeFilterText(year) === requestedName
+            || normalizeFilterSlug(year) === requestedSlug
+          ));
+
+          if (existingYear) {
+            return Number(existingYear) || 0;
+          }
+        }
+
+        const matches = [
+          ...taxonomies.agencies,
+          ...taxonomies.organizations,
+          ...taxonomies.subjects,
+          ...taxonomies.topics,
+          ...taxonomies.roles,
+          ...taxonomies.careers,
+        ];
+        const existing = matches.find((item) => {
+          const itemType = normalizeFilterText(item.type);
+          const itemName = normalizeFilterText(item.name);
+          const itemSigla = normalizeFilterText(item.sigla);
+          const itemSlug = normalizeFilterSlug(item.slug || item.name);
+          const sameType = !requestedType
+            || itemType === requestedType
+            || (requestedType === 'bancas' && itemType === 'agency')
+            || (requestedType === 'orgaos' && itemType === 'organization')
+            || (requestedType === 'cargos' && itemType === 'role')
+            || (requestedType === 'carreiras' && itemType === 'career')
+            || (requestedType === 'assuntos' && ['subject', 'topic'].includes(itemType));
+          return sameType && (
+            itemSlug === requestedSlug
+            || itemName === requestedName
+            || Boolean(itemSigla && itemSigla === requestedName)
+          );
+        });
+
+        const existingId = Number(existing?.id || 0);
+        if (existingId > 0) {
+          return existingId;
+        }
+      }
+      throw error;
+    }
+
+    const envelope = assertApiSuccess(response, 'Erro ao salvar filtro');
+    const result = readApiData<FiltersSaveResponse>(response, {});
+
+    clearRequestCoalescing(buildRequestCacheKey('filters:list'));
+
+    return Number(result.data?.id ?? result.id ?? envelope.raw.id ?? 0);
   },
 
   async remove(id: number): Promise<void> {
-    const response = await apiClient.get<any>(ENDPOINTS.filters.delete, { params: { id: id.toString() } }) as any;
+    const response = await apiClient.get(ENDPOINTS.filters.delete, { params: { id: id.toString() } });
     assertApiSuccess(response, 'Erro ao deletar filtro');
+    clearRequestCoalescing(buildRequestCacheKey('filters:list'));
   },
 };
 

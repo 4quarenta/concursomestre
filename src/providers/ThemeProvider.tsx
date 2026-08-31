@@ -9,12 +9,14 @@
 *
 */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark';
+const DEFAULT_THEME: Theme = 'light';
 
 interface ThemeContextType {
   theme: Theme;
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
 }
 
@@ -26,40 +28,89 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
  * @since 1.0.0
  */
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  const applyThemeToDocument = useCallback((nextTheme: Theme) => {
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(nextTheme);
+    root.style.colorScheme = nextTheme;
+    localStorage.setItem('theme', nextTheme);
+  }, []);
+
   /**
    * Resolve o tema inicial a partir do storage ou da preferencia do sistema.
    * @since 1.0.0
    */
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'light' || saved === 'dark') {
-      return saved;
+  const [theme, setThemeState] = useState<Theme>(() => {
+    return DEFAULT_THEME;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
     }
 
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  });
+    const frameId = window.requestAnimationFrame(() => {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'light' || saved === 'dark') {
+        setThemeState(saved);
+        setIsHydrated(true);
+        return;
+      }
+
+      setThemeState(DEFAULT_THEME);
+      setIsHydrated(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
 
   /**
    * Mantem DOM e localStorage sincronizados sempre que o tema mudar.
    * @since 1.0.0
    */
-  useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+  useLayoutEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    applyThemeToDocument(theme);
+  }, [applyThemeToDocument, isHydrated, theme]);
 
   /**
    * Alterna entre os dois modos suportados pela plataforma.
    * @since 1.0.0
    */
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
+  const setTheme = useCallback((nextTheme: Theme) => {
+    setIsHydrated(true);
+    setThemeState(nextTheme);
+    applyThemeToDocument(nextTheme);
+  }, [applyThemeToDocument]);
+
+  const toggleTheme = useCallback(() => {
+    const root = window.document.documentElement;
+    root.classList.add('theme-switching');
+
+    setThemeState((prev) => {
+      const nextTheme = prev === 'light' ? 'dark' : 'light';
+      applyThemeToDocument(nextTheme);
+      return nextTheme;
+    });
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        root.classList.remove('theme-switching');
+      });
+    });
+  }, [applyThemeToDocument]);
+
+  const visibleTheme = isHydrated ? theme : 'light';
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme: visibleTheme, setTheme, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-08T02:47:56.789Z",
+  "generatedAt": "2026-05-16T13:53:16.430Z",
   "result": "GO",
   "checks": [
     {
@@ -96,11 +96,11 @@
     {
       "id": "D2",
       "label": "Reconciliação tenta recuperar renovacao perdida",
-      "status": "RISCO",
+      "status": "OK",
       "evidence": [
         "C:\\xampp\\htdocs\\questao-pro-backend\\modules\\subscriptions\\services\\SubscriptionsService.php"
       ],
-      "details": "Se o webhook falhar, o cron precisa tentar reaproveitar a ultima fatura paga."
+      "details": "Se o webhook falhar, o cron tenta materializar a ultima fatura paga; se o periodo venceu sem fatura nova que cubra o proximo ciclo, bloqueia o acesso como past_due e notifica o usuario em vez de manter assinatura ativa sem cobranca confirmada."
     },
     {
       "id": "E1",
@@ -217,8 +217,8 @@
     }
   ],
   "summary": {
-    "ok": 21,
-    "risk": 1,
+    "ok": 22,
+    "risk": 0,
     "critical": 0,
     "notProven": 0
   },

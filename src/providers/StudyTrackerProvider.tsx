@@ -10,10 +10,11 @@
 */
 
 import React from 'react';
-import { useLocation } from 'react-router-dom';
+import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
+import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth';
 import { statisticsService } from '@services/statistics';
 import type { StudySessionPayload } from '@services/statistics/types';
 import {
@@ -32,14 +33,27 @@ import {
 import StudySessionWidget from '../components/shared/feedback/StudySessionWidget';
 
 const IDLE_TIMEOUT_MS = 60_000;
+const AUTO_STOP_IDLE_MS = 5 * 60_000;
 const TICK_INTERVAL_MS = 1_000;
+const PERSISTED_STATISTICS_SYNC_TTL_MS = 120_000;
 const WIDGET_STORAGE_KEY = 'cm-study-widget-expanded';
 const buildStudySessionStorageKey = (userId: string) => `cm-study-session:${userId}`;
+
+const isLegalCommentaryReadingPath = (pathname: string): boolean => {
+  const normalizedPathname = pathname.replace(/\/+$/, '');
+
+  if (!normalizedPathname.startsWith('/lei-comentada/')) {
+    return false;
+  }
+
+  const lawSlug = normalizedPathname.slice('/lei-comentada/'.length).split('/')[0];
+  return lawSlug.trim() !== '';
+};
 
 const shouldRenderStudyWidget = (pathname: string): boolean => (
   pathname.startsWith('/practice')
   || pathname.startsWith('/simulation')
-  || pathname.startsWith('/lei-comentada')
+  || isLegalCommentaryReadingPath(pathname)
 );
 
 const resolveTrackedStudyMode = (pathname: string): 'practice' | 'reading' | null => {
@@ -47,11 +61,35 @@ const resolveTrackedStudyMode = (pathname: string): 'practice' | 'reading' | nul
     return 'practice';
   }
 
-  if (pathname.startsWith('/lei-comentada')) {
+  if (isLegalCommentaryReadingPath(pathname)) {
     return 'reading';
   }
 
   return null;
+};
+
+const shouldSyncPersistedStatistics = (pathname: string): boolean => {
+  if (pathname.startsWith('/dashboard')) {
+    return true;
+  }
+
+  return isLegalCommentaryReadingPath(pathname);
+};
+
+const ensureValidStatisticsSession = async (): Promise<boolean> => {
+  const currentToken = getAccessToken();
+  if (currentToken && !isAccessTokenExpired(currentToken, 15)) {
+    return true;
+  }
+
+  const refreshedSession = await refreshAuthSession({
+    reason: 'manual',
+    allowAnonymousFailure: true,
+    force: true,
+  });
+
+  const refreshedToken = refreshedSession?.accessToken || getAccessToken();
+  return Boolean(refreshedToken && !isAccessTokenExpired(refreshedToken, 15));
 };
 
 /**
@@ -72,21 +110,36 @@ export const useStudyTracker = () => useSyncExternalStore(
  * @since 1.0.0
  */
 export const StudyTrackerBridge: React.FC = () => {
-  const location = useLocation();
-  const { currentUser } = useAuth();
+  const pathname = usePathname() || '/';
+  const { currentUser, isLoading: isAuthLoading } = useAuth();
   const { addToast } = useToast();
   const tracker = useStudyTracker();
-  const lastInteractionAtRef = React.useRef<number>(Date.now());
-  const lastTickAtRef = React.useRef<number>(Date.now());
+  const lastInteractionAtRef = React.useRef<number>(0);
+  const lastTickAtRef = React.useRef<number>(0);
+  const stopStudySessionRef = React.useRef<() => Promise<void>>(async () => undefined);
+  const lastStatisticsSyncKeyRef = React.useRef<string | null>(null);
+  const lastStatisticsSyncAtRef = React.useRef<number>(0);
+  const previousPathnameRef = React.useRef(pathname);
+  const shouldLoadPersistedStatistics = shouldSyncPersistedStatistics(pathname);
 
   React.useEffect(() => {
+    const now = Date.now();
+    lastInteractionAtRef.current = now;
+    lastTickAtRef.current = now;
+
     const storedWidgetState = window.localStorage.getItem(WIDGET_STORAGE_KEY);
     setStudyTrackerWidgetExpanded(storedWidgetState === '1');
   }, []);
 
   React.useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
+
     if (!currentUser?.id) {
       resetStudyTrackerState();
+      lastStatisticsSyncKeyRef.current = null;
+      lastStatisticsSyncAtRef.current = 0;
       return;
     }
 
@@ -104,22 +157,71 @@ export const StudyTrackerBridge: React.FC = () => {
     } else {
       resetStudyTrackerSession();
     }
-
-    setStudyTrackerLoading(true);
-    statisticsService.getUserStatistics(currentUser.id)
-      .then((statistics) => {
-        syncPersistedStudyTotals(statistics);
-      })
-      .catch(() => {
-        syncPersistedStudyTotals(null);
-      })
-      .finally(() => {
-        setStudyTrackerLoading(false);
-      });
-  }, [currentUser?.id]);
+  }, [currentUser?.id, isAuthLoading]);
 
   React.useEffect(() => {
-    if (!currentUser?.id) {
+    if (isAuthLoading || !currentUser?.id) {
+      return;
+    }
+
+    if (!shouldLoadPersistedStatistics) {
+      setStudyTrackerLoading(false);
+      return;
+    }
+
+    const syncKey = currentUser.id;
+    const now = Date.now();
+    const hasRecentSync = (
+      lastStatisticsSyncKeyRef.current === syncKey
+      && (now - lastStatisticsSyncAtRef.current) < PERSISTED_STATISTICS_SYNC_TTL_MS
+    );
+
+    if (hasRecentSync) {
+      return;
+    }
+
+    lastStatisticsSyncKeyRef.current = syncKey;
+    lastStatisticsSyncAtRef.current = now;
+
+    let isActive = true;
+
+    setStudyTrackerLoading(true);
+    void (async () => {
+      try {
+        const hasValidSession = await ensureValidStatisticsSession();
+        if (!isActive) {
+          return;
+        }
+
+        if (!hasValidSession) {
+          syncPersistedStudyTotals(null);
+          return;
+        }
+
+        const statistics = await statisticsService.getUserStatistics(currentUser.id);
+        if (isActive) {
+          syncPersistedStudyTotals(statistics);
+        }
+      } catch {
+        if (isActive) {
+          lastStatisticsSyncKeyRef.current = null;
+          lastStatisticsSyncAtRef.current = 0;
+          syncPersistedStudyTotals(null);
+        }
+      } finally {
+        if (isActive) {
+          setStudyTrackerLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentUser?.id, isAuthLoading, pathname, shouldLoadPersistedStatistics]);
+
+  React.useEffect(() => {
+    if (isAuthLoading || !currentUser?.id) {
       return;
     }
 
@@ -131,11 +233,11 @@ export const StudyTrackerBridge: React.FC = () => {
     });
 
     return unsubscribe;
-  }, [currentUser?.id]);
+  }, [currentUser?.id, isAuthLoading]);
 
   React.useEffect(() => {
     lastTickAtRef.current = Date.now();
-  }, [location.pathname]);
+  }, [pathname]);
 
   React.useEffect(() => {
     const markUserInteraction = () => {
@@ -163,7 +265,7 @@ export const StudyTrackerBridge: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (!currentUser?.id) {
+    if (isAuthLoading || !currentUser?.id) {
       return;
     }
 
@@ -181,11 +283,17 @@ export const StudyTrackerBridge: React.FC = () => {
         return;
       }
 
-      if (now - lastInteractionAtRef.current > IDLE_TIMEOUT_MS) {
+      const idleMs = now - lastInteractionAtRef.current;
+      if (idleMs > AUTO_STOP_IDLE_MS && getStudyTrackerSnapshot().sessionTotals.totalSeconds > 0) {
+        void stopStudySessionRef.current();
         return;
       }
 
-      const trackedMode = resolveTrackedStudyMode(location.pathname);
+      if (idleMs > IDLE_TIMEOUT_MS) {
+        return;
+      }
+
+      const trackedMode = resolveTrackedStudyMode(pathname);
       if (!trackedMode) {
         return;
       }
@@ -196,17 +304,7 @@ export const StudyTrackerBridge: React.FC = () => {
     return () => {
       window.clearInterval(tickId);
     };
-  }, [currentUser?.id, location.pathname]);
-
-  const refreshPersistedTotals = React.useCallback(async () => {
-    if (!currentUser?.id) {
-      syncPersistedStudyTotals(null);
-      return;
-    }
-
-    const statistics = await statisticsService.getUserStatistics(currentUser.id);
-    syncPersistedStudyTotals(statistics);
-  }, [currentUser?.id]);
+  }, [currentUser?.id, isAuthLoading, pathname]);
 
   const stopStudySession = React.useCallback(async () => {
     if (!currentUser?.id) {
@@ -229,7 +327,7 @@ export const StudyTrackerBridge: React.FC = () => {
       startedAt: new Date(snapshot.session.startedAt).toISOString(),
       endedAt: new Date().toISOString(),
       sourceContext: {
-        pathname: location.pathname,
+        pathname,
         question_sources: {
           practice_seconds: snapshot.sessionTotals.practiceSeconds,
           simulation_seconds: snapshot.sessionTotals.simulationSeconds,
@@ -241,28 +339,51 @@ export const StudyTrackerBridge: React.FC = () => {
     };
 
     try {
+      const hasValidSession = await ensureValidStatisticsSession();
+      if (!hasValidSession) {
+        addToast('Sua sessão precisa ser renovada antes de salvar o tempo. Faça login novamente para registrar este estudo.', 'warning');
+        return;
+      }
+
       const result = await statisticsService.recordStudySession(payload);
       syncPersistedStudyTotals(result.statistics);
       resetStudyTrackerSession();
       addToast('Tempo de estudo registrado com sucesso.', 'success');
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel registrar o tempo de estudo.', 'error');
+    } catch (error: unknown) {
+      addToast(error instanceof Error ? error.message : 'Não foi possível registrar o tempo de estudo.', 'error');
     } finally {
       setStudyTrackerSaving(false);
       lastInteractionAtRef.current = Date.now();
       lastTickAtRef.current = Date.now();
     }
-  }, [addToast, currentUser?.id, location.pathname]);
+  }, [addToast, currentUser?.id, pathname]);
+
+  React.useEffect(() => {
+    stopStudySessionRef.current = stopStudySession;
+  }, [stopStudySession]);
+
+  React.useEffect(() => {
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+
+    if (!currentUser?.id) {
+      return;
+    }
+
+    const wasTrackingStudy = resolveTrackedStudyMode(previousPathname) !== null;
+    const isTrackingStudy = resolveTrackedStudyMode(pathname) !== null;
+    const hasUnsavedStudyTime = getStudyTrackerSnapshot().sessionTotals.totalSeconds > 0;
+
+    if (wasTrackingStudy && !isTrackingStudy && hasUnsavedStudyTime) {
+      void stopStudySessionRef.current();
+    }
+  }, [currentUser?.id, pathname]);
 
   const handleWidgetToggle = React.useCallback(() => {
     setStudyTrackerWidgetExpanded(!getStudyTrackerSnapshot().isWidgetExpanded);
   }, []);
 
-  const registerSimulationElapsed = React.useCallback((simulationId: string, elapsedSeconds: number) => {
-    recordSimulationStudyTime(simulationId, elapsedSeconds);
-  }, []);
-
-  if (!currentUser || !shouldRenderStudyWidget(location.pathname)) {
+  if (!currentUser || !shouldRenderStudyWidget(pathname)) {
     return null;
   }
 

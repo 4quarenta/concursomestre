@@ -11,10 +11,13 @@
 
 import axios from 'axios';
 import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth/session';
+import {
+    AUTH_SESSION_EXPIRED_MESSAGE,
+    dispatchAuthSessionExpiredNotice,
+} from '@services/auth/sessionExpiredNotice';
 import { registerApiInterceptors } from './interceptors';
 import { ENDPOINTS } from './endpoints';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/questao-pro-backend/api/';
+import { API_BASE_URL, resolveAbsoluteApiBaseUrl, resolveBackendRootFromApiBaseUrl } from './baseUrl';
 
 export const apiClient = axios.create({
     baseURL: API_BASE_URL,
@@ -31,15 +34,7 @@ export const apiClient = axios.create({
  * @since v1.0.0
  */
 const resolveApiBaseUrl = (): string => {
-    let baseUrl = API_BASE_URL;
-
-    if (!/^https?:\/\//i.test(baseUrl)) {
-        const frontendOrigin = window.location.origin;
-        const backendOrigin = frontendOrigin.replace(':3000', '');
-        baseUrl = `${backendOrigin}${baseUrl.startsWith('/') ? '' : '/'}${baseUrl}`;
-    }
-
-    return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    return resolveAbsoluteApiBaseUrl(API_BASE_URL);
 };
 
 /**
@@ -47,22 +42,37 @@ const resolveApiBaseUrl = (): string => {
  * Ela e usada quando a UI precisa abrir arquivos e assets fora do contrato JSON tradicional.
  * @since v1.0.0
  */
-const resolveBackendRoot = (): string => resolveApiBaseUrl().replace(/\/api\/?$/, '');
+const resolveBackendRoot = (): string => resolveBackendRootFromApiBaseUrl(API_BASE_URL);
 
 /**
  * Converte um recurso relativo da plataforma em URL absoluta do backend.
  * Essa funcao alimenta downloads, visualizacao de PDFs e aberturas autenticadas no browser.
  * @since v1.0.0
  */
-const resolveApiResourceUrl = (resource: string): string => {
+export const resolveApiResourceUrl = (resource: string): string => {
     if (/^https?:\/\//i.test(resource)) {
         return resource;
     }
 
     const normalizedResource = resource.replace(/^\/+/, '');
+    const backendRoot = resolveBackendRoot();
+
+    if (normalizedResource.startsWith('uploads/')) {
+        return `${backendRoot}/${normalizedResource}`;
+    }
+
+    try {
+        const backendRootUrl = new URL(backendRoot);
+        const backendPath = backendRootUrl.pathname.replace(/^\/+|\/+$/g, '');
+        if (backendPath && normalizedResource.startsWith(`${backendPath}/`)) {
+            return `${backendRootUrl.origin}/${normalizedResource}`;
+        }
+    } catch {
+        // Mantem o fallback historico abaixo quando a URL base nao puder ser parseada.
+    }
 
     if (normalizedResource.startsWith('api/')) {
-        return `${resolveBackendRoot()}/${normalizedResource}`;
+        return `${backendRoot}/${normalizedResource}`;
     }
 
     return `${resolveApiBaseUrl()}${normalizedResource}`;
@@ -79,17 +89,22 @@ const ensureAuthenticatedAccessToken = async (): Promise<string> => {
         return currentToken;
     }
 
-    const refreshedSession = await refreshAuthSession({
-        reason: 'manual',
-        force: true,
-    });
+    try {
+        const refreshedSession = await refreshAuthSession({
+            reason: 'manual',
+            force: true,
+        });
 
-    const refreshedToken = refreshedSession?.accessToken ?? getAccessToken();
-    if (!refreshedToken) {
-        throw new Error('Sessão expirada. Faca login novamente.');
+        const refreshedToken = refreshedSession?.accessToken ?? getAccessToken();
+        if (refreshedToken) {
+            return refreshedToken;
+        }
+    } catch {
+        // O aviso acionavel abaixo centraliza a recuperacao da sessao na interface.
     }
 
-    return refreshedToken;
+    dispatchAuthSessionExpiredNotice();
+    throw new Error(AUTH_SESSION_EXPIRED_MESSAGE);
 };
 
 /**
@@ -140,13 +155,25 @@ const fetchAuthenticatedResource = async (
         credentials: 'include',
     });
 
-    if (response.status === 401 && !hasRetried) {
-        await refreshAuthSession({
-            reason: 'http-401',
-            force: true,
-        });
+    if (response.status === 401) {
+        if (!hasRetried) {
+            try {
+                await refreshAuthSession({
+                    reason: 'http-401',
+                    force: true,
+                });
 
-        return fetchAuthenticatedResource(resource, init, true);
+                return fetchAuthenticatedResource(resource, init, true);
+            } catch {
+                // A falha final e tratada pelo aviso global logo abaixo.
+            }
+        }
+
+        dispatchAuthSessionExpiredNotice({
+            status: response.status,
+            url,
+        });
+        throw new Error(AUTH_SESSION_EXPIRED_MESSAGE);
     }
 
     if (!response.ok) {
@@ -261,18 +288,91 @@ export const openAuthenticatedFile = async (resource: string): Promise<void> => 
  * Ele e consumido por imagens, uploads e previews espalhados pelo site e pelo admin.
  * @since v1.0.0
  */
-export const getAssetUrl = (path: string) => {
-    if (!path) return '';
-    if (path.startsWith('http')) return path;
+const stripBackendPathPrefix = (resource: string, backendRoot: string): string => {
+    let cleanResource = resource.replace(/\\/g, '/').trim();
+    const [pathPart, suffix = ''] = cleanResource.split(/([?#].*)/, 2);
+    cleanResource = pathPart.replace(/^\/+/, '');
 
-    const backendRoot = resolveBackendRoot();
-    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    try {
+        const backendRootUrl = new URL(backendRoot);
+        const backendPath = backendRootUrl.pathname.replace(/^\/+|\/+$/g, '');
 
-    if (cleanPath.startsWith('uploads/')) {
-        return `${backendRoot}/${cleanPath}`;
+        if (backendPath) {
+            const duplicatedPrefix = `${backendPath}/${backendPath}/`;
+            while (cleanResource.startsWith(duplicatedPrefix)) {
+                cleanResource = `${backendPath}/${cleanResource.slice(duplicatedPrefix.length)}`;
+            }
+
+            if (cleanResource.startsWith(`${backendPath}/api/`)) {
+                cleanResource = cleanResource.slice(`${backendPath}/api/`.length);
+            }
+
+            if (cleanResource.startsWith(`${backendPath}/`)) {
+                cleanResource = cleanResource.slice(`${backendPath}/`.length);
+            }
+        }
+    } catch {
+        // Mantem a normalizacao generica quando a base nao puder ser parseada.
     }
 
-    return `${backendRoot}/${cleanPath}`;
+    if (cleanResource.startsWith('api/uploads/')) {
+        cleanResource = cleanResource.slice('api/'.length);
+    }
+
+    const uploadsIndex = cleanResource.indexOf('/uploads/');
+    if (uploadsIndex >= 0 && !cleanResource.startsWith('uploads/')) {
+        cleanResource = cleanResource.slice(uploadsIndex + 1);
+    }
+
+    return `${cleanResource}${suffix}`;
+};
+
+export const getAssetUrl = (path: string) => {
+    const rawPath = String(path || '').trim();
+    if (!rawPath || ['null', 'undefined'].includes(rawPath.toLowerCase())) return '';
+    if (rawPath.startsWith('data:') || rawPath.startsWith('blob:')) return rawPath;
+
+    const backendRoot = resolveBackendRoot().replace(/\/+$/, '');
+
+    if (/^\/\//.test(rawPath)) {
+        const protocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
+        return `${protocol}${rawPath}`;
+    }
+
+    if (/^https?:\/\//i.test(rawPath)) {
+        try {
+            const rawUrl = new URL(rawPath);
+            const backendUrl = new URL(backendRoot);
+            const normalizedResource = stripBackendPathPrefix(`${rawUrl.pathname}${rawUrl.search}${rawUrl.hash}`, backendRoot);
+
+            if (rawUrl.origin === backendUrl.origin && normalizedResource.startsWith('uploads/')) {
+                return `${backendRoot}/${normalizedResource}`;
+            }
+        } catch {
+            return rawPath;
+        }
+
+        return rawPath;
+    }
+
+    const normalizedResource = stripBackendPathPrefix(rawPath, backendRoot).replace(/^\/+/, '');
+    if (!normalizedResource) return '';
+
+    return `${backendRoot}/${normalizedResource}`;
+};
+
+export const getVersionedAssetUrl = (path: string, version?: string | number | null) => {
+    const assetUrl = getAssetUrl(path);
+    if (!assetUrl || assetUrl.startsWith('data:') || assetUrl.startsWith('blob:')) {
+        return assetUrl;
+    }
+
+    const cacheKey = String(version ?? path).trim();
+    if (!cacheKey) {
+        return assetUrl;
+    }
+
+    return `${assetUrl}${assetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(cacheKey)}`;
 };
 
 export default apiClient;

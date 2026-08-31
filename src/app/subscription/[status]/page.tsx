@@ -1,0 +1,278 @@
+'use client';
+
+import React, { Suspense } from 'react';
+import Link from 'next/link';
+import { useParams, useSearchParams } from 'next/navigation';
+import { ArrowRight, CheckCircle2, Clock3, CreditCard, Loader2, ShieldCheck, XCircle } from 'lucide-react';
+import { useAuth } from '@providers/AuthProvider';
+import { hasActivePlanAccess } from '@services/plans/planAccess';
+import type { Plan, UserSubscription } from '@types';
+import { buildProfilePath } from '../../profile/profileNavigation';
+
+const successStatuses = new Set(['success', 'approved', 'paid', 'complete', 'completed']);
+const failureStatuses = new Set(['failure', 'failed', 'error', 'cancel', 'cancelled', 'canceled']);
+
+const formatCurrency = (value?: number | null): string | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(value);
+};
+
+const formatPlanCycle = (plan?: Plan | null): string => {
+  const count = Number(plan?.interval_count || 1);
+  const unit = String(plan?.interval_unit || '').toLowerCase();
+
+  if (unit === 'year') return count > 1 ? `${count} anos` : 'Anual';
+  if (unit === 'month') {
+    if (count === 3) return 'Trimestral';
+    if (count === 6) return 'Semestral';
+    return count > 1 ? `${count} meses` : 'Mensal';
+  }
+  if (unit === 'week') return count > 1 ? `${count} semanas` : 'Semanal';
+  if (unit === 'day') return count > 1 ? `${count} dias` : 'Diário';
+
+  return 'Ciclo ativo';
+};
+
+const resolveSubscriptionAmount = (subscription?: UserSubscription | null): string | null => {
+  const candidates = [
+    subscription?.recurring_amount,
+    subscription?.next_renewal_amount,
+    subscription?.plan?.price,
+  ];
+
+  for (const candidate of candidates) {
+    const formatted = formatCurrency(Number(candidate));
+    if (formatted) return formatted;
+  }
+
+  return null;
+};
+
+function SubscriptionStatusFallback() {
+  return (
+    <main className="min-h-screen bg-slate-50 px-5 py-10 text-slate-950 dark:bg-[#070b1a] dark:text-white sm:px-8">
+      <section className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-4xl items-center justify-center">
+        <div className="w-full overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:bg-[#111827] dark:shadow-none">
+          <div className="relative overflow-hidden bg-slate-950 px-8 py-12 text-center text-white sm:px-12">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.22),transparent_38%)]" />
+            <div className="relative z-10">
+              <div className="mx-auto h-20 w-20 animate-pulse rounded-[1.75rem] bg-slate-800" />
+              <div className="mx-auto mt-6 h-3 w-44 animate-pulse rounded-full bg-slate-800" />
+              <div className="mx-auto mt-4 h-9 w-80 max-w-full animate-pulse rounded-full bg-slate-800" />
+              <div className="mx-auto mt-4 h-5 w-[28rem] max-w-full animate-pulse rounded-full bg-slate-800" />
+            </div>
+          </div>
+          <div className="grid gap-px bg-slate-100 dark:bg-slate-800 md:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="bg-white px-6 py-5 dark:bg-[#111827]">
+                <div className="h-3 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+                <div className="mt-3 h-5 w-28 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+                <div className="mt-2 h-4 w-40 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function SubscriptionStatusContent() {
+  const params = useParams<{ status?: string }>();
+  const searchParams = useSearchParams();
+  const { currentUser, isLoading, refreshUser } = useAuth();
+  const [refreshingSubscription, setRefreshingSubscription] = React.useState(false);
+  const refreshAttemptsRef = React.useRef(0);
+  const rawStatus = String(params.status || 'success').toLowerCase();
+  const isFailure = failureStatuses.has(rawStatus);
+  const isSuccess = successStatuses.has(rawStatus) || !isFailure;
+  const provider = String(searchParams.get('provider') || 'Stripe');
+  const sessionId = String(searchParams.get('session_id') || '');
+  const activeSubscription = hasActivePlanAccess(currentUser) ? currentUser?.subscription : null;
+  const planName = activeSubscription?.plan?.name || currentUser?.planDisplayName || currentUser?.billing?.plan || 'Premium';
+  const planCycle = formatPlanCycle(activeSubscription?.plan);
+  const confirmedAmount = resolveSubscriptionAmount(activeSubscription);
+  const hasSyncedSubscription = Boolean(activeSubscription);
+
+  React.useEffect(() => {
+    if (!isSuccess || !currentUser || refreshAttemptsRef.current > 0) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const runRefresh = async () => {
+      setRefreshingSubscription(true);
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        refreshAttemptsRef.current += 1;
+
+        try {
+          await refreshUser();
+        } catch {
+          // A tela de retorno nao deve virar erro visual por instabilidade momentanea.
+        }
+
+        if (!isMounted) return;
+
+        if (attempt < 2) {
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, 1200);
+          });
+        }
+      }
+
+      if (isMounted) {
+        setRefreshingSubscription(false);
+      }
+    };
+
+    void runRefresh();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, isSuccess, refreshUser]);
+
+  const title = isSuccess ? 'Parabéns pela assinatura' : 'Checkout não concluído';
+  const subtitle = isSuccess
+    ? hasSyncedSubscription
+      ? `O plano ${planName} foi confirmado e seu acesso já está pronto para uso.`
+      : 'Recebemos o retorno do pagamento e estamos sincronizando seu acesso premium.'
+    : 'Não foi possível confirmar sua assinatura neste retorno.';
+  const description = isSuccess
+    ? hasSyncedSubscription
+      ? 'Você pode acompanhar plano, cartões, transações e renovação em Minha assinatura.'
+      : 'Se o pagamento já foi aprovado, seus recursos ficam disponíveis automaticamente em alguns segundos. Você pode acompanhar plano, cartões e transações em Minha assinatura.'
+    : 'Você pode tentar novamente ou escolher outro método de pagamento. Nenhum acesso premium novo foi liberado por esta tentativa.';
+
+  return (
+    <main className="min-h-screen bg-slate-50 px-5 py-10 text-slate-950 dark:bg-[#070b1a] dark:text-white sm:px-8">
+      <section className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-4xl items-center justify-center">
+        <div className="w-full overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:bg-[#111827] dark:shadow-none">
+          <div className={`relative overflow-hidden px-8 py-12 text-center text-white sm:px-12 ${
+            isSuccess ? 'bg-slate-950' : 'bg-red-950'
+          }`}>
+            <div className={`absolute inset-0 ${
+              isSuccess
+                ? 'bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.28),transparent_38%)]'
+                : 'bg-[radial-gradient(circle_at_center,rgba(248,113,113,0.24),transparent_38%)]'
+            }`} />
+            <div className="relative z-10">
+              <div className={`mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] shadow-2xl ${
+                isSuccess
+                  ? 'bg-emerald-500 shadow-emerald-500/30'
+                  : 'bg-red-500 shadow-red-500/30'
+              }`}>
+                {isSuccess ? <CheckCircle2 size={40} /> : <XCircle size={40} />}
+              </div>
+              <p className={`mt-6 text-[10px] font-black uppercase tracking-[0.24em] ${
+                isSuccess ? 'text-emerald-200' : 'text-red-200'
+              }`}>
+                {isSuccess ? 'Pagamento aprovado' : 'Pagamento não confirmado'}
+              </p>
+              <h1 className="mt-3 text-3xl font-black leading-tight tracking-tight sm:text-4xl">
+                {title}
+              </h1>
+              <p className="mx-auto mt-4 max-w-2xl text-base font-semibold leading-relaxed text-slate-300">
+                {subtitle}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid border-b border-slate-100 dark:border-slate-800 md:grid-cols-3">
+            <div className="border-t border-slate-100 px-6 py-5 first:border-t-0 dark:border-slate-800 md:border-l md:border-t-0 md:first:border-l-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Plano</p>
+              <p className="mt-3 text-lg font-black leading-none">{isSuccess ? planName : 'Não concluído'}</p>
+              <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {isSuccess ? planCycle : 'Nenhuma assinatura nova foi ativada.'}
+              </p>
+            </div>
+            <div className="border-t border-slate-100 px-6 py-5 dark:border-slate-800 md:border-l md:border-t-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Cobrança confirmada</p>
+              <p className="mt-3 text-lg font-black leading-none">
+                {isSuccess ? confirmedAmount || 'Sincronizando' : 'Não confirmada'}
+              </p>
+              <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {isSuccess && !confirmedAmount ? 'O valor aparece assim que o backend concluir a conciliação.' : provider}
+              </p>
+            </div>
+            <div className="border-t border-slate-100 px-6 py-5 dark:border-slate-800 md:border-l md:border-t-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Próximo passo</p>
+              <p className="mt-3 text-lg font-black leading-none">{isSuccess ? 'Minha assinatura' : 'Planos'}</p>
+              <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {sessionId ? `Sessão ${sessionId.slice(0, 14)}...` : 'Acompanhe os detalhes.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-6 px-8 py-8 sm:px-12">
+            <p className="mx-auto max-w-2xl text-center text-sm font-semibold leading-relaxed text-slate-600 dark:text-slate-300">
+              {description}
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                {
+                  label: 'Acesso',
+                  hint: isSuccess
+                    ? hasSyncedSubscription ? 'Plano ativo na sua conta.' : 'Liberado assim que a Stripe confirmar.'
+                    : 'Nada foi alterado no seu plano.',
+                  Icon: ShieldCheck,
+                },
+                {
+                  label: 'Transação',
+                  hint: isSuccess ? 'Registrada no histórico financeiro.' : 'Sem cobrança confirmada.',
+                  Icon: CreditCard,
+                },
+                {
+                  label: 'Sincronização',
+                  hint: isSuccess ? 'Pode levar alguns segundos.' : 'Você pode tentar novamente.',
+                  Icon: Clock3,
+                },
+              ].map(({ label, hint, Icon: LucideIcon }) => (
+                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                  <LucideIcon size={18} className={isSuccess ? 'text-emerald-500' : 'text-red-400'} />
+                  <p className="mt-3 text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">{hint}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href={isSuccess ? buildProfilePath('billing') : '/plans'}
+                className="inline-flex h-14 items-center justify-center gap-3 rounded-2xl bg-indigo-600 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700"
+              >
+                {isSuccess ? 'Ir para minha assinatura' : 'Escolher plano'}
+                {refreshingSubscription || isLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+              </Link>
+              {!currentUser && (
+                <Link
+                  href="/auth"
+                  className="inline-flex h-14 items-center justify-center rounded-2xl border border-slate-200 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700 transition-all hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Fazer login
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+export default function SubscriptionStatusPage() {
+  return (
+    <Suspense fallback={<SubscriptionStatusFallback />}>
+      <SubscriptionStatusContent />
+    </Suspense>
+  );
+}

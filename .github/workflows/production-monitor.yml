@@ -1,0 +1,98 @@
+name: Production external monitor
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 1.0.0
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-external-monitor
+  cancel-in-progress: true
+
+jobs:
+  public-probes:
+    name: Public availability probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://concursomestre.com
+      ALERT_OWNER: platform-owner
+      EXPECTED_FREQUENCY: every-15-minutes
+    steps:
+      - name: Probe public endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          probe() {
+            local name="$1"
+            local path="$2"
+            local expected="$3"
+            local url="${BASE_URL}${path}"
+            local body headers status
+            body="$(mktemp)"
+            headers="$(mktemp)"
+            trap 'rm -f "$body" "$headers"' RETURN
+
+            status="$(curl --silent --show-error --location \
+              --connect-timeout 10 --max-time 20 \
+              --user-agent 'Concursomestre-External-Monitor/1.0' \
+              --dump-header "$headers" --output "$body" \
+              --write-out '%{http_code}' "$url")"
+            if [[ "$status" != "$expected" ]]; then
+              echo "${name}: unexpected HTTP status ${status}"
+              return 1
+            fi
+
+            case "$name" in
+              homepage)
+                grep -q '<main' "$body"
+                ;;
+              health)
+                python3 - "$body" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert data.get("success") is True
+          assert data.get("data", {}).get("status") == "ok"
+          PY
+                ;;
+              readiness)
+                python3 - "$body" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert data.get("success") is True
+          assert data.get("data", {}).get("ready") is True
+          PY
+                ;;
+              sitemap)
+                grep -Eiq '^X-Robots-Tag:.*noindex[[:space:]]*,[[:space:]]*nofollow' "$headers"
+                ;;
+            esac
+            echo "${name}: PASS (${status})"
+          }
+
+          probe homepage / 200
+          probe health /api/system/health.php 200
+          probe readiness /api/system/readiness.php 200
+          probe sitemap /sitemap.xml 503
+          echo "SITEMAP_PRELAUNCH=PASS"
+          echo "ALERT_OWNER=${ALERT_OWNER}"
+          echo "FAILURE_VISIBILITY=GitHub Actions failed check and repository notifications"
+          echo "EXPECTED_CHECK_FREQUENCY=${EXPECTED_FREQUENCY}"
+
+      - name: Validate host-loss failure contract with a local mock target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if curl --silent --show-error --connect-timeout 1 --max-time 2 \
+            --output /dev/null https://127.0.0.1:9; then
+            echo 'HOST_TOTAL_LOSS_DETECTION_CONTRACT=FAIL'
+            exit 1
+          fi
+          echo 'HOST_TOTAL_LOSS_DETECTION_CONTRACT=PASS'

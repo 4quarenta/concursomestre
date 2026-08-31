@@ -1,0 +1,48 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Composer dependencies
+/vendor/
+/composer.phar
+
+# Runtime, logs, cache and generated files
+/runtime/
+/storage/cache/*
+!/storage/cache/.gitignore
+/storage/logs/*
+!/storage/logs/.gitignore
+/storage/runtime/*
+!/storage/runtime/
+!/storage/runtime/cookies/
+!/storage/runtime/cookies/.gitignore
+!/storage/runtime/rate_limits/
+!/storage/runtime/rate_limits/.gitignore
+/storage/setup/*
+!/storage/setup/.gitignore
+/scripts/outputs/*
+!/scripts/outputs/.gitignore
+
+# User uploads and private media
+/uploads/*
+!/uploads/.gitkeep
+
+# Backups and database dumps
+/database/backups/
+/storage/backups/
+*.sql.gz
+*.dump
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# PHP tooling output
+/.phpunit.cache/
+/coverage/
+*.log

@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -10,18 +12,21 @@
 */
 
 import React, { useState, useMemo } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import Image from 'next/image';
 import { Ranking, RankingEntry } from '../../types';
 import {
-   Trophy, Plus, Users, BarChart3, ChevronRight,
-   Info, Calendar, Save, X, ArrowRight, Settings, LayoutGrid, List, Search, Clock, AlertCircle, Edit3, Trash2, CheckCircle, ShieldCheck, Hash, Layers, UserCheck, FileText, Check, PlusCircle, UploadCloud, Loader2, AlertTriangle
+   Trophy, Plus, Users, ChevronRight,
+   Info, X, ArrowRight, LayoutGrid, List, Search, Clock, AlertCircle, Edit3, Trash2, CheckCircle, ShieldCheck, Hash, Layers, UserCheck, FileText, Check
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
+import { useConfirm } from '@providers/ModalProvider';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
+import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+type RankingKeyStatus = Ranking['keyStatus'];
+type RankingEntryCategory = RankingEntry['category'];
 
 /**
  * Tela pública de rankings pos-prova.
@@ -31,7 +36,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.j
 const RankingPage: React.FC = () => {
    const { currentUser } = useAuth();
    const { addToast } = useToast();
-   const { rankings, addRanking, updateRanking, deleteRanking, submitRankingEntry, moderateRanking, ensureRankingsLoaded } = useData();
+   const confirmDialog = useConfirm();
+   const rankings = useAdminDataStore((store) => store.rankings);
+   const {
+      addRanking,
+      updateRanking,
+      deleteRanking,
+      submitRankingEntry,
+      moderateRanking,
+      ensureRankingsLoaded,
+   } = useAdminDataActions();
    const [selectedRanking, setSelectedRanking] = useState<Ranking | null>(null);
    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
    const [searchTerm, setSearchTerm] = useState('');
@@ -137,20 +151,6 @@ const RankingPage: React.FC = () => {
     */
    const handleCreateOrUpdate = (e: React.FormEvent) => {
       e.preventDefault();
-
-      const payload: Partial<Ranking> = {
-         name: rankingForm.name,
-         institution: rankingForm.institution,
-         totalQuestions: rankingForm.totalQuestions,
-         vacanciesAc: rankingForm.vacanciesAc,
-         vacanciesAfro: rankingForm.vacanciesAfro,
-         vacanciesPcd: rankingForm.vacanciesPcd,
-         officialKeyReleaseDate: rankingForm.officialKeyReleaseDate,
-         keyStatus: rankingForm.keyStatus,
-         hasDiscursive: rankingForm.hasDiscursive,
-         examTypes: rankingForm.examTypes,
-         correctKey: rankingForm.correctKey
-      };
 
       // Handle file upload if keyStatus === 'official' and officialKeyPdfFile exists
       // Fake handling for preview
@@ -359,8 +359,8 @@ const RankingPage: React.FC = () => {
                </div>
 
                {filteredRankings.length === 0 ? (
-                  <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 transition-colors">
-                     <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 transition-colors">
+                     <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-center mx-auto mb-6">
                         <Trophy size={40} className="text-slate-300 dark:text-slate-600" />
                      </div>
                      <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">Nenhum ranking disponível</h3>
@@ -376,10 +376,19 @@ const RankingPage: React.FC = () => {
                ) : viewMode === 'grid' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                      {filteredRankings.map(r => (
-                        <div key={r.id} onClick={() => setSelectedRanking(r)} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
+                        <div key={r.id} onClick={() => setSelectedRanking(r)} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
                            <div className="flex items-start justify-between mb-4">
                               <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-100 dark:border-slate-700 transition-colors">
-                                 {r.imageUrl ? <img src={r.imageUrl} className="w-full h-full object-contain p-1.5" /> : <Trophy size={20} className="text-slate-300 dark:text-slate-600" />}
+                                 {r.imageUrl ? (
+                                    <Image
+                                       src={r.imageUrl}
+                                       alt={`Logo de ${r.name}`}
+                                       width={40}
+                                       height={40}
+                                       unoptimized
+                                       className="h-full w-full object-contain p-1.5"
+                                    />
+                                 ) : <Trophy size={20} className="text-slate-300 dark:text-slate-600" />}
                               </div>
                               <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wide transition-colors ${r.keyStatus === 'official' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30'}`}>
                                  {r.keyStatus === 'official' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
@@ -448,7 +457,24 @@ const RankingPage: React.FC = () => {
                               });
                               setIsEditing(true);
                            }} className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all" title="Editar Ranking"><Edit3 size={16} /></button>
-                           <button onClick={() => { if (confirm("Deseja excluir este ranking?")) { deleteRanking(selectedRanking.id); setSelectedRanking(null); } }} className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all" title="Excluir Ranking"><Trash2 size={16} /></button>
+                           <button
+                              onClick={async () => {
+                                 const confirmed = await confirmDialog({
+                                    title: 'Excluir ranking?',
+                                    description: 'Essa ação remove o ranking e não pode ser desfeita.',
+                                    confirmText: 'Excluir',
+                                    cancelText: 'Cancelar',
+                                    type: 'danger',
+                                 });
+                                 if (!confirmed) return;
+                                 deleteRanking(selectedRanking.id);
+                                 setSelectedRanking(null);
+                              }}
+                              className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all"
+                              title="Excluir Ranking"
+                           >
+                              <Trash2 size={16} />
+                           </button>
                            {selectedRanking.status === 'pending' && (
                               <>
                                  <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-2 self-center rounded-full"></div>
@@ -471,7 +497,7 @@ const RankingPage: React.FC = () => {
                   </div>
                </div>
 
-               <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-8 relative overflow-hidden transition-colors">
+               <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-8 relative overflow-hidden transition-colors">
                   <div className="flex-1 space-y-4">
                      <div className="flex items-center gap-3">
                         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide border transition-colors ${selectedRanking.keyStatus === 'official' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/30' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30'}`}>
@@ -517,7 +543,7 @@ const RankingPage: React.FC = () => {
                   </div>
                </div>
 
-               <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
+               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                   <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50 transition-colors">
                      <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2 transition-colors"><Trophy size={14} className="text-amber-500" /> Classificação Geral</h3>
                   </div>
@@ -577,7 +603,7 @@ const RankingPage: React.FC = () => {
          {/* MODAL CRIAR / EDITAR RANKING */}
          {(isCreating || isEditing) && (
             <div className="fixed inset-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-sm z-[100] flex items-center justify-center p-6 transition-colors">
-               <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-2xl animate-scale-in max-h-[90vh] overflow-y-auto no-scrollbar transition-colors">
+               <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 p-8 shadow-2xl animate-scale-in max-h-[90vh] overflow-y-auto no-scrollbar transition-colors">
                   <div className="flex justify-between items-center mb-6">
                      <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">{isEditing ? 'Configurar Ranking' : 'Novo Ranking'}</h2>
                      <button onClick={() => { setIsCreating(false); setIsEditing(false); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"><X size={20} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100" /></button>
@@ -613,7 +639,7 @@ const RankingPage: React.FC = () => {
                                     {type} <X size={10} className="cursor-pointer" onClick={() => setRankingForm({ ...rankingForm, examTypes: rankingForm.examTypes.filter((_, i) => i !== idx) })} />
                                  </span>
                               ))}
-                              {rankingForm.examTypes.length === 0 && <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic transition-colors">Padrão: "Geral"</p>}
+                              {rankingForm.examTypes.length === 0 && <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic transition-colors">Padrão: &quot;Geral&quot;</p>}
                            </div>
                         </div>
 
@@ -628,7 +654,7 @@ const RankingPage: React.FC = () => {
 
                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Gabarito</label>
-                           <select value={rankingForm.keyStatus} onChange={e => setRankingForm({ ...rankingForm, keyStatus: e.target.value as any })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/10">
+                           <select value={rankingForm.keyStatus} onChange={e => setRankingForm({ ...rankingForm, keyStatus: e.target.value as RankingKeyStatus })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/10">
                               <option value="pending">Presumido (Preliminar)</option>
                               <option value="official">Oficial Definitivo</option>
                            </select>
@@ -667,7 +693,7 @@ const RankingPage: React.FC = () => {
                                              onChange={e => {
                                                 const v = e.target.value.toUpperCase();
                                                 if (['A', 'B', 'C', 'D', 'E', 'X', '*', ''].includes(v)) {
-                                                   let newKeyArr = rankingForm.correctKey.padEnd(rankingForm.totalQuestions, ' ').split('');
+                                                   const newKeyArr = rankingForm.correctKey.padEnd(rankingForm.totalQuestions, ' ').split('');
                                                    newKeyArr[i] = v || ' ';
                                                    setRankingForm({ ...rankingForm, correctKey: newKeyArr.join('') });
                                                    if (v && i < rankingForm.totalQuestions - 1) {
@@ -697,7 +723,7 @@ const RankingPage: React.FC = () => {
          {/* MODAL PARTICIPAR (ENVIAR GABARITO) */}
          {isParticipating && selectedRanking && (
             <div className="fixed inset-0 bg-slate-900/80 dark:bg-slate-950/95 backdrop-blur-sm z-[100] flex items-center justify-center p-6 transition-colors">
-               <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-[2.5rem] shadow-2xl animate-scale-in overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800 transition-colors">
+               <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-2xl shadow-2xl animate-scale-in overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800 transition-colors">
                   <div className="bg-slate-50 dark:bg-slate-800 p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center transition-colors">
                      <div>
                         <h2 className="text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Enviar Gabarito</h2>
@@ -737,8 +763,8 @@ const RankingPage: React.FC = () => {
                            <div className="space-y-3">
                               <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><UserCheck size={12} className="text-indigo-500 dark:text-indigo-400" /> Categoria</label>
                               <div className="grid grid-cols-3 gap-2">
-                                 {['AC', 'Afro', 'PCD'].map(cat => (
-                                    <button key={cat} type="button" onClick={() => setPartForm({ ...partForm, category: cat as any })} className={`py-2.5 rounded-xl border text-[10px] font-black uppercase transition-all ${partForm.category === cat ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:border-indigo-200'}`}>{cat}</button>
+                                 {(['AC', 'Afro', 'PCD'] as RankingEntryCategory[]).map(cat => (
+                                    <button key={cat} type="button" onClick={() => setPartForm({ ...partForm, category: cat })} className={`py-2.5 rounded-xl border text-[10px] font-black uppercase transition-all ${partForm.category === cat ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:border-indigo-200'}`}>{cat}</button>
                                  ))}
                               </div>
                            </div>

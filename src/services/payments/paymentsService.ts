@@ -11,6 +11,15 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 
+type InstallmentOption = {
+  payment_method_id?: string;
+  payer_costs?: Array<{
+    installments?: number;
+    installment_amount?: number;
+    total_amount?: number;
+  }>;
+};
+
 type InstallmentQuery = {
   amount?: number | null;
   bin?: string;
@@ -39,6 +48,11 @@ type MaterialPaymentResult = {
   message?: string;
 };
 
+type MaterialPaymentApiResponse = {
+  status?: string;
+  message?: string;
+};
+
 /**
  * Centraliza consultas auxiliares do checkout para reduzir parsing manual
  * nos entry points de pagamento.
@@ -50,8 +64,8 @@ export const paymentsService = {
    * Essa leitura alimenta o modal de pagamento com o contrato oficial do gateway.
    * @since 1.0.0
    */
-  async getInstallments({ amount, bin, paymentMethodId }: InstallmentQuery): Promise<any[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.payments.installments, {
+  async getInstallments({ amount, bin, paymentMethodId }: InstallmentQuery): Promise<InstallmentOption[]> {
+    const response = await apiClient.get<InstallmentOption[] | { data?: InstallmentOption[] }>(ENDPOINTS.payments.installments, {
       params: {
         amount: amount ?? undefined,
         bin: bin || undefined,
@@ -59,7 +73,7 @@ export const paymentsService = {
       },
     });
 
-    const payload = readApiData<any[]>(response, []);
+    const payload = readApiData<InstallmentOption[]>(response, []);
     return Array.isArray(payload) ? payload : [];
   },
 
@@ -71,15 +85,15 @@ export const paymentsService = {
    */
   async processMaterialPayment(payload: MaterialPaymentPayload): Promise<MaterialPaymentResult> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.payments.processMaterial, payload);
+      const response = await apiClient.post<MaterialPaymentApiResponse>(ENDPOINTS.payments.processMaterial, payload);
       const raw = assertApiSuccess(response, 'Não foi possível processar o pagamento do material.').raw;
-      const data = readApiData<any>(raw, {});
+      const data = readApiData<MaterialPaymentApiResponse>(raw, {});
 
       return {
-        status: String(data?.status || raw?.status || 'error'),
-        message: data?.message || raw?.message,
+        status: String(data.status || (raw && typeof raw === 'object' && 'status' in raw ? raw.status : 'error')),
+        message: data.message || (raw && typeof raw === 'object' && 'message' in raw && typeof raw.message === 'string' ? raw.message : undefined),
       };
-    } catch (error: any) {
+    } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Não foi possível processar o pagamento do material.'));
     }
   },

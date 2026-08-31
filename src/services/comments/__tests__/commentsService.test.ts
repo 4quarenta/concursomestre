@@ -11,6 +11,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+} | null | undefined;
+
 const { mockGet, mockPost, mockCreateReport } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -22,7 +28,7 @@ vi.mock('@services/api', () => ({
     get: mockGet,
     post: mockPost,
   },
-  assertApiSuccess: (response: any) => {
+  assertApiSuccess: (response: MockApiResponse) => {
     if (!response?.success) {
       throw new Error(response?.message || 'erro');
     }
@@ -34,7 +40,7 @@ vi.mock('@services/api', () => ({
       raw: response,
     };
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) {
       return response.data;
     }
@@ -49,7 +55,7 @@ vi.mock('@services/api', () => ({
       handle: 'commentsHandle',
     },
     users: {
-      comments: 'usersComments',
+      comments: 'users/comments.php',
     },
   },
 }));
@@ -96,7 +102,7 @@ describe('commentService', () => {
 
     const comments = await commentService.getUserComments('user-7');
 
-    expect(mockGet).toHaveBeenCalledWith('usersComments', {
+    expect(mockGet).toHaveBeenCalledWith('users/comments.php', {
       params: { user_id: 'user-7' },
     });
     expect(comments[0].id).toBe('com-2');
@@ -126,6 +132,8 @@ describe('commentService', () => {
       content: 'Novo comentário',
       parent_id: undefined,
       targetType: 'question',
+      gamification_event: 'comment_submitted',
+      notification_event: 'comment_published',
     });
     expect(comment.id).toBe('com-9');
   });
@@ -141,8 +149,48 @@ describe('commentService', () => {
       action: 'like',
       commentId: 'com-10',
       userId: 'user-1',
+      gamification_event: 'comment_like_received',
+      notification_event: 'comment_like_received',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('toggles local comment likes without double-counting', () => {
+    const comments = [
+      {
+        id: 'com-1',
+        userId: 'user-1',
+        userName: 'Teste',
+        text: 'Comentario',
+        date: 'Agora',
+        likes: 1,
+        isLiked: false,
+        replies: [
+          {
+            id: 'reply-1',
+            userId: 'user-2',
+            userName: 'Outro',
+            text: 'Resposta',
+            date: 'Agora',
+            likes: 2,
+            isLiked: true,
+            replies: [],
+          },
+        ],
+      },
+    ];
+
+    const liked = commentService.likeCommentInTree(comments, 'com-1');
+    expect(liked[0]).toEqual(expect.objectContaining({
+      likes: 2,
+      isLiked: true,
+    }));
+
+    const unlikedReply = commentService.likeCommentInTree(liked, 'reply-1');
+    expect(unlikedReply[0].replies[0]).toEqual(expect.objectContaining({
+      likes: 1,
+      isLiked: false,
+    }));
   });
 
   it('deletes a comment through commentsHandle', async () => {
@@ -158,6 +206,21 @@ describe('commentService', () => {
       userId: 'user-2',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('preserves the duplicate flag when the same user already reported the comment', async () => {
+    mockCreateReport.mockResolvedValueOnce({
+      id: 'rep-1',
+      message: 'Duplicate report',
+      duplicate: true,
+    });
+
+    const result = await commentService.reportComment('com-12', 'spam', 'Duplicate', 'user-3');
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      duplicate: true,
+    }));
   });
 
   it('reports a comment through the reports endpoint', async () => {

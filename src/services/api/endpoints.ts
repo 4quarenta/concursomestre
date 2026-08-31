@@ -23,6 +23,9 @@ export const ENDPOINTS = {
         confirmEmail: 'auth/confirm-email.php',
         logout: 'auth/logout.php',
         refresh: 'auth/refresh.php',
+        google: 'auth/google.php',
+        facebook: 'auth/facebook.php',
+        apple: 'auth/apple.php',
         resetPassword: 'auth/reset-password.php',
         user: 'auth/me.php',
         resendConfirmation: 'auth/resend-confirmation.php',
@@ -34,10 +37,19 @@ export const ENDPOINTS = {
         list: 'changelog/list.php',
     },
 
+    setup: {
+        status: 'setup/status.php',
+        install: 'setup/install.php',
+    },
+
     questions: {
         list: 'questionsList',
         show: 'questions/show.php',
+        edit: 'questions/edit.php',
         create: 'questionsCreate',
+        examImport: 'questionsExamImport',
+        examFiles: 'questions/exam-files.php',
+        bulkImport: 'questionsBulkImport',
         update: 'questionsUpdate',
         delete: 'questionsDelete',
         submit: 'questionsAnswer',
@@ -48,6 +60,21 @@ export const ENDPOINTS = {
         history: 'questionsHistory',
         toggleSave: 'questionsToggleSave',
         resetAnswers: 'questionsResetAnswers',
+        groups: 'questions/groups.php',
+        editorialFeedback: 'questions/editorial-feedback.php',
+    },
+
+    exams: {
+        list: 'exams/list.php',
+        show: 'exams/show.php',
+        save: 'exams/save.php',
+        delete: 'exams/delete.php',
+        fileUpload: 'exams/file_upload.php',
+        files: 'exams/files.php',
+        fileDelete: 'exams/file_delete.php',
+        extractionStart: 'exams/extraction_start.php',
+        extractionShow: 'exams/extraction_show.php',
+        extractionReview: 'exams/extraction_review.php',
     },
 
     comments: {
@@ -62,12 +89,14 @@ export const ENDPOINTS = {
     },
 
     notifications: {
-        list: 'notificationsList',
-        markRead: 'notificationsMarkRead',
-        markAllRead: 'notificationsMarkAllRead',
-        delete: 'notificationsDelete',
-        clearAll: 'notificationsClearAll',
-        send: 'notificationsSend',
+        list: 'notifications/list.php',
+        markRead: 'notifications/mark_read.php',
+        markAllRead: 'notifications/mark_all_read.php',
+        delete: 'notifications/delete.php',
+        clearAll: 'notifications/clear_all.php',
+        restore: 'notifications/restore.php',
+        permanentDelete: 'notifications/permanent-delete.php',
+        send: 'notifications/send.php',
     },
 
     rankings: {
@@ -115,11 +144,17 @@ export const ENDPOINTS = {
         submit: 'simulationsSubmit',
     },
 
+    studySchedule: {
+        get: 'study-schedule/get.php',
+        save: 'study-schedule/save.php',
+        delete: 'study-schedule/delete.php',
+    },
+
     users: {
         list: 'usersList',
         profile: 'users/profile.php',
         update: 'users/update.php',
-        comments: 'usersComments',
+        comments: 'users/comments.php',
         answers: 'users/answers.php',
         notes: 'users/notes.php',
         materials: 'users/materials.php',
@@ -127,6 +162,8 @@ export const ENDPOINTS = {
         uploadPhoto: 'users/upload_photo.php',
         removePhoto: 'users/remove_photo.php',
         changePassword: 'users/change_password.php',
+        delete: 'users/delete.php',
+        levelLeaderboard: 'users/level_leaderboard.php',
         listCards: 'users/list_cards.php',
         removeCard: 'users/remove_card.php',
         setDefaultCard: 'users/set_default_card.php',
@@ -155,9 +192,22 @@ export const ENDPOINTS = {
         resetDatabase: 'admin/reset_db.php',
         userDetails: 'admin/user_details.php',
         userActions: 'admin/user_actions.php',
+        plansCatalog: 'admin/plans.php',
         feedback: 'admin/feedback.php',
         reportActions: 'admin/report_actions.php',
+        reportWorkbench: 'admin/report_workbench.php',
         stats: 'admin/stats.php',
+        analyticsFinance: 'admin/analytics_finance.php',
+        analyticsDashboard: 'admin/analytics_dashboard.php',
+        analyticsFunnel: 'admin/analytics_funnel.php',
+        analyticsFunnelExport: 'admin/analytics_funnel_export.php',
+        analyticsSegments: 'admin/analytics_segments.php',
+        analyticsSegmentsExport: 'admin/analytics_segments_export.php',
+        commentsModeration: 'admin/comments_moderation.php',
+        commentsModerationBulk: 'admin/comments_moderation_bulk.php',
+        commentsModerationExport: 'admin/comments_moderation_export.php',
+        securityIps: 'admin/security_ips.php',
+        logs: 'admin/logs.php',
     },
 
     subscriptions: {
@@ -171,6 +221,7 @@ export const ENDPOINTS = {
         validateCoupon: 'subscriptions/validate_coupon.php',
         createStripePortal: 'subscriptions/create_stripe_portal.php',
         updateRenewal: 'subscriptions/update_renewal.php',
+        syncCurrent: 'subscriptions/sync_current.php',
         cancel: 'subscriptions/cancel.php',
         cancelRefund: 'subscriptions/cancel_refund.php',
         undoCancel: 'subscriptions/undo_cancel.php',
@@ -192,6 +243,8 @@ export const ENDPOINTS = {
     feedback: {
         list: 'feedback/list.php',
         create: 'feedback/create.php',
+        testimonials: 'feedback/testimonials.php',
+        vote: 'feedback/vote.php',
     },
 
     cache: {
@@ -210,15 +263,40 @@ export const ENDPOINTS = {
         generate: 'aiGenerate',
     },
 
+    analytics: {
+        track: 'analytics/track.php',
+    },
+
+    legalCommentary: {
+        list: 'legal-commentary/list.php',
+        detail: 'legal-commentary/detail.php',
+        favorite: 'legal-commentary/favorite.php',
+        progress: 'legal-commentary/progress.php',
+        comment: 'legal-commentary/comment.php',
+        adminList: 'legal-commentary/admin/list.php',
+        adminDetail: 'legal-commentary/admin/detail.php',
+        adminSave: 'legal-commentary/admin/save.php',
+        adminDelete: 'legal-commentary/admin/delete.php',
+        adminCatalog: 'legal-commentary/admin/catalog.php',
+        adminImport: 'legal-commentary/admin/import.php',
+        adminSync: 'legal-commentary/admin/sync.php',
+        adminUpdates: 'legal-commentary/admin/updates.php',
+        adminGenerate: 'legal-commentary/admin/generate.php',
+        adminBatchStart: 'legal-commentary/admin/batch-start.php',
+        adminBatchStatus: 'legal-commentary/admin/batch-status.php',
+        adminBatchRetry: 'legal-commentary/admin/batch-retry.php',
+        adminBatchStop: 'legal-commentary/admin/batch-stop.php',
+    },
+
     settings: {
         get: 'settings.php',
         update: 'admin/settings.php',
     },
 
     statistics: {
-        user: 'statistics/user',
-        question: 'statistics/question',
-        platform: 'statistics/platform',
+        user: 'statistics/user.php',
+        question: 'statistics/question.php',
+        platform: 'statistics/platform.php',
         xray: 'statistics/xray.php',
         bancaInfo: 'statistics/banca_info.php',
         studySession: 'statistics/study-session.php',

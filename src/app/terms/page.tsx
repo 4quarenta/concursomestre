@@ -1,3 +1,5 @@
+﻿'use client';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -11,10 +13,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, FileText, Scale, AlertCircle, ChevronLeft, ArrowRight, CheckCircle2, BookOpen } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 const TermsOfUse: React.FC = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
+  const legalContactEmail = useAppConfigStore((state) => state.systemSettings.legalContactEmail || 'juridico@concursomestre.ai');
   const [activeTab, setActiveTab] = useState('aceite');
 
   // Highlighting intersection observer logic for beautiful scroll-spy
@@ -48,7 +52,7 @@ const TermsOfUse: React.FC = () => {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 font-sans transition-colors relative">
       <div className="max-w-6xl mx-auto">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => router.back()}
           className="group flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-bold text-xs uppercase tracking-widest mb-8 transition-all"
         >
           <div className="p-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 group-hover:border-indigo-200 dark:group-hover:border-indigo-900 shadow-sm transition-all text-inherit">
@@ -58,7 +62,7 @@ const TermsOfUse: React.FC = () => {
         </button>
 
         {/* Hero Section */}
-        <div className="relative rounded-[2.5rem] bg-indigo-600 dark:bg-indigo-900/50 p-10 md:p-16 mb-8 overflow-hidden shadow-2xl">
+        <div className="relative rounded-2xl bg-indigo-600 dark:bg-indigo-900/50 p-10 md:p-16 mb-8 overflow-hidden shadow-2xl">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-600/20 blur-3xl opacity-50 dark:opacity-30 mix-blend-overlay"></div>
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div className="space-y-4 max-w-2xl text-white">
@@ -71,7 +75,7 @@ const TermsOfUse: React.FC = () => {
                 Os Termos e Condições que regem o uso da plataforma ConcursoMestre. Leia com atenção para entender nossas diretrizes e o seu papel na comunidade.
               </p>
             </div>
-            <div className="bg-white/10 backdrop-blur-lg border border-white/20 px-6 py-4 rounded-3xl text-right">
+            <div className="bg-white/10 backdrop-blur-lg border border-white/20 px-6 py-4 rounded-2xl text-right">
               <span className="block text-[10px] uppercase font-black tracking-widest text-indigo-200 mb-1">Última Atualização</span>
               <span className="block text-lg font-bold text-white">24 de Maio de 2024</span>
             </div>
@@ -83,7 +87,7 @@ const TermsOfUse: React.FC = () => {
 
           {/* Sidebar Navigation */}
           <div className="lg:sticky lg:top-24 w-full lg:w-72 shrink-0">
-            <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-1">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-1">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4 ml-2 mt-2">Sumário</h3>
 
               {[
@@ -110,7 +114,7 @@ const TermsOfUse: React.FC = () => {
           </div>
 
           {/* Main Content Areas */}
-          <div className="flex-1 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm p-8 md:p-12 transition-colors">
+          <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8 md:p-12 transition-colors">
             <div className="prose prose-slate dark:prose-invert max-w-none text-slate-600 dark:text-slate-300 leading-relaxed transition-colors">
 
               <section id="aceite" className="scroll-mt-24 mb-16">
@@ -172,7 +176,7 @@ const TermsOfUse: React.FC = () => {
                     A ConcursoMestre é dotada de funcionalidades orientadas por modelos de Inteligência Artificial para facilitar seus momentos de estudo: resoluções passo a passo, resumos automáticos e análise de perfil preditiva.
                   </p>
 
-                  <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm mt-6">
+                  <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm mt-6">
                     <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-4">Atenção Especial</h4>
                     <ul className="list-disc pl-5 space-y-3 font-medium text-slate-600 dark:text-slate-400">
                       <li><strong>Natureza Probabilística:</strong> Modelos geradores de linguagem (IA) podem alucinar (produzir dados incorretos). Nossas explicações geradas devem servir apenas de apoio. O gabarito oficial da banca é incontestável.</li>
@@ -253,8 +257,8 @@ const TermsOfUse: React.FC = () => {
                 <div className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-center md:text-left">
                   Precisa de Suporte Jurídico?
                 </div>
-                <a href="mailto:juridico@concursomestre.ai" className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:opacity-90 transition-all flex items-center gap-2">
-                  juridico@concursomestre.ai <ArrowRight size={14} />
+                <a href={`mailto:${legalContactEmail}`} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:opacity-90 transition-all flex items-center gap-2">
+                  {legalContactEmail} <ArrowRight size={14} />
                 </a>
               </div>
 

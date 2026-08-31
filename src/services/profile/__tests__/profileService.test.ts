@@ -11,6 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
 const { mockGet, mockPost } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -27,13 +34,17 @@ vi.mock('@services/api', () => ({
       uploadPhoto: 'users/upload_photo.php',
       removePhoto: 'users/remove_photo.php',
       changePassword: 'users/change_password.php',
+      levelLeaderboard: 'users/level_leaderboard.php',
+    },
+    feedback: {
+      create: 'feedback/create.php',
     },
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
   },
-  assertApiSuccess: (response: any, fallbackMessage: string) => {
+  assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
     }
@@ -74,6 +85,9 @@ describe('profileService', () => {
     mockPost.mockResolvedValueOnce({
       success: true,
       message: 'Foto atualizada!',
+      data: {
+        photoUrl: 'uploads/profiles/user-1.png',
+      },
     });
 
     const file = new File(['binary'], 'avatar.png', { type: 'image/png' });
@@ -81,6 +95,24 @@ describe('profileService', () => {
 
     expect(mockPost).toHaveBeenCalledWith('users/upload_photo.php', expect.any(FormData));
     expect(result.message).toBe('Foto atualizada!');
+    expect(result.photoUrl).toBe('uploads/profiles/user-1.png');
+  });
+
+  it('reads uploaded profile photo url from nested backend payloads', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Foto atualizada!',
+      data: {
+        user: {
+          photo_url: 'uploads/profiles/user-2.png',
+        },
+      },
+    });
+
+    const file = new File(['binary'], 'avatar.png', { type: 'image/png' });
+    const result = await profileService.uploadProfilePhoto(file);
+
+    expect(result.photoUrl).toBe('uploads/profiles/user-2.png');
   });
 
   it('removes the profile photo through the official facade', async () => {
@@ -108,5 +140,80 @@ describe('profileService', () => {
       new: 'new-pass',
     });
     expect(result.message).toBe('Senha alterada!');
+  });
+
+  it('submits profile testimonial through feedback endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Depoimento recebido!',
+      data: { id: 44 },
+    });
+
+    const result = await profileService.submitTestimonial({
+      rating: 5,
+      testimonial: 'A plataforma me ajudou a estudar com consistência.',
+      publicDisplayName: 'Ana S.',
+      publicHeadline: 'Aprovada Tribunal de Justiça',
+      photoUrl: 'uploads/profiles/ana.jpg',
+      userName: 'Ana Silva',
+      userEmail: 'ana@example.com',
+      planName: 'Pro',
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('feedback/create.php', {
+      type: 'platform-rating',
+      reason: 'Avaliar plataforma',
+      details: 'A plataforma me ajudou a estudar com consistência.',
+      rating: 5,
+      public_display_name: 'Ana S.',
+      public_headline: 'Aprovada Tribunal de Justiça',
+      public_photo_url: 'uploads/profiles/ana.jpg',
+      user_name: 'Ana Silva',
+      user_email: 'ana@example.com',
+      plan_name: 'Pro',
+      gamification_event: 'platform_rating_submitted',
+      notification_event: 'platform_rating',
+    });
+    expect(result).toEqual({ message: 'Depoimento recebido!', id: 44 });
+  });
+
+  it('normalizes the XP leaderboard enriched backend payload', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        entries: [
+          {
+            user_id: 'user-1',
+            user_name: 'Marina',
+            photo_url: 'uploads/profiles/marina.png',
+            target_exam: 'PM-PB',
+            xp: '2450',
+            level: '3',
+            reputation: '18',
+            streak_days: '7',
+            answered_questions: '120',
+            correct_answers: '82',
+            badges_summary: 'streak_7_days::Sequencia de 7 dias||first_answer::Primeira resposta',
+          },
+        ],
+      },
+    });
+
+    const result = await profileService.listXpLeaderboard();
+
+    expect(mockGet).toHaveBeenCalledWith('users/level_leaderboard.php');
+    expect(result[0]).toMatchObject({
+      id: 'user-1',
+      name: 'Marina',
+      photoUrl: 'uploads/profiles/marina.png',
+      targetExam: 'PM-PB',
+      xp: 2450,
+      level: 3,
+      reputation: 18,
+      streakDays: 7,
+      answeredQuestions: 120,
+      correctAnswers: 82,
+    });
+    expect(result[0].badges?.[0]).toEqual({ key: 'streak_7_days', title: 'Sequencia de 7 dias' });
   });
 });

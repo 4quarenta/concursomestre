@@ -1,4 +1,4 @@
-﻿/*
+/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -11,47 +11,259 @@
 
 
 import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers } from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import Image from 'next/image';
+import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, type LucideIcon } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import PromoBanner from '../feedback/PromoBanner';
-import { Notification } from '@types';
+import GlobalPaymentIssueBanner from '../feedback/GlobalPaymentIssueBanner';
+import { Notification, ErrorReport, SystemSettings } from '@types';
 import Footer from './Footer';
 import AdBanner from '../feedback/AdBanner';
 import { useToast } from '@providers/ToastProvider';
 import { apiClient } from '@services/api';
 import { ENDPOINTS } from '@services/api';
+import { readApiErrorMessage } from '@services/api';
+import { getVersionedAssetUrl } from '@services/api';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import { canAccessAdminPanel } from '@services/auth';
 import LogoutConfirmButton from './LogoutConfirmButton';
-import { buildProfilePath } from '../../../app/profile/profileNavigation';
+import { buildProfilePath, type ProfileTab } from '../../../app/profile/profileNavigation';
 import { buildAdminPath } from '../../../app/admin/config/adminPageNavigationConfig';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
+import PublicBrandLink from './PublicBrandLink';
 import {
-  getEffectivePlanName,
-  getEffectivePlanDisplayName,
-  getEffectivePlanTier,
-  hasActivePlanAccess,
+  getBenefitPlanLabel,
+  getAccessPlanName,
+  getPlanTierFromName,
   hasPlanBenefit,
 } from '@services/plans/planAccess';
+import type { PlanBenefitKey } from '@types';
+import { resolveUserPaymentIssue } from '@services/billing/paymentIssue';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
+import { clientLog } from '@services/monitoring/clientLog';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
+type SidebarNavItem = {
+  label: string;
+  icon: LucideIcon;
+  path: string;
+  enabled: boolean;
+  moduleEnabled?: boolean;
+  benefitKey?: PlanBenefitKey | PlanBenefitKey[];
+  badge?: number;
+};
+
+type ProfileQuickMenuItem = {
+  tab?: ProfileTab;
+  href?: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+};
+
+type ResendConfirmationResponse = {
+  success?: boolean;
+  message?: string;
+  data?: ResendConfirmationResponse;
+};
+
+type EmailConfirmationDeliveryNotice = {
+  email?: string;
+  status?: string;
+  message?: string;
+};
+
+const EMAIL_VERIFICATION_MODAL_DISMISS_PREFIX = 'emailVerificationModalClosed:';
+
+const buildEmailVerificationDismissKey = (user: { id?: string; email?: string } | null | undefined) => (
+  `${EMAIL_VERIFICATION_MODAL_DISMISS_PREFIX}${user?.id || user?.email || 'anonymous'}`
+);
+
+const clearEmailVerificationDismissals = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.sessionStorage.removeItem('welcomeModalClosed');
+
+  for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = window.sessionStorage.key(index);
+    if (key?.startsWith(EMAIL_VERIFICATION_MODAL_DISMISS_PREFIX)) {
+      window.sessionStorage.removeItem(key);
+    }
+  }
+};
+
+type NotificationDropdownProps = {
+  notifications: Notification[];
+  unreadCount: number;
+  onClose: () => void;
+  onNotificationClick: (notification: Notification) => void;
+  onMarkAsRead: (notificationId: string) => void;
+  onMarkAllAsRead: () => void;
+  onOpenAll: () => void;
+};
+
+const formatNotificationDateTime = (timestamp: string | number | Date): string => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
+const NotificationDropdownPanel: React.FC<NotificationDropdownProps> = ({
+  notifications,
+  unreadCount,
+  onClose,
+  onNotificationClick,
+  onMarkAsRead,
+  onMarkAllAsRead,
+  onOpenAll,
+}) => {
+  const visibleNotifications = notifications.filter((notification) => !notification.deletedAt);
+
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'social': return MessageSquare;
+      case 'report': return Shield;
+      case 'marketplace': return ShoppingBag;
+      case 'system':
+      default: return Info;
+    }
+  };
+
+  return (
+    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in">
+      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
+        {unreadCount > 0 ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onMarkAllAsRead();
+            }}
+            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
+          >
+            <Check size={10} />
+            Marcar vistas
+          </button>
+        ) : null}
+      </div>
+      <div className="max-h-80 overflow-y-auto no-scrollbar">
+        {visibleNotifications.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
+        ) : (
+          visibleNotifications.slice(0, 5).map((notification) => {
+            const CategoryIcon = getCategoryIcon(notification.category);
+            return (
+              <div
+                key={notification.id}
+                onClick={() => {
+                  if (!notification.link) {
+                    onMarkAsRead(notification.id);
+                  } else {
+                    onNotificationClick(notification);
+                  }
+                }}
+                className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!notification.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}
+              >
+                <div className="flex gap-3">
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${notification.category === 'social' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : notification.category === 'report' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : notification.category === 'marketplace' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                    <CategoryIcon size={14} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className={`text-xs font-bold ${notification.type === 'error' ? 'text-red-600 dark:text-red-400' : notification.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{notification.title}</span>
+                      <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{formatNotificationDateTime(notification.timestamp)}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{notification.message}</p>
+                    {notification.evidenceUrl ? (
+                      <div className="mt-3">
+                        <p className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1"><Info size={10} /> Prova Anexada:</p>
+                        <Image
+                          src={notification.evidenceUrl}
+                          alt="Prova"
+                          width={640}
+                          height={360}
+                          unoptimized
+                          className="rounded-xl border border-slate-200 dark:border-slate-700 max-h-48 w-full object-contain bg-slate-50 dark:bg-slate-800"
+                        />
+                      </div>
+                    ) : null}
+                    {notification.link ? <p className="text-[9px] text-indigo-500 dark:text-indigo-400 font-bold uppercase mt-1 flex items-center gap-1">Ver <ArrowRight size={10} /></p> : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+        <button
+          onClick={() => {
+            onClose();
+            onOpenAll();
+          }}
+          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
+        >
+          Ver Todas <ArrowRight size={12} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { currentUser: user, refreshUser } = useAuth();
-  const { notifications, markNotificationAsRead, systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const notifications = useNotificationsStore((state) => state.notifications);
+  const { markNotificationAsRead, markAllNotificationsAsRead } = useNotificationsActions();
+  const reports = useAdminDataStore((state) => state.reports);
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
-  const location = useLocation();
-  const navigate = useNavigate();
+  const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
+  const [locationHash, setLocationHash] = useState('');
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const location = React.useMemo(() => {
+    const search = searchParams?.toString();
+    return {
+      pathname,
+      search: search ? `?${search}` : '',
+      hash: locationHash,
+    };
+  }, [locationHash, pathname, searchParams]);
   const canOpenAdminPanel = canAccessAdminPanel(user);
+  const paymentIssue = React.useMemo(() => resolveUserPaymentIssue(user), [user]);
+  const hasGlobalPaymentIssueBanner = Boolean(paymentIssue);
+  const paymentIssueFixPath = React.useMemo(
+    () => paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`,
+    [paymentIssue?.actionTarget],
+  );
   const simulationSearchParams = React.useMemo(
     () => new URLSearchParams(location.search),
     [location.search],
@@ -61,28 +273,100 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const annotatedLawsEnabled = resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled');
   const flashcardsEnabled = resolveSystemFeatureFlag(systemSettings, 'flashcardsEnabled');
   const simulationsEnabled = resolveSystemFeatureFlag(systemSettings, 'simulationsEnabled');
+  const studyScheduleEnabled = resolveSystemFeatureFlag(systemSettings, 'studyScheduleEnabled');
   const xRayEnabled = resolveSystemFeatureFlag(systemSettings, 'xRayEnabled');
   const rankingsEnabled = resolveSystemFeatureFlag(systemSettings, 'rankingsEnabled');
   const marketplaceEnabled = resolveSystemFeatureFlag(systemSettings, 'marketplaceEnabled');
+  const referralEnabled = resolveSystemFeatureFlag(systemSettings, 'referralEnabled');
+  const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
 
-  const [showVerificationModal, setShowVerificationModal] = useState(() => {
-    return !!(user && !user.emailVerified && !sessionStorage.getItem('welcomeModalClosed'));
-  });
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [emailDeliveryNotice, setEmailDeliveryNotice] = useState<EmailConfirmationDeliveryNotice | null>(null);
 
   React.useEffect(() => {
-    if (user && !user.emailVerified && !sessionStorage.getItem('welcomeModalClosed')) {
-      setShowVerificationModal(true);
-    } else {
-      setShowVerificationModal(false);
+    if (typeof window === 'undefined') {
+      return undefined;
     }
+
+    const syncHash = () => {
+      setLocationHash(window.location.hash || '');
+    };
+
+    syncHash();
+    window.addEventListener('hashchange', syncHash);
+
+    return () => {
+      window.removeEventListener('hashchange', syncHash);
+    };
+  }, [pathname, searchParams]);
+
+  React.useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      if (!user) {
+        clearEmailVerificationDismissals();
+        setEmailDeliveryNotice(null);
+        setShowVerificationModal(false);
+        return;
+      }
+
+      const rawEmailDeliveryNotice = window.sessionStorage.getItem('emailConfirmationDelivery');
+      let parsedEmailDeliveryNotice: EmailConfirmationDeliveryNotice | null = null;
+
+      if (rawEmailDeliveryNotice) {
+        try {
+          parsedEmailDeliveryNotice = JSON.parse(rawEmailDeliveryNotice) as EmailConfirmationDeliveryNotice;
+        } catch {
+          window.sessionStorage.removeItem('emailConfirmationDelivery');
+        }
+      }
+
+      setEmailDeliveryNotice(parsedEmailDeliveryNotice);
+      const dismissKey = buildEmailVerificationDismissKey(user);
+      const isDismissed = window.sessionStorage.getItem(dismissKey) === 'true';
+      window.sessionStorage.removeItem('welcomeModalClosed');
+      setShowVerificationModal(Boolean(!user.emailVerified && !isDismissed));
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [user]);
 
   React.useEffect(() => {
-    setIsMobileMenuOpen(false);
+    const frameId = window.requestAnimationFrame(() => {
+      setIsMobileMenuOpen(false);
+      setIsProfileMenuOpen(false);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [location.pathname]);
 
+  React.useEffect(() => {
+    if (!isProfileMenuOpen) return undefined;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isProfileMenuOpen]);
+
   const closeVerificationModal = () => {
-    sessionStorage.setItem('welcomeModalClosed', 'true');
+    if (user) {
+      window.sessionStorage.setItem(buildEmailVerificationDismissKey(user), 'true');
+    }
     setShowVerificationModal(false);
   };
 
@@ -99,44 +383,60 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [resendTimer]);
 
   const handleResendConfirmation = async () => {
-    if (resendTimer > 0) return;
+    if (resendTimer > 0 || isResendingConfirmation) return;
     // emailVerified é o campo mapeado pelo backend (camelCase)
     if (!user || user.emailVerified) return;
 
     try {
-      // O interceptor do axios (client.ts) já retorna response.data diretamente
-      const response: any = await apiClient.post(ENDPOINTS.auth.resendConfirmation, { email: user.email });
+      setIsResendingConfirmation(true);
+      const response = await apiClient.post<ResendConfirmationResponse>(ENDPOINTS.auth.resendConfirmation, { email: user.email });
+      const payload = (response && typeof response === 'object' && 'data' in response && response.data
+        ? response.data
+        : response) as ResendConfirmationResponse;
 
-      if (response && response.success) {
+      if (payload && payload.success) {
         setResendTimer(60);
-        addToast(response.message || 'E-mail reenviado com sucesso!', 'success');
+        window.sessionStorage.removeItem('emailConfirmationDelivery');
+        setEmailDeliveryNotice(null);
+        addToast(payload.message || 'E-mail reenviado com sucesso!', 'success');
 
         // Se o e-mail já foi verificado (o backend retorna success com mensagem de aviso),
         // atualizamos o usuário para sumir o banner imediatamente.
-        if (response.message?.includes('já foi verificado')) {
+        if (payload.message?.includes('já foi verificado')) {
           refreshUser();
         }
       } else {
-        addToast(response?.message || 'Falha ao reenviar e-mail.', 'error');
+        addToast(payload?.message || 'Falha ao reenviar e-mail.', 'error');
       }
-    } catch (error: any) {
-      addToast(error?.message || 'Erro do servidor ao reenviar e-mail.', 'error');
+    } catch (error: unknown) {
+      const errorMessage = readApiErrorMessage(error, 'Erro do servidor ao reenviar e-mail.');
+      addToast(errorMessage, 'error');
+    } finally {
+      setIsResendingConfirmation(false);
     }
   };
 
   const unreadCount = notifications.filter(n => !n.isRead && !n.deletedAt).length;
+  const adminSettingsSnapshot = systemSettings as SystemSettings & { adminFeedbackCount?: number | string };
+  const adminFeedbackCount = Math.max(0, Number(adminSettingsSnapshot.adminFeedbackCount || 0));
+  const adminOpenReportsCount = React.useMemo(
+    () => (reports || []).filter((report: ErrorReport) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length,
+    [reports],
+  );
+  const adminMenuBadgeCount = adminFeedbackCount + adminOpenReportsCount;
 
-  const navItems = [
-    { label: 'Dashboard', icon: LayoutDashboard, path: '/', enabled: !!user },
-    { label: 'Quest\u00F5es', icon: BookOpen, path: '/practice', enabled: practiceEnabled },
-    { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled },
-    { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled },
-    { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled },
-    { label: 'Raio-X Banca', icon: Zap, path: '/x-ray', enabled: xRayEnabled },
+  const navItems: SidebarNavItem[] = ([
+    { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', enabled: !!user, benefitKey: 'module.dashboard' },
+    { label: 'Quest\u00F5es', icon: BookOpen, path: '/practice', enabled: practiceEnabled, benefitKey: 'module.practice' },
+    { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled, benefitKey: 'module.lei_comentada' },
+    { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled, benefitKey: 'module.flashcards' },
+    { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled, benefitKey: 'module.simulations' },
+    { label: 'Cronograma', icon: CalendarDays, path: '/cronograma', enabled: true, moduleEnabled: studyScheduleEnabled, benefitKey: 'module.schedule' },
+    { label: 'Raio-X Banca', icon: Zap, path: '/x-ray', enabled: xRayEnabled, benefitKey: ['module.xray', 'xray_banca'] },
     { label: 'Rankings', icon: Trophy, path: '/ranking', enabled: rankingsEnabled },
-    { label: 'Loja', icon: ShoppingBag, path: '/marketplace', enabled: marketplaceEnabled },
+    { label: 'Loja', icon: ShoppingBag, path: '/marketplace', enabled: marketplaceEnabled, benefitKey: 'module.marketplace' },
     { label: 'Perfil', icon: User, path: '/profile/personal', enabled: !!user },
-  ].filter((item) => {
+  ] satisfies SidebarNavItem[]).filter((item) => {
     const isGloballyDisabled = item.enabled === false;
     const isModuleDisabled = item.moduleEnabled === false;
 
@@ -148,7 +448,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   });
 
   if (canOpenAdminPanel) {
-    navItems.push({ label: 'Painel Admin', icon: ShieldAlert, path: buildAdminPath('panel', 'dashboard') });
+    navItems.push({
+      label: 'Painel Admin',
+      icon: ShieldAlert,
+      path: buildAdminPath('panel', 'dashboard'),
+      enabled: true,
+      badge: adminMenuBadgeCount > 0 ? adminMenuBadgeCount : undefined,
+    });
   }
 
   const isActive = (path: string) => {
@@ -159,15 +465,99 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Only consider the plan active if there is a valid subscription status (active or trialing)
   // Otherwise, fallback to 'Gratuito'. This mirrors the logic in Profile.tsx
-  const hasActiveSub = hasActivePlanAccess(user);
-  const currentPlan = hasActiveSub ? getEffectivePlanDisplayName(user) : 'Gratuito';
-  const currentCanonicalPlan = getEffectivePlanName(user);
-  const currentTier = React.useMemo(() => getEffectivePlanTier(user), [user]);
-  const hasXRayAccess = hasPlanBenefit(user, 'xray_banca', systemSettings.planEntitlements);
+  const currentCanonicalPlan = getAccessPlanName(user);
+  const currentTier = React.useMemo(
+    () => getPlanTierFromName(getAccessPlanName(user)),
+    [user],
+  );
+  const accountStatusHref = currentCanonicalPlan === 'Gratuito'
+    ? '/plans'
+    : buildProfilePath('billing');
+  const resolvePlanLocked = React.useCallback((benefitKey?: PlanBenefitKey | PlanBenefitKey[]) => {
+    if (!benefitKey || isStrictAdmin) {
+      return false;
+    }
+
+    const benefitKeys = Array.isArray(benefitKey) ? benefitKey : [benefitKey];
+    return !benefitKeys.some((key) => hasPlanBenefit(user, key, systemSettings.planEntitlements));
+  }, [isStrictAdmin, systemSettings.planEntitlements, user]);
 
   const userName = user?.name || 'Visitante';
+  const userFirstName = React.useMemo(() => {
+    const normalized = String(userName).trim();
+    return normalized.split(/\s+/)[0] || 'Visitante';
+  }, [userName]);
   const userInitials = userName.charAt(0);
+  const userPhotoUrl = React.useMemo(
+    () => getVersionedAssetUrl(user?.photoUrl || '', user?.photoUrl || user?.id || ''),
+    [user?.id, user?.photoUrl],
+  );
+  const canRenderUserPhoto = Boolean(userPhotoUrl);
   const userLevel = user?.level || 0;
+
+  const profileQuickMenuItems = React.useMemo<ProfileQuickMenuItem[]>(() => {
+    const items: ProfileQuickMenuItem[] = [
+      {
+        href: '/levels',
+        label: 'Níveis XP',
+        description: 'Regras de XP e ranking de estudo.',
+        icon: Crown,
+      },
+      {
+        tab: 'personal',
+        label: 'Dados pessoais',
+        description: 'Foto, dados da conta e cartões salvos.',
+        icon: User,
+      },
+      {
+        tab: 'billing',
+        label: 'Assinatura',
+        description: 'Plano ativo, renovação e cobranças.',
+        icon: CreditCard,
+      },
+      {
+        tab: 'support-history',
+        label: 'Histórico de suporte',
+        description: 'Chamados, sugestões e respostas.',
+        icon: MessageSquare,
+      },
+      {
+        tab: 'billing-history',
+        label: 'Transações',
+        description: 'Histórico financeiro e comprovantes.',
+        icon: BarChart3,
+      },
+      {
+        tab: 'materials',
+        label: 'Meus materiais',
+        description: 'Materiais adquiridos e downloads.',
+        icon: Package,
+      },
+      {
+        tab: 'notebook',
+        label: 'Minhas anotações',
+        description: 'Anotações e registros salvos.',
+        icon: StickyNote,
+      },
+      {
+        tab: 'security',
+        label: 'Privacidade',
+        description: 'Segurança, proteção e acesso.',
+        icon: ShieldCheck,
+      },
+    ];
+
+    if (referralEnabled) {
+      items.splice(5, 0, {
+        tab: 'referral',
+        label: 'Indique e ganhe',
+        description: 'Convites, benefícios e afiliação.',
+        icon: Gift,
+      });
+    }
+
+    return items;
+  }, [referralEnabled]);
 
   const getPlanStatusTheme = (tier: number) => {
     switch (tier) {
@@ -175,7 +565,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         return {
           box: 'bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl p-4 text-white shadow-lg',
           icon: Crown,
-          badge: 'Maximo',
+          badge: 'Máximo',
         };
       case 3:
         return {
@@ -193,7 +583,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         return {
           box: 'bg-slate-100 dark:bg-slate-800/80 rounded-xl p-4 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/50 shadow-sm',
           icon: Lock,
-          badge: 'Gratis',
+          badge: 'Grátis',
         };
     }
   };
@@ -202,7 +592,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleNotificationClick = (n: Notification) => {
     markNotificationAsRead(n.id);
     if (n.link) {
-      navigate(n.link);
+      router.push(n.link);
       if (n.link.includes('#')) {
         const id = n.link.split('#')[1];
         setTimeout(() => {
@@ -218,84 +608,75 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     setIsNotifOpen(false);
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'social': return MessageSquare;
-      case 'report': return Shield;
-      case 'marketplace': return ShoppingBag;
-      case 'system':
-      default: return Info;
-    }
+  const handleNotificationsToggle = () => {
+    setIsNotifOpen((current) => {
+      const next = !current;
+      if (next && unreadCount > 0) {
+        void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined).catch((error) => {
+          clientLog.warn('[notifications] Não foi possível marcar notificações como vistas ao abrir o box.', error);
+        });
+      }
+      return next;
+    });
   };
 
-  const NotificationDropdown = () => (
-    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in">
-      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
-        {unreadCount > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span>}
-      </div>
-      <div className="max-h-80 overflow-y-auto no-scrollbar">
-        {notifications.filter(n => !n.deletedAt).length === 0 ? (
-          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
-        ) : (
-          notifications.filter(n => !n.deletedAt).slice(0, 5).map(n => {
-            const CategoryIcon = getCategoryIcon(n.category);
-            return (
-              <div key={n.id} onClick={(e) => {
-                // Se não tem link, marcamos como lida ao clicar na notificação diretamente
-                if (!n.link) {
-                  markNotificationAsRead(n.id);
-                } else {
-                  handleNotificationClick(n);
-                }
-              }} className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!n.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
-                <div className="flex gap-3">
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${n.category === 'social' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : n.category === 'report' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : n.category === 'marketplace' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
-                    <CategoryIcon size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className={`text-xs font-bold ${n.type === 'error' ? 'text-red-600 dark:text-red-400' : n.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{n.title}</span>
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{new Date(n.timestamp).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{n.message}</p>
-                    {n.evidenceUrl && (
-                      <div className="mt-3">
-                        <p className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1"><Info size={10} /> Prova Anexada:</p>
-                        <img src={n.evidenceUrl} alt="Prova" className="rounded-xl border border-slate-200 dark:border-slate-700 max-h-48 object-contain bg-slate-50 dark:bg-slate-800" />
-                      </div>
-                    )}
-                    {n.link && <p className="text-[9px] text-indigo-500 dark:text-indigo-400 font-bold uppercase mt-1 flex items-center gap-1">Ver <ArrowRight size={10} /></p>}
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
-        <button
-          onClick={() => { setIsNotifOpen(false); navigate('/notifications'); }}
-          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
-        >
-          Ver Todas <ArrowRight size={12} />
-        </button>
-      </div>
-    </div>
-  );
+  const handleProfileMenuToggle = () => {
+    if (!user) {
+      window.sessionStorage.setItem('redirectAfterLogin', location.pathname + location.search + location.hash);
+      router.push('/auth');
+      return;
+    }
+
+    setIsProfileMenuOpen((current) => !current);
+  };
+
+  const handleProfileQuickMenuNavigate = (item: ProfileQuickMenuItem) => {
+    setIsProfileMenuOpen(false);
+    router.push(item.href || buildProfilePath(item.tab || 'personal'));
+  };
 
   const isDashboardPage = location.pathname.startsWith('/admin') || location.pathname === '/partner-dashboard';
   const isSimulationFullscreenPage = location.pathname.startsWith('/simulation')
     && simulationSearchParams.get('immersive') === '1';
   const hasMobileTopHeader = !isDashboardPage && !isSimulationFullscreenPage;
+  const hasFailedEmailDeliveryNotice = Boolean(
+    user
+    && emailDeliveryNotice
+    && emailDeliveryNotice.email === user.email
+    && ['failed', 'disabled'].includes(String(emailDeliveryNotice.status || '')),
+  );
+  const showEmailVerificationBanner = Boolean(user && !user.emailVerified && !showVerificationModal);
 
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'dark text-slate-100' : 'text-slate-900'} bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-300`}>
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
       <PromoBanner />
+
+      {showEmailVerificationBanner && user && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+          <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto flex flex-col gap-3 text-sm font-semibold md:flex-row md:items-center md:justify-between`}>
+            <div className="flex items-start gap-3">
+              <Mail size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+              <p className="leading-relaxed">
+                Confirme o e-mail <strong>{user.email}</strong> para liberar todos os recursos e receber +50 XP.
+                {hasFailedEmailDeliveryNotice ? ' O envio automático ainda precisa ser refeito.' : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={resendTimer > 0 || isResendingConfirmation}
+              onClick={handleResendConfirmation}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/30 dark:bg-slate-950/40 dark:text-amber-100 dark:hover:bg-amber-500/10"
+            >
+              {isResendingConfirmation ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
+              {resendTimer > 0 ? `Aguarde ${resendTimer}s` : 'Reenviar e-mail'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showVerificationModal && user && !user.emailVerified && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 max-w-md w-full rounded-[2.5rem] p-8 shadow-2xl relative animate-scale-in border border-slate-100 dark:border-slate-800 text-center">
+          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 max-w-md w-full rounded-2xl p-8 shadow-2xl relative animate-scale-in border border-slate-100 dark:border-slate-800 text-center">
             <button
               onClick={closeVerificationModal}
               className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"
@@ -307,17 +688,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <h2 className="text-2xl font-black mb-3 text-slate-800 dark:text-slate-100 tracking-tight">Verifique seu E-mail</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium mb-8">
-              Enviamos um link de confirmação para <br/><strong className="text-slate-700 dark:text-slate-200">{user.email}</strong>.
-              <br/><br/>
-              Acesse sua caixa de entrada e ative sua conta para liberar todas as funcionalidades e ganhar <span className="text-indigo-600 dark:text-indigo-400 font-bold">+50 XP</span>!
+              {hasFailedEmailDeliveryNotice ? (
+                <>
+                  Sua conta foi criada, mas o envio automático do e-mail de confirmação ainda não está configurado.
+                  <br/><br/>
+                  Use o botão abaixo para tentar novamente após a configuração do SMTP.
+                </>
+              ) : (
+                <>
+                  Enviamos um link de confirmação para <br/><strong className="text-slate-700 dark:text-slate-200">{user.email}</strong>.
+                  <br/><br/>
+                  Acesse sua caixa de entrada e ative sua conta para liberar todas as funcionalidades e ganhar <span className="text-indigo-600 dark:text-indigo-400 font-bold">+50 XP</span>!
+                </>
+              )}
             </p>
             
             <button
-              disabled={resendTimer > 0}
+              disabled={resendTimer > 0 || isResendingConfirmation}
               onClick={handleResendConfirmation}
               className={`w-full py-4 rounded-2xl text-xs font-black uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-3 ${resendTimer > 0 ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-indigo-900/30 active:scale-95'}`}
             >
-              {resendTimer > 0 ? `Aguarde ${resendTimer}s` : <><Rocket size={16} /> Reenviar E-mail</>}
+              {isResendingConfirmation ? <><Loader2 size={16} className="animate-spin" /> Reenviando</> : resendTimer > 0 ? `Aguarde ${resendTimer}s` : <><Rocket size={16} /> Reenviar E-mail</>}
             </button>
             <button
               onClick={closeVerificationModal}
@@ -334,26 +725,34 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {hasMobileTopHeader && (
           <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
             <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl">
-              <BrainCircuit />
-              <span>ConcursoMestre</span>
-            </div>
+            <PublicBrandLink width={190} priority />
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
                 className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all font-black uppercase"
               >
-                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+                <span className="inline-flex" aria-hidden="true">
+                  <Moon size={20} className="dark:hidden" />
+                  <Sun size={20} className="hidden dark:block" />
+                </span>
               </button>
               <div className="relative">
-                <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="p-1 relative">
+                <button onClick={handleNotificationsToggle} className="p-1 relative">
                   <Bell size={20} className="text-slate-600 dark:text-slate-400" />
                   {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />}
                 </button>
                 {isNotifOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                    <NotificationDropdown />
+                    <NotificationDropdownPanel
+                      notifications={notifications}
+                      unreadCount={unreadCount}
+                      onClose={() => setIsNotifOpen(false)}
+                      onNotificationClick={handleNotificationClick}
+                      onMarkAsRead={markNotificationAsRead}
+                      onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
+                      onOpenAll={() => router.push('/notifications')}
+                    />
                   </>
                 )}
               </div>
@@ -368,19 +767,33 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* Sidebar Navigation */}
         {!isDashboardPage && !isSimulationFullscreenPage && (
           <aside className={`
-            fixed inset-y-0 left-0 z-30 h-[100dvh] w-[84vw] max-w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform transition-transform duration-200 ease-in-out flex flex-col
-            md:relative md:translate-x-0
-            ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+            cm-layout-sidebar fixed inset-y-0 left-0 z-30 flex h-[100dvh] w-[84vw] max-w-64 flex-col overflow-hidden border-r border-slate-200 bg-white transform transition-transform duration-200 ease-in-out dark:border-slate-800 dark:bg-slate-900
+            md:w-64
+            ${isMobileMenuOpen
+              ? 'translate-x-0 opacity-100'
+              : '-translate-x-full opacity-100 md:translate-x-0'}
           `}>
-            <div className="p-6 hidden md:flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-2xl mb-6">
-              <BrainCircuit className="w-8 h-8" />
-              <span>ConcursoMestre</span>
+            <div className="hidden shrink-0 px-5 pb-4 pt-5 md:flex">
+              <PublicBrandLink
+                width={215}
+                priority
+                className="inline-flex items-center transition-opacity hover:opacity-90"
+              />
             </div>
 
-            <div className="px-6 mb-6 md:hidden mt-4">
+            <div className="mb-3 mt-4 shrink-0 px-4 md:hidden">
               <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400">
-                  {userInitials}
+                <div className="relative w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400 overflow-hidden">
+                  {canRenderUserPhoto ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={userPhotoUrl}
+                      alt={userName || 'Foto de perfil'}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    userInitials
+                  )}
                 </div>
                 <div>
                   <p className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1">{userName}</p>
@@ -389,11 +802,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
             </div>
 
-            <nav className="px-4 space-y-2 flex-1">
+            <nav className="no-scrollbar min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3.5 py-3">
               {navItems.map((item) => {
                 const isAdminItem = item.path.startsWith('/admin');
                 const isCurrent = isActive(item.path);
-                let styles = "flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium relative ";
+                let styles = "flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-all text-[15px] font-semibold relative ";
 
                 if (isAdminItem) {
                   styles += isCurrent
@@ -405,41 +818,58 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100";
                 }
 
-                // Logic to lock/unlock features based on plan
-                // Raio-X Banca is exclusive to Tier 4 (Elite)
-                const isLocked = item.label === 'Raio-X Banca' && !hasXRayAccess;
+                const isLocked = resolvePlanLocked(item.benefitKey);
                 const isGloballyDisabled = item.enabled === false;
                 const isModuleDisabled = item.moduleEnabled === false;
                 const shouldShowDevBadge = isGloballyDisabled || isModuleDisabled;
+                const badgeCount = Number(item.badge || 0);
+                const hasBadge = badgeCount > 0;
+                const hasRightAccessory = isLocked || shouldShowDevBadge || hasBadge;
 
                 return (
                   <Link
                     key={item.path}
-                    to={item.path}
+                    href={item.path}
+                    prefetch={false}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`${styles} ${isLocked ? 'opacity-75' : ''}`}
-                    title={shouldShowDevBadge ? 'Desativado no admin (visivel apenas para Admin)' : ''}
+                    title={
+                      shouldShowDevBadge
+                        ? 'Desativado no admin (visível apenas para Admin)'
+                        : isLocked && item.benefitKey && !Array.isArray(item.benefitKey)
+                          ? `Disponível no ${getBenefitPlanLabel(item.benefitKey, systemSettings.planEntitlements)}`
+                          : ''
+                    }
                   >
-                    <item.icon size={20} />
-                    {item.label}
+                    <item.icon size={19} className="shrink-0" />
+                    <span className={`min-w-0 truncate ${hasRightAccessory ? 'pr-8' : ''}`}>{item.label}</span>
                     {item.path === '/changelog' && unreadCount > 0 && (
-                      <span className="w-2 h-2 rounded-full bg-red-500 absolute left-8 top-3.5 animate-pulse shadow-sm shadow-red-500/50" />
+                      <span className="absolute left-7 top-2.5 h-2 w-2 rounded-full bg-red-500 shadow-sm shadow-red-500/50 animate-pulse" />
+                    )}
+                    {hasBadge && !isLocked && !shouldShowDevBadge && (
+                      <span className={`absolute right-3 rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                        isAdminItem
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+                          : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+                      }`}>
+                        {badgeCount > 99 ? '99+' : badgeCount}
+                      </span>
                     )}
                     {isLocked && (
-                      <Lock size={14} className="absolute right-4 text-amber-500" />
+                      <Lock size={14} className="absolute right-3 text-amber-500" />
                     )}
                     {shouldShowDevBadge && !isLocked && (
-                      <span className="absolute right-4 px-1.5 py-0.5 text-[8px] font-black uppercase bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 rounded">DEV</span>
+                      <span className="absolute right-3 rounded bg-red-100 px-1.5 py-0.5 text-[8px] font-black uppercase text-red-600 dark:bg-red-900/30 dark:text-red-400">DEV</span>
                     )}
                   </Link>
                 );
               })}
             </nav>
 
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div className="shrink-0 space-y-3 border-t border-slate-100 p-3 dark:border-slate-800">
               {user && (
                 <div className={currentPlanTheme.box}>
-                  <Link to="/plans" className="block text-inherit hover:opacity-80 transition-opacity">
+                <Link href={accountStatusHref} prefetch={false} className="block text-inherit hover:opacity-80 transition-opacity">
                     <p className="text-xs font-semibold opacity-80 uppercase tracking-wider mb-1">Status da Conta</p>
                     <p className="text-sm font-bold flex items-center gap-2">
                       <currentPlanTheme.icon size={14} className={currentTier === 4 ? 'fill-current' : ''} />
@@ -466,8 +896,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               ) : (
                 <button
                   onClick={() => {
-                    sessionStorage.setItem('redirectAfterLogin', location.pathname + location.search + location.hash);
-                    navigate('/auth');
+                    window.sessionStorage.setItem('redirectAfterLogin', location.pathname + location.search + location.hash);
+                    router.push('/auth');
                   }}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-slate-900 dark:bg-indigo-600 uppercase tracking-widest rounded-lg transition-all"
                 >
@@ -476,6 +906,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               )}
             </div>
           </aside>
+        )}
+
+        {!isDashboardPage && !isSimulationFullscreenPage && (
+          <div
+            className="cm-layout-sidebar-spacer hidden w-64 flex-none overflow-hidden transition-[width] duration-200 md:block"
+            aria-hidden
+          />
         )}
 
         {/* Main Content Area */}
@@ -488,11 +925,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all"
                 title={theme === 'light' ? 'Ativar Modo Escuro' : 'Ativar Modo Claro'}
               >
-                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+                <span className="inline-flex" aria-hidden="true">
+                  <Moon size={20} className="dark:hidden" />
+                  <Sun size={20} className="hidden dark:block" />
+                </span>
               </button>
 
               <button
-                onClick={() => navigate('/support')}
+                onClick={() => router.push('/support')}
                 className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all"
                 title="Suporte e Feedback"
               >
@@ -502,32 +942,127 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               {/* Sempre mostrar notificações se o usuário estiver logado, independente da feature flag global, se o usuário pediu para restaurar */}
               {user && (
                 <div className="relative">
-                  <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all relative">
+                  <button onClick={handleNotificationsToggle} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all relative">
                     <Bell size={20} />
                     {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-950" />}
                   </button>
                   {isNotifOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                      <NotificationDropdown />
+                      <NotificationDropdownPanel
+                        notifications={notifications}
+                        unreadCount={unreadCount}
+                        onClose={() => setIsNotifOpen(false)}
+                        onNotificationClick={handleNotificationClick}
+                        onMarkAsRead={markNotificationAsRead}
+                        onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
+                        onOpenAll={() => router.push('/notifications')}
+                      />
                     </>
                   )}
                 </div>
               )}
-              <div className="flex items-center gap-3 pl-6 border-l border-slate-200 dark:border-slate-800">
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{userName}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
-                </div>
-                <div className="w-9 h-9 rounded-full bg-slate-900 dark:bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md cursor-pointer hover:opacity-80 transition-opacity" onClick={() => user ? navigate('/profile/personal') : navigate('/auth')}>
-                  {userInitials}
-                </div>
+              <div ref={profileMenuRef} className="relative flex items-center gap-3 border-l border-slate-200 pl-6 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleProfileMenuToggle}
+                  aria-haspopup="menu"
+                  aria-expanded={isProfileMenuOpen}
+                  className="group flex items-center gap-3 rounded-2xl px-2 py-1.5 transition-all hover:bg-white hover:shadow-sm dark:hover:bg-slate-900"
+                >
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userFirstName}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
+                  </div>
+                  <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600 overflow-hidden">
+                    {canRenderUserPhoto ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={userPhotoUrl}
+                        alt={userName || 'Foto de perfil'}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : (
+                      userInitials
+                    )}
+                  </div>
+                  <ChevronDown size={15} className={`text-slate-400 transition-transform dark:text-slate-500 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {user && isProfileMenuOpen ? (
+                  <div className="absolute right-0 top-full z-50 mt-3 w-[360px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/30">
+                    <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{userFirstName}</p>
+                      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{user.email || 'Conta conectada'}</p>
+                      <div className="mt-3 inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200">
+                        Nível {userLevel}
+                      </div>
+                    </div>
+
+                    <div className="p-2">
+                      {profileQuickMenuItems.map((item) => {
+                        const itemPath = item.href || buildProfilePath(item.tab || 'personal');
+                        const isCurrent = location.pathname === itemPath;
+
+                        return (
+                          <button
+                            key={item.href || item.tab || item.label}
+                            type="button"
+                            onClick={() => handleProfileQuickMenuNavigate(item)}
+                            className={`flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition-colors ${
+                              isCurrent
+                                ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-200'
+                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+                            }`}
+                          >
+                            <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                              isCurrent
+                                ? 'bg-white text-indigo-600 dark:bg-slate-900 dark:text-indigo-300'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+                            }`}>
+                              <item.icon size={17} />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-black">{item.label}</span>
+                              <span className="mt-1 block text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">{item.description}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="border-t border-slate-100 p-2 dark:border-slate-800">
+                      <LogoutConfirmButton>
+                        {({ isLoggingOut, openConfirm }) => (
+                          <button
+                            type="button"
+                            onClick={openConfirm}
+                            disabled={isLoggingOut}
+                            className="flex w-full items-center justify-center gap-2 rounded-2xl px-3 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-70 dark:text-slate-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                          >
+                            <LogOut size={16} />
+                            {isLoggingOut ? 'Saindo...' : 'Sair'}
+                          </button>
+                        )}
+                      </LogoutConfirmButton>
+                    </div>
+
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
 
           <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[84px] sm:p-4 sm:pt-[88px] md:p-6 md:pt-6 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
             <div className={`${isSimulationFullscreenPage ? 'mx-auto w-full max-w-7xl pb-6' : `${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-12`}`}>
+              {hasGlobalPaymentIssueBanner ? (
+                <GlobalPaymentIssueBanner
+                  message={paymentIssue?.message || 'Atualize seu cartão para manter o acesso e as próximas cobranças em dia.'}
+                  blocking={Boolean(paymentIssue?.interactionLock)}
+                  actionLabel={paymentIssue?.actionLabel || 'Cadastrar cartão'}
+                  onAction={() => router.push(paymentIssueFixPath)}
+                />
+              ) : null}
               {!isSimulationFullscreenPage && <AdBanner type="top" className="mb-8" />}
               {children}
               {!isSimulationFullscreenPage && <AdBanner type="bottom" className="mt-8" />}
@@ -542,10 +1077,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
+
+        <style jsx global>{`
+          body[data-legal-reading-focus='true'] .cm-layout-sidebar {
+            transform: translateX(-100%);
+            opacity: 0;
+            pointer-events: none;
+          }
+
+          body[data-legal-reading-focus='true'] .cm-layout-sidebar-spacer {
+            width: 0 !important;
+          }
+        `}</style>
       </div>
     </div>
   );
 };
 
 export default React.memo(Layout);
-

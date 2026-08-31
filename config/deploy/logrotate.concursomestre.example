@@ -1,0 +1,22 @@
+/var/log/concursomestre/*.log {
+    daily
+    rotate 30
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 www-data adm
+    sharedscripts
+}
+
+/var/www/questao-pro-backend/storage/logs/*.log
+/var/www/questao-pro-backend/storage/logs/*/*.log {
+    daily
+    rotate 30
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 www-data www-data
+    sharedscripts
+}

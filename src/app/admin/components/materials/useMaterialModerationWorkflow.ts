@@ -11,7 +11,7 @@
 
 import { useState } from 'react';
 import type { ErrorReport, Material, Question } from '@types';
-import { getQuickReportResolutionReason } from '../reports/reportModeration';
+import { getQuickReportResolutionReason, getReportTargetId } from '../reports/reportModeration';
 
 type ToastHandler = (message: string, type?: string) => void;
 
@@ -21,7 +21,7 @@ interface UseMaterialModerationWorkflowOptions {
   addToast: ToastHandler;
   moderateMaterial: (materialId: string, status: string, reason: string, evidenceUrl?: string) => void;
   resolveReport: (reportId: string, status: string, resolution?: string, evidenceUrl?: string) => void;
-  openManualModal: (question?: Question) => void;
+  openManualModal: (question?: Question, report?: ErrorReport) => void;
 }
 
 type MaterialModerationAction = 'hide' | 'block' | null;
@@ -60,13 +60,17 @@ export const useMaterialModerationWorkflow = ({
   const handleEditReportTarget = (report: ErrorReport) => {
     setSelectedReport(report);
 
-    if (report.targetType === 'question' && report.questionId) {
-      const question = questions.find((currentQuestion: Question) => currentQuestion.id === report.questionId);
-      if (question) {
-        openManualModal(question);
-      } else {
-        addToast('Questão não encontrada (pode ter sido excluida).', 'error');
+    if (report.targetType === 'question') {
+      const questionId = getReportTargetId(report);
+
+      if (!questionId) {
+        addToast('Erro: ID da questao nao encontrado na denuncia.', 'error');
+        return;
       }
+
+      const question = questions.find((currentQuestion: Question) => String(currentQuestion.id) === String(questionId))
+        || ({ id: questionId } as Question);
+      openManualModal(question, report);
       return;
     }
 

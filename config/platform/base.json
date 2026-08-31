@@ -11,8 +11,8 @@
     "primaryColor": "#4f46e5",
     "accentColor": "#0f172a",
     "icon": {
-      "publicPath": "/platform-icons/concurso-mestre.svg",
-      "assetKey": "concurso-mestre-platform"
+      "publicPath": "/branding/favicon.png",
+      "assetKey": "concurso-mestre-favicon"
     }
   }
 }

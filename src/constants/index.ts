@@ -48,7 +48,7 @@ export const PLAN_DETAILS = {
       { text: 'Questões Ilimitadas', included: true },
       { text: 'Análise de Desempenho Detalhada', included: true },
       { text: 'Sem anúncios', included: true },
-      { text: 'Explicações via IA (Gemini)', included: true },
+      { text: 'Explicações via IA', included: true },
       { text: 'Caderno de Erros Inteligente', included: true },
       { text: 'Simulados Exclusivos', included: true },
     ]

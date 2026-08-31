@@ -13,6 +13,11 @@ import React, { useState } from 'react';
 import { CreditCard, FileText, Plus, QrCode, Smartphone, Trash2, Wallet } from 'lucide-react';
 import type { StripePaymentMethodSetting, StripePaymentMethodsSettings } from '@types';
 import { normalizeStripePaymentMethodsSettings } from '@services/payments/stripePaymentMethodsConfig';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+} from '../shared/adminPanelStyles';
 
 interface StripePaymentMethodsSettingsProps {
   value?: StripePaymentMethodsSettings;
@@ -27,7 +32,7 @@ const methodIconMap: Record<string, React.ElementType> = {
   google_pay: Wallet,
 };
 
-const inputClassName = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
+const inputClassName = `w-full ${ADMIN_FIELD_CLASS}`;
 
 /**
  * Configuração administrativa dos métodos Stripe aceitos pelo checkout.
@@ -60,7 +65,14 @@ const StripePaymentMethodsSettings = ({ value, onChange }: StripePaymentMethodsS
       return;
     }
 
-    const id = `custom_${stripeType.replace(/[^a-z0-9_:-]/g, '_')}_${Date.now()}`;
+    const baseId = `custom_${stripeType.replace(/[^a-z0-9_:-]/g, '_')}`;
+    let suffix = normalized.methods.length + 1;
+    let id = `${baseId}_${suffix}`;
+    while (normalized.methods.some((method) => method.id === id)) {
+      suffix += 1;
+      id = `${baseId}_${suffix}`;
+    }
+
     onChange({
       methods: [
         ...normalized.methods,
@@ -81,16 +93,16 @@ const StripePaymentMethodsSettings = ({ value, onChange }: StripePaymentMethodsS
   };
 
   return (
-    <section className="rounded-[2rem] border border-indigo-100 bg-indigo-50/40 p-5 dark:border-indigo-900/30 dark:bg-indigo-900/10">
+    <section className={ADMIN_PAGE_PANEL_CLASS}>
       <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Stripe</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Stripe</p>
           <h4 className="mt-1 text-lg font-black text-slate-950 dark:text-white">Formas de pagamento</h4>
           <p className="mt-2 max-w-3xl text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
             Ative somente métodos habilitados também na Stripe. O checkout interno exibe apenas métodos com suporte operacional implementado.
           </p>
         </div>
-        <div className="rounded-2xl border border-white/70 bg-white px-4 py-3 text-xs font-black text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+        <div className="rounded-sm border border-slate-300 bg-slate-100 px-4 py-3 text-xs font-black text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300">
           {normalized.methods.filter((method) => method.enabled).length} ativos
         </div>
       </div>
@@ -101,16 +113,16 @@ const StripePaymentMethodsSettings = ({ value, onChange }: StripePaymentMethodsS
           const canShowInCheckout = method.enabled && method.checkoutSupported;
 
           return (
-            <article key={method.id} className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <article key={method.id} className={ADMIN_PAGE_PANEL_CLASS}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-slate-100 text-sky-700 dark:border-slate-700 dark:bg-slate-950/50 dark:text-sky-300">
                     <Icon size={18} />
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-black text-slate-950 dark:text-white">{method.label}</p>
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">{method.stripeType}</span>
+                      <span className="rounded-sm bg-slate-100 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">{method.stripeType}</span>
                     </div>
                     <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">{method.description}</p>
                   </div>
@@ -135,6 +147,28 @@ const StripePaymentMethodsSettings = ({ value, onChange }: StripePaymentMethodsS
                 <span className={`rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-widest ${method.recurringSupported ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
                   {method.recurringSupported ? 'Recorrência' : 'Sem recorrência'}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => updateMethod(method.id, { checkoutSupported: !method.checkoutSupported })}
+                  className={`rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-widest transition-colors ${
+                    method.checkoutSupported
+                      ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  {method.checkoutSupported ? 'Ocultar checkout' : 'Exibir checkout'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateMethod(method.id, { recurringSupported: !method.recurringSupported })}
+                  className={`rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-widest transition-colors ${
+                    method.recurringSupported
+                      ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  {method.recurringSupported ? 'Sem recorrência' : 'Com recorrência'}
+                </button>
                 {method.removable ? (
                   <button type="button" onClick={() => removeMethod(method.id)} className="ml-auto inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
                     <Trash2 size={12} /> Remover
@@ -146,12 +180,12 @@ const StripePaymentMethodsSettings = ({ value, onChange }: StripePaymentMethodsS
         })}
       </div>
 
-      <div className="mt-5 rounded-2xl border border-dashed border-indigo-200 bg-white/70 p-4 dark:border-indigo-900/40 dark:bg-slate-950/70">
+      <div className="mt-5 rounded-sm border border-dashed border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/40">
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Adicionar método Stripe</p>
         <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
           <input value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} className={inputClassName} placeholder="Nome exibido, ex: Link" />
           <input value={draftStripeType} onChange={(event) => setDraftStripeType(event.target.value)} className={inputClassName} placeholder="Stripe type, ex: link" />
-          <button type="button" onClick={addMethod} disabled={!draftLabel.trim() || !draftStripeType.trim()} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-white dark:text-slate-950">
+          <button type="button" onClick={addMethod} disabled={!draftLabel.trim() || !draftStripeType.trim()} className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center px-5 py-2 text-[10px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:bg-slate-300`}>
             <Plus size={14} /> Adicionar
           </button>
         </div>

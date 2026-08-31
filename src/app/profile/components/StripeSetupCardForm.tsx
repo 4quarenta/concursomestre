@@ -9,7 +9,7 @@
 *
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CardCvcElement,
   CardExpiryElement,
@@ -28,19 +28,18 @@ interface StripeSetupCardFormProps {
   billingEmail?: string;
   submitLabel?: string;
   onSaved: (paymentMethodId: string) => Promise<void> | void;
-  onSetupIntentConsumed?: () => Promise<void> | void;
 }
 
-const stripeElementOptions = {
+const buildStripeElementOptions = (isDarkMode: boolean) => ({
   style: {
     base: {
-      color: '#0f172a',
+      color: isDarkMode ? '#e2e8f0' : '#0f172a',
       fontSize: '16px',
       fontFamily: 'Inter, sans-serif',
       fontWeight: '600',
       lineHeight: '24px',
       '::placeholder': {
-        color: '#94a3b8',
+        color: isDarkMode ? '#64748b' : '#94a3b8',
       },
     },
     invalid: {
@@ -48,10 +47,23 @@ const stripeElementOptions = {
       iconColor: '#e11d48',
     },
   },
-};
+});
 
 const fieldShellClassName =
   'min-h-[56px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-all focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
+
+type StripeCardFieldChangeEvent = {
+  complete?: boolean;
+  error?: {
+    message?: string;
+  };
+};
+
+const readErrorMessage = (error: unknown, fallback: string): string => (
+  error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : fallback
+);
 
 const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publishableKey'>> = ({
   clientSecret,
@@ -59,7 +71,6 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
   billingEmail,
   submitLabel = 'Salvar cartão',
   onSaved,
-  onSetupIntentConsumed,
 }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -72,8 +83,27 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
     cardExpiry: false,
     cardCvc: false,
   });
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() =>
+    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false,
+  );
+  const stripeElementOptions = useMemo(() => buildStripeElementOptions(isDarkMode), [isDarkMode]);
 
-  const setFieldState = (field: 'cardNumber' | 'cardExpiry' | 'cardCvc', event: any) => {
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const root = document.documentElement;
+    const updateTheme = () => setIsDarkMode(root.classList.contains('dark'));
+
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const setFieldState = (field: 'cardNumber' | 'cardExpiry' | 'cardCvc', event: StripeCardFieldChangeEvent) => {
     setFieldErrors((prev) => {
       const next = { ...prev };
       if (event.error?.message) {
@@ -125,8 +155,8 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
 
       const paymentMethodId = String(result.setupIntent.payment_method);
       await onSaved(paymentMethodId);
-    } catch (saveError: any) {
-      setError(saveError.message || 'Falha ao salvar o cartão na Stripe.');
+    } catch (saveError: unknown) {
+      setError(readErrorMessage(saveError, 'Falha ao salvar o cartão na Stripe.'));
     } finally {
       setSaving(false);
     }

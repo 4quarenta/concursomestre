@@ -1,0 +1,19 @@
+# Copie para /etc/cron.d/concursomestre e ajuste caminhos, usuario, dominio e segredos.
+# O arquivo /etc/concursomestre/cron.env deve ser legivel apenas pelo root e conter:
+# CRON_SECRET=valor-forte
+# APP_URL=https://app.example.com
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+BACKEND_ROOT=/var/www/questao-pro-backend
+PHP_BIN=/usr/bin/php
+LOG_DIR=/var/log/concursomestre
+BACKUP_DIR=/var/backups/concursomestre/mysql
+
+*/10 * * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/reconcile_stripe_subscriptions.php" >> "$LOG_DIR/stripe-cron.log" 2>&1
+*/15 * * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/process_marketing_automations.php" --execute=PROCESS_MARKETING_AUTOMATIONS --limit=100 >> "$LOG_DIR/marketing-automations.log" 2>&1
+0 * * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/process_referral_rewards.php" >> "$LOG_DIR/referral-rewards.log" 2>&1
+10 8 * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/check_subscription_card_expiry.php" >> "$LOG_DIR/card-expiry.log" 2>&1
+20 */6 * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; curl -fsS -H "X-Cron-Secret: ${CRON_SECRET}" "${APP_URL}/api/legal-commentary/cron_sync_updates.php" >> "$LOG_DIR/legal-commentary-updates.log" 2>&1
+30 2 * * * www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR" "$BACKUP_DIR"; "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/backup_mysql.php" --dir="$BACKUP_DIR" --retention-days=14 >> "$LOG_DIR/mysql-backup.log" 2>&1
+45 2 * * 0 www-data . /etc/concursomestre/cron.env; mkdir -p "$LOG_DIR"; latest="$(ls -t "$BACKUP_DIR"/concursomestre-*.sql 2>/dev/null | head -n 1)"; test -n "$latest" && "$PHP_BIN" "$BACKEND_ROOT/scripts/tasks/verify_mysql_backup.php" --file="$latest" >> "$LOG_DIR/mysql-backup-verify.log" 2>&1

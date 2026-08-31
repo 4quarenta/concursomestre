@@ -11,10 +11,13 @@
 
 import axios from 'axios';
 import type { UserProfile } from '@types';
+import { API_BASE_URL } from '@services/api/baseUrl';
+import { clientLog } from '@services/monitoring/clientLog';
+import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from './userAccess';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/questao-pro-backend/api/';
 const AUTH_CHANNEL_NAME = 'cm-auth-session';
 const AUTH_STORAGE_EVENT_KEY = 'cm-auth-event';
+const AUTH_SESSION_HINT_KEY = 'cm-auth-session-present';
 const REFRESH_LOCK_KEY = 'cm-auth-refresh-lock';
 const REFRESH_LOCK_TTL_MS = 15000;
 const EXTERNAL_REFRESH_WAIT_MS = 8000;
@@ -31,7 +34,6 @@ interface AuthBroadcastEvent {
     reason?: string | null;
     at: number;
 }
-
 export interface AuthSessionSnapshot {
     accessToken: string | null;
     accessTokenExpMs: number | null;
@@ -45,8 +47,29 @@ interface RefreshOptions {
     allowAnonymousFailure?: boolean;
     force?: boolean;
 }
+interface RefreshSessionResponsePayload {
+    token?: string | null;
+    user?: UserProfile | null;
+}
 
 type SessionListener = (snapshot: AuthSessionSnapshot) => void;
+
+type AuthRawUserProfile = Partial<UserProfile> & {
+    photo_url?: string | null;
+    profilePhotoUrl?: string | null;
+    profile_photo_url?: string | null;
+    userPhotoUrl?: string | null;
+    user_photo_url?: string | null;
+    avatarUrl?: string | null;
+    avatar_url?: string | null;
+    email_verified?: boolean | number | string;
+    comments_count?: number | string;
+    target_exam?: string;
+    is_admin?: boolean | number | string;
+    is_staff?: boolean | number | string;
+    is_partner?: boolean | number | string;
+    can_access_admin?: boolean | number | string;
+};
 
 const authHttp = axios.create({
     baseURL: API_BASE_URL,
@@ -56,6 +79,75 @@ const authHttp = axios.create({
         'Content-Type': 'application/json',
     },
 });
+
+const parseBooleanLike = (value: unknown, fallback = false): boolean => {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+        if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
+    }
+
+    return fallback;
+};
+
+const normalizeAuthUserProfile = (rawUser: UserProfile | null | undefined): UserProfile | null => {
+    if (!rawUser) {
+        return null;
+    }
+
+    const user = rawUser as AuthRawUserProfile;
+    const role = normalizeUserRole(user.role);
+    const photoUrl = String(
+        user.photoUrl
+        || user.photo_url
+        || user.profilePhotoUrl
+        || user.profile_photo_url
+        || user.userPhotoUrl
+        || user.user_photo_url
+        || user.avatarUrl
+        || user.avatar_url
+        || ''
+    ).trim() || undefined;
+
+    const normalizedProfile = {
+        ...user,
+        role,
+        photoUrl,
+        emailVerified: parseBooleanLike(user.emailVerified ?? user.email_verified, false),
+        commentsCount: Number(user.commentsCount ?? user.comments_count ?? 0),
+        targetExam: String(user.targetExam ?? user.target_exam ?? ''),
+        savedQuestionIds: Array.isArray(user.savedQuestionIds) ? user.savedQuestionIds : [],
+        simulations: Array.isArray(user.simulations) ? user.simulations : [],
+        purchasedMaterialIds: Array.isArray(user.purchasedMaterialIds) ? user.purchasedMaterialIds : [],
+    } as UserProfile;
+
+    normalizedProfile.isAdmin = parseBooleanLike(
+        user.isAdmin ?? user.is_admin,
+        role === 'admin',
+    );
+    normalizedProfile.isStaff = parseBooleanLike(
+        user.isStaff ?? user.is_staff,
+        role === 'staff',
+    );
+    normalizedProfile.isPartner = parseBooleanLike(
+        user.isPartner ?? user.is_partner,
+        role === 'partner',
+    ) || canAccessPartnerArea(normalizedProfile);
+    normalizedProfile.canAccessAdmin = parseBooleanLike(
+        user.canAccessAdmin ?? user.can_access_admin,
+        canAccessAdminPanel(normalizedProfile),
+    );
+
+    return normalizedProfile;
+};
 
 let accessToken: string | null = null;
 let accessTokenExpMs: number | null = null;
@@ -109,7 +201,7 @@ export const decodeJwtPayload = (token: string): Record<string, unknown> | null 
 
         const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
         const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-        const payload = JSON.parse(window.atob(padded));
+        const payload = JSON.parse(globalThis.atob(padded));
 
         return payload && typeof payload === 'object' ? payload : null;
     } catch {
@@ -236,7 +328,10 @@ const scheduleProactiveRefresh = (): void => {
 
     const waitMs = Math.max(5000, accessTokenExpMs - Date.now() - PROACTIVE_REFRESH_LEEWAY_MS);
     proactiveRefreshTimer = setTimeout(() => {
-        void refreshAuthSession({ reason: 'scheduled', allowAnonymousFailure: true });
+        void refreshAuthSession({ reason: 'scheduled', allowAnonymousFailure: true })
+            .catch((error) => {
+                clientLog.warn('Scheduled auth refresh failed:', error);
+            });
     }, waitMs);
 };
 
@@ -246,6 +341,10 @@ const scheduleProactiveRefresh = (): void => {
  * @since 1.0.0
  */
 const writeAuthEventToStorage = (event: AuthBroadcastEvent): void => {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+
     try {
         localStorage.setItem(AUTH_STORAGE_EVENT_KEY, JSON.stringify(event));
         localStorage.removeItem(AUTH_STORAGE_EVENT_KEY);
@@ -270,6 +369,36 @@ const broadcastAuthEvent = (event: Omit<AuthBroadcastEvent, 'sourceTabId' | 'at'
     writeAuthEventToStorage(payload);
 };
 
+const hasAuthSessionHint = (): boolean => {
+    if (typeof localStorage === 'undefined') {
+        return Boolean(accessToken || currentUser);
+    }
+
+    try {
+        return localStorage.getItem(AUTH_SESSION_HINT_KEY) === '1';
+    } catch {
+        return Boolean(accessToken || currentUser);
+    }
+};
+
+const setAuthSessionHint = (isPresent: boolean): void => {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+
+    try {
+        if (isPresent) {
+            localStorage.setItem(AUTH_SESSION_HINT_KEY, '1');
+        } else {
+            localStorage.removeItem(AUTH_SESSION_HINT_KEY);
+        }
+    } catch {
+        // Ignore browsers with storage disabled.
+    }
+};
+
+const hasMaterializedAuthenticatedSession = (): boolean => Boolean(accessToken || currentUser);
+
 /**
  * Atualiza o token em memoria e reprograma o refresh futuro.
  * Serve como ponto unico para troca do access token em toda a sessão web.
@@ -292,9 +421,10 @@ const updateSessionState = (
     options?: { isBootstrapped?: boolean; broadcast?: boolean; eventType?: AuthEventType; reason?: string | null }
 ): void => {
     applyAccessToken(nextToken);
+    setAuthSessionHint(Boolean(accessToken));
 
     if (nextUser !== undefined) {
-        currentUser = nextUser ?? null;
+        currentUser = normalizeAuthUserProfile(nextUser);
     }
 
     if (options?.isBootstrapped !== undefined) {
@@ -316,7 +446,7 @@ const updateSessionState = (
 
 /**
  * Inscreve um listener reativo para mudancas de sessão.
- * O retorno remove a inscrição, padrao usado por providers e hooks do app.
+ * O retorno remove a inscrição, padrão usado por providers e hooks do app.
  * @since 1.0.0
  */
 export const subscribeToAuthSession = (listener: SessionListener): (() => void) => {
@@ -357,6 +487,10 @@ export const updateCurrentUserSnapshot = (user: UserProfile | null): void => {
  * @since 1.0.0
  */
 const readRefreshLock = (): { owner: string; startedAt: number } | null => {
+    if (typeof localStorage === 'undefined') {
+        return null;
+    }
+
     try {
         const raw = localStorage.getItem(REFRESH_LOCK_KEY);
         if (!raw) return null;
@@ -388,6 +522,10 @@ const isLockFresh = (lock: { owner: string; startedAt: number } | null): boolean
  * @since 1.0.0
  */
 const tryAcquireRefreshLock = (): boolean => {
+    if (typeof localStorage === 'undefined') {
+        return true;
+    }
+
     const currentLock = readRefreshLock();
     if (currentLock && currentLock.owner !== tabId && isLockFresh(currentLock)) {
         return false;
@@ -412,6 +550,10 @@ const tryAcquireRefreshLock = (): boolean => {
  * @since 1.0.0
  */
 const releaseRefreshLock = (): void => {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+
     const currentLock = readRefreshLock();
     if (currentLock?.owner === tabId) {
         try {
@@ -428,6 +570,10 @@ const releaseRefreshLock = (): void => {
  * @since 1.0.0
  */
 const waitForExternalRefresh = (): Promise<AuthBroadcastEvent | null> => {
+    if (typeof window === 'undefined') {
+        return Promise.resolve(null);
+    }
+
     return new Promise((resolve) => {
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -510,10 +656,13 @@ const finalizeExternalAuthEvent = (event: AuthBroadcastEvent): AuthSessionSnapsh
  * Isso simplifica os endpoints de auth enquanto o backend mantem compatibilidade legada.
  * @since 1.0.0
  */
-const parseSuccessPayload = <T>(payload: any): T | null => {
+const parseSuccessPayload = <T>(payload: unknown): T | null => {
     if (!payload) return null;
-    if (payload.success && payload.data) {
-        return payload.data as T;
+    if (typeof payload === 'object' && payload !== null) {
+        const responsePayload = payload as { success?: unknown; data?: unknown };
+        if (responsePayload.success && responsePayload.data) {
+            return responsePayload.data as T;
+        }
     }
     return payload as T;
 };
@@ -562,8 +711,14 @@ export const establishAuthenticatedSession = async (token: string | null | undef
         broadcast: false,
     });
 
-    if (!user) {
+    try {
         await fetchAuthenticatedUser();
+    } catch (error) {
+        if (!user) {
+            throw error;
+        }
+
+        clientLog.warn('Failed to hydrate authenticated user after login. Keeping provided session payload.', error);
     }
 
     broadcastAuthEvent({
@@ -604,8 +759,16 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         const csrfToken = getCsrfToken();
         if (!csrfToken) {
             if (options.allowAnonymousFailure) {
-                clearAuthenticatedSession('missing_csrf', false);
-                return null;
+                if (!hasMaterializedAuthenticatedSession()) {
+                    clearAuthenticatedSession('missing_csrf', false);
+                    return null;
+                }
+
+                clientLog.warn('Auth refresh skipped: missing CSRF token. Preserving local session.', {
+                    reason: options.reason,
+                    hasSession: hasMaterializedAuthenticatedSession(),
+                });
+                return getSnapshot();
             }
 
             throw new Error('CSRF token ausente para renovar a sessão.');
@@ -631,32 +794,48 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         }
 
         try {
-            const response = await authHttp.post('auth/refresh.php', {}, {
+            const includeUser = true;
+            const response = await authHttp.post('auth/refresh.php', {
+                includeUser,
+            }, {
                 headers: {
                     'X-CSRF-Token': csrfToken,
                 },
                 withCredentials: true,
             });
 
-            const payload = parseSuccessPayload<{ token: string }>(response.data);
+            const payload = parseSuccessPayload<RefreshSessionResponsePayload>(response.data);
             const nextToken = payload?.token ?? null;
             if (!nextToken) {
                 throw new Error('Resposta de refresh sem access token.');
             }
 
-            updateSessionState(nextToken, currentUser, {
-                isBootstrapped: true,
-                broadcast: true,
+            const nextUser = payload?.user ?? currentUser;
+            const hasResolvedUser = Boolean(nextUser);
+            const shouldPublishReadySession = options.reason !== 'bootstrap' || hasResolvedUser;
+
+            updateSessionState(nextToken, nextUser, {
+                isBootstrapped: shouldPublishReadySession,
+                broadcast: shouldPublishReadySession,
                 eventType: 'refresh-success',
             });
 
             return getSnapshot();
-        } catch (error: any) {
-            const status = error?.response?.status;
+        } catch (error: unknown) {
+            const status = axios.isAxiosError(error) ? error.response?.status : undefined;
             if (status === 401 || status === 403) {
-                clearAuthenticatedSession('refresh_failed', true);
+                clientLog.warn('Auth refresh rejected by backend. Preserving local session until explicit logout.', {
+                    status,
+                    reason: options.reason,
+                    hasSession: hasMaterializedAuthenticatedSession(),
+                });
                 if (options.allowAnonymousFailure) {
-                    return null;
+                    if (!hasMaterializedAuthenticatedSession()) {
+                        clearAuthenticatedSession('refresh_failed', false);
+                        return null;
+                    }
+
+                    return getSnapshot();
                 }
             }
 
@@ -680,7 +859,7 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
         return getSnapshot();
     }
 
-    if (!getCsrfToken()) {
+    if (!getCsrfToken() || !hasAuthSessionHint()) {
         isBootstrapped = true;
         notifyListeners();
         return getSnapshot();
@@ -693,11 +872,11 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
             force: true,
         });
 
-        if (refreshed?.accessToken) {
+        if (refreshed?.accessToken && !refreshed.currentUser) {
             await fetchAuthenticatedUser();
         }
     } catch (error) {
-        console.error('Auth bootstrap failed:', error);
+        clientLog.warn('Auth bootstrap failed:', error);
         clearAuthenticatedSession('bootstrap_failed', false);
     } finally {
         isBootstrapped = true;
@@ -730,7 +909,7 @@ export const logoutAuthSession = async (): Promise<void> => {
             withCredentials: true,
         });
     } catch (error) {
-        console.error('Logout request failed:', error);
+        clientLog.warn('Logout request failed:', error);
     } finally {
         clearAuthenticatedSession('logout', true);
     }
@@ -749,21 +928,23 @@ const handleIncomingAuthEvent = (event: AuthBroadcastEvent): void => {
     finalizeExternalAuthEvent(event);
 };
 
-authChannel?.addEventListener('message', (message: MessageEvent<AuthBroadcastEvent>) => {
-    if (message?.data) {
-        handleIncomingAuthEvent(message.data);
-    }
-});
+if (typeof window !== 'undefined') {
+    authChannel?.addEventListener('message', (message: MessageEvent<AuthBroadcastEvent>) => {
+        if (message?.data) {
+            handleIncomingAuthEvent(message.data);
+        }
+    });
 
-window.addEventListener('storage', (event) => {
-    if (event.key !== AUTH_STORAGE_EVENT_KEY || !event.newValue) {
-        return;
-    }
+    window.addEventListener('storage', (event) => {
+        if (event.key !== AUTH_STORAGE_EVENT_KEY || !event.newValue) {
+            return;
+        }
 
-    try {
-        const payload = JSON.parse(event.newValue) as AuthBroadcastEvent;
-        handleIncomingAuthEvent(payload);
-    } catch {
-        // Ignore malformed payloads.
-    }
-});
+        try {
+            const payload = JSON.parse(event.newValue) as AuthBroadcastEvent;
+            handleIncomingAuthEvent(payload);
+        } catch {
+            // Ignore malformed payloads.
+        }
+    });
+}

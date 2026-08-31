@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -12,9 +12,10 @@
 import React from 'react';
 import { CheckCircle2, Clock3, CreditCard, Lock, Plus, ShieldCheck, WalletCards } from 'lucide-react';
 import { formatMaskedCardLabelAscii } from '@services/billing';
+import type { SavedCard } from '@services/billing';
 
 interface CheckoutStripePaymentMethodPanelProps {
-  stripeCards: any[];
+  stripeCards: SavedCard[];
   isLoadingStripeCards: boolean;
   selectedStripeCardId: string | null;
   onSelectSavedCard: (cardId: string) => void;
@@ -50,7 +51,7 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[2rem] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-[#0f1020] md:p-5">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-[#0f1020] md:p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
@@ -75,7 +76,7 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
           type="button"
           onClick={() => {
             if (hasSavedCards) {
-              onSelectSavedCard(selectedStripeCardId || stripeCards[0].id);
+              onSelectSavedCard(selectedStripeCardId || String(stripeCards[0].id));
             }
           }}
           disabled={!hasSavedCards || isLoadingStripeCards}
@@ -93,16 +94,16 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
                 <WalletCards size={20} />
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cartao salvo</p>
-                <h3 className="mt-1 text-base font-black text-slate-900 dark:text-white">Usar um cartao ja cadastrado</h3>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cartão salvo</p>
+                <h3 className="mt-1 text-base font-black text-slate-900 dark:text-white">Usar um cartão já cadastrado</h3>
                 <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
-                  Informe apenas o CVV novamente para validar que voce esta com o cartao em maos.
+                  Informe apenas o CVV novamente para validar que você está com o cartão em mãos.
                 </p>
               </div>
             </div>
             {hasSavedCards ? (
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
-                {stripeCards.length} disponivel(is)
+                {stripeCards.length} disponível(is)
               </span>
             ) : null}
           </div>
@@ -123,27 +124,27 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
                 <Plus size={20} />
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Novo cartao</p>
-                <h3 className="mt-1 text-base font-black text-slate-900 dark:text-white">Adicionar dados de outro cartao</h3>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Novo cartão</p>
+                <h3 className="mt-1 text-base font-black text-slate-900 dark:text-white">Adicionar dados de outro cartão</h3>
                 <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
-                  Preencha os dados no formulario seguro da Stripe e escolha se quer salvar esse cartao no perfil.
+                  Preencha os dados no formulário seguro da Stripe e escolha se quer salvar esse cartão no perfil.
                 </p>
               </div>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500 dark:bg-[#0f1020] dark:text-slate-300">
-              Formulario seguro
+              Formulário seguro
             </span>
           </div>
         </button>
       </div>
 
       {hasSavedCards ? (
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-[#121528]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-[#121528]">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cartoes disponiveis</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cartões disponíveis</p>
               <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                A selecao abaixo altera apenas a UI. A cobranca continua sendo criada pelas fachadas oficiais do checkout.
+                A seleção abaixo altera apenas a UI. A cobrança continua sendo criada pelas fachadas oficiais do checkout.
               </p>
             </div>
             {isLoadingStripeCards ? (
@@ -154,14 +155,15 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            {stripeCards.map((card: any) => {
-              const isSelected = selectedStripeCardId === card.id;
+            {stripeCards.map((card) => {
+              const cardId = String(card.id);
+              const isSelected = selectedStripeCardId === cardId;
 
               return (
                 <button
-                  key={card.id}
+                  key={cardId}
                   type="button"
-                  onClick={() => onSelectSavedCard(card.id)}
+                  onClick={() => onSelectSavedCard(cardId)}
                   className={`rounded-[1.5rem] border p-4 text-left transition-all ${
                     isSelected
                       ? 'border-indigo-500 bg-indigo-50 shadow-sm dark:border-indigo-400 dark:bg-indigo-500/10'
@@ -183,7 +185,7 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
                     <div className="flex flex-col items-end gap-2">
                       {Number(card.is_default) === 1 ? (
                         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
-                          Padrao
+                          Padrão
                         </span>
                       ) : null}
                       {isSelected ? <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400" /> : null}
@@ -201,9 +203,9 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
               <Clock3 size={18} />
             </div>
             <div>
-              <p className="text-sm font-black text-slate-900 dark:text-white">Nenhum cartao salvo encontrado</p>
+              <p className="text-sm font-black text-slate-900 dark:text-white">Nenhum cartão salvo encontrado</p>
               <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
-                Voce ainda pode pagar normalmente com um novo cartao. Se preferir, salve esse cartao no final para acelerar as proximas compras.
+                Você ainda pode pagar normalmente com um novo cartão. Se preferir, salve esse cartão no final para acelerar as próximas compras.
               </p>
             </div>
           </div>
@@ -215,7 +217,7 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Parcelamento</p>
             <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
-              As opcoes abaixo usam o valor comercial exibido no checkout, sem redefinir o estado financeiro final no frontend.
+              As opções abaixo usam o valor comercial exibido no checkout, sem redefinir o estado financeiro final no frontend.
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:bg-[#0f1020] dark:text-slate-300">

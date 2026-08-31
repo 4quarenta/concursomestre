@@ -11,6 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
 const { mockPost } = vi.hoisted(() => ({
   mockPost: vi.fn(),
 }));
@@ -19,7 +26,7 @@ vi.mock('@services/api', () => ({
   apiClient: {
     post: mockPost,
   },
-  assertApiSuccess: (response: any, fallbackMessage: string) => {
+  assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
     }
@@ -40,6 +47,8 @@ vi.mock('@services/api', () => ({
 
 import { accountService } from '../accountService';
 
+type UserProfileUpdatePayload = Parameters<typeof accountService.updateUserProfile>[0];
+
 describe('accountService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,7 +63,7 @@ describe('accountService', () => {
     const result = await accountService.updateUserProfile({
       name: 'Usuário Teste',
       cpf: '12345678900',
-    } as any);
+    } as UserProfileUpdatePayload);
 
     expect(mockPost).toHaveBeenCalledWith('users/update.php', {
       name: 'Usuário Teste',

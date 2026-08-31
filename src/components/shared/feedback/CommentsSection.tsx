@@ -17,7 +17,38 @@ import RichTextEditor from '../ui/RichTextEditor';
 import type { QuestaoComentario as Comment } from '@types';
 import { useAuth } from '@providers/AuthProvider';
 import { useConfirm } from '@providers/ModalProvider';
-import { getAssetUrl } from '@services/api';
+import { getVersionedAssetUrl } from '@services/api';
+import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+
+const COMMENT_REPORT_REASON_OPTIONS = [
+    'Informação incorreta',
+    'Conteúdo incompleto',
+    'Fora do contexto',
+    'Linguagem inadequada',
+    'Spam ou publicidade',
+    'Solicitar revisão do professor',
+    'Outro',
+] as const;
+
+const CommentAuthorRoleBadge: React.FC<{ role?: string | null }> = ({ role }) => {
+    const normalizedRole = String(role || '').toLowerCase();
+    if (normalizedRole !== 'admin' && normalizedRole !== 'staff') {
+        return null;
+    }
+
+    const isAdmin = normalizedRole === 'admin';
+    return (
+        <span
+            className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${
+                isAdmin
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950'
+                    : 'bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/20'
+            }`}
+        >
+            {isAdmin ? 'Admin' : 'Staff'}
+        </span>
+    );
+};
 
 interface CommentItemProps {
     comment: Comment;
@@ -28,12 +59,24 @@ interface CommentItemProps {
     depth?: number;
     highlightedId?: string | null;
     currentUserId?: string;
+    currentUserPhotoUrl?: string;
     restrictedReplies?: boolean;
     ownerId?: string;
+    pendingLikeIds?: Set<string>;
+    hasPendingReport?: boolean;
+    reportedCommentIds?: Set<string>;
+    pendingReportIds?: Set<string>;
 }
 
-const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onReport, onDelete, depth = 0, highlightedId, currentUserId, restrictedReplies, ownerId }) => {
+const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onReport, onDelete, depth = 0, highlightedId, currentUserId, currentUserPhotoUrl, restrictedReplies, ownerId, pendingLikeIds, hasPendingReport, reportedCommentIds, pendingReportIds }) => {
     const isHighlighted = highlightedId === comment.id;
+    const isLikePending = Boolean(pendingLikeIds?.has(comment.id));
+    const isReportBlocked = Boolean(
+        hasPendingReport
+        || comment.userHasPendingReport
+        || reportedCommentIds?.has(comment.id)
+        || pendingReportIds?.has(comment.id)
+    );
     const getBadge = (plan?: string) => {
         switch (plan) {
             case 'Elite': return <span title="Usuário Elite"><Crown size={12} className="text-amber-500 fill-amber-500" /></span>;
@@ -48,6 +91,11 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
     const hasReplies = replies.length > 0;
     const [showReplies, setShowReplies] = useState(false);
     const hiddenCount = replies.length;
+    const avatarSource = comment.userAvatar || (comment.userId === currentUserId ? currentUserPhotoUrl : '') || '';
+    const resolvedAvatarUrl = getVersionedAssetUrl(avatarSource, avatarSource || comment.id);
+    const [failedAvatarUrl, setFailedAvatarUrl] = useState('');
+    const fallbackInitial = String(comment.userName || 'A').trim().charAt(0).toUpperCase() || 'A';
+    const shouldRenderAvatarImage = Boolean(resolvedAvatarUrl && failedAvatarUrl !== resolvedAvatarUrl);
 
     // Permissions
     const canReply = !restrictedReplies ||
@@ -65,14 +113,23 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
             <div className={`${isHighlighted ? 'ring-2 ring-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 border-indigo-200' : (depth > 0 ? 'bg-slate-50/50 dark:bg-slate-900/20' : 'bg-white dark:bg-slate-800')} p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm space-y-2 transition-all`}>
                 <div className="flex justify-between items-center text-[10px]">
                     <div className="flex items-center gap-2">
-                        <img
-                            src={getAssetUrl(comment.userAvatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.userName)}&background=random&color=fff&size=32`}
-                            alt={comment.userName}
-                            className="w-6 h-6 rounded-full object-cover border border-slate-200 dark:border-slate-700"
-                        />
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                            {shouldRenderAvatarImage ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={resolvedAvatarUrl}
+                                    alt={comment.userName}
+                                    onError={() => setFailedAvatarUrl(resolvedAvatarUrl)}
+                                    className="h-full w-full object-cover"
+                                />
+                            ) : (
+                                fallbackInitial
+                            )}
+                        </span>
                         <div className="flex flex-col">
                             <div className="flex items-center gap-1.5">
                                 <span className="font-bold text-slate-700 dark:text-slate-200">{comment.userName}</span>
+                                <CommentAuthorRoleBadge role={comment.userRole} />
                                 {getBadge(comment.userPlan)}
                             </div>
                             <span className="text-[9px] text-slate-400 dark:text-slate-500">{comment.date}</span>
@@ -80,10 +137,13 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                     </div>
                     {isHighlighted && <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase animate-pulse">Novo</span>}
                 </div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed" dangerouslySetInnerHTML={{ __html: comment.text }} />
+                <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed" dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(comment.text) }} />
                 <div className="flex gap-3 mt-1">
-                    <button onClick={() => onLike(comment.id)}
-                        className={`flex items-center gap-1 text-[10px] font-bold transition-all ${comment.isLiked ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'}`}>
+                    <button
+                        onClick={() => onLike(comment.id)}
+                        disabled={isLikePending}
+                        className={`flex items-center gap-1 text-[10px] font-bold transition-all disabled:cursor-wait disabled:opacity-60 ${comment.isLiked ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'}`}
+                    >
                         <ThumbsUp size={12} className={comment.isLiked ? 'fill-current' : ''} /> {comment.likes > 0 && comment.likes}
                     </button>
                     {canReply && (
@@ -92,8 +152,17 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                         </button>
                     )}
                     {comment.userId !== currentUserId && (
-                        <button onClick={() => onReport(comment.id)} className="flex items-center gap-1 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 text-[10px] font-bold transition-all">
-                            <Flag size={11} /> Reportar
+                        <button
+                            onClick={() => onReport(comment.id)}
+                            disabled={isReportBlocked}
+                            title={isReportBlocked ? 'Você já denunciou este comentário e a moderação ainda está analisando.' : 'Reportar comentário'}
+                            className={`flex items-center gap-1 text-[10px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                                isReportBlocked
+                                    ? 'text-slate-400 dark:text-slate-500'
+                                    : 'text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400'
+                            }`}
+                        >
+                            <Flag size={11} /> {isReportBlocked ? 'Denúncia enviada' : 'Reportar'}
                         </button>
                     )}
                     {onDelete && comment.userId === currentUserId && (
@@ -114,8 +183,13 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                     depth={depth + 1}
                     highlightedId={highlightedId}
                     currentUserId={currentUserId}
+                    currentUserPhotoUrl={currentUserPhotoUrl}
                     restrictedReplies={restrictedReplies}
                     ownerId={ownerId}
+                    pendingLikeIds={pendingLikeIds}
+                    hasPendingReport={Boolean(reply.userHasPendingReport)}
+                    reportedCommentIds={reportedCommentIds}
+                    pendingReportIds={pendingReportIds}
                 />
             ))}
             {hasReplies && (
@@ -137,7 +211,17 @@ const MemoizedCommentItem = React.memo(CommentItem, (prev, next) => {
         prev.comment.id === next.comment.id &&
         prev.comment.likes === next.comment.likes &&
         prev.comment.isLiked === next.comment.isLiked &&
-        prev.highlightedId === next.highlightedId
+        prev.comment.userAvatar === next.comment.userAvatar &&
+        prev.comment.userName === next.comment.userName &&
+        prev.comment.userPlan === next.comment.userPlan &&
+        prev.comment.userRole === next.comment.userRole &&
+        prev.currentUserId === next.currentUserId &&
+        prev.currentUserPhotoUrl === next.currentUserPhotoUrl &&
+        prev.highlightedId === next.highlightedId &&
+        prev.pendingLikeIds === next.pendingLikeIds &&
+        prev.hasPendingReport === next.hasPendingReport &&
+        prev.reportedCommentIds === next.reportedCommentIds &&
+        prev.pendingReportIds === next.pendingReportIds
     );
 });
 
@@ -145,8 +229,8 @@ interface CommentsSectionProps {
     targetId: string;
     comments: Comment[];
     onAddComment: (text: string, parentId?: string) => void;
-    onLikeComment: (commentId: string) => void;
-    onReportComment: (commentId: string) => void;
+    onLikeComment: (commentId: string) => void | Promise<void>;
+    onReportComment: (commentId: string, reason: string, details: string) => void | boolean | Promise<void | boolean>;
     onDeleteComment?: (commentId: string) => void;
     title?: string;
     isExpanded?: boolean;
@@ -172,13 +256,88 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
     const commentEditorRef = useRef<HTMLDivElement>(null);
     const { currentUser } = useAuth();
     const confirm = useConfirm();
+    const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
+    const [reportReason, setReportReason] = useState<(typeof COMMENT_REPORT_REASON_OPTIONS)[number]>(COMMENT_REPORT_REASON_OPTIONS[0]);
+    const [reportDetails, setReportDetails] = useState('');
+    const [pendingLikeIds, setPendingLikeIds] = useState<Set<string>>(() => new Set());
+    const pendingLikeIdsRef = useRef<Set<string>>(new Set());
+    const [reportedCommentIds, setReportedCommentIds] = useState<Set<string>>(() => new Set());
+    const [pendingReportIds, setPendingReportIds] = useState<Set<string>>(() => new Set());
+
+    const openReportModal = (commentId: string) => {
+        if (reportedCommentIds.has(commentId) || pendingReportIds.has(commentId)) {
+            return;
+        }
+        setReportingCommentId(commentId);
+        setReportReason(COMMENT_REPORT_REASON_OPTIONS[0]);
+        setReportDetails('');
+    };
+
+    const closeReportModal = () => {
+        setReportingCommentId(null);
+        setReportReason(COMMENT_REPORT_REASON_OPTIONS[0]);
+        setReportDetails('');
+    };
+
+    const submitCommentReport = async () => {
+        if (!reportingCommentId) {
+            return;
+        }
+
+        const commentId = reportingCommentId;
+        const normalizedDetails = reportDetails.trim();
+        const detailsPayload = normalizedDetails.length > 0
+            ? normalizedDetails
+            : `Reportado como: ${reportReason}.`;
+
+        setPendingReportIds((previous) => new Set(previous).add(commentId));
+        try {
+            const result = await onReportComment(commentId, reportReason, detailsPayload);
+            if (result !== false) {
+                setReportedCommentIds((previous) => new Set(previous).add(commentId));
+                closeReportModal();
+            }
+        } finally {
+            setPendingReportIds((previous) => {
+                const next = new Set(previous);
+                next.delete(commentId);
+                return next;
+            });
+        }
+    };
+
+    useEffect(() => {
+        const reportedIds = new Set<string>();
+        const collectReportedComments = (items: Comment[]) => {
+            items.forEach((comment) => {
+                if (comment.userHasPendingReport) {
+                    reportedIds.add(comment.id);
+                }
+                if (comment.replies?.length) {
+                    collectReportedComments(comment.replies);
+                }
+            });
+        };
+
+        collectReportedComments(comments);
+        if (reportedIds.size > 0) {
+            setReportedCommentIds((previous) => new Set([...previous, ...reportedIds]));
+        }
+    }, [comments]);
 
     // Check for URL hash parameter to highlight external deep link
     useEffect(() => {
+        let frameId: number | null = null;
+        const scheduleHighlight = (commentId: string) => {
+            frameId = window.requestAnimationFrame(() => setLastAddedId(commentId));
+        };
+
         const searchCommentId = new URLSearchParams(window.location.search).get('comment');
         if (searchCommentId) {
-            setLastAddedId(searchCommentId);
-            return;
+            scheduleHighlight(searchCommentId);
+            return () => {
+                if (frameId !== null) window.cancelAnimationFrame(frameId);
+            };
         }
 
         const hash = window.location.hash;
@@ -191,11 +350,15 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
             const url = new URL(urlStr, window.location.origin);
             const commentId = url.searchParams.get('comment');
             if (commentId) {
-                setLastAddedId(commentId); // Use existing highlight logic
+                scheduleHighlight(commentId);
             }
-        } catch (e) {
+        } catch {
             // Ignore parse errors
         }
+
+        return () => {
+            if (frameId !== null) window.cancelAnimationFrame(frameId);
+        };
     }, [isExpanded]); // Run when section becomes visible
 
     useEffect(() => {
@@ -229,6 +392,25 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
         setLastAddedId('pending');
     };
 
+    const handleLikeComment = (commentId: string) => {
+        if (pendingLikeIdsRef.current.has(commentId)) {
+            return;
+        }
+
+        pendingLikeIdsRef.current.add(commentId);
+        setPendingLikeIds((previous) => new Set(previous).add(commentId));
+        Promise.resolve()
+            .then(() => onLikeComment(commentId))
+            .finally(() => {
+                pendingLikeIdsRef.current.delete(commentId);
+                setPendingLikeIds((previous) => {
+                    const next = new Set(previous);
+                    next.delete(commentId);
+                    return next;
+                });
+            });
+    };
+
     // Efeito para capturar o ID do último comentário adicionado quando a lista for atualizada
     useEffect(() => {
         if (lastAddedId === 'pending' && comments.length > 0) {
@@ -255,7 +437,8 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
 
             const latest = findLatestId(comments);
             if (latest) {
-                setLastAddedId(latest);
+                const frameId = window.requestAnimationFrame(() => setLastAddedId(latest));
+                return () => window.cancelAnimationFrame(frameId);
             }
         }
     }, [comments, lastAddedId]);
@@ -263,7 +446,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
     if (!isExpanded) return null;
 
     return (
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6" data-target-id={targetId}>
             <div className="space-y-3" ref={commentEditorRef}>
                 <h3 className="text-[9px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2">
                     <MessageSquare size={14} /> {title}
@@ -294,7 +477,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                 ) : (
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-3">
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Você precisa estar logado para participar da discussão.</p>
-                        <a href="#/auth" className="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">
+                        <a href="/auth" className="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">
                             Fazer Login
                         </a>
                     </div>
@@ -307,35 +490,29 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                         key={comment.id}
                         comment={comment}
                         onReply={(id, name) => setReplyTo({ id, name })}
-                        onLike={(id) => onLikeComment(id)}
-                        onReport={async (id) => {
+                        onLike={handleLikeComment}
+                        onReport={(id) => openReportModal(id)}
+                        onDelete={async (id) => {
                             const confirmed = await confirm({
-                                title: "Reportar Comentário",
-                                description: "Você deseja denunciar este comentário por conter conteúdo inapropriado ou abusivo?",
-                                confirmText: "Reportar",
+                                title: "Deletar Comentário",
+                                description: "Esta ação não pode ser desfeita. Deseja realmente excluir este comentário?",
+                                confirmText: "Deletar",
                                 cancelText: "Voltar",
-                                type: 'warning'
+                                type: 'danger'
                             });
                             if (confirmed) {
-                                onReportComment(id);
-                            }
-                        }}
-                        onDelete={async (id) => {
-                            if (comment.userId === currentUser?.id) {
-                                const confirmed = await confirm({
-                                    title: "Deletar Comentário",
-                                    description: "Esta ação não pode ser desfeita. Deseja realmente excluir este comentário?",
-                                    confirmText: "Deletar",
-                                    cancelText: "Voltar",
-                                    type: 'danger'
-                                });
-                                if (confirmed) {
-                                    onDeleteComment?.(id);
-                                }
+                                onDeleteComment?.(id);
                             }
                         }}
                         highlightedId={lastAddedId}
                         currentUserId={currentUser?.id}
+                        currentUserPhotoUrl={currentUser?.photoUrl}
+                        restrictedReplies={restrictedReplies}
+                        ownerId={ownerId}
+                        pendingLikeIds={pendingLikeIds}
+                        hasPendingReport={Boolean(comment.userHasPendingReport)}
+                        reportedCommentIds={reportedCommentIds}
+                        pendingReportIds={pendingReportIds}
                     />
                 ))}
                 {comments.length === 0 && (
@@ -344,6 +521,66 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                     </p>
                 )}
             </div>
+
+            {reportingCommentId && (
+                <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+                        <div className="mb-4">
+                            <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Reportar comentário</h4>
+                            <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                Informe o motivo da denúncia para ajudar a moderação.
+                            </p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <label className="block space-y-1">
+                                <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Motivo</span>
+                                <select
+                                    value={reportReason}
+                                    onChange={(event) => setReportReason(event.target.value as (typeof COMMENT_REPORT_REASON_OPTIONS)[number])}
+                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                >
+                                    {COMMENT_REPORT_REASON_OPTIONS.map((option) => (
+                                        <option key={option} value={option}>
+                                            {option}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            <label className="block space-y-1">
+                                <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Detalhes (opcional)</span>
+                                <textarea
+                                    value={reportDetails}
+                                    onChange={(event) => setReportDetails(event.target.value)}
+                                    rows={4}
+                                    maxLength={600}
+                                    placeholder="Descreva rapidamente o problema encontrado."
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                />
+                            </label>
+                        </div>
+
+                        <div className="mt-5 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={closeReportModal}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void submitCommentReport()}
+                                disabled={pendingReportIds.has(reportingCommentId)}
+                                className="rounded-xl bg-red-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+                            >
+                                Enviar denúncia
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

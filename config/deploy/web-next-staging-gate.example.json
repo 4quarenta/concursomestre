@@ -1,9 +1,0 @@
-{
-  "BaseUrl": "https://staging.exemplo.com",
-  "LegacyWebBaseUrl": "https://app.staging.exemplo.com",
-  "ExpectedCanonicalBaseUrl": "https://staging.exemplo.com",
-  "QuestionId": "123",
-  "RankingId": "abc",
-  "MaterialId": "xyz",
-  "OutputPath": "docs/reports/web-next-staging-gate.json"
-}

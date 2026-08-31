@@ -13,3 +13,4 @@
  * Fachada oficial dos serviços de suporte e feedback do usuário.
  */
 export * from './supportService';
+export * from './supportPresentation';

@@ -10,6 +10,7 @@
 */
 
 import type { Question, UserAnswer } from '@types';
+import type { SubjectStatistics } from '@services/statistics/types';
 
 export type DashboardTimeRange = 'today' | 'week' | 'month' | 'year' | 'all';
 
@@ -18,6 +19,13 @@ export interface DashboardSubjectMetric {
   total: number;
   correct: number;
   wrong: number;
+  accuracy: number;
+}
+
+export interface DashboardSubjectPeerMetric {
+  name: string;
+  total: number;
+  correct: number;
   accuracy: number;
 }
 
@@ -36,6 +44,12 @@ export interface DashboardAccuracySummary {
   accuracyRate: number;
 }
 
+export interface DashboardPerformanceInsight {
+  tone: 'emerald' | 'amber' | 'rose' | 'indigo';
+  title: string;
+  description: string;
+}
+
 export interface DashboardLevelProgress {
   currentLevel: number;
   currentXp: number;
@@ -45,6 +59,176 @@ export interface DashboardLevelProgress {
 }
 
 const XP_PER_LEVEL = 1000;
+const SECONDS_TIMESTAMP_LIMIT = 10_000_000_000;
+const DAY_IN_MILLISECONDS = 86_400_000;
+
+const normalizeMetricCount = (value: unknown): number => {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+
+  return Math.max(0, numericValue);
+};
+
+const normalizeEpochTimestamp = (value: number): number => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  return value < SECONDS_TIMESTAMP_LIMIT ? value * 1000 : value;
+};
+
+const parseTimestampCandidate = (value: unknown): number => {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+
+  if (value instanceof Date) {
+    return normalizeEpochTimestamp(value.getTime());
+  }
+
+  if (typeof value === 'number') {
+    return normalizeEpochTimestamp(value);
+  }
+
+  if (typeof value !== 'string') {
+    return 0;
+  }
+
+  const trimmedValue = value.trim();
+  if (trimmedValue === '') {
+    return 0;
+  }
+
+  if (trimmedValue.toLowerCase() === 'agora') {
+    return Date.now();
+  }
+
+  const numericValue = Number(trimmedValue);
+  if (Number.isFinite(numericValue)) {
+    return normalizeEpochTimestamp(numericValue);
+  }
+
+  const brazilianDateMatch = trimmedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (brazilianDateMatch) {
+    const [, day, month, year, hour = '0', minute = '0'] = brazilianDateMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)).getTime();
+  }
+
+  const normalizedDateValue = /^\d{4}-\d{2}-\d{2}\s+\d{2}:/.test(trimmedValue)
+    ? trimmedValue.replace(' ', 'T')
+    : trimmedValue;
+  const parsedTimestamp = Date.parse(normalizedDateValue);
+
+  return Number.isFinite(parsedTimestamp) ? parsedTimestamp : 0;
+};
+
+/**
+ * Resolve datas de respostas vindas do frontend local ou do backend legado.
+ * O backend pode enviar timestamp em segundos, milissegundos ou campos ISO/snake_case.
+ *
+ * @since 1.0.0
+ */
+export const resolveDashboardAnswerTimestamp = (answer: UserAnswer | Record<string, unknown> | null | undefined): number => {
+  if (!answer || typeof answer !== 'object') {
+    return 0;
+  }
+
+  const record = answer as Record<string, unknown>;
+  const candidates = [
+    record.timestamp,
+    record.submittedAt,
+    record.submitted_at,
+    record.answeredAt,
+    record.answered_at,
+    record.answerDate,
+    record.answer_date,
+    record.answeredDate,
+    record.answered_date,
+    record.dataResposta,
+    record.data_resposta,
+    record.respondidoEm,
+    record.respondido_em,
+    record.completedAt,
+    record.completed_at,
+    record.finishedAt,
+    record.finished_at,
+    record.createdAt,
+    record.created_at,
+    record.updatedAt,
+    record.updated_at,
+    record.date,
+    record.data,
+  ];
+
+  for (const candidate of candidates) {
+    const timestamp = parseTimestampCandidate(candidate);
+    if (timestamp > 0) {
+      return timestamp;
+    }
+  }
+
+  return 0;
+};
+
+const buildLocalDateKey = (date: Date): string => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const buildLocalMonthKey = (date: Date): string => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+);
+
+const startOfLocalDay = (date: Date): Date => {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+};
+
+const addLocalDays = (date: Date, days: number): Date => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const buildTimelineBucketKey = (date: Date, timeRange: DashboardTimeRange): string => {
+  if (timeRange === 'today') {
+    return `${buildLocalDateKey(date)}-${String(date.getHours()).padStart(2, '0')}`;
+  }
+
+  if (timeRange === 'year') {
+    return buildLocalMonthKey(date);
+  }
+
+  return buildLocalDateKey(date);
+};
+
+const normalizeSubjectNameCandidate = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  if (typeof value !== 'object') {
+    return '';
+  }
+
+  const record = value as Record<string, unknown>;
+  return String(
+    record.nome
+    || record.name
+    || record.title
+    || record.label
+    || record.subject
+    || record.materia
+    || record.slug
+    || '',
+  ).trim();
+};
 
 /**
  * Calcula o inicio do recorte temporal escolhido no dashboard.
@@ -53,19 +237,17 @@ const XP_PER_LEVEL = 1000;
  * @since 1.0.0
  */
 export const getRangeStartTimestamp = (timeRange: DashboardTimeRange, now: Date = new Date()): number => {
+  const todayStart = startOfLocalDay(now);
+
   switch (timeRange) {
     case 'today':
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    case 'week': {
-      const start = new Date(now);
-      start.setDate(start.getDate() - start.getDay());
-      start.setHours(0, 0, 0, 0);
-      return start.getTime();
-    }
+      return todayStart.getTime();
+    case 'week':
+      return addLocalDays(todayStart, -6).getTime();
     case 'month':
-      return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      return addLocalDays(todayStart, -29).getTime();
     case 'year':
-      return new Date(now.getFullYear(), 0, 1).getTime();
+      return new Date(now.getFullYear(), now.getMonth() - 11, 1).getTime();
     case 'all':
     default:
       return 0;
@@ -88,7 +270,11 @@ export const filterAnswersByRange = (
     return answers;
   }
 
-  return answers.filter((answer) => Number(answer.timestamp) >= startTimestamp);
+  const endTimestamp = now.getTime();
+  return answers.filter((answer) => {
+    const timestamp = resolveDashboardAnswerTimestamp(answer);
+    return timestamp >= startTimestamp && timestamp <= endTimestamp;
+  });
 };
 
 /**
@@ -99,7 +285,7 @@ export const filterAnswersByRange = (
  */
 export const getQuestionPrimarySubject = (question: Question | undefined | null): string => {
   const subjectEntry = Array.isArray(question?.assuntos)
-    ? question.assuntos.find((item: any) => Boolean(item?.materia)) || question.assuntos[0]
+    ? question.assuntos.find((item) => Boolean(item?.materia)) || question.assuntos[0]
     : null;
 
   const rawName = subjectEntry && typeof subjectEntry === 'object'
@@ -107,6 +293,85 @@ export const getQuestionPrimarySubject = (question: Question | undefined | null)
     : subjectEntry;
 
   return String(rawName || 'Geral').trim() || 'Geral';
+};
+
+const getAnswerSubjectName = (answer: UserAnswer): string => {
+  const record = answer as unknown as Record<string, unknown>;
+  const directSubject = [
+    record.subject,
+    record.subjectName,
+    record.subject_name,
+    record.materia,
+    record.materiaNome,
+    record.materia_nome,
+    record.discipline,
+    record.disciplina,
+  ]
+    .map(normalizeSubjectNameCandidate)
+    .find(Boolean);
+
+  if (directSubject) {
+    return directSubject;
+  }
+
+  if (Array.isArray(record.assuntos)) {
+    const subjectFromAssuntos = record.assuntos
+      .map((item) => normalizeSubjectNameCandidate(
+        item && typeof item === 'object'
+          ? (item as Record<string, unknown>).nome
+            || (item as Record<string, unknown>).name
+            || (item as Record<string, unknown>).subject
+            || (item as Record<string, unknown>).materia
+            || (item as Record<string, unknown>).slug
+          : item,
+      ))
+      .find(Boolean);
+
+    if (subjectFromAssuntos) {
+      return subjectFromAssuntos;
+    }
+  }
+
+  const questionCandidate = record.question || record.questao;
+  if (questionCandidate && typeof questionCandidate === 'object') {
+    return getQuestionPrimarySubject(questionCandidate as Question);
+  }
+
+  return 'Geral';
+};
+
+/**
+ * Consolida materias a partir das respostas do periodo atual.
+ * Quando a resposta nao traz materia, cai em "Geral" para ainda respeitar o filtro selecionado.
+ *
+ * @since 1.0.0
+ */
+export const buildSubjectPerformanceDataFromAnswers = (
+  answers: UserAnswer[],
+): DashboardSubjectMetric[] => {
+  const metrics = new Map<string, DashboardSubjectMetric>();
+
+  answers.forEach((answer) => {
+    const subjectName = getAnswerSubjectName(answer);
+    const existingMetric = metrics.get(subjectName) || {
+      name: subjectName,
+      total: 0,
+      correct: 0,
+      wrong: 0,
+      accuracy: 0,
+    };
+
+    existingMetric.total += 1;
+    existingMetric.correct += answer.isCorrect ? 1 : 0;
+    existingMetric.wrong += answer.isCorrect ? 0 : 1;
+    existingMetric.accuracy = existingMetric.total > 0
+      ? Math.round((existingMetric.correct / existingMetric.total) * 100)
+      : 0;
+
+    metrics.set(subjectName, existingMetric);
+  });
+
+  return Array.from(metrics.values()).sort((left, right) => right.total - left.total);
 };
 
 /**
@@ -152,6 +417,147 @@ export const buildSubjectPerformanceData = (
 };
 
 /**
+ * Converte o breakdown oficial de estatisticas por materia para o formato do dashboard.
+ * Isso evita baixar o banco inteiro de questoes apenas para renderizar o resumo da home logada.
+ *
+ * @since 1.0.0
+ */
+export const buildSubjectPerformanceDataFromStatistics = (
+  subjectBreakdown: SubjectStatistics[] | null | undefined,
+): DashboardSubjectMetric[] => {
+  if (!Array.isArray(subjectBreakdown)) {
+    return [];
+  }
+
+  return subjectBreakdown
+    .map((subject) => ({
+      name: String(subject.subject || 'Geral').trim() || 'Geral',
+      total: normalizeMetricCount(subject.totalQuestions),
+      correct: normalizeMetricCount(subject.correctAnswers),
+      wrong: normalizeMetricCount(subject.wrongAnswers),
+      accuracy: normalizeMetricCount(subject.accuracyRate),
+    }))
+    .filter((subject) => subject.total > 0)
+    .sort((left, right) => right.total - left.total);
+};
+
+/**
+ * Consolida a media geral da plataforma por materia e desconta o usuario atual quando possivel.
+ * O resultado permite comparar o desempenho individual com os demais usuarios.
+ *
+ * @since 1.0.0
+ */
+export const buildSubjectPeerComparisonData = (
+  questions: Question[],
+  userSubjectMetrics: DashboardSubjectMetric[] = [],
+): Map<string, DashboardSubjectPeerMetric> => {
+  const userMetricsBySubject = new Map<string, DashboardSubjectMetric>();
+  userSubjectMetrics.forEach((metric) => userMetricsBySubject.set(metric.name, metric));
+
+  const aggregatedMetrics = new Map<string, DashboardSubjectPeerMetric>();
+
+  questions.forEach((question) => {
+    const totalAttempts = normalizeMetricCount(question.stats?.totalAttempts);
+    const correctCount = Math.min(totalAttempts, normalizeMetricCount(question.stats?.correctCount));
+
+    if (totalAttempts <= 0) {
+      return;
+    }
+
+    const subjectName = getQuestionPrimarySubject(question);
+    const metric = aggregatedMetrics.get(subjectName) || {
+      name: subjectName,
+      total: 0,
+      correct: 0,
+      accuracy: 0,
+    };
+
+    metric.total += totalAttempts;
+    metric.correct += correctCount;
+    aggregatedMetrics.set(subjectName, metric);
+  });
+
+  const peerMetrics = new Map<string, DashboardSubjectPeerMetric>();
+
+  aggregatedMetrics.forEach((metric, subjectName) => {
+    const userMetric = userMetricsBySubject.get(subjectName);
+    const peerTotal = Math.max(0, metric.total - normalizeMetricCount(userMetric?.total));
+    const peerCorrect = Math.max(0, Math.min(peerTotal, metric.correct - normalizeMetricCount(userMetric?.correct)));
+    const accuracy = peerTotal > 0 ? Math.round((peerCorrect / peerTotal) * 100) : 0;
+
+    peerMetrics.set(subjectName, {
+      name: subjectName,
+      total: peerTotal,
+      correct: peerCorrect,
+      accuracy,
+    });
+  });
+
+  return peerMetrics;
+};
+
+/**
+ * Gera uma leitura curta para cada materia combinando desempenho proprio e comparativo.
+ * A pagina detalhada usa esse texto como insight por materia para usuarios Elite.
+ *
+ * @since 1.0.0
+ */
+export const buildSubjectPerformanceInsight = (
+  subject: DashboardSubjectMetric,
+  peerMetric?: DashboardSubjectPeerMetric | null,
+): DashboardPerformanceInsight => {
+  const hasPeerData = Boolean(peerMetric && peerMetric.total > 0);
+  const peerAccuracy = peerMetric?.accuracy || 0;
+  const delta = hasPeerData ? subject.accuracy - peerAccuracy : 0;
+
+  if (subject.total < 5) {
+    return {
+      tone: 'indigo',
+      title: 'Base pequena',
+      description: `Voce ja tem um sinal inicial em ${subject.name}, mas resolva mais questoes antes de cravar uma tendencia.`,
+    };
+  }
+
+  if (hasPeerData && delta >= 12) {
+    return {
+      tone: 'emerald',
+      title: 'Acima da media',
+      description: `Seu acerto esta ${delta} p.p. acima dos outros usuarios. Mantenha revisoes leves para conservar essa vantagem.`,
+    };
+  }
+
+  if (subject.accuracy >= 80) {
+    return {
+      tone: 'emerald',
+      title: 'Ponto forte',
+      description: `A materia esta bem dominada. Use ${subject.name} para ganhar velocidade e atacar questoes mais dificeis.`,
+    };
+  }
+
+  if (hasPeerData && delta <= -12) {
+    return {
+      tone: 'rose',
+      title: 'Abaixo da media',
+      description: `Os outros usuarios estao em ${peerAccuracy}% e voce em ${subject.accuracy}%. Vale revisar a base antes de aumentar volume.`,
+    };
+  }
+
+  if (subject.accuracy >= 60) {
+    return {
+      tone: 'amber',
+      title: 'Faixa de consolidacao',
+      description: `Ha bom caminho em ${subject.name}, mas os erros ainda mostram pontos soltos. Reforce os assuntos com maior recorrencia.`,
+    };
+  }
+
+  return {
+    tone: 'rose',
+    title: 'Prioridade de revisao',
+    description: `O aproveitamento em ${subject.name} ainda esta baixo. Comece por comentarios, lei seca/resumos e poucas questoes bem corrigidas.`,
+  };
+};
+
+/**
  * Resume os indicadores gerais de acerto do usuario no periodo filtrado.
  * Ele abastece o donut central e o rodape com acertos e erros.
  *
@@ -172,6 +578,62 @@ export const calculateAccuracySummary = (answers: UserAnswer[]): DashboardAccura
 };
 
 /**
+ * Gera um insight curto para o card de desempenho geral.
+ * O texto muda conforme a porcentagem de acerto e tenta orientar o proximo passo.
+ *
+ * @since 1.0.0
+ */
+export const buildAccuracyInsight = (
+  summary: DashboardAccuracySummary,
+): DashboardPerformanceInsight => {
+  if (summary.totalQuestions === 0) {
+    return {
+      tone: 'indigo',
+      title: 'Base em construcao',
+      description: 'Resolva algumas questoes para liberar um diagnostico real do seu desempenho.',
+    };
+  }
+
+  if (summary.accuracyRate >= 85) {
+    return {
+      tone: 'emerald',
+      title: 'Desempenho muito forte',
+      description: 'Seu aproveitamento esta alto. Vale manter ritmo e priorizar revisoes para nao perder consistencia.',
+    };
+  }
+
+  if (summary.accuracyRate >= 70) {
+    return {
+      tone: 'emerald',
+      title: 'Bom nivel de precisao',
+      description: 'Voce ja esta em uma faixa competitiva. O melhor ganho agora costuma vir dos erros recorrentes.',
+    };
+  }
+
+  if (summary.accuracyRate >= 55) {
+    return {
+      tone: 'amber',
+      title: 'Faixa de consolidacao',
+      description: 'O desempenho esta intermediario. Revisar fundamentos e atacar os temas com mais erro tende a destravar rapido.',
+    };
+  }
+
+  if (summary.accuracyRate >= 40) {
+    return {
+      tone: 'amber',
+      title: 'Atencao aos fundamentos',
+      description: 'Sua margem de erro ainda esta alta. O melhor caminho agora e revisar base teorica antes de ganhar velocidade.',
+    };
+  }
+
+  return {
+    tone: 'rose',
+    title: 'Hora de recalibrar',
+    description: 'Seu percentual indica dificuldade forte no recorte atual. Foque em materia, assunto e comentarios antes de ampliar volume.',
+  };
+};
+
+/**
  * Monta os pontos do grafico temporal por quantidade de questoes.
  * A serie troca a antiga leitura de progresso por atividade real de respostas.
  *
@@ -182,52 +644,164 @@ export const buildQuestionTimelineData = (
   timeRange: DashboardTimeRange,
   now: Date = new Date(),
 ): DashboardTimelinePoint[] => {
-  const points: DashboardTimelinePoint[] = [];
-  let steps = 7;
-  let format: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit' };
+  if (timeRange === 'all' && answers.length > 0) {
+    const answerEntries = answers
+      .map((answer) => ({
+        answer,
+        timestamp: resolveDashboardAnswerTimestamp(answer),
+      }));
+    const datedEntries = answerEntries.filter((entry) => entry.timestamp > 0);
+    const undatedEntries = answerEntries.filter((entry) => entry.timestamp <= 0);
+    const timestamps = answerEntries
+      .map((entry) => entry.timestamp)
+      .filter((timestamp) => timestamp > 0)
+      .sort((left, right) => left - right);
 
-  if (timeRange === 'today') {
-    steps = now.getHours() + 1;
-    format = { hour: '2-digit', minute: '2-digit' };
-  } else if (timeRange === 'month') {
-    steps = 30;
-  } else if (timeRange === 'year') {
-    steps = 12;
-    format = { month: 'short' };
-  }
-
-  for (let index = steps - 1; index >= 0; index -= 1) {
-    const pointDate = new Date(now);
-    if (timeRange === 'today') {
-      pointDate.setHours(pointDate.getHours() - index, 0, 0, 0);
-    } else if (timeRange === 'year') {
-      pointDate.setMonth(pointDate.getMonth() - index, 1);
-      pointDate.setHours(0, 0, 0, 0);
-    } else {
-      pointDate.setDate(pointDate.getDate() - index);
-      pointDate.setHours(0, 0, 0, 0);
+    if (timestamps.length === 0) {
+      const totalCorrect = answers.filter((answer) => answer.isCorrect).length;
+      return [{
+        date: 'Sem data',
+        questions: answers.length,
+        correct: totalCorrect,
+        wrong: answers.length - totalCorrect,
+        timestamp: 0,
+      }];
     }
 
-    points.push({
-      date: timeRange === 'today'
-        ? `${pointDate.getHours().toString().padStart(2, '0')}:00`
-        : pointDate.toLocaleDateString('pt-BR', format),
+    const firstDate = new Date(timestamps[0]);
+    const lastDate = new Date(timestamps[timestamps.length - 1]);
+    const spanDays = Math.max(1, Math.ceil((lastDate.getTime() - firstDate.getTime()) / DAY_IN_MILLISECONDS));
+    const points: DashboardTimelinePoint[] = [];
+    const pointMap = new Map<string, DashboardTimelinePoint>();
+    const buildYearKey = (date: Date) => String(date.getFullYear());
+    const addPoint = (key: string, date: string, timestamp: number) => {
+      const point = { date, questions: 0, correct: 0, wrong: 0, timestamp };
+      points.push(point);
+      pointMap.set(key, point);
+    };
+
+    if (spanDays <= 31) {
+      const cursor = new Date(firstDate);
+      cursor.setHours(0, 0, 0, 0);
+      const end = new Date(lastDate);
+      end.setHours(0, 0, 0, 0);
+
+      while (cursor.getTime() <= end.getTime()) {
+        addPoint(
+          buildLocalDateKey(cursor),
+          cursor.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+          cursor.getTime(),
+        );
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    } else if (spanDays <= 730) {
+      const cursor = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+      const end = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
+
+      while (cursor.getTime() <= end.getTime()) {
+        addPoint(
+          buildLocalMonthKey(cursor),
+          cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+          cursor.getTime(),
+        );
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    } else {
+      for (let year = firstDate.getFullYear(); year <= lastDate.getFullYear(); year += 1) {
+        addPoint(String(year), String(year), new Date(year, 0, 1).getTime());
+      }
+    }
+
+    datedEntries.forEach(({ answer, timestamp }) => {
+      const answerDate = new Date(timestamp);
+      const key = spanDays <= 31
+        ? buildLocalDateKey(answerDate)
+        : spanDays <= 730
+          ? buildLocalMonthKey(answerDate)
+          : buildYearKey(answerDate);
+      const point = pointMap.get(key);
+      if (!point) {
+        return;
+      }
+
+      point.questions += 1;
+      point.correct += answer.isCorrect ? 1 : 0;
+      point.wrong += answer.isCorrect ? 0 : 1;
+    });
+
+    if (undatedEntries.length > 0) {
+      const correct = undatedEntries.filter(({ answer }) => answer.isCorrect).length;
+      points.unshift({
+        date: 'Sem data',
+        questions: undatedEntries.length,
+        correct,
+        wrong: undatedEntries.length - correct,
+        timestamp: 0,
+      });
+    }
+
+    return points;
+  }
+
+  const points: DashboardTimelinePoint[] = [];
+  const pointMap = new Map<string, DashboardTimelinePoint>();
+  const addTimelinePoint = (pointDate: Date, label: string) => {
+    const point: DashboardTimelinePoint = {
+      date: label,
       questions: 0,
       correct: 0,
       wrong: 0,
       timestamp: pointDate.getTime(),
-    });
+    };
+    points.push(point);
+    pointMap.set(buildTimelineBucketKey(pointDate, timeRange), point);
+  };
+
+  if (timeRange === 'today') {
+    for (let hour = 0; hour <= now.getHours(); hour += 1) {
+      const pointDate = new Date(now);
+      pointDate.setHours(hour, 0, 0, 0);
+      addTimelinePoint(pointDate, `${String(hour).padStart(2, '0')}:00`);
+    }
+  } else if (timeRange === 'week') {
+    const weekStart = new Date(getRangeStartTimestamp('week', now));
+    for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
+      const pointDate = new Date(weekStart);
+      pointDate.setDate(weekStart.getDate() + dayOffset);
+      addTimelinePoint(
+        pointDate,
+        pointDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      );
+    }
+  } else if (timeRange === 'month') {
+    const monthStart = new Date(getRangeStartTimestamp('month', now));
+    for (let dayOffset = 0; dayOffset < 30; dayOffset += 1) {
+      const pointDate = new Date(monthStart);
+      pointDate.setDate(monthStart.getDate() + dayOffset);
+      addTimelinePoint(
+        pointDate,
+        pointDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      );
+    }
+  } else if (timeRange === 'year') {
+    const yearStart = new Date(getRangeStartTimestamp('year', now));
+    for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+      const pointDate = new Date(yearStart.getFullYear(), yearStart.getMonth() + monthIndex, 1);
+      addTimelinePoint(
+        pointDate,
+        pointDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+      );
+    }
   }
 
-  const pointMap = new Map<string, DashboardTimelinePoint>();
-  points.forEach((point) => pointMap.set(point.date, point));
-
   answers.forEach((answer) => {
-    const answerDate = new Date(answer.timestamp);
-    const pointKey = timeRange === 'today'
-      ? `${answerDate.getHours().toString().padStart(2, '0')}:00`
-      : answerDate.toLocaleDateString('pt-BR', format);
+    const answerTimestamp = resolveDashboardAnswerTimestamp(answer);
+    if (answerTimestamp <= 0) {
+      return;
+    }
 
+    const answerDate = new Date(answerTimestamp);
+    const pointKey = buildTimelineBucketKey(answerDate, timeRange);
     const point = pointMap.get(pointKey);
     if (!point) {
       return;

@@ -11,6 +11,22 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
+type MockApiError = {
+  response?: {
+    data?: {
+      message?: unknown;
+    };
+  };
+  message?: unknown;
+} | null | undefined;
+
 const { mockPost } = vi.hoisted(() => ({
   mockPost: vi.fn(),
 }));
@@ -19,11 +35,11 @@ vi.mock('@services/api', () => ({
   apiClient: {
     post: mockPost,
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
   },
-  assertApiSuccess: (response: any, fallbackMessage: string) => {
+  assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
     }
@@ -49,7 +65,7 @@ vi.mock('@services/api', () => ({
 }));
 
 vi.mock('@services/api/response', () => ({
-  readApiErrorMessage: (error: any, fallbackMessage: string) => {
+  readApiErrorMessage: (error: MockApiError, fallbackMessage: string) => {
     if (typeof error?.response?.data?.message === 'string' && error.response.data.message.trim()) {
       return error.response.data.message;
     }
@@ -217,11 +233,13 @@ describe('authFlowService', () => {
     const message = await authFlowService.resetPassword({
       token: 'reset-token',
       password: 'nova-senha',
+      captchaToken: 'captcha-reset',
     });
 
     expect(mockPost).toHaveBeenCalledWith('auth/reset-password.php', {
       token: 'reset-token',
       password: 'nova-senha',
+      captchaToken: 'captcha-reset',
     });
     expect(message).toBe('Senha alterada.');
   });

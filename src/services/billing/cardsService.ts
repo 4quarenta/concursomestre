@@ -10,8 +10,30 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
+import type { ApiResponse } from '@services/api';
 
-export type SavedCard = Record<string, any>;
+const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
+
+export type SavedCard = {
+  id: string | number;
+  brand?: string;
+  last4?: string;
+  last_four?: string;
+  payment_method_id?: string | null;
+  stripe_payment_method_id?: string | null;
+  issuer_id?: string | number | null;
+  first_six_digits?: string | null;
+  bin?: string | number | null;
+  exp_month?: number | string;
+  exp_year?: number | string;
+  is_default?: number | string | boolean;
+  locked_by_recurring?: number | string | boolean;
+  gateway?: string;
+  holder_name?: string;
+  created_at?: string | null;
+  [key: string]: unknown;
+};
 
 export type SavedCardsListResult = {
   cards: SavedCard[];
@@ -19,77 +41,83 @@ export type SavedCardsListResult = {
   success: boolean;
 };
 
-type OptionalUserPayload = {
-  user_id?: string;
+export type SavedCardMutationResult = {
+  success: true;
+  message: string;
+};
+
+type RawSavedCardsPayload = {
+  cards?: SavedCard[];
+  removed_stale_cards?: number | string | null;
+};
+
+type RawSetupIntentPayload = {
+  client_secret?: string;
 };
 
 /**
- * Centraliza o cofre de cartoes e o setup de cartão salvo no frontend.
+ * Centraliza o cofre de cartoes e o setup de cartao salvo no frontend.
  * @since 1.0.0
  */
 export const cardsService = {
   /**
-   * Lista os cartoes salvos do usuário atual.
+   * Lista os cartoes salvos do usuario atual.
    * @since 1.0.0
    */
   async listSavedCards(userId?: string): Promise<SavedCardsListResult> {
-    const response = await apiClient.post<any>(
-      ENDPOINTS.users.listCards,
-      userId ? { user_id: userId } : {},
-    ) as any;
+    return withRequestCoalescing(buildRequestCacheKey('billing:saved-cards', { userId: userId || 'self' }), async () => {
+      const response = await requestApi<RawSavedCardsPayload>(apiClient.post<ApiResponse<RawSavedCardsPayload>>(
+        ENDPOINTS.users.listCards,
+        userId ? { user_id: userId } : {},
+      ));
 
-    const payload = readApiData<any>(response, {});
+      const payload = readApiData<RawSavedCardsPayload>(response, {});
 
-    return {
-      success: response?.success !== false,
-      cards: Array.isArray(payload?.cards)
-        ? payload.cards
-        : Array.isArray(response?.cards)
-          ? response.cards
-          : [],
-      removed_stale_cards: Number(payload?.removed_stale_cards ?? response?.removed_stale_cards ?? 0),
-    };
+      return {
+        success: response.success !== false,
+        cards: Array.isArray(payload.cards) ? payload.cards : [],
+        removed_stale_cards: Number(payload.removed_stale_cards ?? 0),
+      };
+    }, 15000);
   },
 
   /**
    * Remove um cartão salvo.
    * @since 1.0.0
    */
-  async removeSavedCard(cardId: string, userId?: string): Promise<any> {
-    const response = await apiClient.post<any>(
+  async removeSavedCard(cardId: string, userId?: string): Promise<SavedCardMutationResult> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(
       ENDPOINTS.users.removeCard,
       {
         ...(userId ? { user_id: userId } : {}),
         card_id: cardId,
       },
-    ) as any;
+    ));
 
     const envelope = assertApiSuccess(response, 'Não foi possível remover o cartão.');
     return {
-      ...response,
       success: true,
       message: envelope.message || 'Cartão removido com sucesso!',
-    } as any;
+    };
   },
 
   /**
-   * Define um cartão salvo como padrao.
+   * Define um cartão salvo como padrão.
    * @since 1.0.0
    */
-  async setDefaultSavedCard(cardId: string, userId?: string): Promise<any> {
-    const response = await apiClient.post<any>(
+  async setDefaultSavedCard(cardId: string, userId?: string): Promise<SavedCardMutationResult> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(
       ENDPOINTS.users.setDefaultCard,
       {
         ...(userId ? { user_id: userId } : {}),
         card_id: cardId,
       },
-    ) as any;
+    ));
 
-    const envelope = assertApiSuccess(response, 'Não foi possível definir o cartão padrao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível definir o cartão padrão.');
     return {
-      ...response,
       success: true,
-      message: envelope.message || 'Cartão padrao atualizado!',
+      message: envelope.message || 'Cartão padrão atualizado!',
     };
   },
 
@@ -97,11 +125,10 @@ export const cardsService = {
    * Salva um cartão no cofre legado/local.
    * @since 1.0.0
    */
-  async saveLegacyCard(payload: Record<string, unknown>): Promise<any> {
-    const response = await apiClient.post<any>(ENDPOINTS.users.saveCard, payload) as any;
+  async saveLegacyCard(payload: Record<string, unknown>): Promise<SavedCardMutationResult> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.users.saveCard, payload));
     const envelope = assertApiSuccess(response, 'Não foi possível salvar o cartão.');
     return {
-      ...response,
       success: true,
       message: envelope.message || 'Cartão salvo com sucesso!',
     };
@@ -112,11 +139,14 @@ export const cardsService = {
    * @since 1.0.0
    */
   async createStripeSetupIntent(): Promise<{ success: true; client_secret: string }> {
-    const response = await apiClient.post<any>(ENDPOINTS.users.createStripeSetupIntent, {}) as any;
+    const response = await requestApi<RawSetupIntentPayload>(apiClient.post<ApiResponse<RawSetupIntentPayload>>(
+      ENDPOINTS.users.createStripeSetupIntent,
+      {},
+    ));
     assertApiSuccess(response, 'Não foi possível preparar o formulário Stripe.');
 
-    const payload = readApiData<any>(response, {});
-    const clientSecret = payload?.client_secret ?? response?.client_secret;
+    const payload = readApiData<RawSetupIntentPayload>(response, {});
+    const clientSecret = payload.client_secret;
 
     if (!clientSecret) {
       throw new Error('Não foi possível preparar o formulário Stripe.');
@@ -129,17 +159,19 @@ export const cardsService = {
   },
 
   /**
-   * Sincroniza o metodo de pagamento Stripe apos o setup intent.
+   * Sincroniza o método de pagamento Stripe após o setup intent.
    * @since 1.0.0
    */
-  async syncStripeCard(paymentMethodId: string): Promise<any> {
-    const response = await apiClient.post<any>(ENDPOINTS.users.syncStripeCard, {
-      payment_method_id: paymentMethodId,
-    }) as any;
+  async syncStripeCard(paymentMethodId: string): Promise<SavedCardMutationResult> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(
+      ENDPOINTS.users.syncStripeCard,
+      {
+        payment_method_id: paymentMethodId,
+      },
+    ));
 
     const envelope = assertApiSuccess(response, 'Não foi possível sincronizar o cartão Stripe.');
     return {
-      ...response,
       success: true,
       message: envelope.message || 'Cartão salvo com sucesso na Stripe!',
     };

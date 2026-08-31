@@ -11,13 +11,13 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Crown, CheckCircle2, X, Sparkles, ArrowRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Crown, CheckCircle2, X, Sparkles } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { CanonicalPlanName, getEffectivePlanDisplayName } from '@services/plans/planAccess';
 import { getBenefitDefinition, getEnabledBenefitKeysForPlan, getIncrementalBenefitKeysForPlan } from '@constants/subscriptions/planEntitlements';
 import { buildProfilePath } from '../../../app/profile/profileNavigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 interface UpgradeModalProps {
     isOpen: boolean;
@@ -32,9 +32,9 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
     requiredPlan,
     featureName
 }) => {
-    const navigate = useNavigate();
+    const router = useRouter();
     const { currentUser } = useAuth();
-    const { systemSettings } = useData();
+    const systemSettings = useAppConfigStore((state) => state.systemSettings);
 
     if (!isOpen) return null;
 
@@ -49,7 +49,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
             <div
-                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-500 relative"
+                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-500 relative"
             >
                 {/* Header Decorativo */}
                 <div className="relative h-36 bg-slate-900 dark:bg-indigo-950 flex items-center justify-center overflow-hidden">
@@ -59,7 +59,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                     </div>
 
                     <div className="relative flex flex-col items-center gap-2 z-10">
-                        <div className={`p-4 rounded-3xl backdrop-blur-md border shadow-xl ${requiredPlan === 'Elite' ? 'bg-amber-500/20 border-amber-500/40 text-amber-500' : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'}`}>
+                        <div className={`p-4 rounded-2xl backdrop-blur-md border shadow-xl ${requiredPlan === 'Elite' ? 'bg-amber-500/20 border-amber-500/40 text-amber-500' : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'}`}>
                             <Crown size={40} className="animate-pulse" />
                         </div>
                         <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${requiredPlan === 'Elite' ? 'bg-amber-950/40 border-amber-500/30 text-amber-400' : 'bg-indigo-950/40 border-indigo-500/30 text-indigo-300'}`}>
@@ -101,11 +101,11 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                     <button
                         onClick={() => {
                             onClose();
-                            // Se estiver logado vai para profile (onde tem change plan), se não, auth com register
+                            // Se estiver logado vai para o perfil; se não, abre o cadastro.
                             if (currentUser) {
-                                navigate(buildProfilePath('billing'));
+                                router.push(buildProfilePath('billing'));
                             } else {
-                                navigate('/auth?register=true');
+                                router.push('/auth?register=true');
                             }
                         }}
                         className={`group flex items-center justify-center gap-3 w-full h-14 text-white rounded-2xl font-black text-xs uppercase tracking-[0.15em] shadow-lg transition-all active:scale-95 ${requiredPlan === 'Elite' ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-amber-900/20' : 'bg-slate-900 dark:bg-indigo-600 hover:bg-indigo-600 dark:hover:bg-indigo-500'}`}
@@ -115,7 +115,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                     </button>
 
                     {!currentUser && (
-                        <button onClick={() => { onClose(); navigate('/auth'); }} className="w-full text-center text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest transition-colors">
+                        <button onClick={() => { onClose(); router.push('/auth'); }} className="w-full text-center text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest transition-colors">
                             Já sou assinante
                         </button>
                     )}
