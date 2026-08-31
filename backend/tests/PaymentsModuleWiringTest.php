@@ -60,33 +60,9 @@ assertContainsPaymentsDelegate(
 );
 
 assertContainsPaymentsDelegate(
-    $base . '/api/payments/create-preference.php',
-    'respondRemovedMercadoPagoPaymentsRoute',
-    'Removed Mercado Pago create-preference endpoint must return 410 without running legacy flow'
-);
-
-assertContainsPaymentsDelegate(
     $base . '/api/payments/verify-payment.php',
     'handlePaymentsVerifyStripePaymentRoute',
     'Payments verify-payment endpoint must delegate to payments module routes'
-);
-
-assertContainsPaymentsDelegate(
-    $base . '/api/payments/webhook.php',
-    'respondRemovedMercadoPagoPaymentsRoute',
-    'Removed Mercado Pago webhook endpoint must return 410 without opening MySQL'
-);
-
-assertNotContainsPaymentsDelegate(
-    $base . '/api/payments/create-preference.php',
-    'config/database.php',
-    'Removed Mercado Pago create-preference endpoint must not open MySQL'
-);
-
-assertNotContainsPaymentsDelegate(
-    $base . '/api/payments/webhook.php',
-    'config/database.php',
-    'Removed Mercado Pago webhook endpoint must not open MySQL'
 );
 
 assertContainsPaymentsDelegate(
@@ -127,12 +103,6 @@ assertContainsPaymentsDelegate(
 
 assertContainsPaymentsDelegate(
     $base . '/modules/payments/routes.php',
-    'function handlePaymentsCreatePreferenceRoute',
-    'Payments routes must expose the create preference handler'
-);
-
-assertContainsPaymentsDelegate(
-    $base . '/modules/payments/routes.php',
     'function handlePaymentsVerifyStripePaymentRoute',
     'Payments routes must expose the verify Stripe payment handler'
 );
@@ -159,12 +129,6 @@ assertContainsPaymentsDelegate(
     $base . '/modules/payments/validators/PaymentsValidator.php',
     'isAllowedPlatformReturnUrl',
     'Stripe Connect return URLs must be restricted to platform origins'
-);
-
-assertContainsPaymentsDelegate(
-    $base . '/modules/payments/routes.php',
-    'function handlePaymentsMercadoPagoWebhookRoute',
-    'Payments routes must expose the Mercado Pago webhook handler'
 );
 
 fwrite(STDOUT, "Payments module wiring assertions passed.\n");

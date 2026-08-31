@@ -472,7 +472,7 @@ Exemplos:
 
 ### 4. Alguns contratos dependem de colunas historicas
 
-Os fluxos de Stripe e Mercado Pago convivem com colunas adicionadas ao longo do tempo, o que exige consolidacao final de naming e tipos.
+O fluxo Stripe convive com colunas legadas adicionadas ao longo do tempo, o que exige consolidacao final de naming e tipos.
 
 ---
 

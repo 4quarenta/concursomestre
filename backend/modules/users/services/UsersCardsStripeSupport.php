@@ -1005,16 +1005,15 @@ function upsertLocalStripeCardMirror(
     try {
         $db->prepare("
             INSERT INTO user_cards (
-                id, user_id, payment_provider, mp_card_id, stripe_payment_method_id, mp_customer_id, provider_customer_id,
+                id, user_id, payment_provider, stripe_payment_method_id, provider_customer_id,
                 brand, last_four_digits, exp_month, exp_year, holder_name, is_default, locked_by_recurring
             ) VALUES (
-                :id, :user_id, 'stripe', :mp_card_id, :stripe_payment_method_id, NULL, :provider_customer_id,
+                :id, :user_id, 'stripe', :stripe_payment_method_id, :provider_customer_id,
                 :brand, :last_four_digits, :exp_month, :exp_year, :holder_name, :is_default, 0
             )
         ")->execute([
             ':id' => $id,
             ':user_id' => $userId,
-            ':mp_card_id' => '',
             ':stripe_payment_method_id' => $remoteId,
             ':provider_customer_id' => $customerId,
             ':brand' => $brand,

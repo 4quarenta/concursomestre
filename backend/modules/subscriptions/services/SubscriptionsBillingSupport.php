@@ -493,7 +493,7 @@ function couponUserHasPriorPaidPlan(PDO $db, string $userId): bool
                 SELECT 1
                 FROM user_subscriptions
                 WHERE user_id = :user_id
-                  AND payment_provider IN ('stripe', 'mercado_pago')
+                  AND payment_provider = 'stripe'
                   AND provider_subscription_id IS NOT NULL
                   AND provider_subscription_id <> ''
                 LIMIT 1

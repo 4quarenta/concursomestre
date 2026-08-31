@@ -34,7 +34,11 @@ class SubscriptionsValidator
         }
 
         $checkoutAttemptId = trim((string) ($data['checkout_attempt_id'] ?? ''));
-        if ($checkoutAttemptId !== '' && !preg_match('/^[A-Za-z0-9_-]{8,80}$/', $checkoutAttemptId)) {
+        if ($checkoutAttemptId === '') {
+            throw new InvalidArgumentException('Identificador da tentativa de checkout obrigatorio.');
+        }
+
+        if (!preg_match('/^[A-Za-z0-9_-]{8,80}$/', $checkoutAttemptId)) {
             throw new InvalidArgumentException('Identificador da tentativa de checkout invalido.');
         }
 

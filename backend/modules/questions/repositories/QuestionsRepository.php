@@ -259,24 +259,6 @@ class QuestionsRepository
     }
 
     /**
-     * Atualiza o bonus de plano e a notificao de recompensa por level up.
-      * @since 1.0.0
-     */
-    public function updateUserRewardPlan(string $userId, string $plan, string $subscriptionEnd): void
-    {
-        $stmt = $this->db->prepare(
-            "UPDATE users
-             SET plan = :plan,
-                 subscription_end = :subscription_end
-             WHERE id = :user_id"
-        );
-        $stmt->bindValue(':plan', $plan);
-        $stmt->bindValue(':subscription_end', $subscriptionEnd);
-        $stmt->bindValue(':user_id', $userId);
-        $stmt->execute();
-    }
-
-    /**
      * Registra uma notificao sistemica para o usurio recompensado.
       * @since 1.0.0
      */

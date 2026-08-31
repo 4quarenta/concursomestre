@@ -37,7 +37,7 @@ Correcoes aplicadas nesta auditoria:
 | Email confirmado | Usuario | In-app | Auth retorna `newXp` | XP por confirmacao | Parcial |
 | Usuario responde questao correta | Usuario | UI imediata + in-app quando badge/streak | `user_answers`, `question_stats`, `users.xp`, `user_streaks`, `user_badges` | +10 XP, possivel level up, streak e badge | Corrigido local |
 | Usuario responde questao errada | Usuario | UI imediata + in-app quando badge/streak | `user_answers`, `question_stats`, `users.xp`, `user_streaks`, `user_badges` | +2 XP, streak e badge | Corrigido local |
-| Level up | Usuario | In-app | `notifications` | bonus plano/dias | OK local |
+| Level up | Usuario | In-app | `notifications` | aviso de progressao, sem alterar assinatura | Corrigido local |
 | Streak diario | Usuario | In-app em marcos | `user_streaks`, `notifications` | 3/7/15/30 dias | Corrigido local |
 | Badge por meta de questoes | Usuario | In-app | `user_badges`, `notifications` | primeira resposta, 10 acertos, 100 respostas, streaks | Corrigido local |
 | Ranking criado pela comunidade | Admin | In-app | `notifications`, `rankings.created_by_user_id` | nenhum | Corrigido local |

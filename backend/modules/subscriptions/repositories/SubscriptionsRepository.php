@@ -943,7 +943,6 @@ class SubscriptionsRepository
                 us.total_installments,
                 us.paid_installments,
                 us.recurring_amount,
-                us.mp_preapproval_id,
                 us.payment_provider,
                 us.provider_subscription_id,
                 us.provider_customer_id,

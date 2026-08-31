@@ -1,11 +1,11 @@
 # Arquitetura do Modulo de Payments
 
-## Estado atual (`2026-05-20`)
+## Estado atual (`2026-08-30`)
 
-O modulo opera em modo **Stripe-only**. As rotas historicas de Mercado Pago
-foram mantidas apenas como tombstones `410` para evitar erro obscuro em
-clientes, webhooks ou crons antigos. Esses endpoints nao carregam mais
-`config/database.php` e nao abrem conexao MySQL.
+O modulo opera exclusivamente com Stripe. Nenhuma rota, webhook, cron ou
+configuracao Mercado Pago faz parte do produto atual; superficies antigas foram
+removidas. O historico de migrations permanece imutavel no Git e nao e uma
+interface de runtime.
 
 ## Objetivo
 
@@ -80,7 +80,7 @@ Campos preenchidos nesta fatia:
 - `type`
 - `created_at`
 
-## Novos fluxos absorvidos
+## Fluxos oficiais
 
 ### `config`
 
@@ -100,25 +100,6 @@ Campos preenchidos nesta fatia:
 6. O modulo cria um `account_onboarding` link com `refresh_url` e `return_url`
 7. O retorno padroniza `accountId` e `onboardingUrl`
 
-### `create-preference`
-
-1. O frontend ou legado chama `api/payments/create-preference.php`
-2. O bridge delega para `handlePaymentsCreatePreferenceRoute()`
-3. O backend usa a sessao autenticada como comprador real
-4. Material e usuario sao lidos do banco
-5. A preferencia hospedada eh criada no Mercado Pago por API oficial
-6. O retorno padroniza `preferenceId`, `initPoint` e `sandboxInitPoint`
-
-### `webhook`
-
-1. O Mercado Pago chama `api/payments/webhook.php`
-2. O bridge delega para `handlePaymentsMercadoPagoWebhookRoute()`
-3. A assinatura eh validada quando `MP_WEBHOOK_SECRET` estiver ativo
-4. O pagamento eh consultado na API do Mercado Pago
-5. `external_reference` e `metadata` sao usados para identificar usuario/material
-6. A transacao local eh criada ou atualizada por `external_id`
-7. `sales_count` so sobe uma vez quando a aprovacao entra pela primeira vez
-
 ### `verify-payment`
 
 1. O fallback Stripe chama `api/payments/verify-payment.php`
@@ -131,8 +112,8 @@ Campos preenchidos nesta fatia:
 
 1. O frontend consulta `api/payments/get-installments.php`
 2. O bridge delega para `handlePaymentsInstallmentsRoute()`
-3. O `PaymentsService` consulta a API publica do Mercado Pago
-4. Se a consulta falhar, tenta fallback local por BIN/bandeira
+3. O `PaymentsService` consulta a API Stripe quando o fluxo exigir dados remotos
+4. Se a consulta falhar, retorna erro controlado sem criar cobranca
 5. A resposta sai padronizada em envelope JSON
 
 ## Fluxo de compra avulsa de material
@@ -141,7 +122,7 @@ Campos preenchidos nesta fatia:
 2. O backend resolve o usuario pela sessao autenticada
 3. O service busca material e usuario no banco
 4. O valor e a descricao sao resolvidos pelo backend
-5. O pagamento eh enviado ao Mercado Pago com idempotency key
+5. O pagamento eh enviado a Stripe com idempotency key
 6. O resultado do gateway eh normalizado
 7. A transacao local eh criada ou atualizada por `external_id`
 8. Se a compra entrou como aprovada, `sales_count` do material eh incrementado uma unica vez
@@ -156,13 +137,11 @@ Com essa fatia, `api/payments/get-installments.php` e `api/payments/process-paym
 - validator com entrada
 - responses padronizadas
 
-Agora o mesmo vale para:
+O mesmo boundary vale para:
 
 - `api/payments/config.php`
 - `api/payments/create-connect-account.php`
-- `api/payments/create-preference.php`
 - `api/payments/verify-payment.php`
-- `api/payments/webhook.php`
 
 ## Scripts operacionais reclassificados
 
@@ -176,4 +155,3 @@ Os artefatos abaixo foram removidos porque eram perigosos, obsoletos ou expunham
 - `api/payments/check_schema.php`
 - `api/payments/test_stripe.php`
 - `api/payments/payment_debug.log`
-- `api/payments/migrate_mercadopago.php`

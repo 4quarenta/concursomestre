@@ -78,18 +78,6 @@ function assertFunctionBlockNotContainsForCronWiring(string $path, string $funct
 $base = dirname(__DIR__);
 
 assertContainsRouteDelegate(
-    $base . '/api/subscriptions/cron_scheduled_payments.php',
-    'respondRemovedMercadoPagoSubscriptionsRoute',
-    'Scheduled payments cron bridge must return the removed Mercado Pago response without opening MySQL'
-);
-
-assertContainsRouteDelegate(
-    $base . '/api/subscriptions/cron_recurring.php',
-    'respondRemovedMercadoPagoSubscriptionsRoute',
-    'Recurring subscriptions cron bridge must return the removed Mercado Pago response without opening MySQL'
-);
-
-assertContainsRouteDelegate(
     $base . '/api/subscriptions/cron_stripe_reconciliation.php',
     'handleSubscriptionsStripeReconciliationCronRoute',
     'Stripe reconciliation cron must delegate to subscriptions routes'
@@ -117,18 +105,6 @@ assertNotContainsRouteDelegate(
     $base . '/scripts/tasks/reconcile_stripe_subscriptions.php',
     'AuthMiddleware',
     'Stripe reconciliation CLI task must not depend on a logged-in user session'
-);
-
-assertContainsRouteDelegate(
-    $base . '/modules/subscriptions/routes.php',
-    'function handleSubscriptionsScheduledPaymentsCronRoute',
-    'Subscriptions routes must expose scheduled payments cron handler'
-);
-
-assertContainsRouteDelegate(
-    $base . '/modules/subscriptions/routes.php',
-    'function handleSubscriptionsRecurringCronRoute',
-    'Subscriptions routes must expose recurring cron handler'
 );
 
 assertContainsRouteDelegate(

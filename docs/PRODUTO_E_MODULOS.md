@@ -27,7 +27,7 @@
 Atualizado em: 2026-04-03
 ## Aviso operacional
 Este arquivo preserva snapshots historicos.
-Qualquer mencao a Mercado Pago abaixo deve ser tratada como legado descontinuado.
+O catalogo abaixo descreve somente os fluxos atualmente suportados; referencias historicas permanecem no Git, fora do runtime.
 O fluxo ativo de billing e assinaturas agora e Stripe-only.
 ## Objetivo
 Este documento descreve o que existe hoje na plataforma ConcursoMestre.
@@ -365,8 +365,6 @@ equestRefund(transactionId, reason) -> solicita reembolso
 - processMaterialPayment(payload) -> processa compra avulsa de material e devolve resultado simples para a UI
 ### src/services/plans/planService.ts
 - getPlans() -> lista planos do catalogo comercial
-- createSubscription(planId, userId) -> cria preferencia Mercado Pago para o plano
-- processPayment(paymentData) -> delega pagamento Mercado Pago do checkout
 - createStripeCheckoutSession(payload) -> inicia checkout hospedado da Stripe
 - createStripeSubscription(payload) -> cria assinatura inline da Stripe
 - inalizeStripeSubscription(payload) -> conclui assinatura inline apos setup/pagamento inicial
@@ -413,8 +411,6 @@ emove(rankingId) -> exclui ranking
 - getPlatformStatistics() -> carrega indicadores agregados da plataforma
 - updateUserStatistics(userId, data) -> atualiza agregados do usuário apos eventos de estudo
 ### src/services/subscriptions/subscriptionsService.ts
-- createMercadoPagoSubscriptionPreference(payload) -> cria preferencia Mercado Pago do plano
-- processMercadoPagoPayment(payload) -> processa pagamento/subscricao Mercado Pago
 - createStripeCheckoutSession(payload) -> inicia checkout hospedado Stripe
 - createStripeSubscription(payload) -> cria assinatura inline Stripe
 - inalizeStripeSubscription(payload) -> conclui assinatura inline
@@ -518,7 +514,6 @@ esolveRefund(...) -> aprova ou rejeita reembolso no fluxo administrativo
 #### modules/subscriptions
 - SubscriptionsController.updateRenewal() -> altera renovação automática
 - SubscriptionsController.createStripeCheckoutSession() -> inicia checkout hospedado Stripe
-- SubscriptionsController.createMercadoPagoSubscriptionPreference() -> inicia preferencia Mercado Pago
 - SubscriptionsController.createStripeInlineSubscription() -> inicia assinatura inline da Stripe
 - SubscriptionsController.finalizeStripeSubscription() -> finaliza assinatura inline
 - SubscriptionsController.processStripeWebhook() -> recebe webhook Stripe
@@ -527,13 +522,9 @@ esolveRefund(...) -> aprova ou rejeita reembolso no fluxo administrativo
 - SubscriptionsController.cancelSubscription() -> cancela assinatura
 - SubscriptionsController.cancelRefundRequest() -> cancela pedido de reembolso
 - SubscriptionsController.undoCancellationRequest() -> reverte cancelamento
-- SubscriptionsController.processMercadoPagoWebhook() -> recebe webhook Mercado Pago
-- SubscriptionsController.runScheduledMercadoPagoPaymentsCron() -> executa cron de pagamentos agendados
-- SubscriptionsController.runRecurringMercadoPagoSubscriptionsCron() -> executa cron recorrente MP
 - SubscriptionsController.runStripeReconciliationCron() -> reconcilia divergencias Stripe
 **Services**
 - SubscriptionsService.createStripeCheckoutSession() -> monta contexto comercial e cria checkout Stripe
-- SubscriptionsService.createMercadoPagoSubscriptionPreference() -> cria preferencia MP com dados do plano
 - SubscriptionsService.createStripeInlineSubscription() -> cria assinatura inline Stripe com PM/cupom
 - SubscriptionsService.finalizeStripeSubscription() -> ativa assinatura local apos confirmacao
 - SubscriptionsService.processStripeWebhook() -> processa eventos Stripe e sincroniza estado local
@@ -543,19 +534,14 @@ esolveRefund(...) -> aprova ou rejeita reembolso no fluxo administrativo
 - SubscriptionsService.cancelSubscription() -> orquestra cancelamento e refund quando aplicavel
 - SubscriptionsService.cancelRefundRequest() -> desfaz pedido de estorno/cancelamento
 - SubscriptionsService.undoCancellationRequest() -> religa assinatura apos cancelamento pendente
-- SubscriptionsService.processMercadoPagoWebhook() -> processa eventos do Mercado Pago
-- SubscriptionsService.runScheduledMercadoPagoPaymentsCron() -> tenta cobrancas agendadas e atualiza o ciclo
-- SubscriptionsService.runRecurringMercadoPagoSubscriptionsCron() -> renova assinaturas recorrentes MP
 - SubscriptionsService.runStripeReconciliationCron() -> reconcilia invoices/subscriptions Stripe
 - helpers privados importantes:
   - uildStripeCreationContext() -> resolve contexto comercial e de billing
   - upsertPendingStripeSubscriptionRecord() -> garante persistencia local da assinatura pendente
   - handleStripeCheckoutSessionCompleted() -> fecha efeitos do checkout pago
   - handleStripeInvoicePaid() e handleStripeInvoicePaymentFailed() -> sincronizam ciclo de cobrança
-  - processMercadoPagoPreapprovalWebhook() e processMercadoPagoPaymentWebhook() -> tratam eventos MP
 **Arquivos de apoio do dominio**
-- MercadoPagoPaymentBootstrap.php -> monta contexto inicial do pagamento Mercado Pago
-- MercadoPagoPaymentPreparation.php -> resolve cartão salvo, pricing, cobrança inicial e ativacao local
+- `UsersCardsStripeSupport.php` -> mantém o espelho local dos cartões Stripe
 #### modules/transactions
 - TransactionsController.createMaterialPurchase() -> cria compra de material
 - TransactionsController.listTransactions() -> lista transações
@@ -789,13 +775,13 @@ eaderService.deleteHighlight(highlightId) remove destaques do usuário autentica
 ## Atualizacao 2026-04-03 - cofre de cartoes do usuário em modules/users
 
 ### Billing do perfil
-- list_cards: identifica o usuário autenticado, resolve o provedor ativo de cofre, sincroniza o espelho Stripe quando necessario ou valida cartoes Mercado Pago remotos antes de devolver a lista.
+- list_cards: identifica o usuário autenticado e sincroniza o espelho Stripe quando necessário antes de devolver a lista.
 - 
 emove_card: bloqueia remocao de cartão travado por recorrencia, desanexa payment method Stripe quando aplicavel, remove o espelho local e promove o proximo cartão a padrao quando necessario.
 - set_default_card: define o cartão padrao local do usuário e, no caso Stripe, replica esse default também em invoice_settings.default_payment_method do customer remoto.
 
 ### Funcoes tecnicas novas
-- UsersCardsService::listSavedCards(...): concentra a regra de leitura do cofre do usuário, inclusive limpeza de cartoes remotos obsoletos no Mercado Pago.
+- UsersCardsService::listSavedCards(...): concentra a regra de leitura do cofre do usuário.
 - UsersCardsService::removeSavedCard(...): concentra a remocao segura do cartão e a manutencao do estado local do cofre.
 - UsersCardsService::setDefaultSavedCard(...): centraliza a troca de cartão padrao com transação local e sincronizacao opcional com Stripe.
 - UsersCardsStripeSupport.php: mantem o suporte Stripe de cartoes dentro do dominio users, sustentando os fluxos legados de setup/sync ate a absorcao completa desses endpoints.
@@ -929,7 +915,7 @@ eferred_by_id quando houver indicacao, cria token de verificacao de e-mail, regi
 - comments/list_cached.php continua existindo como ponte de compatibilidade, mas a regra real agora mora em modules/comments.## Atualizacao 2026-04-03 - progressao de questões em modules/questions
 
 ### Funcionalidades absorvidas
-- submitAnswer: grava resposta do usuário, incrementa estatisticas da questão, atualiza XP/nivel e dispara recompensa de level up quando necessario.
+- submitAnswer: grava resposta do usuário, incrementa estatisticas da questão e atualiza XP/nivel; a progressão não altera assinatura nem entitlement.
 - getQuestionHistory: lista o histórico de tentativas por questão; para convidado retorna lista vazia.
 - 
 esetAnswers: limpa as respostas persistidas do usuário autenticado.
@@ -938,7 +924,7 @@ esetAnswers: limpa as respostas persistidas do usuário autenticado.
 ### Como funciona
 - O modulo usa sessão autenticada como fonte de verdade e so aceita operar em outro usuário quando o contexto e admin.
 - O histórico preserva o formato esperado pelo frontend (questionId, selectedOptionIndex, isCorrect, 	imestamp).
-- O fluxo de recompensa de level up foi internalizado em modules/questions, sem depender de helper de dominio dentro de pi/.## Atualizacao 2026-04-03 - leitura e administracao de questões em modules/questions
+- O fluxo de progressão foi internalizado em modules/questions, sem conceder tempo de assinatura e sem depender de helper de dominio dentro de api/.## Atualizacao 2026-04-03 - leitura e administracao de questões em modules/questions
 
 ### Funcionalidades absorvidas
 - listQuestions: monta a lista principal de questões para pratica, com filtros, stats, comentários agregados e resposta mais recente do usuário.

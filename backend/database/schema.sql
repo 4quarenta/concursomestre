@@ -81,7 +81,6 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
     current_period_start DATETIME NULL,
     current_period_end DATETIME NULL,
     external_subscription_id VARCHAR(255) NULL,
-    mp_preapproval_id VARCHAR(255) NULL,
     payment_provider VARCHAR(50) NOT NULL DEFAULT 'stripe',
     provider_subscription_id VARCHAR(255) NULL,
     provider_customer_id VARCHAR(255) NULL,
@@ -112,16 +111,13 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
     INDEX idx_user_subscriptions_user_status (user_id, status),
     INDEX idx_user_subscriptions_provider_subscription (provider_subscription_id),
     INDEX idx_user_subscriptions_period_end (current_period_end),
-    UNIQUE KEY uniq_user_subscriptions_provider_subscription (provider_subscription_id),
-    UNIQUE KEY uniq_user_subscriptions_mp_preapproval (mp_preapproval_id)
+    UNIQUE KEY uniq_user_subscriptions_provider_subscription (provider_subscription_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS user_cards (
     id VARCHAR(64) PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL,
     payment_provider VARCHAR(50) NOT NULL DEFAULT 'stripe',
-    mp_card_id VARCHAR(255) NULL,
-    mp_customer_id VARCHAR(255) NULL,
     stripe_payment_method_id VARCHAR(255) NULL,
     provider_customer_id VARCHAR(255) NULL,
     brand VARCHAR(80) NULL,

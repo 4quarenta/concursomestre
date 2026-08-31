@@ -151,7 +151,6 @@ function ciCriticalTests(): array
         'tests/StripeConfigurationWiringTest.php',
         'tests/SubscriptionsCheckoutWiringTest.php',
         'tests/SubscriptionsCronWiringTest.php',
-        'tests/SubscriptionsPlanSyncWiringTest.php',
         'tests/SubscriptionsTermDebtBehaviorTest.php',
         'tests/UploadSecurityWiringTest.php',
         'tests/VpsOperationsGateWiringTest.php',

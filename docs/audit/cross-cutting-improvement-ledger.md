@@ -95,3 +95,27 @@ DEFERRED_WITHOUT_OWNER = 0
 BLOCKED_WITHOUT_ACCEPTANCE_CONDITION = 0
 REAL_DATA_PRE_GO_CONTRADICTIONS = 0
 ```
+
+## Macrostep 16 disposition (2026-08-30)
+
+| ID | Finding | Status | Destination / acceptance condition |
+| --- | --- | --- | --- |
+| B16-01 | Checkout sem `checkout_attempt_id` permitia omitir a chave de idempotencia do provider | IMPLEMENTED | Backend agora rejeita tentativa sem identificador e preserva a chave Stripe; teste `BillingCheckoutIdempotencyContractTest` passa. |
+| B16-02 | E2E financeiro e testes de concorrencia dependentes do provedor nao puderam ser concluídos no cleanroom | VERIFIED | Candidato executado em cleanroom VPS isolado com Stripe TEST e Percona/MySQL 8.4 descartável; 7/7 cenarios provider-backed passaram; nenhum writer de producao foi acionado. |
+| B16-03 | Renovacao real com Test Clock, webhook replay e reconciliacao | VERIFIED | Cleanroom VPS isolado com Stripe TEST e Percona/MySQL 8.4 descartável; 7/7 cenarios provider-backed passaram sem mutacao de producao. |
+| B16-04 | Remocao do provider legado Mercado Pago e preservacao do dominio Stripe/materials | IMPLEMENTED | Superficies MP removidas; abstracoes genericas e pagamentos Stripe/materials preservados. |
+| B16-05 | Duplicacao de preview de preco/cupom no cliente | ACCEPTED_DEBT_WITH_REASON | UI pode projetar preview; backend continua autoridade final do plano, valor e cobranca. |
+| B16-06 | Dependencia de settings globais e payload billing historico | TRANSFERRED | Revisar no proximo ciclo de performance/contratos, sem alterar o fluxo financeiro nesta auditoria. |
+| B16-07 | Gamificacao concedia tempo de assinatura no level-up | IMPLEMENTED | O worker preserva XP, nivel, streaks, badges e marcos; a fronteira de gamificacao nao escreve assinatura, cria entitlement pago nem chama Stripe. Regressao coberta por `GamificationCannotGrantSubscriptionTimeTest`. |
+
+`MACROSTEP_16_IMPROVEMENT_AUDIT = COMPLETE`
+
+`MACROSTEP_16_READINESS_AUDIT = PASS`
+
+`P0_REMAINING = 0`
+
+`P1_IMPLEMENTATION_REMAINING = 0`
+
+`READINESS_BLOCKER = none`
+
+`SECONDARY_BLOCKERS = none`

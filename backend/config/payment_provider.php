@@ -27,16 +27,12 @@ function normalizePaymentProvider(?string $provider): string
         return 'stripe';
     }
 
-    if (in_array($normalized, ['mercado_pago', 'mercadopago', 'mercado livre', 'mercado_livre', 'mercado pago'], true)) {
-        return 'mercado_pago';
-    }
-
     return 'stripe';
 }
 
 function isChargeablePaymentProvider(?string $provider): bool
 {
-    return in_array(normalizePaymentProvider($provider), ['stripe', 'mercado_pago'], true);
+    return normalizePaymentProvider($provider) === 'stripe';
 }
 
 function paymentProviderSupportsRemoteCancellation(?string $provider): bool

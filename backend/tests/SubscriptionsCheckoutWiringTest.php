@@ -76,37 +76,6 @@ function assertFunctionBlockNotContainsForSubscriptionsCheckout(string $path, st
 $base = dirname(__DIR__);
 
 assertContainsSubscriptionsRouteDelegate(
-    $base . '/api/subscriptions/process_payment.php',
-    'respondRemovedMercadoPagoSubscriptionsRoute',
-    'Removed Mercado Pago process payment endpoint must return 410 without running legacy flow'
-);
-
-foreach ([
-    '/api/subscriptions/create.php',
-    '/api/subscriptions/webhook.php',
-    '/api/subscriptions/webhook_mp.php',
-    '/api/subscriptions/process_payment.php',
-] as $removedMercadoPagoEndpoint) {
-    assertContainsSubscriptionsRouteDelegate(
-        $base . $removedMercadoPagoEndpoint,
-        'respondRemovedMercadoPagoSubscriptionsRoute',
-        'Removed Mercado Pago subscription endpoint must return 410 directly'
-    );
-
-    assertNotContainsSubscriptionsRouteDelegate(
-        $base . $removedMercadoPagoEndpoint,
-        'config/database.php',
-        'Removed Mercado Pago subscription endpoint must not open MySQL'
-    );
-}
-
-assertNotContainsSubscriptionsRouteDelegate(
-    $base . '/api/subscriptions/process_payment.php',
-    'config/database.php',
-    'Removed Mercado Pago process payment endpoint must not open MySQL'
-);
-
-assertContainsSubscriptionsRouteDelegate(
     $base . '/api/subscriptions/automation_helper.php',
     'handleSubscriptionsAutomationHelperRoute',
     'Subscriptions automation helper endpoint must delegate to subscriptions routes'
@@ -142,12 +111,6 @@ assertFunctionBlockNotContainsForSubscriptionsCheckout(
     'handleSubscriptionsStripeWebhookRoute',
     'requireAdminSessionContext',
     'Stripe webhook route must not require an admin session'
-);
-
-assertContainsSubscriptionsRouteDelegate(
-    $base . '/modules/subscriptions/routes.php',
-    'function handleSubscriptionsMercadoPagoProcessPaymentRoute',
-    'Subscriptions routes must expose Mercado Pago process payment handler'
 );
 
 assertContainsSubscriptionsRouteDelegate(

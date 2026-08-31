@@ -320,7 +320,7 @@ class TransactionsRepository
             FROM user_subscriptions us
             JOIN plans p ON us.plan_id = p.id
             WHERE us.user_id = :user_id
-              AND COALESCE(us.payment_provider, 'mercado_pago') = 'stripe'
+              AND COALESCE(us.payment_provider, 'stripe') = 'stripe'
               AND COALESCE(us.total_installments, 1) > 1
               AND COALESCE(us.paid_installments, 0) < COALESCE(us.total_installments, 1)
               AND us.status IN ('active', 'trialing')

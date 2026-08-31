@@ -12,7 +12,7 @@ Isso mantinha uma superficie publica desnecessariamente permissiva para jobs que
 
 ## Impacto
 - `api/tasks/ProcessRewards.php` agora depende de ambiente corretamente configurado.
-- `api/subscriptions/cron_recurring.php`, `cron_scheduled_payments.php` e `cron_stripe_reconciliation.php` falham fechados sem `CRON_SECRET`.
+- `api/subscriptions/cron_stripe_reconciliation.php` falha fechada sem `CRON_SECRET`.
 - `api/subscriptions/automation_helper.php` nao deve mais gerar URL administrativa com segredo vazio.
 
 ## Arquivos principais
@@ -26,4 +26,3 @@ Isso mantinha uma superficie publica desnecessariamente permissiva para jobs que
 - `CronSecretHardeningWiringTest.php`
 - `UsersModuleWiringTest.php`
 - `SubscriptionsCheckoutWiringTest.php`
-- `SubscriptionsPlanSyncWiringTest.php`

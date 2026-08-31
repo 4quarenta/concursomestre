@@ -426,12 +426,12 @@ export const DEFAULT_NOTIFICATION_RULES: NotificationRuleSettings[] = [
   {
     key: 'level_bonus',
     category: 'Gamificação',
-    label: 'Bônus por nível',
+    label: 'Progressão de nível',
     trigger: 'Quando o aluno sobe de nível.',
-    title: 'Bônus de nível alcançado!',
-    message: 'Parabéns! Por subir de nível, você ganhou dias extras de acesso.',
+    title: 'Nível alcançado!',
+    message: 'Mensagem dinâmica sobre a progressão de nível, sem alterar a assinatura.',
     type: 'success',
-    link: '/profile?tab=billing',
+    link: '/profile/personal',
     enabled: true,
   },
   {

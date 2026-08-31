@@ -55,7 +55,7 @@ operacional separados.
 - Frontend: Next.js na raiz `C:/dev/concursomestre`, build com `npm run build`, processo com `npm run start` ou PM2.
 - Backend: PHP em `C:/xampp/htdocs/questao-pro-backend` no desenvolvimento; em VPS, publicar como app PHP separado atras de Apache/Nginx.
 - Banco: MySQL/MariaDB com usuario proprio, sem `root`, backup diario e charset `utf8mb4`.
-- Pagamentos: Stripe como provider ativo. Mercado Pago deve permanecer sem cron/webhook ativo.
+- Pagamentos: Stripe como único provider ativo. Não há superfície Mercado Pago publicada.
 
 ## Variaveis obrigatorias
 
@@ -282,8 +282,7 @@ Ativo:
 
 Remover/desativar:
 
-- Qualquer cron de Mercado Pago.
-- `sync_mercadopago_preapproval_plans.php`, exceto como guarda temporaria para detectar configuracao legada.
+- Qualquer artefato ou cron de provider financeiro não suportado.
 
 Regras:
 

@@ -70,10 +70,6 @@ const criticalPhpTargets = [
     target: 'tests/SubscriptionsCronWiringTest.php',
   },
   {
-    name: 'Billing plan sync wiring',
-    target: 'tests/SubscriptionsPlanSyncWiringTest.php',
-  },
-  {
     name: 'Billing saldo de termo parcelado',
     target: 'tests/SubscriptionsTermDebtBehaviorTest.php',
   },

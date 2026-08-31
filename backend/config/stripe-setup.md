@@ -60,7 +60,7 @@ Download from: https://stripe.com/docs/stripe-cli
 
 ### 2. Forward webhooks to local server
 ```bash
-stripe listen --forward-to http://localhost/questao-pro-backend/api/payments/webhook.php
+stripe listen --forward-to http://localhost/questao-pro-backend/api/subscriptions/stripe_webhook.php
 ```
 
 This will give you a webhook secret like `whsec_...` - add it to your `.env` file.
@@ -102,7 +102,7 @@ Replace test keys with production keys in `.env`
 ### 3. Configure Webhook URL
 In Stripe Dashboard:
 - Go to Developers > Webhooks
-- Add endpoint: `https://yourdomain.com/api/payments/webhook.php`
+- Add endpoint: `https://yourdomain.com/api/subscriptions/stripe_webhook.php`
 - Select events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded`
 
 ### 4. Enable Stripe Connect
@@ -118,7 +118,7 @@ In Stripe Dashboard:
 - ✅ `migrations/add_stripe_columns.sql` - Database schema
 - ✅ `config/stripe.php` - Stripe configuration
 - ✅ `api/payments/create-payment-intent.php` - Create payments
-- ✅ `api/payments/webhook.php` - Handle events
+- ✅ `api/subscriptions/stripe_webhook.php` - Handle events
 - ✅ `api/payments/create-connect-account.php` - Seller onboarding
 
 ### Frontend (To be created)

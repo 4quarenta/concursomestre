@@ -659,6 +659,7 @@ function billingValidationRunBillingStrategyScenarios(PDO $db, SubscriptionsServ
             'billing_mode' => 'monthly',
             'installment_count' => 1,
             'coupon_code' => (string) ($couponPayload[1]['code'] ?? ''),
+            'checkout_attempt_id' => 'billing_validation_' . billingValidationMakeRunSuffix(),
         ]);
         $latestLocalSubscription = billingValidationFindLatestSubscriptionByUser($db, $upgradeUserId);
         $localCreditTransactions = billingValidationFindPlanTransactions($db, $upgradeUserId);

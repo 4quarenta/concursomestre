@@ -39,16 +39,6 @@ function buildSubscriptionsController(PDO $db): SubscriptionsController
 }
 
 /**
- * Responde que o fluxo Mercado Pago foi removido do produto.
- *
- * @since 1.0.0
- */
-function respondRemovedMercadoPagoSubscriptionsRoute(): void
-{
-    Response::error('Mercado Pago foi removido do produto. Use apenas os endpoints Stripe.', 410);
-}
-
-/**
  * Entrada oficial da validacao de cupom do checkout.
  *
  * @since 1.0.0
@@ -87,16 +77,6 @@ function handleSubscriptionsValidateCouponRoute(PDO $db): void
     } catch (Throwable $e) {
         Response::serverError('Erro ao validar cupom.', $e);
     }
-}
-
-/**
- * Entrada oficial da criacao da preferencia Mercado Pago para assinatura.
- *
- * @since 1.0.0
- */
-function handleSubscriptionsMercadoPagoCreateRoute(PDO $db): void
-{
-    respondRemovedMercadoPagoSubscriptionsRoute();
 }
 
 /**
@@ -455,16 +435,6 @@ function handleSubscriptionsUndoCancelRoute(PDO $db): void
 }
 
 /**
- * Entrada oficial do webhook Mercado Pago do dominio de assinaturas.
- *
- * @since 1.0.0
- */
-function handleSubscriptionsMercadoPagoWebhookRoute(PDO $db): void
-{
-    respondRemovedMercadoPagoSubscriptionsRoute();
-}
-
-/**
  * Segredo compartilhado dos jobs legados do dominio de assinaturas.
  *
  * @since 1.0.0
@@ -503,26 +473,6 @@ function resolveSubscriptionsCronRequestKey(): string
     }
 
     return trim((string) ($_SERVER['HTTP_X_CRON_SECRET'] ?? ''));
-}
-
-/**
- * Entrada oficial do cron de cobrancas agendadas do Mercado Pago.
- *
- * @since 1.0.0
- */
-function handleSubscriptionsScheduledPaymentsCronRoute(PDO $db): void
-{
-    respondRemovedMercadoPagoSubscriptionsRoute();
-}
-
-/**
- * Entrada oficial do cron de renovacoes recorrentes do Mercado Pago.
- *
- * @since 1.0.0
- */
-function handleSubscriptionsRecurringCronRoute(PDO $db): void
-{
-    respondRemovedMercadoPagoSubscriptionsRoute();
 }
 
 /**
@@ -617,16 +567,6 @@ function getSubscriptionsRuntimeLogPath(string $filename): string
     }
 
     return $logDirectory . '/' . ltrim($filename, '/');
-}
-
-/**
- * Entrada oficial do checkout interno Mercado Pago para assinatura.
- *
- * @since 1.0.0
- */
-function handleSubscriptionsMercadoPagoProcessPaymentRoute(PDO $db): void
-{
-    respondRemovedMercadoPagoSubscriptionsRoute();
 }
 
 /**
@@ -827,14 +767,4 @@ function handleSubscriptionsStripeTestingRunsRoute(PDO $db): void
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel processar o registro de execucao da matriz Stripe.', $e);
     }
-}
-
-/**
- * Entrada oficial da sincronizacao admin de planos recorrentes do Mercado Pago.
- *
- * @since 1.0.0
- */
-function handleSubscriptionsMercadoPagoPlanSyncRoute(PDO $db): void
-{
-    respondRemovedMercadoPagoSubscriptionsRoute();
 }

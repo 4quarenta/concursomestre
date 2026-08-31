@@ -12,69 +12,14 @@
 */
 
 /**
- * Suporte de recompensa por progressao dentro do dominio questions.
- * Mantem a regra de bonus por level up fora dos endpoints legados.
+ * Suporte de recompensas de progresso dentro do dominio questions.
+ * Recompensas de gamificacao nao alteram assinaturas nem entitlements pagos.
   * @since 1.0.0
  */
 class QuestionsRewardService
 {
     public function __construct(private readonly QuestionsRepository $repository)
     {
-    }
-
-    /**
-     * Concede dias de acesso PRO/Elite quando o usuario sobe de nivel.
-      * @since 1.0.0
-     */
-    public function applyLevelUpReward(array $userSnapshot): void
-    {
-        $userId = (string) ($userSnapshot['id'] ?? '');
-        if ($userId === '') {
-            return;
-        }
-
-        $level = max(1, (int) ($userSnapshot['level'] ?? 1));
-        $grant = $this->repository->grantGamificationEvent(
-            $userId,
-            'level_up_reward',
-            'level_up_reward:' . $userId . ':' . $level,
-            0,
-            0,
-            null,
-            ['level' => $level]
-        );
-        if (empty($grant['applied'])) {
-            return;
-        }
-
-        $currentPlan = (string) ($userSnapshot['plan'] ?? 'Gratuito');
-        $rewardDays = $currentPlan === 'Elite' ? 7 : 5;
-        $currentEnd = trim((string) ($userSnapshot['subscription_end'] ?? ''));
-        $now = time();
-
-        if ($currentEnd === '' || strtotime($currentEnd) === false || strtotime($currentEnd) < $now) {
-            $newEnd = date('Y-m-d H:i:s', strtotime("+{$rewardDays} days"));
-        } else {
-            $newEnd = date('Y-m-d H:i:s', strtotime($currentEnd . " +{$rewardDays} days"));
-        }
-
-        $newPlan = $currentPlan;
-        if ($currentPlan === 'Gratuito' || $currentPlan === 'Essencial') {
-            $newPlan = 'Pro';
-        }
-
-        $this->repository->updateUserRewardPlan($userId, $newPlan, $newEnd);
-        $this->repository->insertNotification([
-            'id' => $this->generateNotificationId(),
-            'user_id' => $userId,
-            'title' => 'Bonus de nivel alcancado!',
-            'message' => $currentPlan === 'Elite'
-                ? "Parabens! Por subir de nivel, voce ganhou {$rewardDays} dias de acesso Elite gratis!"
-                : "Parabens! Por subir de nivel, voce ganhou {$rewardDays} dias de acesso PRO gratis!",
-            'category' => 'system',
-            'type' => 'success',
-            'link' => '/profile?tab=billing',
-        ]);
     }
 
     /**

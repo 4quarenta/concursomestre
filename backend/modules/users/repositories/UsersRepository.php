@@ -982,8 +982,6 @@ class UsersRepository
                 payment_provider,
                 stripe_payment_method_id,
                 provider_customer_id,
-                mp_card_id,
-                mp_customer_id,
                 brand,
                 last_four_digits,
                 exp_month,
@@ -1181,56 +1179,6 @@ class UsersRepository
 
         $cardId = $stmt->fetchColumn();
         return $cardId ? (string) $cardId : null;
-    }
-
-    /**
-     * Insere um novo cartao legado/local no cofre do Usuario.
-      * @since 1.0.0
-     */
-    public function insertLegacySavedCard(string $userId, array $cardData): string
-    {
-        $cardId = bin2hex(random_bytes(16));
-        $stmt = $this->db->prepare(
-            "INSERT INTO user_cards (
-                id,
-                user_id,
-                payment_provider,
-                mp_card_id,
-                brand,
-                last_four_digits,
-                exp_month,
-                exp_year,
-                holder_name,
-                is_default,
-                locked_by_recurring
-            ) VALUES (
-                :id,
-                :user_id,
-                'mercado_pago',
-                :mp_card_id,
-                :brand,
-                :last_four_digits,
-                :exp_month,
-                :exp_year,
-                :holder_name,
-                :is_default,
-                0
-            )"
-        );
-        $stmt->execute([
-            ':id' => $cardId,
-            ':user_id' => $userId,
-            ':mp_card_id' => $cardData['mp_card_id'],
-            ':brand' => $cardData['brand'],
-            ':last_four_digits' => $cardData['last_four_digits'],
-            ':exp_month' => $cardData['exp_month'],
-            ':exp_year' => $cardData['exp_year'],
-            ':holder_name' => $cardData['holder_name'],
-            ':is_default' => $cardData['is_default'] ? 1 : 0,
-        ]);
-        RuntimeMutationEvidence::record('user_cards', 'INSERT', 'http-auth-account', 'billing_card_save', 1);
-
-        return $cardId;
     }
 
     /**

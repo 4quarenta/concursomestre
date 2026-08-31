@@ -41,16 +41,6 @@ function buildPaymentsController(?PDO $db = null): PaymentsController
 }
 
 /**
- * Responde que o fluxo legado de Mercado Pago foi removido.
- *
- * @since 1.0.0
- */
-function respondRemovedMercadoPagoPaymentsRoute(): void
-{
-    Response::error('Mercado Pago foi removido do produto. Os fluxos financeiros operam apenas com Stripe.', 410);
-}
-
-/**
  * Resolve o usurio autenticado obrigatorio para mutacoes financeiras.
  *
  * @since 1.0.0
@@ -130,16 +120,6 @@ function handlePaymentsProcessMaterialRoute(PDO $db): void
 }
 
 /**
- * Entrada oficial da criacao de preferencia hospedada do Mercado Pago.
- *
- * @since 1.0.0
- */
-function handlePaymentsCreatePreferenceRoute(PDO $db): void
-{
-    respondRemovedMercadoPagoPaymentsRoute();
-}
-
-/**
  * Entrada oficial do onboarding Stripe Connect para vendedores.
  *
  * @since 1.0.0
@@ -161,16 +141,6 @@ function handlePaymentsCreateConnectAccountRoute(PDO $db): void
     } catch (Throwable $e) {
         Response::serverError('No foi possvel iniciar o onboarding Stripe.', $e);
     }
-}
-
-/**
- * Entrada oficial do webhook do Mercado Pago.
- *
- * @since 1.0.0
- */
-function handlePaymentsMercadoPagoWebhookRoute(PDO $db): void
-{
-    respondRemovedMercadoPagoPaymentsRoute();
 }
 
 /**

@@ -86,20 +86,4 @@ foreach ($cronBridges as $path => $handler) {
     );
 }
 
-foreach ([
-    $base . '/api/subscriptions/cron_recurring.php',
-    $base . '/api/subscriptions/cron_scheduled_payments.php',
-] as $removedCronBridge) {
-    assertContainsBridgeText(
-        $removedCronBridge,
-        'respondRemovedMercadoPagoSubscriptionsRoute();',
-        'Cron HTTP legado deve permanecer como tombstone sem executar cobranca.'
-    );
-    assertNotContainsBridgeText(
-        $removedCronBridge,
-        'config/database.php',
-        'Tombstone de cron legado nao deve abrir conexao de banco.'
-    );
-}
-
 fwrite(STDOUT, "API exceptional bridges wiring assertions passed.\n");

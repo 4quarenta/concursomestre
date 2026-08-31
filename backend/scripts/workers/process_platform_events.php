@@ -36,11 +36,6 @@ foreach ($outbox->claimBatch($workerId, $limit) as $event) {
                 throw new RuntimeException('Evento de resposta sem usuario.');
             }
             $rewards->applyAnswerProgressRewards($userId, !empty($payload['isCorrect']));
-            $snapshot = $repository->findUserProgressSnapshot($userId);
-            if (is_array($snapshot)
-                && (int) ($snapshot['level'] ?? 1) > (int) ($payload['levelBefore'] ?? 1)) {
-                $rewards->applyLevelUpReward($snapshot);
-            }
         } else {
             throw new RuntimeException('Tipo de evento sem consumidor: ' . (string) ($event['event_type'] ?? ''));
         }
