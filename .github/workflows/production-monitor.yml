@@ -42,6 +42,7 @@ jobs:
 
             status="$(curl --silent --show-error --location \
               --connect-timeout 10 --max-time 20 \
+              --user-agent 'Concursomestre-External-Monitor/1.0' \
               --dump-header "$headers" --output "$body" \
               --write-out '%{http_code}' "$url")"
             if [[ "$status" != "$expected" ]]; then
