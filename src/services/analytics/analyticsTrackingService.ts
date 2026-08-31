@@ -16,54 +16,42 @@ import { readCookieConsent } from '@services/privacy/cookieConsent';
 export type LifecycleAnalyticsEventName =
   | 'identifiable_visit'
   | 'signup_started'
-  | 'email_captured'
   | 'signup_completed'
   | 'checkout_started'
   | 'plan_viewed'
   | 'payment_method_started'
   | 'checkout_abandoned'
-  | 'purchase_completed'
-  | 'payment_failed'
-  | 'renewal_upcoming'
-  | 'renewal_completed'
-  | 'subscription_cancelled'
-  | 'subscription_reactivated';
+  | 'payment_failed';
 
 type TrackLifecycleEventInput = {
   eventName: LifecycleAnalyticsEventName;
   source: string;
-  userId?: string | null;
-  email?: string | null;
-  sessionKey?: string | null;
   planId?: number | string | null;
   cycleLabel?: string | null;
-  originUrl?: string | null;
-  referrerUrl?: string | null;
-  utmSource?: string | null;
-  utmMedium?: string | null;
-  utmCampaign?: string | null;
   metadata?: Record<string, unknown>;
-  externalHooks?: Record<string, unknown>;
 };
 
-const SESSION_STORAGE_KEY = 'cm:analytics:session-key';
+const SAFE_METADATA_KEYS = ['mode', 'authMode', 'step', 'stage'] as const;
 
-const readSearchParam = (searchParams: URLSearchParams, key: string) => {
-  const value = searchParams.get(key);
-  return value && value.trim() !== '' ? value.trim() : null;
+const sanitizeMetadata = (metadata?: Record<string, unknown>) => {
+  if (!metadata) return undefined;
+
+  const safeEntries = SAFE_METADATA_KEYS.flatMap((key) => {
+    const value = metadata[key];
+    return typeof value === 'string' && /^[a-zA-Z0-9_-]{1,40}$/.test(value.trim())
+      ? [[key, value.trim()] as const]
+      : [];
+  });
+
+  return safeEntries.length > 0 ? Object.fromEntries(safeEntries) : undefined;
 };
 
-const getBrowserSessionKey = () => {
-  if (typeof window === 'undefined') return 'server';
-
-  const current = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-  if (current) {
-    return current;
-  }
-
-  const next = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  window.sessionStorage.setItem(SESSION_STORAGE_KEY, next);
-  return next;
+const readCampaignParam = (key: string, maxLength: number) => {
+  if (typeof window === 'undefined') return undefined;
+  const value = new URLSearchParams(window.location.search).get(key)?.trim() || '';
+  return value !== '' && /^[a-zA-Z0-9._~%-]+$/.test(value)
+    ? value.slice(0, maxLength)
+    : undefined;
 };
 
 /**
@@ -72,33 +60,19 @@ const getBrowserSessionKey = () => {
  * @since v1.0.0
  */
 export const analyticsTrackingService = {
-  getSessionKey(): string {
-    return getBrowserSessionKey();
-  },
-
   async trackLifecycleEvent(input: TrackLifecycleEventInput): Promise<void> {
     if (readCookieConsent()?.analytics !== true) return;
 
     try {
-      const searchParams = typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search)
-        : new URLSearchParams();
-
       await apiClient.post(ENDPOINTS.analytics.track, {
         eventName: input.eventName,
         source: input.source,
-        userId: input.userId || undefined,
-        email: input.email || undefined,
-        sessionKey: input.sessionKey || getBrowserSessionKey(),
         planId: input.planId ? Number(input.planId) : undefined,
         cycleLabel: input.cycleLabel || undefined,
-        originUrl: input.originUrl || (typeof window !== 'undefined' ? window.location.href : undefined),
-        referrerUrl: input.referrerUrl || (typeof document !== 'undefined' ? document.referrer || undefined : undefined),
-        utmSource: input.utmSource || readSearchParam(searchParams, 'utm_source'),
-        utmMedium: input.utmMedium || readSearchParam(searchParams, 'utm_medium'),
-        utmCampaign: input.utmCampaign || readSearchParam(searchParams, 'utm_campaign'),
-        metadata: input.metadata || undefined,
-        externalHooks: input.externalHooks || undefined,
+        utmSource: readCampaignParam('utm_source', 80),
+        utmMedium: readCampaignParam('utm_medium', 80),
+        utmCampaign: readCampaignParam('utm_campaign', 120),
+        metadata: sanitizeMetadata(input.metadata),
       });
     } catch (error) {
       clientLog.warn('[analyticsTrackingService] failed to track lifecycle event', input.eventName, error);

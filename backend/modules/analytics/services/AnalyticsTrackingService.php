@@ -31,12 +31,11 @@ class AnalyticsTrackingService
     {
         $normalized = $this->validator->validateTrackPayload($payload);
 
-        $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
-        if ($authenticatedUserId !== '') {
-            $normalized['user_id'] = $authenticatedUserId;
-        } else {
-            $normalized['user_id'] = null;
-        }
+        // Keep the internal ledger aggregate-only until a separate legal/product
+        // decision authorizes a privacy-preserving identity contract.
+        $normalized['user_id'] = null;
+        $normalized['email'] = null;
+        $normalized['session_key'] = null;
 
         $this->repository->insertEvent($normalized);
 

@@ -42,12 +42,23 @@ $service = new AnalyticsTrackingService($repository, new AnalyticsTrackingValida
 $service->track([
     'eventName' => 'checkout_started',
     'userId' => 'u-attacker',
-    'metadata' => ['step' => 'plans'],
+    'email' => 'person@example.com',
+    'sessionKey' => 'raw-session-id',
+    'originUrl' => 'https://example.com/checkout?token=secret',
+    'metadata' => ['step' => 'plans', 'paymentIntentId' => 'pi_secret'],
 ], ['user_id' => 'u-real']);
 
 assertAnalyticsCondition(
-    ($repository->lastPayload['user_id'] ?? null) === 'u-real',
-    'Authenticated analytics events must use the session user_id, not the client payload userId.'
+    ($repository->lastPayload['user_id'] ?? null) === null,
+    'Analytics events must not persist direct authenticated identity.'
+);
+assertAnalyticsCondition(($repository->lastPayload['email'] ?? null) === null, 'Analytics must not persist email.');
+assertAnalyticsCondition(($repository->lastPayload['session_key'] ?? null) === null, 'Analytics must not persist session ids.');
+assertAnalyticsCondition(($repository->lastPayload['origin_url'] ?? null) === null, 'Analytics must not persist raw URLs.');
+assertAnalyticsCondition(($repository->lastPayload['external_hooks_json'] ?? null) === null, 'Analytics must not persist caller hooks.');
+assertAnalyticsCondition(
+    ($repository->lastPayload['metadata_json'] ?? null) === '{"step":"plans"}',
+    'Analytics metadata must use the explicit safe-key allowlist.'
 );
 
 $service->track([
@@ -60,12 +71,19 @@ assertAnalyticsCondition(
     'Anonymous analytics events must not accept client-supplied userId.'
 );
 
+$service->track([
+    'eventName' => 'plan_viewed',
+    'source' => 'test',
+    'metadata' => ['reason' => 'provider detail', 'paymentIntentId' => 'pi_secret'],
+], null);
+assertAnalyticsCondition(
+    ($repository->lastPayload['metadata_json'] ?? null) === null,
+    'Analytics must discard non-contract metadata instead of persisting arbitrary values.'
+);
+
 try {
-    $service->track([
-        'eventName' => 'plan_viewed',
-        'metadata' => ['payload' => str_repeat('x', 9000)],
-    ], null);
-    throw new RuntimeException('Oversized analytics metadata should be rejected.');
+    $service->track(['eventName' => 'purchase_completed', 'source' => 'browser'], null);
+    throw new RuntimeException('Browser analytics must not be allowed to assert a paid conversion.');
 } catch (InvalidArgumentException $expected) {
 }
 

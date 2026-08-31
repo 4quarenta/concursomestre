@@ -53,8 +53,6 @@ const getPlanTierScore = (name: string) => {
     return 0;
 };
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 type AppliedCheckoutCoupon = DiscountCode & {
     discount_amount?: number;
     discount_percentage?: number;
@@ -213,7 +211,6 @@ const CheckoutPage: React.FC = () => {
         confirmPassword: ''
     });
 
-    const analyticsSessionKeyRef = useRef('');
     const checkoutAnalyticsRef = useRef({
         planViewed: false,
         checkoutStarted: false,
@@ -225,7 +222,6 @@ const CheckoutPage: React.FC = () => {
     const checkoutCompletionInProgressRef = useRef(false);
     const stripeFinalizationInProgressRef = useRef(false);
     const checkoutAttemptIdRef = useRef('');
-    const trackedCheckoutEmailsRef = useRef<Set<string>>(new Set());
     const trackedPaymentFailuresRef = useRef<Set<string>>(new Set());
 
     const getCheckoutAttemptId = useCallback(() => {
@@ -352,16 +348,7 @@ const CheckoutPage: React.FC = () => {
 
     const isUsingStripeSavedCard = Boolean(selectedStripeCard);
     const stripeRequiresSavedCard = isStripeInternalCheckoutActive && autoRenew && !isUsingStripeSavedCard;
-    const analyticsEmail = (currentUser?.email || formData.email || '').trim() || null;
     const analyticsCycleLabel = useMemo(() => (plan ? resolvePlanCycleKey(plan) : null), [plan]);
-
-    const getAnalyticsSessionKey = React.useCallback(() => {
-        if (!analyticsSessionKeyRef.current) {
-            analyticsSessionKeyRef.current = analyticsTrackingService.getSessionKey();
-        }
-
-        return analyticsSessionKeyRef.current;
-    }, []);
 
     const requestRecaptchaToken = useCallback(async (action: string) => {
         if (!recaptchaEnabled) {
@@ -382,14 +369,11 @@ const CheckoutPage: React.FC = () => {
         void analyticsTrackingService.trackLifecycleEvent({
             eventName,
             source: 'checkout',
-            sessionKey: getAnalyticsSessionKey(),
-            userId: currentUser?.id || null,
-            email: analyticsEmail,
             planId: plan?.id || null,
             cycleLabel: analyticsCycleLabel,
             metadata,
         });
-    }, [analyticsCycleLabel, analyticsEmail, currentUser?.id, getAnalyticsSessionKey, plan?.id]);
+    }, [analyticsCycleLabel, plan?.id]);
 
     const trackPaymentFailure = React.useCallback((stage: string, reason?: string | null) => {
         const normalizedReason = String(reason || 'unknown').trim();
@@ -449,28 +433,6 @@ const CheckoutPage: React.FC = () => {
             step,
         });
     }, [authMode, step, trackCheckoutLifecycleEvent]);
-
-    useEffect(() => {
-        const normalizedEmail = (formData.email || '').trim().toLowerCase();
-        if (!EMAIL_REGEX.test(normalizedEmail) || trackedCheckoutEmailsRef.current.has(normalizedEmail)) {
-            return;
-        }
-
-        trackedCheckoutEmailsRef.current.add(normalizedEmail);
-        void analyticsTrackingService.trackLifecycleEvent({
-            eventName: 'email_captured',
-            source: 'checkout',
-            sessionKey: getAnalyticsSessionKey(),
-            userId: currentUser?.id || null,
-            email: normalizedEmail,
-            planId: plan?.id || null,
-            cycleLabel: analyticsCycleLabel,
-            metadata: {
-                authMode,
-                step,
-            },
-        });
-    }, [analyticsCycleLabel, authMode, currentUser?.id, formData.email, getAnalyticsSessionKey, plan?.id, step]);
 
     useEffect(() => {
         if (step !== 'payment' || checkoutAnalyticsRef.current.paymentStarted) {
@@ -912,9 +874,6 @@ const CheckoutPage: React.FC = () => {
                     void analyticsTrackingService.trackLifecycleEvent({
                         eventName: 'signup_completed',
                         source: 'checkout',
-                        sessionKey: getAnalyticsSessionKey(),
-                        userId: session.user.id,
-                        email: session.user.email || formData.email.trim(),
                         planId: plan?.id || null,
                         cycleLabel: analyticsCycleLabel,
                         metadata: {
@@ -1332,11 +1291,6 @@ const CheckoutPage: React.FC = () => {
         if (!checkoutAnalyticsRef.current.purchaseCompleted) {
             checkoutAnalyticsRef.current.purchaseCompleted = true;
             checkoutAnalyticsRef.current.checkoutAbandoned = false;
-            trackCheckoutLifecycleEvent('purchase_completed', {
-                subscriptionId,
-                paymentMethodId: options?.paymentMethodId || pendingStripePaymentMethodId || null,
-                paymentIntentId: options?.paymentIntentId || null,
-            });
         }
 
     };

@@ -173,3 +173,19 @@ tokens e política de sessão).
 `TRANSFERRED_WITHOUT_OWNER = 0`
 
 `DEFERRED_WITHOUT_ACCEPTANCE_CONDITION = 0`
+
+## Macrostep 19 disposition (2026-08-31)
+
+| ID | Area | Category | Current state | Finding | Target state | Status | Owner / acceptance condition |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M19-01 | edge privacy | privacy | Cloudflare Google Tag Gateway injected tags before consent | Edge injection bypassed the application consent boundary | GTG disabled; application loader remains consent-gated | IMPLEMENTED | Operations; re-run fresh-browser gate after any edge configuration change |
+| M19-02 | analytics payload | privacy | Client and validator accepted identity, raw URLs and arbitrary metadata | New analytics events could persist direct identity and payment-adjacent values | Aggregate allowlisted payload with zero direct PII fields | IMPLEMENTED_IN_CANDIDATE | Engineering; PHP security tests and candidate deployment |
+| M19-03 | conversion | correctness | Public browser event list included paid conversion names | Browser signals could be mistaken for billing authority | Billing state is the only paid-conversion authority | IMPLEMENTED_IN_CANDIDATE | Billing/Engineering; validator rejection and billing-state reconciliation |
+| M19-04 | attribution | product/legal | UTM ownership and retention were implicit | First/last touch and expiry were not defined | Bounded, consented attribution contract approved by Product/Legal | TRANSFERRED | Product + Legal; explicit retention and attribution decision |
+| M19-05 | measurement | product | SPA pageview and marketing destinations are not fully defined | Adding tags without a duplicate policy would create noisy data | One pageview policy and provider-specific dedup contract | TRANSFERRED | Product/Marketing; route-transition test and provider owner |
+| M19-06 | legal | compliance | Legal retention/basis review remains pending from Macrostep 17 | Analytics retention cannot be self-authorized | Approved legal basis, retention, and user-rights treatment | OPEN_WITH_OWNER | Legal; Macrostep 17 final review |
+
+`MACROSTEP_19_IMPORTED_LEDGER_FINDINGS_ACCOUNTED_FOR = SIM`
+`ALL_NEW_P2_ACCOUNTED_FOR = SIM`
+`TRANSFERRED_WITHOUT_OWNER = 0`
+`DEFERRED_WITHOUT_ACCEPTANCE_CONDITION = 0`

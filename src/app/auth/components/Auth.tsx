@@ -162,8 +162,6 @@ type PendingSocialSignup = {
   phone: string;
 };
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const isValidCpf = (value: string): boolean => {
   const digits = value.replace(/\D/g, '');
   if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
@@ -278,10 +276,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   });
 
   const googleButtonRef = useRef<HTMLDivElement>(null);
-  const analyticsSessionKeyRef = useRef('');
   const trackedAuthVisitRef = useRef(false);
   const trackedSignupStartRef = useRef(false);
-  const trackedSignupEmailsRef = useRef<Set<string>>(new Set());
   const loginSubmissionGateRef = useRef(createSubmissionGate());
 
   const isSignup = mode === 'signup';
@@ -295,14 +291,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     enabled: recaptchaEnabled && isAuthForm,
     siteKey: systemSettings?.recaptchaSiteKey,
   });
-
-  const getAnalyticsSessionKey = () => {
-    if (!analyticsSessionKeyRef.current) {
-      analyticsSessionKeyRef.current = analyticsTrackingService.getSessionKey();
-    }
-
-    return analyticsSessionKeyRef.current;
-  };
 
   const update = (field: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -354,8 +342,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     void analyticsTrackingService.trackLifecycleEvent({
       eventName: 'identifiable_visit',
       source: 'auth',
-      sessionKey: getAnalyticsSessionKey(),
-      email: formData.email.trim() || null,
       metadata: { mode },
     });
   }, [formData.email, mode]);
@@ -367,26 +353,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     void analyticsTrackingService.trackLifecycleEvent({
       eventName: 'signup_started',
       source: 'auth',
-      sessionKey: getAnalyticsSessionKey(),
-      email: formData.email.trim() || null,
-    });
-  }, [formData.email, mode]);
-
-  useEffect(() => {
-    if (mode !== 'signup') return;
-
-    const normalizedEmail = formData.email.trim().toLowerCase();
-    if (!EMAIL_REGEX.test(normalizedEmail) || trackedSignupEmailsRef.current.has(normalizedEmail)) {
-      return;
-    }
-
-    trackedSignupEmailsRef.current.add(normalizedEmail);
-    void analyticsTrackingService.trackLifecycleEvent({
-      eventName: 'email_captured',
-      source: 'auth',
-      sessionKey: getAnalyticsSessionKey(),
-      email: normalizedEmail,
-      metadata: { mode },
     });
   }, [formData.email, mode]);
 
@@ -478,9 +444,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       void analyticsTrackingService.trackLifecycleEvent({
         eventName: 'signup_completed',
         source: 'auth',
-        sessionKey: getAnalyticsSessionKey(),
-        userId: session.user.id,
-        email: session.user.email || formData.email.trim(),
         metadata: { mode: 'signup' },
       });
       try {
@@ -579,9 +542,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       void analyticsTrackingService.trackLifecycleEvent({
         eventName: 'signup_completed',
         source,
-        sessionKey: getAnalyticsSessionKey(),
-        userId: session.user.id,
-        email: session.user.email || null,
         metadata: { mode: provider },
       });
     }
