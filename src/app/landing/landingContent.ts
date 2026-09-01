@@ -17,6 +17,10 @@ import {
   Linkedin,
   MessageCircle,
   MessageSquare,
+  Building2,
+  Landmark as LandmarkIcon,
+  Scale,
+  Shield,
   Send,
   ShoppingBag,
   Trophy,
@@ -26,6 +30,9 @@ import {
 import type {
   LandingFeatureCard,
   LandingFeatureIconKey,
+  LandingFeaturedOrganizationIconKey,
+  LandingFeaturedOrganizationStatus,
+  LandingFeaturedOrganization,
   LandingPageContent,
   LandingSocialIconKey,
   LandingSocialLink,
@@ -87,6 +94,28 @@ export const landingSocialIconMap = LANDING_SOCIAL_ICON_OPTIONS.reduce<Record<La
     return accumulator;
   },
   {} as Record<LandingSocialIconKey, LucideIconComponent>,
+);
+
+export const LANDING_FEATURED_ORGANIZATION_STATUS_OPTIONS: Array<{ key: LandingFeaturedOrganizationStatus; label: string }> = [
+  { key: 'FEATURED', label: 'Em destaque' },
+  { key: 'OPEN_NOTICE', label: 'Edital publicado' },
+  { key: 'COMING_SOON', label: 'Em breve' },
+  { key: 'LONG_TERM', label: 'Planejamento' },
+];
+
+export const LANDING_FEATURED_ORGANIZATION_ICON_OPTIONS: Array<{ key: LandingFeaturedOrganizationIconKey; label: string; icon: LucideIconComponent }> = [
+  { key: 'building', label: 'Instituição', icon: Building2 },
+  { key: 'landmark', label: 'Órgão público', icon: LandmarkIcon },
+  { key: 'shield', label: 'Segurança', icon: Shield },
+  { key: 'scale', label: 'Justiça', icon: Scale },
+];
+
+export const landingFeaturedOrganizationIconMap = LANDING_FEATURED_ORGANIZATION_ICON_OPTIONS.reduce<Record<LandingFeaturedOrganizationIconKey, LucideIconComponent>>(
+  (accumulator, option) => {
+    accumulator[option.key] = option.icon;
+    return accumulator;
+  },
+  {} as Record<LandingFeaturedOrganizationIconKey, LucideIconComponent>,
 );
 
 export const createLandingFeatureCard = (): LandingFeatureCard => ({
@@ -184,6 +213,7 @@ export const createDefaultLandingPageContent = (): LandingPageContent => ({
       enabled: false,
     },
   ],
+  featuredOrganizations: [],
 });
 
 const normalizeFeatureCard = (feature: Partial<LandingFeatureCard>, index: number): LandingFeatureCard => {
@@ -225,6 +255,28 @@ const normalizeSocialLink = (link: Partial<LandingSocialLink>, index: number): L
   };
 };
 
+const normalizeFeaturedOrganization = (
+  item: Partial<LandingFeaturedOrganization>,
+  index: number,
+): LandingFeaturedOrganization | null => {
+  const filterId = Number(item.filterId);
+  if (!Number.isInteger(filterId) || filterId <= 0) return null;
+  const status = LANDING_FEATURED_ORGANIZATION_STATUS_OPTIONS.some((option) => option.key === item.status)
+    ? item.status as LandingFeaturedOrganizationStatus
+    : 'FEATURED';
+  const iconKey = LANDING_FEATURED_ORGANIZATION_ICON_OPTIONS.some((option) => option.key === item.iconKey)
+    ? item.iconKey as LandingFeaturedOrganizationIconKey
+    : 'building';
+  return {
+    id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `orgao-${filterId}-${index}`,
+    filterId,
+    status,
+    iconKey,
+    enabled: item.enabled !== false,
+    order: typeof item.order === 'number' && Number.isFinite(item.order) ? item.order : (index + 1) * 10,
+  };
+};
+
 export const mergeLandingPageContent = (
   incoming?: Partial<LandingPageContent> | null,
 ): LandingPageContent => {
@@ -235,6 +287,9 @@ export const mergeLandingPageContent = (
   const socialSource = Array.isArray(incoming?.socialLinks) && incoming.socialLinks.length > 0
     ? incoming.socialLinks
     : defaults.socialLinks;
+  const organizationSource = Array.isArray(incoming?.featuredOrganizations)
+    ? incoming.featuredOrganizations
+    : defaults.featuredOrganizations;
 
   return {
     featureCards: featureSource
@@ -248,5 +303,11 @@ export const mergeLandingPageContent = (
         return leftOrder - rightOrder;
       }),
     socialLinks: socialSource.map((social, index) => normalizeSocialLink(social, index)),
+    featuredOrganizations: Array.from(new Map(organizationSource
+      .map((item, index) => normalizeFeaturedOrganization(item, index))
+      .filter((item): item is LandingFeaturedOrganization => item !== null)
+      .map((item) => [item.filterId, item] as const)).values())
+      .sort((left, right) => left.order - right.order || left.filterId - right.filterId)
+      .slice(0, 6),
   };
 };

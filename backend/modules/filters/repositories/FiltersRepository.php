@@ -385,6 +385,33 @@ class FiltersRepository
     }
 
     /**
+     * Resolve em uma unica consulta os filtros de orgao editorados para a homepage.
+     * Os IDs apenas restringem o conjunto; identidade publica continua sendo
+     * validada por type=orgao e o slug persistido retornado pelo banco.
+     *
+     * @param array<int, int> $filterIds
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchPublicOrganizationsByFilterIds(array $filterIds): array
+    {
+        $filterIds = array_values(array_unique(array_filter(array_map('intval', $filterIds), static fn (int $id): bool => $id > 0)));
+        if ($filterIds === []) return [];
+
+        $placeholders = implode(',', array_fill(0, count($filterIds), '?'));
+        $statement = $this->db->prepare(
+            "SELECT f.id, f.type, f.slug, f.name, f.acronym, f.description, f.asset_url
+               FROM filters f
+              WHERE f.id IN ({$placeholders})
+                AND f.type = 'orgao'
+                AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
+                AND TRIM(f.slug) <> ''
+                AND REGEXP_LIKE(f.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')"
+        );
+        $statement->execute($filterIds);
+        return $statement->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
      * Carrega o perfil publico de um orgao em sete consultas constantes.
      * Nenhuma consulta depende da quantidade de cards retornados.
      *

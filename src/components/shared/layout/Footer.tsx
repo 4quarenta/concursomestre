@@ -91,6 +91,10 @@ const Footer: React.FC = () => {
         </nav>
       </div>
 
+      <p className="mx-auto mt-8 max-w-4xl text-center text-[11px] font-medium leading-5 text-slate-500 dark:text-slate-400">
+        As marcas e logotipos pertencem aos respectivos titulares e são exibidos somente para identificação e referência. Esta exibição não implica afiliação ou endosso institucional.
+      </p>
+
       <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-slate-100 pt-8 dark:border-slate-900 sm:flex-row">
         <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 sm:text-left">
           &copy; {currentYear} ConcursoMestre. Todos os direitos reservados.

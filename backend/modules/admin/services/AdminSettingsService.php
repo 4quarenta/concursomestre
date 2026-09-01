@@ -153,6 +153,7 @@ class AdminSettingsService
     {
         $data = $this->validator->validateUpdatePayload($payload);
         $data = $this->normalizeFeatureSettingsPayload($data);
+        $this->validateFeaturedOrganizationFilterTypes($data);
         $this->log('POST Request Start. Payload keys: ' . implode(', ', array_keys($data)));
 
         $shouldSyncStripeRenewalProjection = isset($data['pricing'], $data['planDetails'])
@@ -1211,6 +1212,7 @@ class AdminSettingsService
                     'enabled' => false,
                 ],
             ],
+            'featuredOrganizations' => [],
         ];
 
         $merged = $defaults;
@@ -1219,6 +1221,9 @@ class AdminSettingsService
             : [];
         $socialLinks = isset($landingPageContent['socialLinks']) && is_array($landingPageContent['socialLinks'])
             ? $landingPageContent['socialLinks']
+            : [];
+        $featuredOrganizations = isset($landingPageContent['featuredOrganizations']) && is_array($landingPageContent['featuredOrganizations'])
+            ? $landingPageContent['featuredOrganizations']
             : [];
 
         if ($featureCards !== []) {
@@ -1261,7 +1266,56 @@ class AdminSettingsService
             }, $socialLinks);
         }
 
+        if ($featuredOrganizations !== []) {
+            $merged['featuredOrganizations'] = array_values(array_filter(array_map(
+                static function ($organization): ?array {
+                    $payload = is_array($organization) ? $organization : [];
+                    // Compatibilidade de leitura para configuracoes antigas; a
+                    // forma normalizada persistida/publicada e sempre filterId.
+                    $filterId = (int) ($payload['filterId'] ?? $payload['filter_id'] ?? $payload['organizationId'] ?? 0);
+                    if ($filterId <= 0) return null;
+                    return [
+                        'id' => trim((string) ($payload['id'] ?? 'orgao-' . $filterId)),
+                        'filterId' => $filterId,
+                        'status' => strtoupper(trim((string) ($payload['status'] ?? 'FEATURED'))),
+                        'iconKey' => trim((string) ($payload['iconKey'] ?? $payload['icon_key'] ?? 'building')),
+                        'enabled' => !array_key_exists('enabled', $payload) || !empty($payload['enabled']),
+                        'order' => isset($payload['order']) ? (int) $payload['order'] : 999,
+                    ];
+                },
+                array_slice($featuredOrganizations, 0, 6)
+            )));
+            usort($merged['featuredOrganizations'], static fn (array $left, array $right): int =>
+                ((int) $left['order'] <=> (int) $right['order'])
+                ?: ((int) $left['filterId'] <=> (int) $right['filterId']));
+        }
+
         return $merged;
+    }
+
+    /**
+     * A vitrine de orgaos referencia somente taxonomias existentes e do tipo
+     * orgao. O slug e o nome nunca fazem parte do payload persistido.
+     */
+    private function validateFeaturedOrganizationFilterTypes(array $payload): void
+    {
+        $content = is_array($payload['landingPageContent'] ?? null) ? $payload['landingPageContent'] : [];
+        $items = is_array($content['featuredOrganizations'] ?? null) ? $content['featuredOrganizations'] : [];
+        $filterIds = array_values(array_unique(array_filter(array_map(
+            static fn ($item): int => is_array($item) ? (int) ($item['filterId'] ?? 0) : 0,
+            $items
+        ), static fn (int $id): bool => $id > 0)));
+        if ($filterIds === []) return;
+
+        $placeholders = implode(',', array_fill(0, count($filterIds), '?'));
+        $statement = $this->db->prepare(
+            "SELECT id FROM filters WHERE id IN ({$placeholders}) AND type = 'orgao'"
+        );
+        $statement->execute($filterIds);
+        $validIds = array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        if (count($validIds) !== count($filterIds)) {
+            throw new InvalidArgumentException('A vitrine aceita somente filtros existentes do tipo orgao.');
+        }
     }
 
     /**

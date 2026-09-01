@@ -75,6 +75,38 @@ function handlePublicTaxonomyDirectoryRoute(PDO $db): void
 }
 
 /**
+ * Leitura publica limitada dos orgaos selecionados editorialmente na Home.
+ */
+function handlePublicFeaturedOrganizationsRoute(PDO $db): void
+{
+    try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+        $rawIds = trim((string) ($_GET['filter_ids'] ?? ''));
+        $tokens = $rawIds === '' ? [] : array_map('trim', preg_split('/[,;]+/', $rawIds) ?: []);
+        foreach ($tokens as $token) {
+            if ($token === '' || preg_match('/^[1-9][0-9]*$/', $token) !== 1) {
+                throw new InvalidArgumentException('IDs de filtros de orgaos destacados invalidos.');
+            }
+        }
+        $ids = array_values(array_unique(array_map('intval', $tokens)));
+        if (count($ids) > 6) {
+            Response::badRequest('Limite de orgaos destacados excedido.');
+        }
+        $controller = new FiltersController(
+            new FiltersService(new FiltersRepository($db), new FiltersValidator())
+        );
+        Response::success($controller->listPublicOrganizationsByFilterIds($ids));
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (Throwable $e) {
+        error_log('[public_featured_organizations_route] ' . $e->getMessage());
+        Response::serverError('Nao foi possivel carregar os orgaos destacados.', $e);
+    }
+}
+
+/**
  * Perfil publico agregado de uma banca, com concursos e estatisticas verificaveis.
  */
 function handlePublicBoardDetailRoute(PDO $db): void

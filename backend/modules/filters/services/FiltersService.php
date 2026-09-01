@@ -267,6 +267,26 @@ class FiltersService
         ];
     }
 
+    /** @param array<int, int> $filterIds */
+    public function listPublicOrganizationsByFilterIds(array $filterIds): array
+    {
+        $rows = $this->repository->fetchPublicOrganizationsByFilterIds($filterIds);
+        $exposure = new PublicTaxonomyExposurePolicy();
+        $items = [];
+        foreach ($rows as $row) {
+            if (!$exposure->allowsOrganization($row + ['type' => 'orgao', 'taxonomy_level' => null])) continue;
+            $items[] = $this->publicSeoEnvelope->attachOrganization([
+                'id' => (int) $row['id'],
+                'name' => (string) $row['name'],
+                'slug' => (string) $row['slug'],
+                'acronym' => $row['acronym'] ?: null,
+                'description' => $row['description'] ?: null,
+                'imageUrl' => $row['asset_url'] ?: null,
+            ]);
+        }
+        return ['items' => $items];
+    }
+
     /** @return array<string, mixed>|null */
     public function getPublicDisciplineProjection(string $slug): ?array
     {

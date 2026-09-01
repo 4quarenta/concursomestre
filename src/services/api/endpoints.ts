@@ -212,6 +212,7 @@ export const ENDPOINTS = {
         adminList: 'adminFiltersList',
         save: 'filtersSave',
         delete: 'filtersDelete',
+        featuredOrganizations: 'filters/featured-organizations.php',
     },
 
     plans: {

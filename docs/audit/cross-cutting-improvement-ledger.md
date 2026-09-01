@@ -174,6 +174,38 @@ tokens e política de sessão).
 
 `DEFERRED_WITHOUT_ACCEPTANCE_CONDITION = 0`
 
+## Home SEO enhancement disposition (2026-08-31)
+
+| ID | Area | Finding | Status | Acceptance condition |
+| --- | --- | --- | --- | --- |
+| HOME-SEO-01 | Home / blog | Recent news was not represented as a server-resolved public collection. | IMPLEMENTED_IN_CANDIDATE | Published article projection, persisted slug links, SSR rendering, and no fabricated fallback. |
+| HOME-SEO-02 | Home / organizations | The Home had no governed editorial organization showcase. | IMPLEMENTED_IN_CANDIDATE | Canonical `filters.type=orgao` resolution by persisted `filterId`, bounded editorial configuration, local official-logo manifest, neutral tolerance fallback, and public allowlist. |
+| HOME-SEO-03 | Home / resources | Existing resource cards were not consistently crawlable links. | IMPLEMENTED_IN_CANDIDATE | Every retained card points to an existing canonical route; no route was invented. |
+
+`HOME_SEO_FINAL_CLOSURE = PASS`
+
+`HOME_SEO_PHP_RUNTIME = PASS`
+
+`HOME_SEO_CLEANROOM = PASS`
+
+`HOME_SEO_FUNCTIONAL_FINGERPRINT_V1 = 854d1a11e3714c5d1c880ff5b8b9e2fb4daf190df1065d7c1f2dcdc6815207a7`
+
+`HOME_SEO_INITIAL_ASSET_DB_REHEARSAL = PASS`
+
+`HOME_SEO_OFFICIAL_ASSET_SOURCE_INVENTORY = COMPLETE`
+
+`HOME_SEO_OFFICIAL_ASSET_PREPARATION = PASS`
+
+`HOME_SEO_PUBLIC_OFFICIAL_MARKS_ENABLED = SIM_FOR_8_OF_8_PREPARED_ASSETS`
+
+`POST_GO_HOME_ORGANIZATION_RANKING = OPEN`
+
+Owner: Product/SEO. Acceptance condition: define a ranking policy based on explicit editorial criteria, provenance, and public organization readiness; do not derive order from unbounded traffic or hidden fields.
+
+`HOME_SEO_INTERNAL_LINKING_ENHANCEMENT = IMPLEMENTED_WITH_8_OF_8_OFFICIAL_ASSETS`
+`HOME_SEO_P0 = 0`
+`HOME_SEO_P1 = 0`
+
 ## Macrostep 19 disposition (2026-08-31)
 
 | ID | Area | Category | Current state | Finding | Target state | Status | Owner / acceptance condition |

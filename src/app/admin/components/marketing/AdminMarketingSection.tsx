@@ -10,7 +10,7 @@
 */
 
 import React, { useEffect, useState } from 'react';
-import { LayoutTemplate, Link2, Megaphone, Palette } from 'lucide-react';
+import { Building2, LayoutTemplate, Link2, Megaphone, Palette } from 'lucide-react';
 import type { SystemSettings } from '@types';
 import type { AdminMarketingSection as AdminMarketingSectionKey } from '../shared/useAdminPageController';
 import {
@@ -23,6 +23,7 @@ import {
 import AdminMarketing from '../finance/AdminMarketing';
 import AdminLandingPagesManager from './AdminLandingPagesManager';
 import AdminSocialLinksManager from './AdminSocialLinksManager';
+import AdminFeaturedOrganizationsManager from './AdminFeaturedOrganizationsManager';
 
 interface AdminMarketingSectionProps {
   systemSettings: SystemSettings;
@@ -57,6 +58,11 @@ const SECTIONS: Array<{
     key: 'social-links',
     label: 'Redes sociais',
     description: 'Links sociais exibidos na homepage da plataforma.',
+  },
+  {
+    key: 'featured-organizations',
+    label: 'Orgaos em destaque',
+    description: 'Selecao editorial de orgaos com links canonicos do diretorio publico.',
   },
 ];
 
@@ -134,8 +140,10 @@ const AdminMarketingSection = ({
                 <Megaphone size={18} />
               ) : activeSection === 'visual-themes' ? (
                 <Palette size={18} />
-              ) : (
+              ) : activeSection === 'social-links' ? (
                 <Link2 size={18} />
+              ) : (
+                <Building2 size={18} />
               )}
             </div>
             <div>
@@ -179,6 +187,14 @@ const AdminMarketingSection = ({
 
       {activeSection === 'social-links' ? (
         <AdminSocialLinksManager
+          systemSettings={systemSettings}
+          updateSystemSettings={updateSystemSettings}
+          saveSystemSettingsNow={saveSystemSettingsNow}
+        />
+      ) : null}
+
+      {activeSection === 'featured-organizations' ? (
+        <AdminFeaturedOrganizationsManager
           systemSettings={systemSettings}
           updateSystemSettings={updateSystemSettings}
           saveSystemSettingsNow={saveSystemSettingsNow}

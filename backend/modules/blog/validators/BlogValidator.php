@@ -25,6 +25,7 @@ final class BlogValidator
             'tagSlug' => $this->optionalString($query['tag'] ?? null),
             'authorId' => $this->optionalString($query['author'] ?? null),
             'featured' => filter_var($query['featured'] ?? false, FILTER_VALIDATE_BOOL),
+            'publishedOnly' => filter_var($query['published_only'] ?? false, FILTER_VALIDATE_BOOL),
             'search' => $this->limitedOptionalString($query['search'] ?? $query['q'] ?? null, 160),
         ];
     }

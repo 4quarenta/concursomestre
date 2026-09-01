@@ -506,6 +506,9 @@ class AdminSettingsValidator
         ];
         $featureCards = is_array($landingPageContent['featureCards'] ?? null) ? $landingPageContent['featureCards'] : [];
         $socialLinks = is_array($landingPageContent['socialLinks'] ?? null) ? $landingPageContent['socialLinks'] : [];
+        $featuredOrganizations = is_array($landingPageContent['featuredOrganizations'] ?? null)
+            ? $landingPageContent['featuredOrganizations']
+            : [];
 
         $validatedFeatureCards = [];
         foreach ($featureCards as $index => $featureCard) {
@@ -560,9 +563,40 @@ class AdminSettingsValidator
             ];
         }
 
+        $allowedOrganizationStatuses = ['FEATURED', 'OPEN_NOTICE', 'COMING_SOON', 'LONG_TERM'];
+        $allowedOrganizationIcons = ['building', 'landmark', 'shield', 'scale'];
+        $validatedFeaturedOrganizations = [];
+        $seenFilterIds = [];
+        foreach (array_slice($featuredOrganizations, 0, 6) as $index => $organization) {
+            if (!is_array($organization)) continue;
+            $filterId = (int) ($organization['filterId'] ?? $organization['filter_id'] ?? 0);
+            if ($filterId <= 0 || isset($seenFilterIds[$filterId])) continue;
+            $seenFilterIds[$filterId] = true;
+            $status = strtoupper(trim((string) ($organization['status'] ?? 'FEATURED')));
+            $iconKey = trim((string) ($organization['iconKey'] ?? $organization['icon_key'] ?? 'building'));
+            if (!in_array($status, $allowedOrganizationStatuses, true)) {
+                throw new InvalidArgumentException("Status invalido para orgao destacado na posicao {$index}.");
+            }
+            if (!in_array($iconKey, $allowedOrganizationIcons, true)) {
+                throw new InvalidArgumentException("Icone invalido para orgao destacado na posicao {$index}.");
+            }
+            $validatedFeaturedOrganizations[] = [
+                'id' => $this->sanitizeString($organization['id'] ?? "orgao-{$filterId}", 80, "Orgao destacado {$index} > id"),
+                'filterId' => $filterId,
+                'status' => $status,
+                'iconKey' => $iconKey,
+                'enabled' => !array_key_exists('enabled', $organization) || (bool) $organization['enabled'],
+                'order' => isset($organization['order']) ? max(0, min(9999, (int) $organization['order'])) : (($index + 1) * 10),
+            ];
+        }
+        usort($validatedFeaturedOrganizations, static fn (array $left, array $right): int =>
+            ((int) $left['order'] <=> (int) $right['order'])
+            ?: ((int) $left['filterId'] <=> (int) $right['filterId']));
+
         return [
             'featureCards' => $validatedFeatureCards,
             'socialLinks' => $validatedSocialLinks,
+            'featuredOrganizations' => $validatedFeaturedOrganizations,
         ];
     }
 

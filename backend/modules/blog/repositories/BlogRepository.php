@@ -20,7 +20,7 @@ final class BlogRepository
         $cursor = self::decodePublicCursor($filters['cursor'] ?? null);
         $conditions = [
             "a.deleted_at IS NULL",
-            "a.status IN ('published', 'scheduled')",
+            !empty($filters['publishedOnly']) ? "a.status = 'published'" : "a.status IN ('published', 'scheduled')",
             'a.published_at IS NOT NULL',
             'a.published_at <= NOW()',
         ];

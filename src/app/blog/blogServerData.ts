@@ -135,6 +135,7 @@ export const fetchBlogPageForServer = async (params: {
   featured?: boolean;
   cursor?: string;
   search?: string;
+  limit?: number;
 } = {}): Promise<BlogPage> => (
   await fetchPublic<BlogPage>(ENDPOINTS.blog.list, {
     ...(params.category ? { category: params.category } : {}),
@@ -143,7 +144,7 @@ export const fetchBlogPageForServer = async (params: {
     ...(params.featured ? { featured: '1' } : {}),
     ...(params.cursor ? { cursor: params.cursor } : {}),
     ...(params.search ? { search: params.search } : {}),
-    limit: '24',
+    limit: String(Math.max(1, Math.min(24, params.limit || 24))),
   })
 ) || {
   items: [],

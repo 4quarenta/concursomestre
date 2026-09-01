@@ -22,7 +22,7 @@ export type AdminPanelSection = 'dashboard' | 'alerts' | 'billing-health';
 export type AdminOperationSection = 'questions' | 'question-groups' | 'exams' | 'files' | 'blog' | 'novidades' | 'import' | 'gran-crawler' | 'filters' | 'lei-comentada' | 'users';
 export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'automation' | 'analytics';
-export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
+export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links' | 'featured-organizations';
 export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments';
 export type AdminSettingsSection = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
 
@@ -156,7 +156,7 @@ export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as c
 export const OPERATION_SECTION_KEYS = ['questions', 'question-groups', 'exams', 'files', 'blog', 'novidades', 'import', 'gran-crawler', 'filters', 'lei-comentada', 'users'] as const;
 export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as const;
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'automation', 'analytics'] as const;
-export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
+export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links', 'featured-organizations'] as const;
 export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments'] as const;
 export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'gamification', 'notifications', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs'] as const;
 
@@ -340,6 +340,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'campaigns', label: 'Campanhas' },
     { key: 'visual-themes', label: 'Temas visuais' },
     { key: 'social-links', label: 'Redes sociais' },
+    { key: 'featured-organizations', label: 'Orgaos em destaque' },
   ],
   support: [
     { key: 'feedback', label: 'Feedback e avaliações' },

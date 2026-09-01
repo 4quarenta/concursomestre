@@ -963,9 +963,22 @@ export interface LandingSocialLink {
   enabled: boolean;
 }
 
+export type LandingFeaturedOrganizationStatus = 'FEATURED' | 'OPEN_NOTICE' | 'COMING_SOON' | 'LONG_TERM';
+export type LandingFeaturedOrganizationIconKey = 'building' | 'landmark' | 'shield' | 'scale';
+
+export interface LandingFeaturedOrganization {
+  id: string;
+  filterId: number;
+  status: LandingFeaturedOrganizationStatus;
+  iconKey: LandingFeaturedOrganizationIconKey;
+  enabled: boolean;
+  order: number;
+}
+
 export interface LandingPageContent {
   featureCards: LandingFeatureCard[];
   socialLinks: LandingSocialLink[];
+  featuredOrganizations: LandingFeaturedOrganization[];
 }
 
 export type MarketingLandingPageStatus = 'draft' | 'published';

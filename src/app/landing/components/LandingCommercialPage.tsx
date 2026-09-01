@@ -55,6 +55,8 @@ import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 import LandingCommercialFooter from './LandingCommercialFooter';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
+import HomeSeoSections from './HomeSeoSections';
+import type { HomeFeaturedOrganization, HomeLatestArticle } from '../homeSeoServerData';
 
 const NAV_ITEMS = [
   { label: 'Recursos', href: '#recursos' },
@@ -76,46 +78,54 @@ const FEATURES = [
     title: 'Concursos realizados',
     text: 'Pratique por provas anteriores e entenda como cada banca costuma cobrar.',
     icon: ClipboardList,
+    href: '/provas',
   },
   {
     title: 'Plano de estudos',
     text: 'Plano personalizado de acordo com seu tempo, edital e objetivo.',
     icon: BookOpenCheck,
     featureKey: 'studyScheduleEnabled' as const,
+    href: '/cronograma',
   },
   {
     title: 'Raio-X da banca',
     text: 'Veja assuntos mais cobrados, perfil da banca e prioridades de estudo.',
     icon: Zap,
     featureKey: 'xRayEnabled' as const,
+    href: '/x-ray',
   },
   {
     title: 'Simulados',
     text: 'Simulados inéditos com correção automática e rankings.',
     icon: Target,
     featureKey: 'simulationsEnabled' as const,
+    href: '/simulados',
   },
   {
     title: 'Revisões',
     text: 'Revise o que importa com resumos e questões por assunto.',
     icon: Repeat2,
+    href: '/questoes',
   },
   {
     title: 'Desempenho',
     text: 'Acompanhe sua evolução com gráficos claros e objetivos.',
     icon: BarChart3,
+    href: '/performance/subjects',
   },
   {
     title: 'Lei comentada',
     text: 'Estude a legislação com comentários objetivos e contexto para concursos.',
     icon: FileText,
     featureKey: 'annotatedLawsEnabled' as const,
+    href: '/lei-comentada',
   },
   {
     title: 'Cronograma Elite',
     text: 'Monte sua rotina semanal com metas, revisões e blocos de questões.',
     icon: CalendarDays,
     featureKey: 'studyScheduleEnabled' as const,
+    href: '/cronograma',
   },
 ];
 
@@ -442,18 +452,21 @@ export const FeatureCard = ({
   title,
   text,
   icon: Icon,
+  href,
 }: {
   title: string;
   text: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
+  href: string;
 }) => (
-  <article className="rounded-2xl border border-indigo-100 bg-white p-5 text-center shadow-sm transition hover:-translate-y-1 hover:border-[#8b78ff] hover:shadow-xl hover:shadow-indigo-100/60">
+  <Link href={href} prefetch={false} className="group rounded-2xl border border-indigo-100 bg-white p-5 text-center shadow-sm transition hover:-translate-y-1 hover:border-[#8b78ff] hover:shadow-xl hover:shadow-indigo-100/60">
     <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f0edff] text-[#684cff]">
       <Icon size={24} />
     </div>
-    <h3 className="mt-5 text-sm font-black text-[#07103a]">{title}</h3>
+    <h3 className="mt-5 text-sm font-black text-[#07103a] group-hover:text-[#684cff]">{title}</h3>
     <p className="mt-3 text-sm font-medium leading-6 text-slate-600">{text}</p>
-  </article>
+    <span className="mt-4 inline-flex items-center gap-1 text-xs font-black text-[#684cff]">Conhecer recurso <ChevronRight size={14} /></span>
+  </Link>
 );
 
 const FeaturesSection = ({ initialSystemSettings = null }: { initialSystemSettings?: SystemSettings | null }) => {
@@ -960,12 +973,17 @@ export const FinalCTA = () => (
 
 export const Footer = LandingCommercialFooter;
 
-const LandingCommercialPage: React.FC<{ initialSystemSettings?: SystemSettings | null }> = ({ initialSystemSettings = null }) => (
+const LandingCommercialPage: React.FC<{
+  initialSystemSettings?: SystemSettings | null;
+  latestArticles?: HomeLatestArticle[];
+  featuredOrganizations?: HomeFeaturedOrganization[];
+}> = ({ initialSystemSettings = null, latestArticles = [], featuredOrganizations = [] }) => (
   <div className="min-h-screen bg-white text-[#07103a]">
     <Header />
     <main>
       <HeroSection />
       <FeaturesSection initialSystemSettings={initialSystemSettings} />
+      <HomeSeoSections latestArticles={latestArticles} featuredOrganizations={featuredOrganizations} />
       <ApprovalContextSection />
       <ProcessSection />
       <TestimonialsSection />

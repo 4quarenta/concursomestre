@@ -62,6 +62,11 @@ class FiltersController
         return $this->service->listPublicDirectory($directoryType, $page, $perPage, $search, $letter);
     }
 
+    public function listPublicOrganizationsByFilterIds(array $filterIds): array
+    {
+        return $this->service->listPublicOrganizationsByFilterIds($filterIds);
+    }
+
     public function getPublicBoardDetail(string $slug, int $page, int $perPage, string $status = 'all'): ?array
     {
         return $this->service->getPublicBoardDetail($slug, $page, $perPage, $status);

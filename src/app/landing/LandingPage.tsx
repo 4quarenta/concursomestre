@@ -14,9 +14,18 @@
 import React from 'react';
 import type { SystemSettings } from '@types';
 import LandingCommercialPage from './components/LandingCommercialPage';
+import type { HomeFeaturedOrganization, HomeLatestArticle } from './homeSeoServerData';
 
-const LandingPage: React.FC<{ initialSystemSettings?: SystemSettings | null }> = ({ initialSystemSettings = null }) => (
-  <LandingCommercialPage initialSystemSettings={initialSystemSettings} />
+const LandingPage: React.FC<{
+  initialSystemSettings?: SystemSettings | null;
+  latestArticles?: HomeLatestArticle[];
+  featuredOrganizations?: HomeFeaturedOrganization[];
+}> = ({ initialSystemSettings = null, latestArticles = [], featuredOrganizations = [] }) => (
+  <LandingCommercialPage
+    initialSystemSettings={initialSystemSettings}
+    latestArticles={latestArticles}
+    featuredOrganizations={featuredOrganizations}
+  />
 );
 
 export default LandingPage;

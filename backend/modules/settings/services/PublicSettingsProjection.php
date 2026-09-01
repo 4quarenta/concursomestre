@@ -79,12 +79,14 @@ final class PublicSettingsProjection
                 'stripePublishableKey',
             ]),
             'marketing' => array_merge(
-                self::pick($settings, [
-                    'activeTheme',
-                    'activePromotion',
-                    'limitedOfferCountdown',
-                    'landingPageContent',
-                ]),
+                array_merge(
+                    self::pick($settings, [
+                        'activeTheme',
+                        'activePromotion',
+                        'limitedOfferCountdown',
+                    ]),
+                    ['landingPageContent' => self::projectLandingPageContent($settings['landingPageContent'] ?? [])]
+                ),
                 [
                     'landingPages' => $landingPages,
                     'coupons' => self::publicAutoCoupons($settings['coupons'] ?? []),
@@ -147,6 +149,25 @@ final class PublicSettingsProjection
             if (array_key_exists($key, $source)) {
                 $result[$key] = $source[$key];
             }
+        }
+        return $result;
+    }
+
+    private static function projectLandingPageContent(mixed $value): array
+    {
+        if (!is_array($value)) return [];
+        $result = [];
+        $allowlists = [
+            'featureCards' => ['id', 'title', 'description', 'iconKey', 'enabled', 'order'],
+            'socialLinks' => ['id', 'label', 'handle', 'url', 'iconKey', 'enabled'],
+            'featuredOrganizations' => ['id', 'filterId', 'status', 'iconKey', 'enabled', 'order'],
+        ];
+        foreach ($allowlists as $key => $allowedFields) {
+            if (!is_array($value[$key] ?? null)) continue;
+            $result[$key] = array_values(array_filter(array_map(
+                static fn ($item): ?array => is_array($item) ? self::pick($item, $allowedFields) : null,
+                $value[$key]
+            ), static fn (?array $item): bool => $item !== null));
         }
         return $result;
     }
