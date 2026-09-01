@@ -316,9 +316,17 @@ function b13xRunnerSmokeCommand(string $mode, array $options): array
     $args[] = '--auth-required=' . ($mode === 'PRODUCTION_SMOKE_AUTH' || $mode === 'PRODUCTION_SMOKE_ADMIN' ? 'true' : 'false');
     $args[] = '--admin-required=' . ($mode === 'PRODUCTION_SMOKE_ADMIN' ? 'true' : 'false');
 
-    $authEmail = trim((string) ($options['auth-email'] ?? b13xRunnerEnv('SMOKE_AUTH_EMAIL')));
-    $authPassword = (string) ($options['auth-password'] ?? b13xRunnerEnv('SMOKE_AUTH_PASSWORD'));
-    $authCaptchaToken = trim((string) ($options['auth-captcha-token'] ?? b13xRunnerEnv('SMOKE_AUTH_CAPTCHA_TOKEN')));
+    $adminSmoke = $mode === 'PRODUCTION_SMOKE_ADMIN';
+    $emailOption = $adminSmoke ? 'admin-auth-email' : 'auth-email';
+    $passwordOption = $adminSmoke ? 'admin-auth-password' : 'auth-password';
+    $captchaOption = $adminSmoke ? 'admin-auth-captcha-token' : 'auth-captcha-token';
+    $emailEnv = $adminSmoke ? 'SMOKE_ADMIN_EMAIL' : 'SMOKE_AUTH_EMAIL';
+    $passwordEnv = $adminSmoke ? 'SMOKE_ADMIN_PASSWORD' : 'SMOKE_AUTH_PASSWORD';
+    $captchaEnv = $adminSmoke ? 'SMOKE_ADMIN_CAPTCHA_TOKEN' : 'SMOKE_AUTH_CAPTCHA_TOKEN';
+
+    $authEmail = trim((string) ($options[$emailOption] ?? b13xRunnerEnv($emailEnv)));
+    $authPassword = (string) ($options[$passwordOption] ?? b13xRunnerEnv($passwordEnv));
+    $authCaptchaToken = trim((string) ($options[$captchaOption] ?? b13xRunnerEnv($captchaEnv)));
     if ($authEmail !== '') {
         $args[] = '--auth-email=' . $authEmail;
     }
@@ -381,7 +389,7 @@ function b13xRunnerInvokeWriter(array $writer, array $options): array
     if ($method === 'PRODUCTION_SMOKE_AUTH' || $method === 'PRODUCTION_SMOKE_ADMIN') {
         $smoke = b13xRunnerSmokeCommand($method, $options);
         return [
-            'ok' => (bool) ($smoke['ok'] ?? false),
+            'ok' => (bool) ($smoke['success'] ?? $smoke['ok'] ?? false),
             'result' => $smoke,
         ];
     }
