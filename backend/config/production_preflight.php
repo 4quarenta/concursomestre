@@ -805,14 +805,14 @@ function buildStripeWebhookHealthPreflightCheck(
     }
 
     if ($ageSeconds > ($maxAgeMinutes * 60)) {
-        if ($reconciliationHealthy) {
+        if ($reconciliationHealthy || $configurationHealthy) {
             return [
                 'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
                 'status' => 'pass',
                 'classification' => 'HEALTHY_IDLE',
                 'message' => 'Webhook Stripe sem tráfego recente; última entrega válida há '
                     . (int) floor($ageSeconds / 60)
-                    . ' minuto(s), com reconciliação Stripe recente e saudável.',
+                    . ' minuto(s), com endpoint configurado e saudável para ficar ocioso.',
             ];
         }
 

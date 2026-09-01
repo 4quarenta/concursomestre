@@ -81,6 +81,14 @@ $webhookPath = sys_get_temp_dir() . '/missing-webhook-health-' . bin2hex(random_
 $idle = buildStripeWebhookHealthPreflightCheck($webhookPath, 1440, true, false, true);
 stripeHealthAssert(($idle['classification'] ?? '') === 'HEALTHY_IDLE', 'Configured webhook health without activity must be healthy idle.');
 
+$staleWebhookPath = sys_get_temp_dir() . '/stale-webhook-health-' . bin2hex(random_bytes(4)) . '.json';
+file_put_contents($staleWebhookPath, json_encode([
+    'last_event_at' => gmdate(DATE_ATOM, time() - 172800),
+    'status' => 'processed',
+], JSON_THROW_ON_ERROR), LOCK_EX);
+$staleIdle = buildStripeWebhookHealthPreflightCheck($staleWebhookPath, 1440, true, false, true);
+stripeHealthAssert(($staleIdle['classification'] ?? '') === 'HEALTHY_IDLE', 'Stale activity must remain healthy idle when endpoint configuration is valid.');
+
 $recentPath = sys_get_temp_dir() . '/recent-webhook-health-' . bin2hex(random_bytes(4)) . '.json';
 file_put_contents($recentPath, json_encode([
     'last_event_at' => gmdate(DATE_ATOM),
@@ -100,6 +108,7 @@ stripeHealthAssert(($unauthorizedFreeze['status'] ?? '') === 'fail', 'An invalid
 @unlink($statePath);
 @unlink($keyPath);
 @unlink($recentPath);
+@unlink($staleWebhookPath);
 @rmdir($stateDirectory);
 
 echo "Stripe health gate tests passed.\n";
