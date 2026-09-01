@@ -36,6 +36,9 @@ foreach ([
     'capture_write_sentinel.php',
     'STRICT_NOT_ZERO',
     'unexpectedStrictDiffs',
+    'systemd-state-file',
+    'systemd-key-file',
+    'Systemd state must be RESUMED',
 ] as $required) {
     b13xRunnerAssert(str_contains($runner, $required), 'Coverage runner contract missing: ' . $required);
 }

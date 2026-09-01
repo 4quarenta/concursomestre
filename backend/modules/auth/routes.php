@@ -91,8 +91,8 @@ function enforceAuthIpSecurityPolicy(PDO $db): void
     ensureAuthTables($db);
     try {
         enforceSecurityIpBanOrFail($db);
-    } catch (RuntimeException $e) {
-        Response::forbidden($e->getMessage());
+    } catch (SecurityIpBannedException) {
+        Response::forbidden('IP bloqueado por seguranca. Contate o suporte.');
     }
 }
 
@@ -135,6 +135,8 @@ function handleAuthLoginRoute(PDO $db): void
         Response::success($result, !empty($result['require2FA']) ? '2FA verification required' : 'Login successful');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());
+    } catch (PDOException $e) {
+        Response::serverError('Login failed', $e);
     } catch (RuntimeException $e) {
         if (str_contains($e->getMessage(), 'reCAPTCHA')) {
             Response::validationError($e->getMessage());

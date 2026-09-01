@@ -45,8 +45,8 @@ class AuthMiddleware {
         ensureAuthTables($db);
         try {
             enforceSecurityIpBanOrFail($db);
-        } catch (RuntimeException $e) {
-            ApiResponse::forbidden($e->getMessage());
+        } catch (SecurityIpBannedException) {
+            ApiResponse::forbidden('IP bloqueado por seguranca. Contate o suporte.');
         }
         $payload = verifyAuthenticatedSession($db, $token);
 
@@ -74,7 +74,7 @@ class AuthMiddleware {
         ensureAuthTables($db);
         try {
             enforceSecurityIpBanOrFail($db);
-        } catch (RuntimeException $e) {
+        } catch (SecurityIpBannedException) {
             return null;
         }
 

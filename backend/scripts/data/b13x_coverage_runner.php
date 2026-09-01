@@ -11,6 +11,8 @@ require_once __DIR__ . '/DatasetAvailabilitySafeFreezeState.php';
 require_once __DIR__ . '/DatasetResetPolicyV2.php';
 require_once __DIR__ . '/DatasetWriterCoverageState.php';
 require_once __DIR__ . '/DatasetWriterFreezeReporter.php';
+require_once __DIR__ . '/DatasetWriterSystemdCoverage.php';
+require_once __DIR__ . '/DatasetWriterSystemdFreezePolicy.php';
 
 /** @return array<string, string|bool> */
 function b13xRunnerOptions(array $arguments): array
@@ -62,6 +64,37 @@ function b13xRunnerReadKey(string $directValue, string $filePath): string
         throw new RuntimeException('The signing key file is empty.');
     }
     return $key;
+}
+
+/** @return array<string, mixed> */
+function b13xRunnerSystemdResumeState(array $options): array
+{
+    static $cached = null;
+    if (is_array($cached)) {
+        return $cached;
+    }
+
+    $stateFile = b13xRunnerPathOption($options, 'systemd-state-file');
+    $runId = trim((string) ($options['systemd-run-id'] ?? $options['availability-run-id'] ?? ''));
+    $key = b13xRunnerReadKey('', b13xRunnerPathOption($options, 'systemd-key-file'));
+    if ($stateFile === '' || !is_file($stateFile) || !is_readable($stateFile)) {
+        throw new RuntimeException('A readable signed systemd resume state is required.');
+    }
+
+    $state = json_decode((string) file_get_contents($stateFile), true, 512, JSON_THROW_ON_ERROR);
+    if (!is_array($state)) {
+        throw new RuntimeException('Systemd resume state must contain a JSON object.');
+    }
+    $validation = DatasetWriterSystemdFreezePolicy::validateState($state, $runId, $key);
+    if (!$validation['valid']) {
+        throw new RuntimeException('Systemd resume state refused: ' . implode(', ', $validation['blockers']));
+    }
+    if (($state['status'] ?? '') !== 'RESUMED') {
+        throw new RuntimeException('Systemd state must be RESUMED before coverage validation.');
+    }
+
+    $cached = $state;
+    return $cached;
 }
 
 /** @return array{status: int, output: string} */
@@ -389,11 +422,19 @@ function b13xRunnerInvokeWriter(array $writer, array $options): array
             throw new RuntimeException('systemd state validation requires Linux systemd.');
         }
         $units = array_filter(array_map('trim', explode(',', $entrypoint)));
+        $resumeState = b13xRunnerSystemdResumeState($options);
         $states = [];
         foreach ($units as $unit) {
             $state = b13xRunnerCommand(['/usr/bin/systemctl', 'show', '--no-pager', $unit, '--property=ActiveState', '--property=SubState']);
+            preg_match('/^ActiveState=(.*)$/m', $state['output'], $activeMatch);
+            $actualActiveState = strtolower(trim((string) ($activeMatch[1] ?? '')));
+            $expectedActiveState = DatasetWriterSystemdCoverage::expectedActiveState($resumeState, $unit);
+            $evaluation = DatasetWriterSystemdCoverage::evaluate($expectedActiveState, $actualActiveState);
             $states[$unit] = [
-                'ok' => $state['status'] === 0 && str_contains($state['output'], 'ActiveState=active'),
+                'ok' => $state['status'] === 0 && $evaluation['ok'],
+                'classification' => $evaluation['classification'],
+                'expectedActiveState' => $expectedActiveState,
+                'actualActiveState' => $actualActiveState,
                 'raw' => $state['output'],
             ];
         }

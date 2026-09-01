@@ -13,34 +13,25 @@
 
 require_once __DIR__ . '/../auth/AuthConfig.php';
 
+if (!class_exists('SecurityIpBannedException')) {
+    final class SecurityIpBannedException extends RuntimeException
+    {
+    }
+}
+
 if (!function_exists('ensureSecurityIpBanTable')) {
     /**
-     * Cria a tabela de bloqueio de IPs usada pela operacao de seguranca do admin.
+     * Confirma que a tabela provisionada pelo schema esta disponivel.
+     *
+     * Requests de runtime nunca devem executar DDL. Se o schema estiver
+     * incompleto, a falha segue como erro de infraestrutura e e sanitizada
+     * pela camada HTTP.
      *
      * @since 1.0.0
      */
     function ensureSecurityIpBanTable(PDO $db): void
     {
-        $db->exec(
-            "CREATE TABLE IF NOT EXISTS security_ip_bans (
-                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                ip_address VARCHAR(45) NOT NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'banned',
-                reason VARCHAR(255) NOT NULL,
-                blocked_hits BIGINT UNSIGNED NOT NULL DEFAULT 0,
-                last_blocked_at DATETIME NULL,
-                banned_until DATETIME NULL,
-                unbanned_at DATETIME NULL,
-                created_by VARCHAR(64) NULL,
-                updated_by VARCHAR(64) NULL,
-                created_at DATETIME NOT NULL,
-                updated_at DATETIME NOT NULL,
-                UNIQUE KEY uniq_security_ip_bans_ip (ip_address),
-                INDEX idx_security_ip_bans_status (status),
-                INDEX idx_security_ip_bans_banned_until (banned_until),
-                INDEX idx_security_ip_bans_updated_at (updated_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-        );
+        $db->query('SELECT 1 FROM security_ip_bans LIMIT 0');
     }
 }
 
@@ -165,6 +156,6 @@ if (!function_exists('enforceSecurityIpBanOrFail')) {
         }
 
         registerSecurityIpBlockedHit($db, $ip);
-        throw new RuntimeException('IP bloqueado por seguranca. Contate o suporte.');
+        throw new SecurityIpBannedException('IP bloqueado por seguranca. Contate o suporte.');
     }
 }
