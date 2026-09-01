@@ -45,6 +45,9 @@ b13xRunnerAssert(str_contains($availability, 'SUPERSEDED_BY_METHOD_CHANGE'), 'Av
 b13xRunnerAssert(str_contains($coverageState, 'B13X_COVERAGE_STATE_V1'), 'Coverage state helper schema version drifted.');
 b13xRunnerAssert(str_contains($coverageState, 'markSupersededRun'), 'Coverage state must expose an explicit supersession transition.');
 b13xRunnerAssert(str_contains($resumeScript, 'manage_writer_systemd_freeze.php'), 'Coverage resume must delegate the systemd portion to the canonical freeze manager.');
+b13xRunnerAssert(str_contains($resumeScript, 'systemd-freeze.key'), 'Coverage resume must use the systemd freeze signing key for systemd state.');
+b13xRunnerAssert(str_contains($resumeScript, 'DATASET_WRITER_FREEZE_OPERATION_ALLOWED=1'), 'Coverage resume must set the explicit operation guard for the canonical manager.');
+b13xRunnerAssert(str_contains($resumeScript, 'DATASET_WRITER_FREEZE_PRODUCTION_ALLOWED=1'), 'Coverage resume must set the explicit production guard for the canonical manager.');
 b13xRunnerAssert(str_contains($resumeScript, 'cm-phase13x-strict-window1-monitor.timer'), 'Coverage resume must retire the old time-based window monitors.');
 b13xRunnerAssert(!str_contains($resumeScript, 'second-window'), 'Coverage resume must not start a second time-based observation window.');
 b13xRunnerAssert(str_contains($rollbackScript, '--mode=freeze'), 'Coverage rollback must restore a canonical frozen state through the freeze manager.');

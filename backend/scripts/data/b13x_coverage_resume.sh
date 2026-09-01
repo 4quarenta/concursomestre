@@ -7,6 +7,7 @@ source "$config"
 release_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 backend_env="$release_root/backend/.env"
 systemd_state="$OPS_ROOT/systemd-freeze-state.json"
+systemd_key="$OPS_ROOT/systemd-freeze.key"
 nginx_conf=/etc/nginx/sites-enabled/concursomestre.com.conf
 cron_file=/etc/cron.d/concursomestre
 rollback_root="$OPS_ROOT/coverage-rollback"
@@ -14,6 +15,7 @@ rollback_root="$OPS_ROOT/coverage-rollback"
 test -r "$STATE_FILE"
 test -r "$KEY_FILE"
 test -r "$backend_env"
+test -r "$systemd_key"
 test -r "$OPS_ROOT/cron.before-freeze"
 test -r "$OPS_ROOT/nginx.conf.before-freeze"
 test -r "$systemd_state"
@@ -43,6 +45,9 @@ systemctl reload nginx
 set -a
 source "$backend_env"
 set +a
+export DATASET_RESET_FREEZE_EVIDENCE_KEY="$(cat "$systemd_key")"
+export DATASET_WRITER_FREEZE_OPERATION_ALLOWED=1
+export DATASET_WRITER_FREEZE_PRODUCTION_ALLOWED=1
 php "$release_root/backend/scripts/data/manage_writer_systemd_freeze.php" \
   --mode=resume \
   --run-id="$RUN_ID" \
