@@ -197,6 +197,7 @@ final class DatasetAvailabilitySafeFreezeState
             return $item;
         };
 
-        return json_encode($normalize($value), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        // The host signer hashes jq -cS output, including its terminating LF.
+        return json_encode($normalize($value), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n";
     }
 }
