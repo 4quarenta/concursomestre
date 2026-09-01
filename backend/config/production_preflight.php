@@ -16,6 +16,7 @@ require_once __DIR__ . '/stripe.php';
 require_once __DIR__ . '/../shared/utils/MailConfiguration.php';
 require_once __DIR__ . '/../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../shared/runtime/RuntimeStoreFactory.php';
+require_once __DIR__ . '/StripeHealthGate.php';
 
 function runProductionPreflight(): array
 {
@@ -373,10 +374,12 @@ function runProductionPreflight(): array
         dirname(__DIR__) . '/storage/logs/subscriptions/subscription_cron_health.json'
     );
     $cronHealthMaxAgeMinutes = max(5, (int) getEnvString('SUBSCRIPTIONS_STRIPE_CRON_HEALTH_MAX_AGE_MINUTES', '30'));
+    $stripeFreezeContext = StripeHealthGate::expectedFreezeFromEnvironment();
     $cronHealthCheck = buildStripeCronHealthPreflightCheck(
         $cronHealthPath,
         $cronHealthMaxAgeMinutes,
-        $appEnv === 'production'
+        $appEnv === 'production',
+        $stripeFreezeContext
     );
     $checks[] = $cronHealthCheck;
 
@@ -411,7 +414,10 @@ function runProductionPreflight(): array
         $webhookHealthPath,
         $webhookHealthMaxAgeMinutes,
         $appEnv === 'production',
-        ($cronHealthCheck['status'] ?? 'fail') === 'pass'
+        ($cronHealthCheck['classification'] ?? 'FAIL') === 'PASS',
+        $stripeModesMatch
+            && isValidStripeWebhookSecret($stripeWebhookSecret)
+            && is_file(dirname(__DIR__) . '/api/subscriptions/stripe_webhook.php')
     );
 
     $instanceCount = max(1, (int) getEnvString('APP_INSTANCE_COUNT', '1'));
@@ -635,7 +641,7 @@ function buildLegacyPaymentSdkPreflightCheck(string $backendRoot): array
     ];
 }
 
-function buildStripeCronHealthPreflightCheck(string $path, int $maxAgeMinutes, bool $required): array
+function buildStripeCronHealthPreflightCheck(string $path, int $maxAgeMinutes, bool $required, ?array $freezeContext = null): array
 {
     if (!$required) {
         return [
@@ -645,10 +651,30 @@ function buildStripeCronHealthPreflightCheck(string $path, int $maxAgeMinutes, b
         ];
     }
 
+    if (StripeHealthGate::isExpectedFreezeValid($freezeContext)) {
+        return [
+            'key' => 'SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT',
+            'status' => 'pass',
+            'classification' => 'EXPECTED_FROZEN',
+            'message' => 'Cron Stripe congelado explicitamente por freeze B13X assinado e valido.',
+        ];
+    }
+
+    if (is_array($freezeContext) && ($freezeContext['expected'] ?? false) === true) {
+        return [
+            'key' => 'SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT',
+            'status' => 'fail',
+            'classification' => 'FAIL',
+            'message' => 'Freeze Stripe B13X esperado, mas a evidencia assinada e invalida: '
+                . implode(', ', $freezeContext['blockers'] ?? []) . '.',
+        ];
+    }
+
     if (!is_file($path)) {
         return [
             'key' => 'SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT',
             'status' => 'fail',
+            'classification' => 'FAIL',
             'message' => 'Heartbeat do cron Stripe nao encontrado. Execute a reconciliacao antes do go live.',
         ];
     }
@@ -659,6 +685,7 @@ function buildStripeCronHealthPreflightCheck(string $path, int $maxAgeMinutes, b
         return [
             'key' => 'SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT',
             'status' => 'fail',
+            'classification' => 'FAIL',
             'message' => 'Heartbeat do cron Stripe invalido.',
         ];
     }
@@ -668,6 +695,7 @@ function buildStripeCronHealthPreflightCheck(string $path, int $maxAgeMinutes, b
         return [
             'key' => 'SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT',
             'status' => 'fail',
+            'classification' => 'FAIL',
             'message' => 'Cron Stripe em estado operacional invalido: ' . ($status !== '' ? $status : 'unknown') . '.',
         ];
     }
@@ -679,6 +707,7 @@ function buildStripeCronHealthPreflightCheck(string $path, int $maxAgeMinutes, b
         return [
             'key' => 'SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT',
             'status' => 'fail',
+            'classification' => 'FAIL',
             'message' => 'Heartbeat do cron Stripe sem data valida de ultima execucao.',
         ];
     }
@@ -699,6 +728,7 @@ function buildStripeCronHealthPreflightCheck(string $path, int $maxAgeMinutes, b
     return [
         'key' => 'SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT',
         'status' => 'pass',
+        'classification' => 'PASS',
         'message' => 'Heartbeat recente do cron Stripe confirmado.',
     ];
 }
@@ -707,21 +737,32 @@ function buildStripeWebhookHealthPreflightCheck(
     string $path,
     int $maxAgeMinutes,
     bool $required,
-    bool $reconciliationHealthy = false
+    bool $reconciliationHealthy = false,
+    bool $configurationHealthy = false
 ): array
 {
     if (!$required) {
         return [
             'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
             'status' => 'pass',
+            'classification' => 'PASS',
             'message' => 'Heartbeat do webhook Stripe nao e obrigatorio fora de producao.',
         ];
     }
 
     if (!is_file($path)) {
+        if ($configurationHealthy) {
+            return [
+                'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
+                'status' => 'pass',
+                'classification' => 'HEALTHY_IDLE',
+                'message' => 'Endpoint Stripe configurado e sem atividade recente; nenhuma entrega e esperada neste intervalo.',
+            ];
+        }
         return [
             'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
             'status' => 'fail',
+            'classification' => 'FAIL',
             'message' => 'Heartbeat do webhook Stripe nao encontrado. Envie um evento real de teste pela Stripe antes do go live.',
         ];
     }
@@ -732,6 +773,7 @@ function buildStripeWebhookHealthPreflightCheck(
         return [
             'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
             'status' => 'fail',
+            'classification' => 'FAIL',
             'message' => 'Heartbeat do webhook Stripe invalido.',
         ];
     }
@@ -741,6 +783,7 @@ function buildStripeWebhookHealthPreflightCheck(
         return [
             'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
             'status' => 'fail',
+            'classification' => 'FAIL',
             'message' => 'Webhook Stripe em estado invalido para producao: ' . ($status !== '' ? $status : 'unknown') . '.',
         ];
     }
@@ -766,6 +809,7 @@ function buildStripeWebhookHealthPreflightCheck(
             return [
                 'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
                 'status' => 'pass',
+                'classification' => 'HEALTHY_IDLE',
                 'message' => 'Webhook Stripe sem tráfego recente; última entrega válida há '
                     . (int) floor($ageSeconds / 60)
                     . ' minuto(s), com reconciliação Stripe recente e saudável.',
@@ -775,6 +819,7 @@ function buildStripeWebhookHealthPreflightCheck(
         return [
             'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
             'status' => 'fail',
+            'classification' => 'FAIL',
             'message' => 'Webhook Stripe sem evento recente: ' . (int) floor($ageSeconds / 60) . ' minuto(s).',
         ];
     }
@@ -783,6 +828,7 @@ function buildStripeWebhookHealthPreflightCheck(
     return [
         'key' => 'STRIPE_WEBHOOK_HEALTH_RECENT',
         'status' => 'pass',
+        'classification' => 'HEALTHY_ACTIVE',
         'message' => 'Webhook Stripe recente confirmado' . ($eventType !== '' ? ': ' . $eventType . '.' : '.'),
     ];
 }
