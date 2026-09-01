@@ -327,6 +327,13 @@ function b13xRunnerSmokeCommand(string $mode, array $options): array
     $authEmail = trim((string) ($options[$emailOption] ?? b13xRunnerEnv($emailEnv)));
     $authPassword = (string) ($options[$passwordOption] ?? b13xRunnerEnv($passwordEnv));
     $authCaptchaToken = trim((string) ($options[$captchaOption] ?? b13xRunnerEnv($captchaEnv)));
+    if ($adminSmoke && ($authEmail === '' || $authPassword === '')) {
+        return [
+            'success' => false,
+            'error' => 'Dedicated admin smoke credentials are not configured.',
+            '_command_status' => 2,
+        ];
+    }
     if ($authEmail !== '') {
         $args[] = '--auth-email=' . $authEmail;
     }

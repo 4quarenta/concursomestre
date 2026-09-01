@@ -62,5 +62,6 @@ foreach ([$reconciliation, $webhookConsumer, $cardExpiry, $referrals, $operation
 b13xRunnerAssert(str_contains($runner, "'SMOKE_ADMIN_EMAIL'"), 'Admin coverage must use a dedicated admin smoke identity.');
 b13xRunnerAssert(str_contains($runner, "'SMOKE_ADMIN_PASSWORD'"), 'Admin coverage must use a dedicated admin smoke credential.');
 b13xRunnerAssert(str_contains($runner, "\$smoke['success'] ?? \$smoke['ok'] ?? false"), 'Runner must consume the production smoke success contract.');
+b13xRunnerAssert(str_contains($runner, 'Dedicated admin smoke credentials are not configured.'), 'Admin coverage must fail closed before falling back to the user smoke identity.');
 
 fwrite(STDOUT, "B13X coverage runner wiring assertions passed.\n");
