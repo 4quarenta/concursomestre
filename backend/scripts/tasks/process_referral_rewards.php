@@ -29,9 +29,20 @@ require_once __DIR__ . '/../../modules/users/routes.php';
 $graceDays = isset($argv[1]) ? max(0, (int) $argv[1]) : 7;
 $cronLock = acquireCronLockOrThrow('users_referral_rewards');
 register_shutdown_function([$cronLock, 'release']);
+$coverageNoop = in_array('--coverage-noop', array_slice($argv, 1), true);
 
 $database = new Database();
 $db = $database->getConnection();
+$summary = null;
+if ($coverageNoop) {
+    echo json_encode([
+        'success' => true,
+        'mode' => 'coverage-noop',
+        'graceDays' => $graceDays,
+        'bootstrapped' => true,
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+    exit(0);
+}
 $summary = runUsersReferralRewardsCron($db, $graceDays);
 
 echo json_encode([

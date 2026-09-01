@@ -71,5 +71,25 @@ if (DatasetWriterFreezeReporter::uncoveredTables() !== []) {
 if (!preg_match('/^[a-f0-9]{64}$/', DatasetWriterFreezeReporter::inventoryHash())) {
     throw new RuntimeException('Writer inventory hash is invalid.');
 }
+if (DatasetWriterFreezeReporter::coverageBlockers() !== []) {
+    throw new RuntimeException('B13X coverage inventory is incomplete: ' . implode(', ', DatasetWriterFreezeReporter::coverageBlockers()));
+}
+if (!preg_match('/^[a-f0-9]{64}$/', DatasetWriterFreezeReporter::coverageInventoryHash())) {
+    throw new RuntimeException('B13X coverage inventory hash is invalid.');
+}
+$coverageMatrix = DatasetWriterFreezeReporter::coverageMatrix();
+if (count($coverageMatrix) !== count($matrix)) {
+    throw new RuntimeException('Coverage matrix must cover every authoritative writer.');
+}
+$coverageById = array_column($coverageMatrix, 'coverage', 'writer_id');
+if (($coverageById['http-auth-account']['safeInvocationMethod'] ?? null) !== 'PRODUCTION_SMOKE_AUTH') {
+    throw new RuntimeException('Auth coverage must reuse the authenticated smoke entrypoint.');
+}
+if (($coverageById['cron-stripe-reconciliation']['safeInvocationMethod'] ?? null) !== 'CLI_COVERAGE_NOOP') {
+    throw new RuntimeException('Stripe reconciliation coverage must use the reviewed noop entrypoint.');
+}
+if (($coverageById['http-stripe-webhook-producer']['coverageClass'] ?? null) !== 'NOT_APPLICABLE') {
+    throw new RuntimeException('Stripe webhook producer must remain explicitly not applicable without provider-backed synthetic events.');
+}
 
 fwrite(STDOUT, "Writer freeze matrix assertions passed.\n");

@@ -18,6 +18,7 @@ require_once __DIR__ . '/DatasetResetPolicyV2.php';
 final class DatasetWriterFreezeReporter
 {
     public const INVENTORY_VERSION = 'WRITER_INVENTORY_V3_STEADY_STATE';
+    public const COVERAGE_VERSION = 'B13X_COVERAGE_WRITER_MATRIX_V1';
 
     /** @return list<array<string, mixed>> */
     public static function matrix(): array
@@ -112,6 +113,14 @@ final class DatasetWriterFreezeReporter
         return hash('sha256', self::canonicalJson(['version' => self::INVENTORY_VERSION, 'writers' => self::matrix()]));
     }
 
+    public static function coverageInventoryHash(): string
+    {
+        return hash('sha256', self::canonicalJson([
+            'version' => self::COVERAGE_VERSION,
+            'writers' => self::coverageMatrix(),
+        ]));
+    }
+
     /** @return list<string> */
     public static function requiredFreezeWriterIds(): array
     {
@@ -145,6 +154,83 @@ final class DatasetWriterFreezeReporter
     public static function uncoveredTables(): array
     {
         return array_keys(array_filter(self::tableCoverage(), static fn (array $writers): bool => $writers === []));
+    }
+
+    /** @return list<array<string, mixed>> */
+    public static function coverageMatrix(): array
+    {
+        $profiles = self::coverageProfiles();
+        $matrix = [];
+        foreach (self::matrix() as $writer) {
+            $writerId = (string) ($writer['writer_id'] ?? '');
+            $profile = $profiles[$writerId] ?? null;
+            if (!is_array($profile)) {
+                continue;
+            }
+            $matrix[] = array_merge($writer, ['coverage' => $profile]);
+        }
+        return $matrix;
+    }
+
+    /** @return array<string, mixed>|null */
+    public static function coverageProfile(string $writerId): ?array
+    {
+        return self::coverageProfiles()[$writerId] ?? null;
+    }
+
+    /** @return list<string> */
+    public static function coverageBlockers(): array
+    {
+        $profiles = self::coverageProfiles();
+        $blockers = [];
+        $knownWriterIds = array_values(array_map(
+            static fn (array $writer): string => (string) $writer['writer_id'],
+            self::matrix()
+        ));
+        sort($knownWriterIds);
+
+        foreach ($knownWriterIds as $writerId) {
+            $profile = $profiles[$writerId] ?? null;
+            if (!is_array($profile)) {
+                $blockers[] = 'COVERAGE_PROFILE_MISSING:' . $writerId;
+                continue;
+            }
+
+            if (!in_array((string) ($profile['coverageClass'] ?? ''), ['INVOKE', 'OBSERVE_ONLY', 'NOT_APPLICABLE'], true)) {
+                $blockers[] = 'COVERAGE_CLASS_INVALID:' . $writerId;
+            }
+            if (!in_array((string) ($profile['safeInvocationMethod'] ?? ''), [
+                'PRODUCTION_SMOKE_AUTH',
+                'PRODUCTION_SMOKE_ADMIN',
+                'HTTP_JSON_GET',
+                'CLI',
+                'CLI_DRY_RUN',
+                'CLI_COVERAGE_NOOP',
+                'SYSTEMD_STATE',
+                'OBSERVE_ONLY',
+                'NOT_APPLICABLE',
+            ], true)) {
+                $blockers[] = 'COVERAGE_METHOD_INVALID:' . $writerId;
+            }
+            if (!is_string($profile['entrypoint'] ?? null) || trim((string) $profile['entrypoint']) === '') {
+                $blockers[] = 'COVERAGE_ENTRYPOINT_MISSING:' . $writerId;
+            }
+
+            $cleanupPolicy = (string) ($profile['cleanupPolicy'] ?? '');
+            if (!in_array($cleanupPolicy, ['NONE', 'RUNTIME_ATTRIBUTION_ONLY', 'SYNTHETIC_OWNED_ROWS'], true)) {
+                $blockers[] = 'COVERAGE_CLEANUP_POLICY_INVALID:' . $writerId;
+            }
+        }
+
+        foreach (array_keys($profiles) as $writerId) {
+            if (!in_array($writerId, $knownWriterIds, true)) {
+                $blockers[] = 'UNKNOWN_COVERAGE_PROFILE:' . $writerId;
+            }
+        }
+
+        $blockers = array_values(array_unique($blockers));
+        sort($blockers);
+        return $blockers;
     }
 
     /**
@@ -208,6 +294,212 @@ final class DatasetWriterFreezeReporter
             'health_check' => $health,
             'owner' => $owner,
             'evidence' => $evidence,
+        ];
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private static function coverageProfiles(): array
+    {
+        return [
+            'http-auth-account' => self::coverage(
+                'INVOKE',
+                'PRODUCTION_SMOKE_AUTH',
+                'backend/scripts/tasks/production_smoke.php',
+                'Run the existing authenticated smoke and profile check.',
+                'RUNTIME_ATTRIBUTION_ONLY',
+                ['SMOKE_API_BASE_URL', 'SMOKE_AUTH_EMAIL', 'SMOKE_AUTH_PASSWORD']
+            ),
+            'http-practice-user-activity' => self::coverage(
+                'OBSERVE_ONLY',
+                'HTTP_JSON_GET',
+                '/questionsList?page=1&limit=1',
+                'Public practice surface remains read-available; synthetic write probes stay disabled until a dedicated idempotent fixture exists.',
+                'NONE'
+            ),
+            'http-content-interactions' => self::coverage(
+                'OBSERVE_ONLY',
+                'HTTP_JSON_GET',
+                '/blog/list.php?page=1&limit=1',
+                'Content interaction APIs remain observable through public read endpoints while synthetic writes stay opt-in.',
+                'NONE'
+            ),
+            'http-admin-editorial' => self::coverage(
+                'INVOKE',
+                'PRODUCTION_SMOKE_ADMIN',
+                'backend/scripts/tasks/production_smoke.php',
+                'Use the existing authenticated admin smoke without mutating editorial state.',
+                'NONE',
+                ['SMOKE_API_BASE_URL', 'SMOKE_AUTH_EMAIL', 'SMOKE_AUTH_PASSWORD']
+            ),
+            'http-private-ingestion-producer' => self::coverage(
+                'OBSERVE_ONLY',
+                'OBSERVE_ONLY',
+                'backend/modules/questions/private_ingestion_routes.php',
+                'Signed ingestion producer remains coverage-observable through schema/config/queue validation until a dedicated synthetic producer fixture is authorized.',
+                'NONE'
+            ),
+            'http-stripe-webhook-producer' => self::coverage(
+                'NOT_APPLICABLE',
+                'NOT_APPLICABLE',
+                'backend/api/subscriptions/stripe_webhook.php',
+                'External provider webhook producer is not invoked without a provider-backed synthetic event; queue and consumer coverage remain separate.',
+                'NONE'
+            ),
+            'cron-stripe-webhook-consumer' => self::coverage(
+                'INVOKE',
+                'CLI_COVERAGE_NOOP',
+                'backend/scripts/tasks/process_stripe_webhook_jobs.php',
+                'Boot the real worker entrypoint, acquire the cron lock and exit without processing when coverage-noop is requested.',
+                'NONE'
+            ),
+            'cron-stripe-reconciliation' => self::coverage(
+                'INVOKE',
+                'CLI_COVERAGE_NOOP',
+                'backend/scripts/tasks/reconcile_stripe_subscriptions.php',
+                'Boot the reconciliation entrypoint and validate lock/controller wiring without provider mutations.',
+                'NONE'
+            ),
+            'cron-card-expiry' => self::coverage(
+                'INVOKE',
+                'CLI_COVERAGE_NOOP',
+                'backend/scripts/tasks/check_subscription_card_expiry.php',
+                'Run the billing reminder entrypoint in coverage-noop mode to avoid creating notifications during validation.',
+                'NONE'
+            ),
+            'cron-marketing-automations' => self::coverage(
+                'INVOKE',
+                'CLI_DRY_RUN',
+                'backend/scripts/tasks/process_marketing_automations.php',
+                'Use the built-in dry-run mode that already shares the scheduler entrypoint.',
+                'NONE'
+            ),
+            'cron-referral-rewards' => self::coverage(
+                'INVOKE',
+                'CLI_COVERAGE_NOOP',
+                'backend/scripts/tasks/process_referral_rewards.php',
+                'Run the referral rewards entrypoint in coverage-noop mode to validate lock/bootstrap only.',
+                'NONE'
+            ),
+            'cron-legal-commentary-sync' => self::coverage(
+                'OBSERVE_ONLY',
+                'OBSERVE_ONLY',
+                'backend/api/legal-commentary/cron_sync_updates.php',
+                'Legal commentary sync remains coverage-observable until a reviewed synthetic sync fixture is authorized.',
+                'NONE'
+            ),
+            'cron-operational-alerts' => self::coverage(
+                'INVOKE',
+                'CLI_COVERAGE_NOOP',
+                'backend/scripts/tasks/operational_log_alerts.php',
+                'Run the operational alerts entrypoint in coverage-noop mode so it audits logs without writing health or notification ledgers.',
+                'NONE'
+            ),
+            'systemd-platform-event-consumer' => self::coverage(
+                'INVOKE',
+                'SYSTEMD_STATE',
+                'concursomestre-platform-events@1.service',
+                'Validate that the resumed worker unit is active through the canonical systemd surface.',
+                'NONE'
+            ),
+            'systemd-question-ingestion-consumers' => self::coverage(
+                'INVOKE',
+                'SYSTEMD_STATE',
+                'concursomestre-question-ingestion@1.service,concursomestre-question-ingestion@2.service',
+                'Validate both resumed ingestion workers through systemd state and queue stability.',
+                'NONE'
+            ),
+            'systemd-answer-archive' => self::coverage(
+                'INVOKE',
+                'SYSTEMD_STATE',
+                'concursomestre-answer-archive.timer',
+                'Validate the resumed archive timer is waiting/active without forcing an archive cycle.',
+                'NONE'
+            ),
+            'manual-gran-crawler-taxonomy' => self::coverage(
+                'NOT_APPLICABLE',
+                'NOT_APPLICABLE',
+                'AdminGranCrawlerService; AdminGranTaxonomySyncService',
+                'Manual operator-driven crawler paths remain closed during coverage validation and are proven by process/session absence only.',
+                'NONE'
+            ),
+            'manual-exam-import-extraction' => self::coverage(
+                'NOT_APPLICABLE',
+                'NOT_APPLICABLE',
+                'backend/modules/exams; materialize_gran_exam_files.php',
+                'Manual extraction flows remain closed during coverage validation and are proven by process absence plus extractor health.',
+                'NONE'
+            ),
+            'manual-planalto-import' => self::coverage(
+                'NOT_APPLICABLE',
+                'NOT_APPLICABLE',
+                'PlanaltoImportService.php',
+                'Manual legal import is intentionally not triggered during coverage validation.',
+                'NONE'
+            ),
+            'manual-backfills-migrations-reset' => self::coverage(
+                'NOT_APPLICABLE',
+                'NOT_APPLICABLE',
+                'backend/scripts/backfills; backend/database/migrations; backend/scripts/data',
+                'Privileged maintenance writers remain operator-closed and are validated by authorized-session absence only.',
+                'NONE'
+            ),
+            'frontend-next-server' => self::coverage(
+                'OBSERVE_ONLY',
+                'OBSERVE_ONLY',
+                'concursomestre-frontend.service',
+                'Frontend service is not a writer; it is observed for resumed availability only.',
+                'NONE'
+            ),
+            'python-extractor' => self::coverage(
+                'OBSERVE_ONLY',
+                'SYSTEMD_STATE',
+                'concursomestre-python-extractor.service',
+                'Extractor service is not a writer; observe resumed service health only.',
+                'NONE'
+            ),
+            'sitemap-generators' => self::coverage(
+                'OBSERVE_ONLY',
+                'SYSTEMD_STATE',
+                'concursomestre-sitemap.timer,concursomestre-blog-sitemap.timer',
+                'Sitemap timers remain non-writers and are observed for resumed waiting state only.',
+                'NONE'
+            ),
+            'mysql-backup' => self::coverage(
+                'OBSERVE_ONLY',
+                'OBSERVE_ONLY',
+                'backend/scripts/tasks/backup_mysql.php',
+                'Backup remains outside the writer-validation mutation set and is observed separately by backup health.',
+                'NONE'
+            ),
+            'log-maintenance' => self::coverage(
+                'INVOKE',
+                'CLI_DRY_RUN',
+                'backend/scripts/tasks/operational_log_maintenance.php',
+                'Run the existing dry-run maintenance entrypoint to validate scheduler wiring without mutating logs.',
+                'NONE'
+            ),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function coverage(
+        string $coverageClass,
+        string $safeInvocationMethod,
+        string $entrypoint,
+        string $justification,
+        string $cleanupPolicy,
+        array $requiredEnv = []
+    ): array {
+        $requiredEnv = array_values(array_unique(array_map('strval', $requiredEnv)));
+        sort($requiredEnv);
+
+        return [
+            'coverageClass' => $coverageClass,
+            'safeInvocationMethod' => $safeInvocationMethod,
+            'entrypoint' => $entrypoint,
+            'justification' => $justification,
+            'cleanupPolicy' => $cleanupPolicy,
+            'requiredEnv' => $requiredEnv,
         ];
     }
 

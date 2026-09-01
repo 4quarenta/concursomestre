@@ -43,6 +43,11 @@ function logAlertsBoolOption(string $name, bool $fallback): bool
     return filter_var($value, FILTER_VALIDATE_BOOLEAN);
 }
 
+function logAlertsCoverageNoop(): bool
+{
+    return logAlertsBoolOption('coverage-noop', false);
+}
+
 function logAlertsNormalizePath(string $path): string
 {
     return str_replace('\\', '/', $path);
@@ -313,6 +318,18 @@ try {
         'tail_lines' => $tailLines,
         'require_files' => $requireFiles,
     ]);
+
+    if (logAlertsCoverageNoop()) {
+        echo json_encode([
+            'success' => true,
+            'task' => 'operational_log_alerts',
+            'status' => 'coverage-noop',
+            'audit_checked_at' => $auditPayload['checked_at'] ?? null,
+            'checked_at' => gmdate(DATE_ATOM),
+            'alerts_seen' => count(logAlertsCollectAlerts($auditPayload, $alertOn, $maxAlerts)),
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+        exit(0);
+    }
 
     $alerts = logAlertsCollectAlerts($auditPayload, $alertOn, $maxAlerts);
     $ledgerEvents = logAlertsReadLedger($ledgerPath);

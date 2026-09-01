@@ -23,6 +23,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../modules/subscriptions/routes.php';
 
 $lock = null;
+$coverageNoop = in_array('--coverage-noop', array_slice($argv, 1), true);
 
 try {
     $lock = acquireCronLockOrThrow('subscriptions_stripe_reconciliation');
@@ -30,6 +31,14 @@ try {
     $database = new Database();
     $db = $database->getConnection();
     $controller = buildSubscriptionsController($db);
+    if ($coverageNoop) {
+        fwrite(STDOUT, json_encode([
+            'success' => true,
+            'mode' => 'coverage-noop',
+            'reconciliationReady' => true,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        exit(0);
+    }
     $summary = $controller->runStripeReconciliationCron();
 
     fwrite(STDOUT, json_encode([

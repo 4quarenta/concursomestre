@@ -22,6 +22,7 @@ require_once dirname(__DIR__, 2) . '/modules/users/repositories/UsersRepository.
 $database = new Database();
 $db = $database->getConnection();
 $repository = new UsersRepository($db);
+$coverageNoop = in_array('--coverage-noop', array_slice($argv, 1), true);
 $timezone = new DateTimeZone('America/Sao_Paulo');
 $now = new DateTimeImmutable('now', $timezone);
 $currentMonth = (int) $now->format('m');
@@ -33,6 +34,17 @@ $summary = [
     'expiring' => 0,
     'notified' => 0,
 ];
+
+if ($coverageNoop) {
+    echo json_encode([
+        'success' => true,
+        'mode' => 'coverage-noop',
+        'checked_at' => $now->format(DateTimeInterface::ATOM),
+        'timezone' => 'America/Sao_Paulo',
+        'summary' => $summary,
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+    exit(0);
+}
 
 /**
  * Monta o identificador do cartao sem expor dado sensivel.

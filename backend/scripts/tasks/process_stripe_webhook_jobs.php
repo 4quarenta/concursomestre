@@ -12,9 +12,12 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../modules/subscriptions/routes.php';
 
 $limit = 50;
+$coverageNoop = false;
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--limit=')) {
         $limit = max(1, min(500, (int) substr($argument, 8)));
+    } elseif ($argument === '--coverage-noop') {
+        $coverageNoop = true;
     }
 }
 
@@ -26,6 +29,16 @@ try {
     $lock = acquireCronLockOrThrow('subscriptions_stripe_webhook_worker');
     $db = (new Database())->getConnection();
     $controller = buildSubscriptionsController($db);
+
+    if ($coverageNoop) {
+        fwrite(STDOUT, json_encode([
+            'event' => 'stripe_webhook_worker_coverage_noop',
+            'processed' => 0,
+            'failed' => 0,
+            'queueProbeReady' => true,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        exit(0);
+    }
 
     while ($processed < $limit) {
         try {
