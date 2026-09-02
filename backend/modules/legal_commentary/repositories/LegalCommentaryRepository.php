@@ -51,17 +51,6 @@ class LegalCommentaryRepository
         LegalCommentarySchemaInstaller::assertReady($this->db);
     }
 
-    /**
-     * Garante o schema minimo do produto no primeiro acesso local.
-     *
-     * @since 1.0.0
-     */
-    public function applySchemaMigration(): void
-    {
-        (new LegalCommentarySchemaInstaller($this->db))->install();
-    }
-
-
     private function jsonEncode($value): ?string
     {
         if ($value === null) {

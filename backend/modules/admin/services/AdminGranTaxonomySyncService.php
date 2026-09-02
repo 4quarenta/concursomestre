@@ -518,205 +518,120 @@ final class AdminGranTaxonomySyncService
         $idList = implode(',', $cargoFilterIds);
         $this->ensureCargoLevelFilters($cargoFilterIds);
 
-        // MySQL cannot reopen the same TEMPORARY table under another alias in
-        // test fixtures. Materialize only the target catalogs required by the
-        // current chunk instead of copying every cargo identity on each pass.
-        $this->db->exec('DROP TEMPORARY TABLE IF EXISTS tmp_gran_cargo_primary_career');
-        $this->db->exec('DROP TEMPORARY TABLE IF EXISTS tmp_gran_filter_identity_map');
-        try {
-            $this->db->exec(
-                "CREATE TEMPORARY TABLE tmp_gran_filter_identity_map
-                 ENGINE=InnoDB
-                 AS
-                 SELECT filter_id, filter_type, source_entity_type, source_external_id
-                 FROM filter_source_identities
-                 WHERE source_provider = 'gran'
-                   AND source_entity_type IN ('carreira', 'orgao')"
-            );
-            $this->db->exec(
-                'CREATE INDEX idx_tmp_gran_identity_lookup
-                 ON tmp_gran_filter_identity_map (
-                    filter_type, source_entity_type, source_external_id
-                 )'
-            );
-
-            // A Gran ordena as carreiras por relevancia, mas o primeiro ID
-            // pode nao existir no catalogo sincronizado. Materialize a primeira
-            // carreira realmente disponivel sem perder a ordem da origem.
-            $this->db->exec(
-                "CREATE TEMPORARY TABLE tmp_gran_cargo_primary_career
-                 ENGINE=InnoDB
-                 AS
-                 SELECT ranked.cargo_filter_id,
-                        ranked.root_filter_id,
-                        ranked.root_external_id
-                 FROM (
-                    SELECT cargo_identity.filter_id AS cargo_filter_id,
-                           root_identity.filter_id AS root_filter_id,
-                           root_identity.source_external_id AS root_external_id,
-                           ROW_NUMBER() OVER (
-                              PARTITION BY cargo_identity.filter_id
-                              ORDER BY career_reference.ordinal ASC
-                           ) AS career_rank
-                    FROM filter_source_identities cargo_identity
-                    INNER JOIN JSON_TABLE(
-                       COALESCE(cargo_identity.source_metadata_json, JSON_OBJECT()),
-                       '$.careerExternalIds[*]' COLUMNS (
-                          ordinal FOR ORDINALITY,
-                          external_id VARCHAR(120) PATH '$'
-                       )
-                    ) career_reference ON TRUE
-                    INNER JOIN tmp_gran_filter_identity_map root_identity
-                       ON root_identity.filter_type = 'carreira'
-                      AND root_identity.source_entity_type = 'carreira'
-                      AND CAST(root_identity.source_external_id AS BINARY) =
-                          CAST(career_reference.external_id AS BINARY)
-                    WHERE cargo_identity.filter_type = 'cargo'
-                      AND cargo_identity.source_provider = 'gran'
-                      AND cargo_identity.source_entity_type = 'cargo'
-                      AND cargo_identity.filter_id IN ({$idList})
-                 ) ranked
-                 WHERE ranked.career_rank = 1"
-            );
-            $this->db->exec(
-                'CREATE UNIQUE INDEX idx_tmp_gran_cargo_primary
-                 ON tmp_gran_cargo_primary_career (cargo_filter_id)'
-            );
-            // Alguns cargos da propria Gran nao possuem a chave carreiras.
-            // Nesses casos, use a carreira oficial "Outras" (ID externo 28)
-            // em vez de manter uma falsa pendencia ou inferir outra carreira.
-            $this->db->exec(
-                "INSERT IGNORE INTO tmp_gran_cargo_primary_career (
-                    cargo_filter_id, root_filter_id, root_external_id
-                 )
-                 SELECT cargo_identity.filter_id,
-                        fallback_identity.filter_id,
-                        fallback_identity.source_external_id
-                 FROM filter_source_identities cargo_identity
-                 INNER JOIN tmp_gran_filter_identity_map fallback_identity
-                    ON fallback_identity.filter_type = 'carreira'
-                   AND fallback_identity.source_entity_type = 'carreira'
-                   AND fallback_identity.source_external_id = '28'
-                 WHERE cargo_identity.filter_type = 'cargo'
-                   AND cargo_identity.source_provider = 'gran'
-                   AND cargo_identity.source_entity_type = 'cargo'
-                   AND cargo_identity.filter_id IN ({$idList})
-                   AND JSON_LENGTH(
-                      COALESCE(
-                         JSON_EXTRACT(cargo_identity.source_metadata_json, '$.careerExternalIds'),
-                         JSON_ARRAY()
-                      )
-                   ) = 0"
-            );
-
-            $this->db->exec(
-                "DELETE FROM filter_relationships
-                 WHERE source_provider = 'gran'
-                   AND relation_type IN ('cargo_career', 'cargo_organization', 'cargo_level')
-                   AND source_filter_id IN ({$idList})"
-            );
-
-            $careerLinks = $this->db->exec(
-                "INSERT IGNORE INTO filter_relationships (
-                    source_filter_id, target_filter_id, relation_type, source_provider
-                 )
-                 SELECT DISTINCT cargo_identity.filter_id, root_identity.filter_id, 'cargo_career', 'gran'
-                 FROM filter_source_identities cargo_identity
-                 INNER JOIN JSON_TABLE(
+        $identityMapSql = "(
+            SELECT filter_id, filter_type, source_entity_type, source_external_id
+            FROM filter_source_identities
+            WHERE source_provider = 'gran'
+              AND source_entity_type IN ('carreira', 'orgao')
+        )";
+        $primaryCareerSql = "(
+            SELECT ranked.cargo_filter_id, ranked.root_filter_id, ranked.root_external_id
+            FROM (
+                SELECT cargo_identity.filter_id AS cargo_filter_id,
+                       root_identity.filter_id AS root_filter_id,
+                       root_identity.source_external_id AS root_external_id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY cargo_identity.filter_id
+                           ORDER BY career_reference.ordinal ASC
+                       ) AS career_rank
+                FROM filter_source_identities cargo_identity
+                INNER JOIN JSON_TABLE(
                     COALESCE(cargo_identity.source_metadata_json, JSON_OBJECT()),
-                    '$.careerExternalIds[*]' COLUMNS (external_id VARCHAR(120) PATH '$')
-                 ) career_reference ON TRUE
-                 INNER JOIN tmp_gran_filter_identity_map root_identity
+                    '$.careerExternalIds[*]' COLUMNS (
+                        ordinal FOR ORDINALITY,
+                        external_id VARCHAR(120) PATH '$'
+                    )
+                ) career_reference ON TRUE
+                INNER JOIN {$identityMapSql} root_identity
                     ON root_identity.filter_type = 'carreira'
                    AND root_identity.source_entity_type = 'carreira'
-                   AND CAST(root_identity.source_external_id AS BINARY) =
-                       CAST(career_reference.external_id AS BINARY)
-                 WHERE cargo_identity.filter_type = 'cargo'
-                   AND cargo_identity.source_provider = 'gran'
-                   AND cargo_identity.source_entity_type = 'cargo'
-                   AND cargo_identity.filter_id IN ({$idList})"
-            );
-            $careerLinks += $this->db->exec(
-                "INSERT IGNORE INTO filter_relationships (
-                    source_filter_id, target_filter_id, relation_type, source_provider
-                 )
-                 SELECT primary_career.cargo_filter_id,
-                        primary_career.root_filter_id,
-                        'cargo_career',
-                        'gran'
-                 FROM tmp_gran_cargo_primary_career primary_career
-                 INNER JOIN filter_source_identities cargo_identity
-                    ON cargo_identity.filter_id = primary_career.cargo_filter_id
-                   AND cargo_identity.filter_type = 'cargo'
-                   AND cargo_identity.source_provider = 'gran'
-                   AND cargo_identity.source_entity_type = 'cargo'
-                 WHERE JSON_LENGTH(
-                    COALESCE(
-                       JSON_EXTRACT(cargo_identity.source_metadata_json, '$.careerExternalIds'),
-                       JSON_ARRAY()
-                    )
-                 ) = 0"
-            );
+                   AND CAST(root_identity.source_external_id AS BINARY) = CAST(career_reference.external_id AS BINARY)
+                WHERE cargo_identity.filter_type = 'cargo'
+                  AND cargo_identity.source_provider = 'gran'
+                  AND cargo_identity.source_entity_type = 'cargo'
+                  AND cargo_identity.filter_id IN ({$idList})
+            ) ranked
+            WHERE ranked.career_rank = 1
+            UNION ALL
+            SELECT cargo_identity.filter_id,
+                   fallback_identity.filter_id,
+                   fallback_identity.source_external_id
+            FROM filter_source_identities cargo_identity
+            INNER JOIN {$identityMapSql} fallback_identity
+                ON fallback_identity.filter_type = 'carreira'
+               AND fallback_identity.source_entity_type = 'carreira'
+               AND fallback_identity.source_external_id = '28'
+            WHERE cargo_identity.filter_type = 'cargo'
+              AND cargo_identity.source_provider = 'gran'
+              AND cargo_identity.source_entity_type = 'cargo'
+              AND cargo_identity.filter_id IN ({$idList})
+              AND JSON_LENGTH(COALESCE(JSON_EXTRACT(cargo_identity.source_metadata_json, '$.careerExternalIds'), JSON_ARRAY())) = 0
+        )";
 
-            $organizationLinks = $this->db->exec(
-                "INSERT IGNORE INTO filter_relationships (
-                    source_filter_id, target_filter_id, relation_type, source_provider
-                 )
-                 SELECT DISTINCT cargo_identity.filter_id, organization_identity.filter_id,
-                        'cargo_organization', 'gran'
-                 FROM filter_source_identities cargo_identity
-                 INNER JOIN JSON_TABLE(
-                    COALESCE(cargo_identity.source_metadata_json, JSON_OBJECT()),
-                    '$.organizationExternalIds[*]' COLUMNS (external_id VARCHAR(120) PATH '$')
-                 ) organization_reference ON TRUE
-                 INNER JOIN tmp_gran_filter_identity_map organization_identity
-                    ON organization_identity.filter_type = 'orgao'
-                   AND organization_identity.source_entity_type = 'orgao'
-                   AND CAST(organization_identity.source_external_id AS BINARY) =
-                       CAST(organization_reference.external_id AS BINARY)
-                 WHERE cargo_identity.filter_type = 'cargo'
-                   AND cargo_identity.source_provider = 'gran'
-                   AND cargo_identity.source_entity_type = 'cargo'
-                   AND cargo_identity.filter_id IN ({$idList})"
-            );
+        $this->db->exec(
+            "DELETE FROM filter_relationships
+             WHERE source_provider = 'gran'
+               AND relation_type IN ('cargo_career', 'cargo_organization', 'cargo_level')
+               AND source_filter_id IN ({$idList})"
+        );
 
-            $levelLinks = $this->db->exec(
-                "INSERT IGNORE INTO filter_relationships (
-                    source_filter_id, target_filter_id, relation_type, source_provider
-                 )
-                 SELECT DISTINCT cargo_identity.filter_id, level_filter.id, 'cargo_level', 'gran'
-                 FROM filter_source_identities cargo_identity
-                 INNER JOIN JSON_TABLE(
-                    COALESCE(cargo_identity.source_metadata_json, JSON_OBJECT()),
-                    '$.levels[*]' COLUMNS (label VARCHAR(255) PATH '$')
-                 ) level_reference ON TRUE
-                 INNER JOIN filters level_filter
-                    ON level_filter.type = 'nivel'
-                   AND CAST(level_filter.name AS BINARY) = CAST(level_reference.label AS BINARY)
-                 WHERE cargo_identity.filter_type = 'cargo'
-                   AND cargo_identity.source_provider = 'gran'
-                   AND cargo_identity.source_entity_type = 'cargo'
-                   AND cargo_identity.filter_id IN ({$idList})"
-            );
+        $careerLinks = $this->db->exec(
+            "INSERT IGNORE INTO filter_relationships (source_filter_id, target_filter_id, relation_type, source_provider)
+             SELECT DISTINCT cargo_identity.filter_id, root_identity.filter_id, 'cargo_career', 'gran'
+             FROM filter_source_identities cargo_identity
+             INNER JOIN JSON_TABLE(COALESCE(cargo_identity.source_metadata_json, JSON_OBJECT()), '$.careerExternalIds[*]' COLUMNS (external_id VARCHAR(120) PATH '$')) career_reference ON TRUE
+             INNER JOIN {$identityMapSql} root_identity
+                ON root_identity.filter_type = 'carreira'
+               AND root_identity.source_entity_type = 'carreira'
+               AND CAST(root_identity.source_external_id AS BINARY) = CAST(career_reference.external_id AS BINARY)
+             WHERE cargo_identity.filter_type = 'cargo'
+               AND cargo_identity.source_provider = 'gran'
+               AND cargo_identity.source_entity_type = 'cargo'
+               AND cargo_identity.filter_id IN ({$idList})"
+        );
+        $careerLinks += $this->db->exec(
+            "INSERT IGNORE INTO filter_relationships (source_filter_id, target_filter_id, relation_type, source_provider)
+             SELECT primary_career.cargo_filter_id, primary_career.root_filter_id, 'cargo_career', 'gran'
+             FROM {$primaryCareerSql} primary_career"
+        );
 
-            $resolved = $this->db->exec(
-                "UPDATE filters cargo
-                 INNER JOIN tmp_gran_cargo_primary_career primary_career
-                    ON primary_career.cargo_filter_id = cargo.id
-                 SET cargo.parent_id = primary_career.root_filter_id,
-                     cargo.source_parent_external_id = primary_career.root_external_id,
-                     cargo.source_root_external_id = primary_career.root_external_id
-                 WHERE cargo.type = 'cargo'
-                   AND cargo.id IN ({$idList})
-                   AND (
-                      cargo.parent_id IS NULL
-                      OR cargo.parent_id <> primary_career.root_filter_id
-                   )"
-            );
-        } finally {
-            $this->db->exec('DROP TEMPORARY TABLE IF EXISTS tmp_gran_cargo_primary_career');
-            $this->db->exec('DROP TEMPORARY TABLE IF EXISTS tmp_gran_filter_identity_map');
-        }
+        $organizationLinks = $this->db->exec(
+            "INSERT IGNORE INTO filter_relationships (source_filter_id, target_filter_id, relation_type, source_provider)
+             SELECT DISTINCT cargo_identity.filter_id, organization_identity.filter_id, 'cargo_organization', 'gran'
+             FROM filter_source_identities cargo_identity
+             INNER JOIN JSON_TABLE(COALESCE(cargo_identity.source_metadata_json, JSON_OBJECT()), '$.organizationExternalIds[*]' COLUMNS (external_id VARCHAR(120) PATH '$')) organization_reference ON TRUE
+             INNER JOIN {$identityMapSql} organization_identity
+                ON organization_identity.filter_type = 'orgao'
+               AND organization_identity.source_entity_type = 'orgao'
+               AND CAST(organization_identity.source_external_id AS BINARY) = CAST(organization_reference.external_id AS BINARY)
+             WHERE cargo_identity.filter_type = 'cargo'
+               AND cargo_identity.source_provider = 'gran'
+               AND cargo_identity.source_entity_type = 'cargo'
+               AND cargo_identity.filter_id IN ({$idList})"
+        );
+
+        $levelLinks = $this->db->exec(
+            "INSERT IGNORE INTO filter_relationships (source_filter_id, target_filter_id, relation_type, source_provider)
+             SELECT DISTINCT cargo_identity.filter_id, level_filter.id, 'cargo_level', 'gran'
+             FROM filter_source_identities cargo_identity
+             INNER JOIN JSON_TABLE(COALESCE(cargo_identity.source_metadata_json, JSON_OBJECT()), '$.levels[*]' COLUMNS (label VARCHAR(255) PATH '$')) level_reference ON TRUE
+             INNER JOIN filters level_filter ON level_filter.type = 'nivel' AND CAST(level_filter.name AS BINARY) = CAST(level_reference.label AS BINARY)
+             WHERE cargo_identity.filter_type = 'cargo'
+               AND cargo_identity.source_provider = 'gran'
+               AND cargo_identity.source_entity_type = 'cargo'
+               AND cargo_identity.filter_id IN ({$idList})"
+        );
+
+        $resolved = $this->db->exec(
+            "UPDATE filters cargo
+             INNER JOIN {$primaryCareerSql} primary_career ON primary_career.cargo_filter_id = cargo.id
+             SET cargo.parent_id = primary_career.root_filter_id,
+                 cargo.source_parent_external_id = primary_career.root_external_id,
+                 cargo.source_root_external_id = primary_career.root_external_id
+             WHERE cargo.type = 'cargo'
+               AND cargo.id IN ({$idList})
+               AND (cargo.parent_id IS NULL OR cargo.parent_id <> primary_career.root_filter_id)"
+        );
 
         $counts = $this->readCargoRelationCounts();
         return [

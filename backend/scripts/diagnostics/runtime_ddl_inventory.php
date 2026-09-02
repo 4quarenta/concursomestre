@@ -14,6 +14,11 @@ $excludedDirectories = [
     DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR,
     DIRECTORY_SEPARATOR . 'scripts' . DIRECTORY_SEPARATOR,
 ];
+$excludedFiles = [
+    'modules/setup/services/SetupService.php' => 'first-boot provisioning only',
+    'modules/legal_commentary/schema/LegalCommentarySchemaInstaller.php' => 'explicit migration installer only',
+    'shared/database/SchemaMigrationRunner.php' => 'CLI migration runner only',
+];
 $patterns = [
     'create_table' => '/\\bCREATE\\s+TABLE\\b/i',
     'alter_table' => '/\\bALTER\\s+TABLE\\b/i',
@@ -32,6 +37,10 @@ foreach ($iterator as $file) {
 
     $path = $file->getPathname();
     $normalizedPath = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $path);
+    $relativePath = str_replace(DIRECTORY_SEPARATOR, '/', substr($path, strlen($backendRoot) + 1));
+    if (array_key_exists($relativePath, $excludedFiles)) {
+        continue;
+    }
     $skip = false;
     foreach ($excludedDirectories as $excludedDirectory) {
         if (str_contains($normalizedPath, $excludedDirectory)) {

@@ -409,7 +409,7 @@ describe('adminService', () => {
       success: true,
       message: 'Configuracoes do cache atualizadas.',
     });
-    mockGet.mockResolvedValueOnce({
+    mockPost.mockResolvedValueOnce({
       success: true,
       message: 'Cache limpo.',
     });
@@ -418,7 +418,7 @@ describe('adminService', () => {
     await expect(adminService.clearCache()).resolves.toBe('Cache limpo.');
 
     expect(mockPost).toHaveBeenCalledWith('admin/cache.php?action=settings', { enabled: true, default_ttl: 120 });
-    expect(mockGet).toHaveBeenCalledWith('admin/cache.php?action=clear');
+    expect(mockPost).toHaveBeenCalledWith('admin/cache.php?action=clear', {});
     expect(mockClearRequestCoalescing).toHaveBeenCalledTimes(2);
   });
 

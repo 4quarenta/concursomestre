@@ -46,6 +46,10 @@ class AdminCacheService
     {
         $this->validator->validateAction($action);
 
+        if (in_array($action, ['clear', 'clean'], true)) {
+            $this->validator->validateMutationMethod($method);
+        }
+
         return match ($action) {
             'stats' => $this->buildStatsResponse(''),
             'clear' => $this->handleClear(),

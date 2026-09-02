@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /*
 * ----------------------------------------------------
@@ -310,51 +311,10 @@ class AdminCommentsModerationRepository
             return;
         }
 
-        if ($this->tableExists('comments')) {
-            $this->ensureColumnExists(
-                'comments',
-                'moderation_status',
-                "ALTER TABLE comments ADD COLUMN moderation_status VARCHAR(20) NOT NULL DEFAULT 'approved' AFTER parent_id"
-            );
-            $this->ensureColumnExists(
-                'comments',
-                'moderated_at',
-                "ALTER TABLE comments ADD COLUMN moderated_at DATETIME NULL AFTER moderation_status"
-            );
-            $this->ensureColumnExists(
-                'comments',
-                'moderated_by',
-                "ALTER TABLE comments ADD COLUMN moderated_by VARCHAR(80) NULL AFTER moderated_at"
-            );
-            try {
-                $this->db->exec("UPDATE comments SET moderation_status = 'approved' WHERE moderation_status IS NULL OR moderation_status = ''");
-            } catch (Throwable $e) {
-                // noop
-            }
-        }
-
-        if ($this->tableExists('legal_user_comments')) {
-            $this->ensureColumnExists(
-                'legal_user_comments',
-                'moderation_status',
-                "ALTER TABLE legal_user_comments ADD COLUMN moderation_status VARCHAR(20) NOT NULL DEFAULT 'approved' AFTER status"
-            );
-            $this->ensureColumnExists(
-                'legal_user_comments',
-                'moderated_at',
-                "ALTER TABLE legal_user_comments ADD COLUMN moderated_at DATETIME NULL AFTER updated_at"
-            );
-            $this->ensureColumnExists(
-                'legal_user_comments',
-                'moderated_by',
-                "ALTER TABLE legal_user_comments ADD COLUMN moderated_by VARCHAR(80) NULL AFTER moderated_at"
-            );
-            try {
-                $this->db->exec("UPDATE legal_user_comments SET moderation_status = 'approved' WHERE moderation_status IS NULL OR moderation_status = ''");
-            } catch (Throwable $e) {
-                // noop
-            }
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'moderacao de comentarios', [
+            'comments' => ['id', 'user_id', 'content', 'moderation_status', 'moderated_at', 'moderated_by', 'created_at'],
+            'legal_user_comments' => ['id', 'user_id', 'body', 'status', 'moderation_status', 'moderated_at', 'moderated_by', 'created_at'],
+        ]);
 
         $this->schemaEnsured = true;
     }
@@ -364,18 +324,6 @@ class AdminCommentsModerationRepository
         $stmt = $this->db->prepare('SHOW TABLES LIKE :table_name');
         $stmt->execute([':table_name' => $table]);
         return $stmt->fetchColumn() !== false;
-    }
-
-    private function ensureColumnExists(string $table, string $column, string $ddl): void
-    {
-        $stmt = $this->db->prepare("SHOW COLUMNS FROM {$table} LIKE :column_name");
-        $stmt->execute([':column_name' => $column]);
-
-        if ($stmt->fetchColumn() !== false) {
-            return;
-        }
-
-        $this->db->exec($ddl);
     }
 
     private function parseModerationId(string $moderationId): array

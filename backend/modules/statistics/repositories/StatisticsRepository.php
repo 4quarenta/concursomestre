@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 /**
  * Repository do dominio de estatisticas.
  * Toda consulta SQL usada pelo raio-x da banca fica centralizada aqui.
@@ -458,34 +460,9 @@ class StatisticsRepository
      */
     public function ensureUserStatisticsTable(): void
     {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS user_statistics (
-                user_id VARCHAR(36) PRIMARY KEY,
-                total_questions_answered INT DEFAULT 0,
-                correct_answers INT DEFAULT 0,
-                wrong_answers INT DEFAULT 0,
-                accuracy_rate DECIMAL(5,2) DEFAULT 0.00,
-                current_streak INT DEFAULT 0,
-                best_streak INT DEFAULT 0,
-                total_study_time INT DEFAULT 0,
-                question_study_time INT DEFAULT 0,
-                reading_study_time INT DEFAULT 0,
-                last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX (user_id)
-            )
-        ");
-
-        $this->ensureTableColumn(
-            'user_statistics',
-            'question_study_time',
-            'ALTER TABLE user_statistics ADD COLUMN question_study_time INT DEFAULT 0 AFTER total_study_time'
-        );
-        $this->ensureTableColumn(
-            'user_statistics',
-            'reading_study_time',
-            'ALTER TABLE user_statistics ADD COLUMN reading_study_time INT DEFAULT 0 AFTER question_study_time'
-        );
+        SchemaReadiness::assertTablesAndColumns($this->db, 'estatisticas do usuario', [
+            'user_statistics' => ['user_id', 'total_questions_answered', 'correct_answers', 'wrong_answers', 'accuracy_rate', 'current_streak', 'best_streak', 'total_study_time', 'question_study_time', 'reading_study_time', 'last_activity', 'updated_at'],
+        ]);
     }
 
     /**
@@ -495,22 +472,9 @@ class StatisticsRepository
      */
     public function ensureSubjectStatisticsTable(): void
     {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS subject_statistics (
-                id VARCHAR(36) PRIMARY KEY,
-                user_id VARCHAR(36) NOT NULL,
-                subject VARCHAR(100) NOT NULL,
-                total_questions INT DEFAULT 0,
-                correct_answers INT DEFAULT 0,
-                wrong_answers INT DEFAULT 0,
-                accuracy_rate DECIMAL(5,2) DEFAULT 0.00,
-                average_time INT DEFAULT 0,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX (user_id),
-                INDEX (subject),
-                UNIQUE KEY unique_user_subject (user_id, subject)
-            )
-        ");
+        SchemaReadiness::assertTablesAndColumns($this->db, 'estatisticas por materia', [
+            'subject_statistics' => ['id', 'user_id', 'subject', 'total_questions', 'correct_answers', 'wrong_answers', 'accuracy_rate', 'average_time', 'updated_at'],
+        ]);
     }
 
     /**
@@ -520,19 +484,11 @@ class StatisticsRepository
      */
     public function ensureQuestionStatsEnhancements(): bool
     {
-        $stmt = $this->db->query("SHOW COLUMNS FROM question_stats LIKE 'option_distribution'");
-        if ($stmt instanceof PDOStatement && $stmt->rowCount() > 0) {
-            return false;
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'estatisticas de questoes', [
+            'question_stats' => ['question_id', 'option_distribution', 'average_time_spent', 'difficulty_rating'],
+        ]);
 
-        $this->db->exec("
-            ALTER TABLE question_stats
-                ADD COLUMN option_distribution JSON DEFAULT NULL,
-                ADD COLUMN average_time_spent INT DEFAULT 0,
-                ADD COLUMN difficulty_rating DECIMAL(3,2) DEFAULT 0.00
-        ");
-
-        return true;
+        return false;
     }
 
     /**
@@ -542,23 +498,9 @@ class StatisticsRepository
      */
     public function ensureStudySessionsTable(): void
     {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS study_sessions (
-                id VARCHAR(64) PRIMARY KEY,
-                user_id VARCHAR(36) NOT NULL,
-                practice_study_time INT DEFAULT 0,
-                simulation_study_time INT DEFAULT 0,
-                reading_study_time INT DEFAULT 0,
-                question_study_time INT DEFAULT 0,
-                total_study_time INT DEFAULT 0,
-                started_at DATETIME NULL,
-                ended_at DATETIME NOT NULL,
-                source_context JSON DEFAULT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                INDEX (user_id),
-                INDEX (ended_at)
-            )
-        ");
+        SchemaReadiness::assertTablesAndColumns($this->db, 'sessoes de estudo', [
+            'study_sessions' => ['id', 'user_id', 'practice_study_time', 'simulation_study_time', 'reading_study_time', 'question_study_time', 'total_study_time', 'started_at', 'ended_at', 'source_context', 'created_at'],
+        ]);
     }
 
     /**
@@ -572,22 +514,4 @@ class StatisticsRepository
         $this->ensureStudySessionsTable();
     }
 
-    /**
-     * Verifica se uma coluna existe antes de aplicar alter table incremental.
-     *
-     * @since 1.0.0
-     */
-    private function ensureTableColumn(string $tableName, string $columnName, string $alterStatement): void
-    {
-        $stmt = $this->db->prepare("SHOW COLUMNS FROM {$tableName} LIKE :column");
-        $stmt->execute([
-            ':column' => $columnName,
-        ]);
-
-        if ($stmt->fetch(PDO::FETCH_ASSOC) !== false) {
-            return;
-        }
-
-        $this->db->exec($alterStatement);
-    }
 }

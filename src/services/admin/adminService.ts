@@ -542,7 +542,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async clearCache(): Promise<string> {
-    const response = await requestApi<unknown>(apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clear`));
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clear`, {}));
     clearRequestCoalescing();
     return assertApiSuccess(response, 'Não foi possível limpar o cache.').message || 'Cache limpo com sucesso.';
   },
@@ -552,7 +552,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async cleanExpiredCache(): Promise<string> {
-    const response = await requestApi<unknown>(apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clean`));
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clean`, {}));
     clearRequestCoalescing();
     return assertApiSuccess(response, 'Não foi possível limpar o cache expirado.').message || 'Entradas expiradas removidas.';
   },

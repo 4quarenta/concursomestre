@@ -12,6 +12,7 @@
 */
 
 // config/notification_helper.php
+require_once __DIR__ . '/../shared/database/SchemaReadiness.php';
 function notificationHelperReadSystemSetting(PDO $db, string $key, $fallback = null)
 {
     try {
@@ -405,59 +406,8 @@ function notificationRecentlyExists(
  */
 function ensureNotificationTableSupportsCurrentContract(PDO $db): void
 {
-    $db->exec("
-        CREATE TABLE IF NOT EXISTS notifications (
-            id VARCHAR(64) PRIMARY KEY,
-            user_id VARCHAR(64) NOT NULL,
-            title VARCHAR(255) NULL,
-            message TEXT NULL,
-            type VARCHAR(20) NOT NULL DEFAULT 'info',
-            category VARCHAR(40) NOT NULL DEFAULT 'system',
-            is_read TINYINT(1) NOT NULL DEFAULT 0,
-            link VARCHAR(255) NULL,
-            evidence_url VARCHAR(500) NULL,
-            deleted_at DATETIME NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_notifications_user_visible (user_id, deleted_at, created_at),
-            INDEX idx_notifications_user_unread (user_id, is_read, deleted_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    ");
-
-    ensureNotificationColumn($db, 'category', "ALTER TABLE notifications ADD COLUMN category VARCHAR(40) NOT NULL DEFAULT 'system' AFTER type");
-    ensureNotificationColumn($db, 'is_read', "ALTER TABLE notifications ADD COLUMN is_read TINYINT(1) NOT NULL DEFAULT 0 AFTER type");
-    ensureNotificationColumn($db, 'link', "ALTER TABLE notifications ADD COLUMN link VARCHAR(255) NULL AFTER is_read");
-    ensureNotificationColumn($db, 'evidence_url', "ALTER TABLE notifications ADD COLUMN evidence_url VARCHAR(500) NULL AFTER link");
-    ensureNotificationColumn($db, 'deleted_at', "ALTER TABLE notifications ADD COLUMN deleted_at DATETIME NULL AFTER evidence_url");
-    ensureNotificationColumn($db, 'created_at', "ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
-
-    $stmt = $db->prepare("
-        SELECT CHARACTER_MAXIMUM_LENGTH
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'notifications'
-          AND COLUMN_NAME = 'id'
-        LIMIT 1
-    ");
-    $stmt->execute();
-    $length = (int) $stmt->fetchColumn();
-    if ($length > 0 && $length < 64) {
-        $db->exec('ALTER TABLE notifications MODIFY id VARCHAR(64) NOT NULL');
-    }
-}
-
-function ensureNotificationColumn(PDO $db, string $column, string $alterSql): void
-{
-    $stmt = $db->prepare("
-        SELECT COUNT(*)
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'notifications'
-          AND COLUMN_NAME = :column
-    ");
-    $stmt->execute([':column' => $column]);
-
-    if ((int) $stmt->fetchColumn() === 0) {
-        $db->exec($alterSql);
-    }
+    SchemaReadiness::assertTablesAndColumns($db, 'notificacoes', [
+        'notifications' => ['id', 'user_id', 'title', 'message', 'type', 'category', 'is_read', 'link', 'evidence_url', 'deleted_at', 'created_at'],
+    ]);
 }
 ?>

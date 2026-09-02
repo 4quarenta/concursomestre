@@ -10,6 +10,7 @@
 * @since 1.0.0
 *
 */
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /**
  * Repositorio da gestao administrativa do catalogo de planos.
@@ -348,52 +349,14 @@ class AdminPlanCatalogRepository
      */
     private function ensureOperationalColumns(): void
     {
-        if ($this->operationalColumnsEnsured || !$this->tableExists('plans')) {
+        if ($this->operationalColumnsEnsured) {
             return;
         }
 
+        SchemaReadiness::assertTablesAndColumns($this->db, 'catalogo de planos', [
+            'plans' => ['id', 'name', 'price', 'active', 'is_active', 'is_test_plan'],
+        ]);
         $this->operationalColumnsEnsured = true;
-        $columns = $this->getTableColumns('plans');
-
-        $columnsToCreate = [
-            'active' => 'TINYINT(1) NOT NULL DEFAULT 1',
-            'is_active' => 'TINYINT(1) NOT NULL DEFAULT 1',
-            'is_test_plan' => 'TINYINT(1) NOT NULL DEFAULT 0',
-        ];
-
-        foreach ($columnsToCreate as $column => $definition) {
-            if (in_array($column, $columns, true)) {
-                continue;
-            }
-
-            try {
-                $this->db->exec("ALTER TABLE plans ADD COLUMN {$column} {$definition}");
-                $columns[] = $column;
-            } catch (Throwable $e) {
-                error_log("[admin_plan_catalog] Nao foi possivel criar coluna {$column}: " . $e->getMessage());
-            }
-        }
-
-        unset($this->columnCache['plans']);
-        $columns = $this->getTableColumns('plans');
-
-        if (in_array('is_test_plan', $columns, true) && in_array('name', $columns, true)) {
-            try {
-                $shortCycleCondition = in_array('interval_unit', $columns, true) && in_array('interval_count', $columns, true)
-                    ? " OR (interval_unit = 'day' AND interval_count BETWEEN 1 AND 7)"
-                    : '';
-
-                $this->db->exec(
-                    "UPDATE plans
-                     SET is_test_plan = 1
-                     WHERE LOWER(name) LIKE '%teste%'
-                        OR LOWER(name) LIKE '%test%'
-                        OR LOWER(name) LIKE '%trial%'{$shortCycleCondition}"
-                );
-            } catch (Throwable $e) {
-                error_log('[admin_plan_catalog] Nao foi possivel marcar planos de teste existentes: ' . $e->getMessage());
-            }
-        }
     }
 
     private function tableExists(string $tableName): bool

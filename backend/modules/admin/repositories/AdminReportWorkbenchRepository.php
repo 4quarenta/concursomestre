@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../reports/services/ReportReasonCatalog.php';
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /**
  * Persistencia do workbench contextual de moderacao.
@@ -18,59 +19,11 @@ class AdminReportWorkbenchRepository
 
     public function ensureInfrastructure(): void
     {
-        $this->ensureReportColumn('report_type', "VARCHAR(32) NOT NULL DEFAULT 'error' AFTER target_id");
-        $this->ensureReportColumn('reason_slug', 'VARCHAR(80) NULL AFTER reason');
-        $this->ensureReportColumn('metadata_json', 'LONGTEXT NULL AFTER details');
-        $this->ensureReportColumn('priority', "VARCHAR(20) NOT NULL DEFAULT 'medium' AFTER metadata_json");
-        $this->ensureReportColumn('workflow_status', "VARCHAR(40) NOT NULL DEFAULT 'pending' AFTER status");
-        $this->ensureReportColumn('admin_reason', 'TEXT NULL AFTER details');
-        $this->ensureReportColumn('user_response', 'TEXT NULL AFTER admin_reason');
-        $this->ensureReportColumn('internal_note', 'TEXT NULL AFTER user_response');
-        $this->ensureReportColumn('moderation_action', 'VARCHAR(100) NULL AFTER internal_note');
-        $this->ensureReportColumn('handled_by', 'VARCHAR(64) NULL AFTER moderation_action');
-
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS report_moderation_history (
-                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                report_id VARCHAR(64) NOT NULL,
-                target_type VARCHAR(40) NOT NULL,
-                target_id VARCHAR(255) NOT NULL,
-                reason_slug VARCHAR(80) NOT NULL,
-                action_slug VARCHAR(100) NOT NULL,
-                moderator_user_id VARCHAR(64) NOT NULL,
-                status_before VARCHAR(32) NOT NULL,
-                status_after VARCHAR(32) NOT NULL,
-                content_before_json LONGTEXT NULL,
-                content_after_json LONGTEXT NULL,
-                justification TEXT NULL,
-                internal_note TEXT NULL,
-                user_response TEXT NOT NULL,
-                email_status VARCHAR(24) NOT NULL DEFAULT 'pending',
-                email_error TEXT NULL,
-                version_id VARCHAR(80) NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_report_moderation_history_report (report_id, created_at),
-                INDEX idx_report_moderation_history_target (target_type, target_id, created_at),
-                INDEX idx_report_moderation_history_moderator (moderator_user_id, created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-        );
-
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS report_moderation_drafts (
-                report_id VARCHAR(64) PRIMARY KEY,
-                moderator_user_id VARCHAR(64) NOT NULL,
-                action_slug VARCHAR(100) NULL,
-                payload_json LONGTEXT NOT NULL,
-                user_response TEXT NULL,
-                internal_note TEXT NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_report_moderation_drafts_moderator (moderator_user_id, updated_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-        );
-
-        $this->ensureTableCollation('report_moderation_history');
-        $this->ensureTableCollation('report_moderation_drafts');
+        SchemaReadiness::assertTablesAndColumns($this->db, 'workbench de moderacao', [
+            'reports' => ['id', 'target_type', 'target_id', 'reason', 'details', 'status', 'report_type', 'reason_slug', 'metadata_json', 'priority', 'workflow_status', 'admin_reason', 'user_response', 'internal_note', 'moderation_action', 'handled_by'],
+            'report_moderation_history' => ['id', 'report_id', 'target_type', 'target_id', 'reason_slug', 'action_slug', 'moderator_user_id', 'status_before', 'status_after', 'content_before_json', 'content_after_json', 'justification', 'internal_note', 'user_response', 'email_status', 'email_error', 'version_id', 'created_at'],
+            'report_moderation_drafts' => ['report_id', 'moderator_user_id', 'action_slug', 'payload_json', 'user_response', 'internal_note', 'created_at', 'updated_at'],
+        ]);
     }
 
     public function findReport(string $reportId, bool $forUpdate = false): ?array
@@ -935,21 +888,6 @@ class AdminReportWorkbenchRepository
         ];
     }
 
-    private function ensureReportColumn(string $column, string $definition): void
-    {
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*)
-             FROM INFORMATION_SCHEMA.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME = 'reports'
-               AND COLUMN_NAME = :column"
-        );
-        $stmt->execute([':column' => $column]);
-        if ((int) $stmt->fetchColumn() === 0) {
-            $this->db->exec("ALTER TABLE reports ADD COLUMN {$column} {$definition}");
-        }
-    }
-
     private function tableExists(string $table): bool
     {
         $stmt = $this->db->prepare(
@@ -960,29 +898,6 @@ class AdminReportWorkbenchRepository
         $stmt->execute([':table' => $table]);
 
         return (int) $stmt->fetchColumn() > 0;
-    }
-
-    private function ensureTableCollation(string $table): void
-    {
-        if (!$this->tableExists($table)) {
-            return;
-        }
-
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*)
-             FROM INFORMATION_SCHEMA.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME = :table
-               AND CHARACTER_SET_NAME = 'utf8mb4'
-               AND COLLATION_NAME <> 'utf8mb4_unicode_ci'"
-        );
-        $stmt->execute([':table' => $table]);
-
-        if ((int) $stmt->fetchColumn() === 0) {
-            return;
-        }
-
-        $this->db->exec("ALTER TABLE `{$table}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
     }
 
     private function fetchAll(string $sql, array $params): array

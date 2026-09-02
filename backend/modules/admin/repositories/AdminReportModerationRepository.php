@@ -10,6 +10,7 @@
 * @since 1.0.0
 *
 */
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /**
  * Repositorio do fluxo administrativo de moderacao de denuncias.
@@ -36,27 +37,9 @@ class AdminReportModerationRepository
      */
     public function ensureAdminColumns(): void
     {
-        $columns = $this->db->query("SHOW COLUMNS FROM reports")->fetchAll(PDO::FETCH_COLUMN);
-
-        if (!in_array('admin_reason', $columns, true)) {
-            $this->db->exec("ALTER TABLE reports ADD COLUMN admin_reason TEXT NULL AFTER details");
-        }
-
-        if (!in_array('handled_by', $columns, true)) {
-            $this->db->exec("ALTER TABLE reports ADD COLUMN handled_by VARCHAR(64) NULL AFTER admin_reason");
-        }
-
-        if (!in_array('user_response', $columns, true)) {
-            $this->db->exec("ALTER TABLE reports ADD COLUMN user_response TEXT NULL AFTER admin_reason");
-        }
-
-        if (!in_array('internal_note', $columns, true)) {
-            $this->db->exec("ALTER TABLE reports ADD COLUMN internal_note TEXT NULL AFTER user_response");
-        }
-
-        if (!in_array('moderation_action', $columns, true)) {
-            $this->db->exec("ALTER TABLE reports ADD COLUMN moderation_action VARCHAR(80) NULL AFTER internal_note");
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'moderacao administrativa de denuncias', [
+            'reports' => ['id', 'reporter_id', 'details', 'admin_reason', 'handled_by', 'user_response', 'internal_note', 'moderation_action'],
+        ]);
     }
 
     /**

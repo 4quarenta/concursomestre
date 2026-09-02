@@ -11,6 +11,8 @@
 *
 */
 
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+
 /**
  * Repositorio do dominio de autenticacao.
  * Centraliza SQL de recuperacao de senha, confirmacao de e-mail e notificacoes.
@@ -94,18 +96,9 @@ class AuthRepository
      */
     public function ensurePasswordResetTable(): void
     {
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS password_resets (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id VARCHAR(36) NOT NULL,
-                token VARCHAR(64) NOT NULL UNIQUE,
-                expires_at DATETIME NOT NULL,
-                used TINYINT(1) DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_password_resets_user (user_id),
-                INDEX idx_password_resets_token (token)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-        );
+        SchemaReadiness::assertTablesAndColumns($this->db, 'recuperacao de senha', [
+            'password_resets' => ['id', 'user_id', 'token', 'expires_at', 'used', 'created_at'],
+        ]);
     }
 
     /**
@@ -115,18 +108,9 @@ class AuthRepository
      */
     public function ensureEmailVerificationTable(): void
     {
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS email_verifications (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id VARCHAR(36) NOT NULL,
-                token VARCHAR(64) NOT NULL UNIQUE,
-                expires_at DATETIME NOT NULL,
-                used TINYINT(1) DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_email_verifications_user (user_id),
-                INDEX idx_email_verifications_token (token)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-        );
+        SchemaReadiness::assertTablesAndColumns($this->db, 'verificacao de e-mail', [
+            'email_verifications' => ['id', 'user_id', 'token', 'expires_at', 'used', 'created_at'],
+        ]);
     }
 
     /**
@@ -204,13 +188,9 @@ class AuthRepository
      */
     public function ensureAuthProfileColumns(): void
     {
-        if (!$this->usersColumnExists('cpf')) {
-            $this->db->exec("ALTER TABLE users ADD COLUMN cpf VARCHAR(14) DEFAULT NULL AFTER name");
-        }
-
-        if (!$this->usersColumnExists('phone')) {
-            $this->db->exec("ALTER TABLE users ADD COLUMN phone VARCHAR(30) DEFAULT NULL AFTER cpf");
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'perfil de autenticacao', [
+            'users' => ['id', 'name', 'email', 'cpf', 'phone'],
+        ]);
     }
 
     /**
@@ -220,39 +200,9 @@ class AuthRepository
      */
     public function ensureGoogleAuthColumns(): void
     {
-        $this->ensureAuthProfileColumns();
-
-        if (!$this->usersColumnExists('auth_provider')) {
-            $this->db->exec("ALTER TABLE users ADD COLUMN auth_provider VARCHAR(50) NOT NULL DEFAULT 'email' AFTER password_hash");
-        }
-
-        if (!$this->usersColumnExists('google_sub')) {
-            $this->db->exec("ALTER TABLE users ADD COLUMN google_sub VARCHAR(255) NULL AFTER auth_provider");
-        }
-
-        if (!$this->usersColumnExists('photo_url')) {
-            $this->db->exec("ALTER TABLE users ADD COLUMN photo_url VARCHAR(255) DEFAULT NULL AFTER email");
-        }
-
-        if (!$this->usersColumnExists('facebook_id')) {
-            $this->db->exec("ALTER TABLE users ADD COLUMN facebook_id VARCHAR(255) NULL AFTER google_sub");
-        }
-
-        if (!$this->usersColumnExists('apple_sub')) {
-            $this->db->exec("ALTER TABLE users ADD COLUMN apple_sub VARCHAR(255) NULL AFTER facebook_id");
-        }
-
-        if (!$this->usersIndexExists('uniq_users_google_sub')) {
-            $this->db->exec('CREATE UNIQUE INDEX uniq_users_google_sub ON users (google_sub)');
-        }
-
-        if (!$this->usersIndexExists('uniq_users_facebook_id')) {
-            $this->db->exec('CREATE UNIQUE INDEX uniq_users_facebook_id ON users (facebook_id)');
-        }
-
-        if (!$this->usersIndexExists('uniq_users_apple_sub')) {
-            $this->db->exec('CREATE UNIQUE INDEX uniq_users_apple_sub ON users (apple_sub)');
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'autenticacao social', [
+            'users' => ['id', 'name', 'email', 'cpf', 'phone', 'auth_provider', 'google_sub', 'photo_url', 'facebook_id', 'apple_sub'],
+        ]);
     }
 
     /**

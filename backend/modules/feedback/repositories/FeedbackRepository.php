@@ -10,6 +10,7 @@
 * @since 1.0.0
 *
 */
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /**
  * Repository do dominio de feedback publico.
@@ -509,93 +510,11 @@ class FeedbackRepository
             return;
         }
 
-        $tableStmt = $this->db->query("SHOW TABLES LIKE 'user_feedback'");
-        if (!$tableStmt || $tableStmt->fetchColumn() === false) {
-            $this->createFeedbackBaseTable();
-        }
-
-        $this->db->exec("ALTER TABLE user_feedback MODIFY COLUMN type ENUM('cancellation', 'support', 'report', 'suggestion', 'platform-rating', 'bug', 'other') DEFAULT 'support'");
-        $this->addColumnIfMissing('parent_id', 'ALTER TABLE user_feedback ADD COLUMN parent_id INT NULL AFTER user_id');
-        $this->addColumnIfMissing('public_rating', 'ALTER TABLE user_feedback ADD COLUMN public_rating TINYINT NULL AFTER status');
-        $this->addColumnIfMissing('public_display_name', 'ALTER TABLE user_feedback ADD COLUMN public_display_name VARCHAR(120) NULL AFTER public_rating');
-        $this->addColumnIfMissing('public_headline', 'ALTER TABLE user_feedback ADD COLUMN public_headline VARCHAR(180) NULL AFTER public_display_name');
-        $this->addColumnIfMissing('public_photo_url', 'ALTER TABLE user_feedback ADD COLUMN public_photo_url VARCHAR(500) NULL AFTER public_headline');
-        $this->addColumnIfMissing('home_published_at', 'ALTER TABLE user_feedback ADD COLUMN home_published_at DATETIME NULL AFTER public_photo_url');
-        $this->db->exec(
-            "UPDATE user_feedback
-             SET type = 'platform-rating'
-             WHERE parent_id IS NULL
-               AND type = 'suggestion'
-               AND (reason LIKE 'Avaliar plataforma%' OR public_rating BETWEEN 1 AND 5)"
-        );
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS user_feedback_votes (
-                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                feedback_id INT NOT NULL,
-                user_id VARCHAR(64) NOT NULL,
-                vote_value ENUM('like', 'dislike') NOT NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                UNIQUE KEY uniq_user_feedback_vote (feedback_id, user_id),
-                INDEX idx_user_feedback_votes_feedback (feedback_id),
-                INDEX idx_user_feedback_votes_user (user_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-        );
-
-        try {
-            $this->db->exec('CREATE INDEX idx_feedback_home_testimonials ON user_feedback (status, home_published_at, created_at)');
-        } catch (Throwable $e) {
-            // Index already exists or the database does not support this exact shape.
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'feedback publico', [
+            'user_feedback' => ['id', 'user_id', 'parent_id', 'type', 'reason', 'details', 'status', 'platform_version', 'public_rating', 'public_display_name', 'public_headline', 'public_photo_url', 'home_published_at', 'created_at', 'updated_at'],
+            'user_feedback_votes' => ['id', 'feedback_id', 'user_id', 'vote_value', 'created_at', 'updated_at'],
+        ]);
 
         $ensured = true;
-    }
-
-    /**
-     * Cria a tabela de feedback quando uma instalacao nova ainda nao aplicou a migration legada.
-     *
-     * @since 1.0.0
-     */
-    private function createFeedbackBaseTable(): void
-    {
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS user_feedback (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id VARCHAR(64) NOT NULL,
-                parent_id INT NULL,
-                type ENUM('cancellation', 'support', 'report', 'suggestion', 'platform-rating', 'bug', 'other') DEFAULT 'support',
-                reason VARCHAR(255) NOT NULL,
-                details TEXT,
-                status ENUM('new', 'read', 'resolved') DEFAULT 'new',
-                platform_version VARCHAR(40) NULL,
-                public_rating TINYINT NULL,
-                public_display_name VARCHAR(120) NULL,
-                public_headline VARCHAR(180) NULL,
-                public_photo_url VARCHAR(500) NULL,
-                home_published_at DATETIME NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_user_id (user_id),
-                INDEX idx_parent_id (parent_id),
-                INDEX idx_status (status),
-                INDEX idx_created_at (created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-        );
-    }
-
-    /**
-     * Adiciona colunas opcionais em bases antigas.
-     *
-     * @since 1.0.0
-     */
-    private function addColumnIfMissing(string $column, string $sql): void
-    {
-        $stmt = $this->db->prepare('SHOW COLUMNS FROM user_feedback LIKE :column');
-        $stmt->execute([':column' => $column]);
-
-        if ($stmt->fetchColumn() === false) {
-            $this->db->exec($sql);
-        }
     }
 }

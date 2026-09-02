@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /*
 * ----------------------------------------------------
@@ -244,54 +245,11 @@ class CommentsRepository
             return;
         }
 
-        if (!$this->tableExists('comments')) {
-            $this->schemaEnsured = true;
-            return;
-        }
-
-        $this->ensureColumnExists(
-            'comments',
-            'moderation_status',
-            "ALTER TABLE comments ADD COLUMN moderation_status VARCHAR(20) NOT NULL DEFAULT 'approved' AFTER parent_id"
-        );
-        $this->ensureColumnExists(
-            'comments',
-            'moderated_at',
-            "ALTER TABLE comments ADD COLUMN moderated_at DATETIME NULL AFTER moderation_status"
-        );
-        $this->ensureColumnExists(
-            'comments',
-            'moderated_by',
-            "ALTER TABLE comments ADD COLUMN moderated_by VARCHAR(80) NULL AFTER moderated_at"
-        );
-
-        try {
-            $this->db->exec("UPDATE comments SET moderation_status = 'approved' WHERE moderation_status IS NULL OR moderation_status = ''");
-            $this->db->exec("CREATE INDEX idx_comments_moderation_status ON comments (moderation_status, created_at)");
-        } catch (Throwable $e) {
-            // Index may already exist in environments that rerun migrations.
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'comentarios', [
+            'comments' => ['id', 'user_id', 'content', 'moderation_status', 'moderated_at', 'moderated_by', 'created_at'],
+        ]);
 
         $this->schemaEnsured = true;
-    }
-
-    private function tableExists(string $table): bool
-    {
-        $stmt = $this->db->prepare('SHOW TABLES LIKE :table_name');
-        $stmt->execute([':table_name' => $table]);
-        return $stmt->fetchColumn() !== false;
-    }
-
-    private function ensureColumnExists(string $table, string $column, string $ddl): void
-    {
-        $stmt = $this->db->prepare("SHOW COLUMNS FROM {$table} LIKE :column_name");
-        $stmt->execute([':column_name' => $column]);
-
-        if ($stmt->fetchColumn() !== false) {
-            return;
-        }
-
-        $this->db->exec($ddl);
     }
 
     /**

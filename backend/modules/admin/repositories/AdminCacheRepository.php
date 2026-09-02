@@ -10,6 +10,7 @@
 * @since 1.0.0
 *
 */
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /**
  * Repositorio das operacoes administrativas de cache.
@@ -66,14 +67,9 @@ class AdminCacheRepository
      */
     public function ensureCacheSettingsTable(): void
     {
-        $this->db->exec("
-            CREATE TABLE IF NOT EXISTS cache_settings (
-                id TINYINT UNSIGNED NOT NULL DEFAULT 1 PRIMARY KEY,
-                enabled TINYINT(1) NOT NULL DEFAULT 0,
-                default_ttl INT NOT NULL DEFAULT 300,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
+        SchemaReadiness::assertTablesAndColumns($this->db, 'configuracoes de cache', [
+            'cache_settings' => ['id', 'enabled', 'default_ttl', 'updated_at'],
+        ]);
     }
 
     /**

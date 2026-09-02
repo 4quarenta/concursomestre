@@ -37,7 +37,15 @@ class AdminCacheValidator
      */
     public function validateSettingsMethod(string $method): void
     {
-        if ($method !== 'POST') {
+        $this->validateMutationMethod($method);
+    }
+
+    /**
+     * Mutacoes administrativas de cache nunca aceitam GET.
+     */
+    public function validateMutationMethod(string $method): void
+    {
+        if (strtoupper($method) !== 'POST') {
             throw new RuntimeException('Metodo invalido.');
         }
     }

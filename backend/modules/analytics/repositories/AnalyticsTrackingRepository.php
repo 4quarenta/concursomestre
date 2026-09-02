@@ -10,6 +10,7 @@
 * @since 1.0.0
 *
 */
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /**
  * Repositorio do ledger first-party de eventos de lifecycle.
@@ -86,30 +87,9 @@ class AnalyticsTrackingRepository
             return;
         }
 
-        $this->db->exec(
-            "CREATE TABLE IF NOT EXISTS analytics_lifecycle_events (
-                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                event_name VARCHAR(60) NOT NULL,
-                source VARCHAR(40) NULL,
-                user_id VARCHAR(80) NULL,
-                email VARCHAR(190) NULL,
-                session_key VARCHAR(120) NULL,
-                plan_id INT NULL,
-                cycle_label VARCHAR(30) NULL,
-                origin_url VARCHAR(255) NULL,
-                referrer_url VARCHAR(255) NULL,
-                utm_source VARCHAR(120) NULL,
-                utm_medium VARCHAR(120) NULL,
-                utm_campaign VARCHAR(180) NULL,
-                metadata_json LONGTEXT NULL,
-                external_hooks_json LONGTEXT NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_analytics_event_name (event_name, created_at),
-                INDEX idx_analytics_event_email (email, created_at),
-                INDEX idx_analytics_event_user (user_id, created_at),
-                INDEX idx_analytics_event_session (session_key, created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-        );
+        SchemaReadiness::assertTablesAndColumns($this->db, 'analytics de lifecycle', [
+            'analytics_lifecycle_events' => ['id', 'event_name', 'source', 'user_id', 'email', 'session_key', 'plan_id', 'cycle_label', 'origin_url', 'referrer_url', 'utm_source', 'utm_medium', 'utm_campaign', 'metadata_json', 'external_hooks_json', 'created_at'],
+        ]);
 
         $this->schemaEnsured = true;
     }

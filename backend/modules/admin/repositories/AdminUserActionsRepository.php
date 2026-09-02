@@ -10,6 +10,7 @@
 * @since 1.0.0
 *
 */
+require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
 /**
  * Repositorio das mutacoes administrativas de usuario.
@@ -40,32 +41,9 @@ class AdminUserActionsRepository
         if ($this->userProfileColumnsEnsured) {
             return;
         }
-
-        $columns = $this->getUserColumns();
-        $definitions = [
-            'cpf' => 'VARCHAR(14) DEFAULT NULL',
-            'phone' => 'VARCHAR(30) DEFAULT NULL',
-            'target_exam' => 'VARCHAR(255) DEFAULT NULL',
-            'reputation' => 'INT DEFAULT 100',
-            'status' => "VARCHAR(30) DEFAULT 'active'",
-            'role' => "VARCHAR(30) DEFAULT 'user'",
-            'referral_code' => 'VARCHAR(10) DEFAULT NULL',
-        ];
-
-        foreach ($definitions as $column => $definition) {
-            if (in_array($column, $columns, true)) {
-                continue;
-            }
-
-            $this->db->exec("ALTER TABLE users ADD COLUMN `{$column}` {$definition}");
-            $columns[] = $column;
-        }
-
-        $roleColumn = $this->getUserColumn('role');
-        $roleType = strtolower((string) ($roleColumn['Type'] ?? ''));
-        if (str_starts_with($roleType, 'enum(') && !str_contains($roleType, "'staff'")) {
-            $this->db->exec("ALTER TABLE users MODIFY COLUMN `role` ENUM('user', 'staff', 'partner', 'admin') DEFAULT 'user'");
-        }
+        SchemaReadiness::assertTablesAndColumns($this->db, 'acoes administrativas de usuario', [
+            'users' => ['id', 'name', 'email', 'cpf', 'phone', 'target_exam', 'reputation', 'status', 'role', 'referral_code'],
+        ]);
 
         $this->userProfileColumnsEnsured = true;
     }
