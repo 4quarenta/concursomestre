@@ -238,6 +238,7 @@ function issueUserAuthBundle(
 
     if ($setBrowserCookies) {
         setRefreshTokenCookie($refresh['token'], $refresh['expires_at']);
+        setAuthRouteSessionCookie($session['id'], $session['expires_at']);
         setCsrfCookie($csrfToken, $session['expires_at']);
     }
 
@@ -454,6 +455,32 @@ function findRefreshTokenRecordById(PDO $db, string $refreshTokenId): ?array
 }
 
 /**
+ * Localiza uma sessao persistida para a decisao de rota administrativa.
+ * A sessao e conferida no servidor a cada request, portanto logout, revogacao
+ * e expiracao continuam invalidando o cookie HttpOnly imediatamente.
+ *
+ * @since 1.0.0
+ */
+function findAuthRouteSessionRecord(PDO $db, string $sessionId): ?array
+{
+    ensureAuthTables($db);
+
+    $stmt = $db->prepare(
+        "SELECT s.id AS session_id, s.user_id, s.status AS session_status,
+                s.revoked_at AS session_revoked_at, s.expires_at AS session_expires_at,
+                u.role, u.status AS user_status, u.deletion_requested_at
+         FROM auth_sessions s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.id = :session_id
+         LIMIT 1"
+    );
+    $stmt->execute([':session_id' => $sessionId]);
+
+    $record = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $record ?: null;
+}
+
+/**
  * Compara IP e user-agent atuais com o fingerprint do refresh token persistido.
  * A comparacao e relaxada quando algum lado nao tem dado, mas protege contra reuse distante.
  *
@@ -651,6 +678,7 @@ function refreshAccessTokenUsingToken(
     updateSessionHeartbeat($db, $sessionId, true);
     if ($setBrowserCookies) {
         setRefreshTokenCookie($newRefresh['token'], $newRefresh['expires_at']);
+        setAuthRouteSessionCookie($sessionId, $newRefresh['expires_at']);
         setCsrfCookie((string) $csrfCookie, $newRefresh['expires_at']);
     }
 

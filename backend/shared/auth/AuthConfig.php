@@ -134,6 +134,19 @@ if (!function_exists('getAuthRefreshCookieName')) {
     }
 }
 
+if (!function_exists('getAuthRouteSessionCookieName')) {
+    /**
+     * Nome do cookie HttpOnly que ancora a verificacao de acesso ao shell admin.
+     * O valor e apenas o id opaco de uma sessao persistida e revogavel.
+     *
+     * @since 1.0.0
+     */
+    function getAuthRouteSessionCookieName(): string
+    {
+        return trim((string) authConfig('AUTH_ROUTE_SESSION_COOKIE_NAME', 'cm_route_session'));
+    }
+}
+
 if (!function_exists('getAuthCsrfCookieName')) {
     /**
      * Nome do cookie com o token CSRF usado nas rotas protegidas.

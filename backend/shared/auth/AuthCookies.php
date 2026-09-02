@@ -68,6 +68,32 @@ if (!function_exists('setCsrfCookie')) {
     }
 }
 
+if (!function_exists('setAuthRouteSessionCookie')) {
+    /**
+     * Persiste a ancora de sessao usada exclusivamente na decisao server-side
+     * de acesso ao shell administrativo. Ela nao e um bearer token de API.
+     *
+     * @since 1.0.0
+     */
+    function setAuthRouteSessionCookie(string $sessionId, DateTimeImmutable $expiresAt): void
+    {
+        $options = [
+            'expires' => $expiresAt->getTimestamp(),
+            'path' => '/',
+            'secure' => shouldUseSecureAuthCookies(),
+            'httponly' => true,
+            'samesite' => getAuthSameSite(),
+        ];
+
+        $domain = getAuthCookieDomain();
+        if ($domain !== '') {
+            $options['domain'] = $domain;
+        }
+
+        setcookie(getAuthRouteSessionCookieName(), $sessionId, $options);
+    }
+}
+
 if (!function_exists('clearAuthCookies')) {
     /**
      * Remove cookies de auth ao fazer logout ou revogacao de sessao.
@@ -101,11 +127,20 @@ if (!function_exists('clearAuthCookies')) {
             'samesite' => getAuthSameSite(),
         ];
 
+        $routeSessionOptions = [
+            'expires' => $expiredAt,
+            'path' => '/',
+            'secure' => shouldUseSecureAuthCookies(),
+            'httponly' => true,
+            'samesite' => getAuthSameSite(),
+        ];
+
         $domain = getAuthCookieDomain();
         if ($domain !== '') {
             $refreshOptions['domain'] = $domain;
             $csrfOptions['domain'] = $domain;
             $hintOptions['domain'] = $domain;
+            $routeSessionOptions['domain'] = $domain;
         }
 
         $refreshCookiePaths = array_values(array_unique(array_filter([
@@ -122,6 +157,7 @@ if (!function_exists('clearAuthCookies')) {
 
         setcookie(getAuthCsrfCookieName(), '', $csrfOptions);
         setcookie(getAuthSessionHintCookieName(), '', $hintOptions);
+        setcookie(getAuthRouteSessionCookieName(), '', $routeSessionOptions);
     }
 }
 
@@ -135,6 +171,25 @@ if (!function_exists('getRefreshTokenFromCookie')) {
     {
         $token = trim((string) ($_COOKIE[getAuthRefreshCookieName()] ?? ''));
         return $token !== '' ? $token : null;
+    }
+}
+
+if (!function_exists('getAuthRouteSessionIdFromCookie')) {
+    /**
+     * Recupera somente UUIDs canonicos do cookie de sessao de rota. Valores
+     * malformados nao chegam a consulta de autorizacao.
+     *
+     * @since 1.0.0
+     */
+    function getAuthRouteSessionIdFromCookie(): ?string
+    {
+        $sessionId = trim((string) ($_COOKIE[getAuthRouteSessionCookieName()] ?? ''));
+
+        if (!preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i', $sessionId)) {
+            return null;
+        }
+
+        return strtolower($sessionId);
     }
 }
 

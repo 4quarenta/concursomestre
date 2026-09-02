@@ -166,15 +166,23 @@ function handleAuthAdminRouteAccessRoute(PDO $db): void
             $notFound();
         }
 
-        $refreshToken = getRefreshTokenFromCookie();
-        if ($refreshToken === null) {
-            $notFound();
+        $routeSessionId = getAuthRouteSessionIdFromCookie();
+        $record = $routeSessionId !== null
+            ? findAuthRouteSessionRecord($db, $routeSessionId)
+            : null;
+
+        // Uma sessao existente recebe a ancora na proxima renovacao. Ate la,
+        // preservamos a verificacao legada sem rotacionar token nesta rota.
+        if ($record === null && $routeSessionId === null) {
+            $refreshToken = getRefreshTokenFromCookie();
+            if ($refreshToken === null) {
+                $notFound();
+            }
+            $record = findRefreshTokenRecord($db, $refreshToken);
         }
 
-        $record = findRefreshTokenRecord($db, $refreshToken);
         if ($record === null
-            || !empty($record['revoked_at'])
-            || (string) ($record['status'] ?? '') !== 'active'
+            || ($routeSessionId === null && (string) ($record['status'] ?? '') !== 'active')
             || (string) ($record['session_status'] ?? '') !== 'active'
             || !empty($record['session_revoked_at'])
             || !empty($record['deletion_requested_at'])
@@ -185,14 +193,21 @@ function handleAuthAdminRouteAccessRoute(PDO $db): void
             $notFound();
         }
 
-        $userId = trim((string) ($record['user_id'] ?? ''));
-        if ($userId === '') {
+        if ($routeSessionId === null && !empty($record['revoked_at'])) {
             $notFound();
         }
 
-        $statement = $db->prepare('SELECT role FROM users WHERE id = :id LIMIT 1');
-        $statement->execute([':id' => $userId]);
-        $role = strtolower(trim((string) $statement->fetchColumn()));
+        $role = strtolower(trim((string) ($record['role'] ?? '')));
+        if ($role === '') {
+            $userId = trim((string) ($record['user_id'] ?? ''));
+            if ($userId === '') {
+                $notFound();
+            }
+
+            $statement = $db->prepare('SELECT role FROM users WHERE id = :id LIMIT 1');
+            $statement->execute([':id' => $userId]);
+            $role = strtolower(trim((string) $statement->fetchColumn()));
+        }
         if (!in_array($role, ['admin', 'staff'], true)) {
             $notFound();
         }

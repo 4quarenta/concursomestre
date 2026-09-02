@@ -32,6 +32,31 @@ assertAdminRouteAccessContains(
 );
 assertAdminRouteAccessContains(
     $base . '/modules/auth/routes.php',
+    'getAuthRouteSessionIdFromCookie()',
+    'Admin route access must prefer the stable HttpOnly route-session cookie.'
+);
+assertAdminRouteAccessContains(
+    $base . '/modules/auth/routes.php',
+    'findAuthRouteSessionRecord($db, $routeSessionId)',
+    'Admin route access must validate the route session against persistent state.'
+);
+assertAdminRouteAccessContains(
+    $base . '/shared/auth/AuthSession.php',
+    "setAuthRouteSessionCookie(\$session['id'], \$session['expires_at'])",
+    'Login must issue a stable route-session cookie.'
+);
+assertAdminRouteAccessContains(
+    $base . '/shared/auth/AuthSession.php',
+    "setAuthRouteSessionCookie(\$sessionId, \$newRefresh['expires_at'])",
+    'Refresh rotation must preserve the stable route-session cookie.'
+);
+assertAdminRouteAccessContains(
+    $base . '/shared/auth/AuthCookies.php',
+    "setcookie(getAuthRouteSessionCookieName(), '', \$routeSessionOptions)",
+    'Logout must clear the route-session cookie.'
+);
+assertAdminRouteAccessContains(
+    $base . '/modules/auth/routes.php',
     "in_array(\$role, ['admin', 'staff'], true)",
     'Admin route access must allow only admin and staff roles.'
 );
