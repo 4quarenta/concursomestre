@@ -496,6 +496,13 @@ function b13xRunnerEvaluateWriter(array $writer, array $options): array
     $diff = b13xRunnerDiffSentinels($before, $after);
 
     $allowedTables = array_fill_keys(array_map('strval', $writer['tables_written'] ?? []), true);
+    $profile = is_array($writer['coverage'] ?? null) ? $writer['coverage'] : [];
+    if (($profile['safeInvocationMethod'] ?? '') === 'PRODUCTION_SMOKE_ADMIN') {
+        // The read-only admin probe authenticates through the canonical auth
+        // writer before checking RBAC-protected endpoints.
+        $allowedTables['auth_sessions'] = true;
+        $allowedTables['auth_refresh_tokens'] = true;
+    }
     $strictDiffs = [];
     $unexpectedDiffs = [];
     foreach ($diff as $table => $change) {
@@ -507,7 +514,6 @@ function b13xRunnerEvaluateWriter(array $writer, array $options): array
         }
     }
 
-    $profile = is_array($writer['coverage'] ?? null) ? $writer['coverage'] : [];
     $status = 'FAIL';
     if ($invocation['ok'] === true && $strictDiffs === [] && $unexpectedDiffs === []) {
         if (($profile['safeInvocationMethod'] ?? '') === 'NOT_APPLICABLE') {

@@ -66,5 +66,7 @@ b13xRunnerAssert(str_contains($runner, 'Dedicated admin smoke credentials are no
 b13xRunnerAssert(str_contains($runner, "proc_open(\$arguments"), 'Coverage subprocesses must use argument arrays without a shell command line.');
 b13xRunnerAssert(str_contains($runner, "\$smokeEnvironment['SMOKE_AUTH_PASSWORD']"), 'Smoke credentials must be passed through the private subprocess environment.');
 b13xRunnerAssert(!str_contains($runner, "'--auth-password=' . \$authPassword"), 'Smoke passwords must never be exposed in process arguments.');
+b13xRunnerAssert(str_contains($runner, "\$allowedTables['auth_sessions'] = true"), 'Admin smoke must allow its nested canonical session write.');
+b13xRunnerAssert(str_contains($runner, "\$allowedTables['auth_refresh_tokens'] = true"), 'Admin smoke must allow its nested canonical refresh-token write.');
 
 fwrite(STDOUT, "B13X coverage runner wiring assertions passed.\n");
