@@ -114,11 +114,11 @@ if cm_is_true "$APPLY_MIGRATIONS"; then
       export APP_ENV=production
       export MIGRATIONS_ALLOW_APPLY=true
       export MIGRATIONS_ALLOW_PRODUCTION=true
-      export DB_HOST="$CM_MIGRATION_DB_HOST"
-      export DB_PORT="${CM_MIGRATION_DB_PORT:-}"
-      export DB_NAME="$CM_MIGRATION_DB_NAME"
-      export DB_USER="$CM_MIGRATION_DB_USER"
-      export DB_PASSWORD="$CM_MIGRATION_DB_PASSWORD"
+      export MIGRATION_DB_HOST="$CM_MIGRATION_DB_HOST"
+      export MIGRATION_DB_PORT="${CM_MIGRATION_DB_PORT:-}"
+      export MIGRATION_DB_NAME="$CM_MIGRATION_DB_NAME"
+      export MIGRATION_DB_USER="$CM_MIGRATION_DB_USER"
+      export MIGRATION_DB_PASSWORD="$CM_MIGRATION_DB_PASSWORD"
       cm_run php "$release_dir/backend/scripts/migrations/run_schema_migrations.php" --apply
     )
     unset CM_MIGRATION_DB_HOST CM_MIGRATION_DB_PORT CM_MIGRATION_DB_NAME CM_MIGRATION_DB_USER CM_MIGRATION_DB_PASSWORD

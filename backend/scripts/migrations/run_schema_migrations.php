@@ -10,6 +10,25 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../shared/database/SchemaMigrationRunner.php';
 
+// O ambiente da aplicacao e carregado por config/database.php. Para impedir
+// que o runner de migrations reutilize o principal runtime, os overrides
+// privados sao aplicados somente neste processo CLI antes da conexao.
+foreach ([
+    'MIGRATION_DB_HOST' => 'DB_HOST',
+    'MIGRATION_DB_PORT' => 'DB_PORT',
+    'MIGRATION_DB_NAME' => 'DB_NAME',
+    'MIGRATION_DB_USER' => 'DB_USER',
+    'MIGRATION_DB_PASSWORD' => 'DB_PASSWORD',
+] as $migrationKey => $databaseKey) {
+    $value = getenv($migrationKey);
+    if ($value === false) {
+        continue;
+    }
+    putenv($databaseKey . '=' . $value);
+    $_ENV[$databaseKey] = $value;
+    $_SERVER[$databaseKey] = $value;
+}
+
 $options = getopt('', ['status', 'dry-run', 'audit', 'apply', 'baseline-legacy', 'migration::']);
 $actions = array_filter([
     isset($options['status']),

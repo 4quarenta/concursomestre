@@ -10,8 +10,8 @@ foreach ([
     'CM_MIGRATION_CNF_SOURCE',
     'cm_assert_secret_file_permissions "$CM_MIGRATION_CNF_SOURCE"',
     'cm_prepare_migration_environment "$CM_MIGRATION_CNF_SOURCE"',
-    'export DB_USER="$CM_MIGRATION_DB_USER"',
-    'export DB_PASSWORD="$CM_MIGRATION_DB_PASSWORD"',
+    'export MIGRATION_DB_USER="$CM_MIGRATION_DB_USER"',
+    'export MIGRATION_DB_PASSWORD="$CM_MIGRATION_DB_PASSWORD"',
 ] as $needle) {
     if (!str_contains($deploy, $needle)) {
         throw new RuntimeException('Deploy migration principal wiring ausente: ' . $needle);
@@ -30,6 +30,17 @@ foreach ([
 
 if (preg_match('/cm_run env APP_ENV=production.*run_schema_migrations\.php.*--apply/', $deploy)) {
     throw new RuntimeException('Deploy ainda passa credenciais de migration por command wrapper.' );
+}
+
+$migrationRunner = (string) file_get_contents($root . '/backend/scripts/migrations/run_schema_migrations.php');
+foreach ([
+    "'MIGRATION_DB_USER' => 'DB_USER'",
+    "'MIGRATION_DB_PASSWORD' => 'DB_PASSWORD'",
+    '$_ENV[$databaseKey] = $value',
+] as $needle) {
+    if (!str_contains($migrationRunner, $needle)) {
+        throw new RuntimeException('Migration runner nao aplica override do principal dedicado: ' . $needle);
+    }
 }
 
 if (PHP_OS_FAMILY !== 'Windows') {
