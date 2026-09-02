@@ -955,9 +955,18 @@ try {
     ));
     $timeoutSeconds = max(1, min(30, (int) smokeCliOption('timeout', getEnvString('SMOKE_TIMEOUT_SECONDS', '8'))));
     $dbConnections = max(1, min(50, (int) smokeCliOption('db-connections', getEnvString('SMOKE_DB_CONNECTIONS', '3'))));
-    $authEmail = smokeCliOption('auth-email', getEnvString('SMOKE_AUTH_EMAIL'));
-    $authPassword = smokeCliOption('auth-password', getEnvString('SMOKE_AUTH_PASSWORD'));
-    $authCaptchaToken = smokeCliOption('auth-captcha-token', getEnvString('SMOKE_AUTH_CAPTCHA_TOKEN'));
+    $authEmail = smokeCliOption(
+        'auth-email',
+        getEnvString('B13X_CHILD_SMOKE_AUTH_EMAIL', getEnvString('SMOKE_AUTH_EMAIL'))
+    );
+    $authPassword = smokeCliOption(
+        'auth-password',
+        getEnvString('B13X_CHILD_SMOKE_AUTH_PASSWORD', getEnvString('SMOKE_AUTH_PASSWORD'))
+    );
+    $authCaptchaToken = smokeCliOption(
+        'auth-captcha-token',
+        getEnvString('B13X_CHILD_SMOKE_AUTH_CAPTCHA_TOKEN', getEnvString('SMOKE_AUTH_CAPTCHA_TOKEN'))
+    );
     $authRequired = smokeBooleanValue(smokeCliOption('auth-required', getEnvString('SMOKE_AUTH_REQUIRED', 'false')));
     $adminRequired = smokeBooleanValue(smokeCliOption('admin-required', getEnvString('SMOKE_ADMIN_REQUIRED', 'false')));
 

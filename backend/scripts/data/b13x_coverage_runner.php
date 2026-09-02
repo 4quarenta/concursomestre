@@ -345,9 +345,9 @@ function b13xRunnerSmokeCommand(string $mode, array $options): array
         ];
     }
     $smokeEnvironment = [];
-    if ($authEmail !== '') $smokeEnvironment['SMOKE_AUTH_EMAIL'] = $authEmail;
-    if ($authPassword !== '') $smokeEnvironment['SMOKE_AUTH_PASSWORD'] = $authPassword;
-    if ($authCaptchaToken !== '') $smokeEnvironment['SMOKE_AUTH_CAPTCHA_TOKEN'] = $authCaptchaToken;
+    if ($authEmail !== '') $smokeEnvironment['B13X_CHILD_SMOKE_AUTH_EMAIL'] = $authEmail;
+    if ($authPassword !== '') $smokeEnvironment['B13X_CHILD_SMOKE_AUTH_PASSWORD'] = $authPassword;
+    if ($authCaptchaToken !== '') $smokeEnvironment['B13X_CHILD_SMOKE_AUTH_CAPTCHA_TOKEN'] = $authCaptchaToken;
 
     return b13xRunnerJsonCommand($args, $smokeEnvironment);
 }

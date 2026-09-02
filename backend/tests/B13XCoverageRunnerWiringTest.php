@@ -10,6 +10,7 @@ function b13xRunnerAssert(bool $condition, string $message): void
 }
 
 $runner = (string) file_get_contents(__DIR__ . '/../scripts/data/b13x_coverage_runner.php');
+$productionSmoke = (string) file_get_contents(__DIR__ . '/../scripts/tasks/production_smoke.php');
 $availability = (string) file_get_contents(__DIR__ . '/../scripts/data/DatasetAvailabilitySafeFreezeState.php');
 $coverageState = (string) file_get_contents(__DIR__ . '/../scripts/data/DatasetWriterCoverageState.php');
 $resumeScript = (string) file_get_contents(__DIR__ . '/../scripts/data/b13x_coverage_resume.sh');
@@ -64,7 +65,8 @@ b13xRunnerAssert(str_contains($runner, "'SMOKE_ADMIN_PASSWORD'"), 'Admin coverag
 b13xRunnerAssert(str_contains($runner, "\$smoke['success'] ?? \$smoke['ok'] ?? false"), 'Runner must consume the production smoke success contract.');
 b13xRunnerAssert(str_contains($runner, 'Dedicated admin smoke credentials are not configured.'), 'Admin coverage must fail closed before falling back to the user smoke identity.');
 b13xRunnerAssert(str_contains($runner, "proc_open(\$arguments"), 'Coverage subprocesses must use argument arrays without a shell command line.');
-b13xRunnerAssert(str_contains($runner, "\$smokeEnvironment['SMOKE_AUTH_PASSWORD']"), 'Smoke credentials must be passed through the private subprocess environment.');
+b13xRunnerAssert(str_contains($runner, "\$smokeEnvironment['B13X_CHILD_SMOKE_AUTH_PASSWORD']"), 'Smoke credentials must be passed through the private subprocess environment.');
+b13xRunnerAssert(str_contains($productionSmoke, "getEnvString('B13X_CHILD_SMOKE_AUTH_PASSWORD'"), 'Production smoke must prefer the private child credential over file-loaded defaults.');
 b13xRunnerAssert(!str_contains($runner, "'--auth-password=' . \$authPassword"), 'Smoke passwords must never be exposed in process arguments.');
 b13xRunnerAssert(str_contains($runner, "\$allowedTables['auth_sessions'] = true"), 'Admin smoke must allow its nested canonical session write.');
 b13xRunnerAssert(str_contains($runner, "\$allowedTables['auth_refresh_tokens'] = true"), 'Admin smoke must allow its nested canonical refresh-token write.');
