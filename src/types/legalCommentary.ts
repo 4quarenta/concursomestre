@@ -226,7 +226,7 @@ export interface LawArticle {
   sumulas?: LegalArticleSyllabus[];
   doctrine?: Array<string | LegalTargetedText>;
   doutrina?: Array<string | LegalTargetedText>;
-  examTip?: string;
+  examTip?: string | null;
   macete?: string | null;
   relatedQuestionCount?: number;
   questoesRelacionadas?: number;
@@ -238,7 +238,7 @@ export interface LawArticle {
   publicArticlePath?: string | null;
   isRecentlyChanged?: boolean;
   isFavorite?: boolean;
-  readAt?: string;
+  readAt?: string | null;
   assuntoFilterId?: string | null;
 }
 
@@ -770,8 +770,8 @@ export interface LegalHomeSnapshot {
 export interface RelatedQuestionLawArticle {
   id: string;
   number: string;
-  title?: string;
-  snippet?: string;
+  title: string;
+  snippet: string;
   matchScore: number;
   matchedSubjectNames: string[];
   matchedTopicNames: string[];

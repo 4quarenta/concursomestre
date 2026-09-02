@@ -47,7 +47,11 @@ const isReleaseArchive = (relativePath) => {
 
 const isExcluded = (relativePath) => {
   const normalized = relativePath.replaceAll('\\', '/');
-  return /^(?:\.codex-tmp|\.deploy|\.tmp|backups|quarantine)(?:\/|$)/i.test(normalized)
+  return /^(?:\.codex-tmp|\.deploy|\.tmp|backups|quarantine|docs|mobile|tools)(?:\/|$)/i.test(normalized)
+    || /^(?:backend\/tests|backend\/database\/rollbacks|scripts\/deploy|scripts\/data|scripts\/performance|scripts\/seo)(?:\/|$)/i.test(normalized)
+    || /(?:^|\/)(?:__tests__|__mocks__)(?:\/|$)/i.test(normalized)
+    || /(?:^|\/)[^/]+\.(?:test|spec)\.[^/]+$/i.test(normalized)
+    || /(?:^|\/)(?:\.env|\.env\.[^/]+|[^/]+\.example)$/i.test(normalized)
     || isReleaseArchive(normalized);
 };
 

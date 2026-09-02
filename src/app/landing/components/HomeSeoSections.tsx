@@ -47,7 +47,7 @@ export default function HomeSeoSections({
                   <p className="text-[10px] font-black uppercase tracking-[0.12em] text-indigo-600">{article.taxonomy.category.label}</p>
                   <h3 className="mt-3 text-lg font-black leading-6 text-[#07103a]"><Link href={`/blog/${article.slug}`} prefetch={false} className="hover:text-[#684cff]">{article.title}</Link></h3>
                   <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">{article.excerpt}</p>
-                  <time dateTime={article.publishedAt || article.updatedAt} className="mt-4 block text-xs font-semibold text-slate-500">{formatDate(article.publishedAt || article.updatedAt)}</time>
+                  <time dateTime={article.publishedAt || article.updatedAt || undefined} className="mt-4 block text-xs font-semibold text-slate-500">{formatDate(article.publishedAt || article.updatedAt || '')}</time>
                 </div>
               </article>
             ))}

@@ -25,15 +25,34 @@ const Admin: React.FC = () => {
     <AdminShellLayout
       activeTab={controller.activeTab}
       activeSectionKey={controller.activeSectionKey}
-      onNavigateAdmin={controller.navigateAdminDestination}
+      onNavigateAdmin={(tab, section) => controller.navigateAdminDestination(tab as Parameters<typeof controller.navigateAdminDestination>[0], section)}
       adminTabs={controller.adminTabs}
       sectionBadges={controller.sectionBadges}
       pageTitle={controller.activeTabLabel ?? 'Admin'}
       pageDescription={controller.activeTabDescription}
-      topBarProps={controller.topBarProps}
+      topBarProps={{
+        ...controller.topBarProps,
+        markNotificationAsRead: (id) => controller.topBarProps.markNotificationAsRead(String(id)),
+      }}
       showPageHeader={shouldShowPageHeader}
     >
-      <AdminPageContent {...controller} />
+      <AdminPageContent
+        {...controller}
+        databaseSectionProps={{
+          ...controller.databaseSectionProps,
+          resolveReport: (reportId, status, reason) => controller.databaseSectionProps.resolveReport(
+            String(reportId),
+            status === 'ignored' ? 'ignored' : 'resolved',
+            reason,
+          ),
+          moderateMaterial: (...args) => controller.databaseSectionProps.moderateMaterial(
+            String(args[0]),
+            args[1] === 'approved' ? 'approved' : 'rejected',
+            typeof args[2] === 'string' ? args[2] : undefined,
+            typeof args[3] === 'string' ? args[3] : undefined,
+          ),
+        }}
+      />
     </AdminShellLayout>
   );
 };

@@ -467,10 +467,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return;
       }
 
+      const currentUser = state.currentUser;
       accountService.becomePartner()
         .then(() => {
           dispatch({ type: 'BECOME_PARTNER' });
-          updateCurrentUserSnapshot({ ...state.currentUser, isPartner: true, role: 'partner' });
+          updateCurrentUserSnapshot({ ...currentUser, isPartner: true, role: 'partner' });
           resolve(true);
         })
         .catch(err => {

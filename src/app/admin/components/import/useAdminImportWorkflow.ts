@@ -3144,13 +3144,8 @@ export const useAdminImportWorkflow = ({
       const pagesWithAiFallback = new Set<number>();
       const failedPageReads = new Map<number, string>();
       const pageQuestionRanges = new Map<number, PageQuestionRange>();
-      let pendingCarryoverContext: {
-        text: string;
-        referenceText: string;
-        title: string;
-        startPage: number;
-        visualBlocks: PageContentBlock[];
-      } | null = null;
+      type CarryoverContext = { text: string; referenceText: string; title: string; startPage: number; visualBlocks: PageContentBlock[] };
+      let pendingCarryoverContext: CarryoverContext | null = null;
 
       for (let pageIndex = 1; pageIndex <= pagesCount; pageIndex += 1) {
         addLog(`Lendo pag ${pageIndex}/${pagesCount}...`);
@@ -3240,6 +3235,7 @@ export const useAdminImportWorkflow = ({
           pageQuestionNumbers.length === 0
           && shouldPromoteAsSupportContext(pagePrefixSupportText)
         ) {
+          const previousCarryoverContext = pendingCarryoverContext as CarryoverContext | null;
           const visualBlocks = (pageRichText.contentBlocks || []).filter((block) => (
             ['figure', 'table'].includes(block.type)
             && (
@@ -3248,14 +3244,14 @@ export const useAdminImportWorkflow = ({
             )
           ));
           pendingCarryoverContext = {
-            text: pendingCarryoverContext
-              ? mergeContextText(pendingCarryoverContext.text, pagePrefixSupportText)
+            text: previousCarryoverContext
+              ? mergeContextText(previousCarryoverContext.text, pagePrefixSupportText)
               : pagePrefixSupportText,
-            referenceText: mergeReferenceText(pendingCarryoverContext?.referenceText, pagePrefixParts.referenceText),
-            title: pendingCarryoverContext?.title || `Texto de apoio - pagina ${pageIndex}`,
-            startPage: pendingCarryoverContext?.startPage || pageIndex,
+            referenceText: mergeReferenceText(previousCarryoverContext?.referenceText, pagePrefixParts.referenceText),
+            title: previousCarryoverContext?.title || `Texto de apoio - pagina ${pageIndex}`,
+            startPage: previousCarryoverContext?.startPage || pageIndex,
             visualBlocks: [
-              ...(pendingCarryoverContext?.visualBlocks || []),
+              ...(previousCarryoverContext?.visualBlocks || []),
               ...visualBlocks,
             ],
           };
@@ -4210,7 +4206,7 @@ export const useAdminImportWorkflow = ({
         pageQuestionRanges: Array.from(pageQuestionRanges.values()),
         totalPages: pagesCount,
         answerKeyMap: keyMap,
-        defaultFocus: selectedFocus,
+        defaultFocus: selectedFocus || undefined,
       });
       const finalCoverage = ensuredDrafts.diagnostics;
       allFoundQuestions = ensuredDrafts.questions as unknown as Question[];
@@ -4676,7 +4672,7 @@ export const useAdminImportWorkflow = ({
         pageQuestionRanges: retryPageRanges,
         totalPages: pagesCount,
         answerKeyMap: keyMap,
-        defaultFocus: selectedFocus,
+        defaultFocus: selectedFocus || undefined,
       });
       nextQuestions = ensuredRetryDrafts.questions as unknown as Question[];
 
@@ -5363,7 +5359,7 @@ export const useAdminImportWorkflow = ({
         diagnostics: baseDiagnostics,
         defaultMetadata: nextMetadata,
         answerKeyMap,
-        defaultFocus: selectedFocus,
+        defaultFocus: selectedFocus || undefined,
       });
       const normalizedImportState = normalizeQuestionContextUsage(
         ensured.questions as unknown as Question[],
@@ -6256,7 +6252,7 @@ export const useAdminImportWorkflow = ({
         next[index] = {
           ...question,
           assuntos: buildResolvedSubjectTaxonomies(question, hierarchy),
-        } as Question;
+        } as unknown as Question;
         return next;
       }
 
@@ -6264,7 +6260,7 @@ export const useAdminImportWorkflow = ({
         next[index] = {
           ...question,
           bancas: value ? [createTaxonomyLabel(value, { sigla: value })] : [],
-        } as Question;
+        } as unknown as Question;
         return next;
       }
 
@@ -6273,7 +6269,7 @@ export const useAdminImportWorkflow = ({
         next[index] = {
           ...question,
           orgaos: organizations.map((organization) => createTaxonomyLabel(organization)),
-        } as Question;
+        } as unknown as Question;
         return next;
       }
 
@@ -6912,7 +6908,7 @@ export const useAdminImportWorkflow = ({
           correctOptionIndex: Number.isInteger(Number(draft.correctOptionIndex))
             ? Number(draft.correctOptionIndex)
             : undefined,
-          defaultFocus: resolveSelectedFocus(),
+          defaultFocus: resolveSelectedFocus() || undefined,
         });
         addToast(`O conteudo da questao ${questionNumber} foi limpo, mas o card foi mantido porque ela faz parte da prova esperada.`, 'info');
         return previous.map((item, currentIndex) => currentIndex === index ? placeholder : item);

@@ -15,6 +15,7 @@ import React, { useState, useEffect } from 'react';
 import { Lock, Eye, Database, UserCheck, ChevronLeft, ArrowRight, Server, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { PRIVACY_POLICY_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION } from '@services/legal/legalDocumentVersion';
 
 const PrivacyPolicy: React.FC = () => {
   const router = useRouter();
@@ -72,12 +73,13 @@ const PrivacyPolicy: React.FC = () => {
               </div>
               <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight">Política de Privacidade</h1>
               <p className="text-emerald-100 text-sm md:text-base font-medium opacity-90 leading-relaxed">
-                Conformidade com a LGPD (Lei 13.709/2018). Nosso compromisso inegociável com a segurança, o anonimato e a transparência em relação aos seus dados.
+                Conformidade com a LGPD (Lei 13.709/2018), com foco em segurança e transparência no tratamento dos seus dados.
               </p>
             </div>
             <div className="bg-white/10 backdrop-blur-lg border border-white/20 px-6 py-4 rounded-2xl text-right">
               <span className="block text-[10px] uppercase font-black tracking-widest text-emerald-200 mb-1">Última Atualização</span>
-              <span className="block text-lg font-bold text-white">24 de Maio de 2024</span>
+              <span className="block text-lg font-bold text-white">{PRIVACY_POLICY_EFFECTIVE_DATE}</span>
+              <span className="mt-1 block text-[10px] font-semibold text-emerald-100">Versão {PRIVACY_POLICY_VERSION}</span>
             </div>
           </div>
         </div>
@@ -125,7 +127,7 @@ const PrivacyPolicy: React.FC = () => {
                 </div>
                 <div className="space-y-6">
                   <p className="text-base md:text-lg text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-                    A transparência é a base da nossa relação. Coletamos e processamos as informações necessárias para prestar e proteger nossos serviços educacionais, incluindo dados de cadastro, autenticação, cobrança e uso da plataforma quando aplicáveis.
+                    A transparência é a base da nossa relação. Coletamos e processamos única e exclusivamente as informações que são essenciais para a prestação plena e segura de nossos serviços educacionais, visando uma jornada de estudo customizada.
                   </p>
 
                   <div className="mt-8 grid grid-cols-1 gap-6">
@@ -147,7 +149,7 @@ const PrivacyPolicy: React.FC = () => {
                       </div>
                       <div className="relative z-10 flex-1">
                         <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Dados Fiscais Sensíveis</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">CPF e telefone podem ser solicitados no cadastro ou em fluxos de cobrança e validação. Endereço é solicitado quando necessário para a operação de cobrança. O processamento de pagamentos usa Stripe; <strong className="text-slate-700 dark:text-slate-200">nós não armazenamos o número integral do cartão.</strong></p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">CPF e endereço podem ser solicitados no fluxo de contratação de plano pago pela Stripe ou quando forem necessários para validação cadastral. <strong className="text-slate-700 dark:text-slate-200">Nós nunca guardamos o número integral do seu cartão.</strong></p>
                       </div>
                     </div>
 
@@ -175,7 +177,7 @@ const PrivacyPolicy: React.FC = () => {
                   <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 m-0 tracking-tight">2. Segurança da Informação</h2>
                 </div>
                 <p className="text-base md:text-lg text-slate-600 dark:text-slate-400 font-medium mb-8">
-                  Empregamos medidas técnicas e administrativas rigorosas para manter seus dados de reféns longe de vazamentos acidentais ou acessos não autorizados.
+                  Empregamos medidas técnicas e administrativas para proteger seus dados pessoais contra acesso não autorizado, perda e divulgação indevida.
                 </p>
 
                 <div className="relative group p-8 md:p-10 bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm hover:shadow-lg transition-all duration-500 overflow-hidden">
@@ -229,9 +231,15 @@ const PrivacyPolicy: React.FC = () => {
                   <p>O compartilhamento se reduz aos vetores necessários para funcionamento do escopo legal:</p>
                   <ul className="list-disc pl-5 mt-4 space-y-3">
                     <li>Processadores de pagamento operando como &quot;Data Processor&quot;.</li>
-                    <li>Integração das requisições junto aos provedores de Large Language Models (LLMs como Google Gemini / OpenAI), de forma que os provedores <strong>não possam</strong> treinar modelos nos prompts que não forem devidamente isolados ou se opuserem por API Opt-out.</li>
+                    <li>Quando uma funcionalidade de IA é utilizada, as solicitações podem ser processadas pelo provedor de IA configurado para a plataforma, conforme a funcionalidade e os termos aplicáveis ao serviço.</li>
                     <li>Atividades estatais e Ordens Judiciais transitadas e julgadas.</li>
                   </ul>
+                  <p>
+                    A plataforma usa cookies necessários para autenticação, segurança e funcionamento básico. Cookies opcionais de analytics e marketing permanecem desativados por padrão e só são ativados com autorização; as preferências podem ser recusadas ou alteradas no controle de cookies.
+                  </p>
+                  <p>
+                    As cobranças e assinaturas de planos pagos são processadas pela Stripe. A infraestrutura de hospedagem, entrega e proteção de borda utiliza os serviços configurados para a operação da plataforma, incluindo Cloudflare quando aplicável. Serviços de comunicação e analytics só participam dos fluxos correspondentes e observam as preferências registradas.
+                  </p>
                 </div>
               </section>
 
@@ -245,15 +253,15 @@ const PrivacyPolicy: React.FC = () => {
                   <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 m-0 tracking-tight">4. Seus Direitos (LGPD)</h2>
                 </div>
                 <p className="text-base md:text-lg text-slate-600 dark:text-slate-400 font-medium mb-8">
-                  Por lei, você é plenamente dono e reinante sobre suas próprias informações. Você ostenta os seguintes direitos constitucionais que facilitamos acesso:
+                  A LGPD assegura direitos sobre os seus dados pessoais. A plataforma disponibiliza os seguintes canais e controles:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {[
-                    { title: "Solicitação de exclusão", desc: "O pedido autenticado inicia o fluxo de tratamento da conta. Remoção, anonimização e eventuais retenções seguem a política técnica aplicável.", highlight: "text-red-500", borderColor: "hover:border-red-400 dark:hover:border-red-500/50" },
+                    { title: "Direito de Esquecimento", desc: "Você pode solicitar a exclusão da conta pela área autenticada de perfil. A solicitação é registrada para tratamento interno e pode exigir retenção de registros quando houver obrigação legal ou necessidade de auditoria.", highlight: "text-red-500", borderColor: "hover:border-red-400 dark:hover:border-red-500/50" },
                     { title: "Direito de Correção", desc: "Painéis de edição transparentes para ajustar nome, avatar e vínculos de pagamento a qualquer instante.", highlight: "text-emerald-500", borderColor: "hover:border-emerald-400 dark:hover:border-emerald-500/50" },
-                    { title: "Acesso e portabilidade", desc: "Solicitações de acesso ou portabilidade devem ser encaminhadas ao canal de privacidade para avaliação e atendimento conforme os dados disponíveis.", highlight: "text-indigo-500", borderColor: "hover:border-indigo-400 dark:hover:border-indigo-500/50" },
-                    { title: "Revogação de Anuência", desc: "Newsletters e E-mails massivos podem ser opostos com simples de-check na área de Configurações.", highlight: "text-amber-500", borderColor: "hover:border-amber-400 dark:hover:border-amber-500/50" }
+                    { title: "Direito de Portabilidade", desc: "Pedidos de portabilidade podem ser encaminhados ao contato de privacidade para avaliação e atendimento conforme o formato e os limites aplicáveis.", highlight: "text-indigo-500", borderColor: "hover:border-indigo-400 dark:hover:border-indigo-500/50" },
+                    { title: "Revogação de Anuência", desc: "Cookies opcionais, newsletters e comunicações de marketing podem ser recusados ou alterados pelos controles disponíveis na plataforma.", highlight: "text-amber-500", borderColor: "hover:border-amber-400 dark:hover:border-amber-500/50" }
                   ].map((right, idx) => (
                     <div key={idx} className={`p-6 bg-white dark:bg-slate-800/80 rounded-[1.5rem] border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${right.borderColor}`}>
                       <h4 className={`text-sm font-black uppercase tracking-widest mb-3 ${right.highlight}`}>{right.title}</h4>

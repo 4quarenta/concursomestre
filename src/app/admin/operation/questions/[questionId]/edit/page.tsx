@@ -243,7 +243,10 @@ const AdminQuestionEditPage = () => {
   const editor = useAdminManualQuestionEditor({
     questions: question ? [question] : [],
     systemSettings,
-    addToast,
+    addToast: (message, type) => addToast(
+      message,
+      type === 'success' || type === 'error' || type === 'warning' || type === 'info' ? type : 'info',
+    ),
     onAddQuestion: async (payload: Question) => {
       const response = await questionService.createQuestions([payload]);
       if (!response.success) {

@@ -66,6 +66,12 @@ const AdminGranCrawlerReviewBatch = ({
   onImportedQuestionsSaved,
 }: AdminGranCrawlerReviewBatchProps) => {
   const { addToast } = useToast();
+  const addImportToast = React.useCallback((message: string, type?: string) => {
+    const normalizedType = type === 'success' || type === 'error' || type === 'warning' || type === 'info'
+      ? type
+      : 'info';
+    addToast(message, normalizedType);
+  }, [addToast]);
   const {
     importWorkflowProps,
     isManualQuestionModalOpen,
@@ -74,7 +80,7 @@ const AdminGranCrawlerReviewBatch = ({
     importEnabled: false,
     questions: [],
     systemSettings,
-    addToast,
+    addToast: addImportToast,
     onAddQuestion: ignoreDirectQuestionMutation,
     onUpdateQuestion: ignoreDirectQuestionMutation,
     onRefreshQuestions: onImportedQuestionsSaved || (() => undefined),

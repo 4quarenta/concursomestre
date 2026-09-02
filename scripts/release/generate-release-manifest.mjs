@@ -20,7 +20,7 @@ const criticalFiles = [
   'next.config.ts',
   'tsconfig.strict.json',
   'tsconfig.no-unchecked.json',
-  'backend/.env.production.example',
+  'contracts/legal/legal-document-versions.v1.json',
   'backend/scripts/migrations/run_schema_migrations.php',
   'backend/scripts/tasks/production_preflight.php',
   'backend/scripts/tasks/production_readiness_suite.php',
@@ -34,6 +34,8 @@ const criticalFiles = [
   'backend/shared/http/LegacyEndpointDeprecation.php',
   'backend/shared/responses/ApiEnvelope.php',
   'backend/shared/runtime/RuntimeStoreFactory.php',
+  'backend/shared/legal/LegalDocumentVersion.php',
+  'backend/shared/legal/LegalAcceptance.php',
   'backend/modules/questions/services/QuestionsService.php',
   'backend/modules/questions/repositories/QuestionsRepository.php',
   'backend/modules/subscriptions/services/SubscriptionsService.php',
@@ -43,12 +45,6 @@ const criticalFiles = [
   'scripts/checks/check-source-size-budget.mjs',
   'scripts/release/generate-release-manifest.mjs',
   'scripts/release/verify-release-manifest.mjs',
-  'scripts/deploy/lib.sh',
-  'scripts/deploy/verify-host.sh',
-  'scripts/deploy/deploy-release.sh',
-  'scripts/deploy/rollback-release.sh',
-  'docs/PRODUCTION_RELEASE_RUNBOOK.md',
-  'config/deploy/release-deploy.env.example',
 ];
 
 const migrationDirectory = path.join(root, 'backend/database/migrations');

@@ -18,6 +18,7 @@ import type {
   ArticleExamTip,
   ArticleJurisprudence,
   LawArticle,
+  PublicLawArticle,
   LawDetail,
   PublicLawDetail,
   LawSummary,
@@ -319,7 +320,7 @@ const buildLawSummarySearchText = (law: LawSummary) => normalizeText([
   ...(Array.isArray(law.aliases) ? law.aliases : []),
 ].join(' '));
 
-const buildArticleSearchText = (article: LawArticle) => normalizeText([
+const buildArticleSearchText = (article: LawArticle | PublicLawArticle) => normalizeText([
   article.number,
   article.title,
   article.text,
@@ -327,7 +328,7 @@ const buildArticleSearchText = (article: LawArticle) => normalizeText([
   ...(Array.isArray(article.blocks) ? article.blocks.slice(0, 4).map((block) => block.text) : []),
 ].join(' '));
 
-const pickArticleSnippet = (article: LawArticle) => {
+const pickArticleSnippet = (article: LawArticle | PublicLawArticle) => {
   const sourceText = String(article.text || article.texto || article.blocks?.[0]?.text || '').replace(/\s+/g, ' ').trim();
   if (!sourceText) {
     return '';

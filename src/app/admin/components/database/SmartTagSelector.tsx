@@ -13,7 +13,7 @@ import React, { useRef, useState } from 'react';
 import { PlusCircle, X } from 'lucide-react';
 
 type SmartTagOptionObject = {
-  id?: string | number;
+  id?: string | number | null;
   label?: string;
   name?: string;
   nome?: string;

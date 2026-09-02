@@ -39,12 +39,12 @@ type TaxonomyItem = {
   id?: number;
   name?: string;
   slug?: string;
-  sigla?: string;
+  sigla?: string | null;
   type?: string;
-  description?: string;
-  website?: string;
-  assetUrl?: string;
-  iconKey?: string;
+  description?: string | null;
+  website?: string | null;
+  assetUrl?: string | null;
+  iconKey?: string | null;
   aliases?: string[];
   keywords?: string[];
   parent_id?: number | string | null;

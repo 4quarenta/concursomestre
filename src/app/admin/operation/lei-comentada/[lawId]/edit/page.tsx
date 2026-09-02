@@ -1823,7 +1823,7 @@ const AdminLegalCommentaryEditPage = () => {
       setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
 
       setDraft(nextDraft);
-      setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
+       setActiveArticleId((current) => current && (nextDraft.articles || []).some((article) => article.id === current)
         ? current
         : nextDraft.articles?.[0]?.id || '');
 
@@ -1856,7 +1856,7 @@ const AdminLegalCommentaryEditPage = () => {
       if (payload.law) {
         const nextDraft = hydrateDraftFromLaw(payload.law, areas, subjects, topics);
         setDraft(nextDraft);
-        setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
+         setActiveArticleId((current) => current && (nextDraft.articles || []).some((article) => article.id === current)
           ? current
           : nextDraft.articles?.[0]?.id || '');
       }
@@ -1931,9 +1931,9 @@ const AdminLegalCommentaryEditPage = () => {
         title: normalizedLawName,
         shortTitle: normalizedLawName,
         status: nextStatus,
-        date: nextPublicationDate,
-        publishedAt: nextPublicationDate,
-        published_at: nextPublicationDate,
+         date: nextPublicationDate ?? undefined,
+         publishedAt: nextPublicationDate ?? undefined,
+         published_at: nextPublicationDate ?? undefined,
         preamble: cleanedPreamble,
         description: cleanedDescription,
         summary: '',
@@ -1954,7 +1954,7 @@ const AdminLegalCommentaryEditPage = () => {
       } else {
         const nextDraft = hydrateDraftFromLaw(saved, areas, subjects, topics);
         setDraft(nextDraft);
-        setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
+         setActiveArticleId((current) => current && (nextDraft.articles || []).some((article) => article.id === current)
           ? current
           : nextDraft.articles?.[0]?.id || '');
       }

@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../../shared/auth/AuthSession.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../../shared/auth/GoogleAuthenticator.php';
+require_once __DIR__ . '/../../../shared/legal/LegalAcceptance.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../users/services/UsersService.php';
 require_once __DIR__ . '/../../users/repositories/UsersRepository.php';
@@ -49,16 +50,11 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function logout(?array $nativeCredentials = null): array
+    public function logout(): array
     {
         $db = $this->repository->getConnection();
         ensureAuthTables($db);
-        logoutAuthSession(
-            $db,
-            $nativeCredentials['refreshToken'] ?? null,
-            $nativeCredentials['csrfToken'] ?? null,
-            $nativeCredentials === null
-        );
+        logoutAuthSession($db);
 
         return [];
     }
@@ -68,18 +64,12 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function refreshSession(bool $includeUser = false, ?array $nativeCredentials = null): array
+    public function refreshSession(bool $includeUser = false): array
     {
         $db = $this->repository->getConnection();
         ensureAuthTables($db);
 
-        $refreshData = $nativeCredentials === null
-            ? refreshAccessTokenFromCookie($db)
-            : refreshNativeAccessToken(
-                $db,
-                (string) ($nativeCredentials['refreshToken'] ?? ''),
-                (string) ($nativeCredentials['csrfToken'] ?? '')
-            );
+        $refreshData = refreshAccessTokenFromCookie($db);
         $payload = [
             'token' => $refreshData['token'],
             'authSession' => [
@@ -87,11 +77,6 @@ class AuthService
                 'accessExpiresIn' => $refreshData['access_expires_in'],
             ],
         ];
-
-        if ($nativeCredentials !== null) {
-            $payload['refreshToken'] = $refreshData['refresh_token'];
-            $payload['csrfToken'] = $refreshData['csrf_token'];
-        }
 
         if ($includeUser && !empty($refreshData['user_id'])) {
             $payload = array_merge($payload, $this->buildAuthenticatedSessionPayload((string) $refreshData['user_id']));
@@ -105,7 +90,7 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function login(array $payload, bool $nativeClient = false): array
+    public function login(array $payload): array
     {
         $normalized = $this->validator->validateLoginPayload($payload);
         $user = $this->repository->findUserForLoginByEmail($normalized['email']);
@@ -113,8 +98,6 @@ class AuthService
         if (!$user || !password_verify($normalized['password'], (string) ($user['password_hash'] ?? ''))) {
             throw new RuntimeException('Invalid email or password');
         }
-
-        $this->assertUserCanAuthenticate($user);
 
         if ($this->shouldRequireTwoFactor($user)) {
             return [
@@ -128,9 +111,9 @@ class AuthService
             'id' => $user['id'],
             'email' => $user['email'],
             'role' => $user['role'],
-        ], $nativeClient, 'auth_login', !$nativeClient);
+        ], false, 'auth_login');
 
-        $result = array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
+        return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
             'authSession' => [
                 'id' => $tokenData['session_id'],
@@ -138,13 +121,6 @@ class AuthService
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
         ]);
-
-        if ($nativeClient) {
-            $result['refreshToken'] = $tokenData['refresh_token'];
-            $result['csrfToken'] = $tokenData['csrf_token'];
-        }
-
-        return $result;
     }
 
     /**
@@ -152,7 +128,7 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function register(array $payload, bool $nativeClient = false): array
+    public function register(array $payload): array
     {
         $normalized = $this->validator->validateRegisterPayload($payload);
         $this->repository->ensureAuthProfileColumns();
@@ -214,6 +190,29 @@ class AuthService
                 'type' => 'info',
                 'link' => '/plans',
             ]);
+            LegalAcceptance::record(
+                $this->repository->getConnection(),
+                $newUserId,
+                'terms_of_use',
+                (string) $normalized['termsVersion'],
+                'account_registration'
+            );
+            LegalAcceptance::record(
+                $this->repository->getConnection(),
+                $newUserId,
+                'privacy_policy',
+                (string) $normalized['privacyVersion'],
+                'account_registration'
+            );
+            if (!empty($normalized['checkoutAdhesionTermsAccepted'])) {
+                LegalAcceptance::record(
+                    $this->repository->getConnection(),
+                    $newUserId,
+                    'checkout_adhesion_terms',
+                    (string) $normalized['checkoutAdhesionTermsVersion'],
+                    'checkout_registration'
+                );
+            }
             $this->repository->commit();
         } catch (Throwable $e) {
             if ($this->repository->inTransaction()) {
@@ -226,11 +225,11 @@ class AuthService
             'id' => $newUserId,
             'email' => $normalized['email'],
             'role' => 'student',
-        ], $nativeClient, 'auth_registration', !$nativeClient);
+        ], false, 'auth_registration');
 
         $emailDelivery = $this->sendVerificationEmail($normalized['email'], $normalized['name'], $verificationToken);
 
-        $result = array_merge($this->buildAuthenticatedSessionPayload($newUserId), [
+        return array_merge($this->buildAuthenticatedSessionPayload($newUserId), [
             'token' => $tokenData['token'],
             'emailDelivery' => $emailDelivery,
             'authSession' => [
@@ -239,13 +238,6 @@ class AuthService
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
         ]);
-
-        if ($nativeClient) {
-            $result['refreshToken'] = $tokenData['refresh_token'];
-            $result['csrfToken'] = $tokenData['csrf_token'];
-        }
-
-        return $result;
     }
 
     /**
@@ -365,6 +357,20 @@ class AuthService
                         'type' => 'success',
                         'link' => '/profile',
                     ]);
+                    LegalAcceptance::record(
+                        $this->repository->getConnection(),
+                        $newUserId,
+                        'terms_of_use',
+                        (string) $normalized['termsVersion'],
+                        'social_registration'
+                    );
+                    LegalAcceptance::record(
+                        $this->repository->getConnection(),
+                        $newUserId,
+                        'privacy_policy',
+                        (string) $normalized['privacyVersion'],
+                        'social_registration'
+                    );
                     $this->repository->commit();
                 } catch (Throwable $e) {
                     if ($this->repository->inTransaction()) {
@@ -381,8 +387,6 @@ class AuthService
         if (!$user) {
             throw new RuntimeException('Nao foi possivel localizar a conta autenticada pelo Google.');
         }
-
-        $this->assertUserCanAuthenticate($user, 'Conta indisponivel para autenticacao.');
 
         if ($this->shouldRequireTwoFactor($user)) {
             return [
@@ -449,6 +453,8 @@ class AuthService
             'link_user_id' => $linkUserId,
             'create_if_missing' => (bool) $normalized['createIfMissing'],
             'referral_code' => (string) ($normalized['referralCode'] ?? ''),
+            'terms_version' => (string) ($normalized['termsVersion'] ?? ''),
+            'privacy_version' => (string) ($normalized['privacyVersion'] ?? ''),
             'conflict_message' => 'Este e-mail ja esta vinculado a outra conta Facebook.',
             'not_found_message' => 'Conta nao encontrada. Crie sua conta antes de entrar com Facebook.',
             'profile_required_message' => 'Conta Facebook sem dados pessoais. Informe CPF, nome e telefone para concluir.',
@@ -499,6 +505,8 @@ class AuthService
             'profile_phone' => $profilePhone,
             'create_if_missing' => (bool) $normalized['createIfMissing'],
             'referral_code' => (string) ($normalized['referralCode'] ?? ''),
+            'terms_version' => (string) ($normalized['termsVersion'] ?? ''),
+            'privacy_version' => (string) ($normalized['privacyVersion'] ?? ''),
             'conflict_message' => 'Este e-mail ja esta vinculado a outra conta Apple.',
             'not_found_message' => 'Conta nao encontrada. Crie sua conta antes de entrar com Apple.',
             'profile_required_message' => 'Conta Apple sem dados pessoais. Informe CPF, nome e telefone para concluir.',
@@ -620,6 +628,20 @@ class AuthService
                         'type' => 'success',
                         'link' => '/profile',
                     ]);
+                    LegalAcceptance::record(
+                        $this->repository->getConnection(),
+                        $newUserId,
+                        'terms_of_use',
+                        (string) ($context['terms_version'] ?? ''),
+                        'social_registration'
+                    );
+                    LegalAcceptance::record(
+                        $this->repository->getConnection(),
+                        $newUserId,
+                        'privacy_policy',
+                        (string) ($context['privacy_version'] ?? ''),
+                        'social_registration'
+                    );
                     $this->repository->commit();
                 } catch (Throwable $e) {
                     if ($this->repository->inTransaction()) {
@@ -636,8 +658,6 @@ class AuthService
         if (!$user) {
             throw new RuntimeException('Nao foi possivel localizar a conta autenticada pelo provedor social.');
         }
-
-        $this->assertUserCanAuthenticate($user, 'Conta indisponivel para autenticacao.');
 
         if ($this->shouldRequireTwoFactor($user)) {
             return [
@@ -1120,7 +1140,7 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function verifyTwoFactor(array $payload, bool $nativeClient = false): array
+    public function verifyTwoFactor(array $payload): array
     {
         $normalized = $this->validator->validateVerifyTwoFactorPayload($payload);
         $user = $this->repository->findUserForTwoFactorByEmail($normalized['email']);
@@ -1138,9 +1158,9 @@ class AuthService
             'id' => $user['id'],
             'email' => $user['email'],
             'role' => $user['role'],
-        ], $nativeClient, 'auth_two_factor_completion', !$nativeClient);
+        ], false, 'auth_two_factor_completion');
 
-        $result = array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
+        return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
             'authSession' => [
                 'id' => $tokenData['session_id'],
@@ -1148,13 +1168,6 @@ class AuthService
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
         ]);
-
-        if ($nativeClient) {
-            $result['refreshToken'] = $tokenData['refresh_token'];
-            $result['csrfToken'] = $tokenData['csrf_token'];
-        }
-
-        return $result;
     }
 
     /**
@@ -1695,21 +1708,6 @@ class AuthService
         );
 
         return $usersService->getAuthenticatedSession($userId);
-    }
-
-    /**
-     * Impede novas sessoes para contas que ja solicitaram exclusao ou foram
-     * encerradas. O estado de exclusao continua separado do status operacional
-     * para preservar o fluxo de retencao/anonymizacao decidido posteriormente.
-     *
-     * @since 1.0.0
-     */
-    private function assertUserCanAuthenticate(array $user, string $message = 'Invalid email or password'): void
-    {
-        $status = strtolower(trim((string) ($user['status'] ?? '')));
-        if (!empty($user['deletion_requested_at']) || in_array($status, ['deleted', 'pending_deletion'], true)) {
-            throw new RuntimeException($message);
-        }
     }
 
     /**

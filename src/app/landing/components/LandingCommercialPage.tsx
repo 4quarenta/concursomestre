@@ -474,11 +474,12 @@ const FeaturesSection = ({ initialSystemSettings = null }: { initialSystemSettin
   const settingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
   const effectiveSettings = settingsLoaded ? systemSettings : (initialSystemSettings || systemSettings);
   const effectiveSettingsLoaded = settingsLoaded || Boolean(initialSystemSettings);
-  const visibleFeatures = FEATURES.filter((feature) => (
-    !('featureKey' in feature) || (
-      effectiveSettingsLoaded && resolveSystemFeatureFlag(effectiveSettings, feature.featureKey, false)
-    )
-  ));
+  const visibleFeatures = FEATURES.filter((feature) => {
+    if (!('featureKey' in feature) || !feature.featureKey) {
+      return true;
+    }
+    return effectiveSettingsLoaded && resolveSystemFeatureFlag(effectiveSettings, feature.featureKey, false);
+  });
 
   return (
     <section id="recursos" className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">

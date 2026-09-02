@@ -99,9 +99,13 @@ export type ManualQuestionSetter = Dispatch<SetStateAction<ManualQuestionState>>
 
 export const QUESTION_IMAGE_MARKER_PATTERN = /\[image:([^\]\s]+)\]/g;
 
-export const buildQuestionImageMarker = (assetId: string) => `[image:${assetId}]`;
+export const buildQuestionImageMarker = (assetId: string | undefined) => (assetId ? `[image:${assetId}]` : '');
 
-export const insertQuestionImageMarker = (content: string, assetId: string) => {
+export const insertQuestionImageMarker = (content: string, assetId: string | undefined) => {
+  if (!assetId) {
+    return content;
+  }
+
   const marker = buildQuestionImageMarker(assetId);
   if (content.includes(marker)) {
     return content;
@@ -110,7 +114,8 @@ export const insertQuestionImageMarker = (content: string, assetId: string) => {
   return [content.trimEnd(), marker].filter(Boolean).join(content.trim() ? '\n\n' : '');
 };
 
-export const removeQuestionImageMarker = (content: string, assetId: string) => (
+export const removeQuestionImageMarker = (content: string, assetId: string | undefined) => (
+  !assetId ? content :
   content
     .replace(new RegExp(`\\n*\\[image:${assetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\n*`, 'g'), '\n')
     .replace(/\n{3,}/g, '\n\n')

@@ -876,7 +876,7 @@ const extractProgrammaticDetailed = (programmaticContent: string[]): ExtractedPr
   const seen = new Set<string>();
   return items.map((item) => ({
     ...item,
-    assunto: normalizeLine(item.assunto.replace(/[.;]\s*$/, '')),
+    assunto: normalizeLine((item.assunto || '').replace(/[.;]\s*$/, '')),
   })).filter((item) => {
     const key = normalizeForSearch([item.materia, item.topico, item.assunto, item.questoes].filter(Boolean).join('|'));
     if (!key || seen.has(key)) {

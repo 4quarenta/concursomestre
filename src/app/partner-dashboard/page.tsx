@@ -482,7 +482,7 @@ const PartnerDashboard: React.FC = () => {
 
   const isAlreadyPartner = currentUser.role === 'partner' || currentUser.role === 'admin' || currentUser.isPartner;
 
-  const partnerTabs = [
+  const partnerTabs: Array<{ key: 'overview' | 'finance' | 'reviews' | 'products' | 'upload'; label: string; icon: typeof LayoutDashboard; badge?: number }> = [
     { key: 'overview', label: 'Visão Geral', icon: LayoutDashboard },
     { key: 'products', label: 'Meus Materiais', icon: Package, badge: myMaterials.length },
     { key: 'reviews', label: 'Avaliações', icon: MessageSquare },
@@ -1900,7 +1900,7 @@ const PartnerDashboard: React.FC = () => {
                         <input type="file" accept="image/*" className="hidden" onChange={e => setCoverFile(e.target.files?.[0] || null)} />
                         {(coverFile || editingMaterial.coverUrl) ? (
                           <Image
-                            src={coverFile ? URL.createObjectURL(coverFile) : getAssetUrl(editingMaterial.coverUrl)}
+                             src={coverFile ? URL.createObjectURL(coverFile) : getAssetUrl(editingMaterial.coverUrl || '')}
                             alt="Preview"
                             fill
                             unoptimized

@@ -3441,7 +3441,9 @@ export const buildQuestionPayloadImportCard = ({
     textClean: stripHtml(String(item.corpo_clean || item.corpo || '')),
     assets: [],
   }));
-  const correctAlternative = alternativePayloads[correctOptionIndex] || null;
+  const correctAlternative = Number.isInteger(correctOptionIndex)
+    ? alternativePayloads[correctOptionIndex as number] || null
+    : null;
   const assetPayload = (supportImages || [])
     .map((image, index) => {
       const record = image as unknown as Record<string, unknown>;
@@ -3740,7 +3742,7 @@ export const applySharedExamMetadataToQuestion = (
     return {
       ...question,
       bancas: value ? [createTaxonomyLabel(value, { sigla: value })] : [],
-    } as Question;
+    } as unknown as Question;
   }
 
   if (field === 'source') {
@@ -3748,7 +3750,7 @@ export const applySharedExamMetadataToQuestion = (
     return {
       ...question,
       orgaos: organizations.map((organization) => createTaxonomyLabel(organization)),
-    } as Question;
+    } as unknown as Question;
   }
 
   if (field === 'role') {

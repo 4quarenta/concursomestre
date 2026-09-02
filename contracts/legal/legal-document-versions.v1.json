@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "documents": {
+    "terms_of_use": {
+      "version": "2026.09",
+      "effectiveDate": "2026-09-02"
+    },
+    "privacy_policy": {
+      "version": "2026.09",
+      "effectiveDate": "2026-09-02"
+    },
+    "checkout_adhesion_terms": {
+      "version": "2026.09",
+      "effectiveDate": "2026-09-02"
+    }
+  }
+}

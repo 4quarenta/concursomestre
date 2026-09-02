@@ -31,6 +31,9 @@ export default async function FutureQuestionPage({
   if (!resolution) {
     notFound();
   }
+  if (resolution.question.id === undefined) {
+    notFound();
+  }
 
   const requestedSlug = Array.isArray(resolvedParams.slug) ? resolvedParams.slug.join('/') : '';
   if (requestedSlug !== resolution.futureSlug) {

@@ -14,6 +14,7 @@
 require_once __DIR__ . '/../repositories/SubscriptionsRepository.php';
 require_once __DIR__ . '/../validators/SubscriptionsValidator.php';
 require_once __DIR__ . '/../../../shared/security/Recaptcha.php';
+require_once __DIR__ . '/../../../shared/legal/LegalAcceptance.php';
 require_once __DIR__ . '/../../transactions/services/TransactionsRefundSupport.php';
 require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
@@ -266,7 +267,7 @@ class SubscriptionsService
     {
         $payload = $this->validator->validateStripeCheckoutPayload($data);
         $context = $this->buildStripeCreationContext($userId, $payload);
-
+        LegalAcceptance::recordCheckout($this->db, $userId, (string) $payload['checkout_adhesion_terms_version']);
         if ($context['final_price'] <= 0) {
             return $this->activateLocalCreditStripeSubscription(
                 $userId,
@@ -440,7 +441,7 @@ class SubscriptionsService
     {
         $payload = $this->validator->validateStripeInlineSubscriptionPayload($data);
         $context = $this->buildStripeCreationContext($userId, $payload);
-
+        LegalAcceptance::recordCheckout($this->db, $userId, (string) $payload['checkout_adhesion_terms_version']);
         if ($context['final_price'] <= 0) {
             return $this->activateLocalCreditStripeSubscription(
                 $userId,
@@ -672,8 +673,7 @@ class SubscriptionsService
      *
      * @since 1.0.0
      */
-    public function finalizeStripeSubscription(string $userId, array $data): array
-    {
+    public function finalizeStripeSubscription(string $userId, array $data): array {
         $payload = $this->validator->validateStripeFinalizePayload($data);
 
         if (!stripeIsConfigured()) {

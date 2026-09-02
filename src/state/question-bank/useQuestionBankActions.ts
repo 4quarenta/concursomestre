@@ -114,7 +114,7 @@ export const useQuestionBankActions = () => {
     const requestedCursor = nextQuestionCursor;
     const params: QuestionBankPageParams = {
       ...paramsOverride,
-      cursor: requestedCursor,
+      cursor: requestedCursor ?? undefined,
       limit: Number(paramsOverride.limit || 20),
     };
     const filterSignature = buildQuestionBankFilterSignature(params);
@@ -127,7 +127,7 @@ export const useQuestionBankActions = () => {
       });
 
       if (activeDataOwnerRef.current !== currentAccountId) {
-        return;
+        return 0;
       }
 
       const questionRows = Array.isArray(result.rows) ? result.rows : [];

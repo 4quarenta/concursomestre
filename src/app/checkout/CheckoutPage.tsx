@@ -43,6 +43,7 @@ import useCheckoutSummaryAction from './hooks/useCheckoutSummaryAction';
 import type { CheckoutAuthMode, CheckoutStep } from './types';
 import { buildProfilePath } from '../profile/profileNavigation';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
+import { CHECKOUT_ADHESION_TERMS_VERSION, LEGAL_DOCUMENT_VERSIONS } from '@services/legal/legalDocumentVersion';
 import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
 
 const getPlanTierScore = (name: string) => {
@@ -52,6 +53,8 @@ const getPlanTierScore = (name: string) => {
     if (normalized.includes('essencial')) return 1;
     return 0;
 };
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type AppliedCheckoutCoupon = DiscountCode & {
     discount_amount?: number;
@@ -211,6 +214,7 @@ const CheckoutPage: React.FC = () => {
         confirmPassword: ''
     });
 
+    const analyticsSessionKeyRef = useRef('');
     const checkoutAnalyticsRef = useRef({
         planViewed: false,
         checkoutStarted: false,
@@ -222,6 +226,7 @@ const CheckoutPage: React.FC = () => {
     const checkoutCompletionInProgressRef = useRef(false);
     const stripeFinalizationInProgressRef = useRef(false);
     const checkoutAttemptIdRef = useRef('');
+    const trackedCheckoutEmailsRef = useRef<Set<string>>(new Set());
     const trackedPaymentFailuresRef = useRef<Set<string>>(new Set());
 
     const getCheckoutAttemptId = useCallback(() => {
@@ -348,7 +353,16 @@ const CheckoutPage: React.FC = () => {
 
     const isUsingStripeSavedCard = Boolean(selectedStripeCard);
     const stripeRequiresSavedCard = isStripeInternalCheckoutActive && autoRenew && !isUsingStripeSavedCard;
+    const analyticsEmail = (currentUser?.email || formData.email || '').trim() || null;
     const analyticsCycleLabel = useMemo(() => (plan ? resolvePlanCycleKey(plan) : null), [plan]);
+
+    const getAnalyticsSessionKey = React.useCallback(() => {
+        if (!analyticsSessionKeyRef.current) {
+            analyticsSessionKeyRef.current = analyticsTrackingService.getSessionKey();
+        }
+
+        return analyticsSessionKeyRef.current;
+    }, []);
 
     const requestRecaptchaToken = useCallback(async (action: string) => {
         if (!recaptchaEnabled) {
@@ -369,11 +383,14 @@ const CheckoutPage: React.FC = () => {
         void analyticsTrackingService.trackLifecycleEvent({
             eventName,
             source: 'checkout',
+            sessionKey: getAnalyticsSessionKey(),
+            userId: currentUser?.id || null,
+            email: analyticsEmail,
             planId: plan?.id || null,
             cycleLabel: analyticsCycleLabel,
             metadata,
         });
-    }, [analyticsCycleLabel, plan?.id]);
+    }, [analyticsCycleLabel, analyticsEmail, currentUser?.id, getAnalyticsSessionKey, plan?.id]);
 
     const trackPaymentFailure = React.useCallback((stage: string, reason?: string | null) => {
         const normalizedReason = String(reason || 'unknown').trim();
@@ -433,6 +450,28 @@ const CheckoutPage: React.FC = () => {
             step,
         });
     }, [authMode, step, trackCheckoutLifecycleEvent]);
+
+    useEffect(() => {
+        const normalizedEmail = (formData.email || '').trim().toLowerCase();
+        if (!EMAIL_REGEX.test(normalizedEmail) || trackedCheckoutEmailsRef.current.has(normalizedEmail)) {
+            return;
+        }
+
+        trackedCheckoutEmailsRef.current.add(normalizedEmail);
+        void analyticsTrackingService.trackLifecycleEvent({
+            eventName: 'email_captured',
+            source: 'checkout',
+            sessionKey: getAnalyticsSessionKey(),
+            userId: currentUser?.id || null,
+            email: normalizedEmail,
+            planId: plan?.id || null,
+            cycleLabel: analyticsCycleLabel,
+            metadata: {
+                authMode,
+                step,
+            },
+        });
+    }, [analyticsCycleLabel, authMode, currentUser?.id, formData.email, getAnalyticsSessionKey, plan?.id, step]);
 
     useEffect(() => {
         if (step !== 'payment' || checkoutAnalyticsRef.current.paymentStarted) {
@@ -812,7 +851,13 @@ const CheckoutPage: React.FC = () => {
         let mounted = true;
         planService.getStripePixCapability()
             .then((response) => {
-                if (mounted) setStripePixCapability(response);
+                if (mounted) {
+                    setStripePixCapability({
+                        status: typeof response.status === 'string' ? response.status : undefined,
+                        available: typeof response.available === 'boolean' ? response.available : undefined,
+                        message: typeof response.message === 'string' ? response.message : undefined,
+                    });
+                }
             })
             .catch(() => {
                 if (mounted) {
@@ -865,7 +910,13 @@ const CheckoutPage: React.FC = () => {
                     email: formData.email.trim(),
                     password: formData.password,
                     captchaToken,
-                    referralCode
+                    referralCode,
+                    termsAccepted: true,
+                    termsVersion: LEGAL_DOCUMENT_VERSIONS.terms_of_use.version,
+                    privacyAccepted: true,
+                    privacyVersion: LEGAL_DOCUMENT_VERSIONS.privacy_policy.version,
+                    checkoutAdhesionTermsAccepted: true,
+                    checkoutAdhesionTermsVersion: CHECKOUT_ADHESION_TERMS_VERSION,
                 });
 
                 const registrationToken = result.data.token;
@@ -874,6 +925,9 @@ const CheckoutPage: React.FC = () => {
                     void analyticsTrackingService.trackLifecycleEvent({
                         eventName: 'signup_completed',
                         source: 'checkout',
+                        sessionKey: getAnalyticsSessionKey(),
+                        userId: session.user.id,
+                        email: session.user.email || formData.email.trim(),
                         planId: plan?.id || null,
                         cycleLabel: analyticsCycleLabel,
                         metadata: {
@@ -1105,6 +1159,8 @@ const CheckoutPage: React.FC = () => {
                 billing_mode: stripeBillingMode,
                 installment_count: selectedStripeInstallmentCount,
                 checkout_attempt_id: getCheckoutAttemptId(),
+                checkout_adhesion_terms_accepted: true,
+                checkout_adhesion_terms_version: CHECKOUT_ADHESION_TERMS_VERSION,
             });
 
             const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
@@ -1139,6 +1195,8 @@ const CheckoutPage: React.FC = () => {
                 billing_mode: stripeBillingMode,
                 installment_count: selectedStripeInstallmentCount,
                 checkout_attempt_id: getCheckoutAttemptId(),
+                checkout_adhesion_terms_accepted: true,
+                checkout_adhesion_terms_version: CHECKOUT_ADHESION_TERMS_VERSION,
             });
 
             if (!response?.success) {
@@ -1291,6 +1349,11 @@ const CheckoutPage: React.FC = () => {
         if (!checkoutAnalyticsRef.current.purchaseCompleted) {
             checkoutAnalyticsRef.current.purchaseCompleted = true;
             checkoutAnalyticsRef.current.checkoutAbandoned = false;
+            trackCheckoutLifecycleEvent('purchase_completed', {
+                subscriptionId,
+                paymentMethodId: options?.paymentMethodId || pendingStripePaymentMethodId || null,
+                paymentIntentId: options?.paymentIntentId || null,
+            });
         }
 
     };
@@ -1317,6 +1380,8 @@ const CheckoutPage: React.FC = () => {
                 billing_mode: stripeBillingMode,
                 installment_count: selectedStripeInstallmentCount,
                 checkout_attempt_id: getCheckoutAttemptId(),
+                checkout_adhesion_terms_accepted: true,
+                checkout_adhesion_terms_version: CHECKOUT_ADHESION_TERMS_VERSION,
             });
 
             if (!response?.success) {
@@ -1964,6 +2029,14 @@ const CheckoutPage: React.FC = () => {
                                                         />
                                                         <span>
                                                             Li e aceito os{' '}
+                                                            <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-black text-indigo-600 underline decoration-indigo-300 underline-offset-4 transition-colors hover:text-indigo-700 dark:text-indigo-400">
+                                                                Termos de Uso
+                                                            </Link>
+                                                            {', '}
+                                                            <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="font-black text-indigo-600 underline decoration-indigo-300 underline-offset-4 transition-colors hover:text-indigo-700 dark:text-indigo-400">
+                                                                Politica de Privacidade
+                                                            </Link>
+                                                            {' e os '}
                                                             <Link href="/checkout/termos-de-adesao" target="_blank" rel="noopener noreferrer" className="font-black text-indigo-600 underline decoration-indigo-300 underline-offset-4 transition-colors hover:text-indigo-700 dark:text-indigo-400">
                                                                 Termos de adesão
                                                             </Link>

@@ -141,7 +141,7 @@ const AdminStandaloneShell = ({
         setIsNotifOpen,
         onCloseNotifications: () => setIsNotifOpen(false),
         notifications: adminNotifications,
-        markNotificationAsRead,
+         markNotificationAsRead: (id) => markNotificationAsRead(String(id)),
         markAllNotificationsAsRead,
         unreadCount,
         navigate,

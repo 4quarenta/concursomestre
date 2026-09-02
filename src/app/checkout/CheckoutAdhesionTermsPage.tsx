@@ -14,6 +14,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRight, BadgeCheck, ChevronLeft, CreditCard, FileText, Lock, RefreshCcw, RotateCcw, Scale, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { CHECKOUT_ADHESION_TERMS_EFFECTIVE_DATE, CHECKOUT_ADHESION_TERMS_VERSION } from '@services/legal/legalDocumentVersion';
 
 const sections = [
   { id: 'adesao', icon: BadgeCheck, label: '1. Adesão ao plano' },
@@ -83,7 +84,8 @@ const CheckoutAdhesionTermsPage: React.FC = () => {
             </div>
             <div className="rounded-2xl border border-white/20 bg-white/10 px-6 py-4 text-left backdrop-blur-lg md:text-right">
               <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-indigo-100">Última atualização</span>
-              <span className="block text-lg font-bold text-white">10 de abril de 2026</span>
+              <span className="block text-lg font-bold text-white">{CHECKOUT_ADHESION_TERMS_EFFECTIVE_DATE}</span>
+              <span className="mt-1 block text-[10px] font-semibold text-indigo-100">Versão {CHECKOUT_ADHESION_TERMS_VERSION}</span>
             </div>
           </div>
         </div>

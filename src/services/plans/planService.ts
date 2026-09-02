@@ -102,6 +102,8 @@ export const planService = {
     billing_mode?: StripeBillingMode;
     installment_count?: number;
     checkout_attempt_id?: string;
+    checkout_adhesion_terms_accepted: true;
+    checkout_adhesion_terms_version: string;
   }): Promise<StripeCheckoutSessionResponse> {
     const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.createStripeCheckoutSession(payload) as Promise<StripeCheckoutSessionResponse>;
@@ -121,6 +123,8 @@ export const planService = {
     billing_mode?: StripeBillingMode;
     installment_count?: number;
     checkout_attempt_id?: string;
+    checkout_adhesion_terms_accepted: true;
+    checkout_adhesion_terms_version: string;
   }): Promise<StripeSubscriptionResponse> {
     const subscriptionsService = await loadSubscriptionsService();
     return subscriptionsService.createStripeSubscription(payload) as Promise<StripeSubscriptionResponse>;

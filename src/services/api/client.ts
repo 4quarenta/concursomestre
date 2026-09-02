@@ -206,7 +206,7 @@ const getFilenameFromDisposition = (contentDisposition: string | null, fallbackN
     return fallbackName;
 };
 
-registerApiInterceptors(apiClient);
+registerApiInterceptors(apiClient as unknown as Parameters<typeof registerApiInterceptors>[0]);
 
 /**
  * Monta o endpoint legado/oficial de download de material.

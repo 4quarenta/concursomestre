@@ -73,7 +73,10 @@ const parseIdentity = (value: unknown, allowSubtopic = false): PublicKnowledgeId
   const identity = { id: integer(value.id), slug: text(value.slug), name: text(value.name), taxonomyLevel, path: path(value.path) };
   if (identity.id <= 0 || !identity.slug || !identity.name) return null;
   if (taxonomyLevel !== 'subtopico' && identity.path !== detailPath(taxonomyLevel, identity.slug)) return null;
-  if (taxonomyLevel === 'subtopico') delete identity.path;
+  if (taxonomyLevel === 'subtopico') {
+    const { path: _path, ...subtopicIdentity } = identity;
+    return subtopicIdentity;
+  }
   return identity;
 };
 

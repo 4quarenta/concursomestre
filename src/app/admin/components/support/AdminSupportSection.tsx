@@ -874,7 +874,7 @@ const AdminSupportSection = ({
         />
       ) : null}
 
-      {false && moderatingReport && createPortal(
+      {moderatingReportGroup && moderatingReport && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/75 p-2 backdrop-blur-sm sm:p-4">
           <div className={`${ADMIN_MODAL_PANEL_CLASS} my-2 flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col shadow-2xl sm:my-4 sm:max-h-[calc(100dvh-2rem)]`}>
             <div className={`${ADMIN_MODAL_HEADER_CLASS} shrink-0`}>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildLawArticleMetadata } from '../lawArticleMetadata';
+import { buildLawArticleMetadata } from '../lawPresentation';
 import { parsePublicLawArticleDetail } from '../lawArticleServerData';
 
 const item = parsePublicLawArticleDetail({

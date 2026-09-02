@@ -145,7 +145,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-const featureItems = [
+const featureItems: Array<{ id: keyof SystemSettings['features']; label: string; icon: typeof BookOpen }> = [
   { id: 'practiceEnabled', label: 'Prática', icon: BookOpen },
   { id: 'simulationsEnabled', label: 'Simulados', icon: Clock },
   { id: 'studyScheduleEnabled', label: 'Cronograma', icon: CalendarDays },
@@ -382,7 +382,7 @@ const AdminSettings = ({
     }
   };
 
-  const setFeature = (key: string, value: boolean) => {
+  const setFeature = (key: keyof SystemSettings['features'], value: boolean) => {
     setLocalSettings((current) => ({
       ...(current as SystemSettings & Record<string, unknown>),
       [key]: value,
@@ -550,7 +550,7 @@ const AdminSettings = ({
       }
     } catch (error: unknown) {
       const message = getErrorMessage(error, 'Não foi possível validar as integrações.');
-      setIntegrationsTestResult({ message, data: null });
+      setIntegrationsTestResult({ message });
       addToast(message, 'error');
     } finally {
       setIsTestingIntegrations(false);

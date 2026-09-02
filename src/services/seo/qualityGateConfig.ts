@@ -51,12 +51,13 @@ export const validateQualityGatesConfig = (
   if (!isRecord(value.resources)) errors.push('Quality Gates resources must be an object.');
 
   if (isRecord(value.resources)) {
+    const resources = value.resources as Record<string, unknown>;
     const expectedResources = new Set<string>(QUALITY_RESOURCE_TYPES);
     Object.keys(value.resources).forEach((resourceType) => {
       if (!expectedResources.has(resourceType)) errors.push(`Quality Gates contains unknown resource ${resourceType}.`);
     });
     QUALITY_RESOURCE_TYPES.forEach((resourceType) => {
-      const resource = value.resources[resourceType];
+      const resource = resources[resourceType];
       if (!isRecord(resource)) {
         errors.push(`Quality Gates resource ${resourceType} is missing.`);
         return;

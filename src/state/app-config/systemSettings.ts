@@ -1,5 +1,5 @@
 import { PRICING, PLAN_DETAILS } from '@constants/index';
-import type { DiscountCode, SystemSettings } from '@types';
+import type { DiscountCode, MarketingLandingPage, SystemSettings } from '@types';
 import { DEFAULT_STRIPE_PAYMENT_METHODS_SETTINGS, normalizeStripePaymentMethodsSettings } from '@services/payments/stripePaymentMethodsConfig';
 import { DEFAULT_PLAN_ENTITLEMENTS, DEFAULT_PLAN_USAGE_LIMITS } from '@constants/subscriptions/planEntitlements';
 import {
@@ -258,7 +258,9 @@ export const mergeSystemSettings = (
     ? payload.siteName.trim()
     : (typeof base.siteName === 'string' && base.siteName.trim() !== '' ? base.siteName.trim() : 'ConcursoMestre');
   const mergedLandingPages = mergeMarketingLandingPages(
-    (payload.landingPages as Partial<SystemSettings['landingPages']>) ?? base.landingPages,
+    Array.isArray(payload.landingPages)
+      ? payload.landingPages.filter((page): page is MarketingLandingPage => Boolean(page))
+      : base.landingPages,
     resolvedSiteName,
   );
   const incomingPromotion = (
@@ -278,8 +280,8 @@ export const mergeSystemSettings = (
       { slug: String(incomingPromotion.slug || base.activePromotion.slug || '') },
     ),
     siteBanners: (Array.isArray(incomingPromotion.siteBanners)
-      ? incomingPromotion.siteBanners
-      : base.activePromotion.siteBanners
+      ? incomingPromotion.siteBanners.filter((banner): banner is NonNullable<typeof banner> => Boolean(banner))
+      : base.activePromotion?.siteBanners || []
     ).map((banner) => ({
       ...banner,
       actionUrl: normalizeCampaignBannerActionUrl(
@@ -311,7 +313,9 @@ export const mergeSystemSettings = (
     (payload.legalCommentaryFeatureConfig as Partial<SystemSettings['legalCommentaryFeatureConfig']>) ?? base.legalCommentaryFeatureConfig,
   );
   const mergedEmailTemplates = normalizeEmailTemplates(
-    (payload.emailTemplates as Partial<SystemSettings['emailTemplates']>) ?? base.emailTemplates,
+    Array.isArray(payload.emailTemplates)
+      ? payload.emailTemplates.filter(Boolean) as unknown as Parameters<typeof normalizeEmailTemplates>[0]
+      : base.emailTemplates,
   );
   const mergedGamification = normalizeGamificationSettings(
     (payload.gamification as Partial<SystemSettings['gamification']>) ?? base.gamification,

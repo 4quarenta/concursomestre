@@ -70,7 +70,7 @@ const RankingPage: React.FC = () => {
    // Forms
    const [rankingForm, setRankingForm] = useState({
       name: '', institution: '', totalQuestions: 60, vacanciesAc: 0, vacanciesAfro: 0, vacanciesPcd: 0, officialKeyReleaseDate: '',
-      keyStatus: 'pending' as 'official' | 'pending', hasDiscursive: false, examTypes: [],
+       keyStatus: 'pending' as 'official' | 'pending', hasDiscursive: false, examTypes: [] as string[],
       officialKeyPdfFile: null as File | null,
       correctKey: ''
    });
@@ -451,7 +451,7 @@ const RankingPage: React.FC = () => {
                                  officialKeyReleaseDate: selectedRanking.officialKeyReleaseDate || '',
                                  keyStatus: selectedRanking.keyStatus,
                                  hasDiscursive: selectedRanking.hasDiscursive,
-                                 examTypes: selectedRanking.examTypes || [],
+                                  examTypes: selectedRanking.examTypes || [],
                                  correctKey: selectedRanking.correctKey || '',
                                  officialKeyPdfFile: null
                               });

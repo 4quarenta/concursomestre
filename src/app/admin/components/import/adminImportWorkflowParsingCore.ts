@@ -906,7 +906,7 @@ export const slugify = (value: string) => String(value || '')
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '') || 'item';
 
-export const normalizeComparisonText = (value: string) => String(value || '')
+export const normalizeComparisonText = (value: unknown) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/[^a-z0-9]+/gi, ' ')
@@ -3231,7 +3231,7 @@ export const sanitizeReferenceTextForImport = (value: string) => (
     .trim()
 );
 
-export const mergeReferenceText = (...values: string[]) => {
+export const mergeReferenceText = (...values: Array<string | null | undefined>) => {
   const seen = new Set<string>();
   const segments = values
     .flatMap((value) => String(value || '').split(/\n{2,}/))
@@ -3806,7 +3806,7 @@ export const extractOptionFragmentsFromText = (
   }
 
   const labels = OPTION_LABELS.slice(0, getExpectedOptionsCount('multipla escolha', expectedOptionsCount));
-  const markers = [];
+  const markers: typeof candidates = [];
   const seen = new Set<string>();
   for (let index = firstStructuredIndex; index < candidates.length; index += 1) {
     const candidate = candidates[index];
@@ -3866,7 +3866,7 @@ export const extractOptionsFromText = (
   const groups = candidates
     .map((start, startIndex) => {
       const seen = new Set<string>();
-      const group = [];
+      const group: typeof candidates = [];
       for (let index = startIndex; index < candidates.length && group.length < labels.length; index += 1) {
         const candidate = candidates[index];
         if (!labels.includes(candidate.label)) {

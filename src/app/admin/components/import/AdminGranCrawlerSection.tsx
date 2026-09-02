@@ -1298,9 +1298,10 @@ const AdminGranCrawlerSection = ({
     } catch (requestError) {
       if (!controller.signal.aborted) {
         const message = requestError instanceof Error ? requestError.message : 'O modo automatico foi interrompido.';
-        const checkpointYear = failedFlight?.year || cursorYear;
-        const checkpointPage = failedFlight?.page || cursorPage;
-        const checkpointTotalPages = failedFlight?.totalPages || checkpoint?.totalPages || null;
+        const failedFlightSnapshot = failedFlight as AutomaticPublicationFlight | null;
+        const checkpointYear = failedFlightSnapshot?.year || cursorYear;
+        const checkpointPage = failedFlightSnapshot?.page || cursorPage;
+        const checkpointTotalPages = failedFlightSnapshot?.totalPages || checkpoint?.totalPages || null;
         if (checkpoint) try {
           await saveAutomaticCheckpoint({
             requestUrl: buildGranQuestionQueryUrl(checkpoint.requestUrl, {

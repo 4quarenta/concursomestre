@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import type { GlobalTaxonomies } from '@types';
+import type { GlobalTaxonomies, Ranking } from '@types';
 import TaxonomyModal from './TaxonomyModal';
 import MaterialModerationModal from '../materials/MaterialModerationModal';
 import ManualQuestionModal from '../questions/ManualQuestionModal';
@@ -27,7 +27,7 @@ interface AdminDatabaseModalsProps {
   isManualQuestionModalOpen: boolean;
   manualQuestionModalProps: Record<string, unknown>;
   editingMaterial: unknown;
-  materialModerationModalProps: MaterialModerationModalProps;
+  materialModerationModalProps: MaterialModerationModalProps | null;
   viewingProfileId: string | null;
   detailedUser: UserProfileAdminModalProps['detailedUser'];
   isLoadingDetail: boolean;
@@ -41,8 +41,8 @@ interface AdminDatabaseModalsProps {
   onUserAction: (action: string, payload?: unknown, options?: { actionKey?: string; successMessage?: string }) => Promise<unknown>;
   actionLoading: string | null;
   onCloseUserProfile: () => void;
-  editingRanking: RankingEditorModalProps['ranking'];
-  onEditingRankingChange: (value: RankingEditorModalProps['ranking']) => void;
+  editingRanking: Ranking | null;
+  onEditingRankingChange: React.Dispatch<React.SetStateAction<Ranking | null>>;
   onCloseRankingEditor: () => void;
   onSaveRanking: () => Promise<unknown>;
   showTaxonomyModal: boolean;
@@ -160,7 +160,7 @@ const AdminDatabaseModals = ({
     {editingRanking && (
       <RankingEditorModal
         ranking={editingRanking}
-        setRanking={onEditingRankingChange}
+        setRanking={(value) => onEditingRankingChange(value)}
         onClose={onCloseRankingEditor}
         onSave={onSaveRanking}
       />

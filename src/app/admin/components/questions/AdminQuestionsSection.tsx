@@ -293,7 +293,7 @@ const hasEntityValue = (values: unknown) => {
     return values.some((value) => Boolean(getEntityLabel(value)));
   }
 
-  return Boolean(getEntityLabel(values));
+  return Boolean(getEntityLabel(values as QuestionTaxonomyOption));
 };
 
 const getGeneratedTaxonomyLevel = (item: QuestionTaxonomyOption) => String(
@@ -589,7 +589,7 @@ const buildGeneratedQuestionPayload = ({
     stats: { totalAttempts: 0, correctCount: 0, wrongCount: 0 },
     comments: [],
     timestamp: now,
-  } as Question;
+  } as unknown as Question;
 
   return withQuestionPublicationAliases(question);
 };
@@ -1324,7 +1324,7 @@ const AdminQuestionsSection = ({
                 : null;
 
               const linkedExam = Array.isArray(questionRecord.provas) && questionRecord.provas.length > 0
-                ? question.provas[0]
+                ? question.provas?.[0]
                 : null;
 
               const linkedExamName = linkedExam?.nome || '-';

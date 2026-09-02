@@ -37,6 +37,12 @@ type RegisterPayload = {
   password: string;
   captchaToken?: string | null;
   referralCode?: string | null;
+  termsAccepted: true;
+  termsVersion: string;
+  privacyAccepted: true;
+  privacyVersion: string;
+  checkoutAdhesionTermsAccepted?: true;
+  checkoutAdhesionTermsVersion?: string;
 };
 
 type LoginPayload = {

@@ -195,7 +195,11 @@ const ManualQuestionModal = ({
     });
   };
 
-  const handleRemoveAsset = (assetId: string) => {
+  const handleRemoveAsset = (assetId: string | undefined) => {
+    if (!assetId) {
+      return;
+    }
+
     setManualQ((prev) => ({
       ...prev,
       assets: (prev.assets || []).filter((asset) => asset.id !== assetId),

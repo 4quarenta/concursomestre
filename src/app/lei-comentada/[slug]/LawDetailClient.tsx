@@ -106,6 +106,7 @@ import type {
   TeacherComment,
 } from '@types';
 
+type LawArticleLike = LawArticle | PublicLawDetail['articles'][number];
 type CurrentUserLike = {
   id?: string;
   userId?: string;
@@ -496,9 +497,8 @@ const saveTeacherCommentRequestKeys = (userKey: string, lawId: string, ids: Set<
   window.localStorage.setItem(getTeacherCommentRequestStorageKey(userKey, lawId), JSON.stringify(Array.from(ids)));
 };
 
-const getArticleNumber = (article: LawArticle) => String(article.number || article.numero || '').trim();
-
-const getPublicArticlePath = (lawSlug: string, article: LawArticle): string | null => {
+const getArticleNumber = (article: LawArticleLike) => String(article.number || article.numero || '').trim();
+const getPublicArticlePath = (lawSlug: string, article: LawArticleLike): string | null => {
   const persistedSlug = String(article.slug || '').trim();
   const status = String(article.officialStatus || 'active').trim().toLowerCase();
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(persistedSlug)
@@ -507,7 +507,7 @@ const getPublicArticlePath = (lawSlug: string, article: LawArticle): string | nu
   return publicRoutes.laws.article(lawSlug, persistedSlug);
 };
 
-const getArticleTaxonomyNames = (article: LawArticle) => {
+const getArticleTaxonomyNames = (article: LawArticleLike) => {
   return [
     article.title,
     article.titulo,
@@ -516,7 +516,7 @@ const getArticleTaxonomyNames = (article: LawArticle) => {
     .filter(Boolean);
 };
 
-const getArticleTextLines = (article: LawArticle): string[] => {
+const getArticleTextLines = (article: LawArticleLike): string[] => {
   const blockLines = Array.isArray(article.blocks)
     ? article.blocks
       .map((block) => String(block.text || '').trim())
@@ -539,12 +539,12 @@ const getArticleTextLines = (article: LawArticle): string[] => {
   return singleLine ? [singleLine] : [];
 };
 
-const resolveArticleTeacherComments = (law: PublicLawDetail, article: LawArticle): TeacherComment[] => {
+const resolveArticleTeacherComments = (law: PublicLawDetail, article: LawArticleLike): TeacherComment[] => {
   void law;
   return Array.isArray(article.comentarios) ? article.comentarios : [];
 };
 
-const resolveArticleJurisprudence = (law: PublicLawDetail, article: LawArticle): ArticleJurisprudence[] => {
+const resolveArticleJurisprudence = (law: PublicLawDetail, article: LawArticleLike): ArticleJurisprudence[] => {
   void law;
   return Array.isArray(article.jurisprudencia) ? article.jurisprudencia : [];
 };
@@ -565,7 +565,7 @@ const joinLegalHeadingParts = (...parts: Array<unknown>) => (
 
 const isArticleHeadingText = (value: string): boolean => /^\s*art\.?\s*\d/i.test(value);
 
-const getSectionHeaderText = (article: LawArticle): string => {
+const getSectionHeaderText = (article: LawArticleLike): string => {
   const raw = String(article.title || article.titulo || '').trim();
   if (!raw || isArticleHeadingText(raw)) return '';
 
@@ -584,7 +584,7 @@ const getReadableSectionTitle = (section?: LawSectionSummary | null): string => 
   return normalizeLegalHeadingText(raw);
 };
 
-const getTitleMarker = (article: LawArticle): string => {
+const getTitleMarker = (article: LawArticleLike): string => {
   const raw = String(article.title || article.titulo || '').trim();
   return raw && !isArticleHeadingText(raw) ? raw : '';
 };
@@ -615,7 +615,7 @@ const getLegalBlockIndentClass = (indentLevel: number): string => {
   return '';
 };
 
-const buildArticleBlocks = (article: LawArticle): RenderableBlock[] => {
+const buildArticleBlocks = (article: LawArticleLike): RenderableBlock[] => {
   const blocks = Array.isArray(article.blocks) ? article.blocks : [];
   if (blocks.length > 0) {
     return blocks
@@ -700,12 +700,12 @@ const extractArticleOrdinals = (value: unknown): number[] => (
     .filter((item) => Number.isFinite(item)) || []
 );
 
-const getArticleOrdinal = (article: LawArticle): number | null => {
+const getArticleOrdinal = (article: LawArticleLike): number | null => {
   const [ordinal] = extractArticleOrdinals(getArticleNumber(article));
   return ordinal || null;
 };
 
-const sectionContainsArticle = (section: LawSectionSummary, article: LawArticle): boolean => {
+const sectionContainsArticle = (section: LawSectionSummary, article: LawArticleLike): boolean => {
   const articleId = String(article.id || '').trim();
   if (articleId && (section.articleIds || []).map((id) => String(id)).includes(articleId)) {
     return true;
@@ -742,7 +742,7 @@ const getSectionSearchTitles = (section: LawSectionSummary) => [
 
 const sectionEditorialMatchesArticle = (
   editorial: PublicLawSectionEditorial,
-  article: LawArticle,
+  article: LawArticleLike,
   sections: LawSectionSummary[],
 ): boolean => {
   const articleId = String(article.id || '').trim();
@@ -782,7 +782,7 @@ const sectionEditorialMatchesArticle = (
 
 const buildSectionEditorialSearchValuesForArticle = (
   law: PublicLawDetail,
-  article: LawArticle,
+  article: LawArticleLike,
   sections: LawSectionSummary[],
 ) => (Array.isArray(law.sectionEditorials) ? law.sectionEditorials : [])
   .filter((editorial) => sectionEditorialMatchesArticle(editorial, article, sections))
@@ -803,7 +803,7 @@ const buildSectionEditorialSearchValuesForArticle = (
     ...collectLegalSearchValues(editorial.sumulas || []),
   ]);
 
-const resolveArticleExamTips = (law: PublicLawDetail, article: LawArticle): ArticleExamTip[] => (
+const resolveArticleExamTips = (law: PublicLawDetail, article: LawArticleLike): ArticleExamTip[] => (
   String(article.examTip || article.macete || '').trim()
     ? [{
       id: `article-tip:${article.id}`,
@@ -817,7 +817,7 @@ const resolveArticleExamTips = (law: PublicLawDetail, article: LawArticle): Arti
 
 const resolveArticleUserCommentsForSearch = (
   law: PublicLawDetail,
-  article: LawArticle,
+  article: LawArticleLike,
   userId?: string | null,
 ): PublicLegalUserComment[] => (
   Array.isArray(law.userComments)
@@ -832,7 +832,7 @@ const resolveArticleUserCommentsForSearch = (
 
 const buildArticleSearchHaystack = (
   law: PublicLawDetail,
-  article: LawArticle,
+  article: LawArticleLike,
   sections: LawSectionSummary[],
   userId?: string | null,
 ) => normalizeLegalSearchText([
@@ -2458,7 +2458,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
 
   const sections = React.useMemo(() => {
     if (!law) return [];
-    const articlesBySection = new Map<string, LawArticle[]>();
+    const articlesBySection = new Map<string, LawArticleLike[]>();
     (law.articles || []).forEach((article) => {
       const sectionId = String(article.sectionId || '');
       if (!sectionId) return;
@@ -4290,7 +4290,7 @@ const LawDetailPage: React.FC<LawDetailPageProps> = ({
             Lei Comentada
           </Link>
           <ChevronRight size={12} />
-          <span className="text-slate-500">{law.area.name}</span>
+          <span className="text-slate-500">{law.area?.name || ''}</span>
           {activeSection ? (
             <>
               <ChevronRight size={12} />

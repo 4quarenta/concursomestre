@@ -350,7 +350,7 @@ const AdminUserEditPage = () => {
     <AdminUserEditorPage
       form={form}
       onFormChange={setForm}
-      detailedUser={details}
+      detailedUser={details || undefined}
       isNew={isNew}
       isSaving={isSaving}
       actionLoading={actionLoading}

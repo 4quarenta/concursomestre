@@ -146,6 +146,12 @@ export const useAdminDatabaseManagerController = ({
   const { addToast } = useToast();
   const router = useRouter();
   const resolvedInitialTab = resolveInitialDatabaseTab(initialTab);
+  const addAdminToast = React.useCallback((message: string, type?: string) => {
+    const normalizedType = type === 'success' || type === 'error' || type === 'warning' || type === 'info'
+      ? type
+      : 'info';
+    addToast(message, normalizedType);
+  }, [addToast]);
 
   /**
    * Controla categoria ativa, subaba e filtro textual da area de base de dados.
@@ -206,7 +212,7 @@ export const useAdminDatabaseManagerController = ({
     openCreateFilterModal,
     openCreateChildFilterModal,
   } = useAdminTaxonomyWorkflow({
-    addToast,
+    addToast: addAdminToast,
   });
 
   /**
@@ -236,7 +242,7 @@ export const useAdminDatabaseManagerController = ({
     closeRankingEditor,
     handleSaveRanking,
   } = useRankingEditorWorkflow({
-    addToast,
+    addToast: addAdminToast,
     updateRanking,
   });
 
@@ -259,7 +265,7 @@ export const useAdminDatabaseManagerController = ({
     cancelEditingUser,
     handleUserAction,
   } = useAdminUserProfileWorkflow({
-    addToast,
+    addToast: addAdminToast,
     reloadUsers: () => ensureUsersLoaded(true),
   });
 
@@ -290,7 +296,7 @@ export const useAdminDatabaseManagerController = ({
   } = useAdminQuestionsWorkflow({
     keyword: filter,
     activeSubTab,
-    addToast,
+    addToast: addAdminToast,
   });
 
   /**
@@ -331,7 +337,7 @@ export const useAdminDatabaseManagerController = ({
     saveSystemSettingsNow,
     onUpdateQuestion,
     filter,
-    addToast,
+    addToast: addAdminToast,
   });
 
   /**
@@ -345,7 +351,7 @@ export const useAdminDatabaseManagerController = ({
     importEnabled: activeSubTab === 'import',
     questions,
     systemSettings,
-    addToast,
+    addToast: addAdminToast,
     onAddQuestion,
     onUpdateQuestion,
     onRefreshQuestions: reloadCurrentPage,
@@ -417,7 +423,7 @@ export const useAdminDatabaseManagerController = ({
   } = useAdminModerationWorkbench({
     questions,
     allMaterials,
-    addToast,
+    addToast: addAdminToast,
     moderateMaterial,
     resolveReport,
     openManualModal: openQuestionEditPage,
@@ -536,7 +542,11 @@ export const useAdminDatabaseManagerController = ({
     onEditUserFormChange: setEditUserForm,
     onStartEditingUser: startEditingUser,
     onCancelEditingUser: cancelEditingUser,
-    onUserAction: handleUserAction,
+    onUserAction: (action, payload, options) => handleUserAction(
+      action,
+      payload && typeof payload === 'object' ? payload as Record<string, unknown> : {},
+      options,
+    ),
     actionLoading,
     onCloseUserProfile: closeUserProfile,
     editingRanking,
@@ -557,7 +567,16 @@ export const useAdminDatabaseManagerController = ({
     filterAliases,
     filterKeywords,
     selectedParentId,
-    taxonomies: systemSettings.taxonomies,
+    taxonomies: systemSettings.taxonomies || {
+      agencies: [],
+      organizations: [],
+      subjects: [],
+      topics: [],
+      roles: [],
+      careers: [],
+      years: [],
+      modalities: [],
+    },
     onActiveFilterTypeChange: setActiveFilterType,
     onFilterInputChange: setFilterInput,
     onFilterSlugChange: setFilterSlug,

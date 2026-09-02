@@ -731,7 +731,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                     - flex items-center justify-center centers the PDF when it's smaller than viewport.
                     - When PDF is larger (Zoom), this wrapper expands, pushing the parent's scrollbars.
                 */}
-                {!loading && !error && pdfDoc && (
+                {!loading && !error && pdfDoc && pdfjsModule && (
                     <div className={`min-h-full min-w-full flex ${displayMode === 'page' ? 'items-center justify-center py-8' : 'justify-center py-8'}`}>
                         {displayMode === 'page' ? (
                             <PdfPage

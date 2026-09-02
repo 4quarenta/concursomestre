@@ -596,7 +596,11 @@ export const useAdminPageController = () => {
       onAddQuestion: addQuestion,
       onAddQuestions: addQuestions,
       onUpdateQuestion: updateQuestion,
-      resolveReport,
+      resolveReport: (reportId: string | number, status: string, reason?: string) => resolveReport(
+        String(reportId),
+        status === 'ignored' ? 'ignored' : 'resolved',
+        reason || 'Denúncia tratada pela equipe administrativa.',
+      ),
       moderateMaterial,
       onDeleteMaterial: deleteMaterial,
       systemSettings,
@@ -617,7 +621,9 @@ export const useAdminPageController = () => {
       updateSystemSettings,
       saveSystemSettingsNow,
       initialSection: initialFinanceSection,
-      onSectionChange: (section: AdminFinanceSection) => handleSectionChange('finance', section),
+      onSectionChange: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics') => (
+        handleSectionChange('finance', section as AdminFinanceSection)
+      ),
       standaloneSection: true,
     },
     financeSectionKey: initialFinanceSection,

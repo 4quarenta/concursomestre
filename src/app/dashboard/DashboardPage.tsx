@@ -833,8 +833,8 @@ const Dashboard: React.FC = () => {
                       backgroundColor: 'rgba(15,23,42,0.96)',
                       color: '#fff',
                     }}
-                    formatter={(value: number, name: string) => [
-                      `${value}`,
+                    formatter={(value, name) => [
+                      `${value ?? ''}`,
                       name === 'questions' ? 'Questões' : 'Acertos',
                     ]}
                     labelFormatter={(label) => `Período: ${label}`}

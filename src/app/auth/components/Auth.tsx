@@ -39,6 +39,7 @@ import { isCanonicalSessionData, type CanonicalSessionData } from '@services/aut
 import { createSubmissionGate } from '@services/auth/submissionGate';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import { hasInvalidGoogleClientIdCandidate, normalizeGoogleClientId } from '@/config/googleAuth';
+import { LEGAL_DOCUMENT_VERSIONS } from '@services/legal/legalDocumentVersion';
 import { useTheme } from '@providers/ThemeProvider';
 import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 
@@ -162,6 +163,8 @@ type PendingSocialSignup = {
   phone: string;
 };
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const isValidCpf = (value: string): boolean => {
   const digits = value.replace(/\D/g, '');
   if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
@@ -276,8 +279,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   });
 
   const googleButtonRef = useRef<HTMLDivElement>(null);
+  const analyticsSessionKeyRef = useRef('');
   const trackedAuthVisitRef = useRef(false);
   const trackedSignupStartRef = useRef(false);
+  const trackedSignupEmailsRef = useRef<Set<string>>(new Set());
   const loginSubmissionGateRef = useRef(createSubmissionGate());
 
   const isSignup = mode === 'signup';
@@ -291,6 +296,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     enabled: recaptchaEnabled && isAuthForm,
     siteKey: systemSettings?.recaptchaSiteKey,
   });
+
+  const getAnalyticsSessionKey = () => {
+    if (!analyticsSessionKeyRef.current) {
+      analyticsSessionKeyRef.current = analyticsTrackingService.getSessionKey();
+    }
+
+    return analyticsSessionKeyRef.current;
+  };
 
   const update = (field: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -342,6 +355,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     void analyticsTrackingService.trackLifecycleEvent({
       eventName: 'identifiable_visit',
       source: 'auth',
+      sessionKey: getAnalyticsSessionKey(),
+      email: formData.email.trim() || null,
       metadata: { mode },
     });
   }, [formData.email, mode]);
@@ -353,6 +368,26 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     void analyticsTrackingService.trackLifecycleEvent({
       eventName: 'signup_started',
       source: 'auth',
+      sessionKey: getAnalyticsSessionKey(),
+      email: formData.email.trim() || null,
+    });
+  }, [formData.email, mode]);
+
+  useEffect(() => {
+    if (mode !== 'signup') return;
+
+    const normalizedEmail = formData.email.trim().toLowerCase();
+    if (!EMAIL_REGEX.test(normalizedEmail) || trackedSignupEmailsRef.current.has(normalizedEmail)) {
+      return;
+    }
+
+    trackedSignupEmailsRef.current.add(normalizedEmail);
+    void analyticsTrackingService.trackLifecycleEvent({
+      eventName: 'email_captured',
+      source: 'auth',
+      sessionKey: getAnalyticsSessionKey(),
+      email: normalizedEmail,
+      metadata: { mode },
     });
   }, [formData.email, mode]);
 
@@ -437,6 +472,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         password: formData.password,
         captchaToken,
         referralCode,
+        termsAccepted: true,
+        termsVersion: LEGAL_DOCUMENT_VERSIONS.terms_of_use.version,
+        privacyAccepted: true,
+        privacyVersion: LEGAL_DOCUMENT_VERSIONS.privacy_policy.version,
       });
 
       const { token } = result.data;
@@ -444,6 +483,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       void analyticsTrackingService.trackLifecycleEvent({
         eventName: 'signup_completed',
         source: 'auth',
+        sessionKey: getAnalyticsSessionKey(),
+        userId: session.user.id,
+        email: session.user.email || formData.email.trim(),
         metadata: { mode: 'signup' },
       });
       try {
@@ -542,6 +584,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       void analyticsTrackingService.trackLifecycleEvent({
         eventName: 'signup_completed',
         source,
+        sessionKey: getAnalyticsSessionKey(),
+        userId: session.user.id,
+        email: session.user.email || null,
         metadata: { mode: provider },
       });
     }
@@ -645,6 +690,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
+    if (!formData.termsAccepted) {
+      setError('Aceite os termos de uso e a politica de privacidade para continuar.');
+      return;
+    }
+
     setSocialLoading(pending.provider, true);
     setError('');
 
@@ -664,6 +714,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         ...providerTokenPayload,
         referralCode,
         createIfMissing: true,
+        termsAccepted: true,
+        termsVersion: LEGAL_DOCUMENT_VERSIONS.terms_of_use.version,
+        privacyAccepted: true,
+        privacyVersion: LEGAL_DOCUMENT_VERSIONS.privacy_policy.version,
         profile: {
           name: normalizedName,
           cpf: normalizedCpf,
@@ -684,7 +738,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     } finally {
       setSocialLoading(pending.provider, false);
     }
-  }, [finalizeSocialAuth, pendingSocialSignup, searchParams, setSocialLoading]);
+  }, [finalizeSocialAuth, formData.termsAccepted, pendingSocialSignup, searchParams, setSocialLoading]);
 
   useEffect(() => {
     if (!googleClientId || !googleScriptReady || !isAuthForm || isForgot) {
@@ -1211,11 +1265,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="social-signup-name" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
+              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
               <div className="relative">
                 <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
-                  id="social-signup-name"
                   type="text"
                   required
                   autoFocus
@@ -1231,11 +1284,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="social-signup-cpf" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
+              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
               <div className="relative">
                 <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
-                  id="social-signup-cpf"
                   type="text"
                   required
                   inputMode="numeric"
@@ -1252,11 +1304,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="social-signup-phone" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
+              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
               <div className="relative">
                 <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
-                  id="social-signup-phone"
                   type="tel"
                   required
                   inputMode="tel"
@@ -1300,11 +1351,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignup && (
               <div className="space-y-2">
-                <label htmlFor="signup-name" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
+                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
                 <div className="relative">
                   <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
-                    id="signup-name"
                     type="text"
                     required
                     autoFocus
@@ -1319,11 +1369,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {isSignup && (
               <div className="space-y-2">
-                <label htmlFor="signup-cpf" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
+                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
                 <div className="relative">
                   <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
-                    id="signup-cpf"
                     type="text"
                     required
                     inputMode="numeric"
@@ -1339,11 +1388,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {isSignup && (
               <div className="space-y-2">
-                <label htmlFor="signup-phone" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
+                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
                 <div className="relative">
                   <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
-                    id="signup-phone"
                     type="tel"
                     required
                     inputMode="tel"
@@ -1358,13 +1406,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             )}
 
             <div className="space-y-2">
-              <label htmlFor={isForgot ? 'forgot-email' : 'auth-email'} className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">
+              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">
                 {isForgot ? 'E-mail cadastrado' : 'E-mail'}
               </label>
               <div className="relative">
                 <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
-                    id={isForgot ? 'forgot-email' : 'auth-email'}
                     type="email"
                     required
                     autoFocus={!isSignup}
@@ -1379,11 +1426,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {!isForgot && (
               <div className="space-y-2">
-                <label htmlFor="auth-password" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Senha</label>
+                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Senha</label>
                 <div className="relative">
                   <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
-                    id="auth-password"
                     type={showPassword ? 'text' : 'password'}
                     required
                     autoComplete={isSignup ? 'new-password' : 'current-password'}
@@ -1405,11 +1451,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {isSignup && (
               <div className="space-y-2">
-                <label htmlFor="auth-confirm-password" className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Confirmar senha</label>
+                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Confirmar senha</label>
                 <div className="relative">
                   <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
-                    id="auth-confirm-password"
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
                     autoComplete="new-password"

@@ -1,5 +1,6 @@
 export const COOKIE_CONSENT_STORAGE_KEY = 'cm:cookie-consent:v1';
 export const COOKIE_CONSENT_CHANGE_EVENT = 'cm:cookie-consent-changed';
+export const COOKIE_CONSENT_OPEN_EVENT = 'cm:cookie-consent-open';
 
 export type CookieConsentPreferences = {
   version: 1;
@@ -31,7 +32,7 @@ export const parseCookieConsent = (raw: string | null): CookieConsentPreferences
     };
   } catch {
     return null;
-  }
+}
 };
 
 export const readCookieConsent = (): CookieConsentPreferences | null => {
@@ -41,6 +42,11 @@ export const readCookieConsent = (): CookieConsentPreferences | null => {
   } catch {
     return null;
   }
+};
+
+export const requestCookieConsentPreferences = (): void => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(COOKIE_CONSENT_OPEN_EVENT));
 };
 
 export const writeCookieConsent = (

@@ -6,9 +6,9 @@ import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import StructuredData from '@/components/seo/StructuredData';
 import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS, PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
 import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
+import { buildLawArticleMetadata, lawArticleDescription, lawArticleHeading, lawArticleName } from '../../lawPresentation';
 import { buildNoIndexMetadata } from '../../../seoMetadata';
-import { fetchPublicLawArticle, type PublicLawArticleDetail } from '../../lawArticleServerData';
-import { buildLawArticleMetadata, lawArticleDescription, lawArticleHeading, lawArticleName } from '../../lawArticleMetadata';
+import { fetchPublicLawArticle } from '../../lawArticleServerData';
 
 export const revalidate = 300;
 type Props = { params: Promise<{ slug: string; articleSlug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };

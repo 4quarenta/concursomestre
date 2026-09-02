@@ -1263,7 +1263,7 @@ const Simulation: React.FC = () => {
                            <button
                               key={i}
                               onClick={() => { setCurrentIdx(i); setShowPalette(false); }}
-                              className={`w-full aspect-square rounded-lg text-xs font-black transition-all border-2 transition-colors ${currentIdx === i ? 'bg-indigo-600 border-indigo-600 text-white shadow-md dark:shadow-none' : activeSession.answers[activeSession.questions[i].id] !== undefined ? 'bg-slate-900 dark:bg-slate-800 border-slate-900 dark:border-slate-700 text-white' : 'bg-white dark:bg-slate-850 border-slate-100 dark:border-slate-800 text-slate-300 dark:text-slate-600 hover:border-indigo-200 dark:hover:border-indigo-900'}`}
+                               className={`w-full aspect-square rounded-lg text-xs font-black transition-all border-2 transition-colors ${currentIdx === i ? 'bg-indigo-600 border-indigo-600 text-white shadow-md dark:shadow-none' : activeSession.answers[String(activeSession.questions[i]?.id ?? '')] !== undefined ? 'bg-slate-900 dark:bg-slate-800 border-slate-900 dark:border-slate-700 text-white' : 'bg-white dark:bg-slate-850 border-slate-100 dark:border-slate-800 text-slate-300 dark:text-slate-600 hover:border-indigo-200 dark:hover:border-indigo-900'}`}
                            >
                               {i + 1}
                            </button>
@@ -1284,7 +1284,7 @@ const Simulation: React.FC = () => {
                         onAnswerSubmit={(ans) => {
                            setActiveSession((currentSession) => mergeSimulationAnswer(
                               currentSession,
-                              q.id,
+                               q.id ?? '',
                               { index: ans.selectedOptionIndex, is_correct: 0, time_taken: ans.timeTaken },
                            ));
                         }}
@@ -1313,7 +1313,7 @@ const Simulation: React.FC = () => {
                               onAnswerSubmit={(ans) => {
                                  setActiveSession((currentSession) => mergeSimulationAnswer(
                                     currentSession,
-                                    question.id,
+                                     question.id ?? '',
                                     { index: ans.selectedOptionIndex, is_correct: 0, time_taken: ans.timeTaken },
                                  ));
                               }}

@@ -9,8 +9,8 @@ type LegacyLawEntryPageProps = {
 const normalizeLawId = (lawId: string) => String(lawId || '').trim();
 
 const LegacyLawEntryPage = async ({ params }: LegacyLawEntryPageProps) => {
-  const resolvedParams = await params;
-  const rawLawId = normalizeLawId(resolvedParams?.lawId || '');
+  const { lawId } = await params;
+  const rawLawId = normalizeLawId(lawId || '');
   const normalizedLawId = rawLawId.toLowerCase();
 
   if (!rawLawId || ['new', 'novo', 'add'].includes(normalizedLawId)) {

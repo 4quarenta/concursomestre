@@ -270,7 +270,7 @@ type AdminCatalogPlanDraft = {
 };
 
 const clonePlanDetails = (source?: Partial<PlanDetailsByPlan>): PlanDetailsByPlan => Object.fromEntries(
-  Object.entries(source || {}).map(([plan, config]) => [
+  (Object.entries(source || {}) as [PlanName, PlanConfig | undefined][]).map(([plan, config]) => [
     plan,
     {
       ...config,
@@ -282,7 +282,7 @@ const clonePlanDetails = (source?: Partial<PlanDetailsByPlan>): PlanDetailsByPla
 ) as PlanDetailsByPlan;
 
 const mergePricingWithDefaults = (pricing?: Partial<PricingByPlan>): PricingByPlan => Object.fromEntries(
-  Object.entries(PRICING).map(([plan, config]) => [
+  (Object.entries(PRICING) as [PlanName, PlanPricing][]).map(([plan, config]) => [
     plan,
     normalizePlanPricingConfig({
       ...config,
@@ -295,8 +295,8 @@ const mergePlanDetailsWithDefaults = (planDetails?: Partial<PlanDetailsByPlan>):
   const defaults = clonePlanDetails(PLAN_DETAILS);
   const incoming = clonePlanDetails(planDetails);
 
-  Object.keys(defaults).forEach((plan) => {
-    const current = incoming[plan] || {};
+  (Object.keys(defaults) as PlanName[]).forEach((plan) => {
+    const current: Partial<PlanConfig> = incoming[plan] || {};
     defaults[plan] = {
       ...defaults[plan],
       ...current,
@@ -314,6 +314,7 @@ const mergePlanDetailsWithDefaults = (planDetails?: Partial<PlanDetailsByPlan>):
 };
 
 const planNames = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
+const isPlanName = (value: string): value is PlanName => (planNames as readonly string[]).includes(value);
 const REVENUE_RECOGNIZED_TRANSACTION_STATUSES = new Set(['completed', 'approved']);
 type TransactionStatusFilter = {
   id: string;
@@ -1837,6 +1838,7 @@ const AdminFinance = ({
 
   // --- HANDLERS EXISTENTES ---
   const handleDescriptionChange = (plan: string, description: string) => {
+    if (!isPlanName(plan)) return;
     const updatedPricing = { ...draftPricing };
     const planConfig = updatedPricing[plan];
     planConfig.description = description;
@@ -1862,6 +1864,7 @@ const AdminFinance = ({
   };
 
   const handlePriceChange = (plan: string, monthlyValue: number) => {
+    if (!isPlanName(plan)) return;
     const updatedPricing = { ...draftPricing };
     const planConfig = { ...updatedPricing[plan] };
     updatedPricing[plan] = normalizePlanPricingConfig({
@@ -1872,6 +1875,7 @@ const AdminFinance = ({
   };
 
   const handleDiscountPercentChange = (plan: string, type: 'quarterly' | 'annual', percent: number) => {
+    if (!isPlanName(plan)) return;
     const updatedPricing = { ...draftPricing };
     const planConfig = { ...updatedPricing[plan] };
     if (type === 'quarterly') planConfig.quarterlyDiscountPercent = percent;
@@ -3365,7 +3369,7 @@ const AdminFinance = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    requestResolveRefund(transaction.id, 'approved');
+                                    requestResolveRefund(String(transaction.id || ''), 'approved');
                                   }}
                                   disabled={isRefundActionLocked}
                                   className="text-[9px] font-black uppercase text-sky-700 hover:text-sky-800 dark:text-sky-300 dark:hover:text-sky-200 underline disabled:opacity-50"
@@ -3375,7 +3379,7 @@ const AdminFinance = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    requestResolveRefund(transaction.id, 'retention_offer');
+                                    requestResolveRefund(String(transaction.id || ''), 'retention_offer');
                                   }}
                                   disabled={isRefundActionLocked}
                                   className="text-[9px] font-black uppercase text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-300 underline disabled:opacity-50"
@@ -4129,9 +4133,9 @@ const AdminFinance = ({
               </div>
             )}
 
-            {automationHelper?.warning && (
+            {typeof automationHelper?.warning === 'string' && (
               <div className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
-                {String(automationHelper.warning)}
+                        {automationHelper.warning}
               </div>
             )}
 
@@ -4516,7 +4520,7 @@ const AdminFinance = ({
                 {automationRunLoading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
                 {automationRunLoading ? 'Executando...' : 'Executar rotina agora'}
               </button>
-              {automationRunResult && (
+              {typeof automationRunResult === 'object' && automationRunResult !== null && (
                 <div className="mt-4 grid gap-2 rounded-sm border border-slate-300 bg-white p-4 text-xs dark:border-slate-700 dark:bg-slate-900 md:grid-cols-3">
                   {Object.entries(automationRunResult).slice(0, 6).map(([key, value]) => (
                     <div key={key}>

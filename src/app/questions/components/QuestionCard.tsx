@@ -908,6 +908,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
       setLoadingStats(true);
       try {
+        if (question.id === undefined) {
+          return;
+        }
         const data = await questionService.getQuestionStats(question.id);
         setLocalStats(data);
       } catch (err) {
@@ -943,7 +946,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         setIsLoadingHistory(true);
       });
       // Try to fetch history from backend, fallback to existingAnswer if fail or offline
-      questionService.getQuestionHistory(question.id, currentUser?.id || '')
+          questionService.getQuestionHistory(question.id ?? '', currentUser?.id || '')
         .then(data => {
           if (Array.isArray(data)) {
             setHistory(data);

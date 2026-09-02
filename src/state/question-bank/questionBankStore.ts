@@ -232,7 +232,7 @@ export const useQuestionBankStore = create<QuestionBankState>((set) => ({
       Number(question.id) === Number(questionId)
         ? {
           ...question,
-          comments: commentService.likeCommentInTree(question.comments, commentId),
+          comments: commentService.likeCommentInTree(question.comments || [], commentId),
         }
         : question
     )),

@@ -15,6 +15,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldCheck, FileText, Scale, AlertCircle, ChevronLeft, ArrowRight, CheckCircle2, BookOpen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { LEGAL_DOCUMENT_VERSION, LEGAL_EFFECTIVE_DATE } from '@services/legal/legalDocumentVersion';
 
 const TermsOfUse: React.FC = () => {
   const router = useRouter();
@@ -77,7 +78,8 @@ const TermsOfUse: React.FC = () => {
             </div>
             <div className="bg-white/10 backdrop-blur-lg border border-white/20 px-6 py-4 rounded-2xl text-right">
               <span className="block text-[10px] uppercase font-black tracking-widest text-indigo-200 mb-1">Última Atualização</span>
-              <span className="block text-lg font-bold text-white">24 de Maio de 2024</span>
+              <span className="block text-lg font-bold text-white">{LEGAL_EFFECTIVE_DATE}</span>
+              <span className="mt-1 block text-[10px] font-semibold text-indigo-100">Versão {LEGAL_DOCUMENT_VERSION}</span>
             </div>
           </div>
         </div>
@@ -126,7 +128,7 @@ const TermsOfUse: React.FC = () => {
                 </div>
                 <div className="space-y-4">
                   <p className="text-sm md:text-base">
-                    Ao acessar e utilizar a plataforma <strong>ConcursoMestre</strong>, você concorda de forma irrevogável e irretratável em cumprir e estar vinculado aos presentes Termos de Uso. Este documento de caráter legal estabelece as obrigações que devem ser cumpridas entre você (o Usuário) e a ConcursoMestre.
+                    Ao acessar e utilizar a plataforma <strong>ConcursoMestre</strong>, você declara que leu e aceita estes Termos de Uso. Este documento estabelece as regras aplicáveis à relação entre você e a ConcursoMestre.
                   </p>
                   <p className="text-sm md:text-base">
                     Caso você não concorde com qualquer aspecto ou cláusula descrita nestes termos, você deve abster-se imediatamente do uso de nossos serviços, excluindo sua conta ou solicitando a remoção de seus dados.
@@ -200,6 +202,9 @@ const TermsOfUse: React.FC = () => {
                   <p>
                     Conosco, você pode estudar de forma gratuita ou pagando um plano Premium, usufruindo de benefícios exclusivos como perguntas ilimitadas à IA Mestre, Raio-X avançado e ausência de limites diários de resolução.
                   </p>
+                  <p>
+                    As cobranças e assinaturas dos planos pagos são processadas pela Stripe, conforme o plano, o valor e a periodicidade apresentados no checkout.
+                  </p>
 
                   <div className="overflow-x-auto ring-1 ring-slate-200 dark:ring-slate-800 rounded-2xl mt-6">
                     <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
@@ -244,7 +249,7 @@ const TermsOfUse: React.FC = () => {
                   </div>
                   <div className="flex gap-4 p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all hover:border-red-200 dark:hover:border-red-900/50">
                     <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0 font-black text-xs text-slate-500">2</div>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">Interrupções e manutenções repentinas e emergenciais das nossas APIs. Em caso de indisponibilidade prolongada, eventuais medidas de suporte ou ajustes serão avaliados conforme o caso e as condições aplicáveis.</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">Interrupções e manutenções repentinas e emergenciais das nossas APIs. Quedas prolongadas geram bônus de dias para assinantes, sempre que superada a margem crítica técnica tolerável.</p>
                   </div>
                   <div className="flex gap-4 p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all hover:border-red-200 dark:hover:border-red-900/50">
                     <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0 font-black text-xs text-slate-500">3</div>

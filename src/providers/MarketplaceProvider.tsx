@@ -509,18 +509,19 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode; initialM
         targetType: 'material',
       });
 
-      if (result.comment) {
+      const comment = result.comment;
+      if (comment) {
         setMaterials((prev) => mapMaterialById(prev, materialId, (material) => {
           if (parentId) {
             return {
               ...material,
-              comments: commentService.addReplyToComments(material.comments || [], parentId, result.comment),
+              comments: commentService.addReplyToComments(material.comments || [], parentId, comment),
             };
           }
 
           return {
             ...material,
-            comments: [result.comment, ...(material.comments || [])],
+            comments: [comment, ...(material.comments || [])],
           };
         }));
       }

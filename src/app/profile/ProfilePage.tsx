@@ -27,7 +27,7 @@ import {
    AlertTriangle, XCircle, ArrowRight, CheckCircle2, Gift,
    Share2, Copy, Camera, AlertCircle, RotateCcw, Send,
    Loader2, ShieldAlert, Wallet, MessageSquare, Clock,
-   BookmarkCheck,
+   BookmarkCheck, Settings2,
    type LucideIcon,
 } from 'lucide-react';
 import UserAvatar from '@/components/shared/ui/UserAvatar';
@@ -96,6 +96,7 @@ import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from 
 import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
 import { normalizeGoogleClientId } from '@/config/googleAuth';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
+import { requestCookieConsentPreferences } from '@services/privacy/cookieConsent';
 
 const StripeSetupCardForm = dynamic(() => import('./components/StripeSetupCardForm'), {
     ssr: false,
@@ -402,8 +403,8 @@ type ProfileTransaction = Omit<Transaction, 'status' | 'amount'> & {
 
 type ProfileServiceActionResponse<TData extends Record<string, unknown> = Record<string, unknown>> = {
     success?: boolean;
-    message?: string;
-    data?: TData;
+    message?: string | null;
+    data?: TData | null;
     url?: string | null;
 };
 
@@ -3139,7 +3140,7 @@ const Profile: React.FC = () => {
                                             </td>
                                             <td className="px-5 py-4 text-right">
                                                 <p className="text-sm font-black text-slate-900 dark:text-slate-100">
-                                                    {formatTransactionAmount(tx.amount)}
+                                                    {formatTransactionAmount(tx.amount ?? 0)}
                                                 </p>
                                             </td>
                                             <td className="px-5 py-4 text-center">
@@ -4711,9 +4712,9 @@ const Profile: React.FC = () => {
                                             ) : (
                                                 <StripeSetupCardForm
                                                     publishableKey={stripePublishableKey}
-                                                    clientSecret={stripeSetupClientSecret}
-                                                    billingName={currentUser?.name}
-                                                    billingEmail={currentUser?.email}
+                                                     clientSecret={stripeSetupClientSecret ?? ''}
+                                                     billingName={currentUser?.name || ''}
+                                                     billingEmail={currentUser?.email || ''}
                                                     onSaved={handleStripeCardSaved}
                                                 />
                                             )}
@@ -4872,10 +4873,10 @@ const Profile: React.FC = () => {
 
                {activeTab === 'billing' && renderBillingTab()}
 
-               {false && activeTab === 'billing' && (
+               {currentUser && false && activeTab === 'billing' && (
                   <div className="space-y-6">
                      {/* Alerta de Problema de Pagamento */}
-                     {currentUser.paymentIssue && (
+                      {currentUser?.paymentIssue && (
                         <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 p-5 rounded-2xl flex items-center gap-5 transition-all">
                            <div className="w-12 h-12 bg-rose-600 rounded-full flex items-center justify-center shrink-0 shadow-lg shadow-rose-500/20">
                               <ShieldAlert size={24} className="text-white" />
@@ -4883,7 +4884,7 @@ const Profile: React.FC = () => {
                            <div className="flex-1 space-y-0.5">
                               <h3 className="text-sm font-black text-rose-600 dark:text-rose-500 uppercase tracking-tight">Pagamento Pendente</h3>
                               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-tight">
-                                 {currentUser.paymentIssue.message || 'Atualize seus dados para evitar o bloqueio total da sua conta.'}
+                                  {currentUser?.paymentIssue?.message || 'Atualize seus dados para evitar o bloqueio total da sua conta.'}
                               </p>
                            </div>
                             <button 
@@ -4917,18 +4918,18 @@ const Profile: React.FC = () => {
                                     {isElitePlan && <Crown className="text-amber-500" size={20} />}
                                 </h3>
                                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-tight">
-                                    {currentUser.subscription?.current_period_end 
-                                        ? `Sua assinatura renova automaticamente em ${new Date(currentUser.subscription.current_period_end).toLocaleDateString()}.`
+                                     {currentUser?.subscription?.current_period_end
+                                         ? `Sua assinatura renova automaticamente em ${new Date(currentUser?.subscription?.current_period_end || '').toLocaleDateString()}.`
                                         : 'Acesse recursos essenciais para sua aprovação.'}
                                 </p>
                             </div>
 
-                            {currentUser.subscription?.current_period_end && (
+                             {currentUser?.subscription?.current_period_end && (
                                 <div className="flex flex-col items-end gap-1 text-right animate-in fade-in duration-500">
                                     <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.1em]">Dias Restantes</div>
                                     <div className="text-3xl font-black text-slate-900 dark:text-slate-100 tabular-nums">
                                         {(() => {
-                                            const diff = new Date(currentUser.subscription.current_period_end).getTime() - new Date().getTime();
+                                             const diff = new Date(currentUser?.subscription?.current_period_end || '').getTime() - new Date().getTime();
                                             const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
                                             return days > 0 ? days : 0;
                                         })()}
@@ -4970,16 +4971,16 @@ const Profile: React.FC = () => {
                         </div>
 
                         {/* Toggle de Renovação Automática */}
-                        {currentUser.subscription && hasActiveSubscription && (
+                         {currentUser?.subscription && hasActiveSubscription && (
                             <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 duration-500">
                                 <div className="flex items-center gap-4">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${currentUser.subscription?.auto_renew ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600' : 'bg-slate-50 dark:bg-slate-800 text-slate-400'}`}>
-                                        <RotateCcw size={18} className={currentUser.subscription?.auto_renew ? 'animate-spin-slow' : ''} />
+                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${currentUser?.subscription?.auto_renew ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600' : 'bg-slate-50 dark:bg-slate-800 text-slate-400'}`}>
+                                         <RotateCcw size={18} className={currentUser?.subscription?.auto_renew ? 'animate-spin-slow' : ''} />
                                     </div>
                                     <div>
                                         <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">Renovação Automática</h4>
                                         <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                                            {currentUser.subscription?.auto_renew 
+                                             {currentUser?.subscription?.auto_renew
                                                 ? 'Seu plano será renovado automaticamente ao fim do ciclo.' 
                                                 : 'Sua assinatura será encerrada ao final do período atual.'}
                                         </p>
@@ -4987,9 +4988,9 @@ const Profile: React.FC = () => {
                                 </div>
                                 <div 
                                     onClick={handleRenewalToggle}
-                                    className={`w-11 h-6 rounded-full relative cursor-pointer transition-all duration-300 shadow-inner ${currentUser.subscription?.auto_renew ? 'bg-emerald-500 shadow-emerald-600/20' : 'bg-slate-200 dark:bg-slate-700'}`}
+                                     className={`w-11 h-6 rounded-full relative cursor-pointer transition-all duration-300 shadow-inner ${currentUser?.subscription?.auto_renew ? 'bg-emerald-500 shadow-emerald-600/20' : 'bg-slate-200 dark:bg-slate-700'}`}
                                 >
-                                    <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all duration-300 shadow-lg ${currentUser.subscription?.auto_renew ? 'right-0.5' : 'left-0.5'}`} />
+                                     <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all duration-300 shadow-lg ${currentUser?.subscription?.auto_renew ? 'right-0.5' : 'left-0.5'}`} />
                                 </div>
                             </div>
                         )}
@@ -5124,7 +5125,7 @@ const Profile: React.FC = () => {
                                             ) : (
                                                 <StripeSetupCardForm
                                                     publishableKey={stripePublishableKey}
-                                                    clientSecret={stripeSetupClientSecret}
+                                                    clientSecret={stripeSetupClientSecret ?? ''}
                                                     billingName={currentUser?.name}
                                                     billingEmail={currentUser?.email}
                                                     onSaved={handleStripeCardSaved}
@@ -5271,7 +5272,7 @@ const Profile: React.FC = () => {
                                                         return null;
                                                     })()}
                                                 </div>
-                                                <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-tight">Vence em {card.exp_month.toString().padStart(2, '0')}/{card.exp_year}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-tight">Vence em {String(card.exp_month ?? '').padStart(2, '0')}/{card.exp_year}</p>
                                             </div>
                                         </div>
                                         
@@ -5574,6 +5575,15 @@ const Profile: React.FC = () => {
                                </select>
                             </label>
                          </div>
+
+                         <button
+                            type="button"
+                            onClick={requestCookieConsentPreferences}
+                            className="mt-6 inline-flex items-center gap-2 text-xs font-bold text-indigo-700 underline underline-offset-2 transition-colors hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-200"
+                         >
+                            <Settings2 size={14} />
+                            Gerenciar preferências de cookies
+                         </button>
 
                          <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/30">
                             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">

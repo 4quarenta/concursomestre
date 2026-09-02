@@ -182,7 +182,7 @@ const flattenTopics = (stats: BankXrayPayload): FlatTopic[] => stats.detailedBre
   .flatMap((subject) => (subject.topics || []).map((topic) => ({
     subject: subject.subject,
     topic: topic.topic,
-    count: topic.count,
+    count: Number(topic.count || 0),
     topicPercent: Number(topic.percent || 0),
     examShare: Number(subject.percent || 0) * Number(topic.percent || 0) / 100,
   })))

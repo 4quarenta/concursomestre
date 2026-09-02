@@ -620,7 +620,7 @@ export const filtersService = {
         const existing = matches.find((item) => {
           const itemType = normalizeFilterText(item.type);
           const itemName = normalizeFilterText(item.name);
-          const itemSigla = normalizeFilterText(item.sigla);
+          const itemSigla = normalizeFilterText('sigla' in item ? item.sigla : '');
           const itemSlug = normalizeFilterSlug(item.slug || item.name);
           const sameType = !requestedType
             || itemType === requestedType

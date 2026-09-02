@@ -19,6 +19,9 @@ export default async function LegacyQuestionRedirect({
   if (!resolution) {
     notFound();
   }
+  if (resolution.question.id === undefined) {
+    notFound();
+  }
 
   const query = sanitizePublicRouteQuery('question_detail', searchParams ? await searchParams : {});
   permanentRedirect(publicRoutes.questions.detail(

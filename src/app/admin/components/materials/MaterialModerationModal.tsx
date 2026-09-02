@@ -114,7 +114,7 @@ const MaterialModerationModal = ({
                     {selectedReport.userId ? (
                       <button
                         type="button"
-                        onClick={() => onOpenReporterProfile(selectedReport.userId)}
+                        onClick={() => onOpenReporterProfile(String(selectedReport.userId))}
                         className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:bg-slate-950 dark:text-red-300"
                       >
                         <Eye size={10} /> Ver perfil

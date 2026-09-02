@@ -210,10 +210,10 @@ const PlansPage: React.FC = () => {
                 if (normalized.includes('essencial')) return 1;
                 return 0;
             };
-            const currentTier = getTier(currentUser.subscription?.plan?.name || '');
+            const currentTier = getTier(currentUser?.subscription?.plan?.name || '');
             const targetTier = getTier(plan.name);
 
-            if (currentUser.subscription?.plan_id === plan.id) {
+            if (currentUser?.subscription?.plan_id === plan.id) {
                 addToast('Esse já é o plano ativo da sua assinatura.', 'info');
                 return;
             }

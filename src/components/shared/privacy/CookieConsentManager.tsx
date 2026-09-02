@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Check, Cookie, Settings2, ShieldCheck, X } from 'lucide-react';
 import {
   COOKIE_CONSENT_CHANGE_EVENT,
+  COOKIE_CONSENT_OPEN_EVENT,
   COOKIE_CONSENT_STORAGE_KEY,
   parseCookieConsent,
   writeCookieConsent,
@@ -55,7 +56,6 @@ export function CookieConsentProvider({ children }: Readonly<{ children: React.R
   const value = React.useMemo(() => ({ preferences, isReady, savePreferences }), [isReady, preferences, savePreferences]);
   return <CookieConsentContext.Provider value={value}>{children}</CookieConsentContext.Provider>;
 }
-
 function PreferenceRow({
   checked,
   disabled = false,
@@ -92,8 +92,6 @@ export default function CookieConsentManager() {
   const [analytics, setAnalytics] = React.useState(false);
   const [marketing, setMarketing] = React.useState(false);
 
-  if (!isReady) return null;
-
   const acceptAll = () => {
     savePreferences({ analytics: true, marketing: true });
     setIsConfiguring(false);
@@ -109,24 +107,21 @@ export default function CookieConsentManager() {
     setIsConfiguring(false);
   };
 
-  const openPreferences = () => {
+  const openPreferences = React.useCallback(() => {
     setAnalytics(preferences?.analytics === true);
     setMarketing(preferences?.marketing === true);
     setIsConfiguring(true);
-  };
+  }, [preferences]);
+
+  React.useEffect(() => {
+    window.addEventListener(COOKIE_CONSENT_OPEN_EVENT, openPreferences);
+    return () => window.removeEventListener(COOKIE_CONSENT_OPEN_EVENT, openPreferences);
+  }, [openPreferences]);
+
+  if (!isReady) return null;
 
   if (preferences && !isConfiguring) {
-    return (
-      <button
-        type="button"
-        onClick={openPreferences}
-        className="fixed bottom-3 left-3 z-[80] inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-lg transition hover:border-indigo-400 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-400 dark:hover:text-indigo-300"
-        aria-label="Abrir preferências de cookies"
-      >
-        <Settings2 size={14} />
-        Preferências de cookies
-      </button>
-    );
+    return null;
   }
 
   return (

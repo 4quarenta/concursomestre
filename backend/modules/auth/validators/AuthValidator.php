@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/legal/LegalAcceptance.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -77,7 +79,9 @@ class AuthValidator
             throw new InvalidArgumentException('A senha deve ter pelo menos 6 caracteres.');
         }
 
-        return [
+        $acceptance = $this->validateRegistrationAcceptance($payload, true);
+
+        return array_merge([
             'name' => $name,
             'cpf' => (string) $cpf,
             'phone' => (string) $phone,
@@ -85,7 +89,7 @@ class AuthValidator
             'password' => $password,
             'captchaToken' => trim((string) ($payload['captchaToken'] ?? '')),
             'referralCode' => trim((string) ($payload['referralCode'] ?? '')),
-        ];
+        ], $acceptance);
     }
 
     /**
@@ -117,19 +121,21 @@ class AuthValidator
             throw new InvalidArgumentException('CPF invalido. Verifique e tente novamente.');
         }
 
-        return [
+        $createIfMissing = array_key_exists('createIfMissing', $payload)
+            ? filter_var($payload['createIfMissing'], FILTER_VALIDATE_BOOLEAN)
+            : true;
+
+        return array_merge([
             'credential' => $credential,
             'referralCode' => trim((string) ($payload['referralCode'] ?? '')),
             'linkUserId' => trim((string) ($payload['linkUserId'] ?? '')),
-            'createIfMissing' => array_key_exists('createIfMissing', $payload)
-                ? filter_var($payload['createIfMissing'], FILTER_VALIDATE_BOOLEAN)
-                : true,
+            'createIfMissing' => $createIfMissing,
             'profile' => [
                 'name' => $profileName,
                 'cpf' => (string) $profileCpf,
                 'phone' => (string) $profilePhone,
             ],
-        ];
+        ], $this->validateRegistrationAcceptance($payload, $createIfMissing));
     }
 
     /**
@@ -161,19 +167,21 @@ class AuthValidator
             throw new InvalidArgumentException('CPF invalido. Verifique e tente novamente.');
         }
 
-        return [
+        $createIfMissing = array_key_exists('createIfMissing', $payload)
+            ? filter_var($payload['createIfMissing'], FILTER_VALIDATE_BOOLEAN)
+            : true;
+
+        return array_merge([
             'accessToken' => $accessToken,
             'referralCode' => trim((string) ($payload['referralCode'] ?? '')),
             'linkUserId' => trim((string) ($payload['linkUserId'] ?? '')),
-            'createIfMissing' => array_key_exists('createIfMissing', $payload)
-                ? filter_var($payload['createIfMissing'], FILTER_VALIDATE_BOOLEAN)
-                : true,
+            'createIfMissing' => $createIfMissing,
             'profile' => [
                 'name' => $profileName,
                 'cpf' => (string) $profileCpf,
                 'phone' => (string) $profilePhone,
             ],
-        ];
+        ], $this->validateRegistrationAcceptance($payload, $createIfMissing));
     }
 
     /**
@@ -210,19 +218,72 @@ class AuthValidator
             throw new InvalidArgumentException('CPF invalido. Verifique e tente novamente.');
         }
 
-        return [
+        $createIfMissing = array_key_exists('createIfMissing', $payload)
+            ? filter_var($payload['createIfMissing'], FILTER_VALIDATE_BOOLEAN)
+            : true;
+
+        return array_merge([
             'idToken' => $idToken,
             'referralCode' => trim((string) ($payload['referralCode'] ?? '')),
-            'createIfMissing' => array_key_exists('createIfMissing', $payload)
-                ? filter_var($payload['createIfMissing'], FILTER_VALIDATE_BOOLEAN)
-                : true,
+            'createIfMissing' => $createIfMissing,
             'profile' => [
                 'name' => $profileName,
                 'cpf' => (string) $profileCpf,
                 'phone' => (string) $profilePhone,
                 'email' => strtolower($profileEmail),
             ],
+        ], $this->validateRegistrationAcceptance($payload, $createIfMissing));
+    }
+
+    /**
+     * Exige aceite de termos/privacidade para criacao de conta social e aceita
+     * aceite de adesao apenas quando o fluxo de checkout o envia explicitamente.
+     */
+    private function validateRegistrationAcceptance(array $payload, bool $required): array
+    {
+        if (!$required) {
+            return [
+                'termsAccepted' => false,
+                'termsVersion' => '',
+                'privacyAccepted' => false,
+                'privacyVersion' => '',
+                'checkoutAdhesionTermsAccepted' => false,
+                'checkoutAdhesionTermsVersion' => '',
+            ];
+        }
+
+        $acceptance = [
+            'termsAccepted' => true,
+            'termsVersion' => LegalAcceptance::assertAccepted(
+                $payload,
+                'termsAccepted',
+                'termsVersion',
+                'terms_of_use'
+            ),
+            'privacyAccepted' => true,
+            'privacyVersion' => LegalAcceptance::assertAccepted(
+                $payload,
+                'privacyAccepted',
+                'privacyVersion',
+                'privacy_policy'
+            ),
+            'checkoutAdhesionTermsAccepted' => false,
+            'checkoutAdhesionTermsVersion' => '',
         ];
+
+        $hasCheckoutAcceptance = array_key_exists('checkoutAdhesionTermsAccepted', $payload)
+            || array_key_exists('checkoutAdhesionTermsVersion', $payload);
+        if ($hasCheckoutAcceptance) {
+            $acceptance['checkoutAdhesionTermsAccepted'] = true;
+            $acceptance['checkoutAdhesionTermsVersion'] = LegalAcceptance::assertAccepted(
+                $payload,
+                'checkoutAdhesionTermsAccepted',
+                'checkoutAdhesionTermsVersion',
+                'checkout_adhesion_terms'
+            );
+        }
+
+        return $acceptance;
     }
 
     /**

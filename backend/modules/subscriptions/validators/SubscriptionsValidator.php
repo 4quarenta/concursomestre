@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../../shared/legal/LegalAcceptance.php';
+
 /*
 * ----------------------------------------------------
 * @author: 4quarenta
@@ -34,13 +36,16 @@ class SubscriptionsValidator
         }
 
         $checkoutAttemptId = trim((string) ($data['checkout_attempt_id'] ?? ''));
-        if ($checkoutAttemptId === '') {
-            throw new InvalidArgumentException('Identificador da tentativa de checkout obrigatorio.');
-        }
-
-        if (!preg_match('/^[A-Za-z0-9_-]{8,80}$/', $checkoutAttemptId)) {
+        if ($checkoutAttemptId !== '' && !preg_match('/^[A-Za-z0-9_-]{8,80}$/', $checkoutAttemptId)) {
             throw new InvalidArgumentException('Identificador da tentativa de checkout invalido.');
         }
+
+        $checkoutAdhesionTermsVersion = LegalAcceptance::assertAccepted(
+            $data,
+            'checkout_adhesion_terms_accepted',
+            'checkout_adhesion_terms_version',
+            'checkout_adhesion_terms'
+        );
 
         return [
             'plan_id' => $planId,
@@ -50,6 +55,8 @@ class SubscriptionsValidator
             'billing_mode' => isset($data['billing_mode']) ? (string) $data['billing_mode'] : null,
             'installment_count' => max(1, (int) ($data['installment_count'] ?? 1)),
             'checkout_attempt_id' => $checkoutAttemptId,
+            'checkout_adhesion_terms_accepted' => true,
+            'checkout_adhesion_terms_version' => $checkoutAdhesionTermsVersion,
         ];
     }
 

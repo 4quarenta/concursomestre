@@ -299,6 +299,8 @@ export const subscriptionsService = {
     billing_mode?: 'single_installment' | 'term_recurring';
     installment_count?: number;
     checkout_attempt_id?: string;
+    checkout_adhesion_terms_accepted: true;
+    checkout_adhesion_terms_version: string;
   }): Promise<SubscriptionApiPayloadWithUrl> {
     try {
       const response = await apiClient.post<SubscriptionApiPayloadWithUrl>(
@@ -331,6 +333,8 @@ export const subscriptionsService = {
     billing_mode?: 'single_installment' | 'term_recurring';
     installment_count?: number;
     checkout_attempt_id?: string;
+    checkout_adhesion_terms_accepted: true;
+    checkout_adhesion_terms_version: string;
   }): Promise<SubscriptionApiPayload> {
     try {
       const response = await apiClient.post<SubscriptionApiPayload>(

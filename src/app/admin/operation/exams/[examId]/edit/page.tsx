@@ -828,7 +828,10 @@ const AdminExamEditPage = () => {
   return renderAdminShell(
     <AdminExamEditorPage
       draft={draft}
-      setDraft={setDraft}
+      setDraft={(nextDraft) => setDraft((currentDraft) => {
+        if (!currentDraft) return createEmptyExamDraft();
+        return typeof nextDraft === 'function' ? nextDraft(currentDraft) : nextDraft;
+      })}
       linkedQuestionsCount={linkedQuestionsCount}
       examPreview={existingExam}
       agencyOptions={systemSettings.taxonomies?.agencies || []}

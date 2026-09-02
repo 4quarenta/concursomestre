@@ -1238,8 +1238,8 @@ export const questionService = {
         && Number.isInteger(payload.answer.correctOptionIndex)
         && typeof payload.answer.isCorrect === 'boolean'
         ? {
-          selectedOptionIndex: payload.answer.selectedOptionIndex,
-          correctOptionIndex: payload.answer.correctOptionIndex,
+          selectedOptionIndex: Number(payload.answer.selectedOptionIndex),
+          correctOptionIndex: Number(payload.answer.correctOptionIndex),
           isCorrect: payload.answer.isCorrect,
         }
         : undefined,

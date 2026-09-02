@@ -206,9 +206,9 @@ const DebugBanner: React.FC = () => {
                     }`}>
                       {log.message}
                     </p>
-                    {log.details && (
+                    {log.details !== undefined && (
                       <pre className="mt-3 p-3 bg-black/40 rounded-xl text-[10px] font-mono text-slate-400 overflow-x-auto border border-white/5 no-scrollbar">
-                        {JSON.stringify(log.details, null, 2)}
+                        {String(JSON.stringify(log.details, null, 2))}
                       </pre>
                     )}
                   </div>

@@ -28,6 +28,18 @@ const getNestedValue = (obj: unknown, path: string): unknown => {
   }, obj);
 };
 
+const toComparableValue = (value: unknown): string | number => {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return value.toLowerCase();
+  }
+
+  return value === null || value === undefined ? '' : String(value).toLowerCase();
+};
+
 export const useAdminTableSorting = () => {
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
 
@@ -43,14 +55,8 @@ export const useAdminTableSorting = () => {
     if (!data || !sortConfig) return data || [];
 
     return [...data].sort((a, b) => {
-      let aVal = getNestedValue(a, sortConfig.key);
-      let bVal = getNestedValue(b, sortConfig.key);
-
-      if (aVal === undefined || aVal === null) aVal = '';
-      if (bVal === undefined || bVal === null) bVal = '';
-
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      const aVal = toComparableValue(getNestedValue(a, sortConfig.key));
+      const bVal = toComparableValue(getNestedValue(b, sortConfig.key));
 
       if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
