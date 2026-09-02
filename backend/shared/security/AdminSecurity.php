@@ -14,32 +14,28 @@
 require_once __DIR__ . '/../middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../auth/AuthSession.php';
 require_once __DIR__ . '/../auth/JWTAuth.php';
+require_once __DIR__ . '/../database/SchemaReadiness.php';
 
 /**
- * Garante a existencia da tabela de auditoria administrativa usada pelo painel.
- * Ela registra quem fez a ação, em qual recurso e com quais detalhes de contexto.
+ * Verifica o schema da auditoria administrativa sem executar DDL em requests.
  *
  * @since 1.0.0
  */
 function ensureAdminAuditTable(PDO $db): void
 {
-    $db->exec(
-        "CREATE TABLE IF NOT EXISTS admin_audit_logs (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            admin_user_id VARCHAR(64) NOT NULL,
-            action VARCHAR(120) NOT NULL,
-            resource_type VARCHAR(80) NOT NULL,
-            resource_id VARCHAR(120) NULL,
-            details_json LONGTEXT NULL,
-            ip_address VARCHAR(45) NULL,
-            user_agent TEXT NULL,
-            created_at DATETIME NOT NULL,
-            INDEX idx_admin_audit_admin (admin_user_id),
-            INDEX idx_admin_audit_action (action),
-            INDEX idx_admin_audit_resource (resource_type, resource_id),
-            INDEX idx_admin_audit_created_at (created_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-    );
+    SchemaReadiness::assertTablesAndColumns($db, 'auditoria administrativa', [
+        'admin_audit_logs' => [
+            'id',
+            'admin_user_id',
+            'action',
+            'resource_type',
+            'resource_id',
+            'details_json',
+            'ip_address',
+            'user_agent',
+            'created_at',
+        ],
+    ]);
 }
 
 /**

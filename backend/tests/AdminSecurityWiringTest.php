@@ -23,6 +23,12 @@ function assertContainsText(string $path, string $needle, string $message): void
 
 $base = dirname(__DIR__) . '';
 
+$adminSecurity = (string) file_get_contents($base . '/shared/security/AdminSecurity.php');
+if (!str_contains($adminSecurity, 'SchemaReadiness::assertTablesAndColumns')
+    || str_contains($adminSecurity, 'CREATE TABLE IF NOT EXISTS admin_audit_logs')) {
+    throw new RuntimeException('Admin requests must validate audit schema without runtime DDL.');
+}
+
 assertContainsText($base . '/api/admin/feedback.php', 'handleAdminFeedbackRoute', 'Admin feedback endpoint must delegate to the admin module');
 assertContainsText($base . '/modules/admin/routes.php', 'function handleAdminFeedbackRoute', 'Admin routes must expose the feedback handler');
 assertContainsText($base . '/modules/admin/routes.php', 'requireAdminSessionContext($db)', 'Admin module routes must enforce admin session context');
