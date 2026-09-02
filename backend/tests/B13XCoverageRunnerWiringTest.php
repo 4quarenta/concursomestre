@@ -63,5 +63,8 @@ b13xRunnerAssert(str_contains($runner, "'SMOKE_ADMIN_EMAIL'"), 'Admin coverage m
 b13xRunnerAssert(str_contains($runner, "'SMOKE_ADMIN_PASSWORD'"), 'Admin coverage must use a dedicated admin smoke credential.');
 b13xRunnerAssert(str_contains($runner, "\$smoke['success'] ?? \$smoke['ok'] ?? false"), 'Runner must consume the production smoke success contract.');
 b13xRunnerAssert(str_contains($runner, 'Dedicated admin smoke credentials are not configured.'), 'Admin coverage must fail closed before falling back to the user smoke identity.');
+b13xRunnerAssert(str_contains($runner, "proc_open(\$arguments"), 'Coverage subprocesses must use argument arrays without a shell command line.');
+b13xRunnerAssert(str_contains($runner, "\$smokeEnvironment['SMOKE_AUTH_PASSWORD']"), 'Smoke credentials must be passed through the private subprocess environment.');
+b13xRunnerAssert(!str_contains($runner, "'--auth-password=' . \$authPassword"), 'Smoke passwords must never be exposed in process arguments.');
 
 fwrite(STDOUT, "B13X coverage runner wiring assertions passed.\n");

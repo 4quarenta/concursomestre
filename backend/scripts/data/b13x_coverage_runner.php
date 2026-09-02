@@ -112,19 +112,29 @@ function b13xRunnerShellCommand(string $commandLine): array
 }
 
 /** @return array{status: int, output: string} */
-function b13xRunnerCommand(array $arguments): array
+function b13xRunnerCommand(array $arguments, array $environmentOverrides = []): array
 {
-    $command = implode(' ', array_map('escapeshellarg', $arguments));
-    $output = [];
-    $status = 0;
-    exec($command . ' 2>&1', $output, $status);
-    return ['status' => $status, 'output' => trim(implode("\n", $output))];
+    $descriptors = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $environment = array_merge(getenv(), $environmentOverrides);
+    $process = proc_open($arguments, $descriptors, $pipes, null, $environment);
+    if (!is_resource($process)) {
+        throw new RuntimeException('Unable to start coverage subprocess.');
+    }
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $status = proc_close($process);
+    return ['status' => $status, 'output' => trim((string) $stdout . ($stderr !== '' ? "\n" . $stderr : ''))];
 }
 
 /** @return array<string, mixed> */
-function b13xRunnerJsonCommand(array $arguments): array
+function b13xRunnerJsonCommand(array $arguments, array $environmentOverrides = []): array
 {
-    $result = b13xRunnerCommand($arguments);
+    $result = b13xRunnerCommand($arguments, $environmentOverrides);
     $payload = json_decode(trim($result['output']), true);
     if (!is_array($payload)) {
         throw new RuntimeException('Expected JSON output from command: ' . implode(' ', $arguments));
@@ -334,17 +344,12 @@ function b13xRunnerSmokeCommand(string $mode, array $options): array
             '_command_status' => 2,
         ];
     }
-    if ($authEmail !== '') {
-        $args[] = '--auth-email=' . $authEmail;
-    }
-    if ($authPassword !== '') {
-        $args[] = '--auth-password=' . $authPassword;
-    }
-    if ($authCaptchaToken !== '') {
-        $args[] = '--auth-captcha-token=' . $authCaptchaToken;
-    }
+    $smokeEnvironment = [];
+    if ($authEmail !== '') $smokeEnvironment['SMOKE_AUTH_EMAIL'] = $authEmail;
+    if ($authPassword !== '') $smokeEnvironment['SMOKE_AUTH_PASSWORD'] = $authPassword;
+    if ($authCaptchaToken !== '') $smokeEnvironment['SMOKE_AUTH_CAPTCHA_TOKEN'] = $authCaptchaToken;
 
-    return b13xRunnerJsonCommand($args);
+    return b13xRunnerJsonCommand($args, $smokeEnvironment);
 }
 
 /** @return array<string, mixed> */
