@@ -381,6 +381,15 @@ export const DEFAULT_SECTION_BY_TAB: Record<AdminPageTab, string> = {
   settings: 'general',
 };
 
+/**
+ * Expõe o inventário de rotas canônicas a partir da mesma configuração que
+ * desenha a navegação. Auditorias não devem manter uma segunda lista manual.
+ */
+export const getCanonicalAdminRoutablePaths = (): string[] => (
+  (Object.entries(ADMIN_SECTION_CONFIG) as [AdminPageTab, AdminNavigationSection[]][])
+    .flatMap(([tab, sections]) => sections.map((section) => buildAdminPath(tab, section.key)))
+);
+
 export const buildAdminQuestionEditPath = (
   questionId: string | number,
   reportId?: string | number | null,

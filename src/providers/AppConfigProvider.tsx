@@ -19,7 +19,7 @@ interface AppConfigProviderProps {
   initialPublicSettings?: Record<string, unknown> | null;
 }
 
-const isAdminSettingsRole = (role?: string | null) => role === 'admin' || role === 'staff';
+const isAdminSettingsRole = (role?: string | null) => role === 'admin';
 const ADMIN_PANEL_SETTINGS_DELAY_MS = 8_000;
 
 const InitialPublicSettingsContext = React.createContext<SystemSettings | null>(null);

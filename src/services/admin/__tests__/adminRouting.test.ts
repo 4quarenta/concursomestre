@@ -10,7 +10,13 @@
 */
 
 import { describe, expect, it } from 'vitest';
-import { buildAdminPath, resolveAdminRoute, resolveSupportLandingSection } from '../../../app/admin/config/adminPageNavigationConfig';
+import {
+  ADMIN_SECTION_CONFIG,
+  buildAdminPath,
+  getCanonicalAdminRoutablePaths,
+  resolveAdminRoute,
+  resolveSupportLandingSection,
+} from '../../../app/admin/config/adminPageNavigationConfig';
 
 describe('admin routing', () => {
   it('builds canonical admin paths with path segments', () => {
@@ -62,5 +68,16 @@ describe('admin routing', () => {
       tab: 'settings',
       section: 'notifications',
     });
+  });
+
+  it('derives the auditable route inventory from the typed navigation authority', () => {
+    const paths = getCanonicalAdminRoutablePaths();
+    const configuredCount = Object.values(ADMIN_SECTION_CONFIG)
+      .reduce((total, sections) => total + sections.length, 0);
+
+    expect(paths).toHaveLength(configuredCount);
+    expect(new Set(paths).size).toBe(paths.length);
+    expect(paths).toContain('/admin/panel/dashboard');
+    expect(paths).toContain('/admin/settings/logs');
   });
 });

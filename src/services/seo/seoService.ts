@@ -9,6 +9,8 @@
 *
 */
 
+import { apiClient, assertApiSuccess, readApiData } from '@services/api';
+
 export interface SitemapCoverageBucket {
   total: number;
   indexed: number;
@@ -38,20 +40,16 @@ export interface SitemapStatusPayload {
   note?: string;
 }
 
-const SITEMAP_STATUS_URL = '/api/seo/sitemap-status';
+const SITEMAP_STATUS_URL = 'admin/sitemap-status.php';
 
 export const seoService = {
   async getSitemapStatus(): Promise<SitemapStatusPayload | null> {
     try {
-      const response = await fetch(SITEMAP_STATUS_URL, {
-        cache: 'no-store',
+      const response = await apiClient.get(SITEMAP_STATUS_URL, {
+        headers: { 'Cache-Control': 'no-store' },
       });
-
-      if (!response.ok) {
-        return null;
-      }
-
-      return await response.json() as SitemapStatusPayload;
+      assertApiSuccess(response, 'Não foi possível carregar o status do sitemap.');
+      return readApiData<SitemapStatusPayload | null>(response, null);
     } catch {
       return null;
     }

@@ -243,7 +243,7 @@ export const useAdminPageController = () => {
   }, [settingsFeedbackCount]);
 
   useEffect(() => {
-    if (!currentUser?.id) {
+    if (!currentUser?.id || adminUserRole !== 'admin') {
       lastSupportCountersSyncRef.current = null;
       const frameId = window.requestAnimationFrame(() => {
         setPendingFeedbackCount(settingsFeedbackCount);
@@ -305,7 +305,7 @@ export const useAdminPageController = () => {
       isCurrent = false;
       window.cancelAnimationFrame(frameId);
     };
-  }, [activeTab, currentUser?.id, settingsFeedbackCount]);
+  }, [activeTab, adminUserRole, currentUser?.id, settingsFeedbackCount]);
   const sectionBadges = useMemo(() => ({
     support: {
       feedback: feedbackCount,
