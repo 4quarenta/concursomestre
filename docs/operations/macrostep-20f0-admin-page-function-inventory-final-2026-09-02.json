@@ -1,0 +1,463 @@
+{
+  "generatedAt": "2026-09-02T23:25:00Z",
+  "authority": "src/app/admin/config/adminPageNavigationConfig.ts: ADMIN_SECTION_CONFIG",
+  "routeCount": 45,
+  "historicalCountClaims": {
+    "declared": 46,
+    "enumerated": 45,
+    "observedRoutable": 44
+  },
+  "finding": "The current canonical navigation authority contains 45 routes. Historical counts are not an alternate authority.",
+  "items": [
+    {
+      "route": "/admin/panel/dashboard",
+      "tab": "panel",
+      "section": "dashboard",
+      "label": "Dashboard",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/panel/alerts",
+      "tab": "panel",
+      "section": "alerts",
+      "label": "Alertas",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/panel/billing-health",
+      "tab": "panel",
+      "section": "billing-health",
+      "label": "Saude do billing",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/questions",
+      "tab": "operation",
+      "section": "questions",
+      "label": "Questoes",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/question-groups",
+      "tab": "operation",
+      "section": "question-groups",
+      "label": "Contextos de questoes",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/exams",
+      "tab": "operation",
+      "section": "exams",
+      "label": "Banco de provas",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/files",
+      "tab": "operation",
+      "section": "files",
+      "label": "Arquivos",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/blog",
+      "tab": "operation",
+      "section": "blog",
+      "label": "Blog",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/novidades",
+      "tab": "operation",
+      "section": "novidades",
+      "label": "Novidades",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/import",
+      "tab": "operation",
+      "section": "import",
+      "label": "Importador",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/gran-crawler",
+      "tab": "operation",
+      "section": "gran-crawler",
+      "label": "Crawler Gran",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/filters",
+      "tab": "operation",
+      "section": "filters",
+      "label": "Filtros",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/lei-comentada",
+      "tab": "operation",
+      "section": "lei-comentada",
+      "label": "Lei Comentada",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/operation/users",
+      "tab": "operation",
+      "section": "users",
+      "label": "Usuarios",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/marketplace/vendors",
+      "tab": "marketplace",
+      "section": "vendors",
+      "label": "Vendedores",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/marketplace/materials",
+      "tab": "marketplace",
+      "section": "materials",
+      "label": "Materiais",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/marketplace/blocked",
+      "tab": "marketplace",
+      "section": "blocked",
+      "label": "Revisao bloqueada",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/finance/transactions",
+      "tab": "finance",
+      "section": "transactions",
+      "label": "Transacoes",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/finance/plans",
+      "tab": "finance",
+      "section": "plans",
+      "label": "Planos",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/finance/coupons",
+      "tab": "finance",
+      "section": "coupons",
+      "label": "Cupons",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/finance/analytics",
+      "tab": "finance",
+      "section": "analytics",
+      "label": "Analytics",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/finance/automation",
+      "tab": "finance",
+      "section": "automation",
+      "label": "Automacao",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/marketing/landing-pages",
+      "tab": "marketing",
+      "section": "landing-pages",
+      "label": "Landing Pages",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/marketing/campaigns",
+      "tab": "marketing",
+      "section": "campaigns",
+      "label": "Campanhas",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/marketing/visual-themes",
+      "tab": "marketing",
+      "section": "visual-themes",
+      "label": "Temas visuais",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/marketing/social-links",
+      "tab": "marketing",
+      "section": "social-links",
+      "label": "Redes sociais",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/marketing/featured-organizations",
+      "tab": "marketing",
+      "section": "featured-organizations",
+      "label": "Orgaos em destaque",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/support/feedback",
+      "tab": "support",
+      "section": "feedback",
+      "label": "Feedback e avaliacoes",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/support/comments",
+      "tab": "support",
+      "section": "comments",
+      "label": "Comentarios",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/support/reports",
+      "tab": "support",
+      "section": "reports",
+      "label": "Denuncias",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/support/threads",
+      "tab": "support",
+      "section": "threads",
+      "label": "Solicitacoes",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/support/rankings",
+      "tab": "support",
+      "section": "rankings",
+      "label": "Rankings",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/support/refunds",
+      "tab": "support",
+      "section": "refunds",
+      "label": "Reembolsos",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/general",
+      "tab": "settings",
+      "section": "general",
+      "label": "Geral",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/modules",
+      "tab": "settings",
+      "section": "modules",
+      "label": "Modulos",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/gamification",
+      "tab": "settings",
+      "section": "gamification",
+      "label": "Gamificacao",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/notifications",
+      "tab": "settings",
+      "section": "notifications",
+      "label": "Notificacoes",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/security",
+      "tab": "settings",
+      "section": "security",
+      "label": "Seguranca",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/integrations",
+      "tab": "settings",
+      "section": "integrations",
+      "label": "Integracoes",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/email",
+      "tab": "settings",
+      "section": "email",
+      "label": "E-mail",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/email-templates",
+      "tab": "settings",
+      "section": "email-templates",
+      "label": "Modelos de E-mail",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/ads",
+      "tab": "settings",
+      "section": "ads",
+      "label": "Ads",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/seo",
+      "tab": "settings",
+      "section": "seo",
+      "label": "SEO",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/performance",
+      "tab": "settings",
+      "section": "performance",
+      "label": "Performance",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    },
+    {
+      "route": "/admin/settings/logs",
+      "tab": "settings",
+      "section": "logs",
+      "label": "Logs",
+      "inventoryStatus": "DISCOVERED_FROM_CANONICAL_NAVIGATION",
+      "authenticatedBrowserExecutedInThisClosure": false,
+      "functionInventoryStatus": "NOT_COMPLETED_IN_THIS_CLOSURE",
+      "scoringStatus": "NOT_COMPLETED_IN_THIS_CLOSURE"
+    }
+  ]
+}

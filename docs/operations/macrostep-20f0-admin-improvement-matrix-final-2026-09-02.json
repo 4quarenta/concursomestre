@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-09-02T23:25:00Z",
+  "closureStatus": "PARTIAL",
+  "evidenceScope": "Authenticated route/session remediation and targeted P2 items only",
+  "implemented": [
+    {
+      "id": "P2-001",
+      "area": "Admin route inventory",
+      "finding": "Historical route counts were maintained independently.",
+      "decision": "KEEP_WITH_CANONICAL_AUTHORITY",
+      "remediation": "Derive routable paths from ADMIN_SECTION_CONFIG and test uniqueness/count against that source.",
+      "result": "PASS",
+      "specificImprovementPlan": "Use the generated inventory in all future audits; do not cite a hand-maintained count as an authority."
+    },
+    {
+      "id": "P2-002",
+      "area": "Staff shared Admin shell",
+      "finding": "Staff pages initiated requests for admin-only settings and statistics.",
+      "decision": "REFINE",
+      "remediation": "Make AppConfig and dashboard loading role-aware while preserving backend authorization.",
+      "result": "PASS",
+      "specificImprovementPlan": "Keep a browser assertion that staff emits zero known forbidden shell requests."
+    },
+    {
+      "id": "P2-003",
+      "area": "Admin sitemap status",
+      "finding": "The client called a missing Next endpoint.",
+      "decision": "REFINE",
+      "remediation": "Use the read-only PHP projection at /api/admin/sitemap-status.php.",
+      "result": "PASS",
+      "specificImprovementPlan": "Retain an integration test for the canonical endpoint and prohibit the obsolete /api/seo/sitemap-status call."
+    },
+    {
+      "id": "P1-20F02-AUTH-ROUTE-RACE",
+      "area": "Admin route access during refresh rotation",
+      "finding": "A refresh-token rotation race caused intermittent fail-closed 404 responses in a new tab/context.",
+      "decision": "REFINE",
+      "remediation": "Validate a dedicated HttpOnly, server-revocable route-session cookie against auth_sessions.",
+      "result": "CLOSED",
+      "specificImprovementPlan": "Keep browser coverage for login, immediate deep link, second tab, restored state, and logout revocation."
+    }
+  ],
+  "unscoredAuditAreas": [
+    "All meaningful Admin functions",
+    "Standalone editors",
+    "Finance and Stripe TEST workflows",
+    "Campaign and landing editor workflows",
+    "Mobile visual smoke",
+    "Module readiness and Macro20F reuse mapping"
+  ],
+  "rule": "Unscored areas are not assigned readiness values or generic improvement plans. They require authenticated, function-level evidence first."
+}
