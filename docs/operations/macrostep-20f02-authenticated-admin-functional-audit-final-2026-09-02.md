@@ -10,7 +10,7 @@ The completed work is production evidence for synthetic-fixture cleanup, targete
 
 The canonical source is `src/app/admin/config/adminPageNavigationConfig.ts`, specifically `ADMIN_SECTION_CONFIG`. Its current total is **45 routes**. Historic values of 46, 45, and 44 describe prior declarations or observations; they are not independent sources of truth.
 
-`ADMIN_ROUTE_INVENTORY_AUTHORITY = PASS`  
+`ADMIN_ROUTE_INVENTORY_AUTHORITY = PASS`
 `ADMIN_ROUTE_COUNT_DRIFT = 0` relative to the current typed authority.
 
 The machine-readable inventory is [macrostep-20f0-admin-page-function-inventory-final-2026-09-02.json](macrostep-20f0-admin-page-function-inventory-final-2026-09-02.json). It deliberately marks every function-level field as incomplete rather than fabricate execution records.
@@ -58,11 +58,11 @@ The following values are intentionally not passed:
 
 ## Production state after remediation
 
-`ACTIVE_PRODUCTION_RELEASE = d6308a174e2d0c9e096f8ae498e79142d5cd404c`  
-`ACTUAL_LAUNCH_MODE = PRELAUNCH`  
-`REAL_DATA_INSERTIONS = 0`  
-`STRIPE_LIVE_MUTATIONS = 0`  
-`PENDING_MIGRATIONS = 0`  
+`ACTIVE_PRODUCTION_RELEASE = d6308a174e2d0c9e096f8ae498e79142d5cd404c`
+`ACTUAL_LAUNCH_MODE = PRELAUNCH`
+`REAL_DATA_INSERTIONS = 0`
+`STRIPE_LIVE_MUTATIONS = 0`
+`PENDING_MIGRATIONS = 0`
 `CHECKSUM_DRIFT = 0`
 
 Home, health, and readiness returned `200`. The public sitemap returned `503` with `noindex,nofollow` as required in PRELAUNCH.

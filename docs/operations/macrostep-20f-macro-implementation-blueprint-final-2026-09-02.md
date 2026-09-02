@@ -2,8 +2,8 @@
 
 ## Status
 
-`MACRO20F_BLUEPRINT = PROVISIONAL`  
-`MACRO20F_IMPLEMENTATION_PLAN = NOT_READY`  
+`MACRO20F_BLUEPRINT = PROVISIONAL`
+`MACRO20F_IMPLEMENTATION_PLAN = NOT_READY`
 `MACRO20F_IMPLEMENTATION = NOT_STARTED`
 
 This is not a product-design blueprint disguised as a final audit. The function-level evidence required to produce one is incomplete, so a final implementation plan would be speculative.
