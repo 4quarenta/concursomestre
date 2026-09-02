@@ -329,6 +329,7 @@ export const ENDPOINTS = {
     settings: {
         get: 'settings.php',
         update: 'admin/settings.php',
+        launchMode: 'admin/launch_mode.php',
         uploadBrandAsset: 'admin/brand_asset_upload.php',
     },
 

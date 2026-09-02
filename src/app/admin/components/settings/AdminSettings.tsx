@@ -41,6 +41,7 @@ import AdminEmailTemplatesSection from './AdminEmailTemplatesSection';
 import AdminGamificationSettingsSection from './AdminGamificationSettingsSection';
 import AdminNotificationSettingsSection from './AdminNotificationSettingsSection';
 import StripePaymentMethodsSettings from './StripePaymentMethodsSettings';
+import AdminLaunchModeControl from './AdminLaunchModeControl';
 import { mergeSeoSettings } from './seoSettings';
 import {
   ADMIN_FIELD_CLASS,
@@ -774,6 +775,7 @@ const AdminSettings = ({
 
       {activeTab === 'general' && (
         <div className="space-y-5">
+          <AdminLaunchModeControl addToast={addToast} />
           <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
             <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-3 md:flex-row md:items-center md:justify-between`}>
               <div>

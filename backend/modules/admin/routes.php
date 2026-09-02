@@ -749,6 +749,87 @@ function handleAdminSettingsRoute(PDO $db): void
 }
 
 /**
+ * Exibe e altera a autoridade canonica de launch mode. O valor e persistido
+ * fora do DTO generico de settings para impedir que APP_ENV seja confundido
+ * com estado de indexacao publica.
+ *
+ * @since 1.0.0
+ */
+function handleAdminLaunchModeRoute(PDO $db): void
+{
+    require_once __DIR__ . '/../seo/launch/SeoLaunchMode.php';
+    require_once __DIR__ . '/../seo/launch/SeoLaunchModeAuthority.php';
+
+    try {
+        $context = requirePlatformAdminSessionContext($db);
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $currentMode = SeoLaunchModeAuthority::read();
+
+        if ($method === 'GET') {
+            Response::success([
+                'runtimeEnvironment' => getAppEnv(),
+                'actualLaunchMode' => $currentMode,
+                'publicIndexingState' => $currentMode === SeoLaunchMode::PRODUCTION ? 'INDEX_ELIGIBILITY_EVALUATED' : 'NOINDEX',
+                'technicalReadiness' => 'NOT_READY',
+                'releaseRecommendation' => 'NO_GO_RECOMMENDED',
+            ]);
+        }
+
+        if ($method !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+
+        $payload = json_decode(file_get_contents('php://input') ?: '', true);
+        if (!is_array($payload)) {
+            Response::validationError('Payload de launch mode invalido.');
+        }
+        $requestedMode = strtoupper(trim((string) ($payload['mode'] ?? '')));
+        if (!in_array($requestedMode, SeoLaunchMode::values(), true)) {
+            Response::validationError('Launch mode invalido.');
+        }
+        $confirmation = trim((string) ($payload['confirmation'] ?? ''));
+        if ($confirmation !== 'CHANGE LAUNCH MODE TO ' . $requestedMode) {
+            Response::validationError('Confirmacao explicita de launch mode ausente.');
+        }
+        $reason = trim((string) ($payload['reason'] ?? ''));
+        if (strlen($reason) > 240) {
+            Response::validationError('Motivo de launch mode excede o limite.');
+        }
+
+        $correlationId = trim((string) ($_SERVER['HTTP_X_CORRELATION_ID'] ?? ''));
+        if ($correlationId === '') {
+            $correlationId = bin2hex(random_bytes(12));
+        }
+        $result = SeoLaunchModeAuthority::write($requestedMode, (string) $context['admin_user_id'], $correlationId);
+        logAdminAudit(
+            $db,
+            (string) $context['admin_user_id'],
+            'launch_mode.transition',
+            'launch_mode',
+            null,
+            [
+                'previous_mode' => $result['previousMode'],
+                'new_mode' => $result['mode'],
+                'reason' => $reason,
+                'correlation_id' => $correlationId,
+            ]
+        );
+        Response::success([
+            'runtimeEnvironment' => getAppEnv(),
+            'actualLaunchMode' => $result['mode'],
+            'publicIndexingState' => $result['mode'] === SeoLaunchMode::PRODUCTION ? 'INDEX_ELIGIBILITY_EVALUATED' : 'NOINDEX',
+            'technicalReadiness' => 'NOT_READY',
+            'releaseRecommendation' => 'NO_GO_RECOMMENDED',
+        ], 'Launch mode atualizado com trilha de auditoria.');
+    } catch (InvalidArgumentException $e) {
+        Response::validationError($e->getMessage());
+    } catch (Throwable $e) {
+        error_log('[admin_launch_mode_route] ' . $e->getMessage());
+        Response::serverError('Nao foi possivel processar o launch mode.', $e);
+    }
+}
+
+/**
  * Recebe imagens de identidade visual sem reutilizar uploads de outros dominios.
  *
  * @since 1.0.0

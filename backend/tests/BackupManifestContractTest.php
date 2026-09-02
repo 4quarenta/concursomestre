@@ -39,3 +39,26 @@ foreach (array_keys($manifest) as $field) {
 }
 
 fwrite(STDOUT, "Backup manifest v2 contract assertions passed.\n");
+
+$v3Manifest = [
+    ...$manifest,
+    'format_version' => 3,
+    'backup_id' => '20260829-200000-abcd1234',
+    'started_at_utc' => '2026-08-29T20:00:00+00:00',
+    'completed_at_utc' => '2026-08-29T20:00:05+00:00',
+    'database_engine' => 'mysql-compatible',
+    'database_version' => '8.4.10-10',
+    'backup_tool' => 'mysqldump',
+    'backup_tool_version' => 'mysqldump  Ver 8.4.10-10',
+    'filename' => 'concursomestre-20260829-200000-abcd1234.sql',
+    'file_size' => 1024,
+    'sha256' => str_repeat('b', 64),
+    'result' => 'success',
+    'binlog_file' => 'binlog.000017',
+    'binlog_position' => 481,
+    'binlog_format' => 'ROW',
+    'gtid_purged' => null,
+];
+
+BackupManifestContract::assertValid($v3Manifest);
+fwrite(STDOUT, "Backup manifest v3 contract assertions passed.\n");

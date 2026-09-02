@@ -19,6 +19,15 @@ import type { ErrorReport, Question, QuestionAsset } from '@types';
 export type FeedbackStatus = 'new' | 'read' | 'resolved';
 export type ReportResolution = 'resolved' | 'ignored';
 export type AdminLooseRecord = Record<string, unknown>;
+export type AdminLaunchMode = 'PRELAUNCH' | 'GO_CANDIDATE' | 'PRODUCTION';
+
+export interface AdminLaunchModeStatus {
+  runtimeEnvironment: string;
+  actualLaunchMode: AdminLaunchMode;
+  publicIndexingState: string;
+  technicalReadiness: string;
+  releaseRecommendation: string;
+}
 
 export interface AdminUserProfileRecord extends AdminLooseRecord {
   id?: string | number;

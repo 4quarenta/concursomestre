@@ -22,6 +22,16 @@ final class SeoLaunchMode
 
     public static function fromEnvironment(): string
     {
+        $authorityFile = trim((string) (getenv('SEO_LAUNCH_MODE_FILE') ?: ''));
+        if ($authorityFile === '') {
+            $authorityFile = dirname(__DIR__, 4) . '/storage/runtime/seo-launch-mode.json';
+        }
+        if (is_file($authorityFile) && is_readable($authorityFile)) {
+            $payload = json_decode((string) file_get_contents($authorityFile), true);
+            if (is_array($payload) && array_key_exists('mode', $payload)) {
+                return self::normalize($payload['mode']);
+            }
+        }
         return self::normalize(getenv('SEO_LAUNCH_MODE') ?: null);
     }
 

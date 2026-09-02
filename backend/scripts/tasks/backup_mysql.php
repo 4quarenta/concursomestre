@@ -23,6 +23,7 @@ require_once __DIR__ . '/../../shared/database/BackupArtifactPublisher.php';
 require_once __DIR__ . '/../../shared/database/BackupDatabaseConfig.php';
 require_once __DIR__ . '/../../shared/database/BackupManifestInventory.php';
 require_once __DIR__ . '/../../shared/database/BackupManifestContract.php';
+require_once __DIR__ . '/../../shared/database/BackupPitrAnchor.php';
 require_once __DIR__ . '/../../shared/health/ReleaseMetadata.php';
 
 function backupCliOption(string $name, ?string $fallback = null): ?string
@@ -164,6 +165,16 @@ function backupRunCommand(string $command): array
     ];
 }
 
+function backupToolVersion(string $toolPath): string
+{
+    $result = backupRunCommand(escapeshellarg($toolPath) . ' --version');
+    $version = trim($result['output']);
+    if ($result['exit_code'] !== 0 || $version === '') {
+        throw new RuntimeException('Versao da ferramenta de backup indisponivel.');
+    }
+    return $version;
+}
+
 function backupResolveHealthPath(): string
 {
     return backupCliOption(
@@ -205,6 +216,8 @@ try {
     $backupFileMode = backupConfiguredMode('BACKUP_FILE_MODE', 0600);
     $directory = backupResolveDirectory();
     $timestamp = date('Ymd-His') . '-' . bin2hex(random_bytes(4));
+    $startedAtUtc = gmdate(DATE_ATOM);
+    $backupToolVersion = backupToolVersion((string) $mysqldumpPath);
     $backupPath = $directory . '/concursomestre-' . $timestamp . '.sql';
     $temporaryPath = BackupArtifactPublisher::temporaryPath($directory, basename($backupPath));
     $defaultsFile = backupCreateDefaultsFile($dbUser, $dbPassword, $dbHost, $dbPort);
@@ -213,7 +226,7 @@ try {
     try {
         $command = escapeshellarg((string) $mysqldumpPath)
             . ' --defaults-extra-file=' . escapeshellarg($defaultsFile)
-            . ' --single-transaction --quick --routines --triggers --events --no-tablespaces --default-character-set=utf8mb4 '
+            . ' --single-transaction --quick --routines --triggers --events --source-data=2 --set-gtid-purged=COMMENTED --no-tablespaces --default-character-set=utf8mb4 '
             . escapeshellarg($dbName)
             . ' --result-file=' . escapeshellarg($temporaryPath);
 
@@ -247,6 +260,8 @@ try {
         throw new RuntimeException('Nao foi possivel gerar checksum do backup.');
     }
 
+    $pitrAnchor = BackupPitrAnchor::fromDump($temporaryPath);
+
     try {
         BackupArtifactPublisher::publish($temporaryPath, $backupPath, $backupFileMode);
         $checksumPath = BackupArtifactPublisher::writeChecksum($backupPath, $checksum, $backupFileMode);
@@ -262,10 +277,22 @@ try {
             $pdo,
             $dbName,
             dirname(__DIR__, 2) . '/database/migrations',
-            $applicationSha
+            $applicationSha,
+            $pitrAnchor
         );
         $manifest = [
-            'format_version' => 2,
+            'format_version' => BackupManifestContract::FORMAT_VERSION,
+            'backup_id' => $timestamp,
+            'started_at_utc' => $startedAtUtc,
+            'completed_at_utc' => gmdate(DATE_ATOM),
+            'database_engine' => $inventory['db_engine'],
+            'database_version' => $inventory['db_version'],
+            'backup_tool' => 'mysqldump',
+            'backup_tool_version' => $backupToolVersion,
+            'filename' => basename($backupPath),
+            'file_size' => (int) filesize($backupPath),
+            'sha256' => $checksum,
+            'result' => 'success',
             'created_at' => gmdate(DATE_ATOM),
             ...$inventory,
             'dump_size' => filesize($backupPath),

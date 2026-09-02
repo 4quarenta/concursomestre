@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import productionPageMapJson from '../../../config/seo/seo-production-page-map.v1.json';
 import { classifyPublicRouteParameter } from '@services/routes/publicRoutes';
 import { isQualityRequiredForFamily, isSeoRuntimeIndexingAllowed } from './runtimeEnvironment';
@@ -126,7 +128,23 @@ export const parseSeoLaunchMode = (value: unknown): SeoLaunchMode => {
     : seoProductionPageMap.defaultLaunchMode;
 };
 
-export const getSeoLaunchMode = (): SeoLaunchMode => parseSeoLaunchMode(process.env.SEO_LAUNCH_MODE);
+const launchModeFilePath = (): string => process.env.SEO_LAUNCH_MODE_FILE
+  || join(process.cwd(), 'backend', 'storage', 'runtime', 'seo-launch-mode.json');
+
+export const getSeoLaunchMode = (): SeoLaunchMode => {
+  const filePath = launchModeFilePath();
+  if (existsSync(filePath)) {
+    try {
+      const payload = JSON.parse(readFileSync(filePath, 'utf8')) as { mode?: unknown };
+      if (payload && Object.prototype.hasOwnProperty.call(payload, 'mode')) {
+        return parseSeoLaunchMode(payload.mode);
+      }
+    } catch {
+      return 'PRELAUNCH';
+    }
+  }
+  return parseSeoLaunchMode(process.env.SEO_LAUNCH_MODE);
+};
 
 export const validateInstanceReadiness = (value: SeoInstanceReadiness): string[] => {
   const errors: string[] = [];

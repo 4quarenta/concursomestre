@@ -51,6 +51,8 @@ import type {
   AdminQuestionListPayload,
   AdminQuestionGroupItem,
   AdminQuestionGroupPayload,
+  AdminLaunchMode,
+  AdminLaunchModeStatus,
 } from './adminService.types';
 export * from './adminService.types';
 
@@ -186,6 +188,25 @@ export const adminService = {
     const response = await requestApi<Partial<SystemSettings>>(apiClient.post<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update, settings));
     const envelope = assertApiSuccess<Partial<SystemSettings>>(response, 'Não foi possível salvar as configurações.');
     return readApiData<Partial<SystemSettings>>(envelope.raw, {});
+  },
+
+  async getLaunchModeStatus(): Promise<AdminLaunchModeStatus> {
+    const response = await requestApi<AdminLaunchModeStatus>(apiClient.get<ApiResponse<AdminLaunchModeStatus>>(ENDPOINTS.settings.launchMode));
+    return readApiData(response, {
+      runtimeEnvironment: 'unknown',
+      actualLaunchMode: 'PRELAUNCH',
+      publicIndexingState: 'NOINDEX',
+      technicalReadiness: 'NOT_READY',
+      releaseRecommendation: 'NO_GO_RECOMMENDED',
+    });
+  },
+
+  async updateLaunchMode(mode: AdminLaunchMode, confirmation: string, reason = ''): Promise<AdminLaunchModeStatus> {
+    const response = await requestApi<AdminLaunchModeStatus>(apiClient.post<ApiResponse<AdminLaunchModeStatus>>(
+      ENDPOINTS.settings.launchMode,
+      { mode, confirmation, reason },
+    ));
+    return readApiData(assertApiSuccess<AdminLaunchModeStatus>(response, 'Não foi possível atualizar o launch mode.'), {} as AdminLaunchModeStatus);
   },
 
   /**
