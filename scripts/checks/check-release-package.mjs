@@ -33,8 +33,10 @@ const forbiddenExtensions = new Set(['.bak', '.dump', '.key', '.log', '.p12', '.
 const forbiddenRuntimePaths = [
   /^(?:docs|mobile|tools)(?:\/|$)/i,
   /^backend\/tests(?:\/|$)/i,
+  /^backend\/database\/(?:seeds|schema\.sql)(?:\/|$)/i,
   /^backend\/database\/rollbacks(?:\/|$)/i,
   /^scripts\/(?:deploy|data|performance|seo)(?:\/|$)/i,
+  /^python-extractor\/tests(?:\/|$)/i,
   /(?:^|\/)(?:__tests__|__mocks__)(?:\/|$)/i,
   /(?:^|\/)[^/]+\.(?:test|spec)\.[^/]+$/i,
   /(?:^|\/)(?:\.env|\.env\.[^/]+|[^/]+\.example)$/i,
