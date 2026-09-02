@@ -226,7 +226,7 @@ try {
     try {
         $command = escapeshellarg((string) $mysqldumpPath)
             . ' --defaults-extra-file=' . escapeshellarg($defaultsFile)
-            . ' --single-transaction --quick --routines --triggers --events --source-data=2 --set-gtid-purged=COMMENTED --no-tablespaces --default-character-set=utf8mb4 '
+            . ' --single-transaction --quick --routines --triggers --events --source-data=2 --set-gtid-purged=AUTO --no-tablespaces --default-character-set=utf8mb4 '
             . escapeshellarg($dbName)
             . ' --result-file=' . escapeshellarg($temporaryPath);
 
