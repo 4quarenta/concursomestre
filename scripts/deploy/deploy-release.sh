@@ -24,6 +24,10 @@ cm_require_config_values CM_ENVIRONMENT CM_RELEASES_DIR CM_FRONTEND_LINK CM_BACK
 case "$CM_ENVIRONMENT" in staging) expected_token='DEPLOY_STAGING';; production) expected_token='DEPLOY_PRODUCTION';; *) cm_die 'Ambiente invalido.';; esac
 if [[ -n "$EXECUTE_TOKEN" ]]; then [[ "$EXECUTE_TOKEN" == "$expected_token" ]] || cm_die "Use --execute=$expected_token"; CM_DEPLOY_DRY_RUN='false'; else CM_DEPLOY_DRY_RUN='true'; fi
 if cm_is_true "$APPLY_MIGRATIONS"; then [[ "$MIGRATION_TOKEN" == 'APPLY_ADDITIVE_MIGRATIONS' ]] || cm_die 'Migrations exigem token explicito.'; fi
+if cm_is_true "$APPLY_MIGRATIONS" && [[ "$CM_ENVIRONMENT" == 'production' ]]; then
+  cm_require_config_values CM_MIGRATION_CNF_SOURCE
+  cm_assert_secret_file_permissions "$CM_MIGRATION_CNF_SOURCE"
+fi
 if ! cm_is_true "$CM_DEPLOY_DRY_RUN"; then [[ "${EUID:-$(id -u)}" -eq 0 ]] || cm_die 'Execucao exige root.'; [[ -n "$EXPECTED_SHA256" ]] || cm_die 'Execucao exige --sha256.'; fi
 
 for command_name in node npm php composer unzip rsync curl flock systemctl nginx; do cm_require_command "$command_name"; done
@@ -105,7 +109,19 @@ cm_run php "$release_dir/backend/scripts/migrations/run_schema_migrations.php" -
 if cm_is_true "$APPLY_MIGRATIONS"; then
   cm_log 'Aplicando somente migrations aditivas apos backup operacional externo confirmado.'
   if [[ "$CM_ENVIRONMENT" == 'production' ]]; then
-    cm_run env APP_ENV=production MIGRATIONS_ALLOW_APPLY=true MIGRATIONS_ALLOW_PRODUCTION=true php "$release_dir/backend/scripts/migrations/run_schema_migrations.php" --apply
+    cm_prepare_migration_environment "$CM_MIGRATION_CNF_SOURCE"
+    (
+      export APP_ENV=production
+      export MIGRATIONS_ALLOW_APPLY=true
+      export MIGRATIONS_ALLOW_PRODUCTION=true
+      export DB_HOST="$CM_MIGRATION_DB_HOST"
+      export DB_PORT="${CM_MIGRATION_DB_PORT:-}"
+      export DB_NAME="$CM_MIGRATION_DB_NAME"
+      export DB_USER="$CM_MIGRATION_DB_USER"
+      export DB_PASSWORD="$CM_MIGRATION_DB_PASSWORD"
+      cm_run php "$release_dir/backend/scripts/migrations/run_schema_migrations.php" --apply
+    )
+    unset CM_MIGRATION_DB_HOST CM_MIGRATION_DB_PORT CM_MIGRATION_DB_NAME CM_MIGRATION_DB_USER CM_MIGRATION_DB_PASSWORD
   else
     cm_run env MIGRATIONS_ALLOW_APPLY=true php "$release_dir/backend/scripts/migrations/run_schema_migrations.php" --apply
   fi

@@ -50,6 +50,46 @@ cm_require_config_values() {
   for name in "$@"; do [[ -n "${!name:-}" ]] || cm_die "Configuracao obrigatoria ausente: $name"; done
 }
 
+cm_mysql_cnf_value() {
+  local file_path="$1" key="$2"
+  awk -v wanted="$key" '
+    BEGIN { section = "" }
+    /^[[:space:]]*\[/ {
+      section = $0
+      gsub(/[[:space:]]/, "", section)
+      next
+    }
+    section != "[client]" { next }
+    /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ {
+      line = $0
+      sub(/^[[:space:]]*/, "", line)
+      name = line
+      sub(/[[:space:]]*=.*$/, "", name)
+      if (name != wanted) next
+      sub(/^[^=]*=[[:space:]]*/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (line ~ /^".*"$/ || line ~ /^'"'"'.*'"'"'$/) {
+        line = substr(line, 2, length(line) - 2)
+      }
+      print line
+      exit
+    }
+  ' "$file_path"
+}
+
+cm_prepare_migration_environment() {
+  local credentials_file="$1"
+  cm_assert_secret_file_permissions "$credentials_file"
+  CM_MIGRATION_DB_HOST="$(cm_mysql_cnf_value "$credentials_file" host)"
+  CM_MIGRATION_DB_PORT="$(cm_mysql_cnf_value "$credentials_file" port)"
+  CM_MIGRATION_DB_NAME="$(cm_mysql_cnf_value "$credentials_file" database)"
+  CM_MIGRATION_DB_USER="$(cm_mysql_cnf_value "$credentials_file" user)"
+  CM_MIGRATION_DB_PASSWORD="$(cm_mysql_cnf_value "$credentials_file" password)"
+  [[ -n "$CM_MIGRATION_DB_HOST" ]] || CM_MIGRATION_DB_HOST="${DB_HOST:-localhost}"
+  [[ -n "$CM_MIGRATION_DB_NAME" ]] || CM_MIGRATION_DB_NAME="${DB_NAME:-concursomestre}"
+  [[ -n "$CM_MIGRATION_DB_USER" && -n "$CM_MIGRATION_DB_PASSWORD" ]] || cm_die 'Configuracao privada do principal de migration incompleta.'
+}
+
 cm_assert_secret_file_permissions() {
   local file_path="$1" mode group other
   cm_require_file "$file_path"
