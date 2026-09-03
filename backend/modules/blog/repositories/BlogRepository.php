@@ -219,7 +219,11 @@ final class BlogRepository
     {
         $limit = (int) $filters['limit'];
         $cursor = SignedKeysetCursor::decodePayload($filters['cursor'] ?? null, 'blog.admin');
-        $conditions = ['a.deleted_at IS NULL'];
+        $conditions = [
+            !empty($filters['status']) && $filters['status'] === 'archived'
+                ? "a.status = 'archived'"
+                : 'a.deleted_at IS NULL',
+        ];
         $filterParams = [];
         if (!empty($filters['status'])) {
             $conditions[] = 'a.status = :status';
@@ -278,7 +282,7 @@ final class BlogRepository
     {
         $stmt = $this->db->prepare(
             $this->articleSelect()
-            . ' WHERE a.id = :id AND a.deleted_at IS NULL LIMIT 1'
+            . " WHERE a.id = :id AND (a.deleted_at IS NULL OR a.status = 'archived') LIMIT 1"
         );
         $stmt->execute([
             ':id' => $id,
@@ -373,7 +377,7 @@ final class BlogRepository
                         scheduled_at = :scheduled_at,
                         published_at = :published_at,
                         updated_at = NOW()
-                     WHERE id = :id AND deleted_at IS NULL"
+                     WHERE id = :id AND (deleted_at IS NULL OR status = 'archived')"
                 );
                 unset($params[':author_id'], $params[':author_name'], $params[':author_role']);
                 $stmt->execute($params);
@@ -414,7 +418,7 @@ final class BlogRepository
         StaticSitemapMutationInvalidator::invalidate('BLOG_CONTENT_MUTATION');
         $stmt = $this->db->prepare(
             "UPDATE blog_articles
-             SET status = 'archived', deleted_at = NOW(), updated_at = NOW()
+             SET status = 'archived', deleted_at = NULL, updated_at = NOW()
              WHERE id = :id AND deleted_at IS NULL"
         );
         $stmt->execute([':id' => $id]);

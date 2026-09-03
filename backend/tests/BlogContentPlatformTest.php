@@ -132,6 +132,19 @@ assertBlogPlatform(str_contains($repository, '$this->databaseNow()'), 'Published
 assertBlogPlatform(str_contains($repository, 'SELECT DATE_FORMAT(NOW()'), 'The publication clock must match MySQL NOW().');
 assertBlogPlatform(!str_contains($repository, "gmdate('Y-m-d H:i:s')"), 'Blog publishing must not mix UTC with the database timezone.');
 assertBlogPlatform(str_contains($repository, 'DEFAULT_COVER_IMAGE'), 'Legacy posts without cover must receive the default image in public DTOs.');
+assertBlogPlatform(
+    str_contains($repository, "filters['status'] === 'archived'")
+        && str_contains($repository, "a.status = 'archived'"),
+    'Archived posts must remain visible only in the administrative archive filter.'
+);
+assertBlogPlatform(
+    str_contains($repository, "SET status = 'archived', deleted_at = NULL"),
+    'Archiving a post must preserve its administrative record rather than soft-deleting it.'
+);
+assertBlogPlatform(
+    str_contains($repository, "a.deleted_at IS NULL OR a.status = 'archived'"),
+    'Archived posts must remain retrievable by the administrative editor.'
+);
 foreach (['public_search_title', 'public_search_excerpt', 'public_search_body'] as $needle) {
     assertBlogPlatform(str_contains($repository, $needle), 'Public blog search must cover article content with unique placeholders: ' . $needle);
 }
