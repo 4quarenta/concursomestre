@@ -145,6 +145,10 @@ assertBlogPlatform(
     str_contains($repository, "a.deleted_at IS NULL OR a.status = 'archived'"),
     'Archived posts must remain retrievable by the administrative editor.'
 );
+assertBlogPlatform(
+    str_contains($repository, 'deleted_at = NULL,'),
+    'Saving an archived post must restore a consistent active-record state when its status changes.'
+);
 foreach (['public_search_title', 'public_search_excerpt', 'public_search_body'] as $needle) {
     assertBlogPlatform(str_contains($repository, $needle), 'Public blog search must cover article content with unique placeholders: ' . $needle);
 }

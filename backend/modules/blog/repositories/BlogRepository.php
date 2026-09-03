@@ -376,6 +376,7 @@ final class BlogRepository
                         canonical_url = :canonical_url,
                         scheduled_at = :scheduled_at,
                         published_at = :published_at,
+                        deleted_at = NULL,
                         updated_at = NOW()
                      WHERE id = :id AND (deleted_at IS NULL OR status = 'archived')"
                 );
