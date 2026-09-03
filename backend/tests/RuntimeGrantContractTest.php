@@ -22,4 +22,10 @@ $broad = RuntimeGrantContract::evaluate(['GRANT ALL PRIVILEGES ON *.* TO `runtim
 runtimeGrantAssert($broad['ok'] === false, 'Broad/grant-option principal must fail closed.');
 runtimeGrantAssert(in_array('ALL PRIVILEGES', $broad['forbiddenCapabilities'], true), 'ALL PRIVILEGES must be forbidden.');
 
+$triggerCapable = RuntimeGrantContract::evaluate([
+    'GRANT SELECT, INSERT, UPDATE, DELETE, TRIGGER ON `app`.* TO `runtime`@`127.0.0.1`',
+]);
+runtimeGrantAssert($triggerCapable['ok'] === false, 'Runtime must never receive TRIGGER as a sitemap repair workaround.');
+runtimeGrantAssert(in_array('TRIGGER', $triggerCapable['forbiddenCapabilities'], true), 'TRIGGER must be forbidden for runtime.');
+
 fwrite(STDOUT, "Runtime grant contract assertions passed.\n");

@@ -13,7 +13,21 @@ final class RuntimeGrantContract
     /** @return list<string> */
     public static function forbiddenCapabilities(): array
     {
-        return ['ALL PRIVILEGES', 'GRANT OPTION', 'CREATE USER', 'FILE', 'SUPER', 'SYSTEM_VARIABLES_ADMIN'];
+        return [
+            'ALL PRIVILEGES',
+            'GRANT OPTION',
+            'CREATE',
+            'ALTER',
+            'DROP',
+            'INDEX',
+            'TRIGGER',
+            'EVENT',
+            'REFERENCES',
+            'CREATE USER',
+            'FILE',
+            'SUPER',
+            'SYSTEM_VARIABLES_ADMIN',
+        ];
     }
 
     /** @param list<string> $grants @param list<string> $required @return array<string, mixed> */
