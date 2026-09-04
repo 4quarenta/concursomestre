@@ -472,8 +472,9 @@ const AdminExamEditPage = () => {
     }
   }, [addToast, examId, isNew]);
 
-  const persistExam = React.useCallback(async () => {
-    if (!draft) {
+  const persistExam = React.useCallback(async (patch?: Partial<ExamDraftState>) => {
+    const draftToPersist = draft ? { ...draft, ...patch } : null;
+    if (!draftToPersist) {
       return;
     }
 
@@ -482,12 +483,12 @@ const AdminExamEditPage = () => {
     let resolvedFocuses: ExamTaxonomyItem[] = [];
     const resolvedRoles: ExamTaxonomyItem[] = [];
     const resolvedRoleParents = new Map<string, ExamTaxonomyItem>();
-    let resolvedYear = draft.ano;
+    let resolvedYear = draftToPersist.ano;
     try {
-      const organizationValues = splitExamTaxonomyValues(draft.orgaosText || draft.orgaoNome || draft.orgaoSigla);
-      const roleValues = splitExamTaxonomyValues(draft.cargosText || draft.cargoDescricao);
-      const focusValues = splitExamTaxonomyValues(draft.focosText || draft.focoNome);
-      const structuredRoleFocusRows = parseExamDraftArray<ExamRoleFocusDraftRecord>(draft.cargosPorFocoText)
+      const organizationValues = splitExamTaxonomyValues(draftToPersist.orgaosText || draftToPersist.orgaoNome || draftToPersist.orgaoSigla);
+      const roleValues = splitExamTaxonomyValues(draftToPersist.cargosText || draftToPersist.cargoDescricao);
+      const focusValues = splitExamTaxonomyValues(draftToPersist.focosText || draftToPersist.focoNome);
+      const structuredRoleFocusRows = parseExamDraftArray<ExamRoleFocusDraftRecord>(draftToPersist.cargosPorFocoText)
         .map((item) => ({
           foco: String(item.foco || item.focus || '').trim(),
           cargos: Array.from(new Set(
@@ -508,10 +509,10 @@ const AdminExamEditPage = () => {
         ...roleFocusRows.map((item) => item.foco),
       ].filter(Boolean)));
 
-      resolvedAgency = await ensureExamTaxonomy('banca', draft.bancaNome, draft.bancaSigla, draft.bancaId);
+      resolvedAgency = await ensureExamTaxonomy('banca', draftToPersist.bancaNome, draftToPersist.bancaSigla, draftToPersist.bancaId);
       resolvedOrganizations = (await Promise.all(organizationValues.map(async (value, index) => {
         const parsed = parseOrganizationLabel(value);
-        return ensureExamTaxonomy('orgao', parsed.name, parsed.sigla, index === 0 ? draft.orgaoId : '');
+        return ensureExamTaxonomy('orgao', parsed.name, parsed.sigla, index === 0 ? draftToPersist.orgaoId : '');
       }))).filter((item): item is ExamTaxonomyItem => Boolean(item));
 
       if (roleValues.length > 0 && allFocusValues.length === 0) {
@@ -519,7 +520,7 @@ const AdminExamEditPage = () => {
       }
 
       resolvedFocuses = (await Promise.all(allFocusValues.map((value, index) => (
-        ensureExamTaxonomy('carreira', value, '', index === 0 ? draft.focoId : '')
+        ensureExamTaxonomy('carreira', value, '', index === 0 ? draftToPersist.focoId : '')
       )))).filter((item): item is ExamTaxonomyItem => Boolean(item));
 
       for (const row of roleFocusRows) {
@@ -545,7 +546,7 @@ const AdminExamEditPage = () => {
           }
         }
       }
-      resolvedYear = await ensureExamYearFilter(draft.ano);
+      resolvedYear = await ensureExamYearFilter(draftToPersist.ano);
     } catch (error: unknown) {
       addToast(error instanceof Error ? error.message : 'Não foi possível sincronizar as taxonomias da prova.', 'error');
       return;
@@ -554,7 +555,7 @@ const AdminExamEditPage = () => {
     const resolvedOrganization = resolvedOrganizations[0] || null;
     const resolvedRole = resolvedRoles[0] || null;
     const resolvedFocus = resolvedFocuses[0] || null;
-    const resolvedFocusName = readTaxonomyName(resolvedFocus) || draft.focoNome;
+    const resolvedFocusName = readTaxonomyName(resolvedFocus) || draftToPersist.focoNome;
     const resolvedFocusList = resolvedFocuses.map((item) => {
       const name = readTaxonomyName(item);
       return {
@@ -564,44 +565,44 @@ const AdminExamEditPage = () => {
         slug: item.slug || slugifyTaxonomy(name),
       };
     }).filter((item) => item.nome);
-    const requisitosDetalhados = parseExamDraftArray(draft.requisitosDetalhadosText);
-    const remuneracoesDetalhadas = parseExamDraftArray(draft.remuneracoesDetalhadasText);
-    const vagasDetalhadas = parseExamDraftArray(draft.vagasDetalhadasText);
-    const conteudoProgramaticoDetalhado = parseExamDraftArray(draft.conteudoProgramaticoDetalhadoText);
-    const etapas = parseExamDraftArray(draft.etapasText);
-    const questoesVinculadas = splitExamIdValues(draft.questoesVinculadasText);
+    const requisitosDetalhados = parseExamDraftArray(draftToPersist.requisitosDetalhadosText);
+    const remuneracoesDetalhadas = parseExamDraftArray(draftToPersist.remuneracoesDetalhadasText);
+    const vagasDetalhadas = parseExamDraftArray(draftToPersist.vagasDetalhadasText);
+    const conteudoProgramaticoDetalhado = parseExamDraftArray(draftToPersist.conteudoProgramaticoDetalhadoText);
+    const etapas = parseExamDraftArray(draftToPersist.etapasText);
+    const questoesVinculadas = splitExamIdValues(draftToPersist.questoesVinculadasText);
 
     const normalized = normalizeProvaRecord({
-      id: draft.id,
-      nome: draft.nome,
+      id: draftToPersist.id,
+      nome: draftToPersist.nome,
       ano: resolvedYear,
-      nivel: draft.nivel,
-      index: draft.index,
-      caderno: draft.caderno,
-      tipoCaderno: draft.tipoCaderno,
-      corCaderno: draft.corCaderno,
-      bookletType: draft.tipoCaderno,
-      bookletColor: draft.corCaderno,
-      files: draft.files,
-      examFiles: draft.files,
-      pdfUrl: draft.files.find((file) => file.kind === 'prova')?.url,
-      proofUrl: draft.files.find((file) => file.kind === 'prova')?.url,
-      editalUrl: draft.files.find((file) => file.kind === 'edital')?.url,
-      gabaritoUrl: draft.files.find((file) => file.kind === 'gabarito')?.url,
-      answerKeyUrl: draft.files.find((file) => file.kind === 'gabarito')?.url,
-      publishStatus: draft.publishStatus,
-      visibilityStatus: draft.visibilityStatus,
-      scheduledAt: draft.scheduledAt,
-      publishedAt: draft.publishedAt,
+      nivel: draftToPersist.nivel,
+      index: draftToPersist.index,
+      caderno: draftToPersist.caderno,
+      tipoCaderno: draftToPersist.tipoCaderno,
+      corCaderno: draftToPersist.corCaderno,
+      bookletType: draftToPersist.tipoCaderno,
+      bookletColor: draftToPersist.corCaderno,
+      files: draftToPersist.files,
+      examFiles: draftToPersist.files,
+      pdfUrl: draftToPersist.files.find((file) => file.kind === 'prova')?.url,
+      proofUrl: draftToPersist.files.find((file) => file.kind === 'prova')?.url,
+      editalUrl: draftToPersist.files.find((file) => file.kind === 'edital')?.url,
+      gabaritoUrl: draftToPersist.files.find((file) => file.kind === 'gabarito')?.url,
+      answerKeyUrl: draftToPersist.files.find((file) => file.kind === 'gabarito')?.url,
+      publishStatus: draftToPersist.publishStatus,
+      visibilityStatus: draftToPersist.visibilityStatus,
+      scheduledAt: draftToPersist.scheduledAt,
+      publishedAt: draftToPersist.publishedAt,
       banca: {
-        id: resolvedAgency?.id || draft.bancaId || undefined,
-        sigla: readTaxonomySigla(resolvedAgency) || draft.bancaSigla || draft.bancaNome,
-        nome: readTaxonomyName(resolvedAgency) || draft.bancaNome || draft.bancaSigla,
+        id: resolvedAgency?.id || draftToPersist.bancaId || undefined,
+        sigla: readTaxonomySigla(resolvedAgency) || draftToPersist.bancaSigla || draftToPersist.bancaNome,
+        nome: readTaxonomyName(resolvedAgency) || draftToPersist.bancaNome || draftToPersist.bancaSigla,
       },
       orgao: {
-        id: resolvedOrganization?.id || draft.orgaoId || undefined,
-        sigla: readTaxonomySigla(resolvedOrganization) || draft.orgaoSigla || draft.orgaoNome,
-        nome: readTaxonomyName(resolvedOrganization) || draft.orgaoNome || draft.orgaoSigla,
+        id: resolvedOrganization?.id || draftToPersist.orgaoId || undefined,
+        sigla: readTaxonomySigla(resolvedOrganization) || draftToPersist.orgaoSigla || draftToPersist.orgaoNome,
+        nome: readTaxonomyName(resolvedOrganization) || draftToPersist.orgaoNome || draftToPersist.orgaoSigla,
       },
       orgaos: resolvedOrganizations.map((item) => ({
         id: item.id,
@@ -612,10 +613,10 @@ const AdminExamEditPage = () => {
       })),
       cargo: {
         id: resolvedRole?.id,
-        descricao: readTaxonomyName(resolvedRole) || draft.cargoDescricao,
-        ['descrição']: readTaxonomyName(resolvedRole) || draft.cargoDescricao,
-        name: readTaxonomyName(resolvedRole) || draft.cargoDescricao,
-        slug: resolvedRole?.slug || slugifyTaxonomy(readTaxonomyName(resolvedRole) || draft.cargoDescricao),
+        descricao: readTaxonomyName(resolvedRole) || draftToPersist.cargoDescricao,
+        ['descrição']: readTaxonomyName(resolvedRole) || draftToPersist.cargoDescricao,
+        name: readTaxonomyName(resolvedRole) || draftToPersist.cargoDescricao,
+        slug: resolvedRole?.slug || slugifyTaxonomy(readTaxonomyName(resolvedRole) || draftToPersist.cargoDescricao),
         parentId: resolvedFocus?.id,
         parent_id: resolvedFocus?.id,
       },
@@ -634,11 +635,11 @@ const AdminExamEditPage = () => {
         slug: item.slug || slugifyTaxonomy(readTaxonomyName(item)),
       })),
       roles: resolvedRoles.map((item) => readTaxonomyName(item)).filter(Boolean),
-      dataInscricaoInicio: readExamDraftText(draft.dataInscricaoInicio),
-      dataInscricaoFim: readExamDraftText(draft.dataInscricaoFim),
-      dataProva: readExamDraftText(draft.dataProva),
-      valorInscricao: readExamDraftText(draft.valorInscricao),
-      totalQuestoes: readExamDraftText(draft.totalQuestoes),
+      dataInscricaoInicio: readExamDraftText(draftToPersist.dataInscricaoInicio),
+      dataInscricaoFim: readExamDraftText(draftToPersist.dataInscricaoFim),
+      dataProva: readExamDraftText(draftToPersist.dataProva),
+      valorInscricao: readExamDraftText(draftToPersist.valorInscricao),
+      totalQuestoes: readExamDraftText(draftToPersist.totalQuestoes),
       etapas,
       questoesVinculadas,
       platformQuestionIds: questoesVinculadas,
@@ -656,41 +657,41 @@ const AdminExamEditPage = () => {
         slug: resolvedFocus.slug || slugifyTaxonomy(resolvedFocusName),
       } : undefined,
       carreiras: resolvedFocusList,
-      requisitos: draft.requisitosText
+      requisitos: draftToPersist.requisitosText
         .split(/\n/)
         .map((value) => value.trim())
         .filter(Boolean),
-      requirements: draft.requisitosText
+      requirements: draftToPersist.requisitosText
         .split(/\n/)
         .map((value) => value.trim())
         .filter(Boolean),
       requisitosDetalhados,
       requirementsDetailed: requisitosDetalhados,
-      remuneracoes: draft.remuneracaoText
+      remuneracoes: draftToPersist.remuneracaoText
         .split(/\n/)
         .map((value) => value.trim())
         .filter(Boolean),
-      remunerations: draft.remuneracaoText
+      remunerations: draftToPersist.remuneracaoText
         .split(/\n/)
         .map((value) => value.trim())
         .filter(Boolean),
       remuneracoesDetalhadas,
       remunerationsDetailed: remuneracoesDetalhadas,
-      vagas: draft.vagasText
+      vagas: draftToPersist.vagasText
         .split(/\n/)
         .map((value) => value.trim())
         .filter(Boolean),
-      vacancies: draft.vagasText
+      vacancies: draftToPersist.vagasText
         .split(/\n/)
         .map((value) => value.trim())
         .filter(Boolean),
       vagasDetalhadas,
       vacanciesDetailed: vagasDetalhadas,
-      conteudoProgramatico: draft.conteudoProgramaticoText
+      conteudoProgramatico: draftToPersist.conteudoProgramaticoText
         .split(/\n/)
         .map((value) => value.trim())
         .filter(Boolean),
-      programmaticContent: draft.conteudoProgramaticoText
+      programmaticContent: draftToPersist.conteudoProgramaticoText
         .split(/\n/)
         .map((value) => value.trim())
         .filter(Boolean),
@@ -847,7 +848,7 @@ const AdminExamEditPage = () => {
       isSaving={isSaving}
       isDeleting={isDeleting}
       onUploadExamFile={uploadExamFileFromEditor}
-      onSave={() => void persistExam()}
+      onSave={(patch) => void persistExam(patch)}
       onDelete={!isNew ? () => void handleDelete() : undefined}
     />,
   );

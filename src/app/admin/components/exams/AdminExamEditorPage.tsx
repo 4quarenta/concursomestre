@@ -48,7 +48,7 @@ interface AdminExamEditorPageProps {
   isSaving: boolean;
   isDeleting?: boolean;
   onUploadExamFile?: (file: File, kind: ExamFileKind) => Promise<ExamFileAttachment>;
-  onSave: () => void;
+  onSave: (patch?: Partial<ExamDraftState>) => void;
   onDelete?: () => void;
 }
 
@@ -2187,9 +2187,7 @@ const AdminExamEditorPage = ({
 
   const handlePersistWithPatch = (patch: Partial<ExamDraftState>) => {
     setDraft((current) => ({ ...current, ...patch }));
-    requestAnimationFrame(() => {
-      onSave();
-    });
+    onSave(patch);
   };
 
   const previewFocusLabels = splitTaxonomyValues(draft.focosText || draft.focoNome);
@@ -3473,7 +3471,7 @@ Se algum campo não estiver no documento, deixe vazio ou array vazio.`, [
                 </button>
                 <button
                   type="button"
-                  onClick={onSave}
+                  onClick={() => onSave()}
                   disabled={isSaving || isDeleting}
                   className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center`}
                 >

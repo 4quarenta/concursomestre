@@ -56,12 +56,22 @@ foreach ($bridgeFiles as $bridgePath) {
         );
         continue;
     }
+    if (basename($bridgePath) === 'sitemap-status.php') {
+        assertAdminApiRbac(
+            is_string($bridgeSource)
+                && str_contains($bridgeSource, "new Database('read')")
+                && str_contains($bridgeSource, 'requirePlatformAdminSessionContext($db)')
+                && str_contains($bridgeSource, 'StaticSitemapArtifactState'),
+            'Bridge de status do sitemap deve usar leitura e guarda de administrador da plataforma.'
+        );
+        continue;
+    }
     assertAdminApiRbac(
         is_string($bridgeSource) && str_contains($bridgeSource, "'/../../modules/admin/routes.php'"),
         'Bridge administrativo deve delegar ao modulo com RBAC: ' . basename($bridgePath)
     );
 
-    preg_match('/\\b(handleAdmin[A-Za-z0-9_]+Route)\\(\\$db/', (string) $bridgeSource, $handlerMatch);
+    preg_match('/\\b(handleAdmin[A-Za-z0-9_]+Route)\\(\\s*(?:\\$db|\\$database->getConnection\\(\\))/', (string) $bridgeSource, $handlerMatch);
     $handler = (string) ($handlerMatch[1] ?? '');
     assertAdminApiRbac($handler !== '', 'Bridge administrativo sem handler modular: ' . basename($bridgePath));
 
