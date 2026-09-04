@@ -65,7 +65,7 @@ interface AdminQuestionEditorPageProps {
   onGenerateTeacherComment: () => void;
   onGenerateDetailedComment: () => void;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (patch?: Partial<ManualQuestionState>) => void;
   reportContext?: React.ReactNode;
 }
 
@@ -872,11 +872,11 @@ const AdminQuestionEditorPage = ({
     });
   };
 
-  const handlePersistWithPatch = (patch: Record<string, unknown>) => {
+  const handlePersistWithPatch = (patch: Partial<ManualQuestionState>) => {
     flushSync(() => {
       setManualQ((prev) => ({ ...prev, ...patch }));
     });
-    onSave();
+    onSave(patch);
   };
 
   const publishActionLabel = publishState === 'scheduled'
@@ -1378,7 +1378,7 @@ const AdminQuestionEditorPage = ({
                 </button>
                 <button
                   type="button"
-                  onClick={onSave}
+                  onClick={() => onSave()}
                   className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center`}
                 >
                   <Save size={14} />

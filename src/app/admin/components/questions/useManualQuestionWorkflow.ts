@@ -474,13 +474,14 @@ export const useManualQuestionWorkflow = ({
     setEditingExtractedIndex(null);
   };
 
-  const handleSaveManual = async () => {
-    const publishStatus = normalizeQuestionPublishStatus(manualQ);
-    const visibilityStatus = normalizeQuestionVisibilityStatus(manualQ);
-    const scheduledAt = publishStatus === 'scheduled' ? manualQ.scheduledAt || '' : '';
+  const handleSaveManual = async (patch?: Partial<ManualQuestionState>) => {
+    const questionForSave = { ...manualQ, ...patch };
+    const publishStatus = normalizeQuestionPublishStatus(questionForSave);
+    const visibilityStatus = normalizeQuestionVisibilityStatus(questionForSave);
+    const scheduledAt = publishStatus === 'scheduled' ? questionForSave.scheduledAt || '' : '';
     const publishedAt = publishStatus === 'published'
-      ? manualQ.publishedAt || (editingQuestion ? resolveQuestionPublicationInput(editingQuestion) : new Date().toISOString())
-      : manualQ.publishedAt || '';
+      ? questionForSave.publishedAt || (editingQuestion ? resolveQuestionPublicationInput(editingQuestion) : new Date().toISOString())
+      : questionForSave.publishedAt || '';
     const questionOrigin = normalizeQuestionOrigin(
       manualQ.questionOrigin || manualQ.question_origin || manualQ.sourceType || manualQ.source_type,
       Boolean(manualQ.provaId),
