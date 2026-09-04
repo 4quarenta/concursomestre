@@ -143,10 +143,20 @@ const AdminUserEditPage = () => {
   const { addToast } = useToast();
   const [details, setDetails] = React.useState<AdminUserDetailsPayload | null>(null);
   const [form, setForm] = React.useState<AdminUserEditorForm>(createEmptyUserForm);
+  const formRef = React.useRef<AdminUserEditorForm>(form);
   const [isLoadingDetail, setIsLoadingDetail] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [actionLoading, setActionLoading] = React.useState<string | null>(null);
   const [loadError, setLoadError] = React.useState('');
+
+  const updateForm = React.useCallback((nextForm: AdminUserEditorForm) => {
+    formRef.current = nextForm;
+    setForm(nextForm);
+  }, []);
+
+  React.useEffect(() => {
+    formRef.current = form;
+  }, [form]);
 
   React.useEffect(() => {
     if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {
@@ -211,21 +221,22 @@ const AdminUserEditPage = () => {
       return;
     }
 
+    const formToSave = formRef.current;
     setIsSaving(true);
 
     try {
       const payload = {
         action: isNew ? 'create_user' : 'update_profile',
         user_id: isNew ? undefined : String(userId),
-        name: form.name,
-        email: form.email,
-        password: form.password,
-        cpf: form.cpf,
-        phone: form.phone,
-        targetExam: form.targetExam,
-        role: form.role,
-        status: form.status,
-        reputation: Math.max(0, Math.min(100, Number(form.reputation || 0))),
+        name: formToSave.name,
+        email: formToSave.email,
+        password: formToSave.password,
+        cpf: formToSave.cpf,
+        phone: formToSave.phone,
+        targetExam: formToSave.targetExam,
+        role: formToSave.role,
+        status: formToSave.status,
+        reputation: Math.max(0, Math.min(100, Number(formToSave.reputation || 0))),
       };
 
       const result = await adminService.performUserActionWithResult(payload);
@@ -253,7 +264,7 @@ const AdminUserEditPage = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [addToast, ensureUsersLoaded, form, isNew, isSaving, router, userId]);
+  }, [addToast, ensureUsersLoaded, isNew, isSaving, router, userId]);
 
   const runUserAction = React.useCallback(async (
     action: string,
@@ -349,7 +360,7 @@ const AdminUserEditPage = () => {
   return renderShell(
     <AdminUserEditorPage
       form={form}
-      onFormChange={setForm}
+      onFormChange={updateForm}
       detailedUser={details || undefined}
       isNew={isNew}
       isSaving={isSaving}
