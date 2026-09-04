@@ -185,6 +185,7 @@ const AdminUserEditorPage = ({
   onClose,
 }: AdminUserEditorPageProps) => {
   const formRef = React.useRef(form);
+  const editorRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     formRef.current = form;
@@ -194,6 +195,24 @@ const AdminUserEditorPage = ({
     const nextForm = { ...formRef.current, ...patch };
     formRef.current = nextForm;
     onFormChange(nextForm);
+  };
+  const getCurrentForm = () => {
+    const currentForm = formRef.current;
+    const readValue = (field: string) => editorRef.current?.querySelector<HTMLInputElement>(`[data-admin-user-field="${field}"]`)?.value ?? currentForm[field as keyof AdminUserEditorForm];
+    const readSelectValue = <T extends string>(field: string, fallback: T) => (editorRef.current?.querySelector<HTMLSelectElement>(`[data-admin-user-field="${field}"]`)?.value || fallback) as T;
+
+    return {
+      ...currentForm,
+      name: readValue('name'),
+      email: readValue('email'),
+      password: readValue('password'),
+      cpf: readValue('cpf'),
+      phone: readValue('phone'),
+      targetExam: readValue('targetExam'),
+      role: readSelectValue('role', currentForm.role),
+      status: readSelectValue('status', currentForm.status),
+      reputation: readValue('reputation'),
+    };
   };
   const profile = (detailedUser?.profile || {}) as AdminUserProfileSummary;
   const subscriptions = (detailedUser?.subscriptions ?? []) as AdminUserSubscriptionItem[];
@@ -284,7 +303,7 @@ const AdminUserEditorPage = ({
   };
 
   return (
-    <div className="space-y-5">
+    <div ref={editorRef} className="space-y-5">
       <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
         <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`}>
           <div className="flex min-w-0 items-start gap-4">
@@ -308,7 +327,7 @@ const AdminUserEditorPage = ({
             </div>
           </div>
 
-          <button type="button" onClick={() => onSave(formRef.current)} disabled={isSaving} className={ADMIN_PRIMARY_BUTTON_CLASS}>
+          <button type="button" onClick={() => onSave(getCurrentForm())} disabled={isSaving} className={ADMIN_PRIMARY_BUTTON_CLASS}>
             <Save size={14} />
             {isSaving ? 'Salvando...' : isNew ? 'Criar usuario' : 'Atualizar usuario'}
           </button>
@@ -325,6 +344,7 @@ const AdminUserEditorPage = ({
               <div className="space-y-2">
                 <FieldLabel>Nome</FieldLabel>
                 <input
+                  data-admin-user-field="name"
                   value={form.name}
                   onChange={(event) => updateForm({ name: event.target.value })}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
@@ -334,6 +354,7 @@ const AdminUserEditorPage = ({
               <div className="space-y-2">
                 <FieldLabel>E-mail</FieldLabel>
                 <input
+                  data-admin-user-field="email"
                   type="email"
                   value={form.email}
                   onChange={(event) => updateForm({ email: event.target.value })}
@@ -345,6 +366,7 @@ const AdminUserEditorPage = ({
                 <div className="space-y-2 md:col-span-2">
                   <FieldLabel>Senha temporaria</FieldLabel>
                   <input
+                    data-admin-user-field="password"
                     type="password"
                     value={form.password}
                     onChange={(event) => updateForm({ password: event.target.value })}
@@ -356,6 +378,7 @@ const AdminUserEditorPage = ({
               <div className="space-y-2">
                 <FieldLabel>CPF</FieldLabel>
                 <input
+                  data-admin-user-field="cpf"
                   value={form.cpf}
                   onChange={(event) => updateForm({ cpf: event.target.value })}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
@@ -365,6 +388,7 @@ const AdminUserEditorPage = ({
               <div className="space-y-2">
                 <FieldLabel>Telefone</FieldLabel>
                 <input
+                  data-admin-user-field="phone"
                   value={form.phone}
                   onChange={(event) => updateForm({ phone: event.target.value })}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
@@ -374,6 +398,7 @@ const AdminUserEditorPage = ({
               <div className="space-y-2 md:col-span-2">
                 <FieldLabel>Concurso alvo</FieldLabel>
                 <input
+                  data-admin-user-field="targetExam"
                   value={form.targetExam}
                   onChange={(event) => updateForm({ targetExam: event.target.value })}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
@@ -390,19 +415,20 @@ const AdminUserEditorPage = ({
             <div className="grid gap-4 p-5 md:grid-cols-3">
               <div className="space-y-2">
                 <FieldLabel>Papel</FieldLabel>
-                <select value={form.role} onChange={(event) => updateForm({ role: event.target.value as AdminUserEditorForm['role'] })} className={`${ADMIN_FIELD_CLASS} h-10 w-full`}>
+                <select data-admin-user-field="role" value={form.role} onChange={(event) => updateForm({ role: event.target.value as AdminUserEditorForm['role'] })} className={`${ADMIN_FIELD_CLASS} h-10 w-full`}>
                   {ADMIN_USER_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </div>
               <div className="space-y-2">
                 <FieldLabel>Status</FieldLabel>
-                <select value={form.status} onChange={(event) => updateForm({ status: event.target.value as AdminUserEditorForm['status'] })} className={`${ADMIN_FIELD_CLASS} h-10 w-full`}>
+                <select data-admin-user-field="status" value={form.status} onChange={(event) => updateForm({ status: event.target.value as AdminUserEditorForm['status'] })} className={`${ADMIN_FIELD_CLASS} h-10 w-full`}>
                   {ADMIN_USER_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </div>
               <div className="space-y-2">
                 <FieldLabel>Reputacao</FieldLabel>
                 <input
+                  data-admin-user-field="reputation"
                   type="number"
                   min={0}
                   max={100}
@@ -460,7 +486,7 @@ const AdminUserEditorPage = ({
                   ID: <span className="font-mono text-slate-700 dark:text-slate-200">{profile.id}</span>
                 </div>
               ) : null}
-              <button type="button" onClick={() => onSave(formRef.current)} disabled={isSaving} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
+              <button type="button" onClick={() => onSave(getCurrentForm())} disabled={isSaving} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
                 <Save size={14} />
                 {isSaving ? 'Salvando...' : isNew ? 'Criar usuario' : 'Atualizar usuario'}
               </button>
