@@ -124,7 +124,7 @@ interface AdminUserEditorPageProps {
   isNew: boolean;
   isSaving: boolean;
   actionLoading?: string | null;
-  onSave: () => void;
+  onSave: (form?: AdminUserEditorForm) => void;
   onUserAction?: (action: string, data: Record<string, unknown>, options?: { actionKey?: string; successMessage?: string }) => Promise<unknown>;
   onClose: () => void;
 }
@@ -308,7 +308,7 @@ const AdminUserEditorPage = ({
             </div>
           </div>
 
-          <button type="button" onClick={onSave} disabled={isSaving} className={ADMIN_PRIMARY_BUTTON_CLASS}>
+          <button type="button" onClick={() => onSave(formRef.current)} disabled={isSaving} className={ADMIN_PRIMARY_BUTTON_CLASS}>
             <Save size={14} />
             {isSaving ? 'Salvando...' : isNew ? 'Criar usuario' : 'Atualizar usuario'}
           </button>
@@ -460,7 +460,7 @@ const AdminUserEditorPage = ({
                   ID: <span className="font-mono text-slate-700 dark:text-slate-200">{profile.id}</span>
                 </div>
               ) : null}
-              <button type="button" onClick={onSave} disabled={isSaving} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
+              <button type="button" onClick={() => onSave(formRef.current)} disabled={isSaving} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
                 <Save size={14} />
                 {isSaving ? 'Salvando...' : isNew ? 'Criar usuario' : 'Atualizar usuario'}
               </button>

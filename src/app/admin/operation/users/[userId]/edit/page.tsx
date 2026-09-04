@@ -212,12 +212,12 @@ const AdminUserEditPage = () => {
     router.push(buildAdminPath('operation', 'users'));
   }, [router]);
 
-  const saveUser = React.useCallback(async () => {
+  const saveUser = React.useCallback(async (formSnapshot?: AdminUserEditorForm) => {
     if (isSaving) {
       return;
     }
 
-    const formToSave = formRef.current;
+    const formToSave = formSnapshot || formRef.current;
     setIsSaving(true);
 
     try {
@@ -361,7 +361,7 @@ const AdminUserEditPage = () => {
       isNew={isNew}
       isSaving={isSaving}
       actionLoading={actionLoading}
-      onSave={() => void saveUser()}
+      onSave={(formSnapshot) => void saveUser(formSnapshot)}
       onUserAction={runUserAction}
       onClose={closeEditor}
     />,
