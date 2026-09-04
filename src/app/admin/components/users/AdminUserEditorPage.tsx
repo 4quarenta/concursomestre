@@ -184,7 +184,17 @@ const AdminUserEditorPage = ({
   onUserAction,
   onClose,
 }: AdminUserEditorPageProps) => {
-  const updateForm = (patch: Partial<AdminUserEditorForm>) => onFormChange({ ...form, ...patch });
+  const formRef = React.useRef(form);
+
+  React.useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  const updateForm = (patch: Partial<AdminUserEditorForm>) => {
+    const nextForm = { ...formRef.current, ...patch };
+    formRef.current = nextForm;
+    onFormChange(nextForm);
+  };
   const profile = (detailedUser?.profile || {}) as AdminUserProfileSummary;
   const subscriptions = (detailedUser?.subscriptions ?? []) as AdminUserSubscriptionItem[];
   const transactions = (detailedUser?.transactions ?? []) as AdminUserTransactionItem[];
