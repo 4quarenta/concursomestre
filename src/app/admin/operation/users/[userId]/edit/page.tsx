@@ -155,10 +155,6 @@ const AdminUserEditPage = () => {
   }, []);
 
   React.useEffect(() => {
-    formRef.current = form;
-  }, [form]);
-
-  React.useEffect(() => {
     if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {
       router.replace('/');
     }
@@ -173,7 +169,7 @@ const AdminUserEditPage = () => {
       const frame = requestAnimationFrame(() => {
         setDetails(null);
         setLoadError('');
-        setForm(createEmptyUserForm());
+        updateForm(createEmptyUserForm());
       });
 
       return () => cancelAnimationFrame(frame);
@@ -193,7 +189,7 @@ const AdminUserEditPage = () => {
         if (cancelled) return;
         const mergedPayload = mergeDetailedUserWithCatalogPlans(payload, catalogPlans);
         setDetails(mergedPayload);
-        setForm(buildUserFormFromDetails(mergedPayload));
+        updateForm(buildUserFormFromDetails(mergedPayload));
       })
       .catch((error) => {
         if (cancelled) return;
@@ -210,7 +206,7 @@ const AdminUserEditPage = () => {
       cancelled = true;
       cancelAnimationFrame(loadingFrame);
     };
-  }, [currentUser, isAuthLoading, isNew, userId]);
+  }, [currentUser, isAuthLoading, isNew, updateForm, userId]);
 
   const closeEditor = React.useCallback(() => {
     router.push(buildAdminPath('operation', 'users'));
@@ -257,14 +253,14 @@ const AdminUserEditPage = () => {
       ]);
       const nextDetails = mergeDetailedUserWithCatalogPlans(nextDetailsRaw, catalogPlans);
       setDetails(nextDetails);
-      setForm(buildUserFormFromDetails(nextDetails));
+      updateForm(buildUserFormFromDetails(nextDetails));
       addToast(result.message || 'Usuario atualizado com sucesso.', 'success');
     } catch (error) {
       addToast(readApiErrorMessage(error, isNew ? 'Nao foi possivel criar o usuario.' : 'Nao foi possivel salvar o usuario.'), 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [addToast, ensureUsersLoaded, isNew, isSaving, router, userId]);
+  }, [addToast, ensureUsersLoaded, isNew, isSaving, router, updateForm, userId]);
 
   const runUserAction = React.useCallback(async (
     action: string,
@@ -292,7 +288,7 @@ const AdminUserEditPage = () => {
       const nextDetails = mergeDetailedUserWithCatalogPlans(nextDetailsRaw, catalogPlans);
 
       setDetails(nextDetails);
-      setForm(buildUserFormFromDetails(nextDetails));
+      updateForm(buildUserFormFromDetails(nextDetails));
       await ensureUsersLoaded(true);
 
       addToast(
@@ -310,7 +306,7 @@ const AdminUserEditPage = () => {
     } finally {
       setActionLoading(null);
     }
-  }, [addToast, details, ensureUsersLoaded, isNew]);
+  }, [addToast, details, ensureUsersLoaded, isNew, updateForm]);
 
   const renderShell = (children: React.ReactNode) => (
     <AdminStandaloneShell
