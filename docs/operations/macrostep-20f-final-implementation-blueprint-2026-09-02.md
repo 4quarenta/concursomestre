@@ -1,6 +1,6 @@
 # Macro20F Final Implementation Blueprint
 
-Status: amended for M20F-02 implementation, 2026-09-05
+Status: amended for M20F-02 operational implementation, 2026-09-05
 
 ## Package order
 
@@ -54,7 +54,7 @@ Campaign lifecycle is represented by draft, scheduled, active, paused, ended and
 
 The canonical browser funnel is landing_view -> cta_clicked -> plan_selected -> checkout_started. Paid conversion remains provider/backend-owned; the browser cannot assert subscription_activated or purchase_completed. Marketing events use the existing consent-gated first-party analytics ledger and retain only allowlisted attribution metadata. M20F-02 must not create a second billing, entitlement or analytics authority: offers, coupons and future benefits are integration boundaries to Macrostep 16 and M20F-03.
 
-The current implementation reuses the existing promotion, landing-page, offer, countdown and analytics services, adds campaign eligibility/lifecycle helpers, adds safe landing/CTA/plan-selection instrumentation and exposes lifecycle scheduling in the existing Admin campaign surface. PRELAUNCH, noindex, publication guards, consent gating, RBAC, CSRF and audit authority remain unchanged. Provider-backed billing, benefit grants, email automation and destructive global operations remain deferred to their later packages.
+The implementation reuses the existing promotion, landing-page, offer, countdown and analytics services, adds campaign eligibility/lifecycle helpers, safe landing/CTA/plan-selection instrumentation, and a normalized persistent authority for campaigns, segments and deduplicated campaign interactions. The Admin exposes campaign/segment CRUD, lifecycle transitions, governance fields and bounded campaign funnel metrics; public interaction writes are idempotent and contain only allowlisted attribution references. PRELAUNCH, noindex, publication guards, consent gating, RBAC, CSRF and audit authority remain unchanged. Provider-backed billing, benefit grants, email automation and destructive global operations remain deferred to their later packages.
 
 ### M20F-03 - Billing, Entitlements & Benefits
 

@@ -1,0 +1,105 @@
+'use client';
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BarChart3, Check, Edit3, Megaphone, Plus, Save, Users } from 'lucide-react';
+import { useToast } from '@providers/ToastProvider';
+import { AdminButton, AdminDataTable, AdminEditorHeader, AdminEmptyState, AdminFeedback, AdminFilters, AdminFormField, AdminPagination, AdminRowActions, AdminSearch, AdminStatusBadge, AdminTable, AdminTableActionsCell, AdminTableBody, AdminTableCell, AdminTableColumn, AdminTableEmptyRow, AdminTableHead, AdminTableRow, AdminToolbar, AdminFormSection, AdminSaveBar, AdminValidationSummary } from '../shared/AdminDesignSystem';
+import marketingCampaignService, { type MarketingCampaignDraft, type MarketingCampaignRecord, type MarketingSegmentDraft, type MarketingSegmentRecord } from '@services/marketing/marketingCampaignService';
+
+const PAGE_SIZE = 10;
+const OBJECTIVES = ['CRIAR_CONTA', 'INICIAR_TESTE', 'ESCOLHER_PLANO', 'ASSINAR_PRO', 'ASSINAR_ELITE', 'FAZER_SIMULADO', 'RESPONDER_QUESTOES', 'REATIVAR_USUARIO', 'UPGRADE_PLANO'];
+const STATUS_LABELS: Record<string, string> = { draft: 'Rascunho', scheduled: 'Agendada', active: 'Ativa', paused: 'Pausada', ended: 'Encerrada', archived: 'Arquivada' };
+const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral' | 'info'> = { active: 'success', scheduled: 'info', paused: 'warning', ended: 'neutral', archived: 'neutral', draft: 'neutral' };
+
+const emptyCampaign = (): MarketingCampaignDraft => ({
+  name: '', objective: 'CRIAR_CONTA', status: 'draft', priority: 0, starts_at: '', ends_at: '', segment_id: '', channels: ['in_app'], placements: ['home-hero'], landing_slug: '', plan_id: '', coupon_code: '', frequency_cap: '', cooldown_hours: '', max_impressions: '', mutual_exclusion_group: '', suppress_after_conversion: true, content: { headline: '', description: '', ctaLabel: '' },
+});
+const emptySegment = (): MarketingSegmentDraft => ({ name: '', description: '', status: 'draft', rules: [{ field: 'account_age_days', operator: 'gte', value: '0' }] });
+const toLocalDateTime = (value: string | null) => value ? value.slice(0, 16).replace(' ', 'T') : '';
+
+const AdminCampaignOperations = () => {
+  const toast = useToast();
+  const [tab, setTab] = useState<'campaigns' | 'segments'>('campaigns');
+  const [campaigns, setCampaigns] = useState<MarketingCampaignRecord[]>([]);
+  const [segments, setSegments] = useState<MarketingSegmentRecord[]>([]);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [campaignDraft, setCampaignDraft] = useState<MarketingCampaignDraft | null>(null);
+  const [segmentDraft, setSegmentDraft] = useState<MarketingSegmentDraft | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [analytics, setAnalytics] = useState<{ interactions: Record<string, { total: number; unique: number }>; funnel: Record<string, number> } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const [nextCampaigns, nextSegments] = await Promise.all([marketingCampaignService.listCampaigns(search, status), marketingCampaignService.listSegments()]);
+      setCampaigns(nextCampaigns); setSegments(nextSegments);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Nao foi possivel carregar o marketing operacional.');
+    } finally { setLoading(false); }
+  }, [search, status]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  const visibleCampaigns = useMemo(() => campaigns.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [campaigns, page]);
+  const totalPages = Math.max(1, Math.ceil(campaigns.length / PAGE_SIZE));
+
+  const saveCampaign = async () => {
+    if (!campaignDraft) return;
+    setSaving(true); setError('');
+    try { await marketingCampaignService.saveCampaign(campaignDraft); setCampaignDraft(null); await load(); toast.addToast('Campanha salva com sucesso.', 'success'); }
+    catch (saveError) { setError(saveError instanceof Error ? saveError.message : 'Nao foi possivel salvar a campanha.'); }
+    finally { setSaving(false); }
+  };
+  const saveSegment = async () => {
+    if (!segmentDraft) return;
+    setSaving(true); setError('');
+    try { await marketingCampaignService.saveSegment(segmentDraft); setSegmentDraft(null); await load(); toast.addToast('Segmento salvo com sucesso.', 'success'); }
+    catch (saveError) { setError(saveError instanceof Error ? saveError.message : 'Nao foi possivel salvar o segmento.'); }
+    finally { setSaving(false); }
+  };
+  const transition = async (campaign: MarketingCampaignRecord, next: MarketingCampaignRecord['status']) => {
+    try { await marketingCampaignService.transition(campaign.id, next); await load(); }
+    catch (transitionError) { setError(transitionError instanceof Error ? transitionError.message : 'Nao foi possivel atualizar a campanha.'); }
+  };
+
+  return <div className="space-y-4">
+    <AdminEditorHeader title="Marketing operacional" description="Campanhas, segmentos, governanca e funil em uma autoridade persistente." leading={<Megaphone size={22} className="text-sky-700" />} actions={<AdminButton variant="primary" icon={<Plus size={14} />} onClick={() => tab === 'campaigns' ? setCampaignDraft(emptyCampaign()) : setSegmentDraft(emptySegment())}>{tab === 'campaigns' ? 'Nova campanha' : 'Novo segmento'}</AdminButton>} />
+    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Marketing operacional">
+      <AdminButton variant={tab === 'campaigns' ? 'primary' : 'secondary'} icon={<Megaphone size={14} />} onClick={() => { setTab('campaigns'); setPage(1); }}>Campanhas</AdminButton>
+      <AdminButton variant={tab === 'segments' ? 'primary' : 'secondary'} icon={<Users size={14} />} onClick={() => { setTab('segments'); setPage(1); }}>Segmentos</AdminButton>
+    </div>
+    {error ? <AdminFeedback tone="danger">{error}</AdminFeedback> : null}
+    {campaignDraft ? <CampaignEditor draft={campaignDraft} segments={segments} saving={saving} onChange={setCampaignDraft} onCancel={() => setCampaignDraft(null)} onSave={() => void saveCampaign()} /> : null}
+    {segmentDraft ? <SegmentEditor draft={segmentDraft} saving={saving} onChange={setSegmentDraft} onCancel={() => setSegmentDraft(null)} onSave={() => void saveSegment()} /> : null}
+    {!campaignDraft && !segmentDraft && tab === 'campaigns' ? <>
+      <AdminToolbar><div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"><AdminSearch value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Buscar campanha" label="Buscar campanhas" /><AdminFilters><select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} className="h-10 rounded-sm border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900" aria-label="Filtrar status"><option value="">Todos os status</option>{Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></AdminFilters></div></AdminToolbar>
+      <AdminDataTable label="Campanhas persistentes"><AdminTable><AdminTableHead><AdminTableRow><AdminTableColumn>Campanha</AdminTableColumn><AdminTableColumn>Status</AdminTableColumn><AdminTableColumn>Audiencia</AdminTableColumn><AdminTableColumn>Prioridade</AdminTableColumn><AdminTableColumn>Acoes</AdminTableColumn></AdminTableRow></AdminTableHead><AdminTableBody>{loading ? <AdminTableEmptyRow colSpan={5} label="Carregando campanhas..." /> : visibleCampaigns.length === 0 ? <AdminTableEmptyRow colSpan={5} label="Nenhuma campanha persistente encontrada." /> : visibleCampaigns.map((campaign) => <AdminTableRow key={campaign.id}><AdminTableCell><strong>{campaign.name}</strong><span className="block text-xs text-slate-500">{campaign.objective}</span></AdminTableCell><AdminTableCell><AdminStatusBadge label={STATUS_LABELS[campaign.status] || campaign.status} tone={STATUS_TONE[campaign.status] || 'neutral'} /></AdminTableCell><AdminTableCell>{campaign.segment_name || 'Todos, conforme regras'}</AdminTableCell><AdminTableCell>{campaign.priority}</AdminTableCell><AdminTableActionsCell><AdminRowActions><AdminButton variant="utility" icon={<Edit3 size={13} />} onClick={() => setCampaignDraft({ ...emptyCampaign(), id: campaign.id, name: campaign.name, objective: campaign.objective, status: campaign.status, priority: campaign.priority, starts_at: toLocalDateTime(campaign.starts_at), ends_at: toLocalDateTime(campaign.ends_at), segment_id: campaign.segment_id || '', landing_slug: campaign.landing_slug || '', plan_id: campaign.plan_id ? String(campaign.plan_id) : '', coupon_code: campaign.coupon_code || '', frequency_cap: campaign.frequency_cap ? String(campaign.frequency_cap) : '', cooldown_hours: campaign.cooldown_hours ? String(campaign.cooldown_hours) : '', max_impressions: campaign.max_impressions ? String(campaign.max_impressions) : '', mutual_exclusion_group: campaign.mutual_exclusion_group || '', channels: campaign.channels_json, placements: campaign.placements_json })}>Editar</AdminButton><AdminButton variant="utility" icon={<BarChart3 size={13} />} onClick={() => void marketingCampaignService.analytics(campaign.id).then(setAnalytics).catch(() => setError('Nao foi possivel carregar as metricas.'))}>Metricas</AdminButton>{campaign.status === 'draft' || campaign.status === 'paused' ? <AdminButton variant="secondary" icon={<Check size={13} />} onClick={() => void transition(campaign, 'active')}>Ativar</AdminButton> : null}{campaign.status === 'active' ? <AdminButton variant="secondary" onClick={() => void transition(campaign, 'paused')}>Pausar</AdminButton> : null}</AdminRowActions></AdminTableActionsCell></AdminTableRow>)}</AdminTableBody></AdminTable></AdminDataTable>
+      <AdminPagination visibleCount={visibleCampaigns.length} totalCount={campaigns.length} itemLabel="campanhas" page={page} totalPages={totalPages} onPageChange={setPage} />
+      {analytics ? <AdminFeedback><strong>Metricas selecionadas:</strong> {Object.entries(analytics.funnel).map(([key, value]) => `${key}: ${value}`).join(' | ') || 'sem eventos autoritativos ainda.'}</AdminFeedback> : null}
+    </> : null}
+    {!campaignDraft && !segmentDraft && tab === 'segments' ? <>
+      {loading && segments.length === 0 ? <AdminEmptyState label="Carregando segmentos..." /> : segments.length === 0 ? <AdminEmptyState label="Nenhum segmento persistente encontrado." /> : <AdminDataTable label="Segmentos persistentes"><AdminTable><AdminTableHead><AdminTableRow><AdminTableColumn>Segmento</AdminTableColumn><AdminTableColumn>Status</AdminTableColumn><AdminTableColumn>Regras</AdminTableColumn><AdminTableColumn>Acoes</AdminTableColumn></AdminTableRow></AdminTableHead><AdminTableBody>{segments.map((segment) => <AdminTableRow key={segment.id}><AdminTableCell><strong>{segment.name}</strong><span className="block text-xs text-slate-500">{segment.description || 'Sem descricao'}</span></AdminTableCell><AdminTableCell><AdminStatusBadge label={STATUS_LABELS[segment.status] || segment.status} tone={STATUS_TONE[segment.status] || 'neutral'} /></AdminTableCell><AdminTableCell>{segment.rules_json.length}</AdminTableCell><AdminTableActionsCell><AdminRowActions><AdminButton variant="utility" icon={<Edit3 size={13} />} onClick={() => setSegmentDraft({ id: segment.id, name: segment.name, description: segment.description || '', status: segment.status, rules: segment.rules_json as unknown as MarketingSegmentDraft['rules'] })}>Editar</AdminButton></AdminRowActions></AdminTableActionsCell></AdminTableRow>)}</AdminTableBody></AdminTable></AdminDataTable>}
+    </> : null}
+  </div>;
+};
+
+const CampaignEditor = ({ draft, segments, saving, onChange, onCancel, onSave }: { draft: MarketingCampaignDraft; segments: MarketingSegmentRecord[]; saving: boolean; onChange: (draft: MarketingCampaignDraft) => void; onCancel: () => void; onSave: () => void }) => <>
+  <AdminValidationSummary errors={draft.name.trim() === '' ? ['Informe o nome da campanha.'] : []} />
+  <AdminFormSection title="Campanha" description="A entidade persistida controla ciclo, audiencia, canal e governanca."><div className="grid gap-4 md:grid-cols-2"><AdminFormField label="Nome" controlId="marketing-campaign-name" required><input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField><AdminFormField label="Objetivo" controlId="marketing-campaign-objective" required><select value={draft.objective} onChange={(event) => onChange({ ...draft, objective: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900">{OBJECTIVES.map((objective) => <option key={objective}>{objective}</option>)}</select></AdminFormField><AdminFormField label="Status" controlId="marketing-campaign-status"><select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as MarketingCampaignDraft['status'] })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900">{Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></AdminFormField><AdminFormField label="Segmento" controlId="marketing-campaign-segment"><select value={draft.segment_id} onChange={(event) => onChange({ ...draft, segment_id: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900"><option value="">Sem segmento</option>{segments.map((segment) => <option key={segment.id} value={segment.id}>{segment.name}</option>)}</select></AdminFormField><AdminFormField label="Inicio" controlId="marketing-campaign-start"><input type="datetime-local" value={draft.starts_at} onChange={(event) => onChange({ ...draft, starts_at: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField><AdminFormField label="Fim" controlId="marketing-campaign-end"><input type="datetime-local" value={draft.ends_at} onChange={(event) => onChange({ ...draft, ends_at: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField></div></AdminFormSection>
+  <AdminFormSection title="Governanca e relacoes"><div className="grid gap-4 md:grid-cols-3"><AdminFormField label="Prioridade" controlId="marketing-campaign-priority"><input type="number" min="0" value={draft.priority} onChange={(event) => onChange({ ...draft, priority: Number(event.target.value) })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField><AdminFormField label="Placement" controlId="marketing-campaign-placement" required><input value={draft.placements.join(', ')} onChange={(event) => onChange({ ...draft, placements: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField><AdminFormField label="Canal" controlId="marketing-campaign-channel" required><input value={draft.channels.join(', ')} onChange={(event) => onChange({ ...draft, channels: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField><AdminFormField label="Landing slug" controlId="marketing-campaign-landing"><input value={draft.landing_slug} onChange={(event) => onChange({ ...draft, landing_slug: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField><AdminFormField label="Codigo de cupom" controlId="marketing-campaign-coupon" helpText="A semantica do cupom continua pertencendo ao billing."><input value={draft.coupon_code} onChange={(event) => onChange({ ...draft, coupon_code: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField><AdminFormField label="Grupo de exclusao" controlId="marketing-campaign-exclusion"><input value={draft.mutual_exclusion_group} onChange={(event) => onChange({ ...draft, mutual_exclusion_group: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField></div></AdminFormSection>
+  <AdminSaveBar><AdminButton variant="secondary" onClick={onCancel}>Cancelar</AdminButton><AdminButton variant="primary" icon={<Save size={14} />} disabled={saving || draft.name.trim() === ''} onClick={onSave}>{saving ? 'Salvando...' : 'Salvar campanha'}</AdminButton></AdminSaveBar>
+</>;
+
+const SegmentEditor = ({ draft, saving, onChange, onCancel, onSave }: { draft: MarketingSegmentDraft; saving: boolean; onChange: (draft: MarketingSegmentDraft) => void; onCancel: () => void; onSave: () => void }) => <>
+  <AdminFormSection title="Segmento reutilizavel" description="O segmento guarda regras, nunca uma copia de dados de usuarios."><div className="grid gap-4 md:grid-cols-2"><AdminFormField label="Nome" controlId="marketing-segment-name" required><input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField><AdminFormField label="Status" controlId="marketing-segment-status"><select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as MarketingSegmentDraft['status'] })} className="h-10 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900">{['draft', 'active', 'paused', 'archived'].map((value) => <option key={value}>{value}</option>)}</select></AdminFormField><AdminFormField label="Descricao" controlId="marketing-segment-description"><textarea value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} className="min-h-24 w-full rounded-sm border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" /></AdminFormField></div><div className="mt-5 space-y-3"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Regras</h3><AdminButton type="button" variant="secondary" onClick={() => onChange({ ...draft, rules: [...draft.rules, { field: 'account_age_days', operator: 'gte', value: '0' }] })}>Adicionar regra</AdminButton></div>{draft.rules.map((rule, index) => <div key={`${rule.field}-${index}`} className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]"><select value={rule.field} onChange={(event) => onChange({ ...draft, rules: draft.rules.map((current, currentIndex) => currentIndex === index ? { ...current, field: event.target.value } : current) })} className="h-10 rounded-sm border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-900" aria-label={`Campo da regra ${index + 1}`}><option value="account_age_days">Idade da conta (dias)</option><option value="plan">Plano</option><option value="role">Perfil</option></select><select value={rule.operator} onChange={(event) => onChange({ ...draft, rules: draft.rules.map((current, currentIndex) => currentIndex === index ? { ...current, operator: event.target.value } : current) })} className="h-10 rounded-sm border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-900" aria-label={`Operador da regra ${index + 1}`}><option value="eq">igual a</option><option value="neq">diferente de</option><option value="gte">maior ou igual a</option><option value="lte">menor ou igual a</option></select><input value={rule.value} onChange={(event) => onChange({ ...draft, rules: draft.rules.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current) })} className="h-10 rounded-sm border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-900" aria-label={`Valor da regra ${index + 1}`} /><AdminButton type="button" variant="utility" disabled={draft.rules.length <= 1} onClick={() => onChange({ ...draft, rules: draft.rules.filter((_, currentIndex) => currentIndex !== index) })}>Remover</AdminButton></div>)}</div></AdminFormSection>
+  <AdminSaveBar><AdminButton variant="secondary" onClick={onCancel}>Cancelar</AdminButton><AdminButton variant="primary" icon={<Save size={14} />} disabled={saving || draft.name.trim() === ''} onClick={onSave}>{saving ? 'Salvando...' : 'Salvar segmento'}</AdminButton></AdminSaveBar>
+</>;
+
+export default AdminCampaignOperations;

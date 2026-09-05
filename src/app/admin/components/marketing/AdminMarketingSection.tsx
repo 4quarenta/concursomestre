@@ -24,6 +24,7 @@ import AdminMarketing from '../finance/AdminMarketing';
 import AdminLandingPagesManager from './AdminLandingPagesManager';
 import AdminSocialLinksManager from './AdminSocialLinksManager';
 import AdminFeaturedOrganizationsManager from './AdminFeaturedOrganizationsManager';
+import AdminCampaignOperations from './AdminCampaignOperations';
 
 interface AdminMarketingSectionProps {
   systemSettings: SystemSettings;
@@ -166,13 +167,16 @@ const AdminMarketingSection = ({
       ) : null}
 
       {activeSection === 'campaigns' ? (
-        <AdminMarketing
-          systemSettings={systemSettings}
-          updateSystemSettings={updateSystemSettings}
-          saveSystemSettingsNow={saveSystemSettingsNow}
-          forcedSection="promo"
-          hideSectionTabs
-        />
+        <div className="space-y-6">
+          <AdminCampaignOperations />
+          <AdminMarketing
+            systemSettings={systemSettings}
+            updateSystemSettings={updateSystemSettings}
+            saveSystemSettingsNow={saveSystemSettingsNow}
+            forcedSection="promo"
+            hideSectionTabs
+          />
+        </div>
       ) : null}
 
       {activeSection === 'visual-themes' ? (

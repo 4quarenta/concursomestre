@@ -236,6 +236,8 @@ export const ENDPOINTS = {
         analyticsFunnelExport: 'admin/analytics_funnel_export.php',
         analyticsSegments: 'admin/analytics_segments.php',
         analyticsSegmentsExport: 'admin/analytics_segments_export.php',
+        marketingCampaigns: 'admin/marketing_campaigns.php',
+        marketingSegments: 'admin/marketing_segments.php',
         commentsModeration: 'admin/comments_moderation.php',
         commentsModerationBulk: 'admin/comments_moderation_bulk.php',
         commentsModerationExport: 'admin/comments_moderation_export.php',
@@ -300,6 +302,7 @@ export const ENDPOINTS = {
 
     analytics: {
         track: 'analytics/track.php',
+        campaignInteraction: 'marketing/campaigns.php',
     },
 
     legalCommentary: {

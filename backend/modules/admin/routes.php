@@ -73,6 +73,9 @@ require_once __DIR__ . '/../../shared/security/AdminSecurity.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
 require_once __DIR__ . '/../../config/payment_provider.php';
 require_once __DIR__ . '/../finance/services/ReferralFinance.php';
+require_once __DIR__ . '/../../marketing/repositories/MarketingCampaignRepository.php';
+require_once __DIR__ . '/../../marketing/services/MarketingCampaignService.php';
+require_once __DIR__ . '/../../marketing/controllers/MarketingCampaignController.php';
 
 /**
  * Ponto de entrada do modulo administrativo para logs do sistema.
@@ -1441,5 +1444,93 @@ function handleAdminReferralPayoutsRoute(PDO $db): void
     } catch (Throwable $e) {
         error_log('[admin_referral_payouts_route] ' . $e->getMessage());
         Response::serverError('Nao foi possivel processar os repasses de indicacao.', $e);
+    }
+}
+
+/**
+ * CRUD operacional de campanhas persistentes. A rota exige admin completo;
+ * regras de ciclo e saneamento vivem no service, nao no navegador.
+ */
+function handleAdminMarketingCampaignsRoute(PDO $db): void
+{
+    try {
+        $context = requirePlatformAdminSessionContext($db);
+        $controller = new MarketingCampaignController(new MarketingCampaignService(new MarketingCampaignRepository($db)));
+        $adminUserId = (string) $context['admin_user_id'];
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $action = strtolower(trim((string) ($_GET['action'] ?? 'list')));
+
+        if ($method === 'GET') {
+            if ($action === 'analytics') {
+                Response::success($controller->analytics(trim((string) ($_GET['id'] ?? ''))));
+            }
+            if ($action === 'evaluate') {
+                Response::success($controller->evaluateSegment(trim((string) ($_GET['segment_id'] ?? '')), trim((string) ($_GET['user_id'] ?? '')) ?: null));
+            }
+            Response::success($controller->campaigns($_GET['search'] ?? null, $_GET['status'] ?? null));
+        }
+
+        $payload = json_decode(file_get_contents('php://input') ?: '', true);
+        if (!is_array($payload)) {
+            Response::badRequest('Payload de campanha invalido.');
+        }
+        $action = strtolower(trim((string) ($payload['action'] ?? 'save')));
+        if ($method === 'POST' && $action === 'save') {
+            $campaign = $controller->saveCampaign($payload, $adminUserId);
+            logAdminAudit($db, $adminUserId, 'marketing_campaign.save', 'marketing_campaign', (string) ($campaign['id'] ?? ''), [
+                'status' => $campaign['status'] ?? null,
+                'objective' => $campaign['objective'] ?? null,
+                'segment_id' => $campaign['segment_id'] ?? null,
+            ]);
+            Response::success($campaign, 'Campanha salva com sucesso.');
+        }
+        if ($method === 'POST' && $action === 'transition') {
+            $campaign = $controller->transition((string) ($payload['id'] ?? ''), (string) ($payload['status'] ?? ''), $adminUserId);
+            logAdminAudit($db, $adminUserId, 'marketing_campaign.transition', 'marketing_campaign', (string) ($campaign['id'] ?? ''), ['status' => $campaign['status'] ?? null]);
+            Response::success($campaign, 'Status da campanha atualizado.');
+        }
+        if ($method === 'POST' && $action === 'delete') {
+            $id = (string) ($payload['id'] ?? '');
+            $controller->delete($id);
+            logAdminAudit($db, $adminUserId, 'marketing_campaign.delete', 'marketing_campaign', $id, ['synthetic_id_required' => true]);
+            Response::success([], 'Campanha removida.');
+        }
+        Response::error('Metodo ou acao nao permitido.', 405);
+    } catch (InvalidArgumentException $e) {
+        Response::validationError($e->getMessage());
+    } catch (Throwable $e) {
+        error_log('[admin_marketing_campaigns_route] ' . $e->getMessage());
+        Response::serverError('Nao foi possivel processar a campanha.', $e);
+    }
+}
+
+/** Endpoint administrativo de segmentos persistentes e versionaveis por regras. */
+function handleAdminMarketingSegmentsRoute(PDO $db): void
+{
+    try {
+        $context = requirePlatformAdminSessionContext($db);
+        $controller = new MarketingCampaignController(new MarketingCampaignService(new MarketingCampaignRepository($db)));
+        $adminUserId = (string) $context['admin_user_id'];
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($method === 'GET') {
+            Response::success($controller->segments($_GET['search'] ?? null));
+        }
+        if ($method !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+        $payload = json_decode(file_get_contents('php://input') ?: '', true);
+        if (!is_array($payload)) {
+            Response::badRequest('Payload de segmento invalido.');
+        }
+        $segment = $controller->saveSegment($payload, $adminUserId);
+        logAdminAudit($db, $adminUserId, 'marketing_segment.save', 'marketing_segment', (string) ($segment['id'] ?? ''), [
+            'status' => $segment['status'] ?? null,
+        ]);
+        Response::success($segment, 'Segmento salvo com sucesso.');
+    } catch (InvalidArgumentException $e) {
+        Response::validationError($e->getMessage());
+    } catch (Throwable $e) {
+        error_log('[admin_marketing_segments_route] ' . $e->getMessage());
+        Response::serverError('Nao foi possivel processar o segmento.', $e);
     }
 }
