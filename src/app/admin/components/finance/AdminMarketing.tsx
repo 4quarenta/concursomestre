@@ -122,6 +122,7 @@ const createDefaultCampaignAutomation = (): MarketingCampaignAutomationRule => (
 
 const normalizePromotionDraft = (promotion: SystemSettings['activePromotion']): SystemSettings['activePromotion'] => ({
   ...promotion,
+  status: promotion.status || (promotion.isActive ? 'active' : 'paused'),
   notificationTitle: promotion.notificationTitle || promotion.name || 'Campanha ConcursoMestre',
   notificationMessage: promotion.notificationMessage || promotion.bannerText || '',
   notificationActionUrl: normalizePromotionNotificationActionUrl(promotion.notificationActionUrl, promotion),
@@ -462,6 +463,11 @@ const AdminMarketing = ({
 
   const handleSavePromotion = async () => {
     const normalizedPromotion = normalizePromotionDraft(draftPromotion);
+    if (normalizedPromotion.startsAt && normalizedPromotion.endsAt
+      && new Date(normalizedPromotion.startsAt).getTime() >= new Date(normalizedPromotion.endsAt).getTime()) {
+      addToast('A data de encerramento precisa ser posterior ao inicio da campanha.', 'warning');
+      return;
+    }
     const nextSettings = { ...systemSettings, activePromotion: normalizedPromotion };
     const saved = await persistMarketingSettings(nextSettings, 'Campanha salva com sucesso.', 'save-promotion');
 
@@ -876,7 +882,14 @@ const AdminMarketing = ({
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Configure a campanha promocional global da plataforma.</p>
               </div>
               <button
-                onClick={() => setDraftPromotion((current) => ({ ...current, isActive: !current.isActive }))}
+                onClick={() => setDraftPromotion((current) => {
+                  const isActive = !current.isActive;
+                  return {
+                    ...current,
+                    isActive,
+                    status: isActive ? (current.status === 'scheduled' ? 'scheduled' : 'active') : 'paused',
+                  };
+                })}
                 className={`rounded-sm border px-5 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
                   draftPromotion.isActive ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800'
                 }`}
@@ -901,6 +914,55 @@ const AdminMarketing = ({
                   type="text"
                   value={draftPromotion.bannerText}
                   onChange={(event) => setDraftPromotion((current) => ({ ...current, bannerText: event.target.value }))}
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Ciclo da campanha</label>
+                <select
+                  value={draftPromotion.status || (draftPromotion.isActive ? 'active' : 'paused')}
+                  onChange={(event) => {
+                    const status = event.target.value as NonNullable<SystemSettings['activePromotion']['status']>;
+                    setDraftPromotion((current) => ({
+                      ...current,
+                      status,
+                      isActive: status === 'active' || status === 'scheduled',
+                    }));
+                  }}
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
+                >
+                  <option value="draft">Rascunho</option>
+                  <option value="scheduled">Agendada</option>
+                  <option value="active">Ativa</option>
+                  <option value="paused">Pausada</option>
+                  <option value="ended">Encerrada</option>
+                  <option value="archived">Arquivada</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Inicio (opcional)</label>
+                <input
+                  type="datetime-local"
+                  value={toDateTimeLocalValue(draftPromotion.startsAt)}
+                  onChange={(event) => setDraftPromotion((current) => ({
+                    ...current,
+                    startsAt: event.target.value ? toIsoDateTimeValue(event.target.value) : null,
+                  }))}
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Encerramento (opcional)</label>
+                <input
+                  type="datetime-local"
+                  value={toDateTimeLocalValue(draftPromotion.endsAt)}
+                  onChange={(event) => setDraftPromotion((current) => ({
+                    ...current,
+                    endsAt: event.target.value ? toIsoDateTimeValue(event.target.value) : null,
+                  }))}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 />
               </div>

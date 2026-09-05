@@ -18,10 +18,22 @@
  */
 class AnalyticsTrackingValidator
 {
-    private const SAFE_METADATA_KEYS = ['mode', 'authMode', 'step', 'stage'];
+    private const SAFE_METADATA_KEYS = [
+        'mode',
+        'authMode',
+        'step',
+        'stage',
+        'campaignId',
+        'landingId',
+        'ctaId',
+        'placement',
+    ];
 
     private const ALLOWED_EVENTS = [
         'identifiable_visit',
+        'landing_view',
+        'cta_clicked',
+        'plan_selected',
         'signup_started',
         'signup_completed',
         'checkout_started',

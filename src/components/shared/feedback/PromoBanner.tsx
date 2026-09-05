@@ -13,8 +13,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { Timer, ArrowRight, X } from 'lucide-react';
-import { buildPromotionPath } from '@services/marketing/promotionCampaign';
+import { buildPromotionPath, isPromotionActiveForSlug } from '@services/marketing/promotionCampaign';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { analyticsTrackingService } from '@services/analytics/analyticsTrackingService';
 
 const PromoBanner: React.FC = () => {
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
@@ -23,7 +24,7 @@ const PromoBanner: React.FC = () => {
   const promoEnabled = systemSettings.features.landingPagePromoEnabled;
   const promotionPath = buildPromotionPath(promo);
 
-  if (!promo.isActive || !isVisible || !promoEnabled || !promotionPath) return null;
+  if (!isPromotionActiveForSlug(promo, promo.slug) || !isVisible || !promoEnabled || !promotionPath) return null;
 
   return (
     <div
@@ -37,6 +38,19 @@ const PromoBanner: React.FC = () => {
         </div>
         <Link
           href={promotionPath}
+          onClick={() => {
+            void analyticsTrackingService.trackLifecycleEvent({
+              eventName: 'cta_clicked',
+              source: 'promotion_banner',
+              utmCampaign: promo.slug,
+              metadata: {
+                campaignId: promo.slug,
+                landingId: promo.slug,
+                ctaId: 'topbar-primary',
+                placement: 'topbar',
+              },
+            });
+          }}
           className="bg-white text-slate-900 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 shadow-sm"
         >
           Aproveitar Agora <ArrowRight size={10} />

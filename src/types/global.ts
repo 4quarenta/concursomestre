@@ -882,6 +882,15 @@ export type PlanName = 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
 
 export interface Promotion {
   isActive: boolean;
+  status?: 'draft' | 'scheduled' | 'active' | 'paused' | 'ended' | 'archived';
+  objective?: string;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  frequencyCap?: number | null;
+  cooldownHours?: number | null;
+  maxImpressions?: number | null;
+  mutualExclusionGroup?: string | null;
+  suppressAfterConversion?: boolean;
   name: string;
   slug: string;
   discountPercentage: number;

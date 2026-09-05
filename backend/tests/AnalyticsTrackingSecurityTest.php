@@ -81,6 +81,22 @@ assertAnalyticsCondition(
     'Analytics must discard non-contract metadata instead of persisting arbitrary values.'
 );
 
+$service->track([
+    'eventName' => 'landing_view',
+    'source' => 'plans_landing',
+    'metadata' => [
+        'campaignId' => 'campaign-synthetic',
+        'landingId' => 'landing-synthetic',
+        'ctaId' => 'hero-primary',
+        'placement' => 'plans',
+        'paymentIntentId' => 'pi_secret',
+    ],
+], null);
+assertAnalyticsCondition(
+    ($repository->lastPayload['metadata_json'] ?? null) === '{"campaignId":"campaign-synthetic","landingId":"landing-synthetic","ctaId":"hero-primary","placement":"plans"}',
+    'Marketing analytics must retain only safe attribution metadata.'
+);
+
 try {
     $service->track(['eventName' => 'purchase_completed', 'source' => 'browser'], null);
     throw new RuntimeException('Browser analytics must not be allowed to assert a paid conversion.');

@@ -1,6 +1,6 @@
 # Macro20F Final Implementation Blueprint
 
-Status: amended for implementation, 2026-09-05
+Status: amended for M20F-02 implementation, 2026-09-05
 
 ## Package order
 
@@ -13,7 +13,7 @@ Status: amended for implementation, 2026-09-05
 7. M20F-06 - Global Safe Operations: dry-run, namespaces and destructive operations
 8. Final Macro20F regression
 
-M20F-01 is the current implementation package. M20F-02 and later packages remain deferred.
+M20F-02 is the current implementation package. M20F-03 and later packages remain deferred.
 
 ## M20F-00 - Admin Design System & UX Foundation
 
@@ -49,6 +49,12 @@ The remaining package order is fixed: M20F-02 Marketing Conversion; M20F-03 Bill
 ### M20F-02 - Marketing Conversion
 
 Marketing must explicitly connect Campaign, Audience/Segment, Rule, Offer, Benefit, Benefit Code, Landing, Email, Notification, Banner and Conversion. Campaign and Landing workflows require lifecycle, dates, activation/pause, placement, tracking, preview, publication, relation integrity, audit and reversible testability.
+
+Campaign lifecycle is represented by draft, scheduled, active, paused, ended and archived states, with an authoritative start/end window. Eligibility applies audience checks, frequency caps, cooldowns, impression limits, mutual-exclusion groups and conversion suppression before a public campaign is shown. Fixed-deadline countdowns use the configured deadline and never reset on revisit.
+
+The canonical browser funnel is landing_view -> cta_clicked -> plan_selected -> checkout_started. Paid conversion remains provider/backend-owned; the browser cannot assert subscription_activated or purchase_completed. Marketing events use the existing consent-gated first-party analytics ledger and retain only allowlisted attribution metadata. M20F-02 must not create a second billing, entitlement or analytics authority: offers, coupons and future benefits are integration boundaries to Macrostep 16 and M20F-03.
+
+The current implementation reuses the existing promotion, landing-page, offer, countdown and analytics services, adds campaign eligibility/lifecycle helpers, adds safe landing/CTA/plan-selection instrumentation and exposes lifecycle scheduling in the existing Admin campaign surface. PRELAUNCH, noindex, publication guards, consent gating, RBAC, CSRF and audit authority remain unchanged. Provider-backed billing, benefit grants, email automation and destructive global operations remain deferred to their later packages.
 
 ### M20F-03 - Billing, Entitlements & Benefits
 

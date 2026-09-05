@@ -11,12 +11,13 @@
 *
 */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { Check, ShieldCheck, Star, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { buildProfilePath } from '../profile/profileNavigation';
 import { isPromotionActiveForSlug } from '@services/marketing/promotionCampaign';
+import { analyticsTrackingService } from '@services/analytics/analyticsTrackingService';
 
 interface PromoLandingProps {
   slug?: string;
@@ -28,6 +29,35 @@ const PromoLanding: React.FC<PromoLandingProps> = ({ slug = '' }) => {
   const promo = systemSettings.activePromotion;
   const promoEnabled = systemSettings.features.landingPagePromoEnabled;
   const canShowPromotion = promoEnabled && isPromotionActiveForSlug(promo, slug);
+
+  useEffect(() => {
+    if (!canShowPromotion) return;
+
+    void analyticsTrackingService.trackLifecycleEvent({
+      eventName: 'landing_view',
+      source: 'promotion_landing',
+      utmCampaign: promo.slug,
+      metadata: {
+        campaignId: promo.slug,
+        landingId: promo.slug,
+        placement: 'promo-page',
+      },
+    });
+  }, [canShowPromotion, promo.slug]);
+
+  const trackPromoCta = (ctaId: string) => {
+    void analyticsTrackingService.trackLifecycleEvent({
+      eventName: 'cta_clicked',
+      source: 'promotion_landing',
+      utmCampaign: promo.slug,
+      metadata: {
+        campaignId: promo.slug,
+        landingId: promo.slug,
+        ctaId,
+        placement: 'promo-page',
+      },
+    });
+  };
 
   if (!canShowPromotion) {
     return (
@@ -71,7 +101,10 @@ const PromoLanding: React.FC<PromoLandingProps> = ({ slug = '' }) => {
           <div className="pt-4">
             <button
               type="button"
-              onClick={() => router.push(buildProfilePath('personal'))}
+              onClick={() => {
+                trackPromoCta('hero-primary');
+                router.push(buildProfilePath('personal'));
+              }}
               className="px-12 py-5 text-sm font-black uppercase tracking-widest text-slate-900 transition-all hover:scale-105 active:scale-95 rounded-full bg-white shadow-2xl"
             >
               Quero aproveitar {promo.discountPercentage}% off
@@ -133,7 +166,10 @@ const PromoLanding: React.FC<PromoLandingProps> = ({ slug = '' }) => {
             </p>
             <button
               type="button"
-              onClick={() => router.push(buildProfilePath('personal'))}
+              onClick={() => {
+                trackPromoCta('offer-primary');
+                router.push(buildProfilePath('personal'));
+              }}
               className="w-full rounded-2xl bg-white px-16 py-6 text-sm font-black uppercase tracking-widest text-indigo-700 shadow-xl transition-all hover:scale-105 hover:bg-slate-50 active:scale-95 md:w-auto"
             >
               Assinar com desconto

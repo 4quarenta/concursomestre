@@ -1,5 +1,6 @@
 import type { Promotion } from '@types';
 import { normalizeLandingSlug } from './landingPages';
+import { isCampaignWithinWindow } from './marketingConversion';
 
 const DEFAULT_CAMPAIGN_ACTION_URL = '/planos';
 const PRIVATE_CAMPAIGN_PATH_PREFIXES = [
@@ -18,7 +19,15 @@ export const isPromotionActiveForSlug = (promotion: Promotion | null | undefined
   const promotionSlug = normalizePromotionSlug(promotion.slug);
   const requestedSlug = normalizePromotionSlug(routeSlug);
 
-  return promotionSlug !== '' && requestedSlug !== '' && promotionSlug === requestedSlug;
+  if (promotionSlug === '' || requestedSlug === '' || promotionSlug !== requestedSlug) {
+    return false;
+  }
+
+  return isCampaignWithinWindow({
+    status: promotion.status || 'active',
+    startsAt: promotion.startsAt,
+    endsAt: promotion.endsAt,
+  });
 };
 
 export const buildPromotionPath = (promotion: Pick<Promotion, 'slug'> | null | undefined) => {

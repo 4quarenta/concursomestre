@@ -34,6 +34,18 @@ describe('promotion campaign helpers', () => {
     expect(isPromotionActiveForSlug(makePromotion({ isActive: false }), 'black-friday')).toBe(false);
   });
 
+  it('respects the campaign lifecycle and schedule on public promotion routes', () => {
+    expect(isPromotionActiveForSlug(makePromotion({ status: 'draft' }), 'black-friday')).toBe(false);
+    expect(isPromotionActiveForSlug(makePromotion({
+      status: 'active',
+      startsAt: '2999-01-01T00:00:00.000Z',
+    }), 'black-friday')).toBe(false);
+    expect(isPromotionActiveForSlug(makePromotion({
+      status: 'active',
+      endsAt: '2000-01-01T00:00:00.000Z',
+    }), 'black-friday')).toBe(false);
+  });
+
   it('builds only canonical promotion paths with a usable slug', () => {
     expect(buildPromotionPath(makePromotion({ slug: 'Black Friday 2026!' }))).toBe('/promo/black-friday-2026');
     expect(buildPromotionPath(makePromotion({ slug: '' }))).toBe('');

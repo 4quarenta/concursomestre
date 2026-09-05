@@ -15,6 +15,9 @@ import { readCookieConsent } from '@services/privacy/cookieConsent';
 
 export type LifecycleAnalyticsEventName =
   | 'identifiable_visit'
+  | 'landing_view'
+  | 'cta_clicked'
+  | 'plan_selected'
   | 'signup_started'
   | 'email_captured'
   | 'signup_completed'

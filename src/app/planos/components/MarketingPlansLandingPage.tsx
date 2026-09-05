@@ -11,7 +11,7 @@
 
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -42,6 +42,7 @@ import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedO
 import LandingSectionHeader from '../../landing/components/LandingSectionHeader';
 import { ThemeOrnaments } from '../../landing/components/ThemeOrnaments';
 import useMarketingPlansLanding from '../hooks/useMarketingPlansLanding';
+import { analyticsTrackingService } from '@services/analytics/analyticsTrackingService';
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 type PlanPricingByName = Partial<Record<PlanName, Partial<Record<BillingCycle, number>>>>;
@@ -205,6 +206,41 @@ const MarketingPlansLandingPage = ({
   ), [plans, systemSettings.coupons, systemSettings.planDetails, systemSettings.pricing]);
 
   const landingPage = landing as MarketingLandingPage | null;
+
+  useEffect(() => {
+    if (!landingPage) {
+      return;
+    }
+
+    void analyticsTrackingService.trackLifecycleEvent({
+      eventName: 'landing_view',
+      source: 'plans_landing',
+      utmCampaign: searchParams?.get('utm_campaign') || landingPage.slug,
+      metadata: {
+        landingId: landingPage.id,
+        placement: 'plans',
+      },
+    });
+  }, [landingPage, searchParams]);
+
+  const trackPlanSelection = useCallback((planId: number | null | undefined, ctaId: string) => {
+    if (!planId) {
+      return;
+    }
+
+    void analyticsTrackingService.trackLifecycleEvent({
+      eventName: 'plan_selected',
+      source: 'plans_landing',
+      planId,
+      utmCampaign: searchParams?.get('utm_campaign') || landingPage?.slug,
+      metadata: {
+        landingId: landingPage?.id,
+        ctaId,
+        placement: 'plans',
+      },
+    });
+  }, [landingPage, searchParams]);
+
   const landingPlanCards = useMemo(() => {
     if (!landingPage) {
       return [];
@@ -340,6 +376,7 @@ const MarketingPlansLandingPage = ({
               <div className="flex flex-col gap-4 sm:flex-row">
                 <a
                   href={featuredCard?.checkoutHref || appendTracking('/plans')}
+                  onClick={() => trackPlanSelection(featuredCard?.plan?.id, 'hero-primary')}
                   className={`inline-flex items-center justify-center gap-3 rounded-2xl px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-[1.01] active:scale-95 ${currentTheme.button}`}
                 >
                   {landingPage.hero.primaryCtaLabel}
@@ -528,6 +565,7 @@ const MarketingPlansLandingPage = ({
 
                   <a
                     href={card.checkoutHref}
+                    onClick={() => trackPlanSelection(card.plan?.id, `plan-${card.planName.toLowerCase()}`)}
                     className={`mt-8 inline-flex items-center justify-center gap-2 rounded-[1.6rem] px-6 py-4 text-[10px] font-black uppercase tracking-[0.18em] transition-all ${
                       card.isAvailable
                         ? (card.featured ? 'bg-white text-slate-950 hover:bg-slate-100' : `${currentTheme.button} text-white hover:opacity-90`)
