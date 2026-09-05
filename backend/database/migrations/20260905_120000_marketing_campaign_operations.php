@@ -51,9 +51,9 @@ return static function (PDO $db): void {
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
         KEY idx_marketing_campaigns_status_window (status, starts_at, ends_at),
         KEY idx_marketing_campaigns_segment_status (segment_id, status),
-        KEY idx_marketing_campaigns_priority (priority, status),
-        CONSTRAINT fk_marketing_campaign_segment FOREIGN KEY (segment_id)
-            REFERENCES marketing_segments (id) ON DELETE SET NULL ON UPDATE RESTRICT
+        KEY idx_marketing_campaigns_priority (priority, status)
+        /* Segment references are validated by MarketingCampaignService. The
+           audited migration principal intentionally has no REFERENCES grant. */
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $db->exec("CREATE TABLE IF NOT EXISTS marketing_campaign_interactions (
@@ -67,8 +67,8 @@ return static function (PDO $db): void {
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         UNIQUE KEY uq_marketing_campaign_interaction (idempotency_key),
         KEY idx_marketing_campaign_interaction_campaign_type (campaign_id, interaction_type, created_at),
-        KEY idx_marketing_campaign_interaction_user (user_id, created_at),
-        CONSTRAINT fk_marketing_campaign_interaction_campaign FOREIGN KEY (campaign_id)
-            REFERENCES marketing_campaigns (id) ON DELETE CASCADE ON UPDATE RESTRICT
+        KEY idx_marketing_campaign_interaction_user (user_id, created_at)
+        /* Interaction ownership is validated by MarketingCampaignService;
+           deletion is restricted to synthetic Macro20F identifiers there. */
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 };
