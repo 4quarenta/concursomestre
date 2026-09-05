@@ -2673,7 +2673,8 @@ class LegalCommentaryRepository
             }
         }
         if ($areaId <= 0) {
-            $areaSlug = (string) ($payload['areaSlug'] ?? 'constitucional');
+            $area = is_array($payload['area'] ?? null) ? $payload['area'] : [];
+            $areaSlug = (string) ($payload['areaSlug'] ?? $area['slug'] ?? 'constitucional');
             $areaId = $this->resolveAreaId($areaSlug);
         }
 
