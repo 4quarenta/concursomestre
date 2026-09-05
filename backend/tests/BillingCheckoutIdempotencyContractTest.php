@@ -1,12 +1,15 @@
 <?php
 
 require_once __DIR__ . '/../modules/subscriptions/validators/SubscriptionsValidator.php';
+require_once __DIR__ . '/../shared/legal/LegalDocumentVersion.php';
 
 $validator = new SubscriptionsValidator();
 
 $valid = $validator->validateStripeCheckoutPayload([
     'plan_id' => 3,
     'checkout_attempt_id' => 'attempt_12345678',
+    'checkout_adhesion_terms_accepted' => true,
+    'checkout_adhesion_terms_version' => LegalDocumentVersion::version('checkout_adhesion_terms'),
 ]);
 
 if ($valid['checkout_attempt_id'] !== 'attempt_12345678') {
