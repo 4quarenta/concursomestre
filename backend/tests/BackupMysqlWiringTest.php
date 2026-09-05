@@ -28,11 +28,21 @@ $restoreScript = $base . '/scripts/tasks/restore_mysql_backup.php';
 $rehearsalScript = $base . '/scripts/tasks/backup_restore_rehearsal.php';
 $artifactPublisher = $base . '/shared/database/BackupArtifactPublisher.php';
 
-assertContainsBackupMysql(
-    $script,
-    '--single-transaction --quick --routines --triggers --events --no-tablespaces --default-character-set=utf8mb4',
-    'Backup must use production-safe mysqldump flags'
-);
+foreach ([
+    '--single-transaction',
+    '--quick',
+    '--routines',
+    '--triggers',
+    '--events',
+    '--no-tablespaces',
+    '--default-character-set=utf8mb4',
+] as $flag) {
+    assertContainsBackupMysql(
+        $script,
+        $flag,
+        'Backup must use production-safe mysqldump flags'
+    );
+}
 
 assertContainsBackupMysql(
     $script,

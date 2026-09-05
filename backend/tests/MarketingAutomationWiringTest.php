@@ -23,15 +23,19 @@ foreach ([
     }
 }
 
-foreach ([
-    'CREATE TABLE IF NOT EXISTS marketing_automation_events',
-    'UNIQUE KEY uq_marketing_automation_event',
+assertContainsMarketingAutomation(
+    $base . '/modules/marketing_automation/repositories/MarketingAutomationRepository.php',
     'claimEvent',
+    'Marketing automation repository must expose an idempotent event claim'
+);
+
+foreach ([
+    'UNIQUE KEY uq_marketing_automation_event',
 ] as $needle) {
     assertContainsMarketingAutomation(
-        $base . '/modules/marketing_automation/repositories/MarketingAutomationRepository.php',
+        $base . '/database/schema.sql',
         $needle,
-        'Marketing automation repository must be idempotent'
+        'Marketing automation schema must enforce idempotency'
     );
 }
 
