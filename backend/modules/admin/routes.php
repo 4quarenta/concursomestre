@@ -73,9 +73,9 @@ require_once __DIR__ . '/../../shared/security/AdminSecurity.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
 require_once __DIR__ . '/../../config/payment_provider.php';
 require_once __DIR__ . '/../finance/services/ReferralFinance.php';
-require_once __DIR__ . '/../../marketing/repositories/MarketingCampaignRepository.php';
-require_once __DIR__ . '/../../marketing/services/MarketingCampaignService.php';
-require_once __DIR__ . '/../../marketing/controllers/MarketingCampaignController.php';
+require_once __DIR__ . '/../marketing/repositories/MarketingCampaignRepository.php';
+require_once __DIR__ . '/../marketing/services/MarketingCampaignService.php';
+require_once __DIR__ . '/../marketing/controllers/MarketingCampaignController.php';
 
 /**
  * Ponto de entrada do modulo administrativo para logs do sistema.
