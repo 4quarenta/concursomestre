@@ -24,6 +24,36 @@ const filtersSource = readSource('src/app/admin/components/database/FiltersManag
 const usersSource = readSource('src/app/admin/components/users/AdminUsersSection.tsx');
 
 describe('admin collection libraries', () => {
+  it('keeps the canonical design system as the composition boundary', () => {
+    const designSystemSource = readSource('src/app/admin/components/shared/AdminDesignSystem.tsx');
+
+    [
+      'AdminPrimaryAction',
+      'AdminToolbar',
+      'AdminSearch',
+      'AdminFilters',
+      'AdminSort',
+      'AdminDataTable',
+      'AdminTableColumn',
+      'AdminPagination',
+      'AdminBulkActions',
+      'AdminRowActions',
+      'AdminStatusBadge',
+      'AdminEditorShell',
+      'AdminEditorHeader',
+      'AdminFormSection',
+      'AdminSaveBar',
+      'AdminValidationSummary',
+      'AdminFeedback',
+      'AdminDangerZone',
+      'AdminFormField',
+    ].forEach((componentName) => {
+      expect(designSystemSource).toContain(`export const ${componentName}`);
+    });
+    expect(fs.existsSync(path.resolve(process.cwd(), 'src/app/admin/components/shared/AdminPageHeader.tsx'))).toBe(true);
+    expect(designSystemSource).toContain("export { default as AdminConfirmDialog } from '../ui/AdminConfirmDialog'");
+  });
+
   it('uses the same collection toolbar, table rules and pagination in every content library', () => {
     [questionSource, examSource, legalSource, blogSource, filesSource, filtersSource, usersSource].forEach((source) => {
       expect(source).toContain('AdminCollectionToolbar');

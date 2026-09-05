@@ -35,6 +35,7 @@ import {
   ADMIN_SECONDARY_BUTTON_CLASS,
 } from '../../../../components/shared/adminPanelStyles';
 import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
+import { AdminEditorShell } from '../../../../components/shared/AdminDesignSystem';
 
 const resolveQuestionId = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -343,7 +344,7 @@ const AdminQuestionEditPage = () => {
       pageTitle="Questões"
       showPageHeader={false}
     >
-      {children}
+      <AdminEditorShell>{children}</AdminEditorShell>
     </AdminStandaloneShell>
   );
 

@@ -26,6 +26,7 @@ import {
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminCollectionPagination from '../shared/AdminCollectionPagination';
 import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
+import { AdminRowActions } from '../shared/AdminDesignSystem';
 import { buildAdminUserEditPath } from '../../config/adminPageNavigationConfig';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
@@ -145,7 +146,8 @@ const AdminUsersSection = ({
                       <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{user.name}</span>
                       <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{user.email}</span>
                       <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">ID: {user.id}</span>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                      <div className="mt-1">
+                        <AdminRowActions>
                         <button
                           type="button"
                           onClick={() => onOpenProfile(String(user.id))}
@@ -169,6 +171,7 @@ const AdminUsersSection = ({
                         >
                           Lixeira
                         </button>
+                        </AdminRowActions>
                       </div>
                     </div>
                   </div>

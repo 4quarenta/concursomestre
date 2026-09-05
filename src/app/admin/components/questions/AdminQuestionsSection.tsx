@@ -25,6 +25,7 @@ import {
 import AdminCollectionActionBar from '../shared/AdminCollectionActionBar';
 import AdminCollectionPagination from '../shared/AdminCollectionPagination';
 import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
+import { AdminRowActions } from '../shared/AdminDesignSystem';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
@@ -1348,7 +1349,8 @@ const AdminQuestionsSection = ({
                     <p className="truncate font-medium text-slate-900 dark:text-slate-100">
                       {question.enunciado_clean || questionRecord.text}
                     </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                    <div className="mt-2">
+                      <AdminRowActions>
                       {questionViewPath && (
                         <>
                           <Link
@@ -1378,6 +1380,7 @@ const AdminQuestionsSection = ({
                       >
                         Lixeira
                       </button>
+                      </AdminRowActions>
                     </div>
                   </td>
 

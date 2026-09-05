@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { ADMIN_PAGE_PANEL_CLASS } from './adminPanelStyles';
+import { AdminBulkActions } from './AdminDesignSystem';
 
 interface AdminCollectionActionBarProps {
   children: React.ReactNode;
@@ -18,17 +18,7 @@ interface AdminCollectionActionBarProps {
 }
 
 const AdminCollectionActionBar = ({ children, summary }: AdminCollectionActionBarProps) => (
-  <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col gap-3 transition-colors duration-300 lg:flex-row lg:items-center lg:justify-between`}>
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-        Ações em massa
-      </span>
-      {children}
-    </div>
-    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
-      {summary}
-    </span>
-  </div>
+  <AdminBulkActions summary={summary}>{children}</AdminBulkActions>
 );
 
 export default AdminCollectionActionBar;

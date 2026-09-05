@@ -3,6 +3,7 @@ import {
   ADMIN_SURFACE_CLASS,
   ADMIN_SURFACE_HEADER_CLASS,
 } from './adminPanelStyles';
+import { AdminDataTable } from './AdminDesignSystem';
 
 interface AdminCollectionTablePanelProps {
   title: string;
@@ -22,7 +23,7 @@ const AdminCollectionTablePanel = ({
       <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </header>
-    <div className="overflow-x-auto">{children}</div>
+    <AdminDataTable label={title}>{children}</AdminDataTable>
   </section>
 );
 

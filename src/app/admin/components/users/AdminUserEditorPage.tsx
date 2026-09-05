@@ -18,6 +18,11 @@ import type { AdminUserDetailsPayload } from '@services/admin/adminService';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 import {
+  AdminEditorHeader,
+  AdminFormSection,
+  AdminFormField,
+} from '../shared/AdminDesignSystem';
+import {
   ADMIN_FIELD_CLASS,
   ADMIN_MUTED_SURFACE_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
@@ -304,10 +309,12 @@ const AdminUserEditorPage = ({
 
   return (
     <div ref={editorRef} className="space-y-5">
-      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-        <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`}>
-          <div className="flex min-w-0 items-start gap-4">
-            <button type="button" onClick={onClose} className={`${ADMIN_SECONDARY_BUTTON_CLASS} mt-0.5 h-9 w-9 justify-center p-0`}>
+      <AdminEditorHeader
+        title={title}
+        description="Dados cadastrais, papel operacional, status da conta e sinais internos do usuario."
+        leading={(
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={onClose} className={`${ADMIN_SECONDARY_BUTTON_CLASS} mt-0.5 h-9 w-9 justify-center p-0`} aria-label="Voltar para usuarios">
               <ArrowLeft size={16} />
             </button>
             {!isNew ? (
@@ -319,30 +326,21 @@ const AdminUserEditorPage = ({
                 fallbackClassName="leading-none"
               />
             ) : null}
-            <div>
-              <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{title}</h1>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Dados cadastrais, papel operacional, status da conta e sinais internos do usuario.
-              </p>
-            </div>
           </div>
-
+        )}
+        actions={(
           <button type="button" onClick={() => onSave(getCurrentForm())} disabled={isSaving} className={ADMIN_PRIMARY_BUTTON_CLASS}>
             <Save size={14} />
             {isSaving ? 'Salvando...' : isNew ? 'Criar usuario' : 'Atualizar usuario'}
           </button>
-        </div>
-      </div>
+        )}
+      />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <main className="space-y-5">
-          <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-            <div className={ADMIN_SURFACE_HEADER_CLASS}>
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Identificacao</p>
-            </div>
+          <AdminFormSection title="Identificacao">
             <div className="grid gap-4 p-5 md:grid-cols-2">
-              <div className="space-y-2">
-                <FieldLabel>Nome</FieldLabel>
+              <AdminFormField label="Nome" required>
                 <input
                   data-admin-user-field="name"
                   value={form.name}
@@ -350,9 +348,8 @@ const AdminUserEditorPage = ({
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
                   placeholder="Nome completo"
                 />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>E-mail</FieldLabel>
+              </AdminFormField>
+              <AdminFormField label="E-mail" required>
                 <input
                   data-admin-user-field="email"
                   type="email"
@@ -361,7 +358,7 @@ const AdminUserEditorPage = ({
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
                   placeholder="usuario@email.com"
                 />
-              </div>
+              </AdminFormField>
               {isNew ? (
                 <div className="space-y-2 md:col-span-2">
                   <FieldLabel>Senha temporaria</FieldLabel>
@@ -406,7 +403,7 @@ const AdminUserEditorPage = ({
                 />
               </div>
             </div>
-          </section>
+          </AdminFormSection>
 
           <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
             <div className={ADMIN_SURFACE_HEADER_CLASS}>

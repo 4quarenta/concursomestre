@@ -1,10 +1,6 @@
 import React from 'react';
-import Link from 'next/link';
-import { Plus, Search } from 'lucide-react';
+import { AdminFilters, AdminPrimaryAction, AdminSearch, AdminToolbar } from './AdminDesignSystem';
 import {
-  ADMIN_FIELD_CLASS,
-  ADMIN_PRIMARY_BUTTON_CLASS,
-  ADMIN_SURFACE_CLASS,
   ADMIN_SURFACE_HEADER_CLASS,
 } from './adminPanelStyles';
 
@@ -36,21 +32,11 @@ const AdminCollectionToolbar = ({
   actions,
 }: AdminCollectionToolbarProps) => {
   const primaryAction = primaryActionLabel ? (
-    primaryActionHref ? (
-      <Link href={primaryActionHref} prefetch={false} className={ADMIN_PRIMARY_BUTTON_CLASS}>
-        <Plus size={14} />
-        {primaryActionLabel}
-      </Link>
-    ) : (
-      <button type="button" onClick={onPrimaryAction} className={ADMIN_PRIMARY_BUTTON_CLASS}>
-        <Plus size={14} />
-        {primaryActionLabel}
-      </button>
-    )
+    <AdminPrimaryAction label={primaryActionLabel} href={primaryActionHref} onClick={onPrimaryAction} />
   ) : null;
 
   return (
-    <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+    <AdminToolbar>
       <div className={ADMIN_SURFACE_HEADER_CLASS}>
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-3">
@@ -71,23 +57,14 @@ const AdminCollectionToolbar = ({
       {(onSearchChange || actions) ? (
         <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
           {onSearchChange ? (
-            <div className="relative w-full lg:max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={15} />
-              <input
-                type="search"
-                value={searchValue || ''}
-                onChange={(event) => onSearchChange(event.target.value)}
-                placeholder={searchPlaceholder}
-                className={`${ADMIN_FIELD_CLASS} h-10 w-full pl-9 text-sm`}
-              />
-            </div>
+            <AdminSearch value={searchValue} onChange={onSearchChange} placeholder={searchPlaceholder} />
           ) : (
             <div />
           )}
-          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          {actions ? <AdminFilters>{actions}</AdminFilters> : null}
         </div>
       ) : null}
-    </div>
+    </AdminToolbar>
   );
 };
 

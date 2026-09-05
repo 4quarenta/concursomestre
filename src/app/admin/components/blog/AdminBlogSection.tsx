@@ -29,6 +29,7 @@ import {
   ADMIN_SECONDARY_BUTTON_CLASS,
 } from '../shared/adminPanelStyles';
 import AdminCollectionTablePanel from '../shared/AdminCollectionTablePanel';
+import { AdminRowActions } from '../shared/AdminDesignSystem';
 
 const PAGE_SIZE = 30;
 
@@ -185,7 +186,8 @@ const AdminBlogSection = () => {
                   <td className="max-w-md p-4">
                     <p className="truncate font-semibold text-slate-900 dark:text-slate-100">{article.title}</p>
                     <p className="mt-1 line-clamp-1 text-[11px] text-slate-500">{article.excerpt || 'Sem resumo editorial.'}</p>
-                    <div className="mt-2 flex items-center gap-2 text-[11px]">
+                    <div className="mt-2">
+                      <AdminRowActions>
                       <Link href={buildAdminBlogEditPath(article.id)} prefetch={false} className="font-medium text-sky-700 hover:underline dark:text-sky-300">Editar</Link>
                       {article.status === 'published' ? (
                         <>
@@ -197,6 +199,7 @@ const AdminBlogSection = () => {
                       ) : null}
                       <span className="text-slate-300 dark:text-slate-700">|</span>
                       <button type="button" onClick={() => setPendingArchive(article)} className="font-medium text-red-600 hover:underline dark:text-red-400">Arquivar</button>
+                      </AdminRowActions>
                     </div>
                   </td>
                   <td className="p-4 text-slate-600 dark:text-slate-300">{article.taxonomy.category.label || '-'}</td>

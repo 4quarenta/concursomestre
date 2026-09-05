@@ -242,6 +242,7 @@ describe('admin architecture', () => {
       'AdminCollectionPagination.tsx',
       'AdminCollectionTablePanel.tsx',
       'AdminCollectionToolbar.tsx',
+      'AdminDesignSystem.tsx',
       'AdminPageContent.tsx',
       'AdminPageHeader.tsx',
       'AdminPublishStateBadge.tsx',

@@ -31,6 +31,7 @@ import {
   ADMIN_SURFACE_CLASS,
 } from '../../../../components/shared/adminPanelStyles';
 import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
+import { AdminEditorShell } from '../../../../components/shared/AdminDesignSystem';
 
 const resolveUserId = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -315,7 +316,7 @@ const AdminUserEditPage = () => {
       pageTitle="Usuarios"
       showPageHeader={false}
     >
-      {children}
+      <AdminEditorShell>{children}</AdminEditorShell>
     </AdminStandaloneShell>
   );
 
