@@ -331,7 +331,7 @@ const AdminUserEditorPage = ({
         actions={(
           <button type="button" onClick={() => onSave(getCurrentForm())} disabled={isSaving} className={ADMIN_PRIMARY_BUTTON_CLASS}>
             <Save size={14} />
-            {isSaving ? 'Salvando...' : isNew ? 'Criar usuario' : 'Atualizar usuario'}
+            {isSaving ? 'Salvando...' : isNew ? 'Adicionar usuário' : 'Salvar alterações'}
           </button>
         )}
       />
@@ -340,7 +340,7 @@ const AdminUserEditorPage = ({
         <main className="space-y-5">
           <AdminFormSection title="Identificacao">
             <div className="grid gap-4 p-5 md:grid-cols-2">
-              <AdminFormField label="Nome" required>
+              <AdminFormField label="Nome" controlId="admin-user-name" required>
                 <input
                   data-admin-user-field="name"
                   value={form.name}
@@ -349,7 +349,7 @@ const AdminUserEditorPage = ({
                   placeholder="Nome completo"
                 />
               </AdminFormField>
-              <AdminFormField label="E-mail" required>
+              <AdminFormField label="E-mail" controlId="admin-user-email" required>
                 <input
                   data-admin-user-field="email"
                   type="email"
@@ -485,7 +485,7 @@ const AdminUserEditorPage = ({
               ) : null}
               <button type="button" onClick={() => onSave(getCurrentForm())} disabled={isSaving} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
                 <Save size={14} />
-                {isSaving ? 'Salvando...' : isNew ? 'Criar usuario' : 'Atualizar usuario'}
+                {isSaving ? 'Salvando...' : isNew ? 'Adicionar usuário' : 'Salvar alterações'}
               </button>
               <button type="button" onClick={onClose} className={`${ADMIN_SECONDARY_BUTTON_CLASS} w-full justify-center`}>
                 <ArrowLeft size={14} /> Voltar

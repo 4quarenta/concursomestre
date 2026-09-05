@@ -77,6 +77,7 @@ import {
   normalizePlanUsageLimits,
 } from '@constants/subscriptions/planEntitlements';
 import { buildAdminMarketplaceSellerMetrics, type AdminMarketplaceSellerMetric } from '../shared/adminMarketplaceMetrics';
+import { AdminDataTable, AdminRowActions } from '../shared/AdminDesignSystem';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import AdminMarketing from './AdminMarketing';
 import AdminFinanceAnalyticsPanel from './AdminFinanceAnalyticsPanel';
@@ -2598,7 +2599,7 @@ const AdminFinance = ({
                 </button>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <AdminDataTable label="Lista de vendedores">
               <table className="w-full min-w-[1180px] text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
                   <tr>
@@ -2639,7 +2640,7 @@ const AdminFinance = ({
                         <td className="p-4 pl-0 sm:p-6 sm:pl-0">
                           <div className="font-bold text-slate-900 dark:text-slate-100">{seller.name}</div>
                           <div className="text-[10px] text-slate-400">{seller.email}</div>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                          <AdminRowActions label={`Ações do vendedor ${seller.name}`}>
                             <button
                               type="button"
                               onClick={() => openSellerDetails(seller.id)}
@@ -2670,7 +2671,7 @@ const AdminFinance = ({
                             >
                               Produtos
                             </button>
-                          </div>
+                          </AdminRowActions>
                         </td>
                         <td className="p-4 text-center sm:p-6">
                           <span className={`inline-flex rounded-sm border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getSellerStatusBadgeClass(seller.status)}`}>
@@ -2729,7 +2730,7 @@ const AdminFinance = ({
                   )}
                 </tbody>
               </table>
-            </div>
+            </AdminDataTable>
             <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
               <span className="font-medium text-slate-500 dark:text-slate-400">Selecionados: {normalizedSelectedSellerIds.length}</span>
               <div className="flex items-center gap-2">

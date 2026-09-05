@@ -34,12 +34,20 @@ describe('admin collection libraries', () => {
       'AdminFilters',
       'AdminSort',
       'AdminDataTable',
+      'AdminTable',
+      'AdminTableHead',
+      'AdminTableBody',
+      'AdminTableRow',
+      'AdminTableCell',
+      'AdminTableSelectionCell',
+      'AdminTableStatusCell',
+      'AdminTableActionsCell',
+      'AdminTableEmptyRow',
       'AdminTableColumn',
       'AdminPagination',
       'AdminBulkActions',
       'AdminRowActions',
       'AdminStatusBadge',
-      'AdminEditorShell',
       'AdminEditorHeader',
       'AdminFormSection',
       'AdminSaveBar',
@@ -50,8 +58,23 @@ describe('admin collection libraries', () => {
     ].forEach((componentName) => {
       expect(designSystemSource).toContain(`export const ${componentName}`);
     });
+    expect(designSystemSource).toContain("export { default as AdminEditorShell } from './AdminEditorShell'");
     expect(fs.existsSync(path.resolve(process.cwd(), 'src/app/admin/components/shared/AdminPageHeader.tsx'))).toBe(true);
     expect(designSystemSource).toContain("export { default as AdminConfirmDialog } from '../ui/AdminConfirmDialog'");
+  });
+
+  it('enforces disabled navigation and form accessibility at the shared boundary', () => {
+    const designSystemSource = readSource('src/app/admin/components/shared/AdminDesignSystem.tsx');
+
+    expect(designSystemSource).toContain('if (disabled)');
+    expect(designSystemSource).toContain('disabled aria-disabled="true"');
+    expect(designSystemSource).toContain('htmlFor={controlId}');
+    expect(designSystemSource).toContain('id: controlId');
+    expect(designSystemSource).toContain("'aria-describedby': describedBy");
+    expect(designSystemSource).toContain('sm:hidden');
+    expect(designSystemSource).toContain('role="menu"');
+    expect(fs.readFileSync(path.resolve(process.cwd(), 'src/app/admin/components/shared/AdminEditorShell.tsx'), 'utf8')).toContain('beforeunload');
+    expect(fs.readFileSync(path.resolve(process.cwd(), 'src/app/admin/components/shared/AdminEditorShell.tsx'), 'utf8')).toContain('onSubmitCapture={markClean}');
   });
 
   it('uses the same collection toolbar, table rules and pagination in every content library', () => {

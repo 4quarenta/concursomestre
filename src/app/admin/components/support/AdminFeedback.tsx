@@ -25,6 +25,7 @@ import {
   isOperationalSupportThread,
   parseEditorialRequestDetails,
 } from '@services/support';
+import { AdminDataTable } from '../shared/AdminDesignSystem';
 import { useToast } from '@providers/ToastProvider';
 import {
   ADMIN_FIELD_CLASS,
@@ -457,7 +458,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        <AdminDataTable label={mode === 'threads' ? 'Solicitações de suporte' : 'Feedbacks'}>
           <table className="min-w-full table-fixed divide-y divide-slate-200 text-sm dark:divide-slate-800">
             <thead className="bg-slate-50 dark:bg-slate-950/40">
               <tr className="text-left text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
@@ -733,7 +734,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
               })}
             </tbody>
           </table>
-        </div>
+        </AdminDataTable>
       </div>
     </div>
   );

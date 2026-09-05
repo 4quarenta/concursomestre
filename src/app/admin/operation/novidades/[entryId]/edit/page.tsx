@@ -15,6 +15,7 @@ import {
 } from '@services/changelog';
 import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
 import AdminConfirmDialog from '../../../../components/ui/AdminConfirmDialog';
+import { AdminEditorShell } from '../../../../components/shared/AdminDesignSystem';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
@@ -157,6 +158,7 @@ export default function AdminChangelogEditPage() {
       pageDescription="Comunique mudanças da plataforma de forma simples e útil."
       showPageHeader={false}
     >
+      <AdminEditorShell>
       <div className="space-y-4">
         <section className={`${ADMIN_SURFACE_CLASS} p-5`}>
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -169,7 +171,7 @@ export default function AdminChangelogEditPage() {
               <Link href={returnPath} className={ADMIN_SECONDARY_BUTTON_CLASS}><ArrowLeft size={15} /> Voltar</Link>
               {draft.status === 'published' && draft.slug ? <Link href={`/novidades#${draft.slug}`} target="_blank" className={ADMIN_SECONDARY_BUTTON_CLASS}><ExternalLink size={15} /> Visualizar</Link> : null}
               <button type="button" onClick={() => void save()} disabled={saving || loading} className={ADMIN_PRIMARY_BUTTON_CLASS}>
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}{saving ? 'Salvando...' : 'Salvar'}
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}{saving ? 'Salvando...' : isNew ? 'Salvar rascunho' : 'Salvar alterações'}
               </button>
             </div>
           </div>
@@ -238,6 +240,7 @@ export default function AdminChangelogEditPage() {
           </div>
         )}
       </div>
+      </AdminEditorShell>
 
       <AdminConfirmDialog isOpen={archiveOpen} title="Arquivar novidade" description="A novidade deixará de aparecer para os usuários, mas continuará registrada no arquivo administrativo." confirmLabel="Arquivar" loading={archiving} onCancel={() => setArchiveOpen(false)} onConfirm={() => void archive()} />
     </AdminStandaloneShell>

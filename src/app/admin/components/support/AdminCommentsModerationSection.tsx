@@ -32,6 +32,7 @@ import {
   ADMIN_SURFACE_CLASS,
   ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
+import { AdminDataTable } from '../shared/AdminDesignSystem';
 
 type ModerationOrigin = 'all' | 'question' | 'material' | 'law';
 type BulkModerationAction = AdminCommentModerationStatus | '';
@@ -451,7 +452,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
           </p>
         </div>
 
-        <div className="overflow-x-auto">
+        <AdminDataTable label="Fila de comentários">
           <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
             <colgroup>
               <col className="w-[48px]" />
@@ -580,7 +581,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
               })}
             </tbody>
           </table>
-        </div>
+        </AdminDataTable>
 
         <div className="flex flex-col gap-3 border-t border-slate-300 p-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-slate-500 dark:text-slate-400">

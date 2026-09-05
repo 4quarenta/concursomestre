@@ -30,6 +30,7 @@ import {
 } from '@services/blog';
 import AdminConfirmDialog from '../../../../components/ui/AdminConfirmDialog';
 import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
+import { AdminEditorShell } from '../../../../components/shared/AdminDesignSystem';
 import { SmartTagSelector } from '../../../../components/database/SmartTagSelector';
 import {
   ADMIN_FIELD_CLASS,
@@ -282,6 +283,7 @@ const AdminBlogEditPage = () => {
       pageDescription="Conteúdo editorial, publicação e SEO do blog."
       showPageHeader={false}
     >
+      <AdminEditorShell>
       <div className="space-y-4">
         <section className={`${ADMIN_SURFACE_CLASS} p-5`}>
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -303,7 +305,7 @@ const AdminBlogEditPage = () => {
               ) : null}
               <button type="button" onClick={() => void save()} disabled={saving || loading} className={ADMIN_PRIMARY_BUTTON_CLASS}>
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {saving ? 'Salvando...' : 'Salvar post'}
+                {saving ? 'Salvando...' : isNewArticle ? 'Salvar rascunho' : 'Salvar alterações'}
               </button>
             </div>
           </div>
@@ -496,7 +498,7 @@ const AdminBlogEditPage = () => {
               <section className={`${ADMIN_SURFACE_CLASS} space-y-2 p-5`}>
                 <button type="button" onClick={() => void save()} disabled={saving} className={`w-full justify-center ${ADMIN_PRIMARY_BUTTON_CLASS}`}>
                   {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  {saving ? 'Salvando...' : 'Salvar post'}
+                  {saving ? 'Salvando...' : isNewArticle ? 'Salvar rascunho' : 'Salvar alterações'}
                 </button>
                 {draft.id ? (
                   <button type="button" onClick={() => setArchiveOpen(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30">
@@ -508,6 +510,7 @@ const AdminBlogEditPage = () => {
           </div>
         )}
       </div>
+      </AdminEditorShell>
 
       <AdminConfirmDialog
         isOpen={archiveOpen}

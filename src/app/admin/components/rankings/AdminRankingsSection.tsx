@@ -14,6 +14,7 @@ import type { Ranking } from '@types';
 import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
+import { AdminDataTable, AdminRowActions } from '../shared/AdminDesignSystem';
 
 interface AdminRankingsSectionProps {
   rankings: Ranking[];
@@ -52,7 +53,7 @@ const AdminRankingsSection = ({
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Rankings publicados</p>
         </div>
-        <div className="overflow-x-auto">
+        <AdminDataTable label="Rankings publicados">
           <table className="w-full min-w-[900px] text-left text-xs">
             <thead className="border-b border-slate-100 bg-slate-50 font-bold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
               <tr>
@@ -70,7 +71,7 @@ const AdminRankingsSection = ({
                     <div className="flex flex-col">
                       <span className="font-bold text-slate-900 dark:text-slate-100">{ranking.name}</span>
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">{new Date(ranking.createdAt).toLocaleDateString()}</span>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                      <AdminRowActions>
                         <button
                           type="button"
                           onClick={() => onEdit(ranking)}
@@ -78,7 +79,7 @@ const AdminRankingsSection = ({
                         >
                           Editar
                         </button>
-                      </div>
+                      </AdminRowActions>
                     </div>
                   </td>
                   <td className="p-4 font-bold text-slate-700 dark:text-slate-300">{ranking.institution}</td>
@@ -103,7 +104,7 @@ const AdminRankingsSection = ({
               )}
             </tbody>
           </table>
-        </div>
+        </AdminDataTable>
       </div>
     </div>
   );

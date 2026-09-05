@@ -23,7 +23,6 @@ import {
   Plus,
   Rocket,
   Save,
-  Search,
   Trash2,
 } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
@@ -53,6 +52,7 @@ import {
   ADMIN_SURFACE_CLASS,
   ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
+import { AdminButton, AdminDataTable, AdminFilters, AdminPrimaryAction, AdminRowActions, AdminSearch, AdminToolbar } from '../shared/AdminDesignSystem';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 interface AdminLandingPagesManagerProps {
@@ -489,7 +489,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
       />
 
       {screen === 'list' ? (
-        <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+        <AdminToolbar className="overflow-hidden">
           <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
             <div>
               <div className="flex flex-wrap items-center gap-3">
@@ -497,31 +497,17 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                   <FileText size={18} className="text-sky-700 dark:text-sky-300" />
                   Landing pages
                 </h3>
-                <Link
-                  href={buildAdminLandingPageEditPath('new')}
-                  className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-3 py-1.5 text-[10px] uppercase tracking-[0.18em]`}
-                >
-                  <Plus size={13} />
-                  Adicionar nova
-                </Link>
+                <AdminPrimaryAction label="Adicionar nova" href={buildAdminLandingPageEditPath('new')} />
               </div>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                 Gerencie paginas comerciais publicadas, rascunhos, slugs e campanhas no mesmo padrao operacional do WordPress.
               </p>
             </div>
-            <div className="relative w-full lg:max-w-xs">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={landingSearch}
-                onChange={(event) => setLandingSearch(event.target.value)}
-                className={`${ADMIN_FIELD_CLASS} w-full pl-9`}
-                placeholder="Buscar landing..."
-              />
-            </div>
+            <AdminSearch value={landingSearch} onChange={setLandingSearch} placeholder="Buscar landing..." label="Buscar landing pages" />
           </div>
 
           <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+            <AdminFilters label="Status das landing pages">
               {[
                 { key: 'all' as const, label: 'Todas', count: landingCounts.all },
                 { key: 'published' as const, label: 'Publicadas', count: landingCounts.published },
@@ -539,7 +525,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                   {item.label} <span className="text-slate-400">({item.count})</span>
                 </button>
               ))}
-            </div>
+            </AdminFilters>
           </div>
 
           <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
@@ -554,21 +540,14 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                 <option value="draft">Mover para rascunho</option>
                 <option value="delete">Excluir</option>
               </select>
-              <button
-                type="button"
-                onClick={() => void handleApplyBulkAction()}
-                disabled={isSaving || selectedLandingIds.size === 0}
-                className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                Aplicar
-              </button>
+              <AdminButton type="button" variant="secondary" onClick={() => void handleApplyBulkAction()} disabled={isSaving || selectedLandingIds.size === 0}>Aplicar</AdminButton>
             </div>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
               {filteredLandingPages.length} item(ns)
             </p>
           </div>
 
-          <div className="overflow-x-auto">
+          <AdminDataTable label="Lista de landing pages">
             <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40">
                 <tr className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
@@ -620,31 +599,26 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                         <p className="mt-1 line-clamp-2 max-w-xl text-xs font-medium text-slate-500 dark:text-slate-400">
                           {page.hero.title}
                         </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                        <AdminRowActions label={`Ações da landing ${page.title}`}>
                           <Link href={buildAdminLandingPageEditPath(page.id)} className="text-sky-700 hover:underline dark:text-sky-300">
                             Editar
                           </Link>
-                          <span className="text-slate-300">|</span>
                           <button type="button" onClick={() => void handleToggleLandingStatus(page)} className="text-sky-700 hover:underline dark:text-sky-300">
                             {page.status === 'published' ? 'Despublicar' : 'Publicar'}
                           </button>
-                          <span className="text-slate-300">|</span>
                           <button type="button" onClick={() => void handleDuplicateLanding(page)} className="text-sky-700 hover:underline dark:text-sky-300">
                             Duplicar
                           </button>
-                          <span className="text-slate-300">|</span>
                           <a href={previewPath} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline dark:text-sky-300">
                             Preview
                           </a>
-                          <span className="text-slate-300">|</span>
                           <a href={landingPath} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline dark:text-sky-300">
                             Ver
                           </a>
-                          <span className="text-slate-300">|</span>
                           <button type="button" onClick={() => setPendingDelete(page)} className="text-rose-600 hover:underline dark:text-rose-300">
                             Excluir
                           </button>
-                        </div>
+                        </AdminRowActions>
                       </td>
                       <td className="px-4 py-4 font-mono text-xs text-slate-600 dark:text-slate-300">/{page.slug}</td>
                       <td className="px-4 py-4">
@@ -667,8 +641,8 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                 })}
               </tbody>
             </table>
-          </div>
-        </div>
+          </AdminDataTable>
+        </AdminToolbar>
       ) : (
       <div className={editorOnly ? 'grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]' : 'grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]'}>
         {!editorOnly ? (
@@ -1177,7 +1151,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                     className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-10 justify-center`}
                   >
                     <Save size={14} />
-                    Salvar alteracoes
+                    Salvar alterações
                   </button>
                   <button
                     type="button"

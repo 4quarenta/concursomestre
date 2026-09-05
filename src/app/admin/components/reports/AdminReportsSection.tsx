@@ -14,6 +14,7 @@ import { AlertTriangle, CheckCircle2, Image as ImageIcon, Shield } from 'lucide-
 import type { ErrorReport } from '@types';
 import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import { AdminDataTable, AdminRowActions } from '../shared/AdminDesignSystem';
 import type { GroupedReport } from './reportModeration';
 
 const REPORTS_PAGE_SIZE = 10;
@@ -75,7 +76,7 @@ const AdminReportsSection = ({
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Fila de denúncias</p>
         </div>
 
-        <div className="overflow-x-auto">
+        <AdminDataTable label="Fila de denúncias">
           <table className="w-full min-w-[980px] text-left text-xs">
             <thead className="border-b border-slate-100 bg-slate-50 font-bold uppercase text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
               <tr>
@@ -139,7 +140,7 @@ const AdminReportsSection = ({
                     )}
                   </td>
                   <td className="p-4">
-                    <div className="flex justify-center gap-2">
+                    <AdminRowActions label="Ações da denúncia">
                       <button
                         type="button"
                         onClick={() => onInspect(group)}
@@ -154,7 +155,7 @@ const AdminReportsSection = ({
                       >
                         <CheckCircle2 size={14} /> Resolver
                       </button>
-                    </div>
+                    </AdminRowActions>
                   </td>
                 </tr>
               ))}
@@ -168,7 +169,7 @@ const AdminReportsSection = ({
               ) : null}
             </tbody>
           </table>
-        </div>
+        </AdminDataTable>
 
         {reports.length > REPORTS_PAGE_SIZE ? (
           <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-xs font-bold text-slate-500 dark:border-slate-800 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">

@@ -28,6 +28,7 @@ import {
   ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
+import { AdminFormSection } from '../shared/AdminDesignSystem';
 import { SmartTagSelector } from '../database/SmartTagSelector';
 
 interface AdminExamEditorPageProps {
@@ -74,17 +75,7 @@ type ExternalExamNoticeMetadata = ExtractedExamNoticeAiResult & {
 };
 
 const EditorPanel = ({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) => (
-  <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-    <div className={ADMIN_SURFACE_HEADER_CLASS}>
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-        {description ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
-        ) : null}
-      </div>
-    </div>
-    <div className="p-5">{children}</div>
-  </section>
+  <AdminFormSection title={title} description={description}>{children}</AdminFormSection>
 );
 
 const MetaBox = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -2278,7 +2269,7 @@ const AdminExamEditorPage = ({
     ? 'Programar prova'
     : isNew
       ? 'Publicar prova'
-      : 'Atualizar prova';
+      : 'Salvar alterações';
 
   const selectedAgencyId = findSelectedTaxonomyId(agencyOptions, draft.bancaId, draft.bancaSigla, draft.bancaNome);
   const selectedAgency = agencyOptions.find((item) => String(item.id || '') === selectedAgencyId) || null;

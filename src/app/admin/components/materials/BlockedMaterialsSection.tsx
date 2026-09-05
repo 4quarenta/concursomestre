@@ -13,6 +13,7 @@ import React from 'react';
 import { ShieldAlert } from 'lucide-react';
 import type { Material } from '@types';
 import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import { AdminButton, AdminDataTable, AdminRowActions } from '../shared/AdminDesignSystem';
 
 interface BlockedMaterialsSectionProps {
   materials: Material[];
@@ -28,6 +29,7 @@ const BlockedMaterialsSection = ({
       <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex items-center gap-2 text-red-700 dark:text-red-400`}>
         <ShieldAlert size={16} /> Materiais Bloqueados / Rejeitados
       </div>
+      <AdminDataTable label="Materiais bloqueados">
       <table className="w-full text-left text-xs">
         <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
           <tr>
@@ -46,13 +48,9 @@ const BlockedMaterialsSection = ({
                 {material.rejectionReason || 'Sem motivo registrado'}
               </td>
               <td className="p-4 text-center">
-                <button
-                  type="button"
-                  onClick={() => onReanalyze(material)}
-                  className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 font-bold uppercase text-[10px] transition-colors"
-                >
-                  Reanalisar
-                </button>
+                <AdminRowActions label={`Ações do material ${material.title}`}>
+                  <AdminButton type="button" variant="secondary" onClick={() => onReanalyze(material)}>Reanalisar</AdminButton>
+                </AdminRowActions>
               </td>
             </tr>
           ))}
@@ -65,6 +63,7 @@ const BlockedMaterialsSection = ({
           )}
         </tbody>
       </table>
+      </AdminDataTable>
     </div>
   );
 };

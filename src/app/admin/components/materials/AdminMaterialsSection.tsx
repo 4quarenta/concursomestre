@@ -16,6 +16,7 @@ import { buildMaterialAccessEndpoint, openAuthenticatedFile } from '@services/ap
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import { AdminDataTable, AdminRowActions } from '../shared/AdminDesignSystem';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 
 interface AdminMaterialsSectionProps {
@@ -91,7 +92,7 @@ const AdminMaterialsSection = ({
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Materiais do marketplace</p>
           </div>
 
-          <div className="overflow-x-auto">
+          <AdminDataTable label="Materiais do marketplace">
             <table className="w-full min-w-[980px] text-left text-xs">
               <thead className="border-b border-slate-100 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
                 <tr>
@@ -108,7 +109,7 @@ const AdminMaterialsSection = ({
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-900 dark:text-slate-100">{material.title}</span>
                         <span className="text-[10px] text-slate-400 dark:text-slate-500">{material.subject}</span>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                        <AdminRowActions>
                           <button
                             type="button"
                             onClick={() => onModerate(material)}
@@ -141,7 +142,7 @@ const AdminMaterialsSection = ({
                           >
                             Lixeira
                           </button>
-                        </div>
+                        </AdminRowActions>
                       </div>
                     </td>
                     <td className="p-4">
@@ -176,7 +177,7 @@ const AdminMaterialsSection = ({
                 ) : null}
               </tbody>
             </table>
-          </div>
+          </AdminDataTable>
         </div>
       </div>
     </>

@@ -5,7 +5,7 @@ Status: amended for implementation, 2026-09-05
 ## Package order
 
 1. M20F-00 - Admin Design System & UX Foundation
-2. M20F-01 - Editor Foundation
+2. M20F-01 - Admin Surface Rollout & Editor Foundation
 3. M20F-02 - Marketing Conversion
 4. M20F-03 - Billing, Entitlements & Benefits
 5. M20F-04 - Support & Moderation, including Support Compensation
@@ -13,7 +13,7 @@ Status: amended for implementation, 2026-09-05
 7. M20F-06 - Global Safe Operations: dry-run, namespaces and destructive operations
 8. Final Macro20F regression
 
-Only M20F-00 is authorized in the current implementation run.
+M20F-01 is the current implementation package. M20F-02 and later packages remain deferred.
 
 ## M20F-00 - Admin Design System & UX Foundation
 
@@ -38,9 +38,13 @@ Standardization is achieved through reusable components plus domain configuratio
 
 ## Future package requirements
 
-### M20F-01 - Editor Foundation
+### M20F-01 - Admin Surface Rollout & Editor Foundation
 
-Extend the M20F-00 editor shell and form primitives across domain editors, preserving publication, visibility, RBAC, CSRF, audit and persistence authority. Do not create page-specific save or feedback semantics.
+Roll out the M20F-00 system across all comparable Admin list and editor surfaces. The Admin should have WordPress Admin's operational predictability without copying its visual identity. Standardization must use canonical components plus domain configuration/data, never copied page JSX. Comparable lists share header, primary action, status tabs, bulk actions, filters, search, sort, results, row actions, pagination, result count and loading/empty/error states; actions use the order edit, view/preview, duplicate, archive/trash and delete, with destructive actions last and mobile overflow menus. Buttons use PRIMARY, SECONDARY, UTILITY/GHOST and DESTRUCTIVE variants.
+
+Harden the shared disabled-action, form-field association, table-primitive, status, feedback, confirmation, editor-shell, save-bar, validation, dirty-state and navigation-away contracts. All current editable surfaces use the same editor interaction language, including question, exam, blog, novidade, law, user and landing page editors. Preserve publication, visibility, RBAC, CSRF, audit, persistence and domain authority. Require 100% comparable-list and editable-surface standardization, zero unjustified exceptions, no duplicate save submissions, mobile/accessibility acceptance and no behavior regression.
+
+The remaining package order is fixed: M20F-02 Marketing Conversion; M20F-03 Billing, Entitlements & Benefits; M20F-04 Support & Moderation including Support Compensation; M20F-05 Provider-safe Import & Collector; M20F-06 Global Safe Operations; then final Macro20F regression. M20F-03 must keep paid subscription state separate from effective access, use one Benefit Service for manual, campaign, redemption, support and level rewards, support billing extensions and temporary access without mutating a paid Stripe plan, enforce exclusive codes and audit/idempotency, and exercise the exhaustive billing state-transition matrix with no double charge, duplicate grant, webhook-order dependence or provider drift. M20F-04 must use that same Benefit Service for controlled compensation. M20F-05 must provide sandbox/mock provider boundaries and preserve canonical/provider identity separation. M20F-06 must provide dry-run, namespaces, preview, scoped confirmation, audit and recovery for destructive operations.
 
 ### M20F-02 - Marketing Conversion
 

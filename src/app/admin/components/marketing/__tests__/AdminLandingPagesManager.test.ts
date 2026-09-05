@@ -15,7 +15,7 @@ describe('admin landing pages manager', () => {
 
   it('uses the canonical editor layout with a publication sidebar', () => {
     expect(source).toContain("xl:grid-cols-[minmax(0,1fr)_320px]");
-    expect(source).toContain('Salvar alteracoes');
+    expect(source).toContain('Salvar alterações');
     expect(source).toContain('Excluir landing');
     expect(source).toContain('xl:sticky xl:top-6');
   });

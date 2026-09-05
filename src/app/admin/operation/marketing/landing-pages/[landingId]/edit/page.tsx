@@ -19,6 +19,7 @@ import { canAccessAdminPanel } from '@services/auth';
 import { useSystemSettingsActions } from '@/state/app-config/useSystemSettingsActions';
 import AdminLandingPagesManager from '../../../../../components/marketing/AdminLandingPagesManager';
 import AdminStandaloneShell from '../../../../../components/shared/AdminStandaloneShell';
+import { AdminEditorShell } from '../../../../../components/shared/AdminDesignSystem';
 import { buildAdminLandingPageEditPath, buildAdminPath } from '../../../../../config/adminPageNavigationConfig';
 import RouteContentSkeleton from '@/components/shared/feedback/RouteContentSkeleton';
 
@@ -57,7 +58,7 @@ const AdminLandingPageEditRoute = () => {
       pageTitle="Landing Pages"
       showPageHeader={false}
     >
-      {children}
+      <AdminEditorShell>{children}</AdminEditorShell>
     </AdminStandaloneShell>
   );
 

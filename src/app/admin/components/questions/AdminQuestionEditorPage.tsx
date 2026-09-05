@@ -44,6 +44,7 @@ import {
   ADMIN_TEXTAREA_CLASS,
 } from '../shared/adminPanelStyles';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
+import { AdminEditorHeader } from '../shared/AdminDesignSystem';
 
 interface AdminQuestionEditorPageProps {
   manualQ: ManualQuestionState;
@@ -881,8 +882,8 @@ const AdminQuestionEditorPage = ({
 
   const publishActionLabel = publishState === 'scheduled'
     ? 'Programar questão'
-    : editingQuestion
-      ? 'Atualizar questão'
+      : editingQuestion
+      ? 'Salvar alterações'
       : 'Publicar questão';
   const questionAssets = manualQ.assets || [];
   const getAssetImageUrl = (assetId: string) => {
@@ -899,20 +900,15 @@ const AdminQuestionEditorPage = ({
               <span>{imageUploadError}</span>
             </div>
           ) : null}
-          <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-            <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
-              <div>
-                <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{manualTitle}</h1>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Estruture o conteúdo, contexto editorial e sinais de publicação da questão.
-                </p>
-              </div>
-
+          <AdminEditorHeader
+            title={manualTitle}
+            description="Estruture o conteúdo, contexto editorial e sinais de publicação da questão."
+            actions={(
               <button type="button" onClick={onClose} className={ADMIN_SECONDARY_BUTTON_CLASS}>
                 Voltar
               </button>
-            </div>
-          </div>
+            )}
+          />
 
           {reportContext ? (
             <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>

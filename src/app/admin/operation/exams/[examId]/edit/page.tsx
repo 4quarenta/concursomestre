@@ -27,6 +27,7 @@ import { useSystemSettingsActions } from '@/state/app-config/useSystemSettingsAc
 import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
 import AdminExamEditorPage from '../../../../components/exams/AdminExamEditorPage';
 import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
+import { AdminEditorShell } from '../../../../components/shared/AdminDesignSystem';
 import { createDraftFromProva, createEmptyExamDraft, type ExamDraftState } from '../../../../components/exams/useAdminExamBankWorkflow';
 import {
   formatProvaLabel,
@@ -786,7 +787,7 @@ const AdminExamEditPage = () => {
       pageTitle="Banco de provas"
       showPageHeader={false}
     >
-      {children}
+      <AdminEditorShell>{children}</AdminEditorShell>
     </AdminStandaloneShell>
   );
 

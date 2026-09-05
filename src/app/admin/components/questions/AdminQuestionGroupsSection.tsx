@@ -30,6 +30,7 @@ import {
   ADMIN_TEXTAREA_CLASS,
 } from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import { AdminDataTable } from '../shared/AdminDesignSystem';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 import {
   buildQuestionImageMarker,
@@ -613,6 +614,7 @@ const AdminQuestionGroupsSection = () => {
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Biblioteca de contextos</p>
         </div>
+        <AdminDataTable label="Biblioteca de contextos">
         <table className="w-full min-w-[1020px] table-fixed border-separate border-spacing-0 text-left text-sm">
           <thead className="bg-slate-100 text-xs font-semibold uppercase text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
             <tr>
@@ -721,6 +723,7 @@ const AdminQuestionGroupsSection = () => {
             )}
           </tbody>
         </table>
+        </AdminDataTable>
       </div>
 
       {editorModal}

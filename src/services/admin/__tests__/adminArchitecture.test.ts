@@ -243,6 +243,7 @@ describe('admin architecture', () => {
       'AdminCollectionTablePanel.tsx',
       'AdminCollectionToolbar.tsx',
       'AdminDesignSystem.tsx',
+      'AdminEditorShell.tsx',
       'AdminPageContent.tsx',
       'AdminPageHeader.tsx',
       'AdminPublishStateBadge.tsx',
@@ -252,6 +253,7 @@ describe('admin architecture', () => {
       'NotificationDropdown.tsx',
       'adminMarketplaceMetrics.ts',
       'adminPanelStyles.ts',
+      'adminSurfaceCoverage.ts',
       'useAdminPageController.tsx',
     ]);
   });

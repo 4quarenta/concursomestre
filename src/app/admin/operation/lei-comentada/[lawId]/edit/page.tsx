@@ -81,6 +81,7 @@ import {
   ADMIN_TEXTAREA_CLASS,
 } from '../../../../components/shared/adminPanelStyles';
 import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
+import { AdminEditorShell } from '../../../../components/shared/AdminDesignSystem';
 import { buildAdminLawEditPath } from '../../../../config/adminPageNavigationConfig';
 import {
   AI_KIND_LABEL,
@@ -217,7 +218,7 @@ const AdminLegalCommentaryEditPage = () => {
       pageTitle="Lei Comentada"
       showPageHeader={false}
     >
-      {children}
+      <AdminEditorShell>{children}</AdminEditorShell>
     </AdminStandaloneShell>
   );
 
