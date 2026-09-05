@@ -54,7 +54,7 @@ export const resolveApiResourceUrl = (resource: string): string => {
         return resource;
     }
 
-    const normalizedResource = resource.replace(/^\/+/, '');
+    const normalizedResource = normalizeUploadPrefix(resource.replace(/^\/+/, ''));
     const backendRoot = resolveBackendRoot();
 
     if (normalizedResource.startsWith('uploads/')) {
@@ -324,7 +324,15 @@ const stripBackendPathPrefix = (resource: string, backendRoot: string): string =
         cleanResource = cleanResource.slice(uploadsIndex + 1);
     }
 
-    return `${cleanResource}${suffix}`;
+    return `${normalizeUploadPrefix(cleanResource)}${suffix}`;
+};
+
+const normalizeUploadPrefix = (resource: string): string => {
+    let normalized = resource;
+    while (normalized.startsWith('uploads/uploads/')) {
+        normalized = normalized.slice('uploads/'.length);
+    }
+    return normalized;
 };
 
 /**
