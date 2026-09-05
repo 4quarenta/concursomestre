@@ -500,6 +500,8 @@ function billingValidationCreateActiveInlineSubscription(
         'billing_mode' => 'single_installment',
         'installment_count' => 1,
         'checkout_attempt_id' => 'billing_validation_' . billingValidationMakeRunSuffix(),
+        'checkout_adhesion_terms_accepted' => true,
+        'checkout_adhesion_terms_version' => LegalDocumentVersion::version('checkout_adhesion_terms'),
     ], $payloadOverrides);
 
     $creation = $service->createStripeInlineSubscription($userId, $payload);
@@ -839,6 +841,7 @@ function billingValidationCleanupUserArtifacts(PDO $db, string $userId): void
         'DELETE FROM transactions WHERE user_id = :user_id',
         'DELETE FROM user_cards WHERE user_id = :user_id',
         'DELETE FROM user_subscriptions WHERE user_id = :user_id',
+        'DELETE FROM legal_document_acceptances WHERE user_id = :user_id',
         'DELETE FROM addresses WHERE user_id = :user_id',
         'DELETE FROM users WHERE id = :user_id',
     ] as $sql) {
