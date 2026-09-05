@@ -660,6 +660,8 @@ function billingValidationRunBillingStrategyScenarios(PDO $db, SubscriptionsServ
             'installment_count' => 1,
             'coupon_code' => (string) ($couponPayload[1]['code'] ?? ''),
             'checkout_attempt_id' => 'billing_validation_' . billingValidationMakeRunSuffix(),
+            'checkout_adhesion_terms_accepted' => true,
+            'checkout_adhesion_terms_version' => LegalDocumentVersion::version('checkout_adhesion_terms'),
         ]);
         $latestLocalSubscription = billingValidationFindLatestSubscriptionByUser($db, $upgradeUserId);
         $localCreditTransactions = billingValidationFindPlanTransactions($db, $upgradeUserId);

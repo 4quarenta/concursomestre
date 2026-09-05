@@ -203,7 +203,16 @@ function billingValidationCreateTestPlan(
 function billingValidationCreateTestUser(PDO $db, string $suffix): array
 {
     $userId = 'billing-e2e-' . $suffix;
-    $email = "billing-e2e-{$suffix}@example.com";
+    $testMailbox = trim((string) getenv('BILLING_E2E_TEST_EMAIL'));
+    if ($testMailbox === '') {
+        $testMailbox = trim((string) getenv('SMOKE_AUTH_EMAIL'));
+    }
+    if (filter_var($testMailbox, FILTER_VALIDATE_EMAIL)) {
+        [$mailboxLocal, $mailboxDomain] = explode('@', $testMailbox, 2);
+        $email = $mailboxLocal . '+billing-e2e-' . $suffix . '@' . $mailboxDomain;
+    } else {
+        $email = "billing-e2e-{$suffix}@concursomestre.com";
+    }
     $name = 'Billing E2E ' . strtoupper($suffix);
     $cpfDigits = substr(str_pad((string) (abs(crc32($suffix)) % 100000000000), 11, '0', STR_PAD_LEFT), 0, 11);
     $cpf = substr($cpfDigits, 0, 3) . '.'
