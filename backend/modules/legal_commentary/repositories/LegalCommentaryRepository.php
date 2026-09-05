@@ -513,14 +513,22 @@ class LegalCommentaryRepository
         return array_slice($results, 0, 40);
     }
 
-    public function fetchLawDetail(string $identifier, ?string $userId = null, bool $incrementAccess = false): ?array
+    public function fetchLawDetail(
+        string $identifier,
+        ?string $userId = null,
+        bool $incrementAccess = false,
+        bool $publicOnly = true
+    ): ?array
     {
         $this->assertSchemaReady();
 
+        $visibilityClause = $publicOnly
+            ? " AND (l.status IN ('active', 'published') OR (l.status = 'scheduled' AND l.published_at IS NOT NULL AND l.published_at <= NOW()))"
+            : '';
         $stmt = $this->db->prepare(
             $this->lawStatsSql() . "
-             WHERE l.slug = :identifier
-                OR l.id = :numeric_id
+             WHERE (l.slug = :identifier OR l.id = :numeric_id)
+               $visibilityClause
              " . $this->lawStatsGroupBySql() . "
               LIMIT 1"
         );

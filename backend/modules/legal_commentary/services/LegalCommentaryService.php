@@ -64,10 +64,15 @@ class LegalCommentaryService
         return $this->repository->search($query, $userId);
     }
 
-    public function detail(string $identifier, ?string $userId = null, bool $incrementAccess = false): array
+    public function detail(
+        string $identifier,
+        ?string $userId = null,
+        bool $incrementAccess = false,
+        bool $publicOnly = true
+    ): array
     {
-        $detail = $this->repository->fetchLawDetail($identifier, $userId, $incrementAccess);
-        if (!$detail || !$this->isPubliclyVisibleLaw($detail)) {
+        $detail = $this->repository->fetchLawDetail($identifier, $userId, $incrementAccess, $publicOnly);
+        if (!$detail || ($publicOnly && !$this->isPubliclyVisibleLaw($detail))) {
             throw new RuntimeException('Lei nao encontrada.', 404);
         }
 
@@ -335,7 +340,7 @@ class LegalCommentaryService
     public function adminDetail(string $identifier): array
     {
         return [
-            'law' => $this->detail($identifier, null, false),
+            'law' => $this->detail($identifier, null, false, false),
             'areas' => $this->repository->fetchHome(null)['areas'],
         ];
     }
