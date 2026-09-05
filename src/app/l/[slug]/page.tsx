@@ -9,17 +9,41 @@ type LandingCampaignRouteParams = {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<LandingCampaignRouteParams>;
+  searchParams: Promise<{ preview?: string }>;
 }): Promise<Metadata> {
   const { slug = '' } = await params;
+  const { preview = '' } = await searchParams;
+  if (String(preview).trim() !== '') {
+    return {
+      title: 'Preview administrativo | ConcursoMestre',
+      robots: {
+        index: false,
+        follow: false,
+        googleBot: {
+          index: false,
+          follow: false,
+        },
+      },
+    };
+  }
+
   return buildMarketingLandingMetadata(slug);
 }
 
-export default async function LandingCampaignRoute({ params }: { params: Promise<LandingCampaignRouteParams> }) {
+export default async function LandingCampaignRoute({
+  params,
+  searchParams,
+}: {
+  params: Promise<LandingCampaignRouteParams>;
+  searchParams: Promise<{ preview?: string }>;
+}) {
   const { slug = '' } = await params;
+  const { preview = '' } = await searchParams;
   const { landing } = await resolvePublishedMarketingLandingForSeo(slug);
-  if (!landing) {
+  if (!landing && String(preview).trim() === '') {
     notFound();
   }
 
