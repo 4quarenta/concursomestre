@@ -70,6 +70,27 @@ try {
     $throws(fn() => $service->recordInteraction(['campaignId' => $capId, 'interactionType' => 'impression', 'sessionKey' => $session, 'idempotencyKey' => 'cap-key-03']));
     marketingGovernanceAssert($service->recordInteraction(['campaignId' => $capId, 'interactionType' => 'impression', 'sessionKey' => $session, 'idempotencyKey' => 'cap-key-02'])['recorded'] === false, 'Idempotent replay created a duplicate.');
 
+    foreach ([['day', 2], ['week', 14], ['ever', 30]] as [$window, $daysAgo]) {
+        $windowId = 'm20f02-window-' . $window . '-' . bin2hex(random_bytes(4));
+        $windowSession = 'window-session-' . $window;
+        $save($service, $windowId, ['frequency_cap' => 1, 'frequency_cap_window' => $window]);
+        $service->recordInteraction([
+            'campaignId' => $windowId, 'interactionType' => 'impression', 'sessionKey' => $windowSession,
+            'idempotencyKey' => 'window-old-' . $window,
+        ]);
+        $db->prepare('UPDATE marketing_campaign_interactions SET created_at = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL :days DAY) WHERE campaign_id = :campaign_id')
+            ->execute([':days' => $daysAgo, ':campaign_id' => $windowId]);
+        $visibleAfterWindow = count(array_filter($service->listPublicCampaigns(null, $windowSession), static fn(array $item): bool => $item['id'] === $windowId));
+        marketingGovernanceAssert($visibleAfterWindow === ($window === 'ever' ? 0 : 1), 'Frequency window ' . $window . ' did not use server UTC boundaries.');
+        if ($window !== 'ever') {
+            marketingGovernanceAssert($service->recordInteraction([
+                'campaignId' => $windowId, 'interactionType' => 'impression', 'sessionKey' => $windowSession,
+                'idempotencyKey' => 'window-current-' . $window,
+            ])['recorded'] === true, 'Current ' . $window . ' impression was not recorded.');
+            marketingGovernanceAssert(count(array_filter($service->listPublicCampaigns(null, $windowSession), static fn(array $item): bool => $item['id'] === $windowId)) === 0, 'Current ' . $window . ' cap did not hide campaign.');
+        }
+    }
+
     $maxId = 'm20f02-max-' . bin2hex(random_bytes(6));
     $save($service, $maxId, ['max_impressions' => 1]);
     marketingGovernanceAssert($service->recordInteraction(['campaignId' => $maxId, 'interactionType' => 'impression', 'sessionKey' => 'max-session', 'idempotencyKey' => 'max-key-01'])['recorded'] === true, 'Maximum impression fixture was not recorded.');

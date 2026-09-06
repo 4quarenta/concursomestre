@@ -61,32 +61,6 @@ final class MarketingCampaignRepository
         return is_array($row) ? $this->hydrateCampaign($row) : null;
     }
 
-    public function listPublicCampaigns(): array
-    {
-        $this->ensureSchema();
-        $stmt = $this->db->query("SELECT c.*
-            FROM marketing_campaigns c
-            WHERE c.status IN ('active', 'scheduled')
-              AND (c.starts_at IS NULL OR c.starts_at <= UTC_TIMESTAMP(6))
-              AND (c.ends_at IS NULL OR c.ends_at > UTC_TIMESTAMP(6))
-            ORDER BY c.priority DESC, c.updated_at DESC, c.id ASC");
-        $campaigns = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-            $campaign = $this->hydrateCampaign($row);
-            $campaigns[] = [
-                'id' => $campaign['id'], 'name' => $campaign['name'], 'objective' => $campaign['objective'],
-                'priority' => $campaign['priority'], 'startsAt' => $campaign['starts_at'], 'endsAt' => $campaign['ends_at'],
-                'landingSlug' => $campaign['landing_slug'], 'content' => $campaign['content_json'],
-                'offer' => $campaign['offer_json'], 'planId' => $campaign['plan_id'], 'couponCode' => $campaign['coupon_code'],
-                'channels' => $campaign['channels_json'], 'placements' => $campaign['placements_json'],
-                'frequencyCap' => $campaign['frequency_cap'], 'frequencyCapWindow' => $campaign['frequency_cap_window'] ?? 'session',
-                'cooldownHours' => $campaign['cooldown_hours'], 'maxImpressions' => $campaign['max_impressions'],
-                'mutualExclusionGroup' => $campaign['mutual_exclusion_group'], 'suppressAfterConversion' => $campaign['suppress_after_conversion'],
-            ];
-        }
-        return $campaigns;
-    }
-
     /** Raw candidates remain inside the server-side eligibility authority. */
     public function listPublicCampaignCandidates(): array
     {
