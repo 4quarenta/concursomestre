@@ -446,7 +446,7 @@ const MarketingPlansLandingPage = ({
               description="Os cards usam o catalogo oficial ativo e refletem descontos automaticos configurados no admin."
               align="left"
             />
-            <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900">
+            <div className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900">
               {BILLING_CYCLE_OPTIONS.map((option) => (
                 <button
                   key={option.key}
@@ -679,8 +679,8 @@ const MarketingPlansLandingPage = ({
             description="A tabela abaixo ajuda a comparar volume, profundidade e maturidade de recursos entre as opcoes comerciais."
           />
 
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="overflow-x-auto">
+          <div className="max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="w-full max-w-full overflow-x-auto">
               <table className="min-w-full border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800">
