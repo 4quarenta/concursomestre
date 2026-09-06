@@ -28,7 +28,8 @@ const PromoBanner: React.FC = () => {
 
   React.useEffect(() => {
     let mounted = true;
-    void marketingCampaignService.listPublicCampaigns().then((campaigns) => {
+    const sessionKey = analyticsTrackingService.getSessionKey();
+    void marketingCampaignService.listPublicCampaigns(sessionKey).then((campaigns) => {
       if (!mounted) return;
       const candidate = campaigns.find((campaign) => campaign.placements.includes('topbar') && campaign.channels.includes('in_app')) || null;
       setOperationalCampaign(candidate);
@@ -44,6 +45,7 @@ const PromoBanner: React.FC = () => {
       sessionKey: analyticsTrackingService.getSessionKey(),
       landingId: operationalCampaign.landingSlug || undefined,
       placement: 'topbar',
+      idempotencyKey: `banner-impression:${operationalCampaign.id}:${analyticsTrackingService.getSessionKey()}`,
     });
   }, [operationalCampaign]);
 
@@ -66,7 +68,7 @@ const PromoBanner: React.FC = () => {
           href={promotionPath}
           onClick={() => {
             if (operationalCampaign) {
-              void marketingCampaignService.recordPublicInteraction({ campaignId: operationalCampaign.id, interactionType: 'cta_clicked', sessionKey: analyticsTrackingService.getSessionKey(), landingId: operationalCampaign.landingSlug || undefined, placement: 'topbar', ctaId: 'topbar-primary' });
+              void marketingCampaignService.recordPublicInteraction({ campaignId: operationalCampaign.id, interactionType: 'cta_clicked', sessionKey: analyticsTrackingService.getSessionKey(), landingId: operationalCampaign.landingSlug || undefined, placement: 'topbar', ctaId: 'topbar-primary', idempotencyKey: `banner-cta:${operationalCampaign.id}:${analyticsTrackingService.getSessionKey()}` });
             }
             void analyticsTrackingService.trackLifecycleEvent({
               eventName: 'cta_clicked',
@@ -88,7 +90,7 @@ const PromoBanner: React.FC = () => {
       <button
         onClick={() => {
           setIsVisible(false);
-          if (operationalCampaign) void marketingCampaignService.recordPublicInteraction({ campaignId: operationalCampaign.id, interactionType: 'dismissal', sessionKey: analyticsTrackingService.getSessionKey(), placement: 'topbar' });
+          if (operationalCampaign) void marketingCampaignService.recordPublicInteraction({ campaignId: operationalCampaign.id, interactionType: 'dismissal', sessionKey: analyticsTrackingService.getSessionKey(), placement: 'topbar', idempotencyKey: `banner-dismissal:${operationalCampaign.id}:${analyticsTrackingService.getSessionKey()}` });
         }}
         className="absolute right-4 top-1/2 -translate-y-1/2 p-2 hover:bg-white/20 rounded-full transition-colors"
         title="Fechar banner"

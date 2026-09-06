@@ -35,6 +35,7 @@ export interface MarketingCampaignRecord {
   coupon_code: string | null;
   tracking_json: Record<string, unknown> | null;
   frequency_cap: number | null;
+  frequency_cap_window: 'session' | 'day' | 'week' | 'ever';
   cooldown_hours: number | null;
   max_impressions: number | null;
   mutual_exclusion_group: string | null;
@@ -58,6 +59,7 @@ export interface MarketingCampaignDraft {
   plan_id: string;
   coupon_code: string;
   frequency_cap: string;
+  frequency_cap_window: 'session' | 'day' | 'week' | 'ever';
   cooldown_hours: string;
   max_impressions: string;
   mutual_exclusion_group: string;
@@ -111,6 +113,7 @@ export const marketingCampaignService = {
       starts_at: draft.starts_at || null,
       ends_at: draft.ends_at || null,
       frequency_cap: draft.frequency_cap || null,
+      frequency_cap_window: draft.frequency_cap_window,
       cooldown_hours: draft.cooldown_hours || null,
       max_impressions: draft.max_impressions || null,
       offer: draft.plan_id || draft.coupon_code ? { plan_id: draft.plan_id || null, coupon_code: draft.coupon_code || null } : null,
@@ -137,14 +140,14 @@ export const marketingCampaignService = {
     return readApiData(response, { interactions: {}, funnel: {} });
   },
 
-  async listPublicCampaigns(): Promise<MarketingPublicCampaign[]> {
-    const response = await request<MarketingPublicCampaign[]>(apiClient.get<ApiResponse<MarketingPublicCampaign[]>>(ENDPOINTS.analytics.campaignInteraction));
+  async listPublicCampaigns(sessionKey = ''): Promise<MarketingPublicCampaign[]> {
+    const response = await request<MarketingPublicCampaign[]>(apiClient.get<ApiResponse<MarketingPublicCampaign[]>>(ENDPOINTS.analytics.campaignInteraction, { headers: { 'X-CM-Session-Key': sessionKey } }));
     return readApiData(response, []);
   },
 
-  async recordPublicInteraction(payload: { campaignId: string; interactionType: 'impression' | 'dismissal' | 'cta_clicked'; sessionKey: string; landingId?: string; placement?: string; ctaId?: string }): Promise<void> {
+  async recordPublicInteraction(payload: { campaignId: string; interactionType: 'impression' | 'dismissal' | 'cta_clicked'; sessionKey: string; landingId?: string; placement?: string; ctaId?: string; idempotencyKey?: string }): Promise<void> {
     if (readCookieConsent()?.marketing !== true && readCookieConsent()?.analytics !== true) return;
-    await apiClient.post(ENDPOINTS.analytics.campaignInteraction, { action: 'interaction', ...payload });
+    await apiClient.post(ENDPOINTS.analytics.campaignInteraction, { action: 'interaction', ...payload, idempotencyKey: payload.idempotencyKey || `${payload.campaignId}:${payload.interactionType}:${payload.sessionKey}` });
   },
 };
 

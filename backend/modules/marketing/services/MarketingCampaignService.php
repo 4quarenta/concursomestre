@@ -11,6 +11,14 @@ final class MarketingCampaignService
     private const PLACEMENTS = ['topbar', 'home-hero', 'question-sidebar', 'practice-sidebar', 'checkout', 'marketplace', 'plans', 'promo'];
     private const RULE_FIELDS = ['account_age_days', 'plan', 'role'];
     private const RULE_OPERATORS = ['eq', 'neq', 'gte', 'lte'];
+    private const FREQUENCY_WINDOWS = ['session', 'day', 'week', 'ever'];
+    private const CONVERSION_EVENTS = [
+        'CRIAR_CONTA' => 'signup_completed', 'INICIAR_TESTE' => 'signup_completed',
+        'ESCOLHER_PLANO' => 'plan_selected', 'ASSINAR_PRO' => 'subscription_activated',
+        'ASSINAR_ELITE' => 'subscription_activated', 'FAZER_SIMULADO' => 'checkout_started',
+        'RESPONDER_QUESTOES' => 'checkout_started', 'REATIVAR_USUARIO' => 'subscription_activated',
+        'UPGRADE_PLANO' => 'subscription_activated',
+    ];
 
     public function __construct(private readonly MarketingCampaignRepository $repository)
     {
@@ -56,9 +64,26 @@ final class MarketingCampaignService
         return ['eligible' => true, 'reason' => 'ALL_RULES_MATCHED', 'matchedRules' => $matchedRules, 'segmentId' => $segmentId];
     }
 
-    public function listPublicCampaigns(): array
+    public function listPublicCampaigns(?string $userId = null, ?string $sessionKey = null): array
     {
-        return $this->repository->listPublicCampaigns();
+        $sessionHash = $this->sessionHash($sessionKey);
+        $selected = [];
+        $groups = [];
+        foreach ($this->repository->listPublicCampaignCandidates() as $campaign) {
+            $decision = $this->governanceDecision($campaign, $userId, $sessionKey, $sessionHash);
+            if (!$decision['eligible']) {
+                continue;
+            }
+            $group = trim((string) ($campaign['mutual_exclusion_group'] ?? ''));
+            if ($group !== '' && isset($groups[$group])) {
+                continue;
+            }
+            if ($group !== '') {
+                $groups[$group] = true;
+            }
+            $selected[] = $this->publicCampaign($campaign);
+        }
+        return $selected;
     }
 
     public function saveSegment(array $payload, string $adminUserId): array
@@ -105,6 +130,10 @@ final class MarketingCampaignService
         $placements = $this->normalizeStringList($payload['placements'] ?? [], self::PLACEMENTS);
         if ($channels === []) throw new InvalidArgumentException('Informe ao menos um canal.');
         if ($placements === []) throw new InvalidArgumentException('Informe ao menos um placement.');
+        $planId = $this->nullableInt($payload['plan_id'] ?? $payload['planId'] ?? null);
+        $couponCode = $this->nullableString($payload['coupon_code'] ?? $payload['couponCode'] ?? null, 120);
+        if ($planId !== null && !$this->repository->hasPlan($planId)) throw new InvalidArgumentException('Plano relacionado nao encontrado.');
+        $frequencyWindow = $this->frequencyWindow($payload['frequency_cap_window'] ?? $payload['frequencyCapWindow'] ?? 'session');
 
         return $this->repository->saveCampaign([
             'id' => $id, 'name' => mb_substr($name, 0, 180), 'objective' => $objective, 'status' => $status,
@@ -113,10 +142,11 @@ final class MarketingCampaignService
             'channels_json' => $this->json($channels), 'placements_json' => $this->json($placements),
             'content_json' => $this->json($this->normalizeContent($payload['content'] ?? [])),
             'landing_slug' => $this->nullableString($payload['landing_slug'] ?? $payload['landingSlug'] ?? null, 160),
-            'offer_json' => $this->nullableJson($this->normalizeReferenceObject($payload['offer'] ?? null)), 'plan_id' => $this->nullableInt($payload['plan_id'] ?? $payload['planId'] ?? null),
-            'coupon_code' => $this->nullableString($payload['coupon_code'] ?? $payload['couponCode'] ?? null, 120),
+            'offer_json' => $this->nullableJson($this->normalizeReferenceObject($payload['offer'] ?? null)), 'plan_id' => $planId,
+            'coupon_code' => $couponCode,
             'tracking_json' => $this->nullableJson($this->normalizeReferenceObject($payload['tracking'] ?? null)),
             'frequency_cap' => $this->nullablePositiveInt($payload['frequency_cap'] ?? $payload['frequencyCap'] ?? null),
+            'frequency_cap_window' => $frequencyWindow,
             'cooldown_hours' => $this->nullablePositiveInt($payload['cooldown_hours'] ?? $payload['cooldownHours'] ?? null),
             'max_impressions' => $this->nullablePositiveInt($payload['max_impressions'] ?? $payload['maxImpressions'] ?? null),
             'mutual_exclusion_group' => $this->nullableString($payload['mutual_exclusion_group'] ?? $payload['mutualExclusionGroup'] ?? null, 120),
@@ -138,6 +168,9 @@ final class MarketingCampaignService
             'ended' => ['ended', 'archived'], 'archived' => ['archived'],
         ];
         if (!in_array($nextStatus, $allowed[$current] ?? [], true)) throw new InvalidArgumentException('Transicao de campanha nao permitida.');
+        if (in_array($nextStatus, ['active', 'scheduled'], true)) {
+            $this->assertCampaignRelations($campaign);
+        }
         return $this->repository->updateCampaignStatus($id, $nextStatus, $adminUserId);
     }
 
@@ -145,25 +178,36 @@ final class MarketingCampaignService
     {
         $campaignId = trim((string) ($payload['campaign_id'] ?? $payload['campaignId'] ?? ''));
         $type = strtolower(trim((string) ($payload['interaction_type'] ?? $payload['interactionType'] ?? '')));
-        $campaign = $this->repository->findCampaign($campaignId);
-        if ($campaign === null) throw new InvalidArgumentException('Campanha nao encontrada.');
-        if (!in_array((string) $campaign['status'], ['active', 'scheduled'], true)) throw new InvalidArgumentException('Campanha nao esta disponivel.');
-        $now = time();
-        if ($campaign['starts_at'] !== null && strtotime((string) $campaign['starts_at']) > $now) throw new InvalidArgumentException('Campanha ainda nao iniciou.');
-        if ($campaign['ends_at'] !== null && strtotime((string) $campaign['ends_at']) <= $now) throw new InvalidArgumentException('Campanha encerrada.');
-        if (!in_array($type, self::INTERACTIONS, true)) throw new InvalidArgumentException('Interacao de campanha invalida.');
+        if ($campaignId === '' || !in_array($type, self::INTERACTIONS, true)) throw new InvalidArgumentException('Interacao de campanha invalida.');
         $sessionKey = trim((string) ($payload['session_key'] ?? $payload['sessionKey'] ?? ''));
         if ($userId === null && $sessionKey === '') throw new InvalidArgumentException('Contexto de sessao ausente.');
         $attribution = [];
         foreach (['landing_id', 'placement', 'cta_id', 'source', 'plan_id'] as $key) {
             if (isset($payload[$key]) && is_scalar($payload[$key])) $attribution[$key] = mb_substr(trim((string) $payload[$key]), 0, 80);
         }
-        $idempotency = hash('sha256', implode('|', [$campaignId, $userId ?? '', hash('sha256', $sessionKey), $type, $this->json($attribution)]));
-        $created = $this->repository->insertInteraction([
-            'campaign_id' => $campaignId, 'user_id' => $userId, 'session_key_hash' => $sessionKey !== '' ? hash('sha256', $sessionKey) : null,
-            'interaction_type' => $type, 'idempotency_key' => $idempotency, 'attribution_json' => $this->json($attribution),
-        ]);
-        return ['recorded' => $created, 'idempotencyKey' => $idempotency];
+        $sessionHash = $this->sessionHash($sessionKey);
+        $providedIdempotency = trim((string) ($payload['idempotency_key'] ?? $payload['idempotencyKey'] ?? ''));
+        $idempotency = $providedIdempotency !== '' && preg_match('/^[A-Za-z0-9._:-]{8,160}$/', $providedIdempotency)
+            ? hash('sha256', $providedIdempotency)
+            : hash('sha256', implode('|', [$campaignId, $userId ?? '', $sessionHash ?? '', $type, $this->json($attribution)]));
+
+        return $this->repository->withCampaignGovernanceLock($campaignId, function (?array $campaign) use ($campaignId, $type, $userId, $sessionKey, $sessionHash, $attribution, $idempotency): array {
+            if ($campaign === null) throw new InvalidArgumentException('Campanha nao encontrada.');
+            if ($this->repository->hasInteractionIdempotencyKey($idempotency)) return ['recorded' => false, 'idempotencyKey' => $idempotency];
+            $decision = $this->governanceDecision($campaign, $userId, $sessionKey, $sessionHash, $type === 'impression');
+            if (!$decision['eligible']) throw new InvalidArgumentException((string) $decision['message']);
+            if ($type === 'impression' && $this->repository->hasCompetingImpression((string) $campaign['id'], $userId, $sessionHash)) {
+                throw new InvalidArgumentException('Outra campanha do grupo de exclusao ja foi exibida.');
+            }
+            if (in_array($type, ['cta_clicked', 'dismissal'], true) && !$this->hasPriorImpression((string) $campaign['id'], $userId, $sessionHash)) {
+                throw new InvalidArgumentException('A campanha precisa ser exibida antes desta interacao.');
+            }
+            $created = $this->repository->insertInteraction([
+                'campaign_id' => $campaignId, 'user_id' => $userId, 'session_key_hash' => $sessionHash,
+                'interaction_type' => $type, 'idempotency_key' => $idempotency, 'attribution_json' => $this->json($attribution),
+            ]);
+            return ['recorded' => $created, 'idempotencyKey' => $idempotency];
+        });
     }
 
     public function analytics(string $campaignId): array
@@ -178,6 +222,114 @@ final class MarketingCampaignService
         if ($campaign === null) throw new InvalidArgumentException('Campanha nao encontrada.');
         if (!str_starts_with($id, 'm20f02-')) throw new InvalidArgumentException('Campanhas operacionais devem ser arquivadas, nao removidas.');
         $this->repository->deleteCampaign($id);
+    }
+
+    /**
+     * Centraliza a decisao de entrega. Nenhum campo de governanca deve ser
+     * interpretado apenas pelo React ou pelo banner.
+     */
+    private function governanceDecision(array $campaign, ?string $userId, ?string $sessionKey, ?string $sessionHash, bool $forImpression = true): array
+    {
+        if (!in_array((string) ($campaign['status'] ?? ''), ['active', 'scheduled'], true)) {
+            return ['eligible' => false, 'reason' => 'CAMPAIGN_NOT_ACTIVE', 'message' => 'Campanha nao esta disponivel.'];
+        }
+        $now = time();
+        if (($campaign['starts_at'] ?? null) !== null && strtotime((string) $campaign['starts_at']) > $now) {
+            return ['eligible' => false, 'reason' => 'OUTSIDE_SCHEDULE', 'message' => 'Campanha ainda nao iniciou.'];
+        }
+        if (($campaign['ends_at'] ?? null) !== null && strtotime((string) $campaign['ends_at']) <= $now) {
+            return ['eligible' => false, 'reason' => 'OUTSIDE_SCHEDULE', 'message' => 'Campanha encerrada.'];
+        }
+        $segmentId = trim((string) ($campaign['segment_id'] ?? ''));
+        if ($segmentId !== '') {
+            if ($userId === null || $userId === '') {
+                return ['eligible' => false, 'reason' => 'USER_CONTEXT_REQUIRED', 'message' => 'Contexto de usuario necessario.'];
+            }
+            $segment = $this->repository->findSegment($segmentId);
+            if ($segment === null || (string) ($segment['status'] ?? '') !== 'active') {
+                return ['eligible' => false, 'reason' => 'SEGMENT_NOT_ACTIVE', 'message' => 'Segmento de campanha indisponivel.'];
+            }
+            $segmentDecision = $this->evaluateSegment($segmentId, $userId);
+            if (!$segmentDecision['eligible']) {
+                return ['eligible' => false, 'reason' => (string) $segmentDecision['reason'], 'message' => 'Usuario fora da audiencia da campanha.'];
+            }
+        }
+
+        $frequencyWindow = $this->frequencyWindow($campaign['frequency_cap_window'] ?? 'session');
+        $metrics = $this->repository->interactionMetrics((string) $campaign['id'], $userId, $sessionHash, $frequencyWindow);
+        if ($forImpression && (int) ($campaign['frequency_cap'] ?? -1) >= 0 && $metrics['frequencyImpressions'] >= (int) $campaign['frequency_cap']) {
+            return ['eligible' => false, 'reason' => 'FREQUENCY_CAP_REACHED', 'message' => 'Limite de exibicoes atingido.'];
+        }
+        if ($forImpression && (int) ($campaign['max_impressions'] ?? -1) >= 0 && $metrics['totalImpressions'] >= (int) $campaign['max_impressions']) {
+            return ['eligible' => false, 'reason' => 'MAX_IMPRESSIONS_REACHED', 'message' => 'Limite total de exibicoes atingido.'];
+        }
+        if ($metrics['dismissed']) {
+            return ['eligible' => false, 'reason' => 'CAMPAIGN_DISMISSED', 'message' => 'Campanha dispensada para este contexto.'];
+        }
+        if ((bool) ($campaign['suppress_after_conversion'] ?? true)) {
+            $eventName = self::CONVERSION_EVENTS[(string) ($campaign['objective'] ?? '')] ?? null;
+            if ($eventName !== null && $this->repository->hasCampaignConversion((string) $campaign['id'], $eventName, $userId, $sessionKey)) {
+                return ['eligible' => false, 'reason' => 'ALREADY_CONVERTED', 'message' => 'Objetivo da campanha ja convertido.'];
+            }
+        }
+        $cooldownHours = max(0, (int) ($campaign['cooldown_hours'] ?? 0));
+        if ($forImpression && $cooldownHours > 0 && $metrics['lastInteractionAt'] !== null) {
+            $elapsed = time() - (int) $metrics['lastInteractionAt'];
+            if ($elapsed < ($cooldownHours * 3600)) {
+                return ['eligible' => false, 'reason' => 'COOLDOWN_ACTIVE', 'message' => 'Campanha em periodo de espera.'];
+            }
+        }
+        if ($forImpression && trim((string) ($campaign['mutual_exclusion_group'] ?? '')) !== ''
+            && $this->repository->hasCompetingImpression((string) $campaign['id'], $userId, $sessionHash)) {
+            return ['eligible' => false, 'reason' => 'MUTUAL_EXCLUSION_LOST', 'message' => 'Outra campanha prioritaria ja foi exibida.'];
+        }
+        return ['eligible' => true, 'reason' => 'ELIGIBLE', 'message' => 'Campanha elegivel.'];
+    }
+
+    private function assertCampaignRelations(array $campaign): void
+    {
+        $segmentId = trim((string) ($campaign['segment_id'] ?? ''));
+        if ($segmentId !== '') {
+            $segment = $this->repository->findSegment($segmentId);
+            if ($segment === null || (string) ($segment['status'] ?? '') !== 'active') {
+                throw new InvalidArgumentException('Campanha ativa exige segmento existente e ativo.');
+            }
+        }
+        $planId = (int) ($campaign['plan_id'] ?? 0);
+        if ($planId > 0 && !$this->repository->hasPlan($planId)) {
+            throw new InvalidArgumentException('Plano relacionado nao encontrado.');
+        }
+    }
+
+    private function publicCampaign(array $campaign): array
+    {
+        return [
+            'id' => $campaign['id'], 'name' => $campaign['name'], 'objective' => $campaign['objective'],
+            'priority' => (int) $campaign['priority'], 'startsAt' => $campaign['starts_at'], 'endsAt' => $campaign['ends_at'],
+            'landingSlug' => $campaign['landing_slug'], 'content' => $campaign['content_json'],
+            'offer' => $campaign['offer_json'], 'planId' => $campaign['plan_id'], 'couponCode' => $campaign['coupon_code'],
+            'channels' => $campaign['channels_json'], 'placements' => $campaign['placements_json'],
+        ];
+    }
+
+    private function frequencyWindow(mixed $value): string
+    {
+        $window = strtolower(trim((string) $value));
+        if (!in_array($window, self::FREQUENCY_WINDOWS, true)) {
+            throw new InvalidArgumentException('Janela de frequencia invalida.');
+        }
+        return $window;
+    }
+
+    private function sessionHash(?string $sessionKey): ?string
+    {
+        $sessionKey = trim((string) ($sessionKey ?? ''));
+        return $sessionKey === '' ? null : hash('sha256', $sessionKey);
+    }
+
+    private function hasPriorImpression(string $campaignId, ?string $userId, ?string $sessionHash): bool
+    {
+        return $this->repository->interactionMetrics($campaignId, $userId, $sessionHash, 'ever')['totalImpressions'] > 0;
     }
 
     private function normalizeRules(mixed $rules): array

@@ -76,13 +76,13 @@ if ($allowedOrigin !== null) {
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Api-Key, Accept, Origin, X-Auth-Token, X-CSRF-Token, X-Client-Platform, Idempotency-Key');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Api-Key, Accept, Origin, X-Auth-Token, X-CSRF-Token, X-Client-Platform, X-CM-Session-Key, Idempotency-Key');
     http_response_code(204);
     exit();
 }
 
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Api-Key, Accept, Origin, X-Auth-Token, X-CSRF-Token, X-Client-Platform, Idempotency-Key');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Api-Key, Accept, Origin, X-Auth-Token, X-CSRF-Token, X-Client-Platform, X-CM-Session-Key, Idempotency-Key');
 header('Content-Type: application/json; charset=UTF-8');
 
 $hasAuthorization = trim((string) ($_SERVER['HTTP_AUTHORIZATION'] ?? '')) !== ''

@@ -11,7 +11,7 @@ final class MarketingCampaignController
     public function campaigns(?string $search, ?string $status): array { return $this->service->listCampaigns($search, $status); }
     public function segments(?string $search): array { return $this->service->listSegments($search); }
     public function evaluateSegment(string $id, ?string $userId): array { return $this->service->evaluateSegment($id, $userId); }
-    public function publicCampaigns(): array { return $this->service->listPublicCampaigns(); }
+    public function publicCampaigns(?string $userId = null, ?string $sessionKey = null): array { return $this->service->listPublicCampaigns($userId, $sessionKey); }
     public function saveCampaign(array $payload, string $adminUserId): array { return $this->service->saveCampaign($payload, $adminUserId); }
     public function saveSegment(array $payload, string $adminUserId): array { return $this->service->saveSegment($payload, $adminUserId); }
     public function transition(string $id, string $status, string $adminUserId): array { return $this->service->transition($id, $status, $adminUserId); }
