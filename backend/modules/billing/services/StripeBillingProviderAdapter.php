@@ -21,11 +21,19 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
             'expand' => ['latest_invoice.lines.data'],
         ]);
         $metadataValue = $subscription->metadata ?? null;
-        $metadata = is_object($metadataValue) && method_exists($metadataValue, 'toArray')
-            ? $metadataValue->toArray()
-            : (is_object($metadataValue)
-                ? get_object_vars($metadataValue)
-                : (is_array($metadataValue) ? $metadataValue : []));
+        $metadata = [];
+        foreach (['benefit_extension_grant_id', 'benefit_extension_days'] as $key) {
+            if (is_array($metadataValue)) {
+                $value = $metadataValue[$key] ?? null;
+            } elseif (is_object($metadataValue)) {
+                $value = $metadataValue[$key] ?? null;
+            } else {
+                $value = null;
+            }
+            if (is_scalar($value)) {
+                $metadata[$key] = (string) $value;
+            }
+        }
         return [
             'provider_subscription_id' => (string) ($subscription->id ?? $subscriptionId),
             'livemode' => !empty($subscription->livemode),
