@@ -20,9 +20,12 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
         $subscription = getStripeClient()->subscriptions->retrieve($subscriptionId, [
             'expand' => ['latest_invoice.lines.data'],
         ]);
-        $metadata = is_object($subscription->metadata ?? null)
-            ? get_object_vars($subscription->metadata)
-            : (is_array($subscription->metadata ?? null) ? $subscription->metadata : []);
+        $metadataValue = $subscription->metadata ?? null;
+        $metadata = is_object($metadataValue) && method_exists($metadataValue, 'toArray')
+            ? $metadataValue->toArray()
+            : (is_object($metadataValue)
+                ? get_object_vars($metadataValue)
+                : (is_array($metadataValue) ? $metadataValue : []));
         return [
             'provider_subscription_id' => (string) ($subscription->id ?? $subscriptionId),
             'livemode' => !empty($subscription->livemode),
