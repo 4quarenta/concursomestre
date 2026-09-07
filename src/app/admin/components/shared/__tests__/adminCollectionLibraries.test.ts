@@ -68,6 +68,7 @@ describe('admin collection libraries', () => {
 
     expect(designSystemSource).toContain('if (disabled)');
     expect(designSystemSource).toContain('disabled aria-disabled="true"');
+    expect(designSystemSource).toContain('focus-visible:outline');
     expect(designSystemSource).toContain('htmlFor={controlId}');
     expect(designSystemSource).toContain('id: controlId');
     expect(designSystemSource).toContain("'aria-describedby': describedBy");

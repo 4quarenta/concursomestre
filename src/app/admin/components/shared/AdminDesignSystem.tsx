@@ -27,8 +27,8 @@ export type AdminButtonVariant = 'primary' | 'secondary' | 'utility' | 'destruct
 const BUTTON_CLASS_BY_VARIANT: Record<AdminButtonVariant, string> = {
   primary: ADMIN_PRIMARY_BUTTON_CLASS,
   secondary: ADMIN_SECONDARY_BUTTON_CLASS,
-  utility: 'inline-flex items-center gap-2 rounded-sm border border-transparent px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800',
-  destructive: 'inline-flex items-center gap-2 rounded-sm border border-red-700 bg-red-700 px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-red-800 hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60',
+  utility: 'inline-flex items-center gap-2 rounded-sm border border-transparent px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800',
+  destructive: 'inline-flex items-center gap-2 rounded-sm border border-red-700 bg-red-700 px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-red-800 hover:bg-red-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-60',
 };
 
 export interface AdminButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
