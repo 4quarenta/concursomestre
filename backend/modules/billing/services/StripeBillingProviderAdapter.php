@@ -26,7 +26,7 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
             if (is_array($metadataValue)) {
                 $value = $metadataValue[$key] ?? null;
             } elseif (is_object($metadataValue)) {
-                $value = $metadataValue[$key] ?? null;
+                $value = $metadataValue->$key ?? null;
             } else {
                 $value = null;
             }
