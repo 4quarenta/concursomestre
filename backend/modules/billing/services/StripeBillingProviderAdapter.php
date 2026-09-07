@@ -25,7 +25,7 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
             'provider_subscription_id' => (string) ($subscription->id ?? $subscriptionId),
             'livemode' => !empty($subscription->livemode),
             'status' => strtolower(trim((string) ($subscription->status ?? ''))),
-            'current_period_end' => (int) ($subscription->current_period_end ?? 0),
+            'current_period_end' => self::periodEnd($subscription),
             'metadata' => array_filter($metadata, static fn($value): bool => is_scalar($value)),
         ];
     }
@@ -43,7 +43,7 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
         $subscription = $stripe->subscriptions->retrieve($subscriptionId, [
             'expand' => ['items.data.price'],
         ]);
-        $oldPeriodEnd = (int) ($subscription->current_period_end ?? 0);
+        $oldPeriodEnd = self::periodEnd($subscription);
         $status = strtolower(trim((string) ($subscription->status ?? '')));
         $trialEnd = (int) ($subscription->trial_end ?? 0);
 
@@ -72,7 +72,7 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
             'idempotency_key' => 'benefit_extension_' . $grantId,
         ]);
 
-        $confirmedPeriodEnd = (int) ($updated->current_period_end ?? $updated->trial_end ?? 0);
+        $confirmedPeriodEnd = self::periodEnd($updated);
         if ($confirmedPeriodEnd < $newPeriodEnd) {
             throw new RuntimeException('Stripe nao confirmou o periodo minimo da extensao.');
         }
@@ -84,5 +84,27 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
             'old_period_end' => $oldPeriodEnd,
             'new_period_end' => $confirmedPeriodEnd,
         ];
+    }
+
+    /** Stripe pode expor o periodo no item em versoes recentes da API. */
+    private static function periodEnd($subscription): int
+    {
+        $direct = $subscription->current_period_end ?? null;
+        if (is_numeric($direct) && (int) $direct > 0) {
+            return (int) $direct;
+        }
+
+        $items = $subscription->items->data ?? [];
+        if (is_iterable($items)) {
+            foreach ($items as $item) {
+                $itemEnd = $item->current_period_end ?? null;
+                if (is_numeric($itemEnd) && (int) $itemEnd > 0) {
+                    return (int) $itemEnd;
+                }
+            }
+        }
+
+        $trialEnd = $subscription->trial_end ?? null;
+        return is_numeric($trialEnd) ? (int) $trialEnd : 0;
     }
 }
