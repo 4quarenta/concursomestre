@@ -97,6 +97,7 @@ import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileN
 import { normalizeGoogleClientId } from '@/config/googleAuth';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { requestCookieConsentPreferences } from '@services/privacy/cookieConsent';
+import BenefitsPanel from './components/BenefitsPanel';
 
 const StripeSetupCardForm = dynamic(() => import('./components/StripeSetupCardForm'), {
     ssr: false,
@@ -4045,6 +4046,7 @@ const Profile: React.FC = () => {
                         {renderSidebarItem({ id: 'support-history', label: 'Histórico de suporte', icon: MessageSquare })}
                         {renderSidebarItem({ id: 'billing', label: 'Assinatura', icon: CreditCard })}
                         {renderSidebarItem({ id: 'billing-history', label: 'Transações', icon: BarChart3 })}
+                        {renderSidebarItem({ id: 'benefits', label: 'Benefícios', icon: Gift })}
                         {canAccessReferralTab && renderSidebarItem({ id: 'referral', label: 'Indique e Ganhe', icon: Gift })}
                         {renderSidebarItem({ id: 'security', label: 'Privacidade', icon: ShieldCheck })}
                     </div>
@@ -5313,6 +5315,8 @@ const Profile: React.FC = () => {
                )}
 
                {activeTab === 'billing-history' && renderBillingHistoryTab()}
+
+               {activeTab === 'benefits' && <BenefitsPanel userKey={currentUserKey} />}
 
                {false && activeTab === 'billing-history' && (
                   <div className="space-y-6">

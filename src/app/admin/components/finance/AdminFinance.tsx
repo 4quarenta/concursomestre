@@ -27,6 +27,7 @@ import {
   CreditCard,
   Download,
   FileText,
+  Gift,
   Globe,
   Loader2,
   MessageSquare,
@@ -83,6 +84,7 @@ import AdminMarketing from './AdminMarketing';
 import AdminFinanceAnalyticsPanel from './AdminFinanceAnalyticsPanel';
 import AdminReferralPayoutPanel from './AdminReferralPayoutPanel';
 import AdminFinanceTransactionOverview from './AdminFinanceTransactionOverview';
+import AdminBenefitsPanel from './AdminBenefitsPanel';
 import { buildAdminUserEditPath } from '../../config/adminPageNavigationConfig';
 import {
   ADMIN_FIELD_CLASS,
@@ -108,12 +110,12 @@ interface AdminFinanceProps {
   allTransactions: Transaction[];
   allMaterials?: Material[];
   allUsers: UserProfile[];
-  initialSection?: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics' | 'balance' | 'prices' | 'marketing' | 'plans-coupons';
-  onSectionChange?: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics') => void;
+  initialSection?: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'benefits' | 'automation' | 'analytics' | 'balance' | 'prices' | 'marketing' | 'plans-coupons';
+  onSectionChange?: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'benefits' | 'automation' | 'analytics') => void;
   standaloneSection?: boolean;
 }
 
-type FinanceSection = 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics';
+type FinanceSection = 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'benefits' | 'automation' | 'analytics';
 type PlansPanelTab = 'configuration' | 'access';
 type PlanAccessTab = 'general' | 'modules';
 
@@ -852,7 +854,7 @@ const AdminFinance = ({
     if (section === 'balance') return 'subscriptions';
     if (section === 'prices' || section === 'plans-coupons') return 'plans';
     if (section === 'marketing') return 'coupons';
-    if (section === 'transactions' || section === 'refunds' || section === 'automation' || section === 'plans' || section === 'coupons' || section === 'subscriptions' || section === 'analytics') {
+    if (section === 'transactions' || section === 'refunds' || section === 'automation' || section === 'plans' || section === 'coupons' || section === 'benefits' || section === 'subscriptions' || section === 'analytics') {
       return section;
     }
     return 'transactions';
@@ -1162,7 +1164,7 @@ const AdminFinance = ({
     };
   }, [activeSection, loadRevenueProjection]);
 
-  const changeSection = (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics') => {
+  const changeSection = (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'benefits' | 'automation' | 'analytics') => {
     setActiveSection(section);
     onSectionChange?.(section);
   };
@@ -2503,6 +2505,12 @@ const AdminFinance = ({
               <div className="flex items-center gap-2"><Tag size={14} /> Cupons</div>
             </button>
             <button
+              onClick={() => changeSection('benefits')}
+              className={"rounded-md border px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'benefits' ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS)}
+            >
+              <div className="flex items-center gap-2"><Gift size={14} /> Benefícios</div>
+            </button>
+            <button
               onClick={() => changeSection('analytics')}
               className={"rounded-md border px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'analytics' ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS)}
             >
@@ -2518,6 +2526,7 @@ const AdminFinance = ({
         </>
       )}
 
+      {activeSection === 'benefits' && <AdminBenefitsPanel />}
 
       {activeSection === 'subscriptions' && (
         <div className="space-y-6">

@@ -20,6 +20,7 @@ export type ProfileTab =
   | 'support-history'
   | 'billing'
   | 'billing-history'
+  | 'benefits'
   | 'security'
   | 'referral';
 
@@ -34,6 +35,7 @@ const VALID_PROFILE_TABS: ProfileTab[] = [
   'support-history',
   'billing',
   'billing-history',
+  'benefits',
   'security',
   'referral',
 ];

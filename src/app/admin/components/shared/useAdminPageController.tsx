@@ -621,7 +621,7 @@ export const useAdminPageController = () => {
       updateSystemSettings,
       saveSystemSettingsNow,
       initialSection: initialFinanceSection,
-      onSectionChange: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics') => (
+      onSectionChange: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'benefits' | 'automation' | 'analytics') => (
         handleSectionChange('finance', section as AdminFinanceSection)
       ),
       standaloneSection: true,

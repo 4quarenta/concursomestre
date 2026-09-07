@@ -200,6 +200,8 @@ export const ENDPOINTS = {
         createStripeSetupIntent: 'users/create_stripe_setup_intent.php',
         syncStripeCard: 'users/sync_stripe_card.php',
         paymentStatus: 'v2/users/me/billing/payment-status.php',
+        benefits: 'users/me/benefits.php',
+        redeemBenefit: 'users/me/benefits/redeem.php',
     },
 
     reports: {
@@ -244,6 +246,7 @@ export const ENDPOINTS = {
         securityIps: 'admin/security_ips.php',
         logs: 'admin/logs.php',
         files: 'admin/files.php',
+        benefits: 'admin/benefits.php',
     },
 
     subscriptions: {
