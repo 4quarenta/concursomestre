@@ -17,7 +17,9 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
             throw new RuntimeException('Stripe nao configurado para reconciliacao de cobranca.');
         }
 
-        $subscription = getStripeClient()->subscriptions->retrieve($subscriptionId, []);
+        $subscription = getStripeClient()->subscriptions->retrieve($subscriptionId, [
+            'expand' => ['latest_invoice.lines.data'],
+        ]);
         $metadata = is_object($subscription->metadata ?? null)
             ? get_object_vars($subscription->metadata)
             : (is_array($subscription->metadata ?? null) ? $subscription->metadata : []);
@@ -41,7 +43,7 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
 
         $stripe = getStripeClient();
         $subscription = $stripe->subscriptions->retrieve($subscriptionId, [
-            'expand' => ['items.data.price'],
+            'expand' => ['items.data.price', 'latest_invoice.lines.data'],
         ]);
         $oldPeriodEnd = self::periodEnd($subscription);
         $status = strtolower(trim((string) ($subscription->status ?? '')));
@@ -100,6 +102,17 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
                 $itemEnd = $item->current_period_end ?? null;
                 if (is_numeric($itemEnd) && (int) $itemEnd > 0) {
                     return (int) $itemEnd;
+                }
+            }
+        }
+
+        $latestInvoice = $subscription->latest_invoice ?? null;
+        $lineItems = $latestInvoice->lines->data ?? [];
+        if (is_iterable($lineItems)) {
+            foreach ($lineItems as $lineItem) {
+                $lineEnd = $lineItem->period->end ?? null;
+                if (is_numeric($lineEnd) && (int) $lineEnd > 0) {
+                    return (int) $lineEnd;
                 }
             }
         }
