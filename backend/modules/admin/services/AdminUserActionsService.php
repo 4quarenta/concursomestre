@@ -19,6 +19,7 @@ require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../transactions/services/TransactionsRefundSupport.php';
+require_once __DIR__ . '/../../benefits/services/BenefitService.php';
 
 /**
  * Servico das mutacoes administrativas de usuario.
@@ -133,89 +134,40 @@ class AdminUserActionsService
         ];
     }
 
-    /**
-     * Estende a data final da assinatura ativa do usuario.
-     *
-     * @since 1.0.0
-     */
     private function handleAddDays(string $userId, array $data): array
     {
         $days = (int) ($data['days'] ?? 0);
-        $this->validator->validateNonZeroDays($days);
-
-        $subscription = $this->repository->findActiveSubscriptionByUserId($userId);
-        if (!$subscription) {
-            throw new InvalidArgumentException('Usuario nao possui assinatura ativa para estender. Use o upgrade de plano.');
+        $this->validator->validatePositiveDays($days);
+        $actorId = trim((string) ($data['_admin_user_id'] ?? ''));
+        if ($actorId === '') {
+            throw new RuntimeException('Operador administrativo ausente.');
         }
-
-        $isManualGrant = normalizePaymentProvider($subscription['payment_provider'] ?? '') === 'manual_admin';
-        if ($days < 0 && !$isManualGrant) {
-            throw new InvalidArgumentException('A remocao de dias esta disponivel apenas para cortesias manuais.');
-        }
-
-        $baseDate = (strtotime((string) $subscription['current_period_end']) > time())
-            ? (string) $subscription['current_period_end']
-            : date('Y-m-d H:i:s');
-        $newEndTimestamp = strtotime($baseDate . sprintf(' %+d days', $days));
-        $newEnd = date('Y-m-d H:i:s', $newEndTimestamp ?: time());
-        $remainsActive = $newEndTimestamp !== false && $newEndTimestamp > time();
-
-        $remoteCancellation = $days > 0
-            ? $this->cancelRemoteSubscriptionBeforeManualGrant($subscription)
-            : ['required' => false, 'provider' => 'manual_admin', 'provider_subscription_id' => ''];
-
-        try {
-            $this->db->beginTransaction();
-            $this->repository->extendSubscriptionAsManualGrant(
-                (int) $subscription['id'],
-                $newEnd,
-                $remainsActive ? 'active' : 'canceled'
-            );
-
-            if ($remainsActive) {
-                $this->repository->updateUserPlanSnapshot(
-                    $userId,
-                    (string) ($subscription['plan_name'] ?? 'Gratuito'),
-                    (int) ($subscription['plan_id'] ?? 0),
-                    $newEnd
-                );
-            } else {
-                $this->repository->updateUserPlanSnapshot($userId, 'Gratuito', 0, $newEnd);
-            }
-
-            $this->db->commit();
-        } catch (Throwable $error) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-
-            throw $error;
-        }
-
-        $planName = $remainsActive ? (string) ($subscription['plan_name'] ?? 'Assinatura') : 'Gratuito';
-        $this->notifyManualGrantAdjustment($userId, $planName, $newEnd, $days, $remainsActive);
-
-        $message = $days > 0
-            ? "Adicionados {$days} dias de cortesia com sucesso."
-            : 'Cortesia ajustada com sucesso.';
+        $grant = (new BenefitService($this->db))->grantSupportCompensation($userId, $days, [
+            'ticket_reference' => (string) ($data['ticket_reference'] ?? 'admin-user-action'),
+            'reason' => (string) ($data['reason'] ?? 'Compensacao administrativa de dias.'),
+            'idempotency_key' => $data['idempotency_key'] ?? null,
+            'apply_provider' => true,
+        ], $actorId);
+        $grantData = $grant['grant'] ?? [];
+        $pendingProvider = strtoupper((string) ($grantData['status'] ?? '')) === 'PENDING_PROVIDER';
 
         return [
-            'message' => $message,
+            'message' => $pendingProvider
+                ? 'Compensacao criada e aguardando confirmacao do provedor.'
+                : 'Compensacao criada com sucesso.',
             'data' => [
-                'new_end_date' => $newEnd,
+                'grant_id' => $grantData['id'] ?? null,
                 'days' => $days,
-                'status' => $remainsActive ? 'active' : 'canceled',
+                'status' => $grantData['status'] ?? null,
             ],
             'audit_action' => 'user.add_days',
             'audit_entity_type' => 'user',
             'audit_entity_id' => $userId,
             'audit_metadata' => [
                 'days' => $days,
-                'subscription_id' => $subscription['id'],
-                'grant_origin' => 'manual_admin',
-                'is_free_admin_grant' => true,
-                'status' => $remainsActive ? 'active' : 'canceled',
-                'remote_cancellation' => $remoteCancellation,
+                'grant_origin' => 'support_compensation',
+                'benefit_mode' => $grant['mode'] ?? null,
+                'provider_required' => $grant['provider_required'] ?? false,
             ],
         ];
     }
@@ -246,34 +198,33 @@ class AdminUserActionsService
             }
         }
 
-        $remoteCancellation = $activeSubscription
-            ? $this->cancelRemoteSubscriptionBeforeManualGrant($activeSubscription)
-            : ['required' => false, 'provider' => '', 'provider_subscription_id' => ''];
-
-        $this->db->beginTransaction();
-        $this->repository->cancelActiveSubscriptionsByUserId($userId);
-
-        $start = date('Y-m-d H:i:s');
-        $end = date('Y-m-d H:i:s', strtotime($this->getPlanDurationSpec($plan), strtotime($start)));
-
-        $this->repository->createManualSubscription($userId, $planId, $start, $end);
-        $this->repository->updateUserPlanSnapshot($userId, (string) $plan['name'], $planId, $end);
-        $this->db->commit();
-
+        $actorId = trim((string) ($data['_admin_user_id'] ?? ''));
+        if ($actorId === '') {
+            throw new RuntimeException('Operador administrativo ausente.');
+        }
+        $durationDays = $this->getPlanDurationDays($plan);
+        $grant = (new BenefitService($this->db))->grantSupportCompensation($userId, $durationDays, [
+            'access_plan' => (string) $plan['name'],
+            'ticket_reference' => (string) ($data['ticket_reference'] ?? 'admin-user-action'),
+            'reason' => (string) ($data['reason'] ?? 'Upgrade administrativo temporario.'),
+            'idempotency_key' => $data['idempotency_key'] ?? null,
+            'apply_provider' => false,
+        ], $actorId);
+        $grantData = $grant['grant'] ?? [];
+        $end = (string) ($grantData['grant_expires_at'] ?? date('Y-m-d H:i:s', strtotime('+' . $durationDays . ' days')));
         $this->notifyManualGrantAdjustment($userId, (string) $plan['name'], $end, null, true);
 
         return [
             'message' => "Plano alterado para {$plan['name']} com sucesso.",
-            'data' => [],
+            'data' => ['grant_id' => $grantData['id'] ?? null, 'duration_days' => $durationDays],
             'audit_action' => 'user.upgrade_plan',
             'audit_entity_type' => 'user',
             'audit_entity_id' => $userId,
             'audit_metadata' => [
                 'plan_id' => $planId,
                 'plan_name' => $plan['name'],
-                'grant_origin' => 'manual_admin',
-                'is_free_admin_grant' => true,
-                'remote_cancellation' => $remoteCancellation,
+                'grant_origin' => 'support_compensation',
+                'benefit_mode' => $grant['mode'] ?? null,
             ],
         ];
     }
@@ -376,56 +327,6 @@ class AdminUserActionsService
         } catch (Throwable $error) {
             error_log('[admin_user_actions] manual grant notification warning: ' . $error->getMessage());
         }
-    }
-
-    /**
-     * Cancela a assinatura remota antes de conceder um upgrade gratuito pelo admin.
-     *
-     * @since 1.0.0
-     */
-    private function cancelRemoteSubscriptionBeforeManualGrant(array $subscription): array
-    {
-        $provider = normalizePaymentProvider($subscription['payment_provider'] ?? '');
-        $providerSubscriptionId = trim((string) ($subscription['provider_subscription_id'] ?? ''));
-
-        if (!paymentProviderSupportsRemoteCancellation($provider) || $providerSubscriptionId === '') {
-            return [
-                'required' => false,
-                'provider' => $provider,
-                'provider_subscription_id' => $providerSubscriptionId,
-            ];
-        }
-
-        if (!stripeIsConfigured()) {
-            throw new RuntimeException('Nao foi possivel aplicar o upgrade manual: a assinatura Stripe ativa precisa ser cancelada remotamente antes do beneficio gratuito.');
-        }
-
-        try {
-            getStripeClient()->subscriptions->cancel($providerSubscriptionId, []);
-        } catch (Throwable $error) {
-            $message = strtolower($error->getMessage());
-            $alreadyGone = str_contains($message, 'no such subscription')
-                || str_contains($message, 'resource_missing')
-                || str_contains($message, 'has been canceled');
-
-            if (!$alreadyGone) {
-                throw new RuntimeException('Nao foi possivel cancelar a assinatura Stripe ativa antes do upgrade manual: ' . $error->getMessage(), 0, $error);
-            }
-
-            return [
-                'required' => true,
-                'provider' => 'stripe',
-                'provider_subscription_id' => $providerSubscriptionId,
-                'status' => 'already_inactive',
-            ];
-        }
-
-        return [
-            'required' => true,
-            'provider' => 'stripe',
-            'provider_subscription_id' => $providerSubscriptionId,
-            'status' => 'cancelled',
-        ];
     }
 
     /**
@@ -620,28 +521,27 @@ class AdminUserActionsService
     }
 
     /**
-     * Monta o intervalo de vigencia do plano para calculo manual.
-     *
-     * @since 1.0.0
+     * Converte a periodicidade do plano em duracao de acesso temporario.
+     * A assinatura paga permanece sob a autoridade Billing.
      */
-    private function getPlanDurationSpec(array $plan): string
+    private function getPlanDurationDays(array $plan): int
     {
         $intervalUnit = strtolower((string) ($plan['interval_unit'] ?? 'month'));
         $intervalCount = max(1, (int) ($plan['interval_count'] ?? 1));
 
         if ($intervalUnit === 'day') {
-            return '+' . $intervalCount . ' day';
+            return min(3660, $intervalCount);
         }
 
         if ($intervalUnit === 'week') {
-            return '+' . $intervalCount . ' week';
+            return min(3660, $intervalCount * 7);
         }
 
         if ($intervalUnit === 'year') {
-            return '+' . $intervalCount . ' year';
+            return min(3660, $intervalCount * 365);
         }
 
-        return '+' . $intervalCount . ' month';
+        return min(3660, $intervalCount * 30);
     }
 
     /**

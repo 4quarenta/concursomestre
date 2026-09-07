@@ -39,14 +39,13 @@ assertContainsTextForAdminActions($base . '/modules/admin/services/AdminUserDeta
 assertContainsTextForAdminActions($base . '/config/payment_provider.php', "'manual_admin'", 'Manual admin grants must be a first-class non-billing payment provider');
 assertContainsTextForAdminActions($base . '/config/payment_provider.php', 'isChargeablePaymentProvider', 'Billing code must centralize chargeable provider detection');
 assertContainsTextForAdminActions($base . '/config/payment_provider.php', 'paymentProviderSupportsRemoteCancellation', 'Manual grants must know which providers need remote cancellation');
-assertContainsTextForAdminActions($base . '/modules/admin/services/AdminUserActionsService.php', 'cancelRemoteSubscriptionBeforeManualGrant', 'Manual admin upgrades must cancel remote Stripe subscriptions before granting free access');
-assertContainsTextForAdminActions($base . '/modules/admin/services/AdminUserActionsService.php', 'is_free_admin_grant', 'Manual admin upgrades must be audited as free grants');
-assertContainsTextForAdminActions($base . '/modules/admin/services/AdminUserActionsService.php', "return '+' . \$intervalCount . ' day';", 'Manual admin grants must preserve day-based test plan durations');
-assertContainsTextForAdminActions($base . '/modules/admin/services/AdminUserActionsService.php', 'extendSubscriptionAsManualGrant', 'Manual day additions must be converted to a non-billing admin grant');
-assertContainsTextForAdminActions($base . '/modules/admin/repositories/AdminUserActionsRepository.php', "'manual_admin'", 'Manual admin subscriptions must not use a billable provider');
-assertContainsTextForAdminActions($base . '/modules/admin/repositories/AdminUserActionsRepository.php', 'provider_subscription_id = NULL', 'Manual admin grants must clear remote Stripe subscription ids locally');
-assertContainsTextForAdminActions($base . '/modules/admin/repositories/AdminUserActionsRepository.php', 'next_renewal_amount = NULL', 'Manual admin grants must clear future renewal projections');
-assertContainsTextForAdminActions($base . '/modules/admin/repositories/AdminUserActionsRepository.php', 'auto_renew,', 'Manual admin subscriptions must explicitly set renewal fields');
-assertContainsTextForAdminActions($base . '/modules/admin/repositories/AdminUserActionsRepository.php', 'cancel_at_period_end', 'Manual admin subscriptions must expire instead of renewing');
+assertContainsTextForAdminActions($base . '/modules/admin/services/AdminUserActionsService.php', 'grantSupportCompensation', 'Manual benefits must use the central BenefitService contract');
+assertContainsTextForAdminActions($base . '/modules/admin/services/AdminUserActionsService.php', "'apply_provider' => true", 'Paid subscription extensions must wait for provider confirmation through the central service');
+assertNotContainsTextForAdminActions($base . '/modules/admin/services/AdminUserActionsService.php', 'cancelRemoteSubscriptionBeforeManualGrant', 'Legacy manual compensation must not cancel a paid subscription as a side effect');
+assertNotContainsTextForAdminActions($base . '/modules/admin/repositories/AdminUserActionsRepository.php', 'extendSubscriptionAsManualGrant', 'Legacy direct subscription benefit mutation must be removed');
+assertNotContainsTextForAdminActions($base . '/modules/admin/repositories/AdminUserActionsRepository.php', 'createManualSubscription', 'Legacy manual subscription creation must be removed from benefit compensation');
+assertNotContainsTextForAdminActions($base . '/modules/admin/repositories/AdminUserActionsRepository.php', 'updateUserPlanSnapshot', 'Legacy direct users.plan benefit mutation must be removed');
+assertContainsTextForAdminActions($base . '/modules/benefits/services/BenefitService.php', 'SUPPORT_COMPENSATION', 'Support compensation must be represented by the central Benefit authority');
+assertContainsTextForAdminActions($base . '/modules/billing/services/StripeBillingProviderAdapter.php', "'trial_end' => \$newPeriodEnd", 'Billing extensions must use the audited Stripe trial_end mechanism');
 
 fwrite(STDOUT, "Admin user actions wiring assertions passed.\n");

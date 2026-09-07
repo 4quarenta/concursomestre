@@ -91,49 +91,6 @@ class AdminUserActionsRepository
     }
 
     /**
-     * Estende uma assinatura como concessao gratuita do admin.
-     *
-     * Ao virar manual_admin, a linha deixa de participar dos crons, webhooks e
-     * projecoes de cobranca Stripe. O usuario ganha apenas o periodo concedido.
-     *
-     * @since 1.0.0
-     */
-    public function extendSubscriptionAsManualGrant(int $subscriptionId, string $newEndDate, string $status = 'active'): void
-    {
-        $normalizedStatus = in_array($status, ['active', 'canceled'], true) ? $status : 'active';
-
-        $stmt = $this->db->prepare("
-            UPDATE user_subscriptions
-            SET status = :status,
-                payment_provider = 'manual_admin',
-                provider_subscription_id = NULL,
-                provider_customer_id = NULL,
-                provider_checkout_session_id = NULL,
-                provider_current_period_start = NULL,
-                provider_current_period_end = NULL,
-                provider_last_webhook_event_at = NULL,
-                provider_schedule_id = NULL,
-                auto_renew = 0,
-                cancel_at_period_end = 1,
-                current_period_end = :end_date,
-                next_renewal_amount = NULL,
-                next_renewal_date = NULL,
-                next_renewal_price_source = NULL,
-                next_renewal_cycle_label = NULL,
-                next_renewal_snapshot_json = NULL,
-                renewal_reminder_sent_for = NULL,
-                renewal_reminder_sent_at = NULL,
-                updated_at = NOW()
-            WHERE id = :id
-        ");
-        $stmt->execute([
-            ':status' => $normalizedStatus,
-            ':end_date' => $newEndDate,
-            ':id' => $subscriptionId,
-        ]);
-    }
-
-    /**
      * Retorna os dados de um plano pelo ID.
      *
      * @since 1.0.0
@@ -303,69 +260,6 @@ class AdminUserActionsRepository
               AND status = 'active'
         ");
         $stmt->execute([':user_id' => $userId]);
-    }
-
-    /**
-     * Cria uma assinatura manual com status ativo.
-     *
-     * @since 1.0.0
-     */
-    public function createManualSubscription(string $userId, int $planId, string $start, string $end): void
-    {
-        $stmt = $this->db->prepare("
-            INSERT INTO user_subscriptions (
-                user_id,
-                plan_id,
-                status,
-                current_period_start,
-                current_period_end,
-                created_at,
-                updated_at,
-                payment_provider,
-                auto_renew,
-                cancel_at_period_end
-            ) VALUES (
-                :user_id,
-                :plan_id,
-                'active',
-                :current_period_start,
-                :current_period_end,
-                NOW(),
-                NOW(),
-                'manual_admin',
-                0,
-                1
-            )
-        ");
-        $stmt->execute([
-            ':user_id' => $userId,
-            ':plan_id' => $planId,
-            ':current_period_start' => $start,
-            ':current_period_end' => $end,
-        ]);
-    }
-
-    /**
-     * Atualiza o snapshot de plano salvo no perfil do usuario.
-     *
-     * @since 1.0.0
-     */
-    public function updateUserPlanSnapshot(string $userId, string $planName, int $planId, string $subscriptionEnd): void
-    {
-        $stmt = $this->db->prepare("
-            UPDATE users
-            SET plan = :plan_name,
-                current_plan_id = :plan_id,
-                subscription_end = :subscription_end,
-                updated_at = NOW()
-            WHERE id = :user_id
-        ");
-        $stmt->execute([
-            ':plan_name' => $planName,
-            ':plan_id' => $planId,
-            ':subscription_end' => $subscriptionEnd,
-            ':user_id' => $userId,
-        ]);
     }
 
     /**

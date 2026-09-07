@@ -1489,6 +1489,11 @@ function handleAdminMarketingCampaignsRoute(PDO $db): void
             logAdminAudit($db, $adminUserId, 'marketing_campaign.transition', 'marketing_campaign', (string) ($campaign['id'] ?? ''), ['status' => $campaign['status'] ?? null]);
             Response::success($campaign, 'Status da campanha atualizado.');
         }
+        if ($method === 'POST' && $action === 'grant_benefit') {
+            $result = $controller->grantBenefit((string) ($payload['campaign_id'] ?? ''), (string) ($payload['user_id'] ?? ''), $payload, $adminUserId);
+            logAdminAudit($db, $adminUserId, 'marketing_campaign.grant_benefit', 'marketing_campaign', (string) ($payload['campaign_id'] ?? ''), ['benefit_grant_id' => $result['id'] ?? null]);
+            Response::success($result, 'Benefit da campanha concedido.');
+        }
         if ($method === 'POST' && $action === 'delete') {
             $id = (string) ($payload['id'] ?? '');
             $controller->delete($id);

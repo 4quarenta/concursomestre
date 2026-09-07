@@ -6,6 +6,7 @@ require_once __DIR__ . '/services/BenefitService.php';
 require_once __DIR__ . '/../../shared/auth/request_auth.php';
 require_once __DIR__ . '/../../shared/security/AdminSecurity.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
+require_once __DIR__ . '/../billing/services/BillingExtensionService.php';
 
 function buildBenefitService(PDO $db): BenefitService
 {
@@ -88,8 +89,9 @@ function handleAdminBenefitsRoute(PDO $db): void
             'create_definition' => $service->createDefinition($body, $actorId),
             'create_code' => $service->createCode($body, $actorId),
             'grant' => $service->grant((string) ($body['user_id'] ?? ''), (string) ($body['benefit_definition_id'] ?? ''), $body, $actorId),
+            'apply_provider_extension' => (new BillingExtensionService($db))->apply((string) ($body['grant_id'] ?? ''), $actorId),
+            'reconcile_provider_extension' => (new BillingExtensionService($db))->reconcile((string) ($body['grant_id'] ?? ''), $actorId),
             'revoke' => $service->revokeGrant((string) ($body['grant_id'] ?? ''), $actorId, (string) ($body['reason'] ?? 'Revogado pelo administrador')),
-            'confirm_provider_extension' => $service->confirmProviderBillingExtension((string) ($body['grant_id'] ?? ''), (string) ($body['provider_reference'] ?? ''), (string) ($body['old_period_end'] ?? ''), (string) ($body['new_period_end'] ?? ''), $actorId),
             default => throw new InvalidArgumentException('Acao de Benefit invalida.'),
         };
         logAdminAudit($db, $actorId, 'benefit.' . $action, 'benefit', (string) ($body['grant_id'] ?? $body['benefit_definition_id'] ?? ''), ['source_type' => $body['source_type'] ?? null]);

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../../../config/payment_provider.php';
+
 /**
  * Autoridade unica para Benefits. O servico nao altera users.plan, nao cria
  * assinatura Stripe e nao considera uma extensao de cobranca aplicada antes
@@ -228,6 +230,152 @@ final class BenefitService
         }
     }
 
+    /**
+     * Concede uma compensacao legada sem alterar plano, assinatura ou Stripe
+     * diretamente. A extensao de cobranca fica pendente ate a confirmacao do
+     * provedor; contas sem assinatura Stripe recebem somente acesso temporario.
+     */
+    public function grantSupportCompensation(string $userId, int $days, array $input, string $actorId): array
+    {
+        if (trim($userId) === '' || $days < 1 || $days > 366) {
+            throw new InvalidArgumentException('Compensacao de suporte invalida.');
+        }
+
+        $subscription = $this->findCurrentSubscription($userId);
+        $paidPlan = self::canonicalPlan((string) ($subscription['plan_name'] ?? 'Gratuito'));
+        $requestedAccessPlan = self::canonicalPlan((string) ($input['access_plan'] ?? ''));
+        $forceTemporaryAccess = $requestedAccessPlan !== 'Gratuito';
+        $hasStripeSubscription = $subscription !== null
+            && normalizePaymentProvider((string) ($subscription['payment_provider'] ?? '')) === 'stripe'
+            && trim((string) ($subscription['provider_subscription_id'] ?? '')) !== ''
+            && in_array(strtolower((string) ($subscription['status'] ?? '')), ['active', 'trialing', 'past_due'], true);
+        $mode = $forceTemporaryAccess || !$hasStripeSubscription ? 'ACCESS_ONLY' : 'BILLING_EXTENSION_ONLY';
+        $idempotencyInput = trim((string) ($input['idempotency_key'] ?? ''));
+        if ($idempotencyInput === '') {
+            $idempotencyInput = 'legacy-admin-days-' . $userId . '-' . $days . '-' . bin2hex(random_bytes(8));
+        }
+        $existingGrant = $this->findGrantByIdempotency(hash('sha256', $idempotencyInput));
+        if ($existingGrant) {
+            $existingMode = ((int) ($existingGrant['billing_extension_days'] ?? 0)) > 0
+                ? 'BILLING_EXTENSION_ONLY'
+                : 'ACCESS_ONLY';
+            return [
+                'grant' => $existingGrant,
+                'mode' => $existingMode,
+                'paid_plan' => $paidPlan,
+                'provider_required' => $existingMode === 'BILLING_EXTENSION_ONLY',
+            ];
+        }
+        $definitionKey = 'support-compensation-' . hash('sha256', $idempotencyInput);
+        $definition = $this->createDefinition([
+            'definition_key' => $definitionKey,
+            'name' => 'Compensacao de suporte',
+            'benefit_mode' => $mode,
+            'access_plan' => $mode === 'ACCESS_ONLY' ? ($forceTemporaryAccess ? $requestedAccessPlan : $paidPlan) : null,
+            'access_duration_days' => $mode === 'ACCESS_ONLY' ? $days : 0,
+            'billing_extension_days' => $mode === 'BILLING_EXTENSION_ONLY' ? $days : 0,
+            'stacking_policy' => 'EXTEND',
+            'source_scope' => 'SUPPORT_COMPENSATION',
+            'active' => 1,
+        ], $actorId);
+
+        $grant = $this->grant($userId, (string) $definition['id'], [
+            'source_type' => 'SUPPORT_COMPENSATION',
+            'source_reference' => (string) ($input['ticket_reference'] ?? 'admin-user-action'),
+            'reason' => (string) ($input['reason'] ?? 'Compensacao administrativa'),
+            'idempotency_key' => $idempotencyInput,
+            'metadata' => [
+                'legacy_action' => 'add_days',
+                'operator_id' => $actorId,
+            ],
+        ], $actorId);
+
+        if ($mode === 'BILLING_EXTENSION_ONLY' && !empty($input['apply_provider'])) {
+            require_once __DIR__ . '/../../../modules/billing/services/BillingExtensionService.php';
+            $grant = (new BillingExtensionService($this->db))->apply((string) $grant['id'], $actorId);
+        }
+
+        return [
+            'grant' => $grant,
+            'mode' => $mode,
+            'paid_plan' => $paidPlan,
+            'provider_required' => $hasStripeSubscription,
+        ];
+    }
+
+    public function getGrant(string $grantId): ?array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM benefit_grants WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => trim($grantId)]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    public function markProviderApplying(string $grantId, string $actorId, ?string $oldPeriodEnd = null): bool
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE benefit_grants
+             SET status = 'APPLYING', provider_status = 'APPLYING',
+                 provider_old_period_end = COALESCE(provider_old_period_end, :old_period_end), updated_at = NOW()
+             WHERE id = :id AND status IN ('PENDING_PROVIDER', 'RECONCILIATION_REQUIRED')"
+        );
+        $stmt->execute([':id' => $grantId, ':old_period_end' => $oldPeriodEnd]);
+        if ($stmt->rowCount() > 0) {
+            $this->audit($grantId, null, $actorId, 'billing_extension.provider_applying', []);
+            return true;
+        }
+        return false;
+    }
+
+    public function markProviderFailure(string $grantId, string $actorId, string $status, string $reason): void
+    {
+        $normalizedStatus = in_array($status, ['FAILED', 'RECONCILIATION_REQUIRED'], true) ? $status : 'FAILED';
+        $stmt = $this->db->prepare(
+            "UPDATE benefit_grants
+             SET status = :status, provider_status = :provider_status,
+                 reason = :reason, updated_at = NOW()
+             WHERE id = :id AND status IN ('PENDING_PROVIDER', 'APPLYING', 'RECONCILIATION_REQUIRED')"
+        );
+        $stmt->execute([
+            ':status' => $normalizedStatus,
+            ':provider_status' => $normalizedStatus,
+            ':reason' => mb_substr(trim($reason), 0, 500),
+            ':id' => $grantId,
+        ]);
+        if ($stmt->rowCount() > 0) {
+            $this->audit($grantId, null, $actorId, 'billing_extension.provider_failed', [
+                'status' => $normalizedStatus,
+                'reason' => mb_substr(trim($reason), 0, 500),
+            ]);
+        }
+    }
+
+    /** Campaigns reference Benefits; this service owns the actual grant. */
+    public function grantMarketingBenefit(string $userId, string $benefitReference, array $input, string $actorId): array
+    {
+        $reference = trim($benefitReference);
+        if ($reference === '') {
+            throw new InvalidArgumentException('Referencia de Benefit de marketing ausente.');
+        }
+        $stmt = $this->db->prepare('SELECT id, source_scope, active FROM benefit_definitions WHERE id = :id OR definition_key = :definition_key LIMIT 1');
+        $stmt->execute([':id' => $reference, ':definition_key' => $reference]);
+        $definition = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$definition || (int) ($definition['active'] ?? 0) !== 1) {
+            throw new OutOfBoundsException('Benefit de marketing nao encontrado.');
+        }
+        $sourceScope = strtoupper((string) ($definition['source_scope'] ?? ''));
+        if (!in_array($sourceScope, ['ANY', 'MARKETING'], true)) {
+            throw new DomainException('Benefit nao habilitado para origem de marketing.');
+        }
+        return $this->grant($userId, (string) $definition['id'], [
+            'source_type' => 'MARKETING',
+            'source_reference' => (string) ($input['campaign_reference'] ?? 'marketing'),
+            'reason' => (string) ($input['reason'] ?? 'Benefit concedido por campanha.'),
+            'idempotency_key' => $input['idempotency_key'] ?? '',
+            'metadata' => ['campaign_reference' => (string) ($input['campaign_reference'] ?? '')],
+        ], $actorId);
+    }
+
     public function redeemCode(string $userId, string $rawCode, string $idempotencyKey, ?string $now = null): array
     {
         $idempotencyKey = $this->normalizeIdempotency($idempotencyKey);
@@ -380,7 +528,7 @@ final class BenefitService
                 "UPDATE benefit_grants SET status = 'APPLIED', provider_status = 'CONFIRMED',
                     provider_reference = :reference, provider_old_period_end = :old_end,
                     provider_new_period_end = :new_end, applied_at = NOW(), updated_at = NOW()
-                 WHERE id = :id AND status = 'PENDING_PROVIDER'"
+                 WHERE id = :id AND status IN ('PENDING_PROVIDER', 'APPLYING', 'RECONCILIATION_REQUIRED')"
             );
             $update->execute([':reference' => $providerReference, ':old_end' => date('Y-m-d H:i:s', $old), ':new_end' => date('Y-m-d H:i:s', $new), ':id' => $grantId]);
             $this->audit($grantId, null, $actorId, 'billing_extension.provider_confirmed', ['provider_reference' => $providerReference, 'old_period_end' => date('Y-m-d H:i:s', $old), 'new_period_end' => date('Y-m-d H:i:s', $new)]);
@@ -516,6 +664,22 @@ final class BenefitService
     {
         $stmt = $this->db->prepare('SELECT * FROM benefit_definitions WHERE id = :id' . ($forUpdate ? ' FOR UPDATE' : ''));
         $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    private function findCurrentSubscription(string $userId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT us.*, p.name AS plan_name
+             FROM user_subscriptions us
+             LEFT JOIN plans p ON p.id = us.plan_id
+             WHERE us.user_id = :user_id
+               AND us.status IN ('active', 'trialing', 'past_due', 'cancel_at_period_end')
+             ORDER BY us.id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([':user_id' => $userId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ?: null;
     }

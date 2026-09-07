@@ -12,6 +12,11 @@ final class MarketingCampaignRepository
     {
     }
 
+    public function getDatabase(): PDO
+    {
+        return $this->db;
+    }
+
     public function ensureSchema(): void
     {
         if ($this->schemaChecked) {

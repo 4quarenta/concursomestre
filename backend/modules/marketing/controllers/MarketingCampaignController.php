@@ -17,5 +17,6 @@ final class MarketingCampaignController
     public function transition(string $id, string $status, string $adminUserId): array { return $this->service->transition($id, $status, $adminUserId); }
     public function interaction(array $payload, ?string $userId): array { return $this->service->recordInteraction($payload, $userId); }
     public function analytics(string $id): array { return $this->service->analytics($id); }
+    public function grantBenefit(string $id, string $userId, array $payload, string $adminUserId): array { return $this->service->grantCampaignBenefit($id, $userId, $payload, $adminUserId); }
     public function delete(string $id): void { $this->service->delete($id); }
 }

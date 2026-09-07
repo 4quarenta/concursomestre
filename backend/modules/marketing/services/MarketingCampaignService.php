@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../../benefits/services/BenefitService.php';
+
 final class MarketingCampaignService
 {
+    private readonly BenefitService $benefitService;
     private const STATUSES = ['draft', 'scheduled', 'active', 'paused', 'ended', 'archived'];
     private const OBJECTIVES = ['CRIAR_CONTA', 'INICIAR_TESTE', 'ESCOLHER_PLANO', 'ASSINAR_PRO', 'ASSINAR_ELITE', 'FAZER_SIMULADO', 'RESPONDER_QUESTOES', 'REATIVAR_USUARIO', 'UPGRADE_PLANO'];
     private const INTERACTIONS = ['impression', 'dismissal', 'cta_clicked'];
@@ -23,6 +26,7 @@ final class MarketingCampaignService
     public function __construct(private readonly MarketingCampaignRepository $repository)
     {
         $this->repository->ensureSchema();
+        $this->benefitService = new BenefitService($this->repository->getDatabase());
     }
 
     public function listCampaigns(?string $search, ?string $status): array
@@ -214,6 +218,25 @@ final class MarketingCampaignService
     {
         if ($this->repository->findCampaign($campaignId) === null) throw new InvalidArgumentException('Campanha nao encontrada.');
         return $this->repository->getCampaignAnalytics($campaignId);
+    }
+
+    /** Campaigns reference Benefits; this service owns the actual grant. */
+    public function grantCampaignBenefit(string $campaignId, string $userId, array $input, string $actorId): array
+    {
+        $campaign = $this->repository->findCampaign($campaignId);
+        if ($campaign === null) {
+            throw new InvalidArgumentException('Campanha nao encontrada.');
+        }
+        $offer = is_array($campaign['offer_json'] ?? null) ? $campaign['offer_json'] : [];
+        $benefitReference = trim((string) ($offer['benefit_ref'] ?? ''));
+        if ($benefitReference === '') {
+            throw new InvalidArgumentException('Campanha nao possui Benefit vinculado.');
+        }
+        return $this->benefitService->grantMarketingBenefit($userId, $benefitReference, [
+            'campaign_reference' => $campaignId,
+            'idempotency_key' => $input['idempotency_key'] ?? '',
+            'reason' => $input['reason'] ?? 'Benefit concedido por campanha.',
+        ], $actorId);
     }
 
     public function delete(string $id): void
