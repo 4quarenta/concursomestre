@@ -906,6 +906,7 @@ const AdminMarketing = ({
                   value={draftPromotion.name}
                   onChange={(event) => setDraftPromotion((current) => ({ ...current, name: event.target.value }))}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
+                  aria-label="Nome da campanha"
                 />
               </div>
               <div className="space-y-1.5">
@@ -915,6 +916,7 @@ const AdminMarketing = ({
                   value={draftPromotion.bannerText}
                   onChange={(event) => setDraftPromotion((current) => ({ ...current, bannerText: event.target.value }))}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
+                  aria-label="Texto do banner"
                 />
               </div>
             </div>
@@ -933,6 +935,7 @@ const AdminMarketing = ({
                     }));
                   }}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
+                  aria-label="Ciclo da campanha"
                 >
                   <option value="draft">Rascunho</option>
                   <option value="scheduled">Agendada</option>
@@ -952,6 +955,7 @@ const AdminMarketing = ({
                     startsAt: event.target.value ? toIsoDateTimeValue(event.target.value) : null,
                   }))}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
+                  aria-label="Inicio da campanha"
                 />
               </div>
               <div className="space-y-1.5">
@@ -964,6 +968,7 @@ const AdminMarketing = ({
                     endsAt: event.target.value ? toIsoDateTimeValue(event.target.value) : null,
                   }))}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
+                  aria-label="Encerramento da campanha"
                 />
               </div>
             </div>
@@ -1019,19 +1024,22 @@ const AdminMarketing = ({
                     onChange={(event) => setDraftPromotion((current) => ({ ...current, notificationTitle: event.target.value }))}
                     className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                     placeholder="Titulo da notificacao"
+                    aria-label="Titulo da notificacao"
                   />
                   <textarea
                     value={draftPromotion.notificationMessage || ''}
                     onChange={(event) => setDraftPromotion((current) => ({ ...current, notificationMessage: event.target.value }))}
                     className={`${ADMIN_FIELD_CLASS} min-h-[88px] w-full resize-none`}
                     placeholder="Mensagem curta que aparece no sino do usuario"
+                    aria-label="Mensagem curta da notificacao"
                   />
                   <input
                     type="text"
                     value={draftPromotion.notificationActionUrl || ''}
                     onChange={(event) => setDraftPromotion((current) => ({ ...current, notificationActionUrl: event.target.value }))}
                     className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
-                        placeholder="/planos"
+                    placeholder="/planos"
+                    aria-label="Link da notificacao"
                   />
                 </div>
               </section>
@@ -1061,6 +1069,7 @@ const AdminMarketing = ({
                     onChange={(event) => setDraftPromotion((current) => ({ ...current, emailSubject: event.target.value }))}
                     className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                     placeholder="Assunto do email"
+                    aria-label="Assunto do email"
                   />
                   <input
                     type="text"
@@ -1068,12 +1077,14 @@ const AdminMarketing = ({
                     onChange={(event) => setDraftPromotion((current) => ({ ...current, emailPreview: event.target.value }))}
                     className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                     placeholder="Pre-header / chamada curta"
+                    aria-label="Pre-header do email"
                   />
                   <textarea
                     value={draftPromotion.emailBody || ''}
                     onChange={(event) => setDraftPromotion((current) => ({ ...current, emailBody: event.target.value }))}
                     className={`${ADMIN_FIELD_CLASS} min-h-[120px] w-full resize-none`}
                     placeholder="Corpo do email"
+                    aria-label="Corpo do email"
                   />
                 </div>
               </section>
@@ -1126,6 +1137,7 @@ const AdminMarketing = ({
                           value={banner.placement}
                           onChange={(event) => patchCampaignBanner(banner.id, (current) => ({ ...current, placement: event.target.value as MarketingCampaignBanner['placement'] }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`Area do banner ${banner.id}`}
                         >
                           {CAMPAIGN_BANNER_PLACEMENTS.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
@@ -1140,6 +1152,7 @@ const AdminMarketing = ({
                           onChange={(event) => patchCampaignBanner(banner.id, (current) => ({ ...current, backgroundColor: event.target.value }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
                           placeholder="#0f172a"
+                          aria-label={`Cor do banner ${banner.id}`}
                         />
                       </div>
                       <div className="space-y-1.5 md:col-span-2">
@@ -1149,6 +1162,7 @@ const AdminMarketing = ({
                           value={banner.headline}
                           onChange={(event) => patchCampaignBanner(banner.id, (current) => ({ ...current, headline: event.target.value }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`Titulo do banner ${banner.id}`}
                         />
                       </div>
                       <div className="space-y-1.5 md:col-span-2">
@@ -1158,6 +1172,7 @@ const AdminMarketing = ({
                           value={banner.description || ''}
                           onChange={(event) => patchCampaignBanner(banner.id, (current) => ({ ...current, description: event.target.value }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`Descricao do banner ${banner.id}`}
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -1167,6 +1182,7 @@ const AdminMarketing = ({
                           value={banner.ctaLabel || ''}
                           onChange={(event) => patchCampaignBanner(banner.id, (current) => ({ ...current, ctaLabel: event.target.value }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`CTA do banner ${banner.id}`}
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -1176,6 +1192,7 @@ const AdminMarketing = ({
                           value={banner.actionUrl || ''}
                           onChange={(event) => patchCampaignBanner(banner.id, (current) => ({ ...current, actionUrl: event.target.value }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`Link do banner ${banner.id}`}
                         />
                       </div>
                     </div>
@@ -1231,6 +1248,7 @@ const AdminMarketing = ({
                           value={rule.condition}
                           onChange={(event) => patchCampaignAutomation(rule.id, (current) => ({ ...current, condition: event.target.value as MarketingCampaignAutomationRule['condition'] }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`Condicao da automacao ${rule.id}`}
                         >
                           {CAMPAIGN_AUTOMATION_CONDITIONS.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
@@ -1243,6 +1261,7 @@ const AdminMarketing = ({
                           value={rule.channel}
                           onChange={(event) => patchCampaignAutomation(rule.id, (current) => ({ ...current, channel: event.target.value as MarketingCampaignAutomationRule['channel'] }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`Canal da automacao ${rule.id}`}
                         >
                           {CAMPAIGN_CHANNELS.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
@@ -1256,6 +1275,7 @@ const AdminMarketing = ({
                           value={rule.delayHours}
                           onChange={(event) => patchCampaignAutomation(rule.id, (current) => ({ ...current, delayHours: Number(event.target.value) }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`Atraso da automacao ${rule.id} em horas`}
                         />
                       </div>
                       <div className="space-y-1.5 md:col-span-2">
@@ -1265,6 +1285,7 @@ const AdminMarketing = ({
                           value={rule.subject}
                           onChange={(event) => patchCampaignAutomation(rule.id, (current) => ({ ...current, subject: event.target.value }))}
                           className={`${ADMIN_FIELD_CLASS} h-10 w-full`}
+                          aria-label={`Assunto da automacao ${rule.id}`}
                         />
                       </div>
                       <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
@@ -1273,6 +1294,7 @@ const AdminMarketing = ({
                           value={rule.message}
                           onChange={(event) => patchCampaignAutomation(rule.id, (current) => ({ ...current, message: event.target.value }))}
                           className={`${ADMIN_FIELD_CLASS} min-h-[92px] w-full resize-none`}
+                          aria-label={`Mensagem da automacao ${rule.id}`}
                         />
                       </div>
                     </div>
