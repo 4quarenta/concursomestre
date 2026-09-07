@@ -155,6 +155,7 @@ const AdminTopBar = ({
               onFocus={() => setIsSearchOpen(true)}
               onBlur={() => window.setTimeout(() => setIsSearchOpen(false), 120)}
               placeholder="Buscar questões, usuários, provas..."
+              aria-label="Buscar no painel administrativo"
               className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-4 text-sm font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-400"
             />
           </form>
