@@ -653,7 +653,9 @@ class TransactionsService
             if ($renewalTimestamp === false) {
                 throw new DomainException('Data de renovação do provedor inválida.');
             }
-            $expectedRenewal = gmdate('Y-m-d H:i:s', $renewalTimestamp + ($payload['offered_days'] * 86400));
+            // Preserve the database/application timezone used by the provider
+            // snapshot so the user-facing estimate does not drift by offset.
+            $expectedRenewal = date('Y-m-d H:i:s', $renewalTimestamp + ($payload['offered_days'] * 86400));
             $benefits = new BenefitService($this->db);
             $definitionKey = 'refund-retention-' . hash('sha256', $payload['transaction_id']);
             $definition = $benefits->findDefinitionByKey($definitionKey);
