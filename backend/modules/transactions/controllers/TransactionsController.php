@@ -81,4 +81,9 @@ class TransactionsController
     {
         return $this->service->sendRefundRetentionOffer($data);
     }
+
+    public function decideRefundRetentionOffer(string $userId, array $data): array
+    {
+        return $this->service->decideRefundRetentionOffer($userId, $data);
+    }
 }

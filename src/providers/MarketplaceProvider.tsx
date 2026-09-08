@@ -46,7 +46,7 @@ interface MarketplaceContextType {
   fetchUserTransactions: () => void;
   deleteMaterial: (id: string) => Promise<void>;
   deleteMaterialComment: (materialId: string, commentId: string) => Promise<void>;
-  resolveRefund: (transactionId: string, resolution: 'approved' | 'retention_offer') => Promise<void>;
+  resolveRefund: (transactionId: string, resolution: 'approved' | 'retention_offer', retention?: { offeredDays: number; expiresAt: string; userNote?: string; internalNote?: string }) => Promise<void>;
   uploadFile: (file: File) => Promise<{ fileRef?: string; publicUrl?: string; pageCount?: number } | null>;
   uploadProgress: number;
 }
@@ -451,10 +451,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode; initialM
    * Quando aprovado, também remove o acesso local ao material comprado.
    * @since 1.0.0
    */
-  const resolveRefund = async (transactionId: string, resolution: 'approved' | 'retention_offer') => {
+  const resolveRefund = async (transactionId: string, resolution: 'approved' | 'retention_offer', retention?: { offeredDays: number; expiresAt: string; userNote?: string; internalNote?: string }) => {
     const previousTransactions = [...transactions];
     try {
-      await marketplaceService.processRefund(transactionId, resolution);
+      await marketplaceService.processRefund(transactionId, resolution, retention);
       const transaction = previousTransactions.find((item) => item.id === transactionId);
       if (transaction && resolution === 'approved') {
         removeMaterialAccess?.(transaction.materialId);

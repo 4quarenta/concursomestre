@@ -21,6 +21,8 @@ require_once __DIR__ . '/../../../config/stripe.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSupport.php';
+require_once __DIR__ . '/../../benefits/services/BenefitService.php';
+require_once __DIR__ . '/../../billing/services/BillingExtensionService.php';
 
 /**
  * Servico do dominio de transacoes do marketplace.
@@ -221,6 +223,20 @@ class TransactionsService
                 'providerCustomerId' => $row['provider_customer_id'],
                 'refundReason' => $row['refund_reason'],
                 'refundRequestedAt' => $row['refund_requested_at'],
+                'retentionOffer' => !empty($row['retention_offer_id']) ? [
+                    'id' => $row['retention_offer_id'],
+                    'status' => $row['retention_offer_status'],
+                    'refundAmount' => (float) ($row['retention_offer_refund_amount'] ?? 0),
+                    'paidPlan' => $row['retention_offer_paid_plan'],
+                    'currentRenewalAt' => $row['retention_offer_current_renewal_at'],
+                    'offeredDays' => (int) ($row['retention_offer_offered_days'] ?? 0),
+                    'expectedRenewalAt' => $row['retention_offer_expected_renewal_at'],
+                    'expiresAt' => $row['retention_offer_expires_at'],
+                    'userNote' => $row['retention_offer_user_note'],
+                    'providerConfirmedAt' => $row['retention_offer_provider_confirmed_at'],
+                    'providerReference' => $row['retention_offer_provider_reference'],
+                    'benefitGrantId' => $row['retention_offer_benefit_grant_id'],
+                ] : null,
                 'timestamp' => strtotime($displayDate) * 1000,
                 'dateFormatted' => date('d/m/Y', strtotime($displayDate)),
                 'dateTimeFormatted' => date('d/m/Y H:i:s', strtotime($displayDate)),
@@ -547,9 +563,27 @@ class TransactionsService
                 throw new InvalidArgumentException('Esta transação não possui solicitação de estorno pendente.');
             }
 
+            $retentionOffer = $this->repository->findRetentionOfferForTransaction($payload['transaction_id'], true);
+            if ($retentionOffer && in_array(strtoupper((string) $retentionOffer['status']), ['PENDING', 'ACCEPTED_PENDING_BENEFIT'], true)) {
+                throw new DomainException('Esta solicitação possui uma oferta de retenção ativa.');
+            }
+
             $chainResults = $this->processRefundForTransactionChain($transaction, $refundReason);
             $refundResult = $this->resolvePrimaryRefundResult($chainResults, $payload['transaction_id']);
             $this->revokePlanAccessAfterRefund($transaction, $refundResult);
+            (new BenefitService($this->db))->recordDomainEvent(
+                BenefitService::EVENT_REFUND_COMPLETED,
+                (string) $transaction['user_id'],
+                null,
+                'REFUND',
+                (string) $payload['transaction_id'],
+                [
+                    'transaction_id' => (string) $payload['transaction_id'],
+                    'amount' => round((float) ($refundResult['amount'] ?? $transaction['amount'] ?? 0), 2),
+                    'reason' => $refundReason,
+                ],
+                null
+            );
             $this->db->commit();
         } catch (Throwable $error) {
             if ($this->db->inTransaction()) {
@@ -585,20 +619,99 @@ class TransactionsService
      */
     public function sendRefundRetentionOffer(array $data): array
     {
-        $payload = $this->validator->validateRefundResolution($data);
-        $transaction = $this->repository->findTransactionById($payload['transaction_id']);
-        if (!$transaction) {
-            throw new OutOfBoundsException('Transação não encontrada.');
+        $payload = $this->validator->validateRetentionOffer($data);
+        $this->db->beginTransaction();
+        try {
+            $transaction = $this->repository->findTransactionByIdForUpdate($payload['transaction_id']);
+            if (!$transaction) {
+                throw new OutOfBoundsException('Transação não encontrada.');
+            }
+            if (($transaction['status'] ?? '') !== 'refund_requested' || !isPlanTransactionRefundTarget($transaction)) {
+                throw new InvalidArgumentException('Somente uma solicitação elegível de assinatura pode receber oferta de retenção.');
+            }
+            if (trim((string) ($transaction['provider_refund_id'] ?? '')) !== '') {
+                throw new InvalidArgumentException('Uma transação já reembolsada não pode receber oferta.');
+            }
+
+            $existing = $this->repository->findRetentionOfferForTransaction($payload['transaction_id'], true);
+            if ($existing) {
+                if (in_array(strtoupper((string) $existing['status']), ['PENDING', 'ACCEPTED_PENDING_BENEFIT'], true)) {
+                    $this->db->commit();
+                    return ['transaction' => $transaction, 'offer' => $existing, 'message' => 'A oferta de retenção já está ativa.'];
+                }
+                throw new DomainException('Esta solicitação já possui uma oferta encerrada.');
+            }
+
+            $subscription = getActiveSubscriptionForUser($this->db, (string) $transaction['user_id']);
+            $currentRenewal = $subscription
+                ? trim((string) ($subscription['provider_current_period_end'] ?? $subscription['current_period_end'] ?? ''))
+                : '';
+            if (!$subscription || $currentRenewal === '') {
+                throw new DomainException('Não foi possível confirmar a renovação atual do provedor.');
+            }
+            $renewalTimestamp = strtotime($currentRenewal);
+            if ($renewalTimestamp === false) {
+                throw new DomainException('Data de renovação do provedor inválida.');
+            }
+            $expectedRenewal = gmdate('Y-m-d H:i:s', $renewalTimestamp + ($payload['offered_days'] * 86400));
+            $benefits = new BenefitService($this->db);
+            $definitionKey = 'refund-retention-' . hash('sha256', $payload['transaction_id']);
+            $definition = $benefits->findDefinitionByKey($definitionKey);
+            if (!$definition) {
+                $definition = $benefits->createDefinition([
+                    'definition_key' => $definitionKey,
+                    'name' => 'Oferta de retenção de reembolso',
+                    'benefit_mode' => 'BILLING_EXTENSION_ONLY',
+                    'billing_extension_days' => $payload['offered_days'],
+                    'stacking_policy' => 'EXTEND',
+                    'source_scope' => 'REFUND_RETENTION_OFFER',
+                    'active' => 1,
+                ], $payload['actor_id']);
+            } elseif ((int) ($definition['billing_extension_days'] ?? 0) !== $payload['offered_days']) {
+                throw new DomainException('A oferta de retenção já possui termos incompatíveis.');
+            }
+            $offer = [
+                'id' => self::retentionUuid(),
+                'transaction_id' => $payload['transaction_id'],
+                'user_id' => (string) $transaction['user_id'],
+                'status' => 'PENDING',
+                'refund_amount' => round((float) ($transaction['amount'] ?? 0), 2),
+                'paid_plan' => trim((string) ($subscription['plan_name'] ?? $transaction['plan_name'] ?? 'Plano pago')),
+                'current_renewal_at' => $currentRenewal,
+                'offered_days' => $payload['offered_days'],
+                'expected_renewal_at' => $expectedRenewal,
+                'expires_at' => $payload['expires_at'],
+                'user_note' => $payload['user_note'],
+                'internal_note' => $payload['internal_note'],
+                'benefit_definition_id' => $definition['id'],
+                'idempotency_key' => hash('sha256', 'refund-retention-offer:' . $payload['transaction_id']),
+                'created_by' => $payload['actor_id'],
+            ];
+            $this->repository->createRetentionOffer($offer);
+            $benefits->recordDomainEvent(
+                BenefitService::EVENT_REFUND_RETENTION_OFFER_CREATED,
+                (string) $transaction['user_id'],
+                null,
+                'REFUND_RETENTION_OFFER',
+                (string) $offer['id'],
+                [
+                    'transaction_id' => (string) $transaction['id'],
+                    'offered_days' => (int) $offer['offered_days'],
+                    'current_renewal_at' => $offer['current_renewal_at'],
+                    'expected_renewal_at' => $offer['expected_renewal_at'],
+                    'expires_at' => $offer['expires_at'],
+                ],
+                $payload['actor_id']
+            );
+            $this->db->commit();
+        } catch (Throwable $error) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $error;
         }
 
-        if (($transaction['status'] ?? '') !== 'refund_requested') {
-            throw new InvalidArgumentException('Esta transação não possui solicitação de estorno pendente.');
-        }
-
-        $reason = trim((string) ($transaction['refund_reason'] ?? ''));
-        $reasonLabel = $this->formatRefundReasonLabel($reason);
-        $offer = $this->buildRefundRetentionOffer($reasonLabel !== '' ? $reasonLabel : $reason, $transaction);
-        $offer['reason_label'] = $reasonLabel !== '' ? $reasonLabel : $reason;
+        $offer['reason_label'] = $this->formatRefundReasonLabel((string) ($transaction['refund_reason'] ?? ''));
         $this->sendRefundRetentionEmail((string) $transaction['user_id'], $transaction, $offer);
 
         if (!empty($transaction['user_id'])) {
@@ -606,7 +719,7 @@ class TransactionsService
                 $this->db,
                 (string) $transaction['user_id'],
                 'Proposta para continuar com seu acesso',
-                'Enviamos uma proposta personalizada para o motivo informado: ' . ($offer['reason_label'] ?: 'cancelamento') . '.',
+                'Oferta de ' . $offer['offered_days'] . ' dia(s) de extensão de cobrança enviada para sua decisão.',
                 'info',
                 'marketplace',
                 '/profile?tab=billing'
@@ -615,8 +728,116 @@ class TransactionsService
 
         return [
             'transaction' => $transaction,
-            'message' => 'Proposta de permanência enviada ao usuário. A solicitação segue em análise.',
+            'offer' => $offer,
+            'message' => 'Oferta de retenção enviada. A solicitação segue protegida até a decisão do usuário.',
         ];
+    }
+
+    public function decideRefundRetentionOffer(string $userId, array $data): array
+    {
+        $offerId = trim((string) ($data['offer_id'] ?? ''));
+        $decision = strtoupper(trim((string) ($data['decision'] ?? '')));
+        if ($offerId === '' || !in_array($decision, ['ACCEPT', 'DECLINE'], true)) {
+            throw new InvalidArgumentException('Decisão de oferta inválida.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $offer = $this->repository->findRetentionOfferForUser($offerId, $userId, false);
+            if (!$offer) {
+                throw new OutOfBoundsException('Oferta de retenção não encontrada.');
+            }
+            $transaction = $this->repository->findTransactionByIdForUpdate((string) $offer['transaction_id']);
+            if (!$transaction) {
+                throw new OutOfBoundsException('Transação da oferta não encontrada.');
+            }
+            $offer = $this->repository->findRetentionOfferForUser($offerId, $userId, true);
+            if (!$offer) {
+                throw new OutOfBoundsException('Oferta de retenção não encontrada.');
+            }
+            $status = strtoupper((string) $offer['status']);
+            if ($status === 'CLOSED_RETAINED') {
+                $this->db->commit();
+                return ['offer' => $offer, 'message' => 'A oferta já foi confirmada.'];
+            }
+            if (in_array($status, ['RETENTION_OFFER_REJECTED', 'EXPIRED'], true)) {
+                throw new DomainException('Esta oferta não está mais disponível.');
+            }
+            if (strtotime((string) $offer['expires_at']) <= time()) {
+                $this->repository->updateRetentionOffer($offerId, ['status' => 'EXPIRED', 'expired_at' => gmdate('Y-m-d H:i:s')], $status);
+                (new BenefitService($this->db))->recordDomainEvent(BenefitService::EVENT_REFUND_RETENTION_EXPIRED, $userId, null, 'REFUND_RETENTION_OFFER', $offerId, ['offered_days' => (int) $offer['offered_days'], 'transaction_id' => (string) $transaction['id']], $userId);
+                $this->db->commit();
+                $this->approveRefund(['transaction_id' => (string) $transaction['id'], 'reason' => 'Oferta de retenção expirada']);
+                return ['offer' => $offer, 'message' => 'A oferta expirou e o reembolso canônico foi processado.'];
+            }
+            if ($decision === 'DECLINE') {
+                $this->repository->updateRetentionOffer($offerId, ['status' => 'RETENTION_OFFER_REJECTED', 'user_decision_at' => gmdate('Y-m-d H:i:s')], $status);
+                (new BenefitService($this->db))->recordDomainEvent(BenefitService::EVENT_REFUND_RETENTION_DECLINED, $userId, null, 'REFUND_RETENTION_OFFER', $offerId, ['offered_days' => (int) $offer['offered_days'], 'transaction_id' => (string) $transaction['id']], $userId);
+                $this->db->commit();
+                $result = $this->approveRefund(['transaction_id' => (string) $transaction['id'], 'reason' => 'Usuário recusou oferta de retenção']);
+                return ['offer' => $offer, 'refund' => $result, 'message' => 'A oferta foi recusada e o reembolso canônico foi solicitado.'];
+            }
+            $this->repository->updateRetentionOffer($offerId, ['status' => 'ACCEPTED_PENDING_BENEFIT', 'user_decision_at' => gmdate('Y-m-d H:i:s'), 'failure_reason' => null], $status);
+            (new BenefitService($this->db))->recordDomainEvent(BenefitService::EVENT_REFUND_RETENTION_ACCEPTED, $userId, null, 'REFUND_RETENTION_OFFER', $offerId, ['offered_days' => (int) $offer['offered_days'], 'transaction_id' => (string) $transaction['id'], 'provider_status' => 'PENDING'], $userId);
+            $this->db->commit();
+        } catch (Throwable $error) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $error;
+        }
+
+        try {
+            $grant = (new BenefitService($this->db))->grant($userId, (string) $offer['benefit_definition_id'], [
+                'source_type' => 'REFUND_RETENTION_OFFER',
+                'source_reference' => $offerId,
+                'reason' => 'Oferta de retenção de reembolso aceita pelo usuário',
+                'idempotency_key' => 'refund-retention-benefit:' . $offerId,
+                'metadata' => ['refund_retention_offer_id' => $offerId, 'offered_days' => (int) $offer['offered_days']],
+            ], $userId);
+            $grant = (new BillingExtensionService($this->db))->apply((string) $grant['id'], $userId);
+            if (strtoupper((string) ($grant['status'] ?? '')) !== 'APPLIED') {
+                throw new DomainException('O provedor ainda não confirmou o benefício.');
+            }
+            $this->db->beginTransaction();
+            $this->repository->updateRetentionOffer($offerId, [
+                'status' => 'CLOSED_RETAINED',
+                'benefit_grant_id' => $grant['id'],
+                'provider_confirmed_at' => gmdate('Y-m-d H:i:s'),
+                'provider_reference' => $grant['provider_reference'] ?? null,
+                'failure_reason' => null,
+            ], 'ACCEPTED_PENDING_BENEFIT');
+            $this->repository->updateTransactionStatus((string) $transaction['id'], 'refund_retained');
+            $this->db->commit();
+            $offer['status'] = 'CLOSED_RETAINED';
+            $offer['benefit_grant_id'] = $grant['id'];
+            $offer['provider_confirmed_at'] = gmdate('Y-m-d H:i:s');
+            $offer['provider_reference'] = $grant['provider_reference'] ?? null;
+            return ['offer' => $offer, 'grant' => $grant, 'message' => 'Benefício confirmado e assinatura mantida.'];
+        } catch (Throwable $error) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            $this->db->beginTransaction();
+            try {
+                $this->repository->updateRetentionOffer($offerId, ['status' => 'ACCEPTED_PENDING_BENEFIT', 'failure_reason' => mb_substr($error->getMessage(), 0, 500)], 'ACCEPTED_PENDING_BENEFIT');
+                $this->db->commit();
+            } catch (Throwable $persistError) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+                error_log('[transactions_service] retention failure persistence: ' . $persistError->getMessage());
+            }
+            throw $error;
+        }
+    }
+
+    private static function retentionUuid(): string
+    {
+        $data = random_bytes(16);
+        $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
+        $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
     }
 
     /**
@@ -793,6 +1014,12 @@ class TransactionsService
             (string) ($offer['title'] ?? 'Antes de encerrar seu acesso'),
             'Olá ' . $user['name'] . ',<br><br>'
                 . '<p>Recebemos seu pedido de reembolso e, antes de concluir esse processo, queremos te apresentar uma alternativa melhor para o motivo informado.</p>'
+                . '<p><b>Valor solicitado:</b> R$ ' . number_format((float) ($offer['refund_amount'] ?? 0), 2, ',', '.') . '<br>'
+                . '<b>Plano atual:</b> ' . htmlspecialchars((string) ($offer['paid_plan'] ?? 'Plano pago'), ENT_QUOTES, 'UTF-8') . '<br>'
+                . '<b>Renovação atual:</b> ' . htmlspecialchars((string) ($offer['current_renewal_at'] ?? 'não informada'), ENT_QUOTES, 'UTF-8') . '<br>'
+                . '<b>Dias adicionais sem cobrança:</b> ' . (int) ($offer['offered_days'] ?? 0) . '<br>'
+                . '<b>Nova renovação estimada:</b> ' . htmlspecialchars((string) ($offer['expected_renewal_at'] ?? 'a confirmar pelo provedor'), ENT_QUOTES, 'UTF-8') . '<br>'
+                . '<b>Oferta válida até:</b> ' . htmlspecialchars((string) ($offer['expires_at'] ?? ''), ENT_QUOTES, 'UTF-8') . '</p>'
                 . $reasonHtml
                 . '<p>' . htmlspecialchars((string) ($offer['intro'] ?? ''), ENT_QUOTES, 'UTF-8') . '</p>'
                 . ($highlightsHtml !== '' ? '<ul>' . $highlightsHtml . '</ul>' : '')

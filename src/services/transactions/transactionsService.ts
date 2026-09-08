@@ -135,6 +135,7 @@ export const transactionsService = {
     transactionId: string,
     resolution: 'approved' | 'retention_offer',
     reason?: string,
+    retention?: { offeredDays: number; expiresAt: string; userNote?: string; internalNote?: string },
   ): Promise<RefundMutationResponse> {
     const endpoint = resolution === 'approved'
       ? ENDPOINTS.transactions.approveRefund
@@ -143,6 +144,11 @@ export const transactionsService = {
     const response = await apiClient.post<RefundMutationPayload>(endpoint, {
       transaction_id: transactionId,
       reason,
+      actor_id: undefined,
+      offered_days: resolution === 'retention_offer' ? retention?.offeredDays : undefined,
+      expires_at: resolution === 'retention_offer' ? retention?.expiresAt : undefined,
+      user_note: resolution === 'retention_offer' ? retention?.userNote : undefined,
+      internal_note: resolution === 'retention_offer' ? retention?.internalNote : undefined,
     });
 
     const envelope = assertApiSuccess(response, 'Não foi possível atualizar o estorno.');
@@ -151,6 +157,16 @@ export const transactionsService = {
     return {
       message: payload.message || payload.data?.message || envelope.message,
     };
+  },
+
+  async decideRefundRetentionOffer(offerId: string, decision: 'ACCEPT' | 'DECLINE'): Promise<RefundMutationResponse> {
+    const response = await apiClient.post<RefundMutationPayload>(ENDPOINTS.transactions.retentionOfferDecision, {
+      offer_id: offerId,
+      decision,
+    });
+    const envelope = assertApiSuccess(response, 'Não foi possível registrar a decisão da oferta.');
+    const payload = readApiData<RefundMutationPayload>(response, {});
+    return { message: payload.message || payload.data?.message || envelope.message };
   },
 };
 

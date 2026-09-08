@@ -1,6 +1,6 @@
 # Macro20F Final Implementation Blueprint
 
-Status: amended for M20F-02 operational implementation, 2026-09-05
+Status: amended for M20F-03 domain-event boundary and M20F-07 roadmap, 2026-09-07
 
 ## Package order
 
@@ -11,9 +11,19 @@ Status: amended for M20F-02 operational implementation, 2026-09-05
 5. M20F-04 - Support & Moderation, including Support Compensation
 6. M20F-05 - Provider-safe Import & Collector
 7. M20F-06 - Global Safe Operations: dry-run, namespaces and destructive operations
-8. Final Macro20F regression
+8. M20F-07 - Communications, Notifications & Email
+9. Final Macro20F regression
 
-M20F-02 is the current implementation package. M20F-03 and later packages remain deferred.
+## Current roadmap state
+
+- M20F-00 = PASS
+- M20F-01 = PASS
+- M20F-02 = PASS
+- M20F-03 = IN_PROGRESS / PARTIAL
+- M20F-04 = NOT_STARTED
+- M20F-05 = NOT_STARTED
+- M20F-06 = NOT_STARTED
+- M20F-07 = NOT_STARTED
 
 ## M20F-00 - Admin Design System & UX Foundation
 
@@ -44,7 +54,7 @@ Roll out the M20F-00 system across all comparable Admin list and editor surfaces
 
 Harden the shared disabled-action, form-field association, table-primitive, status, feedback, confirmation, editor-shell, save-bar, validation, dirty-state and navigation-away contracts. All current editable surfaces use the same editor interaction language, including question, exam, blog, novidade, law, user and landing page editors. Preserve publication, visibility, RBAC, CSRF, audit, persistence and domain authority. Require 100% comparable-list and editable-surface standardization, zero unjustified exceptions, no duplicate save submissions, mobile/accessibility acceptance and no behavior regression.
 
-The remaining package order is fixed: M20F-02 Marketing Conversion; M20F-03 Billing, Entitlements & Benefits; M20F-04 Support & Moderation including Support Compensation; M20F-05 Provider-safe Import & Collector; M20F-06 Global Safe Operations; then final Macro20F regression. M20F-03 must keep paid subscription state separate from effective access, use one Benefit Service for manual, campaign, redemption, support and level rewards, support billing extensions and temporary access without mutating a paid Stripe plan, enforce exclusive codes and audit/idempotency, and exercise the exhaustive billing state-transition matrix with no double charge, duplicate grant, webhook-order dependence or provider drift. M20F-04 must use that same Benefit Service for controlled compensation. M20F-05 must provide sandbox/mock provider boundaries and preserve canonical/provider identity separation. M20F-06 must provide dry-run, namespaces, preview, scoped confirmation, audit and recovery for destructive operations.
+The remaining package order is fixed: M20F-02 Marketing Conversion; M20F-03 Billing, Entitlements & Benefits; M20F-04 Support & Moderation including Support Compensation; M20F-05 Provider-safe Import & Collector; M20F-06 Global Safe Operations; M20F-07 Communications, Notifications & Email; then final Macro20F regression. M20F-03 must keep paid subscription state separate from effective access, use one Benefit Service for manual, campaign, redemption, support and level rewards, support billing extensions and temporary access without mutating a paid Stripe plan, enforce exclusive codes and audit/idempotency, and exercise the exhaustive billing state-transition matrix with no double charge, duplicate grant, webhook-order dependence or provider drift. M20F-03 owns only the domain-event contracts required for Billing/Benefits correctness, including BENEFIT_APPLIED, BILLING_EXTENSION_CONFIRMED, REFUND_RETENTION_OFFER_CREATED, REFUND_RETENTION_ACCEPTED, REFUND_RETENTION_DECLINED and REFUND_COMPLETED; it must emit them with stable semantic identity and recipient/domain context so M20F-07 can consume them without a second authority. It must not expand into the global notification/email platform. M20F-04 must use that same Benefit Service for controlled compensation. M20F-05 must provide sandbox/mock provider boundaries and preserve canonical/provider identity separation. M20F-06 must provide dry-run, namespaces, preview, scoped confirmation, audit and recovery for destructive operations.
 
 ### M20F-02 - Marketing Conversion
 
@@ -78,8 +88,16 @@ Introduce provider-safe boundaries, sandbox/mock fixtures, provenance, paginatio
 
 Provide dry-run, synthetic namespaces, preview, scoped confirmation, audit and recovery for cache/log/global reset and other destructive operations. Broad production destruction is prohibited without an explicit safe-operation contract.
 
+### M20F-07 - Communications, Notifications & Email
+
+This package is deferred and must remain `NOT_STARTED` until M20F-03 and the preceding packages are complete. It will create one cross-product communication architecture for the in-app Notification Center, transactional email, Marketing email delivery, templates, user communication preferences, mandatory communication policy, delivery queues, retries, idempotency, delivery status, deep links, audit, Admin observability and provider abstraction.
+
+The package must cover Account, Authentication/Security, Billing, Subscriptions, Benefits, Refunds, Refund Retention Offers, Support, Marketing, System/Admin and relevant Content events. It must enforce one notification authority, one transactional-email authority and one shared delivery infrastructure for Marketing email, with no direct domain SMTP, duplicate notification engines or duplicate semantic communication. Transactional and Marketing policy categories must remain distinct; transactional Benefit/financial communication must not depend on Marketing consent, campaign eligibility, frequency caps, cooldowns or dismissal. Deep links must remain authorized, email GET requests must never mutate financial state, and RBAC, audit, mobile and accessibility must be covered.
+
+M20F-07 consumes M20F-03 domain events rather than recreating Billing/Benefit logic. It must define the canonical event-to-channel policy, templates, preference rules, delivery/retry/idempotency contract and provider-safe acceptance. Pending provider states must never generate a message claiming a Benefit or billing extension is confirmed. This package is the owner of cross-product communication standardization; M20F-03 may provide only the domain event emission needed for its own state-machine correctness.
+
 ## Cross-package constraints
 
-Keep production PRELAUNCH until separate launch gates pass. Do not insert real data, mutate Stripe LIVE, change secrets, promote sitemap/indexability or start a later package inside an earlier package run. Every package must use reversible synthetic fixtures and prove cleanup, RBAC, CSRF, audit, persistence, accessibility, mobile behavior, performance and no private-data leakage. Package blueprints must identify objective, affected functions, reused/modified/new components, schema/migration/API/backend/UI/analytics impacts, RBAC/audit impact, tests, dependencies, risks, rollback and acceptance gates.
+Keep production PRELAUNCH until separate launch gates pass. Do not insert real data, mutate Stripe LIVE, change secrets, promote sitemap/indexability or start a later package inside an earlier package run. Every package must use reversible synthetic fixtures and prove cleanup, RBAC, CSRF, audit, persistence, accessibility, mobile behavior, performance and no private-data leakage. Package blueprints must identify objective, affected functions, reused/modified/new components, schema/migration/API/backend/UI/analytics impacts, RBAC/audit impact, tests, dependencies, risks, rollback and acceptance gates. M20F-03 domain events must remain transport- and provider-neutral, carry no payment secrets or unnecessary private data, and be consumable by the future M20F-07 communication layer without creating parallel notification or email authority.
 
 This document supersedes the pre-implementation ordering from the 20F-0.4 audit and is the authoritative implementation blueprint.

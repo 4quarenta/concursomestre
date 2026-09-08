@@ -14,6 +14,7 @@ $assert = static function (bool $condition, string $message): void {
 };
 
 $assert(str_contains($adapter, "'trial_end' => \$newPeriodEnd"), 'Stripe extensions must use the supported trial_end mechanism.');
+$assert(str_contains($adapter, "'trialing']") && str_contains($adapter, 'trialEnd > time()'), 'Sequential extensions must use the provider-confirmed future trial boundary.');
 $assert(str_contains($adapter, "'proration_behavior' => 'none'"), 'Stripe extensions must not prorate already-paid time.');
 $assert(str_contains($adapter, "'idempotency_key' => 'benefit_extension_'"), 'Stripe extensions must be idempotent.');
 $assert(!str_contains($adapter, 'billing_cycle_anchor'), 'The adapter must not attempt an unsupported arbitrary billing anchor.');

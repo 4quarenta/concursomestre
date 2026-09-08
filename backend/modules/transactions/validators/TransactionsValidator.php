@@ -104,4 +104,27 @@ class TransactionsValidator
             'reason' => $reason,
         ];
     }
+
+    public function validateRetentionOffer(array $data): array
+    {
+        $transactionId = trim((string) ($data['transaction_id'] ?? ''));
+        $actorId = trim((string) ($data['actor_id'] ?? ''));
+        $offeredDays = filter_var($data['offered_days'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 366]]);
+        $expiresAt = trim((string) ($data['expires_at'] ?? ''));
+        if ($transactionId === '' || $actorId === '' || $offeredDays === false || $expiresAt === '') {
+            throw new InvalidArgumentException('Transação, operador, dias oferecidos e expiração são obrigatórios.');
+        }
+        $expiresTimestamp = strtotime($expiresAt);
+        if ($expiresTimestamp === false || $expiresTimestamp <= time() || $expiresTimestamp > time() + (30 * 86400)) {
+            throw new InvalidArgumentException('Expiração da oferta deve estar no futuro e dentro de 30 dias.');
+        }
+        return [
+            'transaction_id' => $transactionId,
+            'actor_id' => $actorId,
+            'offered_days' => (int) $offeredDays,
+            'expires_at' => gmdate('Y-m-d H:i:s', $expiresTimestamp),
+            'user_note' => mb_substr(trim((string) ($data['user_note'] ?? '')), 0, 1000),
+            'internal_note' => mb_substr(trim((string) ($data['internal_note'] ?? $data['reason'] ?? '')), 0, 500),
+        ];
+    }
 }

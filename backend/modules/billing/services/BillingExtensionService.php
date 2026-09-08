@@ -26,7 +26,7 @@ final class BillingExtensionService
         if (strtoupper((string) ($grant['status'] ?? '')) === 'APPLIED') {
             return $grant;
         }
-        if (!in_array(strtoupper((string) ($grant['status'] ?? '')), ['PENDING_PROVIDER', 'RECONCILIATION_REQUIRED'], true)) {
+        if (!in_array(strtoupper((string) ($grant['status'] ?? '')), ['PENDING_PROVIDER', 'FAILED', 'RECONCILIATION_REQUIRED'], true)) {
             throw new DomainException('Grant de cobranca nao esta pronto para aplicacao.');
         }
 

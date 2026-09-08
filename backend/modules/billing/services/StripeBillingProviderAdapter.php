@@ -61,18 +61,18 @@ final class StripeBillingProviderAdapter implements BillingProviderAdapter
         $subscription = $stripe->subscriptions->retrieve($subscriptionId, [
             'expand' => ['items.data.price', 'latest_invoice.lines.data'],
         ]);
-        $oldPeriodEnd = self::periodEnd($subscription);
         $status = strtolower(trim((string) ($subscription->status ?? '')));
         $trialEnd = (int) ($subscription->trial_end ?? 0);
+        // Depois da primeira extensao, a nova fronteira fica em trial_end.
+        // Usar o periodo antigo aqui faria a extensao sequencial partir de
+        // estado obsoleto e poderia reduzir o beneficio ja confirmado.
+        $oldPeriodEnd = $trialEnd > time() ? $trialEnd : self::periodEnd($subscription);
 
         if ($oldPeriodEnd <= time()) {
             throw new DomainException('A assinatura nao possui periodo futuro para estender.');
         }
-        if (!in_array($status, ['active', 'past_due'], true)) {
+        if (!in_array($status, ['active', 'past_due', 'trialing'], true)) {
             throw new DomainException('O estado atual da assinatura nao permite extensao segura.');
-        }
-        if ($trialEnd > time()) {
-            throw new DomainException('Assinatura ja possui trial futuro; a extensao deve ser reconciliada separadamente.');
         }
         if (!empty($subscription->cancel_at_period_end)) {
             throw new DomainException('Assinatura marcada para cancelamento no fim do periodo.');

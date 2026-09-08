@@ -273,6 +273,7 @@ export const ENDPOINTS = {
         refund: 'transactions/refund.php',
         approveRefund: 'transactions/approve_refund.php',
         rejectRefund: 'transactions/reject_refund.php',
+        retentionOfferDecision: 'transactions/retention_offer_decision.php',
     },
 
     payments: {

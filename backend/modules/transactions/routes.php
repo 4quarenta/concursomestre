@@ -130,6 +130,7 @@ function handleTransactionsApproveRefundRoute(PDO $db): void
     try {
         $adminContext = requirePlatformAdminSessionContext($db);
         $body = json_decode(file_get_contents('php://input'), true) ?: [];
+        $body['actor_id'] = (string) $adminContext['admin_user_id'];
         $controller = buildTransactionsController($db);
         $payload = $controller->approveRefund($body);
 
@@ -152,6 +153,36 @@ function handleTransactionsApproveRefundRoute(PDO $db): void
         Response::notFound($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Nao foi possivel aprovar o estorno.', $e);
+    }
+}
+
+function handleTransactionsRetentionDecisionRoute(PDO $db): void
+{
+    try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'POST')) !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+        $csrfCookie = getCsrfTokenFromCookie();
+        if ($csrfCookie !== null && !assertValidCsrfToken($csrfCookie, getCsrfTokenFromRequest())) {
+            Response::forbidden('CSRF token invalido.');
+        }
+        $payload = verifyAuthenticatedUserPayload(true);
+        $body = json_decode(file_get_contents('php://input'), true) ?: [];
+        $result = buildTransactionsController($db)->decideRefundRetentionOffer(
+            (string) ($payload['user_id'] ?? ''),
+            $body
+        );
+        Response::success($result, (string) ($result['message'] ?? 'Decisão registrada.'));
+    } catch (DomainException $e) {
+        Response::error($e->getMessage(), 409);
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel registrar a decisao da oferta.', $e);
     }
 }
 

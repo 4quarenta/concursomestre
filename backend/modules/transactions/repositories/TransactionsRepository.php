@@ -236,6 +236,80 @@ class TransactionsRepository
         return $transaction ?: null;
     }
 
+    public function findRetentionOfferForTransaction(string $transactionId, bool $forUpdate = false): ?array
+    {
+        $lock = $forUpdate ? ' FOR UPDATE' : '';
+        $stmt = $this->db->prepare("SELECT * FROM refund_retention_offers WHERE transaction_id = :transaction_id LIMIT 1{$lock}");
+        $stmt->execute([':transaction_id' => $transactionId]);
+        $offer = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $offer ?: null;
+    }
+
+    public function findRetentionOfferForUser(string $offerId, string $userId, bool $forUpdate = false): ?array
+    {
+        $lock = $forUpdate ? ' FOR UPDATE' : '';
+        $stmt = $this->db->prepare("SELECT * FROM refund_retention_offers WHERE id = :id AND user_id = :user_id LIMIT 1{$lock}");
+        $stmt->execute([':id' => $offerId, ':user_id' => $userId]);
+        $offer = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $offer ?: null;
+    }
+
+    public function createRetentionOffer(array $offer): void
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO refund_retention_offers (
+                id, transaction_id, user_id, status, refund_amount, paid_plan,
+                current_renewal_at, offered_days, expected_renewal_at, expires_at,
+                user_note, internal_note, benefit_definition_id, idempotency_key, created_by
+            ) VALUES (
+                :id, :transaction_id, :user_id, :status, :refund_amount, :paid_plan,
+                :current_renewal_at, :offered_days, :expected_renewal_at, :expires_at,
+                :user_note, :internal_note, :benefit_definition_id, :idempotency_key, :created_by
+            )'
+        );
+        $stmt->execute([
+            ':id' => $offer['id'],
+            ':transaction_id' => $offer['transaction_id'],
+            ':user_id' => $offer['user_id'],
+            ':status' => $offer['status'] ?? 'PENDING',
+            ':refund_amount' => $offer['refund_amount'],
+            ':paid_plan' => $offer['paid_plan'],
+            ':current_renewal_at' => $offer['current_renewal_at'],
+            ':offered_days' => $offer['offered_days'],
+            ':expected_renewal_at' => $offer['expected_renewal_at'],
+            ':expires_at' => $offer['expires_at'],
+            ':user_note' => $offer['user_note'],
+            ':internal_note' => $offer['internal_note'],
+            ':benefit_definition_id' => $offer['benefit_definition_id'],
+            ':idempotency_key' => $offer['idempotency_key'],
+            ':created_by' => $offer['created_by'],
+        ]);
+    }
+
+    public function updateRetentionOffer(string $offerId, array $fields, ?string $whereStatus = null): void
+    {
+        $allowed = ['status', 'benefit_grant_id', 'provider_confirmed_at', 'provider_reference', 'failure_reason', 'user_decision_at', 'expired_at'];
+        $sets = [];
+        $params = [':id' => $offerId];
+        foreach ($fields as $field => $value) {
+            if (!in_array($field, $allowed, true)) {
+                continue;
+            }
+            $sets[] = "{$field} = :{$field}";
+            $params[":{$field}"] = $value;
+        }
+        if (!$sets) {
+            return;
+        }
+        $statusClause = '';
+        if ($whereStatus !== null) {
+            $statusClause = ' AND status = :where_status';
+            $params[':where_status'] = $whereStatus;
+        }
+        $stmt = $this->db->prepare('UPDATE refund_retention_offers SET ' . implode(', ', $sets) . ', updated_at = NOW() WHERE id = :id' . $statusClause);
+        $stmt->execute($params);
+    }
+
     /**
      * Atualiza o status de uma transacao no banco.
      *
@@ -426,6 +500,18 @@ class TransactionsRepository
                     t.provider_refund_details_json,
                     t.refund_reason,
                     t.refund_requested_at,
+                    rro.id AS retention_offer_id,
+                    rro.status AS retention_offer_status,
+                    rro.refund_amount AS retention_offer_refund_amount,
+                    rro.paid_plan AS retention_offer_paid_plan,
+                    rro.current_renewal_at AS retention_offer_current_renewal_at,
+                    rro.offered_days AS retention_offer_offered_days,
+                    rro.expected_renewal_at AS retention_offer_expected_renewal_at,
+                    rro.expires_at AS retention_offer_expires_at,
+                    rro.user_note AS retention_offer_user_note,
+                    rro.provider_confirmed_at AS retention_offer_provider_confirmed_at,
+                    rro.provider_reference AS retention_offer_provider_reference,
+                    rro.benefit_grant_id AS retention_offer_benefit_grant_id,
                     COALESCE(rc.referralPayable, 0) AS referralPayable
                   FROM transactions t
                   LEFT JOIN materials m ON t.material_id = m.id
@@ -433,6 +519,7 @@ class TransactionsRepository
                   LEFT JOIN user_subscriptions us ON t.user_subscription_id = us.id
                   LEFT JOIN users s ON t.seller_id = s.id
                   LEFT JOIN users b ON t.user_id = b.id
+                  LEFT JOIN refund_retention_offers rro ON rro.transaction_id = t.id
                   LEFT JOIN (
                       SELECT transaction_id, SUM(amount) AS referralPayable
                       FROM referral_commission_entries

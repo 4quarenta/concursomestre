@@ -29,6 +29,7 @@ interface AdminConfirmDialogProps {
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  children?: React.ReactNode;
 }
 
 /**
@@ -48,6 +49,7 @@ export const AdminConfirmDialog = ({
   loading = false,
   onConfirm,
   onCancel,
+  children,
 }: AdminConfirmDialogProps) => {
   if (!isOpen) {
     return null;
@@ -66,6 +68,7 @@ export const AdminConfirmDialog = ({
           </div>
         </div>
 
+        {children}
         <div className="flex items-center justify-end gap-3 px-5 py-4">
           <button
             type="button"

@@ -392,6 +392,18 @@ type ProfileTransaction = Omit<Transaction, 'status' | 'amount'> & {
     installmentNumber?: number | string;
     scheduleLabel?: string;
     providerRefundId?: string | null;
+    retentionOffer?: {
+        id?: string;
+        status?: string;
+        refundAmount?: number;
+        paidPlan?: string;
+        currentRenewalAt?: string | null;
+        offeredDays?: number;
+        expectedRenewalAt?: string | null;
+        expiresAt?: string | null;
+        userNote?: string | null;
+        providerConfirmedAt?: string | null;
+    } | null;
     payment_provider?: string;
     provider?: string;
     gateway?: string;
@@ -545,6 +557,7 @@ const Profile: React.FC = () => {
     const [isUpdatingRenewal, setIsUpdatingRenewal] = useState(false);
     const [optimisticAutoRenew, setOptimisticAutoRenew] = useState<boolean | null>(null);
     const [isOpeningBillingPortal, setIsOpeningBillingPortal] = useState(false);
+    const [isDecidingRetentionOffer, setIsDecidingRetentionOffer] = useState(false);
     const [stripeSetupClientSecret, setStripeSetupClientSecret] = useState<string | null>(null);
     const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
     const shouldPrepareProfileRecaptcha = recaptchaEnabled && (showCancelModal || activeTab === 'security');
@@ -2171,6 +2184,10 @@ const Profile: React.FC = () => {
         && subscriptionTotalCycleDays > 0,
     );
     const hasPendingRefundRequest = userTransactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested');
+    const activeRetentionOffer = userTransactions.find((transaction) => {
+        const status = String(transaction.retentionOffer?.status || '').toUpperCase();
+        return ['PENDING', 'ACCEPTED_PENDING_BENEFIT'].includes(status);
+    })?.retentionOffer || null;
     const installmentCount = Math.max(1, Number(activeSubscription?.total_installments || 1));
     const paidInstallments = Math.max(0, Number(activeSubscription?.paid_installments || 0));
     const firstPaidPlanTransactionAt = userTransactions
@@ -2403,6 +2420,21 @@ const Profile: React.FC = () => {
         }
     };
 
+    const handleRetentionDecision = async (decision: 'ACCEPT' | 'DECLINE') => {
+        const offerId = String(activeRetentionOffer?.id || '');
+        if (!offerId || isDecidingRetentionOffer) return;
+        setIsDecidingRetentionOffer(true);
+        try {
+            const result = await transactionsService.decideRefundRetentionOffer(offerId, decision);
+            addToast(result.message || (decision === 'ACCEPT' ? 'Oferta enviada para confirmação.' : 'Oferta recusada; reembolso encaminhado.'), 'success');
+            await Promise.all([refreshUser(), refetchBillingSubscription(), fetchUserTransactions()]);
+        } catch (error: unknown) {
+            addToast(readApiErrorMessage(error, 'Não foi possível registrar sua decisão.'), 'error');
+        } finally {
+            setIsDecidingRetentionOffer(false);
+        }
+    };
+
     const renderBillingTab = () => {
         if (billingSubscriptionQuery.isError) {
             return <BillingSubscriptionLoadState status="error" onRetry={() => void refetchBillingSubscription()} />;
@@ -2414,6 +2446,33 @@ const Profile: React.FC = () => {
 
         return (
         <div className="space-y-5">
+            {activeRetentionOffer && (
+                <section className={`${PLATFORM_SURFACE_CARD_CLASS} border-sky-200 dark:border-sky-900/60`}>
+                    <div className="space-y-4 p-5 md:p-6">
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-600 dark:text-sky-300">Oferta de retenção</p>
+                            <h3 className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">Continue com sua assinatura ou receba o reembolso</h3>
+                            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">A oferta ainda depende da confirmação do provedor. A renovação apresentada abaixo é uma estimativa até essa confirmação.</p>
+                        </div>
+                        <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                            <div><span className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Reembolso solicitado</span><strong className="mt-1 block text-slate-900 dark:text-slate-100">{formatTransactionAmount(activeRetentionOffer.refundAmount || 0)}</strong></div>
+                            <div><span className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Plano pago</span><strong className="mt-1 block text-slate-900 dark:text-slate-100">{activeRetentionOffer.paidPlan || 'Plano atual'}</strong></div>
+                            <div><span className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Dias adicionais</span><strong className="mt-1 block text-slate-900 dark:text-slate-100">{activeRetentionOffer.offeredDays || 0} dia(s)</strong></div>
+                            <div><span className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Nova renovação estimada</span><strong className="mt-1 block text-slate-900 dark:text-slate-100">{activeRetentionOffer.expectedRenewalAt ? formatDateTimeBR(activeRetentionOffer.expectedRenewalAt) : 'A confirmar'}</strong></div>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Renovação atual: {activeRetentionOffer.currentRenewalAt ? formatDateTimeBR(activeRetentionOffer.currentRenewalAt) : 'não disponível'} · Oferta válida até {activeRetentionOffer.expiresAt ? formatDateTimeBR(activeRetentionOffer.expiresAt) : 'data informada no envio'}.</p>
+                        {activeRetentionOffer.userNote && <p className="border-l-2 border-sky-400 pl-3 text-sm text-slate-600 dark:text-slate-300">{activeRetentionOffer.userNote}</p>}
+                        {String(activeRetentionOffer.status).toUpperCase() === 'ACCEPTED_PENDING_BENEFIT' ? (
+                            <p className="rounded-sm bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">Aceite recebido. Aguardando confirmação do provedor; seu reembolso continua recuperável até a confirmação.</p>
+                        ) : (
+                            <div className="flex flex-col gap-3 sm:flex-row">
+                                <button type="button" disabled={isDecidingRetentionOffer} onClick={() => void handleRetentionDecision('ACCEPT')} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-sky-600 px-4 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-sky-700 disabled:opacity-60">Aceitar oferta e continuar</button>
+                                <button type="button" disabled={isDecidingRetentionOffer} onClick={() => void handleRetentionDecision('DECLINE')} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-rose-300 px-4 py-3 text-xs font-black uppercase tracking-wider text-rose-700 hover:bg-rose-50 disabled:opacity-60 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-900/20">Recusar oferta e receber reembolso</button>
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
             {billingPaymentIssue && (
                 <BillingPaymentIssueBanner
                     issue={billingPaymentIssue}

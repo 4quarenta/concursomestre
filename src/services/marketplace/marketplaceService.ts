@@ -273,8 +273,8 @@ export const marketplaceService = {
    * Resolve administrativamente uma solicitacao de estorno.
    * @since 1.0.0
    */
-  async processRefund(transactionId: string, resolution: 'approved' | 'retention_offer'): Promise<{ message?: string }> {
-    return transactionsService.resolveRefund(transactionId, resolution);
+  async processRefund(transactionId: string, resolution: 'approved' | 'retention_offer', retention?: { offeredDays: number; expiresAt: string; userNote?: string; internalNote?: string }): Promise<{ message?: string }> {
+    return transactionsService.resolveRefund(transactionId, resolution, undefined, retention);
   },
 
   /**

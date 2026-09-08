@@ -11,12 +11,84 @@ require_once __DIR__ . '/../../../config/payment_provider.php';
  */
 final class BenefitService
 {
+    public const EVENT_BENEFIT_APPLIED = 'BENEFIT_APPLIED';
+    public const EVENT_BENEFIT_ACCESS_GRANTED = 'BENEFIT_ACCESS_GRANTED';
+    public const EVENT_BILLING_EXTENSION_CONFIRMED = 'BILLING_EXTENSION_CONFIRMED';
+    public const EVENT_REFUND_RETENTION_OFFER_CREATED = 'REFUND_RETENTION_OFFER_CREATED';
+    public const EVENT_REFUND_RETENTION_ACCEPTED = 'REFUND_RETENTION_ACCEPTED';
+    public const EVENT_REFUND_RETENTION_DECLINED = 'REFUND_RETENTION_DECLINED';
+    public const EVENT_REFUND_RETENTION_EXPIRED = 'REFUND_RETENTION_EXPIRED';
+    public const EVENT_REFUND_COMPLETED = 'REFUND_COMPLETED';
+    private const DOMAIN_EVENTS = [
+        self::EVENT_BENEFIT_APPLIED,
+        self::EVENT_BENEFIT_ACCESS_GRANTED,
+        self::EVENT_BILLING_EXTENSION_CONFIRMED,
+        self::EVENT_REFUND_RETENTION_OFFER_CREATED,
+        self::EVENT_REFUND_RETENTION_ACCEPTED,
+        self::EVENT_REFUND_RETENTION_DECLINED,
+        self::EVENT_REFUND_RETENTION_EXPIRED,
+        self::EVENT_REFUND_COMPLETED,
+        'BENEFIT_REVOKED',
+        'BENEFIT_APPLICATION_FAILED',
+    ];
     private const MODES = ['ACCESS_ONLY', 'BILLING_EXTENSION_ONLY', 'ACCESS_AND_BILLING_EXTENSION'];
     private const STACKING_POLICIES = ['DENY', 'EXTEND', 'REPLACE_IF_BETTER', 'PARALLEL'];
     private const PLANS = ['Gratuito', 'Essencial', 'Pro', 'Elite'];
 
     public function __construct(private readonly PDO $db)
     {
+    }
+
+    /**
+     * Registra somente o fato de dominio. A entrega de comunicacoes pertence
+     * ao M20F-07 e nao e executada por este servico.
+     */
+    public function recordDomainEvent(
+        string $eventType,
+        ?string $userId,
+        ?string $benefitGrantId,
+        string $sourceType,
+        ?string $sourceReference,
+        array $payload,
+        ?string $actorId = null
+    ): string {
+        $eventType = strtoupper(trim($eventType));
+        if (!in_array($eventType, self::DOMAIN_EVENTS, true)) {
+            throw new InvalidArgumentException('Evento de dominio de Benefit invalido.');
+        }
+        $sourceType = strtoupper(trim($sourceType));
+        if ($sourceType === '') {
+            throw new InvalidArgumentException('Origem do evento de dominio ausente.');
+        }
+        $safePayload = $this->sanitizeDomainPayload($payload);
+        $payloadJson = json_encode($safePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $eventId = hash('sha256', implode('|', [
+            $eventType,
+            $userId !== null ? trim($userId) : '',
+            $benefitGrantId !== null ? trim($benefitGrantId) : '',
+            $sourceType,
+            $sourceReference !== null ? trim($sourceReference) : '',
+            $payloadJson,
+        ]));
+        $stmt = $this->db->prepare(
+            'INSERT INTO benefit_domain_events (
+                event_id, event_type, user_id, benefit_grant_id, source_type,
+                source_reference, payload_json, occurred_at
+            ) VALUES (
+                :event_id, :event_type, :user_id, :grant_id, :source_type,
+                :source_reference, :payload_json, UTC_TIMESTAMP(6)
+            ) ON DUPLICATE KEY UPDATE event_id = event_id'
+        );
+        $stmt->execute([
+            ':event_id' => $eventId,
+            ':event_type' => $eventType,
+            ':user_id' => $userId !== null && trim($userId) !== '' ? trim($userId) : null,
+            ':grant_id' => $benefitGrantId !== null && trim($benefitGrantId) !== '' ? trim($benefitGrantId) : null,
+            ':source_type' => $sourceType,
+            ':source_reference' => $sourceReference !== null && trim($sourceReference) !== '' ? mb_substr(trim($sourceReference), 0, 180) : null,
+            ':payload_json' => $payloadJson,
+        ]);
+        return $eventId;
     }
 
     public static function planTier(string $plan): int
@@ -87,7 +159,7 @@ final class BenefitService
         $stacking = strtoupper(trim((string) ($input['stacking_policy'] ?? 'DENY')));
         $this->assertIn($stacking, self::STACKING_POLICIES, 'Politica de stacking invalida.');
         $sourceScope = strtoupper(trim((string) ($input['source_scope'] ?? 'ANY')));
-        $this->assertIn($sourceScope, ['ANY', 'ADMIN_MANUAL', 'MARKETING', 'SUPPORT_COMPENSATION', 'GAMIFICATION', 'CODE_REDEMPTION'], 'Escopo de origem invalido.');
+        $this->assertIn($sourceScope, ['ANY', 'ADMIN_MANUAL', 'MARKETING', 'SUPPORT_COMPENSATION', 'GAMIFICATION', 'CODE_REDEMPTION', 'REFUND_RETENTION_OFFER'], 'Escopo de origem invalido.');
         $startsAt = $this->nullableDate($input['starts_at'] ?? null, 'starts_at');
         $expiresAt = $this->nullableDate($input['expires_at'] ?? null, 'expires_at');
         if ($startsAt !== null && $expiresAt !== null && strtotime($expiresAt) <= strtotime($startsAt)) {
@@ -220,6 +292,23 @@ final class BenefitService
             $this->assertWindow((string) ($definition['starts_at'] ?? ''), (string) ($definition['expires_at'] ?? ''), $now, 'Benefit fora da janela de disponibilidade.');
             $this->assertStackingPolicy($userId, $definition, (string) $definition['stacking_policy'], $now);
             $grant = $this->insertGrant($userId, $definition, $input, $actorId, $idempotencyKey);
+            if (strtoupper((string) ($grant['status'] ?? '')) === 'APPLIED') {
+                $this->recordDomainEvent(
+                    strtoupper((string) ($definition['benefit_mode'] ?? '')) === 'ACCESS_ONLY'
+                        ? self::EVENT_BENEFIT_ACCESS_GRANTED
+                        : self::EVENT_BENEFIT_APPLIED,
+                    $userId,
+                    (string) $grant['id'],
+                    (string) ($input['source_type'] ?? 'ADMIN_MANUAL'),
+                    !empty($input['source_reference']) ? (string) $input['source_reference'] : null,
+                    [
+                        'benefit_mode' => $definition['benefit_mode'],
+                        'access_plan' => $definition['access_plan'] ?? null,
+                        'billing_extension_days' => (int) ($grant['billing_extension_days'] ?? 0),
+                    ],
+                    $actorId
+                );
+            }
             $this->db->commit();
             return $grant;
         } catch (Throwable $e) {
@@ -317,7 +406,7 @@ final class BenefitService
             "UPDATE benefit_grants
              SET status = 'APPLYING', provider_status = 'APPLYING',
                  provider_old_period_end = COALESCE(provider_old_period_end, :old_period_end), updated_at = NOW()
-             WHERE id = :id AND status IN ('PENDING_PROVIDER', 'RECONCILIATION_REQUIRED')"
+             WHERE id = :id AND status IN ('PENDING_PROVIDER', 'FAILED', 'RECONCILIATION_REQUIRED')"
         );
         $stmt->execute([':id' => $grantId, ':old_period_end' => $oldPeriodEnd]);
         if ($stmt->rowCount() > 0) {
@@ -347,6 +436,18 @@ final class BenefitService
                 'status' => $normalizedStatus,
                 'reason' => mb_substr(trim($reason), 0, 500),
             ]);
+            $grant = $this->getGrant($grantId);
+            if ($grant) {
+                $this->recordDomainEvent(
+                    'BENEFIT_APPLICATION_FAILED',
+                    (string) $grant['user_id'],
+                    $grantId,
+                    (string) ($grant['source_type'] ?? 'BENEFIT'),
+                    (string) ($grant['source_reference'] ?? ''),
+                    ['status' => $normalizedStatus],
+                    $actorId
+                );
+            }
         }
     }
 
@@ -468,6 +569,14 @@ final class BenefitService
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function findDefinitionByKey(string $definitionKey): ?array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM benefit_definitions WHERE definition_key = :definition_key LIMIT 1');
+        $stmt->execute([':definition_key' => trim($definitionKey)]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
     public function getUserEntitlement(string $userId, ?string $now = null): array
     {
         $stmt = $this->db->prepare(
@@ -532,6 +641,12 @@ final class BenefitService
             );
             $update->execute([':reference' => $providerReference, ':old_end' => date('Y-m-d H:i:s', $old), ':new_end' => date('Y-m-d H:i:s', $new), ':id' => $grantId]);
             $this->audit($grantId, null, $actorId, 'billing_extension.provider_confirmed', ['provider_reference' => $providerReference, 'old_period_end' => date('Y-m-d H:i:s', $old), 'new_period_end' => date('Y-m-d H:i:s', $new)]);
+            $this->recordDomainEvent(self::EVENT_BILLING_EXTENSION_CONFIRMED, (string) $grant['user_id'], $grantId, (string) ($grant['source_type'] ?? 'BENEFIT'), (string) ($grant['source_reference'] ?? ''), [
+                'billing_extension_days' => (int) $grant['billing_extension_days'],
+                'old_period_end' => date('Y-m-d H:i:s', $old),
+                'new_period_end' => date('Y-m-d H:i:s', $new),
+                'provider_reference' => $providerReference,
+            ], $actorId);
             $this->db->commit();
             $grant['status'] = 'APPLIED';
             $grant['provider_status'] = 'CONFIRMED';
@@ -553,6 +668,10 @@ final class BenefitService
         $stmt->execute([':reason' => mb_substr(trim($reason), 0, 500), ':id' => $grantId]);
         if ($stmt->rowCount() > 0) {
             $this->audit($grantId, null, $actorId, 'grant.revoked', ['reason' => mb_substr(trim($reason), 0, 500)]);
+            $grant = $this->getGrant($grantId);
+            if ($grant) {
+                $this->recordDomainEvent('BENEFIT_REVOKED', (string) $grant['user_id'], $grantId, (string) ($grant['source_type'] ?? 'BENEFIT'), (string) ($grant['source_reference'] ?? ''), ['reason' => mb_substr(trim($reason), 0, 500)], $actorId);
+            }
         }
     }
 
@@ -666,6 +785,28 @@ final class BenefitService
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ?: null;
+    }
+
+    private function sanitizeDomainPayload(array $payload): array
+    {
+        $blocked = ['password', 'secret', 'token', 'authorization', 'api_key', 'card', 'cvc', 'payment_method'];
+        $sanitize = static function (mixed $value) use (&$sanitize, $blocked): mixed {
+            if (!is_array($value)) {
+                return is_scalar($value) || $value === null ? $value : (string) $value;
+            }
+            $result = [];
+            foreach ($value as $key => $item) {
+                $keyString = strtolower((string) $key);
+                foreach ($blocked as $blockedKey) {
+                    if (str_contains($keyString, $blockedKey)) {
+                        continue 2;
+                    }
+                }
+                $result[(string) $key] = $sanitize($item);
+            }
+            return $result;
+        };
+        return $sanitize($payload);
     }
 
     private function findCurrentSubscription(string $userId): ?array

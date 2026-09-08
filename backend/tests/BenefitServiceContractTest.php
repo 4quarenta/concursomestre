@@ -8,6 +8,7 @@ require_once $servicePath;
 $service = (string) file_get_contents($root . '/modules/benefits/services/BenefitService.php');
 $routes = (string) file_get_contents($root . '/modules/benefits/routes.php');
 $migration = (string) file_get_contents($root . '/database/migrations/20260906_130000_billing_entitlements_benefits.php');
+$retentionMigration = (string) file_get_contents($root . '/database/migrations/20260907_120000_refund_retention_offers.php');
 
 $assert = static function (bool $condition, string $message): void {
     if (!$condition) {
@@ -29,9 +30,11 @@ $assert(str_contains($service, 'benefit_audit_events'), 'Benefit mutations must 
 $assert(str_contains($routes, 'verifyAuthenticatedUserPayload(true)'), 'User Benefits routes must require authentication.');
 $assert(str_contains($routes, 'requirePlatformAdminSessionContext'), 'Admin Benefit routes must require platform-admin RBAC.');
 $assert(str_contains($routes, 'assertValidCsrfToken'), 'Benefit redemption must enforce CSRF when a session cookie is present.');
-foreach (['benefit_definitions', 'benefit_grants', 'benefit_codes', 'benefit_code_redemptions', 'benefit_audit_events'] as $table) {
-    $assert(str_contains($migration, 'CREATE TABLE IF NOT EXISTS ' . $table), 'Missing Benefit table: ' . $table);
+foreach (['benefit_definitions', 'benefit_grants', 'benefit_codes', 'benefit_code_redemptions', 'benefit_audit_events', 'benefit_domain_events'] as $table) {
+    $assert(str_contains($migration . $retentionMigration, 'CREATE TABLE IF NOT EXISTS ' . $table), 'Missing Benefit table: ' . $table);
 }
+$assert(str_contains($service, 'recordDomainEvent'), 'Benefits must expose a transport-neutral domain-event contract.');
+$assert(str_contains($service, 'JSON_THROW_ON_ERROR'), 'Domain-event payloads must fail closed when serialization is invalid.');
 
 $assert(BenefitService::resolveEffectivePlan('Essencial', [['status' => 'APPLIED', 'access_plan' => 'Elite']]) === 'Elite', 'Temporary higher access must be effective.');
 $assert(BenefitService::resolveEffectivePlan('Pro', [['status' => 'APPLIED', 'access_plan' => 'Essencial']]) === 'Pro', 'Lower grant must not reduce paid access.');
