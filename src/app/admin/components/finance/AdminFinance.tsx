@@ -85,6 +85,7 @@ import AdminFinanceAnalyticsPanel from './AdminFinanceAnalyticsPanel';
 import AdminReferralPayoutPanel from './AdminReferralPayoutPanel';
 import AdminFinanceTransactionOverview from './AdminFinanceTransactionOverview';
 import AdminBenefitsPanel from './AdminBenefitsPanel';
+import RefundRetentionOfferFields, { EMPTY_RETENTION_OFFER_DRAFT, isRetentionOfferDraftValid, serializeRetentionOfferDraft, type RetentionOfferDraft } from './RefundRetentionOfferFields';
 import { buildAdminUserEditPath } from '../../config/adminPageNavigationConfig';
 import {
   ADMIN_FIELD_CLASS,
@@ -859,7 +860,6 @@ const AdminFinance = ({
     }
     return 'transactions';
   };
-
   const [activeSection, setActiveSection] = useState<FinanceSection>(normalizeSection(initialSection));
   const [plansPanelTab, setPlansPanelTab] = useState<PlansPanelTab>('configuration');
   const [planAccessTab, setPlanAccessTab] = useState<PlanAccessTab>('general');
@@ -871,7 +871,7 @@ const AdminFinance = ({
     transactionId: string;
     resolution: 'approved' | 'retention_offer';
   } | null>(null);
-  const [retentionOfferDraft, setRetentionOfferDraft] = useState({ offeredDays: '', expiresAt: '', userNote: '', internalNote: '' });
+  const [retentionOfferDraft, setRetentionOfferDraft] = useState<RetentionOfferDraft>(EMPTY_RETENTION_OFFER_DRAFT);
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [automationHelper, setAutomationHelper] = useState<AutomationHelperData | null>(null);
   const [automationHelperLoading, setAutomationHelperLoading] = useState(false);
@@ -2044,45 +2044,34 @@ const AdminFinance = ({
     };
     setDraftPlanUsageLimits(updatedLimits);
   };
-
   // --- REEMBOLSOS ---
   const { resolveRefund, moderateMaterial, isLoadingTransactions } = useMarketplace();
   const requestResolveRefund = (transactionId: string, resolution: 'approved' | 'retention_offer') => {
     if (refundActionKey) return;
     if (resolution === 'retention_offer') {
-      setRetentionOfferDraft({ offeredDays: '', expiresAt: '', userNote: '', internalNote: '' });
+      setRetentionOfferDraft(EMPTY_RETENTION_OFFER_DRAFT);
     }
     setPendingRefundDecision({ transactionId, resolution });
   };
-
   const handleResolveRefund = async () => {
     if (!pendingRefundDecision) return;
-
     const nextKey = `${pendingRefundDecision.transactionId}:${pendingRefundDecision.resolution}`;
-    const offeredDays = Number(retentionOfferDraft.offeredDays);
-    if (pendingRefundDecision.resolution === 'retention_offer' && (!Number.isInteger(offeredDays) || offeredDays < 1 || offeredDays > 366 || !retentionOfferDraft.expiresAt)) {
+    if (pendingRefundDecision.resolution === 'retention_offer' && !isRetentionOfferDraftValid(retentionOfferDraft)) {
       addToast('Informe a quantidade de dias e a expiração da oferta.', 'error');
       return;
     }
     setRefundActionKey(nextKey);
-
     try {
       await resolveRefund(
         pendingRefundDecision.transactionId,
         pendingRefundDecision.resolution,
-        pendingRefundDecision.resolution === 'retention_offer' ? {
-          offeredDays,
-          expiresAt: new Date(retentionOfferDraft.expiresAt).toISOString(),
-          userNote: retentionOfferDraft.userNote,
-          internalNote: retentionOfferDraft.internalNote,
-        } : undefined,
+        pendingRefundDecision.resolution === 'retention_offer' ? serializeRetentionOfferDraft(retentionOfferDraft) : undefined,
       );
     } finally {
       setRefundActionKey(null);
       setPendingRefundDecision(null);
     }
   };
-
   const handleRunAutomationNow = async () => {
     if (!isAdminViewer || automationRunLoading) return;
 
@@ -2288,7 +2277,6 @@ const AdminFinance = ({
   const selectedSellerUser = selectedSeller ? (sellerUsersById.get(selectedSeller.id) || null) : null;
   const selectedSellerMaterials = useMemo(() => {
     if (!selectedSeller) return [];
-
     return (allMaterials || [])
       .filter((material) => readMarketplaceMaterialSellerId(material) === selectedSeller.id)
       .sort((left, right) => readMarketplaceMaterialTimestamp(right) - readMarketplaceMaterialTimestamp(left));
@@ -2299,7 +2287,6 @@ const AdminFinance = ({
   const activePlanAccessLimitDefinitions = PLAN_USAGE_LIMIT_DEFINITIONS.filter((definition) => (
     activePlanAccessModuleGroup.limitKeys?.includes(definition.key)
   ));
-
   return (
     <div className="space-y-5 animate-slide-up md:space-y-6">
       <AdminConfirmDialog
@@ -2319,26 +2306,7 @@ const AdminFinance = ({
           setRefundActionKey(null);
         }}
       >
-        {pendingRefundDecision?.resolution === 'retention_offer' && (
-          <div className="space-y-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
-              Dias gratuitos oferecidos
-              <input type="number" min={1} max={366} value={retentionOfferDraft.offeredDays} onChange={(event) => setRetentionOfferDraft((current) => ({ ...current, offeredDays: event.target.value }))} className="mt-1 h-10 w-full rounded-sm border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Informe N" required />
-            </label>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
-              Oferta válida até
-              <input type="datetime-local" value={retentionOfferDraft.expiresAt} onChange={(event) => setRetentionOfferDraft((current) => ({ ...current, expiresAt: event.target.value }))} className="mt-1 h-10 w-full rounded-sm border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" required />
-            </label>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
-              Nota para o usuário (opcional)
-              <textarea value={retentionOfferDraft.userNote} onChange={(event) => setRetentionOfferDraft((current) => ({ ...current, userNote: event.target.value }))} maxLength={1000} rows={3} className="mt-1 w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950" />
-            </label>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
-              Nota interna (opcional)
-              <textarea value={retentionOfferDraft.internalNote} onChange={(event) => setRetentionOfferDraft((current) => ({ ...current, internalNote: event.target.value }))} maxLength={500} rows={2} className="mt-1 w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950" />
-            </label>
-          </div>
-        )}
+        {pendingRefundDecision?.resolution === 'retention_offer' && <RefundRetentionOfferFields draft={retentionOfferDraft} onChange={setRetentionOfferDraft} />}
       </AdminConfirmDialog>
 
       <AdminConfirmDialog
