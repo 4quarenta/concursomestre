@@ -10,6 +10,7 @@ $routes = (string) file_get_contents($root . '/modules/transactions/routes.php')
 $migration = (string) file_get_contents($root . '/database/migrations/20260907_120000_refund_retention_offers.php');
 $benefit = (string) file_get_contents($root . '/modules/benefits/services/BenefitService.php');
 $mailer = (string) file_get_contents($root . '/shared/utils/Mailer.php');
+$expiryProcessor = (string) file_get_contents($root . '/modules/transactions/services/RefundRetentionExpiryProcessor.php');
 
 $assert = static function (bool $condition, string $message): void {
     if (!$condition) {
@@ -41,6 +42,8 @@ $assert(substr_count($routes, 'assertTransactionsMutationCsrf();') >= 4, 'Refund
 $assert(str_contains($service, 'processExpiredRefundRetentionOffers'), 'Retention expiration requires an autonomous processing path.');
 $assert(str_contains($service, 'Oferta de retenção expirada'), 'Expired offers must use the canonical refund reason.');
 $assert(str_contains($repository, 'findNextExpiredRetentionOfferCandidate'), 'Expired offer processing must use a bounded repository candidate query.');
+$assert(str_contains($expiryProcessor, 'processExpiredRefundRetentionOffers'), 'The existing financial cron must reuse the retention expiry processor.');
+$assert(str_contains((string) file_get_contents($root . '/modules/subscriptions/services/SubscriptionsService.php'), 'RefundRetentionExpiryProcessor::run'), 'Retention expiry must be wired into the existing subscription reconciliation cron.');
 $assert(str_contains($mailer, 'CM_SYNTHETIC_EMAIL_SINK'), 'Synthetic billing tests must have an explicit no-delivery sink.');
 $assert(str_contains($mailer, "PHP_SAPI === 'cli'"), 'Synthetic email isolation must be limited to CLI acceptance runs.');
 $assert(substr_count($validator, "max_range' => 366") === 1, 'Retention days must retain one explicit technical upper guardrail.');
