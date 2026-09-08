@@ -70,6 +70,20 @@ The implementation reuses the existing promotion, landing-page, offer, countdown
 
 Cover billing, subscriptions, upgrade/downgrade, renewal, cancellation/reactivation, trials, coupons, refunds, payment failure/recovery, reconciliation, webhooks, temporary access, free billing days, benefit codes, marketing benefits, support compensation and level rewards.
 
+### Deferred post-launch item - plan-specific PIX payment and pricing
+
+M20F-03 launch policy is `CARD_ONLY`: recurring card subscriptions remain the
+authoritative billing path and PIX is disabled at launch. PIX-related billing
+combinations are classified as `DEFERRED_POST_LAUNCH`, not as untested
+supported combinations. A future package must first audit the actual Stripe
+contract and then implement, if supported, independently Admin-configurable
+`STANDARD_PRICE`, `PIX_PRICE_ENABLED` and `PIX_PRICE` per canonical plan,
+server-side amount resolution, immutable payment-price snapshots, provider
+amount/currency reconciliation, webhook idempotency, expiration/refund
+semantics, coupon/Benefit compatibility, public/Admin UX and mobile/accessibility
+acceptance. No illustrative price or percentage discount is a default or
+business authority.
+
 Paid subscription state is distinct from effective access state. Paid tier plus active access grants equals effective entitlement; provider billing period plus valid billing-extension benefits equals the next billing date. Temporary access must not mutate the paid Stripe plan. Free billing days must extend the canonical provider billing period, with no old-date charge, duplicate invoice or duplicate subscription.
 
 Use one reusable Benefit Service for ADMIN_MANUAL, CAMPAIGN, CODE_REDEMPTION, SUPPORT_COMPENSATION, LEVEL_REWARD and PROMOTION. Benefit codes support scope, dates, assigned user, campaign, eligible plans, redemption limits, stacking policy, status and audit, including USER_EXCLUSIVE enforcement. The future account area exposes active benefits, expiry and renewal impact.

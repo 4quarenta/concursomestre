@@ -275,7 +275,7 @@ const CheckoutPage: React.FC = () => {
     const stripePaymentMethodsSettings = systemSettings?.stripePaymentMethods ?? null;
     const checkoutEnabledPaymentMethods = useMemo(
         () => getEnabledStripePaymentMethods(stripePaymentMethodsSettings)
-            .filter((method) => method.checkoutSupported),
+            .filter((method) => method.id === 'card' && method.checkoutSupported),
         [stripePaymentMethodsSettings],
     );
     const checkoutEnabledPaymentMethodIds = useMemo(

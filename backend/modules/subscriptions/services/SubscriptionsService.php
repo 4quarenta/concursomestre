@@ -182,7 +182,7 @@ class SubscriptionsService
      */
     private function resolveEnabledStripeCheckoutMethod(string $requestedMethodId = ''): array
     {
-        $normalizedMethodId = normalizeStripePaymentMethodId($requestedMethodId !== '' ? $requestedMethodId : 'card');
+        $normalizedMethodId = normalizeStripePaymentMethodId($requestedMethodId !== '' ? $requestedMethodId : 'card'); if ($normalizedMethodId !== 'card') { throw new DomainException('O checkout de assinatura aceita apenas Cartão neste lançamento. PIX permanece desativado até a implementação pós-lançamento.'); }
         $configuredMethods = getConfiguredStripePaymentMethods($this->db)['methods'] ?? [];
 
         foreach ($configuredMethods as $method) {

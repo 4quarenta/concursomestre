@@ -113,7 +113,7 @@ function defaultStripePaymentMethodsConfig(): array
                 'label' => 'PIX',
                 'stripeType' => 'pix',
                 'enabled' => false,
-                'checkoutSupported' => true,
+                'checkoutSupported' => false,
                 'recurringSupported' => false,
                 'removable' => false,
                 'description' => 'PIX depende de capability ativa na Stripe e não substitui a recorrência por cartão.',
