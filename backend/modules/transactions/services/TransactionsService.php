@@ -762,7 +762,7 @@ class TransactionsService
                 $this->db->commit();
                 return ['offer' => $offer, 'message' => 'A oferta já foi confirmada.'];
             }
-            if (in_array($status, ['RETENTION_OFFER_REJECTED', 'EXPIRED'], true)) {
+            if (in_array($status, ['RETENTION_OFFER_REJECTED', 'EXPIRED', 'ACCEPTED_PENDING_BENEFIT'], true)) {
                 throw new DomainException('Esta oferta não está mais disponível.');
             }
             if ($this->isRetentionOfferExpired((string) $offer['expires_at'])) {
