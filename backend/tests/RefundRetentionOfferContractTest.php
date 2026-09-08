@@ -29,7 +29,8 @@ $assert(str_contains($service, 'BenefitService::EVENT_REFUND_RETENTION_ACCEPTED'
 $assert(str_contains($service, 'BenefitService::EVENT_REFUND_RETENTION_DECLINED'), 'Offer decline must emit a domain event.');
 $assert(str_contains($service, 'BenefitService::EVENT_REFUND_RETENTION_EXPIRED'), 'Offer expiration must emit a domain event.');
 $assert(str_contains($service, 'BenefitService::EVENT_REFUND_COMPLETED'), 'Canonical refund completion must emit a domain event.');
-$assert(str_contains($service, "['RETENTION_OFFER_REJECTED', 'EXPIRED', 'ACCEPTED_PENDING_BENEFIT']"), 'A pending accepted offer must reject a concurrent decline before benefit confirmation.');
+$assert(str_contains($service, "['EXPIRED', 'ACCEPTED_PENDING_BENEFIT']"), 'A pending accepted offer must reject a concurrent decline before benefit confirmation.');
+$assert(str_contains($service, "strtolower((string) (\$transaction['status'] ?? '')) === 'refunded'"), 'A repeated decline after the canonical refund must be idempotent.');
 $assert(str_contains($service, 'findTransactionByIdForUpdate'), 'Refund retention decisions must lock the transaction authority.');
 $assert(str_contains($service, 'ACCEPTED_PENDING_BENEFIT'), 'Acceptance must remain recoverable until provider confirmation.');
 $assert(str_contains($service, "'offered_days' => (int) " . "\$offer['offered_days']"), 'Provider grant metadata must use the selected offer days.');
