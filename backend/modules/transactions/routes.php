@@ -39,6 +39,20 @@ function buildTransactionsController(PDO $db): TransactionsController
 }
 
 /**
+ * Protege mutacoes de transacoes com o mesmo contrato CSRF dos demais
+ * endpoints autenticados do produto.
+ *
+ * @since 1.0.0
+ */
+function assertTransactionsMutationCsrf(): void
+{
+    $csrfCookie = getCsrfTokenFromCookie();
+    if ($csrfCookie !== null && !assertValidCsrfToken($csrfCookie, getCsrfTokenFromRequest())) {
+        Response::forbidden('CSRF token invalido.');
+    }
+}
+
+/**
  * Entrada oficial da compra direta de materiais no marketplace.
  *
  * @since 1.0.0
@@ -103,6 +117,7 @@ function handleTransactionsListRoute(PDO $db): void
 function handleTransactionsRefundRoute(PDO $db): void
 {
     try {
+        assertTransactionsMutationCsrf();
         $payload = verifyAuthenticatedUserPayload(true);
         $body = json_decode(file_get_contents('php://input'), true) ?: [];
         $controller = buildTransactionsController($db);
@@ -128,6 +143,7 @@ function handleTransactionsRefundRoute(PDO $db): void
 function handleTransactionsApproveRefundRoute(PDO $db): void
 {
     try {
+        assertTransactionsMutationCsrf();
         $adminContext = requirePlatformAdminSessionContext($db);
         $body = json_decode(file_get_contents('php://input'), true) ?: [];
         $body['actor_id'] = (string) $adminContext['admin_user_id'];
@@ -162,10 +178,7 @@ function handleTransactionsRetentionDecisionRoute(PDO $db): void
         if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'POST')) !== 'POST') {
             Response::error('Metodo nao permitido.', 405);
         }
-        $csrfCookie = getCsrfTokenFromCookie();
-        if ($csrfCookie !== null && !assertValidCsrfToken($csrfCookie, getCsrfTokenFromRequest())) {
-            Response::forbidden('CSRF token invalido.');
-        }
+        assertTransactionsMutationCsrf();
         $payload = verifyAuthenticatedUserPayload(true);
         $body = json_decode(file_get_contents('php://input'), true) ?: [];
         $result = buildTransactionsController($db)->decideRefundRetentionOffer(
@@ -194,6 +207,7 @@ function handleTransactionsRetentionDecisionRoute(PDO $db): void
 function handleTransactionsRejectRefundRoute(PDO $db): void
 {
     try {
+        assertTransactionsMutationCsrf();
         $adminContext = requirePlatformAdminSessionContext($db);
         $body = json_decode(file_get_contents('php://input'), true) ?: [];
         $controller = buildTransactionsController($db);

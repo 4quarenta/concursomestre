@@ -11,6 +11,7 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
+import { getCsrfToken } from '@services/auth/session';
 import type { Transaction } from '@types';
 
 type TransactionListParams = {
@@ -141,7 +142,8 @@ export const transactionsService = {
       ? ENDPOINTS.transactions.approveRefund
       : ENDPOINTS.transactions.rejectRefund;
 
-    const response = await apiClient.post<RefundMutationPayload>(endpoint, {
+    const csrfToken = getCsrfToken();
+    const requestBody = {
       transaction_id: transactionId,
       reason,
       actor_id: undefined,
@@ -149,7 +151,10 @@ export const transactionsService = {
       expires_at: resolution === 'retention_offer' ? retention?.expiresAt : undefined,
       user_note: resolution === 'retention_offer' ? retention?.userNote : undefined,
       internal_note: resolution === 'retention_offer' ? retention?.internalNote : undefined,
-    });
+    };
+    const response = csrfToken
+      ? await apiClient.post<RefundMutationPayload>(endpoint, requestBody, { headers: { 'X-CSRF-Token': csrfToken } })
+      : await apiClient.post<RefundMutationPayload>(endpoint, requestBody);
 
     const envelope = assertApiSuccess(response, 'Não foi possível atualizar o estorno.');
     const payload = readApiData<RefundMutationPayload>(response, {});

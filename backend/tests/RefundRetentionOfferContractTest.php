@@ -6,6 +6,7 @@ $root = dirname(__DIR__);
 $service = (string) file_get_contents($root . '/modules/transactions/services/TransactionsService.php');
 $validator = (string) file_get_contents($root . '/modules/transactions/validators/TransactionsValidator.php');
 $repository = (string) file_get_contents($root . '/modules/transactions/repositories/TransactionsRepository.php');
+$routes = (string) file_get_contents($root . '/modules/transactions/routes.php');
 $migration = (string) file_get_contents($root . '/database/migrations/20260907_120000_refund_retention_offers.php');
 $benefit = (string) file_get_contents($root . '/modules/benefits/services/BenefitService.php');
 
@@ -34,5 +35,7 @@ $assert(!str_contains($service, 'users.plan'), 'Retention flow must not mutate u
 $assert(!str_contains($service, 'UPDATE user_subscriptions'), 'Retention flow must not mutate user_subscriptions directly.');
 $assert(str_contains($benefit, 'recordDomainEvent'), 'BenefitService must expose the transport-neutral domain-event contract.');
 $assert(str_contains($benefit, 'sanitizeDomainPayload'), 'Domain event payloads must be sanitized.');
+$assert(str_contains($routes, 'function assertTransactionsMutationCsrf'), 'Transaction mutations require the shared CSRF guard.');
+$assert(substr_count($routes, 'assertTransactionsMutationCsrf();') >= 4, 'Refund and retention mutation routes must use the CSRF guard.');
 
 fwrite(STDOUT, "Refund retention offer contract assertions passed.\n");
