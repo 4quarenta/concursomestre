@@ -765,7 +765,7 @@ class TransactionsService
             if (in_array($status, ['RETENTION_OFFER_REJECTED', 'EXPIRED'], true)) {
                 throw new DomainException('Esta oferta não está mais disponível.');
             }
-            if (strtotime((string) $offer['expires_at']) <= time()) {
+            if ($this->isRetentionOfferExpired((string) $offer['expires_at'])) {
                 $this->repository->updateRetentionOffer($offerId, ['status' => 'EXPIRED', 'expired_at' => gmdate('Y-m-d H:i:s')], $status);
                 (new BenefitService($this->db))->recordDomainEvent(BenefitService::EVENT_REFUND_RETENTION_EXPIRED, $userId, null, 'REFUND_RETENTION_OFFER', $offerId, ['offered_days' => (int) $offer['offered_days'], 'transaction_id' => (string) $transaction['id']], $userId);
                 $this->db->commit();
@@ -879,7 +879,7 @@ class TransactionsService
                 }
 
                 $status = strtoupper((string) ($offer['status'] ?? ''));
-                if ($status === 'PENDING' && strtotime((string) ($offer['expires_at'] ?? '')) <= time()) {
+                if ($status === 'PENDING' && $this->isRetentionOfferExpired((string) ($offer['expires_at'] ?? ''))) {
                     $this->repository->updateRetentionOffer(
                         $offerId,
                         ['status' => 'EXPIRED', 'expired_at' => gmdate('Y-m-d H:i:s')],
@@ -947,6 +947,21 @@ class TransactionsService
         $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
         $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+    }
+
+    private function isRetentionOfferExpired(string $expiresAt): bool
+    {
+        if (trim($expiresAt) === '') {
+            return false;
+        }
+
+        try {
+            $expiration = new DateTimeImmutable($expiresAt, new DateTimeZone('UTC'));
+            $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+            return $expiration <= $now;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
