@@ -28,6 +28,7 @@ const readArgValue = (name, fallback = undefined) => {
 };
 
 const readBoolArg = (name, fallback = false) => {
+  if (process.argv.includes(`--${name}`)) return true;
   const raw = readArgValue(name);
   if (raw === undefined) return fallback;
   return ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
@@ -42,6 +43,9 @@ const BASE_URL = (readArgValue('base-url', process.env.CM_BASE_URL || 'http://lo
 const STRICT = readBoolArg('strict', process.env.CM_VISUAL_SMOKE_STRICT === 'true');
 const DRY_RUN = readBoolArg('dry-run', false);
 const TIMEOUT_MS = Number(readArgValue('timeout-ms', process.env.CM_VISUAL_SMOKE_TIMEOUT_MS || '15000'));
+const VIEWPORT_WIDTH = Number(readArgValue('viewport-width', process.env.CM_VISUAL_SMOKE_VIEWPORT_WIDTH || '1280'));
+const VIEWPORT_HEIGHT = Number(readArgValue('viewport-height', process.env.CM_VISUAL_SMOKE_VIEWPORT_HEIGHT || '900'));
+const POST_LOAD_WAIT_MS = Number(readArgValue('post-load-wait-ms', process.env.CM_VISUAL_SMOKE_POST_LOAD_WAIT_MS || '3000'));
 const REPORT_PATH = path.resolve(readArgValue('report-file', process.env.CM_VISUAL_SMOKE_REPORT_FILE || DEFAULT_REPORT_PATH));
 const SCREENSHOT_DIR = path.resolve(readArgValue('screenshot-dir', process.env.CM_VISUAL_SMOKE_SCREENSHOT_DIR || DEFAULT_SCREENSHOT_DIR));
 const DEFAULT_STUDENT_ROUTES = ['/dashboard', '/questoes', '/profile', '/lei-comentada'];
@@ -154,7 +158,10 @@ const waitForAuthOutcome = async (page, loginResponse) => {
 };
 
 const loginAndCaptureState = async (browser, role) => {
-  const context = await browser.newContext({ baseURL: BASE_URL });
+  const context = await browser.newContext({
+    baseURL: BASE_URL,
+    viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+  });
   const page = await context.newPage();
 
   try {
@@ -203,8 +210,21 @@ const shouldIgnoreConsoleMessage = (text) => {
     || normalized.includes('resizeobserver loop');
 };
 
-const inspectRoute = async (browser, role, storageState, route) => {
-  const context = await browser.newContext({ baseURL: BASE_URL, storageState });
+const shouldIgnoreFailedRequest = (request) => {
+  const url = String(request?.url || '');
+  const errorText = String(request?.errorText || '').toLowerCase();
+  return request?.resourceType === 'fetch'
+    && errorText.includes('err_aborted')
+    && url.includes('?_rsc=');
+};
+
+const inspectRoute = async (browser, role, storageState, route, sharedContext = null) => {
+  const context = sharedContext || await browser.newContext({
+    baseURL: BASE_URL,
+    storageState,
+    viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+  });
+  const ownsContext = !sharedContext;
   const page = await context.newPage();
   const consoleErrors = [];
   const consoleWarnings = [];
@@ -240,7 +260,7 @@ const inspectRoute = async (browser, role, storageState, route) => {
   try {
     await page.goto(route, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
     await page.waitForLoadState('networkidle', { timeout: TIMEOUT_MS }).catch(() => undefined);
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(POST_LOAD_WAIT_MS);
 
     const currentUrl = new URL(page.url());
     const text = await visibleText(page);
@@ -255,7 +275,7 @@ const inspectRoute = async (browser, role, storageState, route) => {
       ...consoleErrors,
       ...pageErrors,
       ...failedRequests
-        .filter((request) => !request.url.includes('/_next/static/') && !request.url.includes('/favicon'))
+        .filter((request) => !request.url.includes('/_next/static/') && !request.url.includes('/favicon') && !shouldIgnoreFailedRequest(request))
         .map((request) => `${request.method} ${request.url}: ${request.errorText}`),
     ];
 
@@ -292,7 +312,10 @@ const inspectRoute = async (browser, role, storageState, route) => {
       failedRequests: failedRequests.slice(0, 20),
     };
   } finally {
-    await context.close();
+    await page.close();
+    if (ownsContext) {
+      await context.close();
+    }
   }
 };
 
@@ -311,6 +334,8 @@ const buildPlan = () => {
     baseUrl: BASE_URL,
     strict: STRICT,
     timeoutMs: TIMEOUT_MS,
+    viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+    postLoadWaitMs: POST_LOAD_WAIT_MS,
     reportPath: REPORT_PATH,
     screenshotDir: SCREENSHOT_DIR,
     baseUrlValidation,
@@ -380,8 +405,17 @@ const run = async () => {
       }
 
       const routes = [];
-      for (const route of role.routes) {
-        routes.push(await inspectRoute(browser, role, login.storageState, route));
+      const authenticatedContext = await browser.newContext({
+        baseURL: BASE_URL,
+        storageState: login.storageState,
+        viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+      });
+      try {
+        for (const route of role.routes) {
+          routes.push(await inspectRoute(browser, role, login.storageState, route, authenticatedContext));
+        }
+      } finally {
+        await authenticatedContext.close();
       }
 
       roleResults.push({
