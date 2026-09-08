@@ -2549,6 +2549,9 @@ class SubscriptionsService
             'collection_retries_deferred_to_stripe' => 0,
             'collection_retries_succeeded' => 0,
             'collection_retries_exhausted' => 0,
+            'retention_expired' => 0,
+            'retention_refunds_processed' => 0,
+            'retention_refund_failures' => 0,
             'issues' => 0,
             'rows' => [],
         ];
@@ -2565,6 +2568,21 @@ class SubscriptionsService
         }
 
         try {
+            require_once __DIR__ . '/../../transactions/repositories/TransactionsRepository.php';
+            require_once __DIR__ . '/../../transactions/validators/TransactionsValidator.php';
+            require_once __DIR__ . '/../../transactions/services/TransactionsService.php';
+            $retentionSummary = (new TransactionsService(
+                $this->db,
+                new TransactionsRepository($this->db),
+                new TransactionsValidator()
+            ))->processExpiredRefundRetentionOffers(50);
+            $summary['retention_expired'] = (int) ($retentionSummary['expired'] ?? 0);
+            $summary['retention_refunds_processed'] = (int) ($retentionSummary['refunds_processed'] ?? 0);
+            $summary['retention_refund_failures'] = (int) ($retentionSummary['refund_failures'] ?? 0);
+            foreach (($retentionSummary['rows'] ?? []) as $retentionRow) {
+                $summary['rows'][] = $retentionRow;
+            }
+
             $stripe = getStripeClient();
             $collectionRetrySummary = $this->recoverDueStripeInvoicePayments($stripe);
             foreach ($collectionRetrySummary as $key => $value) {

@@ -254,6 +254,36 @@ class TransactionsRepository
         return $offer ?: null;
     }
 
+    /**
+     * Busca a proxima oferta expirada que precisa ser convertida em reembolso.
+     * A selecao e revalidada sob lock da transacao antes da mutacao.
+     *
+     * @since 1.0.0
+     */
+    public function findNextExpiredRetentionOfferCandidate(array $excludeIds = []): ?array
+    {
+        $conditions = [
+            "((rro.status = 'PENDING' AND rro.expires_at <= UTC_TIMESTAMP(6)) OR (rro.status = 'EXPIRED' AND t.status = 'refund_requested'))",
+        ];
+        $params = [];
+        $normalizedExcludeIds = array_values(array_filter(array_map('trim', $excludeIds), static fn (string $id): bool => $id !== ''));
+        if ($normalizedExcludeIds !== []) {
+            $placeholders = [];
+            foreach ($normalizedExcludeIds as $index => $id) {
+                $placeholder = ':exclude_id_' . $index;
+                $placeholders[] = $placeholder;
+                $params[$placeholder] = $id;
+            }
+            $conditions[] = 'rro.id NOT IN (' . implode(', ', $placeholders) . ')';
+        }
+
+        $stmt = $this->db->prepare("\n            SELECT rro.*, t.status AS transaction_status\n            FROM refund_retention_offers rro\n            INNER JOIN transactions t ON t.id = rro.transaction_id\n            WHERE " . implode(' AND ', $conditions) . "\n            ORDER BY rro.expires_at ASC, rro.created_at ASC\n            LIMIT 1\n        ");
+        $stmt->execute($params);
+        $offer = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $offer ?: null;
+    }
+
     public function createRetentionOffer(array $offer): void
     {
         $stmt = $this->db->prepare(

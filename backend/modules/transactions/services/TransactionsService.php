@@ -834,6 +834,113 @@ class TransactionsService
         }
     }
 
+    /**
+     * Expira ofertas vencidas e encaminha o reembolso pela autoridade canonica.
+     * O limite evita varreduras ilimitadas; reexecucoes sao protegidas pelo
+     * lock da transacao e pela idempotencia do fluxo de reembolso.
+     *
+     * @since 1.0.0
+     */
+    public function processExpiredRefundRetentionOffers(int $limit = 50): array
+    {
+        $limit = max(1, min(100, $limit));
+        $summary = [
+            'scanned' => 0,
+            'expired' => 0,
+            'refunds_processed' => 0,
+            'refund_failures' => 0,
+            'rows' => [],
+        ];
+        $attemptedOfferIds = [];
+
+        for ($attempt = 0; $attempt < $limit; $attempt++) {
+            $candidate = $this->repository->findNextExpiredRetentionOfferCandidate(array_keys($attemptedOfferIds));
+            if (!$candidate) {
+                break;
+            }
+            $summary['scanned']++;
+
+            $offerId = (string) ($candidate['id'] ?? '');
+            $transactionId = (string) ($candidate['transaction_id'] ?? '');
+            if ($offerId === '' || $transactionId === '') {
+                continue;
+            }
+            $attemptedOfferIds[$offerId] = true;
+
+            $shouldRefund = false;
+            $this->db->beginTransaction();
+            try {
+                // Keep the same transaction-first lock order used by user/Admin decisions.
+                $transaction = $this->repository->findTransactionByIdForUpdate($transactionId);
+                $offer = $this->repository->findRetentionOfferForTransaction($transactionId, true);
+                if (!$transaction || !$offer || strtolower((string) ($transaction['status'] ?? '')) !== 'refund_requested') {
+                    $this->db->commit();
+                    continue;
+                }
+
+                $status = strtoupper((string) ($offer['status'] ?? ''));
+                if ($status === 'PENDING' && strtotime((string) ($offer['expires_at'] ?? '')) <= time()) {
+                    $this->repository->updateRetentionOffer(
+                        $offerId,
+                        ['status' => 'EXPIRED', 'expired_at' => gmdate('Y-m-d H:i:s')],
+                        'PENDING'
+                    );
+                    (new BenefitService($this->db))->recordDomainEvent(
+                        BenefitService::EVENT_REFUND_RETENTION_EXPIRED,
+                        (string) $transaction['user_id'],
+                        null,
+                        'REFUND_RETENTION_OFFER',
+                        $offerId,
+                        [
+                            'offered_days' => (int) ($offer['offered_days'] ?? 0),
+                            'transaction_id' => $transactionId,
+                        ],
+                        (string) $transaction['user_id']
+                    );
+                    $summary['expired']++;
+                    $shouldRefund = true;
+                } elseif ($status === 'EXPIRED') {
+                    // A prior attempt may have reached the provider and failed locally.
+                    $shouldRefund = true;
+                }
+                $this->db->commit();
+            } catch (Throwable $error) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+                $summary['refund_failures']++;
+                $summary['rows'][] = [
+                    'offer_id' => $offerId,
+                    'transaction_id' => $transactionId,
+                    'error' => 'expiry_claim_failed',
+                ];
+                continue;
+            }
+
+            if (!$shouldRefund) {
+                continue;
+            }
+
+            try {
+                $this->approveRefund([
+                    'transaction_id' => $transactionId,
+                    'reason' => 'Oferta de retenção expirada',
+                ]);
+                $summary['refunds_processed']++;
+            } catch (Throwable $error) {
+                // Keep EXPIRED + refund_requested recoverable for the next cron pass.
+                $summary['refund_failures']++;
+                $summary['rows'][] = [
+                    'offer_id' => $offerId,
+                    'transaction_id' => $transactionId,
+                    'error' => 'expiry_refund_retryable_failure',
+                ];
+            }
+        }
+
+        return $summary;
+    }
+
     private static function retentionUuid(): string
     {
         $data = random_bytes(16);

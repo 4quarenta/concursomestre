@@ -45,6 +45,12 @@ class Mailer {
         string $bodyHtml,
         string $bodyText = ''
     ): bool {
+        // Synthetic CLI acceptance runs must never reach a configured SMTP provider.
+        if (PHP_SAPI === 'cli' && getenv('CM_SYNTHETIC_EMAIL_SINK') === '1') {
+            self::logMailEvent('[MAILER-SYNTHETIC-SINK] transactional message captured without delivery.');
+            return true;
+        }
+
         $mailConfig = resolveMailConfiguration();
         $smtpHost = (string) $mailConfig['smtpHost'];
         $smtpUser = (string) $mailConfig['smtpUser'];
