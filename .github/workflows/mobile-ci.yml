@@ -30,12 +30,20 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.13.1'
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
       - name: Install mobile dependencies
         run: npm ci --prefix mobile
+
+      - name: Verify Expo dependency alignment
+        working-directory: mobile
+        run: npx expo install --check
+
+      - name: Run Expo Doctor
+        working-directory: mobile
+        run: npx expo-doctor
 
       - name: Typecheck mobile
         run: npm --prefix mobile run typecheck
