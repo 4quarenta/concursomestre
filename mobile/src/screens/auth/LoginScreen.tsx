@@ -1,15 +1,12 @@
 import React from 'react';
 import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextField } from '@/components/ui/TextField';
 import { useAuth } from '@/providers/AuthProvider';
 import { colors } from '@/theme/colors';
-import { AuthStackParamList } from '@/navigation/types';
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
-
-export const LoginScreen: React.FC<Props> = ({ navigation }) => {
+export const LoginScreen: React.FC = () => {
   const { login, isLoading } = useAuth();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -22,6 +19,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       await login({ email, password });
+      // O Stack.Protected troca automaticamente o grupo de auth pelo grupo privado.
     } catch (error: any) {
       Alert.alert('Falha no login', error?.message || 'Nao foi possivel realizar o login.');
     }
@@ -61,7 +59,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
         <PrimaryButton
           label="Criar conta"
-          onPress={() => navigation.navigate('Register')}
+          onPress={() => router.push('/cadastro')}
           disabled={isLoading}
         />
       </View>
