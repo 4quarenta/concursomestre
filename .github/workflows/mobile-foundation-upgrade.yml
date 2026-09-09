@@ -83,10 +83,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mobile/package.json mobile/package-lock.json
+          git add mobile/package.json mobile/package-lock.json mobile/app.json
           if git diff --cached --quiet; then
             echo "No dependency changes to commit."
             exit 0
           fi
           git commit -m "chore(mobile): upgrade foundation dependencies"
+          git pull --rebase origin mobile-foundation-refactor
           git push origin HEAD:mobile-foundation-refactor
