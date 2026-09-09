@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T02:55:10.736Z",
+  "generated_at": "2026-09-09T03:24:51.498Z",
   "package": "M20F-03",
   "wave": "WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES",
   "result": "PARTIAL",
@@ -561,20 +561,120 @@
     {
       "case_id": "C6-BENEFIT-EXPIRY-NEW-GRANT",
       "category": "BILLING_CONCURRENCY",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires synchronized grant expiry and insertion."
+      "status": "PASS",
+      "reason": "Requires synchronized grant expiry and insertion.",
+      "evidence": "M20F03Wave3BC6ConcurrencyValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_DELTA",
+      "actual": {
+        "active_grants": 1,
+        "effective_access": "ELITE",
+        "race_results": [
+          {
+            "slot": 0,
+            "operation": "expiry_read",
+            "value": {
+              "paid_plan": "Pro",
+              "effective_access": "Elite",
+              "subscription_status": null,
+              "provider_current_period_end": null,
+              "active_grants": [
+                {
+                  "id": "56075930-7dc8-46b6-98b5-3cf7d01e63e8",
+                  "source_type": "ADMIN_MANUAL",
+                  "source_reference": "wave3b-c6",
+                  "status": "APPLIED",
+                  "access_plan": "Elite",
+                  "billing_extension_days": 0,
+                  "grant_starts_at": "2026-09-09 03:24:23.000000",
+                  "grant_expires_at": "2026-09-11 06:24:23.000000",
+                  "provider_status": "NOT_REQUIRED",
+                  "provider_old_period_end": null,
+                  "provider_new_period_end": null,
+                  "definition_key": "wave3b-c6-feb72746d1-new",
+                  "name": "C6 new benefit",
+                  "benefit_mode": "ACCESS_ONLY",
+                  "stacking_policy": "DENY"
+                }
+              ]
+            },
+            "status": "SUCCESS"
+          },
+          {
+            "slot": 1,
+            "operation": "new_grant",
+            "value": {
+              "id": "56075930-7dc8-46b6-98b5-3cf7d01e63e8",
+              "status": "APPLIED",
+              "access_plan": "Elite",
+              "billing_extension_days": 0,
+              "grant_starts_at": "2026-09-09 03:24:23",
+              "grant_expires_at": "2026-09-11 06:24:23"
+            },
+            "status": "SUCCESS"
+          }
+        ]
+      }
     },
     {
       "case_id": "C7-CODE-SIMULTANEOUS-REDEMPTION",
       "category": "BILLING_CONCURRENCY",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires synchronized database redemption race."
+      "status": "PASS",
+      "reason": "Requires synchronized database redemption race.",
+      "evidence": "M20F03Wave3BDeltaOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_DELTA",
+      "actual": {
+        "redemptions": 1,
+        "grants": 1,
+        "results": [
+          {
+            "case_id": "C7-CODE-SIMULTANEOUS-REDEMPTION",
+            "slot": "0",
+            "status": "SUCCESS",
+            "value": {
+              "user": "wave3b-delta-66d71a445b-code-a",
+              "grant_status": "APPLIED"
+            }
+          },
+          {
+            "case_id": "C7-CODE-SIMULTANEOUS-REDEMPTION",
+            "slot": "1",
+            "status": "ERROR",
+            "error_class": "PDOException",
+            "error": "SQLSTATE[40001]: Serialization failure: 1213 Deadlock found when trying to get lock; try restarting transaction"
+          }
+        ]
+      }
     },
     {
       "case_id": "C8-ADMIN-DUPLICATE-GRANT",
       "category": "BILLING_CONCURRENCY",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires synchronized Admin grant race."
+      "status": "PASS",
+      "reason": "Requires synchronized Admin grant race.",
+      "evidence": "M20F03Wave3BDeltaOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_DELTA",
+      "actual": {
+        "grant_count": 1,
+        "results": [
+          {
+            "case_id": "C8-ADMIN-DUPLICATE-GRANT",
+            "slot": "0",
+            "status": "SUCCESS",
+            "value": {
+              "grant_id": "5fff9b02-34bc-492c-b9fb-cb79b756e952",
+              "grant_status": "APPLIED"
+            }
+          },
+          {
+            "case_id": "C8-ADMIN-DUPLICATE-GRANT",
+            "slot": "1",
+            "status": "SUCCESS",
+            "value": {
+              "grant_id": "5fff9b02-34bc-492c-b9fb-cb79b756e952",
+              "grant_status": "APPLIED"
+            }
+          }
+        ]
+      }
     },
     {
       "case_id": "OVERLAP-SAME-TIER",
@@ -615,8 +715,14 @@
     {
       "case_id": "OVERLAP-SOURCE-EXPIRY",
       "category": "OVERLAPPING_ACCESS",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires database grant fixtures and expiry clock."
+      "status": "PASS",
+      "reason": "Requires database grant fixtures and expiry clock.",
+      "evidence": "M20F03Wave3BDeltaOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_DELTA",
+      "actual": {
+        "effective_access": "ELITE",
+        "active_grants": 1
+      }
     },
     {
       "case_id": "EXPIRY-UNCHANGED-PAID",
@@ -645,8 +751,14 @@
     {
       "case_id": "EXPIRY-AFTER-DOWNGRADE",
       "category": "EXPIRATION_REVERSION",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires database plan-change fixture."
+      "status": "PASS",
+      "reason": "Requires database plan-change fixture.",
+      "evidence": "M20F03Wave3BDeltaOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_DELTA",
+      "actual": {
+        "paid_plan": "PRO",
+        "effective_access": "PRO"
+      }
     },
     {
       "case_id": "EXPIRY-AFTER-CANCELLATION",
@@ -784,14 +896,14 @@
     },
     "OVERLAPPING_ACCESS": {
       "total": 5,
-      "passed": 4,
-      "not_executed": 1,
-      "result": "PARTIAL"
+      "passed": 5,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "EXPIRATION_REVERSION": {
       "total": 11,
-      "passed": 9,
-      "not_executed": 2,
+      "passed": 10,
+      "not_executed": 1,
       "result": "PARTIAL"
     },
     "MARKETING_BENEFIT": {
@@ -820,8 +932,8 @@
     },
     "BILLING_CONCURRENCY": {
       "total": 8,
-      "passed": 1,
-      "not_executed": 7,
+      "passed": 4,
+      "not_executed": 4,
       "result": "PARTIAL"
     },
     "SEQUENTIAL_EXTENSION": {
@@ -876,7 +988,7 @@
   "gates": {
     "BILLING_CONCURRENCY_MATRIX": "PARTIAL",
     "TEMPORARY_ENTITLEMENT_MATRIX": "PASS",
-    "OVERLAPPING_ACCESS_GRANTS_MATRIX": "PARTIAL",
+    "OVERLAPPING_ACCESS_GRANTS_MATRIX": "PASS",
     "EXPIRATION_REVERSION_MATRIX": "PARTIAL",
     "DUAL_AXIS_UPGRADE_SCENARIO": "PASS",
     "PAID_UPGRADE_SURVIVES_GRANT_EXPIRY": "PASS",

@@ -19,6 +19,9 @@ if (prior.accounting.BILLING_UNTESTED_SUPPORTED_COMBINATIONS !== 0) {
 const remotePath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-remote-operational.json');
 const remote = fs.existsSync(remotePath) ? JSON.parse(fs.readFileSync(remotePath, 'utf8')) : null;
 const remoteCases = Array.isArray(remote?.cases) ? remote.cases : [];
+const deltaPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-delta-remote.json');
+const delta = fs.existsSync(deltaPath) ? JSON.parse(fs.readFileSync(deltaPath, 'utf8')) : null;
+const deltaCases = Array.isArray(delta?.cases) ? delta.cases : [];
 
 const cases = [
   ...contract.cases.map((item) => ({ ...item, evidence_type: 'DIRECT_CANONICAL_CONTRACT' })),
@@ -58,6 +61,7 @@ const cases = [
 ];
 
 const remoteByCase = new Map(remoteCases.map((item) => [item.case_id, item]));
+const deltaByCase = new Map(deltaCases.map((item) => [item.case_id, item]));
 const stackingDenyCase = cases.find((item) => item.case_id === 'STACKING-DENY');
 if (stackingDenyCase && !remoteByCase.has('REMOTE-STACKING-DENY')) {
   stackingDenyCase.status = 'NOT_EXECUTED';
@@ -78,6 +82,22 @@ promoteFromRemote('OVERLAP-HIGHER-LOWER', 'REMOTE-OVERLAP-HIGHER-LOWER');
 promoteFromRemote('OVERLAP-LOWER-HIGHER', 'REMOTE-OVERLAP-HIGHER-LOWER');
 promoteFromRemote('EXPIRY-UNCHANGED-PAID', 'REMOTE-EXPIRY-0');
 promoteFromRemote('EXPIRY-AFTER-UPGRADE', 'REMOTE-DUAL-AXIS');
+const promoteFromDelta = (caseId) => {
+  const target = cases.find((item) => item.case_id === caseId);
+  const source = deltaByCase.get(caseId);
+  if (!target || !source || source.status !== 'PASS') return;
+  target.status = 'PASS';
+  target.evidence = source.evidence_reference;
+  target.evidence_type = 'PRELAUNCH_REMOTE_DELTA';
+  target.actual = source.actual;
+};
+for (const caseId of [
+  'OVERLAP-SOURCE-EXPIRY',
+  'EXPIRY-AFTER-DOWNGRADE',
+  'C6-BENEFIT-EXPIRY-NEW-GRANT',
+  'C7-CODE-SIMULTANEOUS-REDEMPTION',
+  'C8-ADMIN-DUPLICATE-GRANT',
+]) promoteFromDelta(caseId);
 
 const byCategory = Object.groupBy(cases, (item) => item.category);
 const aggregate = Object.fromEntries(Object.entries(byCategory).map(([category, items]) => {

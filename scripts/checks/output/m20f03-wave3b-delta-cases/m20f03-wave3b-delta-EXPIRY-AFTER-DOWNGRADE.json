@@ -1,0 +1,1 @@
+{"case_id":"EXPIRY-AFTER-DOWNGRADE","status":"PASS","actual":{"paid_plan":"PRO","effective_access":"PRO"},"evidence_reference":"M20F03Wave3BDeltaOperationalValidationTest.php"}

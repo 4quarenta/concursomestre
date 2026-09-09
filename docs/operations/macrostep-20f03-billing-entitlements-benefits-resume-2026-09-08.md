@@ -282,15 +282,18 @@ por prefixo exato, passou 24 casos de serviço canônico. A evidência está em
 `scripts/checks/output/m20f03-wave3b-operational-matrix.json`.
 
 ```text
-CURRENT_CLOSURE_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES
+CURRENT_CLOSURE_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES_DELTA
 WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES = PARTIAL
 TEMPORARY_ENTITLEMENT_MATRIX = PASS (22/22, contrato + PRELAUNCH)
 DUAL_AXIS_UPGRADE_SCENARIO = PASS
 PAID_UPGRADE_SURVIVES_GRANT_EXPIRY = PASS
 MARKETING_BENEFIT_INTEGRATION = PASS
-OVERLAPPING_ACCESS_GRANTS_MATRIX = PARTIAL (4/5)
-EXPIRATION_REVERSION_MATRIX = PARTIAL (9/11)
-BILLING_CONCURRENCY_MATRIX = PARTIAL (1/8)
+OVERLAPPING_ACCESS_GRANTS_MATRIX = PASS (5/5)
+EXPIRATION_REVERSION_MATRIX = PARTIAL (10/11)
+BILLING_CONCURRENCY_MATRIX = PARTIAL (4/8)
+DELTA_CASES_EXECUTED = OVERLAP-SOURCE-EXPIRY, EXPIRY-AFTER-DOWNGRADE, C6-BENEFIT-EXPIRY-NEW-GRANT, C7-CODE-SIMULTANEOUS-REDEMPTION, C8-ADMIN-DUPLICATE-GRANT
+DELTA_CASES_PASSED = 5/5 (sem efeito financeiro duplicado)
+CONCURRENT_CODE_LOSER_RESULT = SQLSTATE_40001_SERIALIZATION_FAILURE (sem duplicidade; resposta de produto ainda requer tratamento)
 SEQUENTIAL_EXTENSION_USES_CURRENT_PROVIDER_STATE = PARTIAL (0/1)
 BENEFIT_MODE_MATRIX = PARTIAL (1/3)
 BENEFIT_STACKING_MATRIX = PARTIAL (2/5)
@@ -300,10 +303,18 @@ REFUND_BENEFIT_INTERACTION_MATRIX = PARTIAL (0/1)
 
 Os casos remotos provaram as combinações de tier, sobreposição com maior e
 menor acesso, reversion sem restaurar plano histórico, dual-axis, idempotência
-de Marketing, replay de código e idempotência de grant administrativo. Eles
-não provam concurrency sincronizada, extensão sequencial contra o estado atual
-do provedor, nem as políticas de stacking `EXTEND`, `REPLACE_IF_BETTER` e
-`PARALLEL`; a allowlist estática não foi usada para promover essas células.
+de Marketing, replay de código e idempotência de grant administrativo. O delta
+também fechou sobreposição com expiração, reversão após downgrade, expiração
+concorrente com nova concessão e as corridas de resgate de código e concessão
+Admin sem efeitos duplicados. Na corrida de
+resgate, o perdedor recebeu uma falha de serialização MySQL `40001`; a
+unicidade financeira foi preservada, mas esse resultado não deve ser tratado
+como uma resposta de negócio ideal sem uma correção posterior de retry/erro.
+Ainda não estão provados a expiração após cancelamento, extensão sequencial
+contra o estado atual do provedor, as operações de extensão com mudança de
+plano, os dois modos de Benefit com extensão, nem as políticas de stacking
+`EXTEND`, `REPLACE_IF_BETTER` e `PARALLEL`; a allowlist estática não foi usada
+para promover essas células.
 
 ## Segurança e gates técnicos
 
@@ -360,7 +371,7 @@ permaneceu ativa.
 
 ```text
 M20F03 = PARTIAL
-CURRENT_CLOSURE_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES
+CURRENT_CLOSURE_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES_DELTA
 ACTIVE_PRODUCTION_RELEASE = 775263779072c39fe0826cd8a8cfbeb9e65ac921
 ORIGIN_1_0_0 = ba8fb59a6605030aee05255823de45ca76a4a576
 ORIGIN_HEAD_AHEAD_OF_ACTIVE_RELEASE = YES
@@ -369,7 +380,7 @@ WAVE_1_RETENTION_CONCURRENCY = PASS (11/11)
 WAVE_2_PROVIDER_FAILURE_RECONCILIATION = PASS (10/10)
 WAVE_3_BILLING_DENOMINATOR = PASS
 WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES = PARTIAL
-NEXT_WAVE = WAVE_4_BROWSER_ACCESSIBILITY (depois de fechar a Wave 3B)
+NEXT_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES_CONTINUATION
 HARD_BLOCKER = NO
 M20F04 = NOT_STARTED
 M20F07 = NOT_STARTED
@@ -379,11 +390,11 @@ STRIPE_LIVE_MUTATIONS = 0
 ```
 
 O pacote ainda não pode ser fechado porque permanecem células operacionais da
-Wave 3B e, depois delas, as provas browser autenticadas de Benefits/Admin/User
-da Wave 4. A concorrência A1-A11, a matriz de falhas do provedor e o ciclo de
-renovação específico após uma extensão de retenção já passaram. O estado é uma
-pendência de completude de evidência, não falta de autorização nem um hard
-blocker de infraestrutura.
+Wave 3B. A concorrência A1-A11, a matriz de falhas do provedor, o ciclo de
+renovação específico após uma extensão de retenção e o delta de sobreposição,
+reversão após downgrade, código e grant Admin já passaram. O estado é uma
+pendência de completude de evidência; a célula C7 também expôs uma resposta de
+serialização que merece tratamento explícito antes de uma aceitação de produto.
 
 O runner Playwright Chromium existente foi adaptado e executado em modo estrito
 contra o domínio PRELAUNCH com contas sintéticas criadas por provisionamento
