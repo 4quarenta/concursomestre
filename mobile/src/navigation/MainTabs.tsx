@@ -8,7 +8,7 @@ import { QuestionsScreen } from '@/screens/QuestionsScreen';
 import { SimulationsScreen } from '@/screens/SimulationsScreen';
 import { ModulePlaceholderScreen } from '@/screens/ModulePlaceholderScreen';
 import { colors } from '@/theme/colors';
-import { layout, radius, spacing, typography } from '@/theme/tokens';
+import { radius, spacing, typography } from '@/theme/tokens';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 type TabIconName = React.ComponentProps<typeof Ionicons>['name'];
