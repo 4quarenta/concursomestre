@@ -19,6 +19,8 @@ export default function AppLayout() {
       <Stack.Screen name="simulados/novo" options={{ title: 'Novo simulado' }} />
       <Stack.Screen name="SimulationRun" options={{ title: 'Simulado em andamento', headerBackVisible: false }} />
       <Stack.Screen name="simulados/historico/[simulationId]" options={{ title: 'Detalhe do simulado' }} />
+      <Stack.Screen name="MainTabs" options={{ title: 'Planos' }} />
+      <Stack.Screen name="Checkout" options={{ title: 'Checkout' }} />
     </Stack>
   );
 }
