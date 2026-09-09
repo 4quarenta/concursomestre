@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors } from '@/theme/colors';
 import { layout, radius, spacing, typography } from '@/theme/tokens';
+import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
 
 interface TextFieldProps {
   label: string;
@@ -25,6 +25,9 @@ export const TextField: React.FC<TextFieldProps> = ({
   secureTextEntry = false,
   autoCapitalize = 'none',
 }) => {
+  const theme = useAppTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
@@ -33,7 +36,7 @@ export const TextField: React.FC<TextFieldProps> = ({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={colors.muted}
+        placeholderTextColor={theme.textMuted}
         keyboardType={keyboardType}
         secureTextEntry={secureTextEntry}
         autoCapitalize={autoCapitalize}
@@ -43,22 +46,22 @@ export const TextField: React.FC<TextFieldProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
   wrapper: {
     gap: spacing[2],
   },
   label: {
     fontSize: typography.size.xs,
     fontWeight: typography.weight.bold,
-    color: colors.muted,
+    color: theme.textMuted,
   },
   input: {
     minHeight: layout.controlHeight,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    color: colors.text,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+    color: theme.text,
     fontSize: typography.size.md,
     fontWeight: typography.weight.medium,
     paddingHorizontal: spacing[4],
