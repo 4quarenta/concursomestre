@@ -6,6 +6,7 @@ on:
       - mobile-foundation-refactor
     paths:
       - '.github/workflows/mobile-foundation-upgrade.yml'
+      - 'mobile/tsconfig.json'
 
 permissions:
   contents: write
