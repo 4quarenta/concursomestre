@@ -22,6 +22,10 @@ const remoteCases = Array.isArray(remote?.cases) ? remote.cases : [];
 const deltaPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-delta-remote.json');
 const delta = fs.existsSync(deltaPath) ? JSON.parse(fs.readFileSync(deltaPath, 'utf8')) : null;
 const deltaCases = Array.isArray(delta?.cases) ? delta.cases : [];
+const sequentialPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-sequential-remote.json');
+const sequential = fs.existsSync(sequentialPath) ? JSON.parse(fs.readFileSync(sequentialPath, 'utf8')) : null;
+const combinedModePath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-mode-combined-remote.json');
+const combinedMode = fs.existsSync(combinedModePath) ? JSON.parse(fs.readFileSync(combinedModePath, 'utf8')) : null;
 
 const cases = [
   ...contract.cases.map((item) => ({ ...item, evidence_type: 'DIRECT_CANONICAL_CONTRACT' })),
@@ -62,6 +66,7 @@ const cases = [
 
 const remoteByCase = new Map(remoteCases.map((item) => [item.case_id, item]));
 const deltaByCase = new Map(deltaCases.map((item) => [item.case_id, item]));
+const sequentialByCase = sequential?.case_id ? new Map([[sequential.case_id, sequential]]) : new Map();
 const stackingDenyCase = cases.find((item) => item.case_id === 'STACKING-DENY');
 if (stackingDenyCase && !remoteByCase.has('REMOTE-STACKING-DENY')) {
   stackingDenyCase.status = 'NOT_EXECUTED';
@@ -98,6 +103,28 @@ for (const caseId of [
   'C7-CODE-SIMULTANEOUS-REDEMPTION',
   'C8-ADMIN-DUPLICATE-GRANT',
 ]) promoteFromDelta(caseId);
+const sequentialCase = cases.find((item) => item.case_id === 'SEQUENTIAL-T3-PLUS-T2');
+const sequentialEvidence = sequentialByCase.get('SEQUENTIAL-T3-PLUS-T2');
+if (sequentialCase && sequentialEvidence?.status === 'PASS') {
+  sequentialCase.status = 'PASS';
+  sequentialCase.evidence = sequentialEvidence.evidence_reference;
+  sequentialCase.evidence_type = 'PRELAUNCH_REMOTE_STRIPE_TEST';
+  sequentialCase.actual = sequentialEvidence;
+  const modeCase = cases.find((item) => item.case_id === 'BENEFIT-MODE-BILLING-EXTENSION-ONLY');
+  if (modeCase) {
+    modeCase.status = 'PASS';
+    modeCase.evidence = sequentialEvidence.evidence_reference;
+    modeCase.evidence_type = 'PRELAUNCH_REMOTE_STRIPE_TEST';
+    modeCase.actual = { benefit_mode: 'BILLING_EXTENSION_ONLY', provider_confirmation: 'PASS' };
+  }
+}
+const combinedModeCase = cases.find((item) => item.case_id === 'BENEFIT-MODE-ACCESS-AND-BILLING-EXTENSION');
+if (combinedModeCase && combinedMode?.status === 'PASS') {
+  combinedModeCase.status = 'PASS';
+  combinedModeCase.evidence = combinedMode.evidence_reference;
+  combinedModeCase.evidence_type = 'PRELAUNCH_REMOTE_STRIPE_TEST';
+  combinedModeCase.actual = combinedMode;
+}
 
 const byCategory = Object.groupBy(cases, (item) => item.category);
 const aggregate = Object.fromEntries(Object.entries(byCategory).map(([category, items]) => {

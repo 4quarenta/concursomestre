@@ -1,0 +1,17 @@
+{
+  "result": "PASS",
+  "case_id": "SEQUENTIAL-T3-PLUS-T2",
+  "status": "PASS",
+  "active_release": "775263779072c39fe0826cd8a8cfbeb9e65ac921",
+  "provider_mode": "test",
+  "original_period_end": 1791516646,
+  "first_period_end": 1791775846,
+  "second_period_end": 1791948646,
+  "first_extension_seconds": 259200,
+  "second_extension_seconds": 172800,
+  "total_extension_seconds": 432000,
+  "expected_total_extension_seconds": 432000,
+  "applied_extension_grants": 2,
+  "duplicate_provider_extension": 0,
+  "evidence_reference": "M20F03Wave3BSequentialExtensionValidationTest.php"
+}

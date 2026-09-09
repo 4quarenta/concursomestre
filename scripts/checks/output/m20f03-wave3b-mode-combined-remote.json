@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "case_id": "BENEFIT-MODE-ACCESS-AND-BILLING-EXTENSION",
+  "status": "PASS",
+  "benefit_mode": "ACCESS_AND_BILLING_EXTENSION",
+  "provider_mode": "test",
+  "provider_extension_seconds": 172800,
+  "effective_access": "ELITE",
+  "grant_status": "APPLIED",
+  "evidence_reference": "M20F03Wave3BAccessAndExtensionModeValidationTest.php"
+}

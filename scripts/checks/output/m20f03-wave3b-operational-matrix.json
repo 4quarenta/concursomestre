@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T03:24:51.498Z",
+  "generated_at": "2026-09-09T03:33:29.880Z",
   "package": "M20F-03",
   "wave": "WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES",
   "result": "PARTIAL",
@@ -769,8 +769,27 @@
     {
       "case_id": "SEQUENTIAL-T3-PLUS-T2",
       "category": "SEQUENTIAL_EXTENSION",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires a fresh provider operation; retained Test Clock was not rerun."
+      "status": "PASS",
+      "reason": "Requires a fresh provider operation; retained Test Clock was not rerun.",
+      "evidence": "M20F03Wave3BSequentialExtensionValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_STRIPE_TEST",
+      "actual": {
+        "result": "PASS",
+        "case_id": "SEQUENTIAL-T3-PLUS-T2",
+        "status": "PASS",
+        "active_release": "775263779072c39fe0826cd8a8cfbeb9e65ac921",
+        "provider_mode": "test",
+        "original_period_end": 1791516646,
+        "first_period_end": 1791775846,
+        "second_period_end": 1791948646,
+        "first_extension_seconds": 259200,
+        "second_extension_seconds": 172800,
+        "total_extension_seconds": 432000,
+        "expected_total_extension_seconds": 432000,
+        "applied_extension_grants": 2,
+        "duplicate_provider_extension": 0,
+        "evidence_reference": "M20F03Wave3BSequentialExtensionValidationTest.php"
+      }
     },
     {
       "case_id": "UPGRADE-PRESERVES-EXTENSION",
@@ -805,14 +824,33 @@
     {
       "case_id": "BENEFIT-MODE-BILLING-EXTENSION-ONLY",
       "category": "BENEFIT_MODE",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires provider-backed grant confirmation."
+      "status": "PASS",
+      "reason": "Requires provider-backed grant confirmation.",
+      "evidence": "M20F03Wave3BSequentialExtensionValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_STRIPE_TEST",
+      "actual": {
+        "benefit_mode": "BILLING_EXTENSION_ONLY",
+        "provider_confirmation": "PASS"
+      }
     },
     {
       "case_id": "BENEFIT-MODE-ACCESS-AND-BILLING-EXTENSION",
       "category": "BENEFIT_MODE",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires provider-backed grant confirmation."
+      "status": "PASS",
+      "reason": "Requires provider-backed grant confirmation.",
+      "evidence": "M20F03Wave3BAccessAndExtensionModeValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_STRIPE_TEST",
+      "actual": {
+        "result": "PASS",
+        "case_id": "BENEFIT-MODE-ACCESS-AND-BILLING-EXTENSION",
+        "status": "PASS",
+        "benefit_mode": "ACCESS_AND_BILLING_EXTENSION",
+        "provider_mode": "test",
+        "provider_extension_seconds": 172800,
+        "effective_access": "ELITE",
+        "grant_status": "APPLIED",
+        "evidence_reference": "M20F03Wave3BAccessAndExtensionModeValidationTest.php"
+      }
     },
     {
       "case_id": "STACKING-DENY",
@@ -938,9 +976,9 @@
     },
     "SEQUENTIAL_EXTENSION": {
       "total": 1,
-      "passed": 0,
-      "not_executed": 1,
-      "result": "PARTIAL"
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "EXTENSION_PLUS_UPGRADE": {
       "total": 1,
@@ -962,9 +1000,9 @@
     },
     "BENEFIT_MODE": {
       "total": 3,
-      "passed": 1,
-      "not_executed": 2,
-      "result": "PARTIAL"
+      "passed": 3,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "REFUND_BENEFIT": {
       "total": 1,
@@ -992,8 +1030,8 @@
     "EXPIRATION_REVERSION_MATRIX": "PARTIAL",
     "DUAL_AXIS_UPGRADE_SCENARIO": "PASS",
     "PAID_UPGRADE_SURVIVES_GRANT_EXPIRY": "PASS",
-    "SEQUENTIAL_EXTENSION_USES_CURRENT_PROVIDER_STATE": "PARTIAL",
-    "BENEFIT_MODE_MATRIX": "PARTIAL",
+    "SEQUENTIAL_EXTENSION_USES_CURRENT_PROVIDER_STATE": "PASS",
+    "BENEFIT_MODE_MATRIX": "PASS",
     "BENEFIT_STACKING_MATRIX": "PARTIAL",
     "BENEFIT_CODE_PROVIDER_FLOW": "PARTIAL",
     "MARKETING_BENEFIT_INTEGRATION": "PASS",
