@@ -3,6 +3,7 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { QueryProvider } from '@/providers/QueryProvider';
 import { AppNavigator } from '@/navigation/AppNavigator';
 
 /**
@@ -12,10 +13,12 @@ import { AppNavigator } from '@/navigation/AppNavigator';
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="auto" />
-        <AppNavigator />
-      </AuthProvider>
+      <QueryProvider>
+        <AuthProvider>
+          <StatusBar style="auto" />
+          <AppNavigator />
+        </AuthProvider>
+      </QueryProvider>
     </SafeAreaProvider>
   );
 }
