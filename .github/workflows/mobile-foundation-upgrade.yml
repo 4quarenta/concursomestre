@@ -33,7 +33,11 @@ jobs:
           npm pkg delete dependencies.concursomestre
           npm pkg set dependencies.expo='~57.0.0'
           npm pkg set dependencies.react='19.2.3'
+          npm pkg set dependencies.react-dom='19.2.3'
           npm pkg set dependencies.react-native='0.86.3'
+          npm pkg set dependencies.react-native-web='~0.21.0'
+          npm pkg set dependencies.react-native-worklets='0.10.1'
+          npm pkg set dependencies.react-native-reanimated='4.5.1'
           npm pkg set dependencies.@expo/vector-icons='^15.0.2'
           npm pkg set dependencies.@react-native-async-storage/async-storage='2.2.0'
           npm pkg set dependencies.expo-asset='~57.0.16'
