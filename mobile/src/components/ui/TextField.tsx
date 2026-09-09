@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors } from '@/theme/colors';
+import { layout, radius, spacing, typography } from '@/theme/tokens';
 
 interface TextFieldProps {
   label: string;
@@ -12,6 +13,9 @@ interface TextFieldProps {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 }
 
+/**
+ * Adaptador visual legado. Sera substituido por controle de plataforma na fase Expo UI.
+ */
 export const TextField: React.FC<TextFieldProps> = ({
   label,
   value,
@@ -25,6 +29,7 @@ export const TextField: React.FC<TextFieldProps> = ({
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        accessibilityLabel={label}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -40,24 +45,22 @@ export const TextField: React.FC<TextFieldProps> = ({
 
 const styles = StyleSheet.create({
   wrapper: {
-    gap: 6,
+    gap: spacing[2],
   },
   label: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.bold,
     color: colors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
   },
   input: {
-    height: 48,
-    borderRadius: 14,
+    minHeight: layout.controlHeight,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
     color: colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-    paddingHorizontal: 14,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.medium,
+    paddingHorizontal: spacing[4],
   },
 });
