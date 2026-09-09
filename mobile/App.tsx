@@ -7,13 +7,13 @@ import { AppNavigator } from '@/navigation/AppNavigator';
 
 /**
  * Shell principal do app mobile.
- * @since v1.0.0
+ * Mantido temporariamente enquanto as rotas sao migradas para Expo Router.
  */
 export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <StatusBar style="dark" />
+        <StatusBar style="auto" />
         <AppNavigator />
       </AuthProvider>
     </SafeAreaProvider>
