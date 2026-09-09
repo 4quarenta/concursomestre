@@ -1,15 +1,12 @@
 import React from 'react';
 import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextField } from '@/components/ui/TextField';
 import { useAuth } from '@/providers/AuthProvider';
 import { colors } from '@/theme/colors';
-import { AuthStackParamList } from '@/navigation/types';
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
-
-export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
+export const RegisterScreen: React.FC = () => {
   const { register, isLoading } = useAuth();
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
@@ -23,6 +20,7 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       await register({ name, email, password });
+      // O Stack.Protected troca automaticamente para o grupo privado.
     } catch (error: any) {
       Alert.alert('Falha no cadastro', error?.message || 'Nao foi possivel criar a conta.');
     }
@@ -69,7 +67,7 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
 
         <PrimaryButton
           label="Ja tenho conta"
-          onPress={() => navigation.goBack()}
+          onPress={() => router.back()}
           disabled={isLoading}
         />
       </View>
