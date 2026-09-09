@@ -64,7 +64,7 @@ jobs:
       - name: Install target foundation libraries
         working-directory: mobile
         run: |
-          npx expo install expo-router @expo/ui
+          npx expo install expo-router @expo/ui expo-linking
           npm install @tanstack/react-query@^5 zustand@^5 react-hook-form@^7 zod@^4
 
       - name: Verify Expo dependency alignment
