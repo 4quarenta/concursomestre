@@ -26,18 +26,36 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.13.1'
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
 
-      - name: Remove web package coupling
-        working-directory: mobile
-        run: npm pkg delete dependencies.concursomestre
-
-      - name: Upgrade Expo SDK
+      - name: Align core SDK 57 versions before install
         working-directory: mobile
         run: |
-          npm install expo@~57.0.0
-          npx expo install --fix
+          npm pkg delete dependencies.concursomestre
+          npm pkg set dependencies.expo='~57.0.0'
+          npm pkg set dependencies.react='19.2.3'
+          npm pkg set dependencies.react-native='0.86.3'
+          npm pkg set dependencies.@expo/vector-icons='^15.0.2'
+          npm pkg set dependencies.@react-native-async-storage/async-storage='2.2.0'
+          npm pkg set dependencies.expo-asset='~57.0.16'
+          npm pkg set dependencies.expo-clipboard='~57.0.1'
+          npm pkg set dependencies.expo-constants='~57.0.17'
+          npm pkg set dependencies.expo-font='~57.0.3'
+          npm pkg set dependencies.expo-secure-store='~57.0.3'
+          npm pkg set dependencies.expo-status-bar='~57.0.1'
+          npm pkg set dependencies.react-native-gesture-handler='~2.32.0'
+          npm pkg set dependencies.react-native-safe-area-context='~5.7.0'
+          npm pkg set dependencies.react-native-screens='~4.26.0'
+          npm pkg set devDependencies.@types/react='~19.2.4'
+          npm pkg set devDependencies.typescript='~6.0.3'
+          rm -f package-lock.json
+
+      - name: Install clean SDK 57 dependency tree
+        working-directory: mobile
+        run: npm install
+
+      - name: Let Expo align native modules
+        working-directory: mobile
+        run: npx expo install --fix
 
       - name: Install target foundation libraries
         working-directory: mobile
