@@ -34,7 +34,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
       ]}
     >
       {loading ? (
-        <ActivityIndicator size="small" color="#FFFFFF" />
+        <ActivityIndicator size="small" color={colors.onPrimary} />
       ) : (
         <Text style={styles.text}>{label}</Text>
       )}
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   text: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontSize: typography.size.sm,
     fontWeight: typography.weight.bold,
   },
