@@ -7,8 +7,8 @@ import { ProfileScreen } from '@/screens/ProfileScreen';
 import { QuestionsScreen } from '@/screens/QuestionsScreen';
 import { SimulationsScreen } from '@/screens/SimulationsScreen';
 import { ModulePlaceholderScreen } from '@/screens/ModulePlaceholderScreen';
-import { colors } from '@/theme/colors';
 import { radius, spacing, typography } from '@/theme/tokens';
+import { useAppTheme } from '@/theme/useAppTheme';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 type TabIconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -44,6 +44,7 @@ const SimulationsDisabledScreen: React.FC = () => (
  */
 export const MainTabs: React.FC = () => {
   const { isFeatureEnabled } = useAuth();
+  const theme = useAppTheme();
   const canAccessQuestions = isFeatureEnabled('practiceEnabled');
   const canAccessSimulations = isFeatureEnabled('simulationsEnabled');
 
@@ -55,11 +56,11 @@ export const MainTabs: React.FC = () => {
           fontWeight: typography.weight.extrabold,
         },
         headerStyle: {
-          backgroundColor: colors.card,
+          backgroundColor: theme.surface,
         },
-        headerTintColor: colors.text,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.muted,
+        headerTintColor: theme.text,
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.textMuted,
         tabBarLabelStyle: {
           fontSize: typography.size.xs,
           fontWeight: typography.weight.bold,
@@ -68,8 +69,8 @@ export const MainTabs: React.FC = () => {
           height: 64,
           paddingBottom: spacing[2],
           paddingTop: spacing[2],
-          borderTopColor: colors.border,
-          backgroundColor: colors.card,
+          borderTopColor: theme.border,
+          backgroundColor: theme.surface,
         },
         tabBarItemStyle: {
           borderRadius: radius.lg,
