@@ -24,9 +24,6 @@
       "expo-asset",
       "expo-font",
       "expo-router"
-    ],
-    "extra": {
-      "apiBaseUrl": "http://localhost/questao-pro-backend/api/"
-    }
+    ]
   }
 }
