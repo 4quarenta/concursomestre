@@ -271,8 +271,39 @@ rejeitado em vez de ser idempotente. A correção foi publicada em
 duplicou refund, benefício ou evento.
 
 A evidência histórica inicial não cobria a matriz completa de falhas; a Wave 2
-agora a fechou. O denominador formal da Wave 3 foi gerado e passou. A aceitação
-browser completa permanece reservada para a Wave 4.
+agora a fechou. O denominador formal da Wave 3 foi gerado e passou. A Wave 3B
+foi iniciada para fechar as matrizes operacionais restantes antes da Wave 4.
+
+## Wave 3B - matrizes operacionais
+
+A execução remota em PRELAUNCH, com fixtures sintéticos reversíveis e limpeza
+por prefixo exato, passou 24 casos de serviço canônico. A evidência está em
+`scripts/checks/output/m20f03-wave3b-remote-operational.json` e o agregador em
+`scripts/checks/output/m20f03-wave3b-operational-matrix.json`.
+
+```text
+CURRENT_CLOSURE_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES
+WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES = PARTIAL
+TEMPORARY_ENTITLEMENT_MATRIX = PASS (22/22, contrato + PRELAUNCH)
+DUAL_AXIS_UPGRADE_SCENARIO = PASS
+PAID_UPGRADE_SURVIVES_GRANT_EXPIRY = PASS
+MARKETING_BENEFIT_INTEGRATION = PASS
+OVERLAPPING_ACCESS_GRANTS_MATRIX = PARTIAL (4/5)
+EXPIRATION_REVERSION_MATRIX = PARTIAL (9/11)
+BILLING_CONCURRENCY_MATRIX = PARTIAL (1/8)
+SEQUENTIAL_EXTENSION_USES_CURRENT_PROVIDER_STATE = PARTIAL (0/1)
+BENEFIT_MODE_MATRIX = PARTIAL (1/3)
+BENEFIT_STACKING_MATRIX = PARTIAL (2/5)
+BENEFIT_CODE_PROVIDER_FLOW = PARTIAL (1/2)
+REFUND_BENEFIT_INTERACTION_MATRIX = PARTIAL (0/1)
+```
+
+Os casos remotos provaram as combinações de tier, sobreposição com maior e
+menor acesso, reversion sem restaurar plano histórico, dual-axis, idempotência
+de Marketing, replay de código e idempotência de grant administrativo. Eles
+não provam concurrency sincronizada, extensão sequencial contra o estado atual
+do provedor, nem as políticas de stacking `EXTEND`, `REPLACE_IF_BETTER` e
+`PARALLEL`; a allowlist estática não foi usada para promover essas células.
 
 ## Segurança e gates técnicos
 
@@ -333,7 +364,8 @@ CURRENT_CLOSURE_WAVE = WAVE_3_BILLING_DENOMINATOR
 WAVE_1_RETENTION_CONCURRENCY = PASS (11/11)
 WAVE_2_PROVIDER_FAILURE_RECONCILIATION = PASS (10/10)
 WAVE_3_BILLING_DENOMINATOR = PASS
-NEXT_WAVE = WAVE_4_BROWSER_ACCESSIBILITY
+WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES = PARTIAL
+NEXT_WAVE = WAVE_4_BROWSER_ACCESSIBILITY (depois de fechar a Wave 3B)
 HARD_BLOCKER = NO
 M20F04 = NOT_STARTED
 M20F07 = NOT_STARTED
@@ -342,11 +374,12 @@ REAL_DATA_INSERTIONS = 0
 STRIPE_LIVE_MUTATIONS = 0
 ```
 
-O pacote ainda não pode ser fechado porque faltam as provas browser autenticadas
-de Benefits/Admin/User da Wave 4. A concorrência A1-A11, a matriz de falhas do
-provedor e o ciclo de renovação específico após uma extensão de retenção já
-passaram. O estado é uma pendência de aceitação browser, não falta de
-autorização nem um hard blocker de infraestrutura.
+O pacote ainda não pode ser fechado porque permanecem células operacionais da
+Wave 3B e, depois delas, as provas browser autenticadas de Benefits/Admin/User
+da Wave 4. A concorrência A1-A11, a matriz de falhas do provedor e o ciclo de
+renovação específico após uma extensão de retenção já passaram. O estado é uma
+pendência de completude de evidência, não falta de autorização nem um hard
+blocker de infraestrutura.
 
 O runner Playwright Chromium existente foi adaptado e executado em modo estrito
 contra o domínio PRELAUNCH com contas sintéticas criadas por provisionamento
@@ -408,10 +441,11 @@ dias é escolhido pelo administrador, o Stripe TEST confirmou a renovação e o
 sistema impede chamadas mutáveis sem CSRF. Também não sobraram contas ou dados
 financeiros sintéticos ativos.
 
-Ainda não recomendo liberar o Billing ao público. O denominador formal da Wave 3
-está fechado, assim como as provas financeiras e de concorrência; permanece a
-aceitação browser completa de Benefits/Admin/User na Wave 4. Mantenha PRELAUNCH
-até concluir essa aceitação; o email sintético está isolado nas execuções novas.
+Ainda não recomendo liberar o Billing ao público. O denominador formal e as
+provas financeiras principais estão fechados, mas a Wave 3B ainda tem lacunas
+operacionais em concurrency, extensão sequencial, stacking e interação de
+reembolso; a aceitação browser vem depois. Mantenha PRELAUNCH até concluir
+essas células e a Wave 4; o email sintético está isolado nas execuções novas.
 
 ```text
 SAFE_TO_PROCEED_TO_M20F04 = NO

@@ -1,0 +1,892 @@
+{
+  "generated_at": "2026-09-09T02:55:10.736Z",
+  "package": "M20F-03",
+  "wave": "WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES",
+  "result": "PARTIAL",
+  "source_denominator": "scripts/checks/output/m20f03-billing-denominator.json",
+  "cases": [
+    {
+      "case_id": "TEMP-FREE-GRANT-ESSENCIAL",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "FREE",
+      "grant_access_plan": "ESSENCIAL",
+      "expected_effective_access": "ESSENCIAL",
+      "actual_effective_access": "ESSENCIAL",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-FREE-GRANT-PRO",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "FREE",
+      "grant_access_plan": "PRO",
+      "expected_effective_access": "PRO",
+      "actual_effective_access": "PRO",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-FREE-GRANT-ELITE",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "FREE",
+      "grant_access_plan": "ELITE",
+      "expected_effective_access": "ELITE",
+      "actual_effective_access": "ELITE",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-ESSENCIAL-GRANT-ESSENCIAL",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "ESSENCIAL",
+      "grant_access_plan": "ESSENCIAL",
+      "expected_effective_access": "ESSENCIAL",
+      "actual_effective_access": "ESSENCIAL",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-ESSENCIAL-GRANT-PRO",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "ESSENCIAL",
+      "grant_access_plan": "PRO",
+      "expected_effective_access": "PRO",
+      "actual_effective_access": "PRO",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-ESSENCIAL-GRANT-ELITE",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "ESSENCIAL",
+      "grant_access_plan": "ELITE",
+      "expected_effective_access": "ELITE",
+      "actual_effective_access": "ELITE",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-PRO-GRANT-ESSENCIAL",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "PRO",
+      "grant_access_plan": "ESSENCIAL",
+      "expected_effective_access": "PRO",
+      "actual_effective_access": "PRO",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-PRO-GRANT-PRO",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "PRO",
+      "grant_access_plan": "PRO",
+      "expected_effective_access": "PRO",
+      "actual_effective_access": "PRO",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-PRO-GRANT-ELITE",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "PRO",
+      "grant_access_plan": "ELITE",
+      "expected_effective_access": "ELITE",
+      "actual_effective_access": "ELITE",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-ELITE-GRANT-PRO",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "ELITE",
+      "grant_access_plan": "PRO",
+      "expected_effective_access": "ELITE",
+      "actual_effective_access": "ELITE",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "TEMP-ELITE-GRANT-ELITE",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "paid_plan": "ELITE",
+      "grant_access_plan": "ELITE",
+      "expected_effective_access": "ELITE",
+      "actual_effective_access": "ELITE",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "DUAL-AXIS-ESSENCIAL-ELITE-PRO",
+      "category": "DUAL_AXIS_REVERSION",
+      "expected": {
+        "during_grant": "ELITE",
+        "after_paid_upgrade": "ELITE",
+        "after_expiry": "PRO"
+      },
+      "actual": {
+        "during_grant": "ELITE",
+        "after_paid_upgrade": "ELITE",
+        "after_expiry": "PRO"
+      },
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "PAID-UPGRADE-ELITE-SURVIVES-EXPIRY",
+      "category": "PAID_UPGRADE_REVERSION",
+      "expected_effective_access_after_expiry": "ELITE",
+      "actual_effective_access_after_expiry": "ELITE",
+      "status": "PASS",
+      "evidence": "BenefitService::resolveEffectivePlan",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "MODE-ACCESS_ONLY",
+      "category": "BENEFIT_MODE_CONFIGURATION",
+      "mode": "ACCESS_ONLY",
+      "status": "PASS",
+      "evidence": "BenefitService::createDefinition allow-list",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "MODE-BILLING_EXTENSION_ONLY",
+      "category": "BENEFIT_MODE_CONFIGURATION",
+      "mode": "BILLING_EXTENSION_ONLY",
+      "status": "PASS",
+      "evidence": "BenefitService::createDefinition allow-list",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "MODE-ACCESS_AND_BILLING_EXTENSION",
+      "category": "BENEFIT_MODE_CONFIGURATION",
+      "mode": "ACCESS_AND_BILLING_EXTENSION",
+      "status": "PASS",
+      "evidence": "BenefitService::createDefinition allow-list",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "STACKING-POLICY-DENY",
+      "category": "BENEFIT_STACKING_CONFIGURATION",
+      "policy": "DENY",
+      "status": "PASS",
+      "evidence": "BenefitService::createDefinition allow-list",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "STACKING-POLICY-EXTEND",
+      "category": "BENEFIT_STACKING_CONFIGURATION",
+      "policy": "EXTEND",
+      "status": "PASS",
+      "evidence": "BenefitService::createDefinition allow-list",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "STACKING-POLICY-REPLACE_IF_BETTER",
+      "category": "BENEFIT_STACKING_CONFIGURATION",
+      "policy": "REPLACE_IF_BETTER",
+      "status": "PASS",
+      "evidence": "BenefitService::createDefinition allow-list",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "STACKING-POLICY-PARALLEL",
+      "category": "BENEFIT_STACKING_CONFIGURATION",
+      "policy": "PARALLEL",
+      "status": "PASS",
+      "evidence": "BenefitService::createDefinition allow-list",
+      "evidence_type": "DIRECT_CANONICAL_CONTRACT"
+    },
+    {
+      "case_id": "REMOTE-TEMP-0",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "ESSENCIAL"
+      },
+      "actual": {
+        "effective_access": "ESSENCIAL"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-1",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "PRO"
+      },
+      "actual": {
+        "effective_access": "PRO"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-2",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "ELITE"
+      },
+      "actual": {
+        "effective_access": "ELITE"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-3",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "ESSENCIAL"
+      },
+      "actual": {
+        "effective_access": "ESSENCIAL"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-4",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "PRO"
+      },
+      "actual": {
+        "effective_access": "PRO"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-5",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "ELITE"
+      },
+      "actual": {
+        "effective_access": "ELITE"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-6",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "PRO"
+      },
+      "actual": {
+        "effective_access": "PRO"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-7",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "PRO"
+      },
+      "actual": {
+        "effective_access": "PRO"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-8",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "ELITE"
+      },
+      "actual": {
+        "effective_access": "ELITE"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-9",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "ELITE"
+      },
+      "actual": {
+        "effective_access": "ELITE"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-TEMP-10",
+      "category": "TEMPORARY_ENTITLEMENT",
+      "expected": {
+        "effective_access": "ELITE"
+      },
+      "actual": {
+        "effective_access": "ELITE"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-OVERLAP-HIGHER-LOWER",
+      "category": "OVERLAPPING_ACCESS",
+      "expected": {
+        "effective_access": "ELITE",
+        "active_grants": 3
+      },
+      "actual": {
+        "effective_access": "ELITE",
+        "active_grants": 3
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-EXPIRY-0",
+      "category": "EXPIRATION_REVERSION",
+      "expected": {
+        "effective_access": "ESSENCIAL"
+      },
+      "actual": {
+        "effective_access": "ESSENCIAL"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-EXPIRY-1",
+      "category": "EXPIRATION_REVERSION",
+      "expected": {
+        "effective_access": "PRO"
+      },
+      "actual": {
+        "effective_access": "PRO"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-EXPIRY-2",
+      "category": "EXPIRATION_REVERSION",
+      "expected": {
+        "effective_access": "ELITE"
+      },
+      "actual": {
+        "effective_access": "ELITE"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-EXPIRY-3",
+      "category": "EXPIRATION_REVERSION",
+      "expected": {
+        "effective_access": "PRO"
+      },
+      "actual": {
+        "effective_access": "PRO"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-EXPIRY-4",
+      "category": "EXPIRATION_REVERSION",
+      "expected": {
+        "effective_access": "ESSENCIAL"
+      },
+      "actual": {
+        "effective_access": "ESSENCIAL"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-EXPIRY-5",
+      "category": "EXPIRATION_REVERSION",
+      "expected": {
+        "effective_access": "PRO"
+      },
+      "actual": {
+        "effective_access": "PRO"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-EXPIRY-6",
+      "category": "EXPIRATION_REVERSION",
+      "expected": {
+        "effective_access": "ELITE"
+      },
+      "actual": {
+        "effective_access": "ELITE"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-DUAL-AXIS",
+      "category": "DUAL_AXIS_REVERSION",
+      "expected": {
+        "during": "ELITE",
+        "after_upgrade": "ELITE",
+        "after_expiry": "PRO"
+      },
+      "actual": {
+        "during": "ELITE",
+        "after_upgrade": "ELITE",
+        "after_expiry": "PRO"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-MARKETING-IDEMPOTENCY",
+      "category": "MARKETING_BENEFIT",
+      "expected": {
+        "grant_count": 1
+      },
+      "actual": {
+        "grant_count": 1
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-BENEFIT-CODE-IDEMPOTENCY",
+      "category": "BENEFIT_CODE",
+      "expected": {
+        "replay": "IDEMPOTENT",
+        "wrong_user": "DENIED"
+      },
+      "actual": {
+        "replay": "IDEMPOTENT",
+        "wrong_user": "DENIED"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-ADMIN-GRANT-IDEMPOTENCY",
+      "category": "ADMIN_GRANT",
+      "expected": {
+        "grant_count": 1
+      },
+      "actual": {
+        "grant_count": 1
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "REMOTE-STACKING-DENY",
+      "category": "BENEFIT_STACKING",
+      "expected": {
+        "second_grant": "DENIED"
+      },
+      "actual": {
+        "second_grant": "DENIED"
+      },
+      "status": "PASS",
+      "evidence_reference": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE"
+    },
+    {
+      "case_id": "C1-UPGRADE-RENEWAL",
+      "category": "BILLING_CONCURRENCY",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires synchronized Stripe/database race; no valid prior evidence for this pair."
+    },
+    {
+      "case_id": "C2-UPGRADE-EXTENSION",
+      "category": "BILLING_CONCURRENCY",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires synchronized provider and plan-change operations."
+    },
+    {
+      "case_id": "C3-EXTENSION-RENEWAL",
+      "category": "BILLING_CONCURRENCY",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires synchronized provider renewal and extension operations."
+    },
+    {
+      "case_id": "C4-CANCEL-REACTIVATE",
+      "category": "BILLING_CONCURRENCY",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires synchronized provider state mutation."
+    },
+    {
+      "case_id": "C5-INVOICE-PAID-SUBSCRIPTION-UPDATED",
+      "category": "BILLING_CONCURRENCY",
+      "status": "PASS",
+      "evidence": "scripts/checks/output/billing-e2e-report.json#webhook_duplicate + #webhook_out_of_order"
+    },
+    {
+      "case_id": "C6-BENEFIT-EXPIRY-NEW-GRANT",
+      "category": "BILLING_CONCURRENCY",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires synchronized grant expiry and insertion."
+    },
+    {
+      "case_id": "C7-CODE-SIMULTANEOUS-REDEMPTION",
+      "category": "BILLING_CONCURRENCY",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires synchronized database redemption race."
+    },
+    {
+      "case_id": "C8-ADMIN-DUPLICATE-GRANT",
+      "category": "BILLING_CONCURRENCY",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires synchronized Admin grant race."
+    },
+    {
+      "case_id": "OVERLAP-SAME-TIER",
+      "category": "OVERLAPPING_ACCESS",
+      "status": "PASS",
+      "reason": "Requires database grant fixtures and expiry clock.",
+      "evidence": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "effective_access": "ELITE",
+        "active_grants": 3
+      }
+    },
+    {
+      "case_id": "OVERLAP-HIGHER-LOWER",
+      "category": "OVERLAPPING_ACCESS",
+      "status": "PASS",
+      "reason": "Requires database grant fixtures and expiry clock.",
+      "evidence": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "effective_access": "ELITE",
+        "active_grants": 3
+      }
+    },
+    {
+      "case_id": "OVERLAP-LOWER-HIGHER",
+      "category": "OVERLAPPING_ACCESS",
+      "status": "PASS",
+      "reason": "Requires database grant fixtures and expiry clock.",
+      "evidence": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "effective_access": "ELITE",
+        "active_grants": 3
+      }
+    },
+    {
+      "case_id": "OVERLAP-SOURCE-EXPIRY",
+      "category": "OVERLAPPING_ACCESS",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires database grant fixtures and expiry clock."
+    },
+    {
+      "case_id": "EXPIRY-UNCHANGED-PAID",
+      "category": "EXPIRATION_REVERSION",
+      "status": "PASS",
+      "reason": "Requires database time-window fixture.",
+      "evidence": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "effective_access": "ESSENCIAL"
+      }
+    },
+    {
+      "case_id": "EXPIRY-AFTER-UPGRADE",
+      "category": "EXPIRATION_REVERSION",
+      "status": "PASS",
+      "reason": "Requires database plan-change fixture.",
+      "evidence": "M20F03Wave3BRemoteOperationalValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "during": "ELITE",
+        "after_upgrade": "ELITE",
+        "after_expiry": "PRO"
+      }
+    },
+    {
+      "case_id": "EXPIRY-AFTER-DOWNGRADE",
+      "category": "EXPIRATION_REVERSION",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires database plan-change fixture."
+    },
+    {
+      "case_id": "EXPIRY-AFTER-CANCELLATION",
+      "category": "EXPIRATION_REVERSION",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires provider-backed cancellation fixture."
+    },
+    {
+      "case_id": "SEQUENTIAL-T3-PLUS-T2",
+      "category": "SEQUENTIAL_EXTENSION",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires a fresh provider operation; retained Test Clock was not rerun."
+    },
+    {
+      "case_id": "UPGRADE-PRESERVES-EXTENSION",
+      "category": "EXTENSION_PLUS_UPGRADE",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires provider-backed plan change fixture."
+    },
+    {
+      "case_id": "DOWNGRADE-PRESERVES-EXTENSION",
+      "category": "EXTENSION_PLUS_DOWNGRADE",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires provider-backed scheduled downgrade fixture."
+    },
+    {
+      "case_id": "CANCEL-REACTIVATE-EXTENSION",
+      "category": "EXTENSION_PLUS_REACTIVATION",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires provider-backed cancellation fixture."
+    },
+    {
+      "case_id": "BENEFIT-CODE-PROVIDER-FLOW",
+      "category": "BENEFIT_CODE",
+      "status": "NOT_EXECUTED",
+      "reason": "Static code contract exists; provider/concurrency lifecycle was not rerun in Wave 3B."
+    },
+    {
+      "case_id": "BENEFIT-MODE-ACCESS-ONLY",
+      "category": "BENEFIT_MODE",
+      "status": "PASS",
+      "evidence": "remote PRELAUNCH canonical grant result"
+    },
+    {
+      "case_id": "BENEFIT-MODE-BILLING-EXTENSION-ONLY",
+      "category": "BENEFIT_MODE",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires provider-backed grant confirmation."
+    },
+    {
+      "case_id": "BENEFIT-MODE-ACCESS-AND-BILLING-EXTENSION",
+      "category": "BENEFIT_MODE",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires provider-backed grant confirmation."
+    },
+    {
+      "case_id": "STACKING-DENY",
+      "category": "BENEFIT_STACKING",
+      "status": "PASS",
+      "evidence": "remote PRELAUNCH DENY stacking result"
+    },
+    {
+      "case_id": "STACKING-EXTEND",
+      "category": "BENEFIT_STACKING",
+      "status": "NOT_EXECUTED",
+      "reason": "Current service allowlist does not prove EXTEND behavior; provider/state evidence is required."
+    },
+    {
+      "case_id": "STACKING-REPLACE-IF-BETTER",
+      "category": "BENEFIT_STACKING",
+      "status": "NOT_EXECUTED",
+      "reason": "Current service allowlist does not prove REPLACE_IF_BETTER behavior."
+    },
+    {
+      "case_id": "STACKING-PARALLEL",
+      "category": "BENEFIT_STACKING",
+      "status": "NOT_EXECUTED",
+      "reason": "Current service allowlist does not prove PARALLEL behavior."
+    },
+    {
+      "case_id": "MARKETING-BENEFIT-INTEGRATION",
+      "category": "MARKETING_BENEFIT",
+      "status": "PASS",
+      "evidence": "backend/tests/MarketingBenefitAuthorityContractTest.php"
+    },
+    {
+      "case_id": "REFUND-BENEFIT-INTERACTION",
+      "category": "REFUND_BENEFIT",
+      "status": "NOT_EXECUTED",
+      "reason": "Requires fresh transaction and Benefit fixtures."
+    },
+    {
+      "case_id": "SUPPORT-COMPENSATION-BOUNDARY",
+      "category": "SUPPORT_BOUNDARY",
+      "status": "PASS",
+      "evidence": "backend/tests/BillingExtensionServiceContractTest.php"
+    },
+    {
+      "case_id": "LEVEL-REWARD-BOUNDARY",
+      "category": "LEVEL_REWARD",
+      "status": "PASS",
+      "evidence": "backend/tests/BenefitServiceContractTest.php"
+    }
+  ],
+  "aggregate": {
+    "TEMPORARY_ENTITLEMENT": {
+      "total": 22,
+      "passed": 22,
+      "not_executed": 0,
+      "result": "PASS"
+    },
+    "DUAL_AXIS_REVERSION": {
+      "total": 2,
+      "passed": 2,
+      "not_executed": 0,
+      "result": "PASS"
+    },
+    "PAID_UPGRADE_REVERSION": {
+      "total": 1,
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
+    },
+    "BENEFIT_MODE_CONFIGURATION": {
+      "total": 3,
+      "passed": 3,
+      "not_executed": 0,
+      "result": "PASS"
+    },
+    "BENEFIT_STACKING_CONFIGURATION": {
+      "total": 4,
+      "passed": 4,
+      "not_executed": 0,
+      "result": "PASS"
+    },
+    "OVERLAPPING_ACCESS": {
+      "total": 5,
+      "passed": 4,
+      "not_executed": 1,
+      "result": "PARTIAL"
+    },
+    "EXPIRATION_REVERSION": {
+      "total": 11,
+      "passed": 9,
+      "not_executed": 2,
+      "result": "PARTIAL"
+    },
+    "MARKETING_BENEFIT": {
+      "total": 2,
+      "passed": 2,
+      "not_executed": 0,
+      "result": "PASS"
+    },
+    "BENEFIT_CODE": {
+      "total": 2,
+      "passed": 1,
+      "not_executed": 1,
+      "result": "PARTIAL"
+    },
+    "ADMIN_GRANT": {
+      "total": 1,
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
+    },
+    "BENEFIT_STACKING": {
+      "total": 5,
+      "passed": 2,
+      "not_executed": 3,
+      "result": "PARTIAL"
+    },
+    "BILLING_CONCURRENCY": {
+      "total": 8,
+      "passed": 1,
+      "not_executed": 7,
+      "result": "PARTIAL"
+    },
+    "SEQUENTIAL_EXTENSION": {
+      "total": 1,
+      "passed": 0,
+      "not_executed": 1,
+      "result": "PARTIAL"
+    },
+    "EXTENSION_PLUS_UPGRADE": {
+      "total": 1,
+      "passed": 0,
+      "not_executed": 1,
+      "result": "PARTIAL"
+    },
+    "EXTENSION_PLUS_DOWNGRADE": {
+      "total": 1,
+      "passed": 0,
+      "not_executed": 1,
+      "result": "PARTIAL"
+    },
+    "EXTENSION_PLUS_REACTIVATION": {
+      "total": 1,
+      "passed": 0,
+      "not_executed": 1,
+      "result": "PARTIAL"
+    },
+    "BENEFIT_MODE": {
+      "total": 3,
+      "passed": 1,
+      "not_executed": 2,
+      "result": "PARTIAL"
+    },
+    "REFUND_BENEFIT": {
+      "total": 1,
+      "passed": 0,
+      "not_executed": 1,
+      "result": "PARTIAL"
+    },
+    "SUPPORT_BOUNDARY": {
+      "total": 1,
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
+    },
+    "LEVEL_REWARD": {
+      "total": 1,
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
+    }
+  },
+  "gates": {
+    "BILLING_CONCURRENCY_MATRIX": "PARTIAL",
+    "TEMPORARY_ENTITLEMENT_MATRIX": "PASS",
+    "OVERLAPPING_ACCESS_GRANTS_MATRIX": "PARTIAL",
+    "EXPIRATION_REVERSION_MATRIX": "PARTIAL",
+    "DUAL_AXIS_UPGRADE_SCENARIO": "PASS",
+    "PAID_UPGRADE_SURVIVES_GRANT_EXPIRY": "PASS",
+    "SEQUENTIAL_EXTENSION_USES_CURRENT_PROVIDER_STATE": "PARTIAL",
+    "BENEFIT_MODE_MATRIX": "PARTIAL",
+    "BENEFIT_STACKING_MATRIX": "PARTIAL",
+    "BENEFIT_CODE_PROVIDER_FLOW": "PARTIAL",
+    "MARKETING_BENEFIT_INTEGRATION": "PASS",
+    "REFUND_BENEFIT_INTERACTION_MATRIX": "PARTIAL",
+    "SUPPORT_COMPENSATION_SERVICE_BOUNDARY": "PASS",
+    "LEVEL_REWARD_ARCHITECTURE": "PASS"
+  }
+}
