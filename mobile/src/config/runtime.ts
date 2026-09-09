@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 
+const LOCAL_API_BASE_URL = 'http://localhost/questao-pro-backend/api/';
 const LOCAL_HOST_PATTERN = /(^|\/)\/?(localhost|127\.0\.0\.1|10\.0\.2\.2)(:|\/|$)/i;
 
 const normalizeBaseUrl = (value: string): string => {
@@ -10,11 +11,11 @@ const normalizeBaseUrl = (value: string): string => {
 const readConfiguredApiBaseUrl = (): string => {
   const fromEnvironment = process.env.EXPO_PUBLIC_API_BASE_URL;
   const fromExpoConfig = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
-  const configured = fromEnvironment || fromExpoConfig || '';
+  const configured = fromEnvironment || fromExpoConfig || (__DEV__ ? LOCAL_API_BASE_URL : '');
 
   if (!configured.trim()) {
     throw new Error(
-      'EXPO_PUBLIC_API_BASE_URL nao configurada. Defina a URL da API antes de iniciar o aplicativo.',
+      'EXPO_PUBLIC_API_BASE_URL nao configurada. Builds de staging/producao exigem uma URL publica da API.',
     );
   }
 
