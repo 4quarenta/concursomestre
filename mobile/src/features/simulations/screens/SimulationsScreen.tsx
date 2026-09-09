@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -9,13 +8,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { simulationsService } from '@/services/simulations/simulationsService';
-import { AppStackParamList } from '@/navigation/types';
+import { router } from 'expo-router';
+import { useSimulationsQuery } from '@/features/simulations/api/useSimulationsQuery';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
-import type { SimulationListItem } from '@/types/simulations';
 
 const formatDate = (rawValue: number | string | undefined): string => {
   if (rawValue === undefined || rawValue === null) return '--';
@@ -30,44 +26,16 @@ const formatDate = (rawValue: number | string | undefined): string => {
 };
 
 /**
- * Listagem de simulados no formato de feature.
- * O carregamento manual sera substituido por TanStack Query assim que o
- * upgrade da fundacao estiver consolidado no lockfile.
+ * Listagem de simulados migrada para a arquitetura de feature.
+ * Estado remoto, cache, loading e refetch pertencem ao TanStack Query.
  */
 export const SimulationsScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
-  const [loading, setLoading] = React.useState(true);
-  const [refreshing, setRefreshing] = React.useState(false);
-  const [items, setItems] = React.useState<SimulationListItem[]>([]);
+  const simulationsQuery = useSimulationsQuery();
+  const items = simulationsQuery.data ?? [];
 
-  const loadItems = React.useCallback(async (useRefresh = false) => {
-    if (useRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
-      const rows = await simulationsService.list();
-      setItems(rows);
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar simulados.');
-    } finally {
-      if (useRefresh) {
-        setRefreshing(false);
-      } else {
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void loadItems(false);
-  }, [loadItems]);
-
-  if (loading) {
+  if (simulationsQuery.isPending) {
     return (
       <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" color={theme.primary} />
@@ -82,8 +50,8 @@ export const SimulationsScreen: React.FC = () => {
         keyExtractor={(item, index) => String(item.id || index)}
         refreshControl={(
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void loadItems(true)}
+            refreshing={simulationsQuery.isRefetching}
+            onRefresh={() => void simulationsQuery.refetch()}
             tintColor={theme.primary}
           />
         )}
@@ -95,16 +63,35 @@ export const SimulationsScreen: React.FC = () => {
               <Text style={styles.title}>Historico de simulados</Text>
               <Text style={styles.description}>Lista sincronizada com sua conta e fallback local do app.</Text>
             </View>
+
+            {simulationsQuery.isError ? (
+              <View style={styles.errorCard}>
+                <Text style={styles.errorTitle}>Nao foi possivel atualizar o historico</Text>
+                <Text style={styles.errorText}>
+                  {simulationsQuery.error instanceof Error
+                    ? simulationsQuery.error.message
+                    : 'Tente novamente em instantes.'}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.retryButton, pressed && styles.startButtonPressed]}
+                  onPress={() => void simulationsQuery.refetch()}
+                >
+                  <Text style={styles.startButtonText}>Tentar novamente</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
             <Pressable
               accessibilityRole="button"
               style={({ pressed }) => [styles.startButton, pressed && styles.startButtonPressed]}
-              onPress={() => navigation.navigate('SimulationConfig')}
+              onPress={() => router.push('/simulados/novo')}
             >
               <Text style={styles.startButtonText}>Novo simulado</Text>
             </Pressable>
           </View>
         )}
-        ListEmptyComponent={(
+        ListEmptyComponent={simulationsQuery.isError ? null : (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Sem simulados no momento</Text>
             <Text style={styles.emptyText}>Quando voce iniciar simulados, eles aparecem aqui.</Text>
@@ -114,8 +101,9 @@ export const SimulationsScreen: React.FC = () => {
           <Pressable
             accessibilityRole="button"
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-            onPress={() => navigation.navigate('SimulationDetail', {
-              simulationId: String(item.id),
+            onPress={() => router.push({
+              pathname: '/simulados/historico/[simulationId]',
+              params: { simulationId: String(item.id) },
             })}
           >
             <View style={styles.cardHeaderRow}>
@@ -204,6 +192,15 @@ const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing[4],
   },
+  retryButton: {
+    minHeight: 44,
+    borderRadius: radius.lg,
+    backgroundColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing[4],
+    alignSelf: 'flex-start',
+  },
   startButtonPressed: {
     backgroundColor: theme.primaryPressed,
   },
@@ -286,6 +283,24 @@ const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
     color: theme.textMuted,
     fontSize: typography.size.sm,
     fontWeight: typography.weight.semibold,
+  },
+  errorCard: {
+    borderWidth: 1,
+    borderColor: theme.dangerBorder,
+    borderRadius: radius.lg,
+    padding: spacing[4],
+    backgroundColor: theme.dangerSubtle,
+    gap: spacing[2],
+  },
+  errorTitle: {
+    color: theme.danger,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.extrabold,
+  },
+  errorText: {
+    color: theme.text,
+    fontSize: typography.size.sm,
+    lineHeight: 20,
   },
 });
 
