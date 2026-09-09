@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { colors } from '@/theme/colors';
 import { layout, radius, spacing, typography } from '@/theme/tokens';
+import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
 
 interface PrimaryButtonProps {
   label: string;
@@ -19,6 +19,8 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   loading = false,
   disabled = false,
 }) => {
+  const theme = useAppTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const isDisabled = disabled || loading;
 
   return (
@@ -34,7 +36,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
       ]}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={colors.onPrimary} />
+        <ActivityIndicator size="small" color={theme.onPrimary} />
       ) : (
         <Text style={styles.text}>{label}</Text>
       )}
@@ -42,23 +44,23 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
   button: {
     minHeight: layout.controlHeight,
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing[5],
-    backgroundColor: colors.primary,
+    backgroundColor: theme.primary,
   },
   buttonPressed: {
-    backgroundColor: colors.primaryDark,
+    backgroundColor: theme.primaryPressed,
   },
   buttonDisabled: {
     opacity: 0.55,
   },
   text: {
-    color: colors.onPrimary,
+    color: theme.onPrimary,
     fontSize: typography.size.sm,
     fontWeight: typography.weight.bold,
   },
