@@ -1,5 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import Constants from 'expo-constants';
+import { runtimeConfig } from '@/config/runtime';
 import { sessionStore } from '@/services/auth/sessionStore';
 import { ENDPOINTS } from '@/services/api/endpoints';
 
@@ -7,15 +7,7 @@ type RetryConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
-const resolveApiBaseUrl = (): string => {
-  const expoBaseUrl =
-    process.env.EXPO_PUBLIC_API_BASE_URL
-    || (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined)
-    || 'http://localhost/questao-pro-backend/api/';
-
-  return expoBaseUrl.endsWith('/') ? expoBaseUrl : `${expoBaseUrl}/`;
-};
-
+const resolveApiBaseUrl = (): string => runtimeConfig.apiBaseUrl;
 const resolveBackendRoot = (): string => resolveApiBaseUrl().replace(/\/api\/?$/, '');
 
 const parseJsonLikePayload = <T>(payload: T): T => {
