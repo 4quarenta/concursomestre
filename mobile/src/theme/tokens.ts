@@ -37,8 +37,10 @@ export const palette = {
   },
   red: {
     50: '#FEF2F2',
+    200: '#FECACA',
     600: '#DC2626',
     700: '#B91C1C',
+    800: '#991B1B',
   },
   white: '#FFFFFF',
   black: '#000000',
@@ -65,6 +67,7 @@ export const lightTheme = {
   danger: palette.red[600],
   dangerPressed: palette.red[700],
   dangerSubtle: palette.red[50],
+  dangerBorder: palette.red[200],
 } as const;
 
 export const darkTheme = {
@@ -88,6 +91,7 @@ export const darkTheme = {
   danger: palette.red[600],
   dangerPressed: palette.red[700],
   dangerSubtle: '#450A0A',
+  dangerBorder: palette.red[800],
 } as const;
 
 export const spacing = {
