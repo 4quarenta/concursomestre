@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 import { colors } from '@/theme/colors';
+import { layout, radius, spacing, typography } from '@/theme/tokens';
 
 interface PrimaryButtonProps {
   label: string;
@@ -9,6 +10,9 @@ interface PrimaryButtonProps {
   disabled?: boolean;
 }
 
+/**
+ * Adaptador visual legado. Sera substituido por controle de plataforma na fase Expo UI.
+ */
 export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   label,
   onPress,
@@ -19,6 +23,8 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       onPress={onPress}
       disabled={isDisabled}
       style={({ pressed }) => [
@@ -38,23 +44,22 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 
 const styles = StyleSheet.create({
   button: {
-    height: 48,
-    borderRadius: 14,
+    minHeight: layout.controlHeight,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing[5],
     backgroundColor: colors.primary,
   },
   buttonPressed: {
     backgroundColor: colors.primaryDark,
   },
   buttonDisabled: {
-    opacity: 0.65,
+    opacity: 0.55,
   },
   text: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.bold,
   },
 });
