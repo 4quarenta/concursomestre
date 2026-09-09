@@ -1,0 +1,41 @@
+name: Mobile CI
+
+on:
+  push:
+    branches:
+      - main
+      - '4quarenta/**'
+      - 'mobile-**'
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+  pull_request:
+    branches:
+      - main
+      - '4quarenta/**'
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+
+jobs:
+  quality:
+    name: Mobile quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        run: npm ci --prefix mobile
+
+      - name: Typecheck mobile
+        run: npm --prefix mobile run typecheck
