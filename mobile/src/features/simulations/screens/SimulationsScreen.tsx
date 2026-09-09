@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { simulationsService } from '@/services/simulations/simulationsService';
 import { AppStackParamList } from '@/navigation/types';
-import { palette, radius, spacing, typography } from '@/theme/tokens';
+import { radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
 import type { SimulationListItem } from '@/types/simulations';
 
@@ -286,9 +286,6 @@ const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
     color: theme.textMuted,
     fontSize: typography.size.sm,
     fontWeight: typography.weight.semibold,
-  },
-  debugOnly: {
-    color: palette.red[600],
   },
 });
 
