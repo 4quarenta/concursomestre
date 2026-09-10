@@ -49,7 +49,7 @@ export const questionService = {
 
     const total = Number(payload?.total ?? response?.total ?? rows.length ?? 0);
     const page = Math.max(1, Number(payload?.page ?? filters.page ?? 1));
-    const perPage = Math.max(1, Number(payload?.perPage ?? payload?.limit ?? filters.limit ?? rows.length || 1));
+    const perPage = Math.max(1, Number(payload?.perPage ?? payload?.limit ?? filters.limit ?? (rows.length || 1)));
     const pages = Math.max(0, Number(payload?.pages ?? (total > 0 ? Math.ceil(total / perPage) : 0)));
 
     return { rows, total, page, perPage, pages };
