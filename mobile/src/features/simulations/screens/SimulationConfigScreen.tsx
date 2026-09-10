@@ -87,7 +87,7 @@ export const SimulationConfigScreen: React.FC = () => {
         ...seed,
         id: `sim-mobile-${seed.startedAt}-${Math.random().toString(36).slice(2, 8)}`,
       });
-      router.replace('/SimulationRun');
+      router.replace('/simulados/executar');
     } catch (error: any) {
       Alert.alert('Simulado', error?.message || 'Nao foi possivel montar o simulado.');
     } finally {
