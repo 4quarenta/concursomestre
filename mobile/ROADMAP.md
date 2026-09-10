@@ -2,10 +2,10 @@
 
 ## Estado atual
 
-**F3/9 — Questoes em andamento.**
+**F4/9 — Simulados em andamento.**
 
-Concluidas: F0, F1 e F2.
-Apos a F3, restam 6 macroetapas ate submissao/publicacao nas lojas.
+Concluidas: F0, F1, F2 e F3.
+Restam 5 macroetapas apos a F4 ate submissao/publicacao nas lojas.
 
 > O escopo funcional do primeiro release continua limitado a Questoes, Simulados e Conta. Modulos existentes fora desse escopo permanecem preservados no codigo para releases posteriores.
 
@@ -44,39 +44,46 @@ Apos a F3, restam 6 macroetapas ate submissao/publicacao nas lojas.
 - CI mobile com Expo Doctor, alinhamento de dependencias e typecheck
 - build preview Android e iOS Simulator preparado no GitHub Actions
 
-## F3 — Questoes — EM ANDAMENTO
-
-Concluido nesta fase:
+## F3 — Questoes — CONCLUIDA
 
 - contrato tipado de paginacao server-side
-- query keys do dominio
-- infinite query para listagem paginada
-- mutation de resposta via TanStack Query
-- endpoint de resposta endurecido: o servidor calcula `is_correct`
-- cliente mobile deixou de enviar `is_correct` como fonte de verdade
-- componente de dominio `QuestionCard`
-- busca e filtros basicos server-side
-- fonte publica oficial `filtersList` integrada ao mobile
+- query keys e infinite query do dominio
+- endpoint de resposta autoritativo: servidor calcula `is_correct`
+- cliente mobile nao envia `is_correct` como fonte de verdade
+- endpoint mobile de listagem remove gabarito antes da resposta
+- gabarito retorna somente apos submissao/revisao do usuario
+- `QuestionCard` e paineis secundarios de dominio
+- busca com debounce e filtros server-side
+- `filtersList` como fonte oficial de taxonomias
 - seletores pesquisaveis para materia, assunto, banca, orgao, cargo e ano
-- filtros avancados conectados diretamente a consulta server-side
-- nova tela paginada F3 criada em paralelo, sem apagar a tela legada
-- Mobile CI validado com Expo Doctor e TypeScript apos a integracao dos filtros
+- salvos integrados ao cache/listagem
+- comentarios, respostas a comentarios e curtidas
+- anotacoes com persistencia local e hidratacao remota existente
+- estatisticas e historico sob demanda
+- comentario do professor e analise detalhada preservados conforme beneficio de plano
+- modos Lista e Foco
+- estados de loading, vazio, erro e retry
+- nova tela conectada como rota oficial; monolito preservado apenas para rollback controlado
+- Mobile CI verde com Expo Doctor e TypeScript
 
-Pendente para concluir F3:
+## F4 — Simulados — EM ANDAMENTO
 
-- retirar o gabarito do DTO de questoes ainda nao respondidas sem quebrar a revisao
-- conectar definitivamente a nova tela F3 na rota principal
-- migrar comentarios, anotacoes, estatisticas, historico e conteudos editoriais
-- mutation/cache otimista de favoritos no dominio de Questoes
-- estados de erro/retry e testes do fluxo completo
-- remover a bridge da tela monolitica somente depois de atingir paridade
+Diagnostico inicial confirmado:
 
-## F4 — Simulados — PENDENTE
+- listagem/historico ja usa TanStack Query
+- configurador ainda depende de `questionService.getAllQuestions()` e filtra todo o banco no aparelho
+- configurador ainda usa React Navigation legado
+- execucao/detalhe ainda possuem bridges legadas
+- service mistura historico remoto e fallback local; precisa separar tentativa ativa de historico concluido
 
-- migrar configuracao do simulado para a arquitetura por feature
-- filtros e montagem de prova
+Objetivos da fase:
+
+- migrar configuracao para `features/simulations`
+- usar taxonomias oficiais e filtros server-side para montar a prova
+- remover download integral do banco de questoes
+- usar Expo Router no fluxo completo
 - execucao com timer e navegacao entre questoes
-- persistencia/resume seguro da tentativa
+- persistencia/resume seguro da tentativa ativa
 - finalizacao autoritativa no backend
 - resultado e revisao detalhada
 - historico e sincronizacao
