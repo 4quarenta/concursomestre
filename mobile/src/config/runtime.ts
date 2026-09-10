@@ -27,6 +27,12 @@ const readConfiguredApiBaseUrl = (): string => {
     );
   }
 
+  if (!__DEV__ && !normalized.toLowerCase().startsWith('https://')) {
+    throw new Error(
+      'Build de staging/producao exige EXPO_PUBLIC_API_BASE_URL em HTTPS.',
+    );
+  }
+
   return normalized;
 };
 
