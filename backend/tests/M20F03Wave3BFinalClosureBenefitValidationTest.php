@@ -143,7 +143,7 @@ try {
     $stmt->execute([':user' => $user]);
     $activeCount = (int) $stmt->fetchColumn();
     $assert($actualSeconds >= $expectedSeconds - 2 * 3600 && $actualSeconds <= $expectedSeconds + 2 * 3600, 'EXTEND did not merge the access period: actual=' . $actualSeconds . '; first=' . (string) $first['grant_expires_at'] . '; second=' . (string) $second['grant_expires_at'] . '; starts=' . (string) $first['grant_starts_at']);
-    $assert($activeCount === 1 && $replay['grant_expires_at'] === $second['grant_expires_at'], 'EXTEND replay produced a duplicate effect.');
+    $assert($activeCount === 1 && strtotime((string) $replay['grant_expires_at']) === strtotime((string) $second['grant_expires_at']), 'EXTEND replay produced a duplicate effect: first=' . (string) $first['grant_expires_at'] . '; second=' . (string) $second['grant_expires_at'] . '; replay=' . (string) $replay['grant_expires_at'] . '; id=' . (string) $replay['id'] . '; base=' . (string) $first['id']);
     $cases[] = ['case_id' => 'STACKING-EXTEND', 'status' => 'PASS', 'actual' => ['active_grants' => $activeCount, 'period_seconds' => $actualSeconds, 'duplicate_effects' => 0, 'stale_base' => 0]];
     $atomicWrite($evidenceDir . '/m20f03-wave3b-final-STACKING-EXTEND.json', $cases[array_key_last($cases)]);
     $assert($cleanup($db, $prefix), 'Cleanup failed after EXTEND.');
@@ -208,7 +208,7 @@ try {
     $routes = (string) file_get_contents($root . '/backend/modules/benefits/routes.php');
     $apiResponse = (string) file_get_contents($root . '/backend/shared/http/ApiResponse.php');
     $assert($redemptions === 1 && $grants === 1 && $rawSqlState === 0 && $safeConflict === 1, 'C7 did not converge through a safe conflict boundary.');
-    $assert(str_contains($routes, 'catch (DomainException $e)') && str_contains($routes, "Response::error($e->getMessage(), 409)"), 'C7 route boundary is not explicit.');
+    $assert(str_contains($routes, 'catch (DomainException $e)') && str_contains($routes, 'Response::error($e->getMessage(), 409)'), 'C7 route boundary is not explicit.');
     $assert(str_contains($apiResponse, "getenv('APP_DEBUG') === 'true'") && str_contains($apiResponse, 'ApiEnvelope::error'), 'C7 API details boundary is not safe.');
     $cases[] = ['case_id' => 'C7-CODE-SIMULTANEOUS-REDEMPTION', 'status' => 'PASS', 'classification' => 'SAFE_GENERIC_API_CONFLICT', 'actual' => ['redemptions' => $redemptions, 'grants' => $grants, 'results' => $results, 'raw_sqlstate_exposed_to_client' => 0, 'database_internal_details_exposed' => 0, 'bounded_retry' => 'PASS']];
     $atomicWrite($evidenceDir . '/m20f03-wave3b-final-C7-CODE-SIMULTANEOUS-REDEMPTION.json', $cases[array_key_last($cases)]);

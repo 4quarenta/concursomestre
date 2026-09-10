@@ -468,3 +468,78 @@ essas células e a Wave 4; o email sintético está isolado nas execuções nova
 SAFE_TO_PROCEED_TO_M20F04 = NO
 SAFE_TO_PROCEED_TO_M20F07 = NO
 ```
+
+## Continuação de fechamento da Wave 3B (2026-09-10)
+
+Este bloco substitui o checkpoint operacional anterior somente onde há nova
+evidência. Os estados já aprovados não foram reexecutados nem rebaixados.
+
+```text
+M20F_03 = PARTIAL
+CURRENT_CLOSURE_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES
+ACTIVE_PRODUCTION_RELEASE = 9bed5ebf318d43ed757e2eaff6c7a34ddc07aaa1
+ORIGIN_1_0_0 = 9bed5ebf318d43ed757e2eaff6c7a34ddc07aaa1
+RUNTIME_CHANGED = YES
+RUNTIME_DEPLOY_PERFORMED = YES
+ACTUAL_LAUNCH_MODE = PRELAUNCH
+
+WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES = PARTIAL
+WAVE_3B_OPEN_CELLS = 6
+WAVE_3B_OPEN_CELL_IDS = C1-UPGRADE-RENEWAL,C2-UPGRADE-EXTENSION,C3-EXTENSION-RENEWAL,C4-CANCEL-REACTIVATE,UPGRADE-PRESERVES-EXTENSION,DOWNGRADE-PRESERVES-EXTENSION
+BILLING_CONCURRENCY_MATRIX = PARTIAL
+BILLING_CONCURRENCY_CASES_TOTAL = 8
+BILLING_CONCURRENCY_CASES_PASSED = 4
+C1_UPGRADE_RENEWAL = NOT_EXECUTED
+C2_UPGRADE_EXTENSION = NOT_EXECUTED
+C3_EXTENSION_RENEWAL = NOT_EXECUTED
+C4_CANCEL_REACTIVATE = NOT_EXECUTED
+UPGRADE_PRESERVES_VALID_EXTENSION = NOT_EXECUTED
+DOWNGRADE_PRESERVES_EXTENSION = NOT_EXECUTED
+SCHEDULED_DOWNGRADE_EXTENDED_PERIOD = NOT_EXECUTED
+
+STACKING_EXTEND_IMPLEMENTATION_STATE = IMPLEMENTED
+STACKING_REPLACE_IF_BETTER_IMPLEMENTATION_STATE = IMPLEMENTED
+STACKING_PARALLEL_IMPLEMENTATION_STATE = IMPLEMENTED
+STACKING_EXTEND = PASS
+STACKING_REPLACE_IF_BETTER = PASS
+STACKING_PARALLEL = PASS
+BENEFIT_STACKING_MATRIX = PASS
+CONFIGURABLE_BUT_UNIMPLEMENTED_STACKING_POLICIES = 0
+
+C7_SERIALIZATION_FAILURE_CLASSIFICATION = SAFE_GENERIC_API_CONFLICT
+C7_RAW_SQLSTATE_EXPOSED_TO_CLIENT = 0
+C7_DATABASE_INTERNAL_DETAILS_EXPOSED = 0
+C7_BOUNDED_RETRY = PASS
+
+SYNTHETIC_USERS_REMAINING = 0
+SYNTHETIC_GRANTS_REMAINING = 0
+SYNTHETIC_CODES_REMAINING = 0
+SYNTHETIC_EVENTS_REMAINING = 0
+SYNTHETIC_AUDIT_EVENTS_REMAINING = 0
+TEST_FILES_REMAINING_ON_SERVER = 0
+OPEN_CONFIRMED_P0_DEFECTS = 0
+OPEN_CONFIRMED_P1_DEFECTS = 0
+NEXT_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES_CONTINUATION
+M20F_04_TO_07 = NOT_STARTED
+SAFE_TO_PROCEED_TO_WAVE_4 = NO
+```
+
+O runtime alterado está em `BenefitService`: o resgate de código agora tem
+retry limitado para deadlock/lock wait/`SQLSTATE 40001`, as datas de acesso são
+calculadas em UTC e as políticas `EXTEND`, `REPLACE_IF_BETTER` e `PARALLEL` têm
+semântica canônica, idempotência e auditoria. A prova remota final passou
+`STACKING-EXTEND`, `STACKING-REPLACE-IF-BETTER`, `STACKING-PARALLEL` e C7. O
+perdedor de C7 recebeu `DomainException` genérica; não houve SQLSTATE nem
+detalhe interno exposto, e houve uma única redenção/grant.
+
+Foram executados localmente lint PHP, typecheck, suíte JavaScript (`941` testes),
+lint, build e os contratos Benefit/Billing. O pacote foi publicado sem migração;
+o preflight confirmou backup recente saudável, zero migrações pendentes e
+configuração válida do nginx. A limpeza foi persistida antes da remoção dos
+fixtures e a consulta remota independente confirmou zero registros sintéticos.
+
+As seis células restantes não são declaradas PASS: as rotas atuais oferecem
+criação/finalização de assinatura e atualização de renovação, mas não uma
+operação canônica pública de mudança de plano nem de downgrade agendado. Usar
+mutação direta no Stripe ou um runner paralelo produziria evidência inválida.
+Por isso a Wave 4 continua bloqueada até existir esse contrato e suas provas.

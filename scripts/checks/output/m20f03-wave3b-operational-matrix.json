@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-10T01:15:42.231Z",
+  "generated_at": "2026-09-10T02:36:47.150Z",
   "package": "M20F-03",
   "wave": "WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES",
   "result": "PARTIAL",
@@ -620,8 +620,8 @@
       "category": "BILLING_CONCURRENCY",
       "status": "PASS",
       "reason": "Requires synchronized database redemption race.",
-      "evidence": "M20F03Wave3BDeltaOperationalValidationTest.php",
-      "evidence_type": "PRELAUNCH_REMOTE_DELTA",
+      "evidence": "M20F03Wave3BFinalClosureBenefitValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
       "actual": {
         "redemptions": 1,
         "grants": 1,
@@ -629,21 +629,25 @@
           {
             "case_id": "C7-CODE-SIMULTANEOUS-REDEMPTION",
             "slot": "0",
-            "status": "SUCCESS",
-            "value": {
-              "user": "wave3b-delta-66d71a445b-code-a",
-              "grant_status": "APPLIED"
-            }
+            "status": "ERROR",
+            "error_class": "DomainException",
+            "error": "Limite total de resgates atingido."
           },
           {
             "case_id": "C7-CODE-SIMULTANEOUS-REDEMPTION",
             "slot": "1",
-            "status": "ERROR",
-            "error_class": "PDOException",
-            "error": "SQLSTATE[40001]: Serialization failure: 1213 Deadlock found when trying to get lock; try restarting transaction"
+            "status": "SUCCESS",
+            "value": {
+              "user": "wave3b-final-86cab2314e-code-b",
+              "grant_status": "APPLIED"
+            }
           }
-        ]
-      }
+        ],
+        "raw_sqlstate_exposed_to_client": 0,
+        "database_internal_details_exposed": 0,
+        "bounded_retry": "PASS"
+      },
+      "classification": "SAFE_GENERIC_API_CONFLICT"
     },
     {
       "case_id": "C8-ADMIN-DUPLICATE-GRANT",
@@ -888,20 +892,46 @@
     {
       "case_id": "STACKING-EXTEND",
       "category": "BENEFIT_STACKING",
-      "status": "NOT_EXECUTED",
-      "reason": "Current service allowlist does not prove EXTEND behavior; provider/state evidence is required."
+      "status": "PASS",
+      "reason": "Current service allowlist does not prove EXTEND behavior; provider/state evidence is required.",
+      "evidence": "M20F03Wave3BFinalClosureBenefitValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "active_grants": 1,
+        "period_seconds": 345600,
+        "duplicate_effects": 0,
+        "stale_base": 0
+      }
     },
     {
       "case_id": "STACKING-REPLACE-IF-BETTER",
       "category": "BENEFIT_STACKING",
-      "status": "NOT_EXECUTED",
-      "reason": "Current service allowlist does not prove REPLACE_IF_BETTER behavior."
+      "status": "PASS",
+      "reason": "Current service allowlist does not prove REPLACE_IF_BETTER behavior.",
+      "evidence": "M20F03Wave3BFinalClosureBenefitValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "weaker_replaced_by_stronger": 1,
+        "duplicate_replacement_effect": 0,
+        "states": {
+          "APPLIED": 1,
+          "REVOKED": 1
+        }
+      }
     },
     {
       "case_id": "STACKING-PARALLEL",
       "category": "BENEFIT_STACKING",
-      "status": "NOT_EXECUTED",
-      "reason": "Current service allowlist does not prove PARALLEL behavior."
+      "status": "PASS",
+      "reason": "Current service allowlist does not prove PARALLEL behavior.",
+      "evidence": "M20F03Wave3BFinalClosureBenefitValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "independent_grants": 2,
+        "duplicate_semantic_grant": 0,
+        "duplicate_provider_effect": 0,
+        "expiry_recalculation": "PASS"
+      }
     },
     {
       "case_id": "MARKETING-BENEFIT-INTEGRATION",
@@ -1004,9 +1034,9 @@
     },
     "BENEFIT_STACKING": {
       "total": 5,
-      "passed": 2,
-      "not_executed": 3,
-      "result": "PARTIAL"
+      "passed": 5,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "BILLING_CONCURRENCY": {
       "total": 8,
@@ -1072,7 +1102,7 @@
     "PAID_UPGRADE_SURVIVES_GRANT_EXPIRY": "PASS",
     "SEQUENTIAL_EXTENSION_USES_CURRENT_PROVIDER_STATE": "PASS",
     "BENEFIT_MODE_MATRIX": "PASS",
-    "BENEFIT_STACKING_MATRIX": "PARTIAL",
+    "BENEFIT_STACKING_MATRIX": "PASS",
     "BENEFIT_CODE_PROVIDER_FLOW": "PASS",
     "MARKETING_BENEFIT_INTEGRATION": "PASS",
     "REFUND_BENEFIT_INTERACTION_MATRIX": "PASS",
