@@ -18,3 +18,22 @@ export interface SimulationDetail extends SimulationListItem {
   startTime?: number;
   endTime?: number;
 }
+
+export interface SimulationAnswerResult {
+  selectedOptionIndex: number;
+  isCorrect: boolean;
+  correctOptionIndex: number;
+}
+
+export interface SimulationSaveResult {
+  success: boolean;
+  id: string;
+  status?: string;
+  score: number;
+  answeredCount: number;
+  correctCount: number;
+  results: Record<string, SimulationAnswerResult>;
+  newXp?: number;
+  newLevel?: number;
+  message?: string;
+}
