@@ -93,26 +93,12 @@ class SimulationsRepository
      */
     public function findCorrectOptionIndexes(array $questionIds): array
     {
-        $ids = [];
-        foreach ($questionIds as $questionId) {
-            if (is_numeric($questionId) && (int) $questionId > 0) {
-                $ids[(int) $questionId] = (int) $questionId;
-            }
-        }
-        $ids = array_values($ids);
-
+        $ids = $this->normalizeQuestionIds($questionIds);
         if ($ids === []) {
             return [];
         }
 
-        $placeholders = [];
-        $params = [];
-        foreach ($ids as $index => $questionId) {
-            $key = ':question_id_' . $index;
-            $placeholders[] = $key;
-            $params[$key] = $questionId;
-        }
-
+        [$placeholders, $params] = $this->buildQuestionIdPlaceholders($ids);
         $stmt = $this->db->prepare(
             "SELECT id, resposta_correta_item_index, data_json
              FROM questions
@@ -141,6 +127,62 @@ class SimulationsRepository
             if ($correctIndex !== null && $correctIndex !== '' && is_numeric($correctIndex)) {
                 $result[$questionId] = (int) $correctIndex;
             }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Hidrata as questoes de um simulado ja persistido para revisao autenticada.
+     * O gabarito so e exposto aqui porque este payload pertence ao historico do proprio usuario.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public function findReviewQuestionsByIds(array $questionIds): array
+    {
+        $ids = $this->normalizeQuestionIds($questionIds);
+        if ($ids === []) {
+            return [];
+        }
+
+        [$placeholders, $params] = $this->buildQuestionIdPlaceholders($ids, 'review_question_id_');
+        $stmt = $this->db->prepare(
+            "SELECT id, enunciado, enunciado_clean, tipo, dificuldade,
+                    resposta_correta_item_index, data_json, anulada, desatualizada
+             FROM questions
+             WHERE id IN (" . implode(', ', $placeholders) . ")"
+        );
+        foreach ($params as $key => $questionId) {
+            $stmt->bindValue($key, $questionId, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $questionId = (string) ($row['id'] ?? '');
+            if ($questionId === '') {
+                continue;
+            }
+
+            $data = json_decode((string) ($row['data_json'] ?? ''), true);
+            $data = is_array($data) ? $data : [];
+            $items = $data['itens'] ?? $data['items'] ?? [];
+            $items = is_array($items) ? array_values($items) : [];
+            $correctIndex = $row['resposta_correta_item_index'] ?? ($data['correctOptionIndex'] ?? null);
+            $correctIndex = is_numeric($correctIndex) ? (int) $correctIndex : -1;
+
+            $result[$questionId] = [
+                'id' => is_numeric($row['id']) ? (int) $row['id'] : $row['id'],
+                'enunciado' => (string) ($row['enunciado'] ?? ''),
+                'enunciado_clean' => (string) ($row['enunciado_clean'] ?? strip_tags((string) ($row['enunciado'] ?? ''))),
+                'tipo' => (string) ($row['tipo'] ?? 'multipla_escolha'),
+                'dificuldade' => (int) ($row['dificuldade'] ?? 1),
+                'itens' => $items,
+                'correctOptionIndex' => $correctIndex,
+                'resposta' => $correctIndex >= 0 ? $correctIndex + 1 : null,
+                'anulada' => !empty($row['anulada']),
+                'desatualizada' => !empty($row['desatualizada']),
+            ];
         }
 
         return $result;
@@ -271,5 +313,30 @@ class SimulationsRepository
             'badge_awarded' => !empty($reward['badge_awarded']),
             'xp' => !empty($reward['applied']) ? $totalXp : 0,
         ];
+    }
+
+    /** @return int[] */
+    private function normalizeQuestionIds(array $questionIds): array
+    {
+        $ids = [];
+        foreach ($questionIds as $questionId) {
+            if (is_numeric($questionId) && (int) $questionId > 0) {
+                $ids[(int) $questionId] = (int) $questionId;
+            }
+        }
+        return array_values($ids);
+    }
+
+    /** @return array{0: string[], 1: array<string,int>} */
+    private function buildQuestionIdPlaceholders(array $ids, string $prefix = 'question_id_'): array
+    {
+        $placeholders = [];
+        $params = [];
+        foreach ($ids as $index => $questionId) {
+            $key = ':' . $prefix . $index;
+            $placeholders[] = $key;
+            $params[$key] = $questionId;
+        }
+        return [$placeholders, $params];
     }
 }
