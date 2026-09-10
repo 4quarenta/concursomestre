@@ -102,16 +102,32 @@ Observacao de escopo: o fluxo dedicado de cancelamento com reembolso nao e expos
 
 ## F6 — Hardening mobile — EM ANDAMENTO
 
-- estrategia de cache/offline e revalidacao
-- comportamento em rede instavel, timeout e retry
-- deep links
-- notificacoes quando aprovadas para o release
-- seguranca de sessao e armazenamento
-- revisao de permissoes nativas
-- observabilidade de erros
-- performance, memoria e listas extensas
-- protecao contra regressao de contratos da API
-- remover bridges/aliases residuais que nao sejam mais necessarios
+Concluido nesta fase:
+
+- refresh de token single-flight para impedir corridas de autenticacao
+- expiracao de sessao propagada imediatamente do storage para o AuthProvider
+- limpeza coerente de sessao e cache ao trocar ou perder identidade autenticada
+- timeout HTTP centralizado em 20 segundos
+- classificacao padronizada de timeout, offline, 401, 429, 4xx e 5xx
+- retry apenas para falhas transitórias e com limite de uma nova tentativa
+- mensagens de erro de rede consistentes para o usuario
+- rotas autenticadas protegidas por sessao no Expo Router
+- rota canonica de execucao de simulado em `/simulados/executar`
+- alias legado `/SimulationRun` reduzido a redirecionamento temporario
+- fallback global para deep links/rotas inexistentes
+- Error Boundary global para evitar tela branca em falhas de renderizacao
+- revisao inicial de permissoes: `app.json` nao declara permissao sensivel adicional para o MVP atual
+
+Pendente nesta fase:
+
+- atualizar os ultimos chamadores internos de `/SimulationRun` para a rota canonica e remover o alias
+- estrategia explicita de cache/offline para leituras que podem operar com dados anteriores
+- revisar notificacoes e decidir se entram no primeiro release
+- observabilidade remota de crashes/logs antes do Release Candidate
+- revisar performance, memoria e listas extensas em aparelho real
+- protecao automatizada contra regressao dos contratos criticos da API
+- limpeza das bridges `MainTabs`/`Checkout` conforme decisao final de escopo
+- validar o Mobile CI assim que o GitHub Actions voltar a alocar runner normalmente
 
 ## F7 — QA e Release Candidate — PENDENTE
 
