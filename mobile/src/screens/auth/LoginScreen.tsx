@@ -1,10 +1,17 @@
 import React from 'react';
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextField } from '@/components/ui/TextField';
+import { PUBLIC_LINKS } from '@/config/publicLinks';
 import { useAuth } from '@/providers/AuthProvider';
 import { colors } from '@/theme/colors';
+
+const openPublicLink = (url: string) => {
+  void Linking.openURL(url).catch(() => {
+    Alert.alert('Link indisponivel', 'Nao foi possivel abrir esta pagina agora.');
+  });
+};
 
 export const LoginScreen: React.FC = () => {
   const { login, isLoading } = useAuth();
@@ -62,6 +69,20 @@ export const LoginScreen: React.FC = () => {
           onPress={() => router.push('/cadastro')}
           disabled={isLoading}
         />
+
+        <View style={styles.legalLinks} accessibilityRole="text">
+          <Pressable accessibilityRole="link" onPress={() => openPublicLink(PUBLIC_LINKS.privacy)}>
+            <Text style={styles.legalLink}>Privacidade</Text>
+          </Pressable>
+          <Text style={styles.legalSeparator}>•</Text>
+          <Pressable accessibilityRole="link" onPress={() => openPublicLink(PUBLIC_LINKS.terms)}>
+            <Text style={styles.legalLink}>Termos</Text>
+          </Pressable>
+          <Text style={styles.legalSeparator}>•</Text>
+          <Pressable accessibilityRole="link" onPress={() => openPublicLink(PUBLIC_LINKS.support)}>
+            <Text style={styles.legalLink}>Suporte</Text>
+          </Pressable>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -101,5 +122,22 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 8,
     marginBottom: 8,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  legalLink: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  legalSeparator: {
+    color: colors.muted,
+    fontSize: 12,
   },
 });
