@@ -24,7 +24,8 @@ const normalizeListParams = (filters: QuestionPageRequest = {}): Record<string, 
       return;
     }
 
-    params[key] = Array.isArray(value) ? value.join(',') : value;
+    const apiKey = key === 'examMode' ? 'exam_mode' : key;
+    params[apiKey] = Array.isArray(value) ? value.join(',') : value;
   });
 
   return params;
@@ -55,28 +56,18 @@ export const questionService = {
     return { rows, total, page, perPage, pages };
   },
 
-  /**
-   * Compatibilidade temporaria da tela legada. A F3 nao deve usar este metodo:
-   * a experiencia nova usa paginacao/filtros no servidor por infinite query.
-   */
+  /** Compatibilidade temporaria da tela legada; novas features nao devem usar. */
   async getAllQuestions(pageSize = 200): Promise<Question[]> {
     const allRows: Question[] = [];
     let page = 1;
     let total = Number.POSITIVE_INFINITY;
 
     while (allRows.length < total) {
-      const result = await this.getQuestionPage({
-        page,
-        limit: pageSize,
-      });
-
+      const result = await this.getQuestionPage({ page, limit: pageSize });
       allRows.push(...result.rows);
       total = Number(result.total || allRows.length || 0);
 
-      if (result.rows.length === 0 || result.page >= result.pages || result.rows.length < pageSize) {
-        break;
-      }
-
+      if (result.rows.length === 0 || result.page >= result.pages || result.rows.length < pageSize) break;
       page += 1;
     }
 
@@ -109,10 +100,7 @@ export const questionService = {
         correctOptionIndex: payload?.correctOptionIndex ?? payload?.correct_option_index,
       };
     } catch (error) {
-      return {
-        success: false,
-        message: readApiErrorMessage(error, 'Nao foi possivel salvar a resposta.'),
-      };
+      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel salvar a resposta.') };
     }
   },
 
@@ -132,18 +120,13 @@ export const questionService = {
         message: envelope.message,
       };
     } catch (error) {
-      return {
-        success: false,
-        message: readApiErrorMessage(error, 'Nao foi possivel atualizar as questoes salvas.'),
-      };
+      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel atualizar as questoes salvas.') };
     }
   },
 
   async getQuestionStats(questionId: string | number): Promise<QuestionStats> {
     const response: any = await apiClient.get<any>(ENDPOINTS.questions.stats, {
-      params: {
-        question_id: String(questionId),
-      },
+      params: { question_id: String(questionId) },
     });
 
     return readApiData<QuestionStats>(response, {
@@ -156,10 +139,7 @@ export const questionService = {
 
   async getQuestionHistory(questionId: string | number, userId?: string): Promise<QuestionHistoryEntry[]> {
     const response: any = await apiClient.get<any>(ENDPOINTS.questions.history, {
-      params: {
-        question_id: String(questionId),
-        user_id: userId || '',
-      },
+      params: { question_id: String(questionId), user_id: userId || '' },
     });
 
     const payload = readApiData<any>(response, []);
