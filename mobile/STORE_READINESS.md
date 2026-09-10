@@ -4,6 +4,27 @@ Atualizado em 10/09/2026.
 
 Este documento registra requisitos que precisam estar resolvidos antes de declarar o app publicavel nas lojas. Requisitos de politica devem ser revalidados imediatamente antes da submissao.
 
+## Recursos publicos
+
+Rotas ja existentes/conectadas no projeto:
+
+- Politica de Privacidade: `https://concursomestre.com/privacy`
+- Termos de Uso: `https://concursomestre.com/terms`
+- Suporte: `https://concursomestre.com/support`
+- Exclusao de conta: `https://concursomestre.com/account-deletion`
+
+O app centraliza essas URLs em `mobile/src/config/publicLinks.ts`. Privacidade, Termos e Suporte ficam acessiveis antes do login; Termos e Privacidade tambem aparecem no fluxo de cadastro.
+
+### Gate de conteudo legal
+
+A existencia da rota nao significa aprovacao juridica do conteudo. Na auditoria de 10/09/2026, `privacy` e `terms` ainda exibiam ultima atualizacao de 24/05/2024 e continham referencias que precisam ser reconciliadas com o produto atual. Portanto:
+
+- rotas publicas: PRONTAS no codigo;
+- conexao com o app: PRONTA;
+- revisao juridica/conteudo e publicacao definitiva: PENDENTE antes da submissao.
+
+Nao alterar apenas a data para simular revisao.
+
 ## Android / Google Play
 
 ### Compatibilidade tecnica
@@ -34,12 +55,15 @@ Referencias oficiais:
 
 ### Exclusao de conta
 
-O app ja oferece solicitacao de exclusao dentro da Conta. O Google Play exige tambem um recurso web externo informado no Play Console para usuarios de apps com criacao de conta.
+- solicitacao dentro do app: implementada;
+- fluxo autenticado web em `/profile/security`: existente;
+- pagina publica descobrivel `/account-deletion`: implementada;
+- a pagina publica nao permite exclusao anonima e encaminha ao fluxo autenticado.
 
 Pendente antes da submissao:
-- criar/confirmar URL publica de exclusao de conta no dominio ConcursoMestre;
-- garantir que a politica de retencao descreva dados que precisem ser mantidos por obrigacao legal/financeira;
-- informar a URL no formulario Data safety / Account deletion do Play Console.
+- confirmar a pagina em producao depois do deploy da branch;
+- revisar a descricao de retencao com a Politica de Privacidade;
+- informar a URL no Play Console.
 
 Referencia oficial:
 - https://support.google.com/googleplay/android-developer/answer/13327111
@@ -55,7 +79,7 @@ Referencia oficial:
 
 ### Assinaturas e conteudo digital
 
-O ConcursoMestre desbloqueia conteudo/funcionalidade digital por assinatura. A regra geral da App Store exige In-App Purchase para esse tipo de desbloqueio, salvo excecao aplicavel (por exemplo, categorias especificas previstas nas diretrizes).
+O ConcursoMestre desbloqueia conteudo/funcionalidade digital por assinatura. A regra geral da App Store exige In-App Purchase para esse tipo de desbloqueio, salvo excecao aplicavel.
 
 Antes da submissao deve ser definido:
 - se o produto se enquadra legitimamente em alguma excecao das diretrizes; ou
@@ -67,15 +91,29 @@ Nao considerar o portal Stripe atual como solucao automaticamente compativel com
 Referencia oficial:
 - https://developer.apple.com/app-store/review/guidelines/
 
+## Distribuicao
+
+`mobile/eas.json` ja possui perfis:
+
+- `development`: development client interno;
+- `preview`: APK Android interno;
+- `preview-simulator`: build de iOS Simulator;
+- `production`: distribuicao de loja e Android App Bundle;
+- `submit.production`: reservado para submissao depois da vinculacao das contas.
+
+Pendente por depender do titular das contas:
+- vincular o projeto a uma conta Expo/EAS;
+- configurar credenciais de assinatura Android;
+- configurar Apple Developer/App Store Connect;
+- configurar Google Play Console/service account quando aplicavel;
+- gerar e validar os builds assinados finais.
+
 ## Pendencias comuns das duas lojas
 
 - Release Candidate validado em aparelho real.
-- Politica de privacidade publica e acessivel.
-- Termos de uso publicos e acessiveis.
-- URL publica de suporte.
-- URL publica de exclusao de conta para Google Play.
+- Revisao final de Politica de Privacidade e Termos.
+- Confirmacao das URLs publicas em producao.
 - Declaracoes de coleta/uso de dados coerentes com o codigo e backend.
-- Icone e splash finais.
 - Screenshots e textos da loja.
 - Classificacao etaria/categoria.
 - Credenciais de conta de revisao caso conteudo autenticado seja necessario para avaliacao.
@@ -85,4 +123,4 @@ Referencia oficial:
 
 ## Gate
 
-F8 nao pode ser marcada como concluida enquanto billing, exclusao web, documentos legais, assets e builds assinados nao estiverem resolvidos. O codigo pode estar funcionalmente pronto antes disso, mas nao deve ser chamado de publicavel nas lojas.
+F8 nao pode ser marcada como concluida enquanto billing, revisao legal, recursos publicos em producao, credenciais, assets/metadados e builds assinados nao estiverem resolvidos. O codigo pode estar funcionalmente pronto antes disso, mas nao deve ser chamado de publicavel nas lojas.
