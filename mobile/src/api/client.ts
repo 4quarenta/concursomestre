@@ -2,6 +2,8 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { runtimeConfig } from '@/config/runtime';
 import { sessionStorage } from '@/storage/sessionStorage';
 import { ENDPOINTS } from '@/api/endpoints';
+import { normalizeApiFailure } from '@/api/errors';
+import { API_REQUEST_TIMEOUT_MS } from '@/api/transportPolicy';
 
 type RetryConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
@@ -24,7 +26,7 @@ const parseJsonLikePayload = <T>(payload: T): T => {
 
 const authHttp = axios.create({
   baseURL: resolveApiBaseUrl(),
-  timeout: 30000,
+  timeout: API_REQUEST_TIMEOUT_MS,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -33,7 +35,7 @@ const authHttp = axios.create({
 
 export const apiClient = axios.create({
   baseURL: resolveApiBaseUrl(),
-  timeout: 30000,
+  timeout: API_REQUEST_TIMEOUT_MS,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -134,6 +136,8 @@ apiClient.interceptors.response.use(
       await sessionStorage.clearSession();
     }
 
+    const normalizedFailure = normalizeApiFailure(error);
+    error.message = normalizedFailure.message;
     throw error;
   },
 );
