@@ -32,7 +32,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
@@ -51,6 +51,16 @@ jobs:
       - name: Verify Expo dependencies
         working-directory: mobile
         run: npx expo install --check
+
+      - name: Run Expo Doctor
+        working-directory: mobile
+        run: npx expo-doctor
+
+      - name: Verify mobile contracts
+        run: npm --prefix mobile run contract:check
+
+      - name: Typecheck
+        run: npm --prefix mobile run typecheck
 
       - name: Generate Android project
         working-directory: mobile
@@ -91,7 +101,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
