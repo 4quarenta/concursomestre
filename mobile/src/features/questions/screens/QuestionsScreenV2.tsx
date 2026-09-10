@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -21,7 +22,7 @@ import { useAnswerQuestionMutation } from '@/features/questions/api/useAnswerQue
 import { useInfiniteQuestionsQuery } from '@/features/questions/api/useInfiniteQuestionsQuery';
 import { useQuestionTaxonomiesQuery } from '@/features/questions/api/useQuestionTaxonomiesQuery';
 import { useAuth } from '@/providers/AuthProvider';
-import { spacing, typography } from '@/theme/tokens';
+import { radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme } from '@/theme/useAppTheme';
 import type { Question, QuestionListFilters } from '@/types/questions';
 
@@ -38,7 +39,7 @@ const difficultyToApi: Record<DifficultyGroup, string[] | undefined> = {
 /**
  * Implementacao F3 da pratica mobile.
  * Usa filtros/paginacao no servidor e TanStack Query em vez de baixar todo o banco.
- * A tela legada permanece no repositorio ate a migracao final de paridade.
+ * A tela legada permanece no repositorio somente para rollback controlado.
  */
 export const QuestionsScreenV2: React.FC = () => {
   const theme = useAppTheme();
@@ -129,6 +130,14 @@ export const QuestionsScreenV2: React.FC = () => {
     }
   }, [questionsQuery]);
 
+  const handleRetryQuestions = React.useCallback(() => {
+    void questionsQuery.refetch();
+  }, [questionsQuery]);
+
+  const handleRetryTaxonomies = React.useCallback(() => {
+    void taxonomiesQuery.refetch();
+  }, [taxonomiesQuery]);
+
   const renderQuestion = React.useCallback(({ item }: { item: Question }) => {
     const pendingVariables = answerMutation.isPending ? answerMutation.variables : undefined;
     const answeringOptionIndex = pendingVariables && pendingVariables.questionId === item.id
@@ -205,9 +214,14 @@ export const QuestionsScreenV2: React.FC = () => {
           />
 
           {taxonomiesQuery.isError ? (
-            <Text style={styles.taxonomyWarning}>
-              Os filtros avancados nao puderam ser carregados. Busca e filtros basicos continuam disponiveis.
-            </Text>
+            <View style={styles.inlineError}>
+              <Text style={styles.taxonomyWarning}>
+                Os filtros avancados nao puderam ser carregados. Busca e filtros basicos continuam disponiveis.
+              </Text>
+              <Pressable accessibilityRole="button" onPress={handleRetryTaxonomies} style={styles.retryGhost}>
+                <Text style={styles.retryGhostText}>Tentar novamente</Text>
+              </Pressable>
+            </View>
           ) : null}
 
           {questionsQuery.isLoading ? (
@@ -220,6 +234,9 @@ export const QuestionsScreenV2: React.FC = () => {
           {questionsQuery.isError ? (
             <View style={styles.centerState}>
               <Text style={styles.errorText}>Nao foi possivel carregar as questoes.</Text>
+              <Pressable accessibilityRole="button" onPress={handleRetryQuestions} style={styles.retryButton}>
+                <Text style={styles.retryButtonText}>Tentar novamente</Text>
+              </Pressable>
             </View>
           ) : null}
         </View>
@@ -260,6 +277,10 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
     color: theme.textMuted,
     fontSize: typography.size.sm,
   },
+  inlineError: {
+    alignItems: 'flex-start',
+    gap: spacing[2],
+  },
   taxonomyWarning: {
     color: theme.warning,
     fontSize: typography.size.xs,
@@ -270,7 +291,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
   },
   centerState: {
     alignItems: 'center',
-    gap: spacing[2],
+    gap: spacing[3],
     paddingVertical: spacing[6],
   },
   stateText: {
@@ -280,6 +301,27 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
   errorText: {
     color: theme.danger,
     fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: theme.primary,
+    borderRadius: radius.md,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[4],
+  },
+  retryButtonText: {
+    color: theme.onPrimary,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+  },
+  retryGhost: {
+    paddingVertical: spacing[1],
+  },
+  retryGhostText: {
+    color: theme.primary,
+    fontSize: typography.size.xs,
     fontWeight: typography.weight.semibold,
   },
   emptyText: {
