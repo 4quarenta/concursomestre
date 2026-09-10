@@ -158,6 +158,31 @@ class SubscriptionsValidator
     }
 
     /**
+     * Valida uma transicao de plano sem aceitar valores monetarios do cliente.
+     *
+     * @since 1.0.0
+     */
+    public function validatePlanChangePayload(array $data): array
+    {
+        $planId = (int) ($data['plan_id'] ?? 0);
+        if ($planId <= 0) {
+            throw new InvalidArgumentException('Plano de destino invalido.');
+        }
+
+        $idempotencyKey = trim((string) ($data['idempotency_key'] ?? ''));
+        if ($idempotencyKey !== '' && !preg_match('/^[A-Za-z0-9_-]{8,120}$/', $idempotencyKey)) {
+            throw new InvalidArgumentException('Identificador da transicao invalido.');
+        }
+
+        return [
+            'plan_id' => $planId,
+            'idempotency_key' => $idempotencyKey !== ''
+                ? $idempotencyKey
+                : 'plan_change_' . bin2hex(random_bytes(12)),
+        ];
+    }
+
+    /**
      * Valida o payload de cancelamento de assinatura.
      *
      * @since 1.0.0

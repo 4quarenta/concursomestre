@@ -287,9 +287,9 @@ class SubscriptionsRepository
      *
      * @since 1.0.0
      */
-    public function findLatestManagedSubscription(string $userId): ?array
+    public function findLatestManagedSubscription(string $userId, bool $forUpdate = false): ?array
     {
-        $stmt = $this->db->prepare("
+        $query = "
             SELECT
                 us.*,
                 p.name AS plan_name,
@@ -304,7 +304,11 @@ class SubscriptionsRepository
               AND status IN ('active', 'trialing', 'past_due')
             ORDER BY us.id DESC
             LIMIT 1
-        ");
+        ";
+        if ($forUpdate) {
+            $query .= ' FOR UPDATE';
+        }
+        $stmt = $this->db->prepare($query);
         $stmt->execute([':user_id' => $userId]);
         $subscription = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -853,6 +857,36 @@ class SubscriptionsRepository
         $stmt->execute([
             ':auto_renew' => $autoRenew ? 1 : 0,
             ':cancel_at_period_end' => $cancelAtPeriodEnd ? 1 : 0,
+            ':id' => $subscriptionId,
+        ]);
+    }
+
+    /**
+     * Persiste o plano vigente e o periodo confirmado pelo provedor.
+     *
+     * @since 1.0.0
+     */
+    public function updateSubscriptionPlanState(
+        int $subscriptionId,
+        int $planId,
+        float $recurringAmount,
+        string $currentPeriodStart,
+        string $currentPeriodEnd,
+        string $providerPeriodStart,
+        string $providerPeriodEnd,
+        ?string $scheduleId = null,
+        ?string $snapshotJson = null
+    ): void {
+        $stmt = $this->db->prepare("\n            UPDATE user_subscriptions\n            SET plan_id = :plan_id,\n                recurring_amount = :recurring_amount,\n                current_period_start = :current_period_start,\n                current_period_end = :current_period_end,\n                provider_current_period_start = :provider_period_start,\n                provider_current_period_end = :provider_period_end,\n                provider_schedule_id = :provider_schedule_id,\n                next_renewal_snapshot_json = :snapshot_json\n            WHERE id = :id\n        ");
+        $stmt->execute([
+            ':plan_id' => $planId,
+            ':recurring_amount' => round($recurringAmount, 2),
+            ':current_period_start' => $currentPeriodStart,
+            ':current_period_end' => $currentPeriodEnd,
+            ':provider_period_start' => $providerPeriodStart,
+            ':provider_period_end' => $providerPeriodEnd,
+            ':provider_schedule_id' => $scheduleId,
+            ':snapshot_json' => $snapshotJson,
             ':id' => $subscriptionId,
         ]);
     }
@@ -1421,6 +1455,15 @@ class SubscriptionsRepository
         $stmt = $this->db->prepare('UPDATE plans SET external_plan_id = :external_plan_id WHERE id = :id');
         $stmt->execute([
             ':external_plan_id' => $externalPlanId,
+            ':id' => $planId,
+        ]);
+    }
+
+    public function updatePlanStripePriceId(int $planId, string $stripePriceId): void
+    {
+        $stmt = $this->db->prepare('UPDATE plans SET stripe_price_id = :stripe_price_id WHERE id = :id');
+        $stmt->execute([
+            ':stripe_price_id' => $stripePriceId,
             ':id' => $planId,
         ]);
     }

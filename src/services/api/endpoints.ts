@@ -261,6 +261,7 @@ export const ENDPOINTS = {
         validateCoupon: 'subscriptions/validate_coupon.php',
         createStripePortal: 'subscriptions/create_stripe_portal.php',
         updateRenewal: 'subscriptions/update_renewal.php',
+        changePlan: 'subscriptions/change_plan.php',
         syncCurrent: 'subscriptions/sync_current.php',
         cancel: 'subscriptions/cancel.php',
         cancelRefund: 'subscriptions/cancel_refund.php',

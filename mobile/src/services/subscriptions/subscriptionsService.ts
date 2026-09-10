@@ -37,6 +37,20 @@ export const subscriptionsService = {
     };
   },
 
+  async changePlan(planId: number, idempotencyKey?: string): Promise<{ operation?: string; status?: string; message?: string }> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.subscriptions.changePlan, {
+      plan_id: planId,
+      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+    });
+    const envelope = assertApiSuccess(response, 'Nao foi possivel mudar o plano da assinatura.');
+    const payload = readApiData<any>(response, {});
+    return {
+      operation: payload?.operation || response?.operation,
+      status: payload?.status || response?.status,
+      message: payload?.message || envelope.message || response?.message,
+    };
+  },
+
   async cancelRefundRequest(): Promise<{ message?: string }> {
     const response: any = await apiClient.post<any>(ENDPOINTS.subscriptions.cancelRefund, {});
     const envelope = assertApiSuccess(response, 'Nao foi possivel cancelar a solicitacao de reembolso.');

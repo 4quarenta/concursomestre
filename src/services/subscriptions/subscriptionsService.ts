@@ -494,6 +494,24 @@ export const subscriptionsService = {
   },
 
   /**
+   * Muda o plano na assinatura Stripe existente; o backend resolve preco e
+   * modalidade a partir do plano canonico.
+   * @since 1.0.0
+   */
+  async changePlan(planId: number, idempotencyKey?: string): Promise<SubscriptionApiPayload> {
+    const response = await apiClient.post<SubscriptionApiPayload>(
+      ENDPOINTS.subscriptions.changePlan,
+      {
+        plan_id: planId,
+        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+      },
+    );
+
+    assertApiSuccess(response, 'Nao foi possivel mudar o plano da assinatura.');
+    return mergeResponsePayload(response, {});
+  },
+
+  /**
    * Sincroniza a assinatura Stripe do usuario atual para recuperar renovacoes
    * que tenham sido confirmadas no provedor mas ainda nao refletidas localmente.
    * @since 1.0.0

@@ -1430,6 +1430,360 @@ class SubscriptionsService
     }
 
     /**
+     * Executa a transicao canonica de plano sobre a assinatura Stripe existente.
+     * Upgrade e imediato; downgrade e aplicado pela Stripe no fim do periodo
+     * atual, que permanece a fonte autoritativa mesmo apos extensoes.
+     *
+     * @since 1.0.0
+     */
+    public function changePlan(string $userId, array $data): array
+    {
+        $payload = $this->validator->validatePlanChangePayload($data);
+        if (!stripeIsConfigured()) {
+            throw new RuntimeException('Stripe nao configurado no backend.');
+        }
+
+        $targetPlan = $this->repository->findPlanById($payload['plan_id']);
+        if (!$targetPlan) {
+            throw new OutOfBoundsException('Plano de destino nao encontrado.');
+        }
+        if (!$this->isActivePlanForChange($targetPlan)) {
+            throw new DomainException('Este plano nao esta disponivel para mudanca de assinatura.');
+        }
+
+        $providerMutationStarted = false;
+        $operation = '';
+        $subscription = null;
+        try {
+            $this->db->beginTransaction();
+            $subscription = $this->repository->findLatestManagedSubscription($userId, true);
+            if (!$subscription || empty($subscription['provider_subscription_id'])) {
+                throw new OutOfBoundsException('Nenhuma assinatura Stripe ativa encontrada.');
+            }
+
+            $stripe = getStripeClient();
+            $targetPriceId = $this->resolveCanonicalPlanPrice($stripe, $targetPlan, $payload['idempotency_key']);
+
+            $currentPlanId = (int) ($subscription['plan_id'] ?? 0);
+            if ($currentPlanId === (int) $targetPlan['id']) {
+                $this->db->commit();
+                return [
+                    'operation' => 'NOOP',
+                    'status' => 'already_current',
+                    'subscription_id' => (int) $subscription['id'],
+                    'provider_subscription_id' => (string) $subscription['provider_subscription_id'],
+                    'current_plan_id' => $currentPlanId,
+                    'target_plan_id' => (int) $targetPlan['id'],
+                    'effective_at' => $subscription['current_period_end'] ?? null,
+                    'message' => 'A assinatura ja esta no plano solicitado.',
+                ];
+            }
+
+            $currentTier = (int) ($subscription['tier'] ?? 0);
+            $targetTier = (int) ($targetPlan['tier'] ?? 0);
+            $operation = $targetTier > $currentTier ? 'UPGRADE' : 'SCHEDULED_DOWNGRADE';
+            $providerId = (string) $subscription['provider_subscription_id'];
+            $remoteBefore = $stripe->subscriptions->retrieve($providerId, [
+                'expand' => ['items.data.price', 'schedule'],
+            ]);
+            $metadataBefore = $this->normalizeStripeMetadata($remoteBefore->metadata ?? []);
+            $sameRequest = (string) ($metadataBefore['plan_change_id'] ?? '') === $payload['idempotency_key'];
+
+            if ($sameRequest) {
+                $this->db->commit();
+                return $this->buildPlanChangeResult(
+                    $operation,
+                    'idempotent_replay',
+                    $subscription,
+                    $targetPlan,
+                    $metadataBefore['scheduled_effective_at'] ?? $subscription['current_period_end'] ?? null
+                );
+            }
+
+            $beforePeriods = getStripeSubscriptionPeriodTimestamps($remoteBefore);
+            $beforePeriodStart = formatStripeTimestampToDb((int) ($beforePeriods['start'] ?? 0));
+            $beforePeriodEnd = formatStripeTimestampToDb((int) ($beforePeriods['end'] ?? 0));
+            $currentItem = $remoteBefore->items->data[0] ?? null;
+            $subscriptionItemId = is_object($currentItem) ? trim((string) ($currentItem->id ?? '')) : '';
+            if ($subscriptionItemId === '') {
+                throw new RuntimeException('A assinatura Stripe nao possui item de preco atual.');
+            }
+
+            if ($operation === 'UPGRADE') {
+                $existingScheduleId = getStripeObjectId($remoteBefore->schedule ?? null);
+                if ($existingScheduleId !== '') {
+                    $this->releaseStripeRenewalScheduleIfNeeded($stripe, array_merge($subscription, [
+                        'provider_schedule_id' => $existingScheduleId,
+                    ]));
+                }
+
+                $providerMutationStarted = true;
+                $stripe->subscriptionItems->update($subscriptionItemId, [
+                    'price' => $targetPriceId,
+                    'proration_behavior' => 'none',
+                ], [
+                    'idempotency_key' => 'plan_change_' . $payload['idempotency_key'],
+                ]);
+                $remoteAfter = $stripe->subscriptions->update($providerId, [
+                    'metadata' => [
+                        'user_id' => $userId,
+                        'plan_id' => (string) $targetPlan['id'],
+                        'plan_name' => (string) $targetPlan['name'],
+                        'plan_change_id' => $payload['idempotency_key'],
+                        'plan_change_operation' => 'UPGRADE',
+                        'reconciliation_state' => 'CONFIRMED',
+                    ],
+                ], [
+                    'idempotency_key' => 'plan_change_metadata_' . $payload['idempotency_key'],
+                ]);
+                $remoteAfter = $stripe->subscriptions->retrieve($providerId, [
+                    'expand' => ['items.data.price', 'schedule'],
+                ]);
+                $actualPriceId = getStripeObjectId($remoteAfter->items->data[0]->price ?? null);
+                if ($actualPriceId !== $targetPriceId) {
+                    throw new RuntimeException('Stripe nao confirmou o preco do upgrade.');
+                }
+
+                $afterPeriods = getStripeSubscriptionPeriodTimestamps($remoteAfter);
+                $afterStart = formatStripeTimestampToDb((int) ($afterPeriods['start'] ?? 0), (int) ($beforePeriods['start'] ?? 0));
+                $afterEnd = formatStripeTimestampToDb((int) ($afterPeriods['end'] ?? 0), (int) ($beforePeriods['end'] ?? 0));
+                $this->repository->updateSubscriptionPlanState(
+                    (int) $subscription['id'],
+                    (int) $targetPlan['id'],
+                    (float) $targetPlan['price'],
+                    $afterStart,
+                    $afterEnd,
+                    $afterStart,
+                    $afterEnd,
+                    null,
+                    null
+                );
+                $this->repository->updateUserPlanAssignment(
+                    $userId,
+                    (int) $targetPlan['id'],
+                    canonicalUserPlanValue((string) $targetPlan['name']),
+                    $afterEnd
+                );
+                $effectiveAt = $afterEnd;
+            } else {
+                $effectiveAt = $beforePeriodEnd;
+                if ($effectiveAt === '' || strtotime($effectiveAt) <= time()) {
+                    throw new DomainException('A assinatura nao possui periodo futuro para agendar o downgrade.');
+                }
+
+                $scheduleId = getStripeObjectId($remoteBefore->schedule ?? null);
+                if ($scheduleId === '') {
+                    $providerMutationStarted = true;
+                    $schedule = $stripe->subscriptionSchedules->create([
+                        'from_subscription' => $providerId,
+                    ], [
+                        'idempotency_key' => 'plan_change_schedule_' . $payload['idempotency_key'],
+                    ]);
+                    $scheduleId = (string) ($schedule->id ?? '');
+                }
+                if ($scheduleId === '') {
+                    throw new RuntimeException('Stripe nao criou o schedule do downgrade.');
+                }
+
+                $currentItemPayload = $this->buildStripeCurrentScheduleItemPayload($remoteBefore);
+                $providerMutationStarted = true;
+                $stripe->subscriptionSchedules->update($scheduleId, [
+                    'end_behavior' => 'release',
+                    'phases' => [
+                        [
+                            'start_date' => (int) ($beforePeriods['start'] ?? 0),
+                            'end_date' => (int) ($beforePeriods['end'] ?? 0),
+                            'proration_behavior' => 'none',
+                            'items' => [$currentItemPayload],
+                        ],
+                        [
+                            'start_date' => (int) ($beforePeriods['end'] ?? 0),
+                            'iterations' => 1,
+                            'proration_behavior' => 'none',
+                            'items' => [[
+                                'price' => $targetPriceId,
+                                'quantity' => max(1, (int) ($currentItem->quantity ?? 1)),
+                            ]],
+                            'metadata' => [
+                                'user_id' => $userId,
+                                'plan_id' => (string) $targetPlan['id'],
+                                'plan_name' => (string) $targetPlan['name'],
+                                'plan_change_id' => $payload['idempotency_key'],
+                                'plan_change_operation' => 'SCHEDULED_DOWNGRADE',
+                                'reconciliation_state' => 'SCHEDULED',
+                            ],
+                        ],
+                    ],
+                    'metadata' => [
+                        'user_id' => $userId,
+                        'pending_plan_id' => (string) $targetPlan['id'],
+                        'pending_plan_name' => (string) $targetPlan['name'],
+                        'plan_change_id' => $payload['idempotency_key'],
+                        'plan_change_operation' => 'SCHEDULED_DOWNGRADE',
+                        'scheduled_effective_at' => $effectiveAt,
+                        'reconciliation_state' => 'SCHEDULED',
+                    ],
+                ], [
+                    'idempotency_key' => 'plan_change_schedule_update_' . $payload['idempotency_key'],
+                ]);
+
+                $snapshot = json_encode([
+                    'scheduled_plan_change' => [
+                        'operation' => 'SCHEDULED_DOWNGRADE',
+                        'target_plan_id' => (int) $targetPlan['id'],
+                        'target_plan_name' => (string) $targetPlan['name'],
+                        'effective_at' => $effectiveAt,
+                        'idempotency_key' => $payload['idempotency_key'],
+                        'provider_schedule_id' => $scheduleId,
+                        'reconciliation_state' => 'SCHEDULED',
+                    ],
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $this->repository->updateSubscriptionPlanState(
+                    (int) $subscription['id'],
+                    $currentPlanId,
+                    (float) ($subscription['recurring_amount'] ?? $subscription['price'] ?? 0),
+                    $beforePeriodStart,
+                    $beforePeriodEnd,
+                    $beforePeriodStart,
+                    $beforePeriodEnd,
+                    $scheduleId,
+                    $snapshot !== false ? $snapshot : null
+                );
+            }
+
+            $this->recordPlanChangeAudit($userId, $subscription, $targetPlan, $operation, [
+                'provider_state_before' => [
+                    'price_id' => getStripeObjectId($remoteBefore->items->data[0]->price ?? null),
+                    'period_start' => $beforePeriodStart,
+                    'period_end' => $beforePeriodEnd,
+                ],
+                'provider_state_after' => [
+                    'price_id' => $operation === 'UPGRADE'
+                        ? $targetPriceId
+                        : getStripeObjectId($remoteBefore->items->data[0]->price ?? null),
+                    'period_start' => $operation === 'UPGRADE' ? $afterStart : $beforePeriodStart,
+                    'period_end' => $operation === 'UPGRADE' ? $afterEnd : $beforePeriodEnd,
+                ],
+                'period_before' => $beforePeriodEnd,
+                'period_after' => $effectiveAt,
+                'scheduled_effective_at' => $operation === 'UPGRADE' ? null : $effectiveAt,
+                'result' => 'CONFIRMED',
+                'reconciliation_state' => $operation === 'UPGRADE' ? 'CONFIRMED' : 'SCHEDULED',
+                'idempotency_key' => $payload['idempotency_key'],
+            ]);
+            $this->db->commit();
+
+            return $this->buildPlanChangeResult($operation, 'confirmed', $subscription, $targetPlan, $effectiveAt);
+        } catch (Throwable $error) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            if ($providerMutationStarted) {
+                try {
+                    $this->syncCurrentUserStripeState($userId);
+                } catch (Throwable $reconciliationError) {
+                    error_log('[subscriptions_service] plan change reconciliation failed: ' . $reconciliationError->getMessage());
+                }
+            }
+            throw $error;
+        }
+    }
+
+    private function isActivePlanForChange(array $plan): bool
+    {
+        foreach (['active', 'is_active'] as $key) {
+            if (array_key_exists($key, $plan)) {
+                $value = filter_var($plan[$key], FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+                return $value === null ? (int) $plan[$key] > 0 : $value;
+            }
+        }
+        return true;
+    }
+
+    private function resolveCanonicalPlanPrice($stripe, array &$plan, string $idempotencyKey): string
+    {
+        $priceId = trim((string) ($plan['stripe_price_id'] ?? ''));
+        if ($priceId !== '') {
+            return $priceId;
+        }
+
+        $productId = trim((string) ($plan['stripe_product_id'] ?? ''));
+        if ($productId === '') {
+            $productId = getOrCreateStripeProductId($this->db, $plan, $stripe);
+            $plan['stripe_product_id'] = $productId;
+        }
+        if ($productId === '') {
+            throw new DomainException('O plano de destino nao possui produto Stripe configurado.');
+        }
+
+        $createdPrice = $stripe->prices->create([
+            'product' => $productId,
+            'currency' => 'brl',
+            'unit_amount' => formatMoneyToCents((float) ($plan['price'] ?? 0)),
+            'recurring' => [
+                'interval' => (string) ($plan['interval_unit'] ?? 'month'),
+                'interval_count' => max(1, (int) ($plan['interval_count'] ?? 1)),
+            ],
+            'metadata' => [
+                'plan_id' => (string) ($plan['id'] ?? ''),
+                'source' => 'canonical_plan_change',
+            ],
+        ], [
+            'idempotency_key' => 'plan_catalog_price_' . (int) ($plan['id'] ?? 0),
+        ]);
+        $priceId = trim((string) ($createdPrice->id ?? ''));
+        if ($priceId === '') {
+            throw new RuntimeException('Stripe nao retornou o preco canonico do plano.');
+        }
+
+        $this->repository->updatePlanStripePriceId((int) $plan['id'], $priceId);
+        $plan['stripe_price_id'] = $priceId;
+        return $priceId;
+    }
+
+    private function buildPlanChangeResult(string $operation, string $status, array $subscription, array $targetPlan, ?string $effectiveAt): array
+    {
+        return [
+            'operation' => $operation,
+            'status' => $status,
+            'subscription_id' => (int) ($subscription['id'] ?? 0),
+            'provider_subscription_id' => (string) ($subscription['provider_subscription_id'] ?? ''),
+            'current_plan_id' => (int) ($subscription['plan_id'] ?? 0),
+            'target_plan_id' => (int) ($targetPlan['id'] ?? 0),
+            'target_plan_name' => (string) ($targetPlan['name'] ?? ''),
+            'effective_at' => $effectiveAt,
+            'message' => $operation === 'UPGRADE'
+                ? 'Upgrade aplicado com sucesso na assinatura atual.'
+                : 'Downgrade agendado para o fim do periodo atual.',
+        ];
+    }
+
+    private function recordPlanChangeAudit(string $userId, array $subscription, array $targetPlan, string $operation, array $details): void
+    {
+        try {
+            $payload = array_merge([
+                'actor_source' => 'authenticated_user',
+                'user_id' => $userId,
+                'subscription_id' => (int) ($subscription['id'] ?? 0),
+                'provider_subscription_id' => (string) ($subscription['provider_subscription_id'] ?? ''),
+                'previous_plan_id' => (int) ($subscription['plan_id'] ?? 0),
+                'target_plan_id' => (int) ($targetPlan['id'] ?? 0),
+                'target_plan_name' => (string) ($targetPlan['name'] ?? ''),
+                'operation' => $operation,
+            ], $details);
+            $stmt = $this->db->prepare("\n                INSERT INTO admin_audit_logs (\n                    admin_user_id, action, resource_type, resource_id, details_json,\n                    ip_address, user_agent, created_at\n                ) VALUES (:actor_id, :action, 'subscription', :resource_id, :details, '', '', NOW())\n            ");
+            $stmt->execute([
+                ':actor_id' => $userId,
+                ':action' => 'subscription.plan_change',
+                ':resource_id' => (string) ($subscription['id'] ?? ''),
+                ':details' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+        } catch (Throwable $error) {
+            throw new RuntimeException('Nao foi possivel registrar a auditoria da mudanca de plano.', 0, $error);
+        }
+    }
+
+    /**
      * Persiste o snapshot local da proxima renovacao da assinatura.
      *
      * @since 1.0.0

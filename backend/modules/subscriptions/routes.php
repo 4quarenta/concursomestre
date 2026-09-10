@@ -283,6 +283,33 @@ function handleSubscriptionsUpdateRenewalRoute(PDO $db): void
 }
 
 /**
+ * Entrada oficial da transicao de plano sobre a assinatura Stripe atual.
+ *
+ * @since 1.0.0
+ */
+function handleSubscriptionsChangePlanRoute(PDO $db): void
+{
+    try {
+        $payload = verifyAuthenticatedUserPayload(true);
+        $body = json_decode(file_get_contents('php://input'), true) ?: [];
+        $controller = buildSubscriptionsController($db);
+        $result = $controller->changePlan((string) $payload['user_id'], $body);
+
+        Response::success($result, (string) ($result['message'] ?? 'Mudanca de plano processada com sucesso.'));
+    } catch (DomainException $e) {
+        Response::error($e->getMessage(), 409);
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::serverError($e->getMessage(), $e);
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel processar a mudanca de plano.', $e);
+    }
+}
+
+/**
  * Consulta a assinatura financeira do usuario autenticado.
  *
  * @since 1.0.0

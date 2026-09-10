@@ -460,6 +460,21 @@ describe('subscriptionsService', () => {
     expect(response.auto_renew).toBe(false);
   });
 
+  it('changes plan through the canonical existing-subscription endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: { operation: 'UPGRADE', status: 'confirmed' },
+    });
+
+    const response = await subscriptionsService.changePlan(42, 'plan-change-test-1');
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/change_plan.php', {
+      plan_id: 42,
+      idempotency_key: 'plan-change-test-1',
+    });
+    expect(response.operation).toBe('UPGRADE');
+  });
+
   it('requests subscription cancellation with optional context and captcha token', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
