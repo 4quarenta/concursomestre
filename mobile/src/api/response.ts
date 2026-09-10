@@ -1,3 +1,5 @@
+import { normalizeApiFailure } from '@/api/errors';
+
 export type NormalizedApiEnvelope<T = unknown> = {
   success: boolean;
   message?: string;
@@ -40,15 +42,6 @@ export const assertApiSuccess = <T = unknown>(response: any, fallbackMessage: st
   return envelope;
 };
 
-export const readApiErrorMessage = (error: any, fallbackMessage: string): string => {
-  if (typeof error?.response?.data?.message === 'string' && error.response.data.message.trim()) {
-    return error.response.data.message;
-  }
-  if (typeof error?.response?.data?.error === 'string' && error.response.data.error.trim()) {
-    return error.response.data.error;
-  }
-  if (typeof error?.message === 'string' && error.message.trim()) {
-    return error.message;
-  }
-  return fallbackMessage;
-};
+export const readApiErrorMessage = (error: any, fallbackMessage: string): string => (
+  normalizeApiFailure(error, fallbackMessage).message
+);
