@@ -1,1 +1,1 @@
-export { SimulationDetailScreen as default } from '@/screens/SimulationDetailScreen';
+export { SimulationDetailScreenV2 as default } from '@/features/simulations/screens/SimulationDetailScreenV2';
