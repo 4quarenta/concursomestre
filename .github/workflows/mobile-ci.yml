@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - main
-      - '4quarenta/**'
-      - 'mobile-**'
+      - '4quarenta/next-version'
     paths:
       - 'mobile/**'
       - '.github/workflows/mobile-ci.yml'
@@ -16,6 +15,10 @@ on:
     paths:
       - 'mobile/**'
       - '.github/workflows/mobile-ci.yml'
+
+concurrency:
+  group: mobile-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   quality:
