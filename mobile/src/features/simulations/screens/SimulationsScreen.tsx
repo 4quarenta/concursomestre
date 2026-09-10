@@ -70,7 +70,7 @@ export const SimulationsScreen: React.FC = () => {
     replaceAnswers(restoredAnswers);
     const firstUnanswered = remoteActive.questions.findIndex((question, index) => restoredAnswers[String(question.id ?? `idx-${index}`)] === undefined);
     setCurrentIndex(firstUnanswered >= 0 ? firstUnanswered : 0);
-    router.push('/SimulationRun');
+    router.push('/simulados/executar');
   }, [remoteActive, replaceAnswers, setCurrentIndex, setSeed]);
 
   if (simulationsQuery.isPending) {
@@ -93,7 +93,7 @@ export const SimulationsScreen: React.FC = () => {
             </View>
 
             {activeSeed ? (
-              <Pressable accessibilityRole="button" onPress={() => router.push('/SimulationRun')} style={({ pressed }) => [styles.resumeCard, pressed && styles.cardPressed]}>
+              <Pressable accessibilityRole="button" onPress={() => router.push('/simulados/executar')} style={({ pressed }) => [styles.resumeCard, pressed && styles.cardPressed]}>
                 <View style={styles.resumeText}>
                   <Text style={styles.resumeEyebrow}>Em andamento neste aparelho</Text>
                   <Text style={styles.resumeTitle}>Continuar simulado</Text>
