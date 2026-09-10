@@ -1,10 +1,17 @@
 import React from 'react';
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextField } from '@/components/ui/TextField';
+import { PUBLIC_LINKS } from '@/config/publicLinks';
 import { useAuth } from '@/providers/AuthProvider';
 import { colors } from '@/theme/colors';
+
+const openPublicLink = (url: string) => {
+  void Linking.openURL(url).catch(() => {
+    Alert.alert('Link indisponivel', 'Nao foi possivel abrir esta pagina agora.');
+  });
+};
 
 export const RegisterScreen: React.FC = () => {
   const { register, isLoading } = useAuth();
@@ -58,6 +65,17 @@ export const RegisterScreen: React.FC = () => {
             secureTextEntry
             placeholder="Crie uma senha"
           />
+          <Text style={styles.legalNotice}>
+            Ao criar a conta, voce declara que leu e concorda com os Termos de Uso e a Politica de Privacidade publicados pelo ConcursoMestre.
+          </Text>
+          <View style={styles.legalLinks}>
+            <Pressable accessibilityRole="link" onPress={() => openPublicLink(PUBLIC_LINKS.terms)}>
+              <Text style={styles.legalLink}>Ler Termos de Uso</Text>
+            </Pressable>
+            <Pressable accessibilityRole="link" onPress={() => openPublicLink(PUBLIC_LINKS.privacy)}>
+              <Text style={styles.legalLink}>Ler Politica de Privacidade</Text>
+            </Pressable>
+          </View>
           <PrimaryButton
             label="Criar conta"
             onPress={handleRegister}
@@ -109,5 +127,18 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 8,
     marginBottom: 8,
+  },
+  legalNotice: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  legalLinks: {
+    gap: 6,
+  },
+  legalLink: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
