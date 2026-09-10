@@ -31,6 +31,7 @@ const toQuestionFilters = (config: MobileSimulationConfig): QuestionListFilters 
   year: config.years,
   excludeCanceled: true,
   excludeOutdated: true,
+  examMode: true,
 });
 
 const dedupe = (rows: Question[]): Question[] => {
@@ -45,7 +46,7 @@ const dedupe = (rows: Question[]): Question[] => {
 
 /**
  * Monta um conjunto limitado de candidatas no servidor e sorteia somente esse conjunto no aparelho.
- * Evita transferir toda a base de questoes para criar um simulado.
+ * `examMode` garante que nem gabarito nem resposta anterior sejam transportados para a prova.
  */
 export const buildSimulationSeed = async (config: MobileSimulationConfig): Promise<MobileSimulationSeed> => {
   const pageSize = Math.min(
@@ -74,10 +75,7 @@ export const buildSimulationSeed = async (config: MobileSimulationConfig): Promi
   }
 
   return {
-    config: {
-      ...config,
-      questionCount: selected.length,
-    },
+    config: { ...config, questionCount: selected.length },
     questions: selected,
     startedAt: Date.now(),
   };
