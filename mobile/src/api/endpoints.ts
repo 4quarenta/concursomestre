@@ -21,6 +21,9 @@ export const ENDPOINTS = {
     history: 'questionsHistory',
     toggleSave: 'questionsToggleSave',
   },
+  filters: {
+    list: 'filtersList',
+  },
   comments: {
     list: 'commentsList',
     create: 'commentsHandle',
