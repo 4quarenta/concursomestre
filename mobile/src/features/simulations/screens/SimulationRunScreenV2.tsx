@@ -288,8 +288,8 @@ export const SimulationRunScreenV2: React.FC = () => {
         <View style={styles.options}>
           {(currentQuestion.itens || []).map((option, optionIndex) => {
             const selected = currentSelected === optionIndex;
-            const correct = Boolean(currentServerResult) && currentServerResult.correctOptionIndex === optionIndex;
-            const wrong = selected && Boolean(currentServerResult) && !currentServerResult.isCorrect;
+            const correct = currentServerResult?.correctOptionIndex === optionIndex;
+            const wrong = selected && currentServerResult?.isCorrect === false;
             return (
               <Pressable
                 key={String(option.id ?? optionIndex)}
