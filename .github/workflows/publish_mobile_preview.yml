@@ -57,7 +57,10 @@ jobs:
         run: npx expo-doctor
 
       - name: Verify mobile contracts
-        run: npm --prefix mobile run contract:check
+        run: npm --prefix mobile run contracts:check
+
+      - name: Run Release Candidate smoke gate
+        run: npm --prefix mobile run qa:smoke
 
       - name: Typecheck
         run: npm --prefix mobile run typecheck
@@ -93,6 +96,7 @@ jobs:
     name: iOS Simulator preview (optional)
     runs-on: macos-latest
     timeout-minutes: 50
+    continue-on-error: true
 
     steps:
       - name: Checkout
