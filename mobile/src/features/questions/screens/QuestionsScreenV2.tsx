@@ -28,6 +28,7 @@ import type { Question, QuestionListFilters } from '@/types/questions';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 350;
+type ViewMode = 'list' | 'focus';
 
 const difficultyToApi: Record<DifficultyGroup, string[] | undefined> = {
   all: undefined,
@@ -52,6 +53,8 @@ export const QuestionsScreenV2: React.FC = () => {
   const [onlySaved, setOnlySaved] = React.useState(false);
   const [excludeAnswered, setExcludeAnswered] = React.useState(false);
   const [advanced, setAdvanced] = React.useState<AdvancedQuestionFilterValues>({});
+  const [viewMode, setViewMode] = React.useState<ViewMode>('list');
+  const [focusIndex, setFocusIndex] = React.useState(0);
 
   React.useEffect(() => {
     const timeout = setTimeout(() => {
@@ -76,12 +79,22 @@ export const QuestionsScreenV2: React.FC = () => {
     excludeOutdated: true,
   }), [advanced, debouncedKeyword, difficulty, excludeAnswered, onlySaved]);
 
+  React.useEffect(() => {
+    setFocusIndex(0);
+  }, [filters]);
+
   const taxonomiesQuery = useQuestionTaxonomiesQuery();
   const questionsQuery = useInfiniteQuestionsQuery(filters, PAGE_SIZE);
   const answerMutation = useAnswerQuestionMutation(user?.id);
   const savedQuestionIds = React.useMemo(
     () => new Set((user?.savedQuestionIds || []).map(String)),
     [user?.savedQuestionIds],
+  );
+  const displayedQuestions = React.useMemo(
+    () => viewMode === 'focus'
+      ? questionsQuery.questions.slice(focusIndex, focusIndex + 1)
+      : questionsQuery.questions,
+    [focusIndex, questionsQuery.questions, viewMode],
   );
 
   const handleClearFilters = React.useCallback(() => {
@@ -91,6 +104,7 @@ export const QuestionsScreenV2: React.FC = () => {
     setOnlySaved(false);
     setExcludeAnswered(false);
     setAdvanced({});
+    setFocusIndex(0);
   }, []);
 
   const handleAnswer = React.useCallback(async (question: Question, optionIndex: number) => {
@@ -125,10 +139,32 @@ export const QuestionsScreenV2: React.FC = () => {
   }, [queryClient, toggleSavedQuestion]);
 
   const handleEndReached = React.useCallback(() => {
-    if (questionsQuery.hasNextPage && !questionsQuery.isFetchingNextPage) {
+    if (viewMode === 'list' && questionsQuery.hasNextPage && !questionsQuery.isFetchingNextPage) {
       void questionsQuery.fetchNextPage();
     }
-  }, [questionsQuery]);
+  }, [questionsQuery, viewMode]);
+
+  const handleFocusPrevious = React.useCallback(() => {
+    setFocusIndex((current) => Math.max(0, current - 1));
+  }, []);
+
+  const handleFocusNext = React.useCallback(async () => {
+    const nextIndex = focusIndex + 1;
+    if (nextIndex < questionsQuery.questions.length) {
+      setFocusIndex(nextIndex);
+      return;
+    }
+
+    if (!questionsQuery.hasNextPage || questionsQuery.isFetchingNextPage) {
+      return;
+    }
+
+    const result = await questionsQuery.fetchNextPage();
+    const loadedCount = result.data?.pages.reduce((total, page) => total + page.rows.length, 0) || 0;
+    if (nextIndex < loadedCount) {
+      setFocusIndex(nextIndex);
+    }
+  }, [focusIndex, questionsQuery]);
 
   const handleRetryQuestions = React.useCallback(() => {
     void questionsQuery.refetch();
@@ -173,7 +209,7 @@ export const QuestionsScreenV2: React.FC = () => {
   return (
     <FlatList
       contentContainerStyle={styles.content}
-      data={questionsQuery.questions}
+      data={displayedQuestions}
       keyExtractor={(item, index) => String(item.id ?? `question-${index}`)}
       onEndReached={handleEndReached}
       onEndReachedThreshold={0.6}
@@ -195,6 +231,24 @@ export const QuestionsScreenV2: React.FC = () => {
                 ? `${questionsQuery.total} questoes encontradas`
                 : 'Pratica conectada ao banco oficial'}
             </Text>
+          </View>
+
+          <View style={styles.modeSelector}>
+            {(['list', 'focus'] as ViewMode[]).map((mode) => {
+              const active = viewMode === mode;
+              return (
+                <Pressable
+                  key={mode}
+                  accessibilityRole="button"
+                  onPress={() => setViewMode(mode)}
+                  style={[styles.modeButton, active && styles.modeButtonActive]}
+                >
+                  <Text style={[styles.modeText, active && styles.modeTextActive]}>
+                    {mode === 'list' ? 'Lista' : 'Foco'}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           <QuestionsFilters
@@ -247,9 +301,37 @@ export const QuestionsScreenV2: React.FC = () => {
           : null
       }
       ListFooterComponent={
-        questionsQuery.isFetchingNextPage
-          ? <ActivityIndicator style={styles.footerLoader} color={theme.primary} />
-          : <View style={styles.footerSpace} />
+        viewMode === 'focus' && displayedQuestions.length > 0
+          ? (
+            <View style={styles.focusFooter}>
+              <Text style={styles.focusCounter}>
+                Questao {focusIndex + 1} de {questionsQuery.total || questionsQuery.questions.length}
+              </Text>
+              <View style={styles.focusActions}>
+                <Pressable
+                  disabled={focusIndex === 0}
+                  onPress={handleFocusPrevious}
+                  style={[styles.focusButton, focusIndex === 0 && styles.disabledButton]}
+                >
+                  <Text style={styles.focusButtonText}>Anterior</Text>
+                </Pressable>
+                <Pressable
+                  disabled={!questionsQuery.hasNextPage && focusIndex >= questionsQuery.questions.length - 1}
+                  onPress={() => void handleFocusNext()}
+                  style={styles.focusButtonPrimary}
+                >
+                  {questionsQuery.isFetchingNextPage ? (
+                    <ActivityIndicator size="small" color={theme.onPrimary} />
+                  ) : (
+                    <Text style={styles.focusButtonPrimaryText}>Proxima</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          )
+          : questionsQuery.isFetchingNextPage
+            ? <ActivityIndicator style={styles.footerLoader} color={theme.primary} />
+            : <View style={styles.footerSpace} />
       }
     />
   );
@@ -276,6 +358,29 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
   subtitle: {
     color: theme.textMuted,
     fontSize: typography.size.sm,
+  },
+  modeSelector: {
+    alignSelf: 'flex-start',
+    backgroundColor: theme.surfaceSubtle,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    padding: spacing[1],
+  },
+  modeButton: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+  },
+  modeButtonActive: {
+    backgroundColor: theme.surface,
+  },
+  modeText: {
+    color: theme.textMuted,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.semibold,
+  },
+  modeTextActive: {
+    color: theme.primary,
   },
   inlineError: {
     alignItems: 'flex-start',
@@ -329,6 +434,50 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
     fontSize: typography.size.sm,
     paddingVertical: spacing[8],
     textAlign: 'center',
+  },
+  focusFooter: {
+    gap: spacing[3],
+    paddingVertical: spacing[6],
+  },
+  focusCounter: {
+    color: theme.textMuted,
+    fontSize: typography.size.xs,
+    textAlign: 'center',
+  },
+  focusActions: {
+    flexDirection: 'row',
+    gap: spacing[3],
+  },
+  focusButton: {
+    alignItems: 'center',
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  focusButtonText: {
+    color: theme.text,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+  },
+  focusButtonPrimary: {
+    alignItems: 'center',
+    backgroundColor: theme.primary,
+    borderRadius: radius.md,
+    flex: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  focusButtonPrimaryText: {
+    color: theme.onPrimary,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+  },
+  disabledButton: {
+    opacity: 0.45,
   },
   footerLoader: {
     marginVertical: spacing[6],
