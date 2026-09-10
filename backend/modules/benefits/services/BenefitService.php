@@ -281,6 +281,11 @@ final class BenefitService
                 $this->db->commit();
                 return $existing;
             }
+            $existing = $this->findGrantByStackingIdempotency($idempotencyKey, true);
+            if ($existing) {
+                $this->db->commit();
+                return $existing;
+            }
             $definition = $this->findDefinition($definitionId, true);
             if (!$definition) {
                 throw new OutOfBoundsException('Benefit nao encontrado.');
@@ -291,7 +296,8 @@ final class BenefitService
             $now = gmdate('Y-m-d H:i:s');
             $this->assertWindow((string) ($definition['starts_at'] ?? ''), (string) ($definition['expires_at'] ?? ''), $now, 'Benefit fora da janela de disponibilidade.');
             $this->assertStackingPolicy($userId, $definition, (string) $definition['stacking_policy'], $now);
-            $grant = $this->insertGrant($userId, $definition, $input, $actorId, $idempotencyKey);
+            $grant = $this->extendExistingAccessGrantIfApplicable($userId, $definition, (string) $definition['stacking_policy'], $now, $idempotencyKey)
+                ?? $this->insertGrant($userId, $definition, $input, $actorId, $idempotencyKey);
             if (strtoupper((string) ($grant['status'] ?? '')) === 'APPLIED') {
                 $this->recordDomainEvent(
                     strtoupper((string) ($definition['benefit_mode'] ?? '')) === 'ACCESS_ONLY'
@@ -479,6 +485,25 @@ final class BenefitService
 
     public function redeemCode(string $userId, string $rawCode, string $idempotencyKey, ?string $now = null): array
     {
+        $attempt = 0;
+        while (true) {
+            try {
+                return $this->redeemCodeOnce($userId, $rawCode, $idempotencyKey, $now);
+            } catch (PDOException $e) {
+                if (!$this->isRetryableTransactionConflict($e)) {
+                    throw $e;
+                }
+                if ($attempt >= 2) {
+                    throw new DomainException('Nao foi possivel concluir o resgate agora. Tente novamente.', 0, $e);
+                }
+                $attempt++;
+                usleep(25000 * $attempt);
+            }
+        }
+    }
+
+    private function redeemCodeOnce(string $userId, string $rawCode, string $idempotencyKey, ?string $now = null): array
+    {
         $idempotencyKey = $this->normalizeIdempotency($idempotencyKey);
         $normalizedCode = self::normalizeCode($rawCode);
         if ($normalizedCode === '') {
@@ -517,13 +542,15 @@ final class BenefitService
                 throw new OutOfBoundsException('Benefit do codigo nao encontrado.');
             }
             $this->assertWindow((string) ($definition['starts_at'] ?? ''), (string) ($definition['expires_at'] ?? ''), $effectiveNow, 'Benefit fora da janela de disponibilidade.');
-            $this->assertStackingPolicy($userId, $definition, (string) ($code['stacking_policy'] ?: $definition['stacking_policy']), $effectiveNow);
-            $grant = $this->insertGrant($userId, $definition, [
+            $stackingPolicy = (string) ($code['stacking_policy'] ?: $definition['stacking_policy']);
+            $this->assertStackingPolicy($userId, $definition, $stackingPolicy, $effectiveNow);
+            $grant = $this->extendExistingAccessGrantIfApplicable($userId, $definition, $stackingPolicy, $effectiveNow, $idempotencyKey)
+                ?? $this->insertGrant($userId, $definition, [
                 'source_type' => 'CODE_REDEMPTION',
                 'source_reference' => (string) $code['id'],
                 'reason' => 'Benefit Code redemption',
                 'grant_starts_at' => $effectiveNow,
-            ], $userId, $idempotencyKey);
+                ], $userId, $idempotencyKey);
             $insert = $this->db->prepare('INSERT INTO benefit_code_redemptions (benefit_code_id, benefit_grant_id, user_id, idempotency_key) VALUES (:code_id, :grant_id, :user_id, :idempotency_key)');
             $insert->execute([':code_id' => $code['id'], ':grant_id' => $grant['id'], ':user_id' => $userId, ':idempotency_key' => $idempotencyKey]);
             $this->audit($grant['id'], $code['id'], $userId, 'code.redeemed', ['code_hint' => $code['code_hint'], 'grant_status' => $grant['status']]);
@@ -769,14 +796,130 @@ final class BenefitService
     {
         $policy = strtoupper(trim($policy));
         $this->assertIn($policy, self::STACKING_POLICIES, 'Politica de stacking invalida.');
-        if ($policy !== 'DENY') {
-            return;
+        switch ($policy) {
+            case 'DENY':
+                $stmt = $this->db->prepare("SELECT COUNT(*) FROM benefit_grants WHERE user_id = :user_id AND benefit_definition_id = :definition_id AND status = 'APPLIED' AND grant_starts_at <= :now_start AND (grant_expires_at IS NULL OR grant_expires_at > :now_end)");
+                $stmt->execute([':user_id' => $userId, ':definition_id' => $definition['id'], ':now_start' => $now, ':now_end' => $now]);
+                if ((int) $stmt->fetchColumn() > 0) {
+                    throw new DomainException('Este Benefit ja esta ativo para o usuario.');
+                }
+                return;
+            case 'EXTEND':
+                // Access periods are merged below; provider effects remain separate grants.
+                return;
+            case 'PARALLEL':
+                // Independent grants keep their own audit, expiry and provider lifecycle.
+                return;
+            case 'REPLACE_IF_BETTER':
+                $candidatePlan = self::canonicalPlan((string) ($definition['access_plan'] ?? ''));
+                if ($candidatePlan === 'Gratuito') {
+                    throw new DomainException('Benefit sem plano de acesso nao possui comparacao objetiva.');
+                }
+                $stmt = $this->db->prepare(
+                    "SELECT id, access_plan
+                     FROM benefit_grants
+                     WHERE user_id = :user_id
+                       AND status = 'APPLIED'
+                       AND access_plan IS NOT NULL
+                       AND grant_starts_at <= :now_start
+                       AND (grant_expires_at IS NULL OR grant_expires_at > :now_end)
+                     FOR UPDATE"
+                );
+                $stmt->execute([':user_id' => $userId, ':now_start' => $now, ':now_end' => $now]);
+                $candidateRank = self::planTier($candidatePlan);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $existing) {
+                    $existingRank = self::planTier(self::canonicalPlan((string) ($existing['access_plan'] ?? '')));
+                    if ($existingRank >= $candidateRank) {
+                        throw new DomainException('Benefit atual possui nivel igual ou superior.');
+                    }
+                    $this->db->prepare("UPDATE benefit_grants SET status = 'REVOKED', revoked_at = UTC_TIMESTAMP(6), updated_at = UTC_TIMESTAMP(6), reason = :reason WHERE id = :id AND status = 'APPLIED'")
+                        ->execute([':reason' => 'Substituido por Benefit de nivel superior.', ':id' => $existing['id']]);
+                    $this->audit((string) $existing['id'], null, $userId, 'grant.replaced', [
+                        'replacement_definition_id' => (string) $definition['id'],
+                        'replacement_access_plan' => $candidatePlan,
+                    ]);
+                }
+                return;
         }
-        $stmt = $this->db->prepare("SELECT COUNT(*) FROM benefit_grants WHERE user_id = :user_id AND benefit_definition_id = :definition_id AND status = 'APPLIED' AND grant_starts_at <= :now_start AND (grant_expires_at IS NULL OR grant_expires_at > :now_end)");
-        $stmt->execute([':user_id' => $userId, ':definition_id' => $definition['id'], ':now_start' => $now, ':now_end' => $now]);
-        if ((int) $stmt->fetchColumn() > 0) {
-            throw new DomainException('Este Benefit ja esta ativo para o usuario.');
+    }
+
+    private function extendExistingAccessGrantIfApplicable(string $userId, array $definition, string $policy, string $now, string $idempotencyKey): ?array
+    {
+        if (strtoupper(trim($policy)) !== 'EXTEND' || strtoupper((string) ($definition['benefit_mode'] ?? '')) !== 'ACCESS_ONLY') {
+            return null;
         }
+        $stmt = $this->db->prepare(
+            "SELECT *
+             FROM benefit_grants
+             WHERE user_id = :user_id
+               AND benefit_definition_id = :definition_id
+               AND status = 'APPLIED'
+               AND grant_starts_at <= :now_start
+               AND (grant_expires_at IS NULL OR grant_expires_at > :now_end)
+             ORDER BY grant_expires_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE"
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':definition_id' => $definition['id'],
+            ':now_start' => $now,
+            ':now_end' => $now,
+        ]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existing) {
+            return null;
+        }
+        $expiresAt = trim((string) ($existing['grant_expires_at'] ?? ''));
+        $extensionDays = max(1, (int) ($definition['access_duration_days'] ?? 0));
+        if ($expiresAt === '' || $extensionDays < 1) {
+            throw new DomainException('Benefit EXTEND exige periodo de acesso com duracao definida.');
+        }
+        $newExpiresAt = gmdate('Y-m-d H:i:s', strtotime($expiresAt) + ($extensionDays * 86400));
+        $this->db->prepare('UPDATE benefit_grants SET grant_expires_at = :expires_at, updated_at = UTC_TIMESTAMP(6) WHERE id = :id')
+            ->execute([':expires_at' => $newExpiresAt, ':id' => $existing['id']]);
+        $this->audit((string) $existing['id'], null, $userId, 'grant.stacking_extended', [
+            'idempotency_key' => $idempotencyKey,
+            'previous_expires_at' => $expiresAt,
+            'new_expires_at' => $newExpiresAt,
+            'extension_days' => $extensionDays,
+        ]);
+        $existing['grant_expires_at'] = $newExpiresAt;
+        return [
+            'id' => (string) $existing['id'],
+            'status' => 'APPLIED',
+            'access_plan' => $existing['access_plan'] ?? ($definition['access_plan'] ?: null),
+            'billing_extension_days' => (int) ($existing['billing_extension_days'] ?? 0),
+            'grant_starts_at' => $existing['grant_starts_at'],
+            'grant_expires_at' => $newExpiresAt,
+        ];
+    }
+
+    private function isRetryableTransactionConflict(PDOException $exception): bool
+    {
+        $errorInfo = $exception->errorInfo ?? [];
+        $driverCode = (int) ($errorInfo[1] ?? 0);
+        $message = strtolower($exception->getMessage());
+        return in_array($driverCode, [1205, 1213, 40001], true)
+            || str_contains($message, 'sqlstate[40001]')
+            || str_contains($message, 'deadlock')
+            || str_contains($message, 'lock wait timeout');
+    }
+
+    private function findGrantByStackingIdempotency(string $key, bool $forUpdate = false): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT g.*
+             FROM benefit_audit_events a
+             INNER JOIN benefit_grants g ON g.id = a.benefit_grant_id
+             WHERE a.action = 'grant.stacking_extended'
+               AND JSON_UNQUOTE(JSON_EXTRACT(a.details_json, '$.idempotency_key')) = :key
+             ORDER BY a.id DESC
+             LIMIT 1" . ($forUpdate ? ' FOR UPDATE' : '')
+        );
+        $stmt->execute([':key' => $key]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
     }
 
     private function findDefinition(string $id, bool $forUpdate = false): ?array

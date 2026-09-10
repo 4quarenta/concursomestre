@@ -32,6 +32,8 @@ const refundBenefitPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm2
 const refundBenefit = fs.existsSync(refundBenefitPath) ? JSON.parse(fs.readFileSync(refundBenefitPath, 'utf8')) : null;
 const cancellationExtensionPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-cancellation-extension-remote.json');
 const cancellationExtension = fs.existsSync(cancellationExtensionPath) ? JSON.parse(fs.readFileSync(cancellationExtensionPath, 'utf8')) : null;
+const finalBenefitPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-final-benefit-remote.json');
+const finalBenefit = fs.existsSync(finalBenefitPath) ? JSON.parse(fs.readFileSync(finalBenefitPath, 'utf8')) : null;
 
 const cases = [
   ...contract.cases.map((item) => ({ ...item, evidence_type: 'DIRECT_CANONICAL_CONTRACT' })),
@@ -152,6 +154,15 @@ for (const cancellationCase of cancellationExtension?.cases ?? []) {
   target.evidence = cancellationCase.evidence_reference;
   target.evidence_type = 'PRELAUNCH_REMOTE_STRIPE_TEST';
   target.actual = cancellationCase.actual;
+}
+for (const finalCase of finalBenefit?.cases ?? []) {
+  const target = cases.find((item) => item.case_id === finalCase.case_id);
+  if (!target || finalCase.status !== 'PASS') continue;
+  target.status = 'PASS';
+  target.evidence = finalCase.evidence_reference || 'M20F03Wave3BFinalClosureBenefitValidationTest.php';
+  target.evidence_type = 'PRELAUNCH_REMOTE_CANONICAL_SERVICE';
+  target.actual = finalCase.actual;
+  if (finalCase.classification) target.classification = finalCase.classification;
 }
 
 const byCategory = Object.groupBy(cases, (item) => item.category);
