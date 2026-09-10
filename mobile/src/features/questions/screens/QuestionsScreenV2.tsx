@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { QuestionCard } from '@/features/questions/components/QuestionCard';
+import { QuestionDetailsPanel } from '@/features/questions/components/QuestionDetailsPanel';
 import {
   QuestionsFilters,
   type AdvancedQuestionFilterValues,
@@ -37,7 +38,7 @@ const difficultyToApi: Record<DifficultyGroup, string[] | undefined> = {
 /**
  * Implementacao F3 da pratica mobile.
  * Usa filtros/paginacao no servidor e TanStack Query em vez de baixar todo o banco.
- * A tela legada permanece no repositorio ate a migracao dos paineis secundarios.
+ * A tela legada permanece no repositorio ate a migracao final de paridade.
  */
 export const QuestionsScreenV2: React.FC = () => {
   const theme = useAppTheme();
@@ -135,15 +136,30 @@ export const QuestionsScreenV2: React.FC = () => {
       : undefined;
 
     return (
-      <QuestionCard
-        answeringOptionIndex={answeringOptionIndex}
-        isSaved={item.id !== undefined && savedQuestionIds.has(String(item.id))}
-        onAnswer={(question, optionIndex) => void handleAnswer(question, optionIndex)}
-        onToggleSaved={(question) => void handleToggleSaved(question)}
-        question={item}
-      />
+      <View>
+        <QuestionCard
+          answeringOptionIndex={answeringOptionIndex}
+          isSaved={item.id !== undefined && savedQuestionIds.has(String(item.id))}
+          onAnswer={(question, optionIndex) => void handleAnswer(question, optionIndex)}
+          onToggleSaved={(question) => void handleToggleSaved(question)}
+          question={item}
+        />
+        <QuestionDetailsPanel
+          question={item}
+          userId={user?.id}
+          userName={user?.name}
+        />
+      </View>
     );
-  }, [answerMutation.isPending, answerMutation.variables, handleAnswer, handleToggleSaved, savedQuestionIds]);
+  }, [
+    answerMutation.isPending,
+    answerMutation.variables,
+    handleAnswer,
+    handleToggleSaved,
+    savedQuestionIds,
+    user?.id,
+    user?.name,
+  ]);
 
   return (
     <FlatList
@@ -250,7 +266,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
     lineHeight: 18,
   },
   separator: {
-    height: spacing[3],
+    height: spacing[5],
   },
   centerState: {
     alignItems: 'center',
