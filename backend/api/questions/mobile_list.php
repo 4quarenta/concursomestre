@@ -14,21 +14,28 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../modules/questions/routes.php';
 
 /**
- * Remove o gabarito de questoes ainda nao respondidas.
- * O DTO de revisao preserva o gabarito somente quando existe userAnswer.
+ * Sanitiza a listagem publica para clientes mobile.
+ *
+ * Na pratica normal, uma questao ja respondida pode preservar o gabarito para revisao.
+ * Em `exam_mode`, nenhum gabarito ou resposta anterior sai no DTO, mesmo quando o
+ * usuario ja resolveu a questao fora daquele simulado.
  */
-function sanitizeMobileQuestionRows(array $result): array
+function sanitizeMobileQuestionRows(array $result, bool $examMode = false): array
 {
     $rows = is_array($result['rows'] ?? null) ? $result['rows'] : [];
 
-    $result['rows'] = array_map(static function ($question): array {
+    $result['rows'] = array_map(static function ($question) use ($examMode): array {
         if (!is_array($question)) {
             return [];
         }
 
         $hasUserAnswer = is_array($question['userAnswer'] ?? null);
-        if (!$hasUserAnswer) {
+        if ($examMode || !$hasUserAnswer) {
             unset($question['resposta'], $question['correctOptionIndex']);
+        }
+
+        if ($examMode) {
+            unset($question['userAnswer'], $question['resolvida']);
         }
 
         return $question;
@@ -42,6 +49,7 @@ try {
     $db = $database->getConnection();
     $authenticatedUserPayload = verifyAuthenticatedUserPayload(false);
     $authenticatedUserId = trim((string) ($authenticatedUserPayload['user_id'] ?? ''));
+    $examMode = filter_var($_GET['exam_mode'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
     $result = buildQuestionsController($db)->listQuestions(
         $authenticatedUserId !== '' ? $authenticatedUserId : null,
@@ -51,7 +59,7 @@ try {
     );
 
     Response::success(
-        sanitizeMobileQuestionRows($result),
+        sanitizeMobileQuestionRows($result, $examMode),
         'Questoes carregadas com sucesso.'
     );
 } catch (InvalidArgumentException $e) {
