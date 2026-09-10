@@ -844,6 +844,7 @@ function billingValidationWaitForInvoicePaid($stripe, string $subscriptionId, st
 function billingValidationCleanupUserArtifacts(PDO $db, string $userId): void
 {
     foreach ([
+        'DELETE FROM admin_audit_logs WHERE admin_user_id = :user_id',
         'DELETE FROM notifications WHERE user_id = :user_id',
         'DELETE FROM user_feedback WHERE user_id = :user_id',
         'DELETE FROM provider_webhook_events WHERE object_id IN (SELECT provider_subscription_id FROM user_subscriptions WHERE user_id = :user_id)',

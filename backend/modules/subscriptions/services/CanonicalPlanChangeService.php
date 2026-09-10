@@ -37,20 +37,20 @@ final class CanonicalPlanChangeService
                 throw new OutOfBoundsException('Nenhuma assinatura Stripe ativa encontrada.');
             }
             $currentPlanId = (int) ($subscription['plan_id'] ?? 0);
-            if ($currentPlanId === (int) $target['id']) {
-                $this->db->commit();
-                return $this->result('NOOP', 'already_current', $subscription, $target, $subscription['current_period_end'] ?? null);
-            }
-
-            $operation = (int) ($target['tier'] ?? 0) > (int) ($subscription['tier'] ?? 0)
-                ? 'UPGRADE'
-                : 'SCHEDULED_DOWNGRADE';
             $stripe = getStripeClient();
             $targetPriceId = $this->resolvePrice($stripe, $target);
             $providerId = (string) $subscription['provider_subscription_id'];
             $before = $stripe->subscriptions->retrieve($providerId, ['expand' => ['items.data.price', 'schedule']]);
             $metadata = $this->normalizeMetadata($before->metadata ?? []);
-            if (($metadata['plan_change_id'] ?? '') === $payload['idempotency_key']) {
+            $providerPriceId = getStripeObjectId($before->items->data[0]->price ?? null);
+            if ($currentPlanId === (int) $target['id'] && $providerPriceId === $targetPriceId) {
+                $this->db->commit();
+                return $this->result('NOOP', ($metadata['plan_change_id'] ?? '') === $payload['idempotency_key'] ? 'idempotent_replay' : 'already_current', $subscription, $target, $metadata['scheduled_effective_at'] ?? $subscription['current_period_end'] ?? null);
+            }
+            $operation = (int) ($target['tier'] ?? 0) >= (int) ($subscription['tier'] ?? 0)
+                ? 'UPGRADE'
+                : 'SCHEDULED_DOWNGRADE';
+            if (($metadata['plan_change_id'] ?? '') === $payload['idempotency_key'] && $providerPriceId === $targetPriceId) {
                 $this->db->commit();
                 return $this->result($operation, 'idempotent_replay', $subscription, $target, $metadata['scheduled_effective_at'] ?? $subscription['current_period_end'] ?? null);
             }

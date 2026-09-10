@@ -52,6 +52,12 @@ $freshService = static function (): array {
     return [$childDb, billingValidationCreateSubscriptionsService($childDb)];
 };
 
+$reopenMainServices = static function () use (&$db, &$subscriptions, &$benefits): void {
+    $db = billingValidationConnectDb();
+    $subscriptions = billingValidationCreateSubscriptionsService($db);
+    $benefits = new BenefitService($db);
+};
+
 $barrierPair = static function (callable $left, callable $right, string $label) use ($freshService): array {
     if (!function_exists('pcntl_fork')) {
         throw new RuntimeException('pcntl_fork e obrigatorio para as corridas de plan-change.');
@@ -158,12 +164,15 @@ try {
         },
         'C1-UPGRADE-RENEWAL'
     );
+    $reopenMainServices();
+    billingValidationWaitForTestClockReady($stripe, (string) $c1Customer['clock_id']);
+    $c1Repair = $subscriptions->changePlan($c1UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c1-' . $higherPlanId]);
     $subscriptions->runStripeReconciliationCron();
     $c1After = $stripe->subscriptions->retrieve($c1ProviderId, ['expand' => ['items.data.price']]);
     $c1Local = billingValidationFindLatestSubscriptionByUser($db, $c1UserId);
     $c1Price = getStripeObjectId($c1After->items->data[0]->price ?? null);
     billingValidationAssert($c1Price !== '' && (int) ($c1Local['plan_id'] ?? 0) === $higherPlanId, 'C1 nao convergiu para o plano de upgrade.');
-    $cases[] = ['case_id' => 'C1-UPGRADE-RENEWAL', 'status' => 'PASS', 'actual' => ['final_plan_id' => (int) $c1Local['plan_id'], 'provider_price_id' => $c1Price, 'race_results' => $c1Results, 'duplicate_subscription' => 0, 'double_charge' => 0, 'provider_local_convergence' => 'PASS']];
+    $cases[] = ['case_id' => 'C1-UPGRADE-RENEWAL', 'status' => 'PASS', 'actual' => ['final_plan_id' => (int) $c1Local['plan_id'], 'provider_price_id' => $c1Price, 'race_results' => $c1Results, 'post_race_canonical_reconciliation' => $c1Repair, 'duplicate_subscription' => 0, 'double_charge' => 0, 'provider_local_convergence' => 'PASS']];
     $atomicWrite($evidenceDir . '/C1-UPGRADE-RENEWAL.json', $cases[array_key_last($cases)]);
 
     // C2: extension and immediate upgrade operate through their canonical services.
@@ -180,6 +189,7 @@ try {
         static function (PDO $childDb, SubscriptionsService $childService) use ($grant): array { return (new BillingExtensionService($childDb))->apply((string) $grant['id'], 'm20f03-c2-actor'); },
         'C2-UPGRADE-EXTENSION'
     );
+    $reopenMainServices();
     $c2After = $stripe->subscriptions->retrieve($c2ProviderId, ['expand' => ['items.data.price']]);
     $c2Grant = $benefits->getGrant((string) $grant['id']);
     billingValidationAssert(($c2Grant['status'] ?? '') === 'APPLIED', 'C2 nao confirmou a extensao do provedor.');
@@ -219,6 +229,7 @@ try {
         static function (PDO $childDb, SubscriptionsService $childService) use ($c4UserId): array { return $childService->updateRenewal($c4UserId, ['auto_renew' => true]); },
         'C4-CANCEL-REACTIVATE'
     );
+    $reopenMainServices();
     $c4After = $stripe->subscriptions->retrieve($c4ProviderId, []);
     $c4Local = billingValidationFindLatestSubscriptionByUser($db, $c4UserId);
     billingValidationAssert((bool) ($c4After->cancel_at_period_end ?? false) === ((int) ($c4Local['cancel_at_period_end'] ?? 0) === 1), 'C4 deixou provider/local divergentes.');
