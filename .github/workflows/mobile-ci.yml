@@ -7,6 +7,9 @@ on:
       - '4quarenta/next-version'
     paths:
       - 'mobile/**'
+      - 'backend/api/questions/mobile_list.php'
+      - 'backend/modules/questions/**'
+      - 'backend/modules/simulations/**'
       - '.github/workflows/mobile-ci.yml'
   pull_request:
     branches:
@@ -14,6 +17,9 @@ on:
       - '4quarenta/**'
     paths:
       - 'mobile/**'
+      - 'backend/api/questions/mobile_list.php'
+      - 'backend/modules/questions/**'
+      - 'backend/modules/simulations/**'
       - '.github/workflows/mobile-ci.yml'
 
 concurrency:
@@ -47,6 +53,9 @@ jobs:
       - name: Run Expo Doctor
         working-directory: mobile
         run: npx expo-doctor
+
+      - name: Verify mobile/backend security contracts
+        run: npm --prefix mobile run contracts:check
 
       - name: Typecheck mobile
         run: npm --prefix mobile run typecheck
