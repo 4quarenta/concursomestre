@@ -119,7 +119,7 @@ export const QuestionsScreenV2: React.FC = () => {
 
   const renderQuestion = React.useCallback(({ item }: { item: Question }) => {
     const pendingVariables = answerMutation.isPending ? answerMutation.variables : undefined;
-    const answeringOptionIndex = pendingVariables?.questionId === item.id
+    const answeringOptionIndex = pendingVariables && pendingVariables.questionId === item.id
       ? pendingVariables.selectedOptionIndex
       : undefined;
 
