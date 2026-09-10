@@ -27,22 +27,45 @@
 - [x] `npm ci` definido no Mobile CI
 - [x] `expo install --check`
 - [x] `expo-doctor`
-- [x] `npm run contract:check`
+- [x] `npm run contracts:check`
+- [x] `npm run qa:smoke`
 - [x] TypeScript `typecheck`
 - [ ] Execução verde do Mobile CI no head do RC
 
-> Estado em 10/09/2026: o GitHub Actions encerrou execuções recentes antes de iniciar qualquer step (`steps: null`/`steps: []`). Este item permanece pendente até o runner voltar a provisionar jobs normalmente; não deve ser marcado como falha funcional do app sem execução dos steps.
+O `qa:smoke` valida automaticamente:
+- versão e build nativos;
+- package/bundle identifier;
+- scheme de deep link;
+- ausência de endpoint local no `app.json`;
+- presença das rotas do MVP;
+- ausência das bridges legadas;
+- proteção de rotas autenticadas;
+- exigência de HTTPS em builds distribuíveis;
+- ligação das tabs às features novas.
+
+> Estado em 10/09/2026: o GitHub Actions continua encerrando execuções recentes antes de iniciar qualquer step (`steps: []`, `runner_id: 0`). Este item permanece pendente até o runner voltar a provisionar jobs normalmente; não deve ser marcado como falha funcional do app sem execução dos steps.
 
 ## Build / distribuição
 
 - [x] Workflow de preview Android configurado
 - [x] Android publica independentemente do resultado do iOS Simulator
+- [x] iOS Simulator marcado como job opcional/`continue-on-error`
 - [x] Checksum SHA-256 previsto para o APK
 - [ ] APK Android RC compilado com sucesso no head atual
 - [ ] GitHub pre-release `mobile-preview-v1.0.0-b1` criada
 - [ ] Asset `ConcursoMestre-Android-preview.apk` confirmado na release
 - [ ] Asset `ConcursoMestre-Android-preview.apk.sha256` confirmado na release
 - [ ] iOS Simulator compilado/anexado, se disponível
+
+## Identidade nativa
+
+- [x] Nome `ConcursoMestre`
+- [x] Scheme `concursomestre`
+- [x] Android package `com.concursomestre.mobile`
+- [x] iOS bundle identifier `com.concursomestre.mobile`
+- [x] Ícone oficial reaproveitado dos assets do ConcursoMestre
+- [x] Splash oficial configurado
+- [x] Adaptive icon Android configurado
 
 ## Smoke test em aparelho físico — Android
 
@@ -69,6 +92,21 @@ Executar somente depois de existir APK do head atual.
 - [ ] Smoke test em iPhone físico
 
 O `.app.zip` do workflow atual é para **iOS Simulator** e não instala em iPhone físico. Distribuição física deve ser feita por TestFlight/internal distribution em etapa própria.
+
+## Store readiness já confirmada
+
+- [x] Expo SDK 57 / target Android API 36 compatível com a exigência técnica atual do Google Play
+- [x] Exclusão de conta disponível dentro do app
+- [x] Documento `STORE_READINESS.md` criado com os gates atuais
+- [ ] URL pública externa de exclusão de conta para Google Play
+- [ ] Política de privacidade pública
+- [ ] Termos de uso públicos
+- [ ] URL pública de suporte
+- [ ] Estratégia de billing compatível com Google Play definida/implementada
+- [ ] Estratégia de billing compatível com App Store definida/implementada
+- [ ] Credenciais/contas de desenvolvedor e assinatura configuradas
+- [ ] AAB Android final validado
+- [ ] TestFlight/archive iOS final validado
 
 ## Critério para encerrar F7
 
