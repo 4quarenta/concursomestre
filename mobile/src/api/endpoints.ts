@@ -15,7 +15,7 @@ export const ENDPOINTS = {
     list: 'plans/list.php',
   },
   questions: {
-    list: 'questionsList',
+    list: 'questions/mobile_list.php',
     submit: 'questionsAnswer',
     stats: 'questionsStats',
     history: 'questionsHistory',
