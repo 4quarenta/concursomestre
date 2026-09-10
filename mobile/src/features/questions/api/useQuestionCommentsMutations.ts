@@ -32,9 +32,13 @@ export const useAddQuestionCommentMutation = (
       queryClient.setQueryData<QuestionComment[]>(
         questionQueryKeys.comments(questionId || 'unknown', userId),
         (current = []) => variables.parentId
-          ? commentsService.addReplyToComments(current, variables.parentId as string, comment)
+          ? commentsService.addReplyToComments(current, variables.parentId, comment)
           : [comment, ...current],
       );
+
+      if (!variables.parentId) {
+        void queryClient.invalidateQueries({ queryKey: questionQueryKeys.lists() });
+      }
     },
   });
 };
