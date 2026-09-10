@@ -6,10 +6,16 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_DISTRIBUTION_CHANNEL": "development"
+      }
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_DISTRIBUTION_CHANNEL": "direct"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -22,6 +28,9 @@
     },
     "production": {
       "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_DISTRIBUTION_CHANNEL": "store"
+      },
       "android": {
         "buildType": "app-bundle"
       }
