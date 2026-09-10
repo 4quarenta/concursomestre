@@ -59,10 +59,7 @@ export interface Question {
   enunciado?: string;
   enunciado_clean?: string;
   itens?: QuestionItem[];
-  /**
-   * Campos de gabarito existem somente em respostas ja liberadas/revisao.
-   * A listagem de uma questao ainda nao respondida nao deve expo-los.
-   */
+  /** Campos de gabarito existem somente quando o servidor liberou revisao. */
   resposta?: number;
   correctOptionIndex?: number;
   dificuldade?: number;
@@ -100,6 +97,8 @@ export interface QuestionListFilters {
   excludeCanceled?: boolean;
   excludeOutdated?: boolean;
   excludeAnswered?: boolean;
+  /** Oculta gabarito e resposta anterior mesmo para questoes ja resolvidas. */
+  examMode?: boolean;
 }
 
 export interface QuestionPageResult {
@@ -114,10 +113,7 @@ export interface UserAnswerInput {
   questionId: number;
   selectedOptionIndex: number;
   timeTaken?: number;
-  /**
-   * Compatibilidade temporaria com a tela legada. O service nao envia esse
-   * valor e o backend nunca deve confiar nele para pontuacao ou estatisticas.
-   */
+  /** Compatibilidade temporaria; nunca e enviado pelo service. */
   isCorrect?: boolean;
 }
 
