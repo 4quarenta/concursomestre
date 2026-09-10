@@ -12,11 +12,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { QuestionCard } from '@/features/questions/components/QuestionCard';
 import {
   QuestionsFilters,
+  type AdvancedQuestionFilterValues,
   type DifficultyGroup,
 } from '@/features/questions/components/QuestionsFilters';
 import { questionQueryKeys } from '@/features/questions/api/queryKeys';
 import { useAnswerQuestionMutation } from '@/features/questions/api/useAnswerQuestionMutation';
 import { useInfiniteQuestionsQuery } from '@/features/questions/api/useInfiniteQuestionsQuery';
+import { useQuestionTaxonomiesQuery } from '@/features/questions/api/useQuestionTaxonomiesQuery';
 import { useAuth } from '@/providers/AuthProvider';
 import { spacing, typography } from '@/theme/tokens';
 import { useAppTheme } from '@/theme/useAppTheme';
@@ -47,6 +49,7 @@ export const QuestionsScreenV2: React.FC = () => {
   const [difficulty, setDifficulty] = React.useState<DifficultyGroup>('all');
   const [onlySaved, setOnlySaved] = React.useState(false);
   const [excludeAnswered, setExcludeAnswered] = React.useState(false);
+  const [advanced, setAdvanced] = React.useState<AdvancedQuestionFilterValues>({});
 
   React.useEffect(() => {
     const timeout = setTimeout(() => {
@@ -59,12 +62,19 @@ export const QuestionsScreenV2: React.FC = () => {
   const filters = React.useMemo<QuestionListFilters>(() => ({
     keyword: debouncedKeyword || undefined,
     difficulty: difficultyToApi[difficulty],
+    subject: advanced.subject,
+    topic: advanced.topic,
+    agency: advanced.agency,
+    organization: advanced.organization,
+    role: advanced.role,
+    year: advanced.year,
     onlySaved: onlySaved || undefined,
     excludeAnswered: excludeAnswered || undefined,
     excludeCanceled: true,
     excludeOutdated: true,
-  }), [debouncedKeyword, difficulty, excludeAnswered, onlySaved]);
+  }), [advanced, debouncedKeyword, difficulty, excludeAnswered, onlySaved]);
 
+  const taxonomiesQuery = useQuestionTaxonomiesQuery();
   const questionsQuery = useInfiniteQuestionsQuery(filters, PAGE_SIZE);
   const answerMutation = useAnswerQuestionMutation(user?.id);
   const savedQuestionIds = React.useMemo(
@@ -78,6 +88,7 @@ export const QuestionsScreenV2: React.FC = () => {
     setDifficulty('all');
     setOnlySaved(false);
     setExcludeAnswered(false);
+    setAdvanced({});
   }, []);
 
   const handleAnswer = React.useCallback(async (question: Question, optionIndex: number) => {
@@ -162,16 +173,26 @@ export const QuestionsScreenV2: React.FC = () => {
           </View>
 
           <QuestionsFilters
+            advanced={advanced}
             difficulty={difficulty}
             excludeAnswered={excludeAnswered}
             keyword={keywordInput}
+            onAdvancedChange={setAdvanced}
             onClear={handleClearFilters}
             onDifficultyChange={setDifficulty}
             onExcludeAnsweredChange={setExcludeAnswered}
             onKeywordChange={setKeywordInput}
             onOnlySavedChange={setOnlySaved}
             onlySaved={onlySaved}
+            taxonomies={taxonomiesQuery.data}
+            taxonomiesLoading={taxonomiesQuery.isLoading}
           />
+
+          {taxonomiesQuery.isError ? (
+            <Text style={styles.taxonomyWarning}>
+              Os filtros avancados nao puderam ser carregados. Busca e filtros basicos continuam disponiveis.
+            </Text>
+          ) : null}
 
           {questionsQuery.isLoading ? (
             <View style={styles.centerState}>
@@ -222,6 +243,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
   subtitle: {
     color: theme.textMuted,
     fontSize: typography.size.sm,
+  },
+  taxonomyWarning: {
+    color: theme.warning,
+    fontSize: typography.size.xs,
+    lineHeight: 18,
   },
   separator: {
     height: spacing[3],
