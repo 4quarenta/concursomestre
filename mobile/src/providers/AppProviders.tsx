@@ -1,6 +1,7 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { QueryProvider, queryClient } from '@/providers/QueryProvider';
 
@@ -32,13 +33,15 @@ const QuerySessionBoundary: React.FC<React.PropsWithChildren> = ({ children }) =
  */
 export const AppProviders: React.FC<React.PropsWithChildren> = ({ children }) => (
   <SafeAreaProvider>
-    <QueryProvider>
-      <AuthProvider>
-        <QuerySessionBoundary>
-          <StatusBar style="auto" />
-          {children}
-        </QuerySessionBoundary>
-      </AuthProvider>
-    </QueryProvider>
+    <AppErrorBoundary onReset={() => queryClient.resetQueries()}>
+      <QueryProvider>
+        <AuthProvider>
+          <QuerySessionBoundary>
+            <StatusBar style="auto" />
+            {children}
+          </QuerySessionBoundary>
+        </AuthProvider>
+      </QueryProvider>
+    </AppErrorBoundary>
   </SafeAreaProvider>
 );
