@@ -68,6 +68,14 @@ if (!fs.existsSync(appJsonPath)) {
   'mobile/app/+not-found.tsx',
 ].forEach((file) => requireFile(file));
 
+// Recursos publicos exigidos para distribuicao e suporte.
+[
+  'src/app/privacy/page.tsx',
+  'src/app/terms/page.tsx',
+  'src/app/support/page.tsx',
+  'src/app/account-deletion/page.tsx',
+].forEach((file) => requireFile(file));
+
 // Bridges antigas nao podem voltar ao bundle publicavel.
 [
   'mobile/app/(app)/SimulationRun.tsx',
@@ -94,6 +102,45 @@ requireText(
   'mobile/src/config/runtime.ts',
   'EXPO_PUBLIC_API_BASE_URL',
   'Runtime deve exigir configuracao explicita da API fora de desenvolvimento.',
+);
+
+// Links publicos devem permanecer HTTPS e no dominio oficial.
+for (const [key, route] of Object.entries({
+  privacy: '/privacy',
+  terms: '/terms',
+  support: '/support',
+  accountDeletion: '/account-deletion',
+})) {
+  requireText(
+    'mobile/src/config/publicLinks.ts',
+    `${key}: \`${'${PUBLIC_WEB_BASE_URL}'}${route}\``,
+    `Link publico ${key} deve permanecer configurado no dominio oficial.`,
+  );
+}
+requireText(
+  'mobile/src/config/publicLinks.ts',
+  "PUBLIC_WEB_BASE_URL = 'https://concursomestre.com'",
+  'Links publicos devem usar HTTPS no dominio oficial do ConcursoMestre.',
+);
+requireText(
+  'mobile/src/screens/auth/LoginScreen.tsx',
+  'PUBLIC_LINKS.privacy',
+  'Privacidade deve estar acessivel antes do login.',
+);
+requireText(
+  'mobile/src/screens/auth/LoginScreen.tsx',
+  'PUBLIC_LINKS.support',
+  'Suporte deve estar acessivel antes do login.',
+);
+requireText(
+  'mobile/src/screens/auth/RegisterScreen.tsx',
+  'PUBLIC_LINKS.terms',
+  'Termos devem estar acessiveis no cadastro.',
+);
+requireText(
+  'mobile/src/screens/auth/RegisterScreen.tsx',
+  'PUBLIC_LINKS.privacy',
+  'Privacidade deve estar acessivel no cadastro.',
 );
 
 // As rotas ativas devem apontar para as features novas.
