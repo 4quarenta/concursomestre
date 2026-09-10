@@ -142,7 +142,7 @@ try {
     $stmt = $db->prepare("SELECT COUNT(*) FROM benefit_grants WHERE user_id = :user AND status = 'APPLIED'");
     $stmt->execute([':user' => $user]);
     $activeCount = (int) $stmt->fetchColumn();
-    $assert($actualSeconds >= $expectedSeconds - 2 * 3600 && $actualSeconds <= $expectedSeconds + 2 * 3600, 'EXTEND did not merge the access period.');
+    $assert($actualSeconds >= $expectedSeconds - 2 * 3600 && $actualSeconds <= $expectedSeconds + 2 * 3600, 'EXTEND did not merge the access period: actual=' . $actualSeconds . '; first=' . (string) $first['grant_expires_at'] . '; second=' . (string) $second['grant_expires_at'] . '; starts=' . (string) $first['grant_starts_at']);
     $assert($activeCount === 1 && $replay['grant_expires_at'] === $second['grant_expires_at'], 'EXTEND replay produced a duplicate effect.');
     $cases[] = ['case_id' => 'STACKING-EXTEND', 'status' => 'PASS', 'actual' => ['active_grants' => $activeCount, 'period_seconds' => $actualSeconds, 'duplicate_effects' => 0, 'stale_base' => 0]];
     $atomicWrite($evidenceDir . '/m20f03-wave3b-final-STACKING-EXTEND.json', $cases[array_key_last($cases)]);

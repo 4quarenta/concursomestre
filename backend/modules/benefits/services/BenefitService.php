@@ -752,7 +752,8 @@ final class BenefitService
         $starts = (string) ($input['grant_starts_at'] ?? gmdate('Y-m-d H:i:s'));
         $expires = $input['grant_expires_at'] ?? $definition['expires_at'] ?? null;
         if ((int) ($definition['access_duration_days'] ?? 0) > 0) {
-            $durationExpires = gmdate('Y-m-d H:i:s', strtotime($starts) + ((int) $definition['access_duration_days'] * 86400));
+            $startDate = new DateTimeImmutable($starts, new DateTimeZone('UTC'));
+            $durationExpires = $startDate->modify('+' . (int) $definition['access_duration_days'] . ' days')->format('Y-m-d H:i:s');
             if ($expires === null || strtotime((string) $expires) > strtotime($durationExpires)) {
                 $expires = $durationExpires;
             }
@@ -875,7 +876,8 @@ final class BenefitService
         if ($expiresAt === '' || $extensionDays < 1) {
             throw new DomainException('Benefit EXTEND exige periodo de acesso com duracao definida.');
         }
-        $newExpiresAt = gmdate('Y-m-d H:i:s', strtotime($expiresAt) + ($extensionDays * 86400));
+        $expiryDate = new DateTimeImmutable($expiresAt, new DateTimeZone('UTC'));
+        $newExpiresAt = $expiryDate->modify('+' . $extensionDays . ' days')->format('Y-m-d H:i:s');
         $this->db->prepare('UPDATE benefit_grants SET grant_expires_at = :expires_at, updated_at = UTC_TIMESTAMP(6) WHERE id = :id')
             ->execute([':expires_at' => $newExpiresAt, ':id' => $existing['id']]);
         $this->audit((string) $existing['id'], null, $userId, 'grant.stacking_extended', [
