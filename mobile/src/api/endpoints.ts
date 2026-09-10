@@ -61,6 +61,8 @@ export const ENDPOINTS = {
     listCards: 'users/list_cards.php',
     removeCard: 'users/remove_card.php',
     setDefaultCard: 'users/set_default_card.php',
+    changePassword: 'users/change_password.php',
+    deleteAccount: 'users/delete_mobile.php',
   },
   subscriptions: {
     createStripeCheckout: 'subscriptions/create_stripe_checkout.php',

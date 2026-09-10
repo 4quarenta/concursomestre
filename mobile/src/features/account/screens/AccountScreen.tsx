@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useAccountTransactionsQuery } from '@/features/account/api/useAccountTransactionsQuery';
 import { useAuth } from '@/providers/AuthProvider';
+import { accountService } from '@/services/auth/accountService';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
 import type { MobileTransaction } from '@/types/transactions';
@@ -26,8 +27,7 @@ const formatDate = (raw?: string | number) => {
 };
 
 const formatCurrency = (raw?: number) => new Intl.NumberFormat('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
+  style: 'currency', currency: 'BRL',
 }).format(Number.isFinite(Number(raw)) ? Number(raw) : 0);
 
 const transactionTitle = (item: MobileTransaction) => item.planName || item.transactionName || item.description || 'Transacao';
@@ -38,9 +38,17 @@ export const AccountScreen: React.FC = () => {
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const { user, logout, updateUser, refreshProfile, isLoading } = useAuth();
   const transactionsQuery = useAccountTransactionsQuery();
+
   const [editingName, setEditingName] = React.useState(false);
   const [name, setName] = React.useState(user?.name || '');
   const [savingName, setSavingName] = React.useState(false);
+  const [currentPassword, setCurrentPassword] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [changingPassword, setChangingPassword] = React.useState(false);
+  const [deletionPassword, setDeletionPassword] = React.useState('');
+  const [deletionReason, setDeletionReason] = React.useState('');
+  const [requestingDeletion, setRequestingDeletion] = React.useState(false);
 
   React.useEffect(() => {
     if (!editingName) setName(user?.name || '');
@@ -49,9 +57,7 @@ export const AccountScreen: React.FC = () => {
   const subscription = user?.subscription;
   const planName = subscription?.plan?.name || user?.plan || 'Gratuito';
   const subscriptionStatus = subscription?.status || 'sem assinatura';
-  const renewalEnabled = subscription?.cancel_at_period_end === true
-    ? false
-    : subscription?.auto_renew !== false;
+  const renewalEnabled = subscription?.cancel_at_period_end === true ? false : subscription?.auto_renew !== false;
 
   const refresh = async () => {
     await Promise.allSettled([refreshProfile(), transactionsQuery.refetch()]);
@@ -59,32 +65,65 @@ export const AccountScreen: React.FC = () => {
 
   const saveName = async () => {
     const nextName = name.trim();
-    if (nextName.length < 2) {
-      Alert.alert('Conta', 'Informe um nome valido.');
-      return;
-    }
+    if (nextName.length < 2) return Alert.alert('Conta', 'Informe um nome valido.');
     setSavingName(true);
     try {
       await updateUser({ name: nextName });
       setEditingName(false);
     } catch (error: any) {
       Alert.alert('Conta', error?.message || 'Nao foi possivel atualizar o nome.');
-    } finally {
-      setSavingName(false);
-    }
+    } finally { setSavingName(false); }
   };
 
-  const confirmLogout = () => {
-    Alert.alert('Sair da conta?', 'Sua sessao neste aparelho sera encerrada.', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Sair', style: 'destructive', onPress: () => void logout() },
-    ]);
+  const changePassword = async () => {
+    if (!currentPassword || !newPassword) return Alert.alert('Seguranca', 'Informe a senha atual e a nova senha.');
+    if (newPassword.length < 6) return Alert.alert('Seguranca', 'A nova senha precisa ter pelo menos 6 caracteres.');
+    if (newPassword !== confirmPassword) return Alert.alert('Seguranca', 'A confirmacao da nova senha nao confere.');
+    setChangingPassword(true);
+    try {
+      const result = await accountService.changePassword(currentPassword, newPassword);
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+      Alert.alert('Seguranca', result.message);
+    } catch (error: any) {
+      Alert.alert('Seguranca', error?.message || 'Nao foi possivel alterar a senha.');
+    } finally { setChangingPassword(false); }
   };
+
+  const requestDeletion = () => {
+    if (!deletionPassword || deletionReason.trim().length < 3) {
+      Alert.alert('Excluir conta', 'Informe sua senha atual e o motivo da exclusao.');
+      return;
+    }
+    Alert.alert(
+      'Solicitar exclusao da conta?',
+      'Sua solicitacao sera registrada no servidor. Esta acao exige reautenticacao pela senha atual.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Solicitar exclusao', style: 'destructive', onPress: async () => {
+            setRequestingDeletion(true);
+            try {
+              const result = await accountService.requestAccountDeletion(deletionPassword, deletionReason.trim());
+              Alert.alert('Conta', result.message, [{ text: 'OK', onPress: () => void logout() }]);
+            } catch (error: any) {
+              Alert.alert('Excluir conta', error?.message || 'Nao foi possivel registrar a solicitacao.');
+            } finally { setRequestingDeletion(false); }
+          },
+        },
+      ],
+    );
+  };
+
+  const confirmLogout = () => Alert.alert('Sair da conta?', 'Sua sessao neste aparelho sera encerrada.', [
+    { text: 'Cancelar', style: 'cancel' },
+    { text: 'Sair', style: 'destructive', onPress: () => void logout() },
+  ]);
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={isLoading || transactionsQuery.isRefetching} onRefresh={() => void refresh()} tintColor={theme.primary} />}
     >
       <View style={styles.headerCard}>
@@ -98,7 +137,6 @@ export const AccountScreen: React.FC = () => {
           <Text style={styles.cardTitle}>Dados pessoais</Text>
           {!editingName ? <Pressable onPress={() => setEditingName(true)}><Text style={styles.link}>Editar</Text></Pressable> : null}
         </View>
-
         {editingName ? (
           <View style={styles.stack}>
             <Text style={styles.label}>Nome</Text>
@@ -125,40 +163,42 @@ export const AccountScreen: React.FC = () => {
           {subscription?.current_period_end ? <Text style={styles.muted}>Ciclo atual ate {formatDate(subscription.current_period_end)}</Text> : null}
           {subscription ? <Text style={styles.muted}>Renovacao automatica: {renewalEnabled ? 'ativada' : 'desativada'}</Text> : null}
         </View>
-        <Text style={styles.helper}>Acoes de cobranca permanecem fora desta tela ate o contrato final de gateway ser consolidado. A Conta nao assume Stripe, Mercado Pago ou outro provedor como regra fixa.</Text>
+        <Text style={styles.helper}>A Conta permanece neutra quanto ao gateway. Acoes especificas de cobranca serao ligadas ao provedor configurado no backend, sem acoplamento fixo a Stripe.</Text>
       </View>
 
       <View style={styles.card}>
-        <View style={styles.rowBetween}>
-          <Text style={styles.cardTitle}>Transacoes recentes</Text>
-          <Pressable onPress={() => void transactionsQuery.refetch()}><Text style={styles.link}>Atualizar</Text></Pressable>
-        </View>
-
+        <View style={styles.rowBetween}><Text style={styles.cardTitle}>Transacoes recentes</Text><Pressable onPress={() => void transactionsQuery.refetch()}><Text style={styles.link}>Atualizar</Text></Pressable></View>
         {transactionsQuery.isPending ? <ActivityIndicator color={theme.primary} /> : null}
-        {transactionsQuery.isError ? (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorText}>{transactionsQuery.error instanceof Error ? transactionsQuery.error.message : 'Nao foi possivel carregar as transacoes.'}</Text>
-          </View>
-        ) : null}
+        {transactionsQuery.isError ? <View style={styles.errorCard}><Text style={styles.errorText}>{transactionsQuery.error instanceof Error ? transactionsQuery.error.message : 'Nao foi possivel carregar as transacoes.'}</Text></View> : null}
         {!transactionsQuery.isPending && !transactionsQuery.isError && (transactionsQuery.data?.length || 0) === 0 ? <Text style={styles.muted}>Nenhuma transacao encontrada.</Text> : null}
-
         {(transactionsQuery.data || []).map((item) => (
           <View key={String(item.id)} style={styles.transactionRow}>
-            <View style={styles.transactionText}>
-              <Text style={styles.transactionTitle}>{transactionTitle(item)}</Text>
-              <Text style={styles.muted}>{formatDate(item.createdAt || item.timestamp)} · {transactionProvider(item)}</Text>
-            </View>
-            <View style={styles.transactionRight}>
-              <Text style={styles.value}>{formatCurrency(item.amount)}</Text>
-              <Text style={styles.status}>{item.status || '--'}</Text>
-            </View>
+            <View style={styles.transactionText}><Text style={styles.transactionTitle}>{transactionTitle(item)}</Text><Text style={styles.muted}>{formatDate(item.createdAt || item.timestamp)} · {transactionProvider(item)}</Text></View>
+            <View style={styles.transactionRight}><Text style={styles.value}>{formatCurrency(item.amount)}</Text><Text style={styles.status}>{item.status || '--'}</Text></View>
           </View>
         ))}
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>Seguranca</Text>
+        <Text style={styles.helper}>Alterar senha</Text>
+        <TextInput secureTextEntry value={currentPassword} onChangeText={setCurrentPassword} style={styles.input} placeholder="Senha atual" placeholderTextColor={theme.textSubtle} autoCapitalize="none" />
+        <TextInput secureTextEntry value={newPassword} onChangeText={setNewPassword} style={styles.input} placeholder="Nova senha" placeholderTextColor={theme.textSubtle} autoCapitalize="none" />
+        <TextInput secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} style={styles.input} placeholder="Confirmar nova senha" placeholderTextColor={theme.textSubtle} autoCapitalize="none" />
+        <Pressable disabled={changingPassword} style={[styles.primaryButtonWide, changingPassword && styles.disabled]} onPress={() => void changePassword()}>{changingPassword ? <ActivityIndicator color={theme.onPrimary} /> : <Text style={styles.primaryText}>Alterar senha</Text>}</Pressable>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Exclusao da conta</Text>
+        <Text style={styles.helper}>O pedido de exclusao e registrado no servidor e exige confirmacao da senha atual. O app encerra a sessao apos o pedido.</Text>
+        <TextInput secureTextEntry value={deletionPassword} onChangeText={setDeletionPassword} style={styles.input} placeholder="Senha atual" placeholderTextColor={theme.textSubtle} autoCapitalize="none" />
+        <TextInput value={deletionReason} onChangeText={setDeletionReason} style={[styles.input, styles.multiline]} placeholder="Motivo da exclusao" placeholderTextColor={theme.textSubtle} multiline />
+        <Pressable disabled={requestingDeletion} onPress={requestDeletion} style={[styles.dangerButton, requestingDeletion && styles.disabled]}>{requestingDeletion ? <ActivityIndicator color={theme.danger} /> : <Text style={styles.dangerText}>Solicitar exclusao da conta</Text>}</Pressable>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>Sessao</Text>
-        <Pressable onPress={confirmLogout} style={styles.dangerButton}><Text style={styles.dangerText}>Sair da conta</Text></Pressable>
+        <Pressable onPress={confirmLogout} style={styles.secondaryButtonWide}><Text style={styles.secondaryText}>Sair da conta</Text></Pressable>
       </View>
     </ScrollView>
   );
@@ -178,11 +218,14 @@ const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
   label: { color: theme.textMuted, fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
   value: { color: theme.text, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
   link: { color: theme.primary, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
-  input: { backgroundColor: theme.surfaceSubtle, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, color: theme.text, minHeight: 48, paddingHorizontal: spacing[3] },
+  input: { backgroundColor: theme.surfaceSubtle, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, color: theme.text, minHeight: 48, paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
+  multiline: { minHeight: 84, textAlignVertical: 'top' },
   actionsRow: { flexDirection: 'row', gap: spacing[2] },
   primaryButton: { alignItems: 'center', backgroundColor: theme.primary, borderRadius: radius.md, flex: 1, justifyContent: 'center', minHeight: 46, paddingHorizontal: spacing[4] },
+  primaryButtonWide: { alignItems: 'center', backgroundColor: theme.primary, borderRadius: radius.md, justifyContent: 'center', minHeight: 48, paddingHorizontal: spacing[4] },
   primaryText: { color: theme.onPrimary, fontWeight: typography.weight.bold },
   secondaryButton: { alignItems: 'center', backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flex: 1, justifyContent: 'center', minHeight: 46, paddingHorizontal: spacing[4] },
+  secondaryButtonWide: { alignItems: 'center', backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, justifyContent: 'center', minHeight: 48, paddingHorizontal: spacing[4] },
   secondaryText: { color: theme.text, fontWeight: typography.weight.bold },
   disabled: { opacity: 0.55 },
   planCard: { backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder, borderRadius: radius.md, borderWidth: 1, gap: spacing[1], padding: spacing[3] },
