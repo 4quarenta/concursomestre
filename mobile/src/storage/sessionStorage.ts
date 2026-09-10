@@ -12,6 +12,25 @@ export type SessionSnapshot = {
   user: UserProfile | null;
 };
 
+type SessionListener = (snapshot: SessionSnapshot) => void;
+const sessionListeners = new Set<SessionListener>();
+
+const currentSnapshot = (): SessionSnapshot => ({
+  accessToken: accessTokenMemory,
+  user: currentUserMemory,
+});
+
+const notifySessionListeners = (): void => {
+  const snapshot = currentSnapshot();
+  sessionListeners.forEach((listener) => {
+    try {
+      listener(snapshot);
+    } catch {
+      // Um listener de UI nao pode interromper a persistencia/limpeza da sessao.
+    }
+  });
+};
+
 /**
  * Persistencia segura de identidade/sessao.
  * Mantem um espelho em memoria apenas para leitura sincrona pelo cliente HTTP.
@@ -35,10 +54,7 @@ export const sessionStorage = {
       currentUserMemory = null;
     }
 
-    return {
-      accessToken: accessTokenMemory,
-      user: currentUserMemory,
-    };
+    return currentSnapshot();
   },
 
   async setSession(token: string | null, user?: UserProfile | null): Promise<void> {
@@ -58,6 +74,8 @@ export const sessionStorage = {
         await SecureStore.deleteItemAsync(USER_KEY);
       }
     }
+
+    notifySessionListeners();
   },
 
   async clearSession(): Promise<void> {
@@ -67,6 +85,12 @@ export const sessionStorage = {
       SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
       SecureStore.deleteItemAsync(USER_KEY),
     ]);
+    notifySessionListeners();
+  },
+
+  subscribe(listener: SessionListener): () => void {
+    sessionListeners.add(listener);
+    return () => sessionListeners.delete(listener);
   },
 
   getAccessToken(): string | null {

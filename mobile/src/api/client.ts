@@ -50,10 +50,12 @@ export const getAssetUrl = (resourcePath?: string | null): string => {
 
 const refreshSessionToken = async (): Promise<string | null> => {
   const currentToken = sessionStorage.getAccessToken();
+  if (!currentToken) return null;
+
   const response = await authHttp.post<any>(ENDPOINTS.auth.refresh, undefined, {
     headers: {
-      Authorization: currentToken ? `Bearer ${currentToken}` : undefined,
-      'X-Auth-Token': currentToken || undefined,
+      Authorization: `Bearer ${currentToken}`,
+      'X-Auth-Token': currentToken,
     },
   });
 
@@ -71,6 +73,29 @@ const refreshSessionToken = async (): Promise<string | null> => {
   }
 
   return nextToken;
+};
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+const refreshSessionTokenSingleFlight = (): Promise<string | null> => {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSessionToken()
+      .catch(() => null)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+
+  return refreshInFlight;
+};
+
+const isAuthenticationRequest = (config: RetryConfig): boolean => {
+  const url = String(config.url || '');
+  return [
+    ENDPOINTS.auth.login,
+    ENDPOINTS.auth.register,
+    ENDPOINTS.auth.refresh,
+  ].some((endpoint) => url.includes(endpoint));
 };
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -92,10 +117,11 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const config = (error.config || {}) as RetryConfig;
     const status = error.response?.status;
+    const authRequest = isAuthenticationRequest(config);
 
-    if (status === 401 && !config._retry) {
+    if (status === 401 && !authRequest && !config._retry) {
       config._retry = true;
-      const refreshedToken = await refreshSessionToken();
+      const refreshedToken = await refreshSessionTokenSingleFlight();
 
       if (refreshedToken && config.headers) {
         config.headers.Authorization = `Bearer ${refreshedToken}`;
@@ -104,7 +130,7 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (status === 401) {
+    if (status === 401 && !authRequest) {
       await sessionStorage.clearSession();
     }
 

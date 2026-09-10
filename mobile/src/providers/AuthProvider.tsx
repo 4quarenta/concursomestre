@@ -198,6 +198,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   React.useEffect(() => {
+    const unsubscribe = sessionStore.subscribe((snapshot) => {
+      if (!snapshot.accessToken) {
+        setUser(null);
+        setSystemSettings(systemSettingsService.createDefaultSystemSettings());
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
+  React.useEffect(() => {
     const bootstrap = async () => {
       try {
         const snapshot = await sessionStore.hydrate();
