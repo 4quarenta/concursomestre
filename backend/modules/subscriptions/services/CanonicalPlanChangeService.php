@@ -161,7 +161,9 @@ final class CanonicalPlanChangeService
         if ($priceId !== '') return $priceId;
         $productId = trim((string) ($plan['stripe_product_id'] ?? '')) ?: getOrCreateStripeProductId($this->db, $plan, $stripe);
         if ($productId === '') throw new DomainException('O plano de destino nao possui produto Stripe configurado.');
-        $price = $stripe->prices->create(['product' => $productId, 'currency' => 'brl', 'unit_amount' => formatMoneyToCents((float) ($plan['price'] ?? 0)), 'recurring' => ['interval' => (string) ($plan['interval_unit'] ?? 'month'), 'interval_count' => max(1, (int) ($plan['interval_count'] ?? 1))], 'metadata' => ['plan_id' => (string) $plan['id'], 'source' => 'canonical_plan_change']], ['idempotency_key' => 'plan_catalog_price_' . (int) $plan['id']]);
+        $pricePayload = ['product' => $productId, 'currency' => 'brl', 'unit_amount' => formatMoneyToCents((float) ($plan['price'] ?? 0)), 'recurring' => ['interval' => (string) ($plan['interval_unit'] ?? 'month'), 'interval_count' => max(1, (int) ($plan['interval_count'] ?? 1))], 'metadata' => ['plan_id' => (string) $plan['id'], 'source' => 'canonical_plan_change']];
+        $priceKey = 'plan_catalog_price_' . (int) $plan['id'] . '_' . substr(hash('sha256', json_encode($pricePayload)), 0, 16);
+        $price = $stripe->prices->create($pricePayload, ['idempotency_key' => $priceKey]);
         $priceId = trim((string) ($price->id ?? ''));
         if ($priceId === '') throw new RuntimeException('Stripe nao retornou o preco canonico do plano.');
         $this->repository->updatePlanStripePriceId((int) $plan['id'], $priceId);

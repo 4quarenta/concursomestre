@@ -155,8 +155,8 @@ try {
     $c1Before = $stripe->subscriptions->retrieve($c1ProviderId, ['expand' => ['items.data.price']]);
     $c1End = $periodEnd($c1Before);
     $c1Results = $barrierPair(
-        static function (PDO $childDb, SubscriptionsService $childService) use ($c1UserId, $higherPlanId): array {
-            return $childService->changePlan($c1UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c1-' . $higherPlanId]);
+        static function (PDO $childDb, SubscriptionsService $childService) use ($c1UserId, $higherPlanId, $suffix): array {
+            return $childService->changePlan($c1UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c1-' . $higherPlanId . '-' . $suffix]);
         },
         static function (PDO $childDb, SubscriptionsService $childService) use ($stripe, $c1Customer, $c1End): array {
             billingValidationAdvanceTestClock($stripe, (string) $c1Customer['clock_id'], $c1End + 10);
@@ -166,7 +166,7 @@ try {
     );
     $reopenMainServices();
     billingValidationWaitForTestClockReady($stripe, (string) $c1Customer['clock_id']);
-    $c1Repair = $subscriptions->changePlan($c1UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c1-' . $higherPlanId]);
+    $c1Repair = $subscriptions->changePlan($c1UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c1-' . $higherPlanId . '-' . $suffix]);
     $subscriptions->runStripeReconciliationCron();
     $c1After = $stripe->subscriptions->retrieve($c1ProviderId, ['expand' => ['items.data.price']]);
     $c1Local = billingValidationFindLatestSubscriptionByUser($db, $c1UserId);
@@ -185,7 +185,7 @@ try {
     $grant = $benefits->grant($c2UserId, (string) $definition['id'], ['source_type' => 'ADMIN_MANUAL', 'source_reference' => 'm20f03-c2', 'idempotency_key' => 'm20f03-c2-' . $suffix], $c2UserId);
     $grants[] = (string) $grant['id'];
     $c2Results = $barrierPair(
-        static function (PDO $childDb, SubscriptionsService $childService) use ($c2UserId, $higherPlanId): array { return $childService->changePlan($c2UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c2-upgrade-' . $higherPlanId]); },
+        static function (PDO $childDb, SubscriptionsService $childService) use ($c2UserId, $higherPlanId, $suffix): array { return $childService->changePlan($c2UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c2-upgrade-' . $higherPlanId . '-' . $suffix]); },
         static function (PDO $childDb, SubscriptionsService $childService) use ($grant): array { return (new BillingExtensionService($childDb))->apply((string) $grant['id'], 'm20f03-c2-actor'); },
         'C2-UPGRADE-EXTENSION'
     );
@@ -237,7 +237,7 @@ try {
     $atomicWrite($evidenceDir . '/C4-CANCEL-REACTIVATE.json', $cases[array_key_last($cases)]);
 
     // Upgrade must keep the already confirmed extension on the same subscription.
-    [$user] = $createUser($db, 'upgrade-extension');
+    [$user] = $createUser($db, 'upg-ext');
     $upgradeUserId = (string) $user['id'];
     $upgradeScenario = billingValidationCreateActiveInlineSubscription($db, $subscriptions, $stripe, $upgradeUserId, $basePlanId);
     $upgradeProviderId = (string) $upgradeScenario['creation']['subscription_id'];
@@ -254,7 +254,7 @@ try {
     $atomicWrite($evidenceDir . '/UPGRADE-PRESERVES-EXTENSION.json', $cases[array_key_last($cases)]);
 
     // Downgrade is scheduled at the provider-confirmed extended boundary.
-    [$user] = $createUser($db, 'downgrade-extension');
+    [$user] = $createUser($db, 'dng-ext');
     $downgradeUserId = (string) $user['id'];
     $downgradeScenario = billingValidationCreateActiveInlineSubscription($db, $subscriptions, $stripe, $downgradeUserId, $basePlanId);
     $downgradeProviderId = (string) $downgradeScenario['creation']['subscription_id'];
