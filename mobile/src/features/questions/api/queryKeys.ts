@@ -10,6 +10,12 @@ export const questionQueryKeys = {
   history: (questionId: string | number, userId?: string) => (
     [...questionQueryKeys.all, 'history', String(questionId), userId || 'anonymous'] as const
   ),
+  comments: (questionId: string | number, userId?: string) => (
+    [...questionQueryKeys.all, 'comments', String(questionId), userId || 'anonymous'] as const
+  ),
+  notes: (userId?: string) => (
+    [...questionQueryKeys.all, 'notes', userId || 'anonymous'] as const
+  ),
 };
 
 export default questionQueryKeys;
