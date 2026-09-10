@@ -5,24 +5,17 @@ import {
   QueryClientProvider,
   focusManager,
 } from '@tanstack/react-query';
-
-const shouldRetryQuery = (failureCount: number, error: unknown): boolean => {
-  const status = (error as { response?: { status?: number } } | undefined)?.response?.status;
-
-  if (typeof status === 'number' && status >= 400 && status < 500) {
-    return false;
-  }
-
-  return failureCount < 1;
-};
+import { retryDelayMs, shouldRetryApiFailure } from '@/api/transportPolicy';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 60_000,
       gcTime: 10 * 60_000,
-      retry: shouldRetryQuery,
+      retry: shouldRetryApiFailure,
+      retryDelay: retryDelayMs,
       refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
     },
     mutations: {
       retry: false,
