@@ -1,19 +1,37 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { TaxonomyPickerField } from '@/features/questions/components/TaxonomyPickerField';
+import type {
+  QuestionTaxonomies,
+  QuestionTaxonomyOption,
+} from '@/features/questions/api/taxonomyService';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme } from '@/theme/useAppTheme';
 
 type DifficultyGroup = 'all' | 'easy' | 'medium' | 'hard';
+
+export type AdvancedQuestionFilterValues = {
+  subject?: string;
+  topic?: string;
+  agency?: string;
+  organization?: string;
+  role?: string;
+  year?: string;
+};
 
 type QuestionsFiltersProps = {
   keyword: string;
   difficulty: DifficultyGroup;
   onlySaved: boolean;
   excludeAnswered: boolean;
+  advanced: AdvancedQuestionFilterValues;
+  taxonomies?: QuestionTaxonomies;
+  taxonomiesLoading?: boolean;
   onKeywordChange: (value: string) => void;
   onDifficultyChange: (value: DifficultyGroup) => void;
   onOnlySavedChange: (value: boolean) => void;
   onExcludeAnsweredChange: (value: boolean) => void;
+  onAdvancedChange: (value: AdvancedQuestionFilterValues) => void;
   onClear: () => void;
 };
 
@@ -29,14 +47,29 @@ export const QuestionsFilters: React.FC<QuestionsFiltersProps> = ({
   difficulty,
   onlySaved,
   excludeAnswered,
+  advanced,
+  taxonomies,
+  taxonomiesLoading = false,
   onKeywordChange,
   onDifficultyChange,
   onOnlySavedChange,
   onExcludeAnsweredChange,
+  onAdvancedChange,
   onClear,
 }) => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
+  const yearOptions = React.useMemo<QuestionTaxonomyOption[]>(
+    () => (taxonomies?.anos || []).map((year) => ({ id: year, nome: year })),
+    [taxonomies?.anos],
+  );
+
+  const setAdvanced = React.useCallback((
+    key: keyof AdvancedQuestionFilterValues,
+    value?: string,
+  ) => {
+    onAdvancedChange({ ...advanced, [key]: value });
+  }, [advanced, onAdvancedChange]);
 
   return (
     <View style={styles.container}>
@@ -68,6 +101,51 @@ export const QuestionsFilters: React.FC<QuestionsFiltersProps> = ({
             </Pressable>
           );
         })}
+      </View>
+
+      <View style={styles.taxonomyGrid}>
+        <TaxonomyPickerField
+          label="Materia"
+          loading={taxonomiesLoading}
+          onChange={(value) => setAdvanced('subject', value)}
+          options={taxonomies?.materias || []}
+          value={advanced.subject}
+        />
+        <TaxonomyPickerField
+          label="Assunto"
+          loading={taxonomiesLoading}
+          onChange={(value) => setAdvanced('topic', value)}
+          options={taxonomies?.assuntos || []}
+          value={advanced.topic}
+        />
+        <TaxonomyPickerField
+          label="Banca"
+          loading={taxonomiesLoading}
+          onChange={(value) => setAdvanced('agency', value)}
+          options={taxonomies?.bancas || []}
+          value={advanced.agency}
+        />
+        <TaxonomyPickerField
+          label="Orgao"
+          loading={taxonomiesLoading}
+          onChange={(value) => setAdvanced('organization', value)}
+          options={taxonomies?.orgaos || []}
+          value={advanced.organization}
+        />
+        <TaxonomyPickerField
+          label="Cargo"
+          loading={taxonomiesLoading}
+          onChange={(value) => setAdvanced('role', value)}
+          options={taxonomies?.cargos || []}
+          value={advanced.role}
+        />
+        <TaxonomyPickerField
+          label="Ano"
+          loading={taxonomiesLoading}
+          onChange={(value) => setAdvanced('year', value)}
+          options={yearOptions}
+          value={advanced.year}
+        />
       </View>
 
       <View style={styles.rowWrap}>
@@ -118,6 +196,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
     paddingHorizontal: spacing[3],
   },
   rowWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  taxonomyGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing[2],
