@@ -2,10 +2,10 @@
 
 ## Estado atual
 
-**F6/9 — Hardening mobile em andamento.**
+**F7/9 — QA e Release Candidate em andamento.**
 
-Concluidas: F0, F1, F2, F3, F4 e F5.
-Restam F6, F7 e F8 para o aplicativo ficar publicavel; F9 e a submissao/rollout nas lojas.
+Concluidas: F0, F1, F2, F3, F4, F5 e F6.
+Restam F7 e F8 para o aplicativo ficar publicavel; F9 e a submissao/rollout nas lojas.
 
 > O escopo funcional do primeiro release continua limitado a Questoes, Simulados e Conta. Modulos existentes fora desse escopo permanecem preservados no codigo para releases posteriores.
 
@@ -63,7 +63,7 @@ Restam F6, F7 e F8 para o aplicativo ficar publicavel; F9 e a submissao/rollout 
 - comentario do professor e analise detalhada preservados conforme beneficio de plano
 - modos Lista e Foco
 - estados de loading, vazio, erro e retry
-- nova tela conectada como rota oficial; monolito preservado apenas para rollback controlado
+- nova tela conectada como rota oficial
 
 ## F4 — Simulados — CONCLUIDA
 
@@ -80,7 +80,7 @@ Restam F6, F7 e F8 para o aplicativo ficar publicavel; F9 e a submissao/rollout 
 - historico server-side hidratado com as questoes originais
 - revisao detalhada de acertos, erros e itens em branco
 - cache local usado apenas como fallback do historico remoto
-- telas legadas removidas do caminho funcional principal
+- rota canonica `/simulados/executar`
 
 ## F5 — Conta — CONCLUIDA PARA O MVP
 
@@ -100,37 +100,32 @@ Restam F6, F7 e F8 para o aplicativo ficar publicavel; F9 e a submissao/rollout 
 
 Observacao de escopo: o fluxo dedicado de cancelamento com reembolso nao e exposto diretamente no app nesta fase porque o endpoint legado ainda possui regras web/reCAPTCHA e regras financeiras especificas. O MVP permite desativar a renovacao e acessar o gerenciamento do provedor. A politica de compra/cancelamento dentro das lojas sera revalidada na F8 antes da submissao.
 
-## F6 — Hardening mobile — EM ANDAMENTO
-
-Concluido nesta fase:
+## F6 — Hardening mobile — CONCLUIDA FUNCIONALMENTE
 
 - refresh de token single-flight para impedir corridas de autenticacao
 - expiracao de sessao propagada imediatamente do storage para o AuthProvider
 - limpeza coerente de sessao e cache ao trocar ou perder identidade autenticada
 - timeout HTTP centralizado em 20 segundos
 - classificacao padronizada de timeout, offline, 401, 429, 4xx e 5xx
-- retry apenas para falhas transitórias e com limite de uma nova tentativa
-- mensagens de erro de rede consistentes para o usuario
+- retry apenas para falhas transitorias e com limite de uma nova tentativa
+- mensagens de erro de rede consistentes
 - rotas autenticadas protegidas por sessao no Expo Router
-- rota canonica de execucao de simulado em `/simulados/executar`
-- alias legado `/SimulationRun` reduzido a redirecionamento temporario
 - fallback global para deep links/rotas inexistentes
 - Error Boundary global para evitar tela branca em falhas de renderizacao
-- revisao inicial de permissoes: `app.json` nao declara permissao sensivel adicional para o MVP atual
+- revisao inicial de permissoes: sem permissao sensivel adicional para o MVP atual
+- bridges `MainTabs`, `Checkout` e `SimulationRun` removidas do caminho publicavel
+- politica offline documentada em `mobile/OFFLINE_POLICY.md`
+- tentativa ativa e historico de Simulados com persistencia/fallback local
+- Questoes mantidas online-first, sem replica persistente do banco ou gabarito global em disco
+- push notifications adiadas para release posterior ao MVP
+- gate automatizado `contracts:check` protege os contratos criticos de gabarito/score
+- Mobile CI configurado para rodar o gate tambem quando os modulos backend criticos mudarem
 
-Pendente nesta fase:
+Pendencia externa: o GitHub Actions vem encerrando alguns jobs antes de alocar runner (`steps: null`). A validacao automatica completa deve ser repetida na F7 assim que o runner voltar. Telemetria remota de crash e performance em aparelhos reais tambem sao verificadas na F7, pois dependem do Release Candidate executavel.
 
-- atualizar os ultimos chamadores internos de `/SimulationRun` para a rota canonica e remover o alias
-- estrategia explicita de cache/offline para leituras que podem operar com dados anteriores
-- revisar notificacoes e decidir se entram no primeiro release
-- observabilidade remota de crashes/logs antes do Release Candidate
-- revisar performance, memoria e listas extensas em aparelho real
-- protecao automatizada contra regressao dos contratos criticos da API
-- limpeza das bridges `MainTabs`/`Checkout` conforme decisao final de escopo
-- validar o Mobile CI assim que o GitHub Actions voltar a alocar runner normalmente
+## F7 — QA e Release Candidate — EM ANDAMENTO
 
-## F7 — QA e Release Candidate — PENDENTE
-
+- repetir Mobile CI completo quando o runner estiver disponivel
 - testes unitarios dos contratos criticos
 - testes de integracao dos tres modulos do MVP
 - testes E2E dos fluxos principais
@@ -139,6 +134,8 @@ Pendente nesta fase:
 - regressao de login/logout/token expirado
 - regressao de resposta, simulado e conta
 - validacao em API de producao/staging
+- observabilidade/telemetria de crash para o RC
+- verificacao de performance e memoria em aparelhos reais
 - congelamento da versao candidata
 
 ## F8 — Store readiness e distribuicao — PENDENTE
