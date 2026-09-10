@@ -55,14 +55,17 @@ Concluido nesta fase:
 - endpoint de resposta endurecido: o servidor calcula `is_correct`
 - cliente mobile deixou de enviar `is_correct` como fonte de verdade
 - componente de dominio `QuestionCard`
-- filtros iniciais server-side
+- busca e filtros basicos server-side
+- fonte publica oficial `filtersList` integrada ao mobile
+- seletores pesquisaveis para materia, assunto, banca, orgao, cargo e ano
+- filtros avancados conectados diretamente a consulta server-side
 - nova tela paginada F3 criada em paralelo, sem apagar a tela legada
+- Mobile CI validado com Expo Doctor e TypeScript apos a integracao dos filtros
 
 Pendente para concluir F3:
 
 - retirar o gabarito do DTO de questoes ainda nao respondidas sem quebrar a revisao
 - conectar definitivamente a nova tela F3 na rota principal
-- migrar filtros avancados: materia, assunto, banca, orgao, cargo e ano
 - migrar comentarios, anotacoes, estatisticas, historico e conteudos editoriais
 - mutation/cache otimista de favoritos no dominio de Questoes
 - estados de erro/retry e testes do fluxo completo
