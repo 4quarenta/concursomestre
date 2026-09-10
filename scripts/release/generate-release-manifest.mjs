@@ -39,6 +39,7 @@ const criticalFiles = [
   'backend/modules/questions/services/QuestionsService.php',
   'backend/modules/questions/repositories/QuestionsRepository.php',
   'backend/modules/subscriptions/services/SubscriptionsService.php',
+  'backend/modules/subscriptions/services/CanonicalPlanChangeService.php',
   'scripts/checks/production-readiness-local.mjs',
   'scripts/checks/check-versioned-secrets.mjs',
   'scripts/checks/check-release-package.mjs',
