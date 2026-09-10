@@ -2,10 +2,10 @@
 
 ## Estado atual
 
-**F4/9 — Simulados em andamento.**
+**F6/9 — Hardening mobile em andamento.**
 
-Concluidas: F0, F1, F2 e F3.
-Restam 5 macroetapas apos a F4 ate submissao/publicacao nas lojas.
+Concluidas: F0, F1, F2, F3, F4 e F5.
+Restam F6, F7 e F8 para o aplicativo ficar publicavel; F9 e a submissao/rollout nas lojas.
 
 > O escopo funcional do primeiro release continua limitado a Questoes, Simulados e Conta. Modulos existentes fora desse escopo permanecem preservados no codigo para releases posteriores.
 
@@ -64,42 +64,43 @@ Restam 5 macroetapas apos a F4 ate submissao/publicacao nas lojas.
 - modos Lista e Foco
 - estados de loading, vazio, erro e retry
 - nova tela conectada como rota oficial; monolito preservado apenas para rollback controlado
-- Mobile CI verde com Expo Doctor e TypeScript
 
-## F4 — Simulados — EM ANDAMENTO
+## F4 — Simulados — CONCLUIDA
 
-Diagnostico inicial confirmado:
+- configurador migrado para `features/simulations`
+- taxonomias oficiais e filtros server-side na montagem do simulado
+- remocao do download integral do banco de questoes
+- execucao pela arquitetura Expo Router
+- timer baseado em timestamp, resistente ao fechamento do app
+- tentativa ativa persistida localmente com Zustand + AsyncStorage
+- sincronizacao e retomada de tentativa ativa remota
+- backend autoritativo para correcao, score e gamificacao
+- tentativa `in_progress` sem gabarito, `is_correct` ou score parcial exposto
+- modo de feedback imediato preservado sem vazar gabarito das demais questoes
+- historico server-side hidratado com as questoes originais
+- revisao detalhada de acertos, erros e itens em branco
+- cache local usado apenas como fallback do historico remoto
+- telas legadas removidas do caminho funcional principal
 
-- listagem/historico ja usa TanStack Query
-- configurador ainda depende de `questionService.getAllQuestions()` e filtra todo o banco no aparelho
-- configurador ainda usa React Navigation legado
-- execucao/detalhe ainda possuem bridges legadas
-- service mistura historico remoto e fallback local; precisa separar tentativa ativa de historico concluido
+## F5 — Conta — CONCLUIDA PARA O MVP
 
-Objetivos da fase:
+- `AccountScreen` propria da feature, sem ponte para o `ProfileScreen` legado
+- dados basicos da conta e edicao do nome
+- nivel e XP
+- plano, status, ciclo e previsao de renovacao
+- historico recente de transacoes via TanStack Query
+- exibicao de alertas de pagamento retornados pelo backend
+- gerenciamento de renovacao automatica usando o contrato oficial Stripe
+- acesso ao portal de cobranca quando a assinatura Stripe e gerenciavel
+- tratamento neutro para assinaturas fora do fluxo Stripe gerenciavel
+- troca de senha nativa com confirmacao da senha atual
+- solicitacao de exclusao da conta com reautenticacao nativa
+- endpoint mobile de exclusao sem dependencia do reCAPTCHA web
+- logout e limpeza de sessao
 
-- migrar configuracao para `features/simulations`
-- usar taxonomias oficiais e filtros server-side para montar a prova
-- remover download integral do banco de questoes
-- usar Expo Router no fluxo completo
-- execucao com timer e navegacao entre questoes
-- persistencia/resume seguro da tentativa ativa
-- finalizacao autoritativa no backend
-- resultado e revisao detalhada
-- historico e sincronizacao
-- remover bridges legadas de Simulados somente apos paridade
+Observacao de escopo: o fluxo dedicado de cancelamento com reembolso nao e exposto diretamente no app nesta fase porque o endpoint legado ainda possui regras web/reCAPTCHA e regras financeiras especificas. O MVP permite desativar a renovacao e acessar o gerenciamento do provedor. A politica de compra/cancelamento dentro das lojas sera revalidada na F8 antes da submissao.
 
-## F5 — Conta — PENDENTE
-
-- perfil e preferencias
-- assinatura/plano atual
-- historico de transacoes quando fizer parte do MVP
-- fluxos de cobranca compativeis com a decisao final de gateway
-- alteracao de dados pessoais e senha
-- exclusao de conta e dados conforme politica aplicavel
-- remover bridges legadas de Planos/Checkout somente apos decisao de escopo
-
-## F6 — Hardening mobile — PENDENTE
+## F6 — Hardening mobile — EM ANDAMENTO
 
 - estrategia de cache/offline e revalidacao
 - comportamento em rede instavel, timeout e retry
@@ -110,6 +111,7 @@ Objetivos da fase:
 - observabilidade de erros
 - performance, memoria e listas extensas
 - protecao contra regressao de contratos da API
+- remover bridges/aliases residuais que nao sejam mais necessarios
 
 ## F7 — QA e Release Candidate — PENDENTE
 
@@ -135,6 +137,7 @@ Objetivos da fase:
 - classificacao etaria e categoria
 - textos, screenshots e metadados das lojas
 - links de suporte e exclusao de conta
+- revisao das regras vigentes das lojas para assinatura/pagamento de conteudo digital
 - testes internos/fechados no Google Play e TestFlight
 
 As exigencias especificas das lojas devem ser revalidadas nas documentacoes oficiais imediatamente antes desta fase, pois mudam com o tempo.

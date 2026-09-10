@@ -32,6 +32,7 @@ export const palette = {
   },
   amber: {
     50: '#FFFBEB',
+    200: '#FDE68A',
     500: '#F59E0B',
     600: '#D97706',
   },
@@ -64,6 +65,7 @@ export const lightTheme = {
   successSubtle: palette.emerald[50],
   warning: palette.amber[500],
   warningSubtle: palette.amber[50],
+  warningBorder: palette.amber[200],
   danger: palette.red[600],
   dangerPressed: palette.red[700],
   dangerSubtle: palette.red[50],
@@ -88,6 +90,7 @@ export const darkTheme = {
   successSubtle: '#052E24',
   warning: palette.amber[500],
   warningSubtle: '#451A03',
+  warningBorder: palette.amber[600],
   danger: palette.red[600],
   dangerPressed: palette.red[700],
   dangerSubtle: '#450A0A',

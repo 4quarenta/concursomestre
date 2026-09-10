@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,6 +14,7 @@ import {
 import { useAccountTransactionsQuery } from '@/features/account/api/useAccountTransactionsQuery';
 import { useAuth } from '@/providers/AuthProvider';
 import { accountService } from '@/services/auth/accountService';
+import { subscriptionsService } from '@/services/subscriptions/subscriptionsService';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
 import type { MobileTransaction } from '@/types/transactions';
@@ -32,6 +34,7 @@ const formatCurrency = (raw?: number) => new Intl.NumberFormat('pt-BR', {
 
 const transactionTitle = (item: MobileTransaction) => item.planName || item.transactionName || item.description || 'Transacao';
 const transactionProvider = (item: MobileTransaction) => item.paymentProvider || item.payment_provider || item.provider || item.gateway || 'Nao informado';
+const isManagedSubscriptionStatus = (status?: string) => ['active', 'trialing', 'past_due'].includes(String(status || '').toLowerCase());
 
 export const AccountScreen: React.FC = () => {
   const theme = useAppTheme();
@@ -49,6 +52,8 @@ export const AccountScreen: React.FC = () => {
   const [deletionPassword, setDeletionPassword] = React.useState('');
   const [deletionReason, setDeletionReason] = React.useState('');
   const [requestingDeletion, setRequestingDeletion] = React.useState(false);
+  const [updatingRenewal, setUpdatingRenewal] = React.useState(false);
+  const [openingPortal, setOpeningPortal] = React.useState(false);
 
   React.useEffect(() => {
     if (!editingName) setName(user?.name || '');
@@ -58,6 +63,8 @@ export const AccountScreen: React.FC = () => {
   const planName = subscription?.plan?.name || user?.plan || 'Gratuito';
   const subscriptionStatus = subscription?.status || 'sem assinatura';
   const renewalEnabled = subscription?.cancel_at_period_end === true ? false : subscription?.auto_renew !== false;
+  const paymentProvider = String(subscription?.payment_provider || '').toLowerCase();
+  const canManageStripeSubscription = paymentProvider === 'stripe' && isManagedSubscriptionStatus(subscription?.status);
 
   const refresh = async () => {
     await Promise.allSettled([refreshProfile(), transactionsQuery.refetch()]);
@@ -87,6 +94,45 @@ export const AccountScreen: React.FC = () => {
     } catch (error: any) {
       Alert.alert('Seguranca', error?.message || 'Nao foi possivel alterar a senha.');
     } finally { setChangingPassword(false); }
+  };
+
+  const toggleRenewal = () => {
+    const nextValue = !renewalEnabled;
+    Alert.alert(
+      nextValue ? 'Ativar renovacao automatica?' : 'Desativar renovacao automatica?',
+      nextValue
+        ? 'O backend validara o meio de pagamento e reativara a renovacao da assinatura.'
+        : 'Seu acesso atual sera mantido conforme o periodo ou termo contratado. Novas renovacoes serao desativadas.',
+      [
+        { text: 'Voltar', style: 'cancel' },
+        {
+          text: nextValue ? 'Ativar' : 'Desativar',
+          style: nextValue ? 'default' : 'destructive',
+          onPress: async () => {
+            setUpdatingRenewal(true);
+            try {
+              const result = await subscriptionsService.updateRenewal(nextValue);
+              await refreshProfile();
+              Alert.alert('Assinatura', result.message || (nextValue ? 'Renovacao ativada.' : 'Renovacao desativada.'));
+            } catch (error: any) {
+              Alert.alert('Assinatura', error?.message || 'Nao foi possivel atualizar a renovacao.');
+            } finally { setUpdatingRenewal(false); }
+          },
+        },
+      ],
+    );
+  };
+
+  const openBillingPortal = async () => {
+    setOpeningPortal(true);
+    try {
+      const result = await subscriptionsService.createStripePortalSession();
+      const supported = await Linking.canOpenURL(result.url);
+      if (!supported) throw new Error('Nao foi possivel abrir o gerenciamento de cobranca neste aparelho.');
+      await Linking.openURL(result.url);
+    } catch (error: any) {
+      Alert.alert('Cobranca', error?.message || 'Nao foi possivel abrir o gerenciamento de cobranca.');
+    } finally { setOpeningPortal(false); }
   };
 
   const requestDeletion = () => {
@@ -160,10 +206,33 @@ export const AccountScreen: React.FC = () => {
         <View style={styles.planCard}>
           <Text style={styles.planName}>{planName}</Text>
           <Text style={styles.muted}>Status: {subscriptionStatus}</Text>
+          {paymentProvider ? <Text style={styles.muted}>Provedor: {paymentProvider === 'stripe' ? 'Stripe' : paymentProvider}</Text> : null}
           {subscription?.current_period_end ? <Text style={styles.muted}>Ciclo atual ate {formatDate(subscription.current_period_end)}</Text> : null}
           {subscription ? <Text style={styles.muted}>Renovacao automatica: {renewalEnabled ? 'ativada' : 'desativada'}</Text> : null}
+          {subscription?.next_renewal_date && renewalEnabled ? <Text style={styles.muted}>Proxima renovacao: {formatDate(subscription.next_renewal_date)}</Text> : null}
+          {Number(subscription?.next_renewal_amount || 0) > 0 && renewalEnabled ? <Text style={styles.muted}>Valor previsto: {formatCurrency(subscription?.next_renewal_amount)}</Text> : null}
         </View>
-        <Text style={styles.helper}>A Conta permanece neutra quanto ao gateway. Acoes especificas de cobranca serao ligadas ao provedor configurado no backend, sem acoplamento fixo a Stripe.</Text>
+
+        {user?.paymentIssue?.message ? (
+          <View style={styles.warningCard}>
+            <Text style={styles.warningTitle}>Atencao com o pagamento</Text>
+            <Text style={styles.warningText}>{user.paymentIssue.message}</Text>
+          </View>
+        ) : null}
+
+        {canManageStripeSubscription ? (
+          <View style={styles.stack}>
+            <Pressable disabled={updatingRenewal} style={[renewalEnabled ? styles.dangerButton : styles.primaryButtonWide, updatingRenewal && styles.disabled]} onPress={toggleRenewal}>
+              {updatingRenewal ? <ActivityIndicator color={renewalEnabled ? theme.danger : theme.onPrimary} /> : <Text style={renewalEnabled ? styles.dangerText : styles.primaryText}>{renewalEnabled ? 'Desativar renovacao automatica' : 'Reativar renovacao automatica'}</Text>}
+            </Pressable>
+            <Pressable disabled={openingPortal} style={[styles.secondaryButtonWide, openingPortal && styles.disabled]} onPress={() => void openBillingPortal()}>
+              {openingPortal ? <ActivityIndicator color={theme.primary} /> : <Text style={styles.secondaryText}>{subscription?.payment_blocking ? 'Regularizar pagamento' : 'Gerenciar cobranca'}</Text>}
+            </Pressable>
+          </View>
+        ) : null}
+
+        {subscription && paymentProvider !== 'stripe' ? <Text style={styles.helper}>Esta assinatura nao usa o fluxo Stripe gerenciavel pelo aplicativo. O app preserva o acesso e exibe o estado recebido do servidor.</Text> : null}
+        {!subscription ? <Text style={styles.helper}>Nenhuma assinatura ativa vinculada a esta conta.</Text> : null}
       </View>
 
       <View style={styles.card}>
@@ -231,6 +300,9 @@ const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
   planCard: { backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder, borderRadius: radius.md, borderWidth: 1, gap: spacing[1], padding: spacing[3] },
   planName: { color: theme.primary, fontSize: typography.size.lg, fontWeight: typography.weight.black },
   helper: { color: theme.textMuted, fontSize: typography.size.xs, lineHeight: 18 },
+  warningCard: { backgroundColor: theme.warningSubtle, borderColor: theme.warningBorder, borderRadius: radius.md, borderWidth: 1, gap: spacing[1], padding: spacing[3] },
+  warningTitle: { color: theme.warning, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  warningText: { color: theme.text, fontSize: typography.size.sm, lineHeight: 20 },
   errorCard: { backgroundColor: theme.dangerSubtle, borderColor: theme.dangerBorder, borderRadius: radius.md, borderWidth: 1, padding: spacing[3] },
   errorText: { color: theme.danger, fontSize: typography.size.sm },
   transactionRow: { alignItems: 'flex-start', borderTopColor: theme.border, borderTopWidth: 1, flexDirection: 'row', gap: spacing[3], justifyContent: 'space-between', paddingTop: spacing[3] },
