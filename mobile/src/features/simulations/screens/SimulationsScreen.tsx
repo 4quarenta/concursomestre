@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSimulationsQuery } from '@/features/simulations/api/useSimulationsQuery';
+import { useSimulationRunStore } from '@/state/simulationRunStore';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
 
@@ -25,15 +26,14 @@ const formatDate = (rawValue: number | string | undefined): string => {
   return date.toLocaleDateString('pt-BR');
 };
 
-/**
- * Listagem de simulados migrada para a arquitetura de feature.
- * Estado remoto, cache, loading e refetch pertencem ao TanStack Query.
- */
 export const SimulationsScreen: React.FC = () => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const simulationsQuery = useSimulationsQuery();
+  const activeSeed = useSimulationRunStore((state) => state.seed);
+  const activeAnswers = useSimulationRunStore((state) => state.answers);
   const items = simulationsQuery.data ?? [];
+  const activeAnsweredCount = Object.keys(activeAnswers).length;
 
   if (simulationsQuery.isPending) {
     return (
@@ -61,8 +61,25 @@ export const SimulationsScreen: React.FC = () => {
             <View style={styles.headerCard}>
               <Text style={styles.eyebrow}>Simulados</Text>
               <Text style={styles.title}>Historico de simulados</Text>
-              <Text style={styles.description}>Lista sincronizada com sua conta e fallback local do app.</Text>
+              <Text style={styles.description}>Tentativas sincronizadas com sua conta e cache local do app.</Text>
             </View>
+
+            {activeSeed ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push('/SimulationRun')}
+                style={({ pressed }) => [styles.resumeCard, pressed && styles.cardPressed]}
+              >
+                <View style={styles.resumeText}>
+                  <Text style={styles.resumeEyebrow}>Em andamento</Text>
+                  <Text style={styles.resumeTitle}>Continuar simulado</Text>
+                  <Text style={styles.resumeDescription}>
+                    {activeAnsweredCount} de {activeSeed.questions.length} questoes respondidas
+                  </Text>
+                </View>
+                <Text style={styles.resumeAction}>Continuar</Text>
+              </Pressable>
+            ) : null}
 
             {simulationsQuery.isError ? (
               <View style={styles.errorCard}>
@@ -141,167 +158,40 @@ export const SimulationsScreen: React.FC = () => {
 };
 
 const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: theme.background,
-  },
-  loaderContainer: {
-    flex: 1,
-    backgroundColor: theme.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContent: {
-    padding: spacing[4],
-    gap: spacing[3],
-  },
-  headerBlock: {
-    gap: spacing[3],
-  },
-  headerCard: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    backgroundColor: theme.surface,
-    gap: spacing[2],
-  },
-  eyebrow: {
-    color: theme.textMuted,
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.extrabold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
-  title: {
-    color: theme.text,
-    fontSize: typography.size['2xl'],
-    fontWeight: typography.weight.black,
-  },
-  description: {
-    color: theme.textMuted,
-    fontSize: typography.size.sm,
-    lineHeight: 20,
-    fontWeight: typography.weight.semibold,
-  },
-  startButton: {
-    minHeight: 48,
-    borderRadius: radius.lg,
-    backgroundColor: theme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing[4],
-  },
-  retryButton: {
-    minHeight: 44,
-    borderRadius: radius.lg,
-    backgroundColor: theme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing[4],
-    alignSelf: 'flex-start',
-  },
-  startButtonPressed: {
-    backgroundColor: theme.primaryPressed,
-  },
-  startButtonText: {
-    color: theme.onPrimary,
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.bold,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    backgroundColor: theme.surface,
-    gap: spacing[2],
-  },
-  cardPressed: {
-    borderColor: theme.primaryBorder,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing[2],
-  },
-  cardTitle: {
-    flex: 1,
-    color: theme.text,
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.extrabold,
-  },
-  localBadge: {
-    borderWidth: 1,
-    borderColor: theme.primaryBorder,
-    borderRadius: radius.pill,
-    backgroundColor: theme.primarySubtle,
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-  },
-  localBadgeText: {
-    color: theme.primary,
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.bold,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  metaLabel: {
-    color: theme.textMuted,
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.semibold,
-  },
-  metaValue: {
-    color: theme.text,
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.semibold,
-  },
-  detailHint: {
-    color: theme.primary,
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.bold,
-  },
-  emptyCard: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: radius.lg,
-    padding: spacing[5],
-    backgroundColor: theme.surface,
-    alignItems: 'center',
-    gap: spacing[1],
-  },
-  emptyTitle: {
-    color: theme.text,
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.extrabold,
-  },
-  emptyText: {
-    color: theme.textMuted,
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.semibold,
-  },
-  errorCard: {
-    borderWidth: 1,
-    borderColor: theme.dangerBorder,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    backgroundColor: theme.dangerSubtle,
-    gap: spacing[2],
-  },
-  errorTitle: {
-    color: theme.danger,
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.extrabold,
-  },
-  errorText: {
-    color: theme.text,
-    fontSize: typography.size.sm,
-    lineHeight: 20,
-  },
+  screen: { flex: 1, backgroundColor: theme.background },
+  loaderContainer: { flex: 1, backgroundColor: theme.background, alignItems: 'center', justifyContent: 'center' },
+  listContent: { padding: spacing[4], gap: spacing[3] },
+  headerBlock: { gap: spacing[3] },
+  headerCard: { borderWidth: 1, borderColor: theme.border, borderRadius: radius.lg, padding: spacing[4], backgroundColor: theme.surface, gap: spacing[2] },
+  eyebrow: { color: theme.textMuted, fontSize: typography.size.xs, fontWeight: typography.weight.extrabold, textTransform: 'uppercase', letterSpacing: 0.7 },
+  title: { color: theme.text, fontSize: typography.size['2xl'], fontWeight: typography.weight.black },
+  description: { color: theme.textMuted, fontSize: typography.size.sm, lineHeight: 20, fontWeight: typography.weight.semibold },
+  resumeCard: { alignItems: 'center', backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder, borderRadius: radius.lg, borderWidth: 1, flexDirection: 'row', gap: spacing[3], justifyContent: 'space-between', padding: spacing[4] },
+  resumeText: { flex: 1, gap: spacing[1] },
+  resumeEyebrow: { color: theme.primary, fontSize: typography.size.xs, fontWeight: typography.weight.bold, textTransform: 'uppercase' },
+  resumeTitle: { color: theme.text, fontSize: typography.size.md, fontWeight: typography.weight.extrabold },
+  resumeDescription: { color: theme.textMuted, fontSize: typography.size.xs },
+  resumeAction: { color: theme.primary, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  startButton: { minHeight: 48, borderRadius: radius.lg, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing[4] },
+  retryButton: { minHeight: 44, borderRadius: radius.lg, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing[4], alignSelf: 'flex-start' },
+  startButtonPressed: { backgroundColor: theme.primaryPressed },
+  startButtonText: { color: theme.onPrimary, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  card: { borderWidth: 1, borderColor: theme.border, borderRadius: radius.lg, padding: spacing[4], backgroundColor: theme.surface, gap: spacing[2] },
+  cardPressed: { borderColor: theme.primaryBorder },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing[2] },
+  cardTitle: { flex: 1, color: theme.text, fontSize: typography.size.lg, fontWeight: typography.weight.extrabold },
+  localBadge: { borderWidth: 1, borderColor: theme.primaryBorder, borderRadius: radius.pill, backgroundColor: theme.primarySubtle, paddingHorizontal: spacing[2], paddingVertical: spacing[1] },
+  localBadgeText: { color: theme.primary, fontSize: typography.size.xs, fontWeight: typography.weight.bold },
+  metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  metaLabel: { color: theme.textMuted, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
+  metaValue: { color: theme.text, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
+  detailHint: { color: theme.primary, fontSize: typography.size.xs, fontWeight: typography.weight.bold },
+  emptyCard: { borderWidth: 1, borderColor: theme.border, borderRadius: radius.lg, padding: spacing[5], backgroundColor: theme.surface, alignItems: 'center', gap: spacing[1] },
+  emptyTitle: { color: theme.text, fontSize: typography.size.md, fontWeight: typography.weight.extrabold },
+  emptyText: { color: theme.textMuted, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
+  errorCard: { borderWidth: 1, borderColor: theme.dangerBorder, borderRadius: radius.lg, padding: spacing[4], backgroundColor: theme.dangerSubtle, gap: spacing[2] },
+  errorTitle: { color: theme.danger, fontSize: typography.size.md, fontWeight: typography.weight.extrabold },
+  errorText: { color: theme.text, fontSize: typography.size.sm, lineHeight: 20 },
 });
 
 export default SimulationsScreen;
