@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "product": "ConcursoMestre",
   "version": "1.0.0",
-  "revision": "selective-r6.1",
-  "commit": "843ec5e3f785fd7aa46047086a85e8218fa470bd",
+  "revision": "m20f03-wave3b-plan-change-authority",
+  "commit": "ee8144b83e69b1b79d25d1087c72604a653c8a4d",
   "gitDirty": false,
-  "generatedAt": "2026-09-10T04:22:56.526Z",
+  "generatedAt": "2026-09-10T04:28:40.773Z",
   "runtime": {
     "node": "v24.20.0",
     "nodeMinimum": "20.19.0",
@@ -115,12 +115,13 @@
     "backend/shared/legal/LegalAcceptance.php": "8c7ae0f094ddfe1ade1a762befd1ed0a454548b0bf91cc967fa97343e2f33eda",
     "backend/modules/questions/services/QuestionsService.php": "8bf53039185e79948a7db12b1b5b44fb643ca1d6d6976c712728e8f6ca3f2e96",
     "backend/modules/questions/repositories/QuestionsRepository.php": "1a53503a342eae41f14049b258280755712611d735e2bb59d04f663452128cf2",
-    "backend/modules/subscriptions/services/SubscriptionsService.php": "9142c50c1a03591a4571ae719149165d0fb3cc0111af02e9f5aa6393831711e0",
+    "backend/modules/subscriptions/services/SubscriptionsService.php": "7497c3ca6de0c841a5a318484e2274b936536bbeffbe8b42b1a6a780545de35d",
+    "backend/modules/subscriptions/services/CanonicalPlanChangeService.php": "a2527bc0412c2368f313e072aee946691d7635e13484a18e3a8f1a99b0fa45b8",
     "scripts/checks/production-readiness-local.mjs": "5ab7889d2749f339443584a190ebf6a150a5185367e1587391da72b39e83fd08",
     "scripts/checks/check-versioned-secrets.mjs": "73b54f86c41b0370d84d28352c4010d22a1b27afce0d21671a8ca5881b19b853",
     "scripts/checks/check-release-package.mjs": "a54e01e01983284c98132f0416fee24b7d9ec9979bccf071da40793a50ec7970",
     "scripts/checks/check-source-size-budget.mjs": "4ed2967bf37d7c6f67f1e1456e0a2584b4c620ad3fd499b633f86ed46686e9c5",
-    "scripts/release/generate-release-manifest.mjs": "40392cab08a5386247f1a0e75b59d49d314946f64e7c319c76ec58895aabd676",
+    "scripts/release/generate-release-manifest.mjs": "1be0aff181b2a7da1ea05b1d67618449fb06afe3e5d54794548822ed086a8fd7",
     "scripts/release/verify-release-manifest.mjs": "a980ce3c0bd2b2405358fc9630a79c489885edba153bbe43f08e446a86f7f5a1"
   }
 }
