@@ -2,7 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { assertApiSuccess, readApiData, readApiErrorMessage } from '@/services/api/response';
-import type { SimulationDetail, SimulationListItem } from '@/types/simulations';
+import type {
+  SimulationAnswerResult,
+  SimulationDetail,
+  SimulationListItem,
+  SimulationSaveResult,
+} from '@/types/simulations';
 
 const LOCAL_SIMULATIONS_KEY = 'cm_simulations_history_v1';
 const LOCAL_SIMULATIONS_LIMIT = 120;
@@ -50,7 +55,7 @@ const normalizeSimulationDetail = (
 
   return {
     id: resolvedId,
-    name: String(item.name || item.title || 'Simulado mobile'),
+    name: String(item.name || item.title || item.config?.name || 'Simulado mobile'),
     status: String(item.status || 'completed'),
     score: Number.isFinite(numericScore) ? numericScore : undefined,
     questionCount: Number.isFinite(numericQuestionCount) ? numericQuestionCount : undefined,
@@ -188,28 +193,34 @@ const mergeRows = (remoteRows: SimulationListItem[], localRows: SimulationListIt
   const mergedMap = new Map<string, SimulationListItem>();
 
   localRows.forEach((item) => {
-    mergedMap.set(String(item.id), {
-      ...item,
-      source: 'local',
-    });
+    mergedMap.set(String(item.id), { ...item, source: 'local' });
   });
 
   remoteRows.forEach((item) => {
     const existing = mergedMap.get(String(item.id));
-    mergedMap.set(String(item.id), {
-      ...existing,
-      ...item,
-      source: 'remote',
-    });
+    mergedMap.set(String(item.id), { ...existing, ...item, source: 'remote' });
   });
 
   return sortSimulationRows(Array.from(mergedMap.values()));
 };
 
-/**
- * Servico mobile para listagem de simulados.
- * @since v1.0.0
- */
+const normalizeAnswerResults = (value: unknown): Record<string, SimulationAnswerResult> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, any>)
+      .filter(([, result]) => result && typeof result === 'object')
+      .map(([questionId, result]) => [
+        questionId,
+        {
+          selectedOptionIndex: Number(result.selectedOptionIndex ?? result.selected_option_index ?? -1),
+          isCorrect: Boolean(result.isCorrect ?? result.is_correct),
+          correctOptionIndex: Number(result.correctOptionIndex ?? result.correct_option_index ?? -1),
+        },
+      ]),
+  );
+};
+
 export const simulationsService = {
   async list(): Promise<SimulationListItem[]> {
     const localRows = await readLocalRows();
@@ -219,20 +230,11 @@ export const simulationsService = {
       const payload = readApiData<any>(response, []);
       const remoteRows = normalizeSimulationRows(payload, 'remote').map((item) => ({ ...item, source: 'remote' as const }));
 
-      if (remoteRows.length === 0) {
-        return localRows;
-      }
-
+      if (remoteRows.length === 0) return localRows;
       return mergeRows(remoteRows, localRows);
     } catch (error: any) {
-      if (error?.response?.status === 404) {
-        return localRows;
-      }
-
-      if (localRows.length > 0) {
-        return localRows;
-      }
-
+      if (error?.response?.status === 404) return localRows;
+      if (localRows.length > 0) return localRows;
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel carregar simulados.'));
     }
   },
@@ -257,15 +259,33 @@ export const simulationsService = {
     }
   },
 
-  async saveSimulation(simulation: Record<string, any>): Promise<{ success: boolean; id?: string; message?: string }> {
+  async saveSimulation(simulation: Record<string, any>): Promise<SimulationSaveResult> {
     const response: any = await apiClient.post<any>(ENDPOINTS.simulations.create, simulation);
     const envelope = assertApiSuccess(response, 'Nao foi possivel salvar o simulado.');
-    const resolvedId = String(envelope.raw?.data?.id || envelope.raw?.id || simulation?.id || `sim-mobile-${Date.now()}`);
-    await appendLocalSimulation(simulation, resolvedId);
+    const payload = readApiData<any>(response, {});
+    const resolvedId = String(payload?.id || envelope.raw?.id || simulation?.id || `sim-mobile-${Date.now()}`);
+    const score = Number(payload?.score ?? envelope.raw?.score ?? 0);
+    const status = String(payload?.status || simulation?.status || 'completed');
+    const authoritativeSimulation = {
+      ...simulation,
+      id: resolvedId,
+      status,
+      score,
+      endTime: simulation?.endTime || Date.now(),
+    };
+
+    await appendLocalSimulation(authoritativeSimulation, resolvedId);
 
     return {
       success: true,
       id: resolvedId,
+      status,
+      score: Number.isFinite(score) ? score : 0,
+      answeredCount: Number(payload?.answeredCount ?? 0),
+      correctCount: Number(payload?.correctCount ?? score ?? 0),
+      results: normalizeAnswerResults(payload?.results),
+      newXp: payload?.newXp ?? payload?.new_xp ?? envelope.raw?.newXp ?? envelope.raw?.new_xp,
+      newLevel: payload?.newLevel ?? payload?.new_level ?? envelope.raw?.newLevel ?? envelope.raw?.new_level,
       message: envelope.message,
     };
   },
