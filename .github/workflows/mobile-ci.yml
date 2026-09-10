@@ -57,5 +57,8 @@ jobs:
       - name: Verify mobile/backend security contracts
         run: npm --prefix mobile run contracts:check
 
+      - name: Run Release Candidate smoke gate
+        run: npm --prefix mobile run qa:smoke
+
       - name: Typecheck mobile
         run: npm --prefix mobile run typecheck
