@@ -49,8 +49,10 @@ const formatTimestamp = (value?: number): string => {
 const CommentTree: React.FC<{
   comments: QuestionComment[];
   onLike: (commentId: string) => void;
+  onReply?: (comment: QuestionComment) => void;
+  canReply?: boolean;
   depth?: number;
-}> = ({ comments, onLike, depth = 0 }) => {
+}> = ({ comments, onLike, onReply, canReply = false, depth = 0 }) => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
 
@@ -62,12 +64,25 @@ const CommentTree: React.FC<{
           <Text style={styles.bodyText}>{comment.text}</Text>
           <View style={styles.commentMetaRow}>
             <Text style={styles.mutedText}>{comment.date || ''}</Text>
-            <Pressable onPress={() => onLike(comment.id)}>
-              <Text style={styles.linkText}>{comment.isLiked ? 'Curtido' : 'Curtir'} · {Number(comment.likes || 0)}</Text>
-            </Pressable>
+            <View style={styles.commentActions}>
+              {canReply && onReply ? (
+                <Pressable onPress={() => onReply(comment)}>
+                  <Text style={styles.linkText}>Responder</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={() => onLike(comment.id)}>
+                <Text style={styles.linkText}>{comment.isLiked ? 'Curtido' : 'Curtir'} · {Number(comment.likes || 0)}</Text>
+              </Pressable>
+            </View>
           </View>
           {comment.replies?.length ? (
-            <CommentTree comments={comment.replies} onLike={onLike} depth={depth + 1} />
+            <CommentTree
+              comments={comment.replies}
+              onLike={onLike}
+              onReply={onReply}
+              canReply={canReply}
+              depth={depth + 1}
+            />
           ) : null}
         </View>
       ))}
@@ -80,6 +95,8 @@ export const QuestionDetailsPanel: React.FC<Props> = ({ question, userId, userNa
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const [section, setSection] = React.useState<Section>(null);
   const [commentDraft, setCommentDraft] = React.useState('');
+  const [replyDraft, setReplyDraft] = React.useState('');
+  const [replyingTo, setReplyingTo] = React.useState<QuestionComment | null>(null);
   const [noteDraft, setNoteDraft] = React.useState('');
   const questionId = question.id;
   const answered = question.userAnswer?.selectedOptionIndex !== undefined;
@@ -104,6 +121,13 @@ export const QuestionDetailsPanel: React.FC<Props> = ({ question, userId, userNa
     }
   }, [currentNote?.text, section]);
 
+  React.useEffect(() => {
+    if (section !== 'comments') {
+      setReplyingTo(null);
+      setReplyDraft('');
+    }
+  }, [section]);
+
   const toggle = (next: Section) => setSection((current) => current === next ? null : next);
 
   const submitComment = async () => {
@@ -112,6 +136,17 @@ export const QuestionDetailsPanel: React.FC<Props> = ({ question, userId, userNa
       setCommentDraft('');
     } catch (error: any) {
       Alert.alert('Comentarios', error?.message || 'Nao foi possivel publicar o comentario.');
+    }
+  };
+
+  const submitReply = async () => {
+    if (!replyingTo) return;
+    try {
+      await addCommentMutation.mutateAsync({ content: replyDraft, parentId: replyingTo.id });
+      setReplyDraft('');
+      setReplyingTo(null);
+    } catch (error: any) {
+      Alert.alert('Comentarios', error?.message || 'Nao foi possivel publicar a resposta.');
     }
   };
 
@@ -220,7 +255,41 @@ export const QuestionDetailsPanel: React.FC<Props> = ({ question, userId, userNa
           {commentsQuery.isLoading ? <ActivityIndicator color={theme.primary} /> : null}
           {commentsQuery.isError ? <Text style={styles.errorText}>Nao foi possivel carregar os comentarios.</Text> : null}
           {commentsQuery.data?.length === 0 ? <Text style={styles.mutedText}>Ainda nao ha comentarios nesta questao.</Text> : null}
-          {commentsQuery.data?.length ? <CommentTree comments={commentsQuery.data} onLike={(id) => void likeComment(id)} /> : null}
+          {commentsQuery.data?.length ? (
+            <CommentTree
+              comments={commentsQuery.data}
+              onLike={(id) => void likeComment(id)}
+              onReply={setReplyingTo}
+              canReply={Boolean(userId)}
+            />
+          ) : null}
+
+          {replyingTo && userId ? (
+            <View style={styles.replyEditor}>
+              <View style={styles.replyHeader}>
+                <Text style={styles.mutedText}>Respondendo a {replyingTo.userName || 'Usuario'}</Text>
+                <Pressable onPress={() => { setReplyingTo(null); setReplyDraft(''); }}>
+                  <Text style={styles.dangerTextSmall}>Cancelar</Text>
+                </Pressable>
+              </View>
+              <TextInput
+                multiline
+                onChangeText={setReplyDraft}
+                placeholder="Escreva sua resposta"
+                placeholderTextColor={theme.textSubtle}
+                style={styles.textArea}
+                value={replyDraft}
+              />
+              <Pressable
+                disabled={addCommentMutation.isPending || !replyDraft.trim()}
+                onPress={() => void submitReply()}
+                style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryButtonText}>{addCommentMutation.isPending ? 'Publicando...' : 'Responder'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           {userId ? (
             <View style={styles.editorBlock}>
               <TextInput
@@ -289,6 +358,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
   linkText: { color: theme.primary, fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
   errorText: { color: theme.danger, fontSize: typography.size.xs },
   dangerText: { color: theme.danger, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
+  dangerTextSmall: { color: theme.danger, fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
   successText: { color: theme.success, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
   metricRow: { flexDirection: 'row', gap: spacing[2] },
   metric: { backgroundColor: theme.surfaceSubtle, borderRadius: radius.md, flex: 1, gap: spacing[1], padding: spacing[3] },
@@ -298,8 +368,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.creat
   comment: { backgroundColor: theme.surfaceSubtle, borderRadius: radius.md, gap: spacing[1], padding: spacing[3] },
   commentReply: { marginLeft: spacing[3], marginTop: spacing[2] },
   commentAuthor: { color: theme.text, fontSize: typography.size.xs, fontWeight: typography.weight.bold },
-  commentMetaRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  commentMetaRow: { alignItems: 'center', flexDirection: 'row', gap: spacing[2], justifyContent: 'space-between' },
+  commentActions: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing[3] },
   editorBlock: { gap: spacing[2] },
+  replyEditor: { backgroundColor: theme.surfaceSubtle, borderRadius: radius.md, gap: spacing[2], padding: spacing[3] },
+  replyHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing[2], justifyContent: 'space-between' },
   editorActions: { alignItems: 'center', flexDirection: 'row', gap: spacing[2] },
   textArea: { backgroundColor: theme.surfaceSubtle, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, color: theme.text, fontSize: typography.size.sm, minHeight: 88, padding: spacing[3], textAlignVertical: 'top' },
   primaryButton: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: theme.primary, borderRadius: radius.md, minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing[4] },
