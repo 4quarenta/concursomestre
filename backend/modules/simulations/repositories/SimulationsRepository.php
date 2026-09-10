@@ -8,7 +8,6 @@
 * ----------------------------------------------------
 *
 * @since 1.0.0
-*
 */
 
 /**
@@ -19,20 +18,10 @@
  */
 class SimulationsRepository
 {
-    /**
-     * Registra o PDO para operacoes transacionais do dominio.
-     *
-     * @since 1.0.0
-     */
     public function __construct(private readonly PDO $db)
     {
     }
 
-    /**
-     * Salva ou atualiza a sessao principal de simulado.
-     *
-     * @since 1.0.0
-     */
     public function upsertSimulation(array $payload): void
     {
         $stmt = $this->db->prepare(
@@ -59,11 +48,6 @@ class SimulationsRepository
         ]);
     }
 
-    /**
-     * Salva ou atualiza uma resposta vinculada ao simulado.
-     *
-     * @since 1.0.0
-     */
     public function upsertSimulationAnswer(array $payload): void
     {
         $stmt = $this->db->prepare(
@@ -87,11 +71,6 @@ class SimulationsRepository
         ]);
     }
 
-    /**
-     * Remove respostas antigas de uma mesma sessao antes de salvar o snapshot final.
-     *
-     * @since 1.0.0
-     */
     public function deleteSimulationAnswers(string $userId, string $simulationId): void
     {
         $stmt = $this->db->prepare(
@@ -107,10 +86,66 @@ class SimulationsRepository
     }
 
     /**
-     * Lista sessoes de simulado do usuario autenticado.
+     * Busca os gabaritos diretamente da tabela oficial de questoes.
+     * Nenhum valor de correcao fornecido pelo cliente participa desta leitura.
      *
-     * @since 1.0.0
+     * @return array<string,int>
      */
+    public function findCorrectOptionIndexes(array $questionIds): array
+    {
+        $ids = [];
+        foreach ($questionIds as $questionId) {
+            if (is_numeric($questionId) && (int) $questionId > 0) {
+                $ids[(int) $questionId] = (int) $questionId;
+            }
+        }
+        $ids = array_values($ids);
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($ids as $index => $questionId) {
+            $key = ':question_id_' . $index;
+            $placeholders[] = $key;
+            $params[$key] = $questionId;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT id, resposta_correta_item_index, data_json
+             FROM questions
+             WHERE id IN (" . implode(', ', $placeholders) . ")"
+        );
+        foreach ($params as $key => $questionId) {
+            $stmt->bindValue($key, $questionId, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $questionId = (string) ($row['id'] ?? '');
+            if ($questionId === '') {
+                continue;
+            }
+
+            $correctIndex = $row['resposta_correta_item_index'] ?? null;
+            if ($correctIndex === null || $correctIndex === '') {
+                $data = json_decode((string) ($row['data_json'] ?? ''), true);
+                if (is_array($data) && isset($data['correctOptionIndex']) && is_numeric($data['correctOptionIndex'])) {
+                    $correctIndex = (int) $data['correctOptionIndex'];
+                }
+            }
+
+            if ($correctIndex !== null && $correctIndex !== '' && is_numeric($correctIndex)) {
+                $result[$questionId] = (int) $correctIndex;
+            }
+        }
+
+        return $result;
+    }
+
     public function listSimulationsByUserId(string $userId, int $limit = 50): array
     {
         $stmt = $this->db->prepare(
@@ -128,11 +163,6 @@ class SimulationsRepository
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    /**
-     * Lista respostas vinculadas a simulados do usuario, agrupadas pelo service.
-     *
-     * @since 1.0.0
-     */
     public function listSimulationAnswersByUserId(string $userId): array
     {
         $stmt = $this->db->prepare(
@@ -159,11 +189,6 @@ class SimulationsRepository
         return $grouped;
     }
 
-    /**
-     * Busca XP e nivel atualizados apos recompensas de simulado.
-     *
-     * @since 1.0.0
-     */
     public function findUserProgressSnapshot(string $userId): ?array
     {
         $stmt = $this->db->prepare(
@@ -178,11 +203,6 @@ class SimulationsRepository
         return is_array($row) ? $row : null;
     }
 
-    /**
-     * Recompensa uma conclusao real de simulado uma unica vez por sessao.
-     *
-     * @since 1.0.0
-     */
     public function applySimulationCompletedGamification(
         string $userId,
         string $simulationId,
