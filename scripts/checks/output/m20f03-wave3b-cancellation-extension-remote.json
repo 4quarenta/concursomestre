@@ -1,0 +1,25 @@
+{
+  "result": "PASS",
+  "suite": "m20f03_wave3b_cancellation_extension",
+  "cases": [
+    {
+      "case_id": "EXPIRY-AFTER-CANCELLATION",
+      "status": "PASS",
+      "actual": {
+        "cancel_at_period_end": true,
+        "effective_access": "PRO"
+      },
+      "evidence_reference": "M20F03Wave3BCancellationExtensionValidationTest.php"
+    },
+    {
+      "case_id": "CANCEL-REACTIVATE-EXTENSION",
+      "status": "PASS",
+      "actual": {
+        "cancel_at_period_end": false,
+        "extension_preserved_seconds": 0,
+        "grant_status": "APPLIED"
+      },
+      "evidence_reference": "M20F03Wave3BCancellationExtensionValidationTest.php"
+    }
+  ]
+}

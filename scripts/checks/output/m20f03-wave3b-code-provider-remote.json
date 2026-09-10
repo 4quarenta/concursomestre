@@ -1,0 +1,12 @@
+{
+  "result": "PASS",
+  "case_id": "BENEFIT-CODE-PROVIDER-FLOW",
+  "status": "PASS",
+  "code_scope": "SINGLE_USE",
+  "replay": "IDEMPOTENT",
+  "redemptions": 1,
+  "applied_grants": 1,
+  "provider_extension_seconds": 172800,
+  "effective_access": "ELITE",
+  "evidence_reference": "M20F03Wave3BBenefitCodeProviderValidationTest.php"
+}

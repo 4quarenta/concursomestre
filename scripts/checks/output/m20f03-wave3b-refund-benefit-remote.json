@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "case_id": "REFUND-BENEFIT-INTERACTION",
+  "status": "PASS",
+  "offer_status": "CLOSED_RETAINED",
+  "transaction_status": "refund_retained",
+  "provider_refund": 0,
+  "confirmed_grants": 1,
+  "provider_extension_seconds": 172800,
+  "evidence_reference": "M20F03Wave3BRefundBenefitInteractionValidationTest.php"
+}

@@ -284,7 +284,7 @@ por prefixo exato, passou 24 casos de serviço canônico. A evidência está em
 ```text
 CURRENT_CLOSURE_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES_DELTA
 WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES = PARTIAL
-WAVE_3B_OPEN_CELLS = 13
+WAVE_3B_OPEN_CELLS = 9
 TEMPORARY_ENTITLEMENT_MATRIX = PASS (22/22, contrato + PRELAUNCH)
 DUAL_AXIS_UPGRADE_SCENARIO = PASS
 PAID_UPGRADE_SURVIVES_GRANT_EXPIRY = PASS
@@ -292,8 +292,8 @@ MARKETING_BENEFIT_INTEGRATION = PASS
 OVERLAPPING_ACCESS_GRANTS_MATRIX = PASS (5/5)
 EXPIRATION_REVERSION_MATRIX = PARTIAL (10/11)
 BILLING_CONCURRENCY_MATRIX = PARTIAL (4/8)
-DELTA_CASES_EXECUTED = OVERLAP-SOURCE-EXPIRY, EXPIRY-AFTER-DOWNGRADE, C6-BENEFIT-EXPIRY-NEW-GRANT, C7-CODE-SIMULTANEOUS-REDEMPTION, C8-ADMIN-DUPLICATE-GRANT, SEQUENTIAL-T3-PLUS-T2, BENEFIT-MODE-ACCESS-AND-BILLING-EXTENSION
-DELTA_CASES_PASSED = 7/7 (sem efeito financeiro duplicado)
+DELTA_CASES_EXECUTED = OVERLAP-SOURCE-EXPIRY, EXPIRY-AFTER-DOWNGRADE, C6-BENEFIT-EXPIRY-NEW-GRANT, C7-CODE-SIMULTANEOUS-REDEMPTION, C8-ADMIN-DUPLICATE-GRANT, SEQUENTIAL-T3-PLUS-T2, BENEFIT-MODE-ACCESS-AND-BILLING-EXTENSION, BENEFIT-CODE-PROVIDER-FLOW, REFUND-BENEFIT-INTERACTION, EXPIRY-AFTER-CANCELLATION, CANCEL-REACTIVATE-EXTENSION
+DELTA_CASES_PASSED = 11/11 (sem efeito financeiro duplicado)
 CONCURRENT_CODE_LOSER_RESULT = SQLSTATE_40001_SERIALIZATION_FAILURE (sem duplicidade; resposta de produto ainda requer tratamento)
 SEQUENTIAL_EXTENSION_USES_CURRENT_PROVIDER_STATE = PASS (T+3 then T+5, 432000 seconds total)
 BENEFIT_MODE_MATRIX = PASS (3/3)
@@ -312,8 +312,8 @@ seguido de `T+5`). Na corrida de
 resgate, o perdedor recebeu uma falha de serialização MySQL `40001`; a
 unicidade financeira foi preservada, mas esse resultado não deve ser tratado
 como uma resposta de negócio ideal sem uma correção posterior de retry/erro.
-Ainda não estão provados a expiração após cancelamento, as operações de
-extensão com mudança de plano e as políticas de stacking
+Ainda não estão provados as quatro corridas de billing/renovação, as operações
+de extensão com mudança de plano e as políticas de stacking
 `EXTEND`, `REPLACE_IF_BETTER` e `PARALLEL`; a allowlist estática não foi usada
 para promover essas células.
 
@@ -390,12 +390,13 @@ REAL_DATA_INSERTIONS = 0
 STRIPE_LIVE_MUTATIONS = 0
 ```
 
-O pacote ainda não pode ser fechado porque permanecem células operacionais da
-Wave 3B. A concorrência A1-A11, a matriz de falhas do provedor, o ciclo de
+O pacote ainda não pode ser fechado porque permanecem nove células operacionais
+da Wave 3B. A concorrência A1-A11, a matriz de falhas do provedor, o ciclo de
 renovação específico após uma extensão de retenção e o delta de sobreposição,
-reversão após downgrade, código e grant Admin já passaram. O estado é uma
-pendência de completude de evidência; a célula C7 também expôs uma resposta de
-serialização que merece tratamento explícito antes de uma aceitação de produto.
+expiração, código, grant Admin, reembolso, cancelamento/reactivação e modos de
+Benefit já passaram. O estado é uma pendência de completude de evidência; a
+célula C7 também expôs uma resposta de serialização que merece tratamento
+explícito antes de uma aceitação de produto.
 
 O runner Playwright Chromium existente foi adaptado e executado em modo estrito
 contra o domínio PRELAUNCH com contas sintéticas criadas por provisionamento

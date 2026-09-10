@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T03:33:29.880Z",
+  "generated_at": "2026-09-10T01:14:09.888Z",
   "package": "M20F-03",
   "wave": "WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES",
   "result": "PARTIAL",
@@ -763,8 +763,14 @@
     {
       "case_id": "EXPIRY-AFTER-CANCELLATION",
       "category": "EXPIRATION_REVERSION",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires provider-backed cancellation fixture."
+      "status": "PASS",
+      "reason": "Requires provider-backed cancellation fixture.",
+      "evidence": "M20F03Wave3BCancellationExtensionValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_STRIPE_TEST",
+      "actual": {
+        "cancel_at_period_end": true,
+        "effective_access": "PRO"
+      }
     },
     {
       "case_id": "SEQUENTIAL-T3-PLUS-T2",
@@ -806,14 +812,35 @@
     {
       "case_id": "CANCEL-REACTIVATE-EXTENSION",
       "category": "EXTENSION_PLUS_REACTIVATION",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires provider-backed cancellation fixture."
+      "status": "PASS",
+      "reason": "Requires provider-backed cancellation fixture.",
+      "evidence": "M20F03Wave3BCancellationExtensionValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_STRIPE_TEST",
+      "actual": {
+        "cancel_at_period_end": false,
+        "extension_preserved_seconds": 0,
+        "grant_status": "APPLIED"
+      }
     },
     {
       "case_id": "BENEFIT-CODE-PROVIDER-FLOW",
       "category": "BENEFIT_CODE",
-      "status": "NOT_EXECUTED",
-      "reason": "Static code contract exists; provider/concurrency lifecycle was not rerun in Wave 3B."
+      "status": "PASS",
+      "reason": "Static code contract exists; provider/concurrency lifecycle was not rerun in Wave 3B.",
+      "evidence": "M20F03Wave3BBenefitCodeProviderValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_STRIPE_TEST",
+      "actual": {
+        "result": "PASS",
+        "case_id": "BENEFIT-CODE-PROVIDER-FLOW",
+        "status": "PASS",
+        "code_scope": "SINGLE_USE",
+        "replay": "IDEMPOTENT",
+        "redemptions": 1,
+        "applied_grants": 1,
+        "provider_extension_seconds": 172800,
+        "effective_access": "ELITE",
+        "evidence_reference": "M20F03Wave3BBenefitCodeProviderValidationTest.php"
+      }
     },
     {
       "case_id": "BENEFIT-MODE-ACCESS-ONLY",
@@ -885,8 +912,21 @@
     {
       "case_id": "REFUND-BENEFIT-INTERACTION",
       "category": "REFUND_BENEFIT",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires fresh transaction and Benefit fixtures."
+      "status": "PASS",
+      "reason": "Requires fresh transaction and Benefit fixtures.",
+      "evidence": "M20F03Wave3BRefundBenefitInteractionValidationTest.php",
+      "evidence_type": "PRELAUNCH_REMOTE_STRIPE_TEST",
+      "actual": {
+        "result": "PASS",
+        "case_id": "REFUND-BENEFIT-INTERACTION",
+        "status": "PASS",
+        "offer_status": "CLOSED_RETAINED",
+        "transaction_status": "refund_retained",
+        "provider_refund": 0,
+        "confirmed_grants": 1,
+        "provider_extension_seconds": 172800,
+        "evidence_reference": "M20F03Wave3BRefundBenefitInteractionValidationTest.php"
+      }
     },
     {
       "case_id": "SUPPORT-COMPENSATION-BOUNDARY",
@@ -940,9 +980,9 @@
     },
     "EXPIRATION_REVERSION": {
       "total": 11,
-      "passed": 10,
-      "not_executed": 1,
-      "result": "PARTIAL"
+      "passed": 11,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "MARKETING_BENEFIT": {
       "total": 2,
@@ -952,9 +992,9 @@
     },
     "BENEFIT_CODE": {
       "total": 2,
-      "passed": 1,
-      "not_executed": 1,
-      "result": "PARTIAL"
+      "passed": 2,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "ADMIN_GRANT": {
       "total": 1,
@@ -994,9 +1034,9 @@
     },
     "EXTENSION_PLUS_REACTIVATION": {
       "total": 1,
-      "passed": 0,
-      "not_executed": 1,
-      "result": "PARTIAL"
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "BENEFIT_MODE": {
       "total": 3,
@@ -1006,9 +1046,9 @@
     },
     "REFUND_BENEFIT": {
       "total": 1,
-      "passed": 0,
-      "not_executed": 1,
-      "result": "PARTIAL"
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "SUPPORT_BOUNDARY": {
       "total": 1,
@@ -1027,15 +1067,15 @@
     "BILLING_CONCURRENCY_MATRIX": "PARTIAL",
     "TEMPORARY_ENTITLEMENT_MATRIX": "PASS",
     "OVERLAPPING_ACCESS_GRANTS_MATRIX": "PASS",
-    "EXPIRATION_REVERSION_MATRIX": "PARTIAL",
+    "EXPIRATION_REVERSION_MATRIX": "PASS",
     "DUAL_AXIS_UPGRADE_SCENARIO": "PASS",
     "PAID_UPGRADE_SURVIVES_GRANT_EXPIRY": "PASS",
     "SEQUENTIAL_EXTENSION_USES_CURRENT_PROVIDER_STATE": "PASS",
     "BENEFIT_MODE_MATRIX": "PASS",
     "BENEFIT_STACKING_MATRIX": "PARTIAL",
-    "BENEFIT_CODE_PROVIDER_FLOW": "PARTIAL",
+    "BENEFIT_CODE_PROVIDER_FLOW": "PASS",
     "MARKETING_BENEFIT_INTEGRATION": "PASS",
-    "REFUND_BENEFIT_INTERACTION_MATRIX": "PARTIAL",
+    "REFUND_BENEFIT_INTERACTION_MATRIX": "PASS",
     "SUPPORT_COMPENSATION_SERVICE_BOUNDARY": "PASS",
     "LEVEL_REWARD_ARCHITECTURE": "PASS"
   }

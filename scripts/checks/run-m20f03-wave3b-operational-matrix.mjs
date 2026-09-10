@@ -26,6 +26,12 @@ const sequentialPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f0
 const sequential = fs.existsSync(sequentialPath) ? JSON.parse(fs.readFileSync(sequentialPath, 'utf8')) : null;
 const combinedModePath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-mode-combined-remote.json');
 const combinedMode = fs.existsSync(combinedModePath) ? JSON.parse(fs.readFileSync(combinedModePath, 'utf8')) : null;
+const codeProviderPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-code-provider-remote.json');
+const codeProvider = fs.existsSync(codeProviderPath) ? JSON.parse(fs.readFileSync(codeProviderPath, 'utf8')) : null;
+const refundBenefitPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-refund-benefit-remote.json');
+const refundBenefit = fs.existsSync(refundBenefitPath) ? JSON.parse(fs.readFileSync(refundBenefitPath, 'utf8')) : null;
+const cancellationExtensionPath = path.join(repoRoot, 'scripts', 'checks', 'output', 'm20f03-wave3b-cancellation-extension-remote.json');
+const cancellationExtension = fs.existsSync(cancellationExtensionPath) ? JSON.parse(fs.readFileSync(cancellationExtensionPath, 'utf8')) : null;
 
 const cases = [
   ...contract.cases.map((item) => ({ ...item, evidence_type: 'DIRECT_CANONICAL_CONTRACT' })),
@@ -124,6 +130,28 @@ if (combinedModeCase && combinedMode?.status === 'PASS') {
   combinedModeCase.evidence = combinedMode.evidence_reference;
   combinedModeCase.evidence_type = 'PRELAUNCH_REMOTE_STRIPE_TEST';
   combinedModeCase.actual = combinedMode;
+}
+const codeProviderCase = cases.find((item) => item.case_id === 'BENEFIT-CODE-PROVIDER-FLOW');
+if (codeProviderCase && codeProvider?.status === 'PASS') {
+  codeProviderCase.status = 'PASS';
+  codeProviderCase.evidence = codeProvider.evidence_reference;
+  codeProviderCase.evidence_type = 'PRELAUNCH_REMOTE_STRIPE_TEST';
+  codeProviderCase.actual = codeProvider;
+}
+const refundBenefitCase = cases.find((item) => item.case_id === 'REFUND-BENEFIT-INTERACTION');
+if (refundBenefitCase && refundBenefit?.status === 'PASS') {
+  refundBenefitCase.status = 'PASS';
+  refundBenefitCase.evidence = refundBenefit.evidence_reference;
+  refundBenefitCase.evidence_type = 'PRELAUNCH_REMOTE_STRIPE_TEST';
+  refundBenefitCase.actual = refundBenefit;
+}
+for (const cancellationCase of cancellationExtension?.cases ?? []) {
+  const target = cases.find((item) => item.case_id === cancellationCase.case_id);
+  if (!target || cancellationCase.status !== 'PASS') continue;
+  target.status = 'PASS';
+  target.evidence = cancellationCase.evidence_reference;
+  target.evidence_type = 'PRELAUNCH_REMOTE_STRIPE_TEST';
+  target.actual = cancellationCase.actual;
 }
 
 const byCategory = Object.groupBy(cases, (item) => item.category);
