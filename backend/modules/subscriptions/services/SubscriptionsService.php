@@ -5027,10 +5027,8 @@ class SubscriptionsService
             : 0;
         $stripeRecurringAmount = getStripeSubscriptionRecurringAmount($stripeSubscription);
 
-        $planRow = $planId > 0 ? $this->repository->findPlanById($planId) : null;
-        if (!$planRow) {
-            $planRow = $this->repository->findPlanByStripePriceOrProduct($stripePriceId, $stripeProductId);
-        }
+        $pricePlanRow = $this->repository->findPlanByStripePriceOrProduct($stripePriceId, $stripeProductId);
+        $planRow = $pricePlanRow && (int) ($pricePlanRow['id'] ?? 0) !== $planId ? $pricePlanRow : ($planId > 0 ? $this->repository->findPlanById($planId) : $pricePlanRow);
 
         if (!$planRow) {
             $planRow = $this->repository->findPlanByNameAndCycle(

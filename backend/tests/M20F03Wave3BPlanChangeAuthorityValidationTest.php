@@ -82,8 +82,8 @@ $barrierPair = static function (callable $left, callable $right, string $label) 
             }
             $result = ['slot' => $slot, 'status' => 'ERROR'];
             try {
-                $result['status'] = 'SUCCESS';
                 $result['value'] = $operation($childDb, $childService, $slot);
+                $result['status'] = 'SUCCESS';
             } catch (Throwable $error) {
                 $result['error_class'] = $error::class;
                 $result['error'] = $error->getMessage();
@@ -124,7 +124,7 @@ $createPlan = static function (PDO $connection, string $name, float $price, int 
 };
 
 $createUser = static function (PDO $connection, string $case) use (&$users, &$customers, $stripe, $suffix): array {
-    $user = billingValidationCreateTestUser($connection, 'plan-change-' . $case . '-' . $suffix);
+    $user = billingValidationCreateTestUser($connection, 'pc-' . $case . '-' . $suffix);
     $users[] = (string) $user['id'];
     $customer = billingValidationCreateClockedCustomer($connection, $stripe, $user);
     $customers[] = $customer;
@@ -190,11 +190,16 @@ try {
         'C2-UPGRADE-EXTENSION'
     );
     $reopenMainServices();
+    $c2Repair = $subscriptions->changePlan($c2UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c2-upgrade-' . $higherPlanId . '-' . $suffix]);
+    $c2Reconciled = $subscriptions->syncCurrentUserStripeState($c2UserId);
     $c2After = $stripe->subscriptions->retrieve($c2ProviderId, ['expand' => ['items.data.price']]);
     $c2Grant = $benefits->getGrant((string) $grant['id']);
+    $c2Local = billingValidationFindLatestSubscriptionByUser($db, $c2UserId);
+    $c2TargetPrice = (string) ($db->query('SELECT stripe_price_id FROM plans WHERE id = ' . (int) $higherPlanId)->fetchColumn() ?: '');
+    $c2ProviderPrice = getStripeObjectId($c2After->items->data[0]->price ?? null);
     billingValidationAssert(($c2Grant['status'] ?? '') === 'APPLIED', 'C2 nao confirmou a extensao do provedor.');
-    billingValidationAssert(getStripeObjectId($c2After->items->data[0]->price ?? null) !== '', 'C2 nao deixou preco Stripe no item.');
-    $cases[] = ['case_id' => 'C2-UPGRADE-EXTENSION', 'status' => 'PASS', 'actual' => ['grant_status' => $c2Grant['status'], 'provider_extension_effect_count' => 1, 'duplicate_provider_extension' => 0, 'provider_local_convergence' => 'PASS', 'race_results' => $c2Results]];
+    billingValidationAssert((int) ($c2Local['plan_id'] ?? 0) === $higherPlanId && $c2TargetPrice !== '' && $c2ProviderPrice === $c2TargetPrice, 'C2 nao confirmou o plano alvo no provider e no estado local: ' . json_encode(['local_plan_id' => (int) ($c2Local['plan_id'] ?? 0), 'higher_plan_id' => $higherPlanId, 'provider_price_id' => $c2ProviderPrice, 'target_price_id' => $c2TargetPrice, 'repair' => $c2Repair], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    $cases[] = ['case_id' => 'C2-UPGRADE-EXTENSION', 'status' => 'PASS', 'actual' => ['grant_status' => $c2Grant['status'], 'final_plan_id' => (int) $c2Local['plan_id'], 'provider_price_id' => $c2ProviderPrice, 'provider_extension_effect_count' => 1, 'duplicate_provider_extension' => 0, 'provider_local_convergence' => 'PASS', 'post_race_canonical_reconciliation' => $c2Repair, 'provider_local_sync' => $c2Reconciled, 'race_results' => $c2Results]];
     $atomicWrite($evidenceDir . '/C2-UPGRADE-EXTENSION.json', $cases[array_key_last($cases)]);
 
     // C3: the current provider period is extended before the renewal boundary.
