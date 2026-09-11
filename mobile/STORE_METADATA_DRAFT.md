@@ -1,55 +1,144 @@
-# ConcursoMestre Mobile — Metadados de loja (rascunho)
+# ConcursoMestre Mobile — Metadados de loja
 
 Atualizado em 10/09/2026.
 
-Este arquivo prepara o conteudo operacional para Google Play Console e App Store Connect. Textos e classificacao devem ser revisados antes da submissao final.
+Este arquivo prepara o conteudo operacional para Google Play Console e App Store Connect. Os textos abaixo foram escritos para refletir o escopo do primeiro release: Questoes, Simulados e Conta.
 
-## Identidade
+## Identidade comum
 
 - Nome do app: `ConcursoMestre`
-- Categoria sugerida: Educacao
+- Categoria primaria sugerida: Educacao
 - Idioma principal: Portugues (Brasil)
 - Versao inicial: `1.0.0`
 - Android package: `com.concursomestre.mobile`
 - iOS bundle identifier: `com.concursomestre.mobile`
 
-## Descricao curta — rascunho
-
-> Resolva questoes, crie simulados e acompanhe sua evolucao para concursos.
-
-## Descricao completa — rascunho
-
-> O ConcursoMestre reune ferramentas para organizar a preparacao para concursos em um unico aplicativo. Resolva questoes com filtros, acompanhe seu historico e desempenho, monte simulados personalizados e retome tentativas em andamento.
->
-> No banco de questoes, voce pode pesquisar e filtrar conteudos, salvar itens, registrar anotacoes e acompanhar estatisticas. Nos simulados, configure criterios de estudo, responda com timer, retome uma tentativa interrompida e revise o resultado ao final.
->
-> A area Conta centraliza seus dados de perfil, seguranca, assinatura e historico de transacoes vinculadas ao servico.
->
-> Alguns recursos podem variar conforme o plano contratado e a disponibilidade do conteudo na plataforma.
-
-## URLs de console
+## URLs oficiais
 
 - Politica de Privacidade: `https://concursomestre.com/privacy`
+- Termos de Uso: `https://concursomestre.com/terms`
 - Suporte: `https://concursomestre.com/support`
 - Exclusao de conta: `https://concursomestre.com/account-deletion`
-- Termos de Uso: `https://concursomestre.com/terms`
 - Site: `https://concursomestre.com`
 
-As quatro rotas devem ser confirmadas em producao depois do deploy da branch candidata.
+As rotas precisam ser confirmadas no ambiente de producao antes do envio definitivo.
 
-## Palavras-chave / posicionamento — rascunho
+---
 
-- concursos
-- questoes
-- simulados
-- estudo
-- concurso publico
-- banco de questoes
-- preparacao
+## Google Play
 
-Evitar promessas de aprovacao garantida, classificacoes absolutas ou alegacoes nao comprovadas.
+### Nome
 
-## Screenshots necessarias
+`ConcursoMestre`
+
+Limite vigente: 30 caracteres.
+
+### Descricao curta
+
+`Questões, simulados e desempenho para sua preparação em concursos.`
+
+66 caracteres; dentro do limite vigente de 80.
+
+### Descricao completa
+
+`ConcursoMestre é uma plataforma de estudos para quem se prepara para concursos públicos.`
+
+`Resolva questões, aplique filtros para encontrar conteúdos relevantes e acompanhe seu histórico de estudo. Monte simulados personalizados, retome tentativas em andamento e consulte o resultado após a conclusão.`
+
+`Na área Conta, você acompanha os dados vinculados ao seu acesso, configurações de segurança e o estado da assinatura associada ao seu perfil.`
+
+`O primeiro release do aplicativo é focado em três áreas principais:`
+
+`• Questões: pratique pelo banco de questões e organize sua resolução com filtros.`
+
+`• Simulados: crie, execute, retome e revise simulados personalizados.`
+
+`• Conta: consulte seus dados, altere sua senha, acompanhe seu acesso e solicite a exclusão da conta.`
+
+`Alguns recursos e conteúdos podem variar conforme o plano associado à conta e a disponibilidade do conteúdo na plataforma.`
+
+### URL de exclusao de conta
+
+`https://concursomestre.com/account-deletion`
+
+Essa URL deve ser informada no campo especifico de exclusao de conta/Data safety da Play Console.
+
+### Primeira faixa de distribuicao
+
+`Internal testing`
+
+O `mobile/eas.json` ja deixa `submit.production.android.track=internal` para o primeiro envio controlado.
+
+---
+
+## App Store
+
+### Nome
+
+`ConcursoMestre`
+
+Limite vigente: 30 caracteres.
+
+### Subtitle
+
+`Questões e simulados`
+
+20 caracteres; dentro do limite vigente de 30.
+
+### Promotional Text
+
+`Resolva questões, monte simulados personalizados e acompanhe seu desempenho em uma experiência de estudo focada em concursos públicos.`
+
+134 caracteres; dentro do limite vigente de 170.
+
+### Description
+
+`ConcursoMestre é uma plataforma de estudos para quem se prepara para concursos públicos.`
+
+`Pratique com questões, use filtros para organizar sua sessão de estudo e acompanhe sua evolução. Crie simulados personalizados, retome tentativas em andamento e revise os resultados após a conclusão.`
+
+`O aplicativo inicial concentra a experiência em três áreas:`
+
+`• Questões — resolução e filtros do banco de questões.`
+
+`• Simulados — criação, execução, retomada, resultado e histórico.`
+
+`• Conta — informações do perfil, segurança, estado do acesso e exclusão de conta.`
+
+`Alguns recursos e conteúdos podem variar conforme o plano associado à conta e a disponibilidade do conteúdo na plataforma.`
+
+### Keywords
+
+`concursos,questões,simulados,estudo,provas,bancas,desempenho`
+
+61 bytes em UTF-8; dentro do limite vigente de 100 bytes.
+
+### Support URL
+
+`https://concursomestre.com/support`
+
+### Privacy Policy URL
+
+`https://concursomestre.com/privacy`
+
+### Fluxo inicial de distribuicao
+
+Primeiro build assinado -> TestFlight -> smoke test em aparelho real -> App Review.
+
+---
+
+## Notas para o revisor
+
+Adaptar para o campo de App Review/Play review quando a conta de teste estiver pronta:
+
+- O aplicativo exige autenticacao para Questoes, Simulados e Conta.
+- Uma conta de revisao dedicada sera fornecida no console; nunca versionar a senha no repositorio.
+- A opcao de exclusao esta em `Conta > Exclusao da conta`.
+- A versao `store` nao inicia compra, upgrade, checkout, reativacao paga ou Stripe Billing Portal.
+- O app reconhece o acesso/assinatura ja associado a conta e permite desativar renovacao existente.
+- Politica de Privacidade, Termos, Suporte e recurso web de exclusao estao publicados no dominio oficial.
+
+## Screenshots planejadas
 
 Capturar somente do Release Candidate validado, sem dados pessoais reais:
 
@@ -61,21 +150,33 @@ Capturar somente do Release Candidate validado, sem dados pessoais reais:
 6. Criacao de simulado;
 7. Execucao do simulado;
 8. Resultado/historico;
-9. Conta.
+9. Conta na variante `store`.
 
-Gerar conjuntos de tamanhos exigidos por cada loja somente depois de validar o layout em aparelhos/emuladores representativos.
+As screenshots de loja devem ser produzidas a partir do canal `store`, nao da tela de Conta completa do APK direto, para refletir exatamente o binario submetido.
 
-## Conta de revisao
+## Assets ainda dependentes do RC
 
-Como o nucleo do produto exige autenticacao, preparar antes da submissao uma conta de revisao dedicada, sem dados pessoais de usuario real e com acesso suficiente para avaliar Questoes, Simulados e Conta.
+- screenshots finais por tamanho de dispositivo;
+- feature graphic do Google Play;
+- eventual App Preview/video;
+- verificacao visual final do icone e splash em aparelhos reais.
 
-Nao armazenar senha dessa conta neste repositorio.
+## Itens que permanecem externos
 
-## Itens que nao podem ser finalizados ainda
+- conta de revisao dedicada;
+- classificacao etaria respondida nos questionarios vigentes;
+- dados oficiais do titular/desenvolvedor;
+- Digital Services Act/Trader status quando exigido pelo App Store Connect;
+- formularios Google Data safety e Apple App Privacy;
+- revisao legal final de Privacidade e Termos;
+- builds assinados e aprovacao das lojas.
 
-- screenshots finais: dependem do RC executavel;
-- textos comerciais finais: dependem da orientacao de produto;
-- billing/assinatura em loja: decisao e implementacao pendentes;
-- classificacao etaria: preencher conforme questionarios vigentes das lojas;
-- Data Safety/App Privacy: usar `DATA_SAFETY_DRAFT.md` e auditar backend/provedores antes do envio;
-- informacoes de contato legais: confirmar dados oficiais do titular antes de publicar.
+## Referencias oficiais verificadas em 10/09/2026
+
+Google Play:
+- https://support.google.com/googleplay/android-developer/answer/9859152
+- https://support.google.com/googleplay/android-developer/answer/9866151
+
+App Store Connect:
+- https://developer.apple.com/help/app-store-connect/reference/app-information/app-information
+- https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information
