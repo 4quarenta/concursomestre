@@ -58,22 +58,44 @@ type TransactionRetentionOffer = {
 
 const normalizeTransactionRows = (rows: Transaction[]): Transaction[] => rows.map((row) => {
   const raw = row as Transaction & {
-    retention_offer?: Record<string, unknown> | null;
-    retentionOffer?: TransactionRetentionOffer | null;
+    retention_offer?: Record<string, unknown> | string | null;
+    retentionOffer?: TransactionRetentionOffer | Record<string, unknown> | string | null;
+    retention_offer_id?: string | number | null;
+    retention_offer_status?: string | null;
+    retention_offer_refund_amount?: number | string | null;
+    retention_offer_paid_plan?: string | null;
+    retention_offer_offered_days?: number | string | null;
+    retentionOfferId?: string | number | null;
+    retentionOfferStatus?: string | null;
+    retentionOfferRefundAmount?: number | string | null;
+    retentionOfferPaidPlan?: string | null;
+    retentionOfferOfferedDays?: number | string | null;
   };
-  const offer = raw.retentionOffer || raw.retention_offer;
-  if (!offer || typeof offer !== 'object') return row;
+  const rawOffer = raw.retentionOffer || raw.retention_offer;
+  let offer: Record<string, unknown> | null = null;
+  if (rawOffer && typeof rawOffer === 'object') {
+    offer = rawOffer as Record<string, unknown>;
+  } else if (typeof rawOffer === 'string') {
+    try {
+      const parsed = JSON.parse(rawOffer);
+      if (parsed && typeof parsed === 'object') offer = parsed as Record<string, unknown>;
+    } catch {
+      // Ignore malformed legacy payloads and rely on flattened fields below.
+    }
+  }
+  const flattenedStatus = raw.retention_offer_status ?? raw.retentionOfferStatus;
+  if (!offer && !flattenedStatus) return row;
 
-  const source = offer as Record<string, unknown>;
+  const source = offer || {};
   return {
     ...row,
     retentionOffer: {
-      id: String(source.id ?? source.offer_id ?? ''),
-      status: String(source.status ?? source.offer_status ?? ''),
-      refundAmount: Number(source.refundAmount ?? source.refund_amount ?? 0),
-      paidPlan: String(source.paidPlan ?? source.paid_plan ?? ''),
+      id: String(source.id ?? source.offer_id ?? raw.retention_offer_id ?? raw.retentionOfferId ?? ''),
+      status: String(source.status ?? source.offer_status ?? flattenedStatus ?? ''),
+      refundAmount: Number(source.refundAmount ?? source.refund_amount ?? raw.retention_offer_refund_amount ?? raw.retentionOfferRefundAmount ?? 0),
+      paidPlan: String(source.paidPlan ?? source.paid_plan ?? raw.retention_offer_paid_plan ?? raw.retentionOfferPaidPlan ?? ''),
       currentRenewalAt: (source.currentRenewalAt ?? source.current_renewal_at ?? null) as string | null,
-      offeredDays: Number(source.offeredDays ?? source.offered_days ?? 0),
+      offeredDays: Number(source.offeredDays ?? source.offered_days ?? raw.retention_offer_offered_days ?? raw.retentionOfferOfferedDays ?? 0),
       expectedRenewalAt: (source.expectedRenewalAt ?? source.expected_renewal_at ?? null) as string | null,
       expiresAt: (source.expiresAt ?? source.expires_at ?? null) as string | null,
       userNote: (source.userNote ?? source.user_note ?? null) as string | null,

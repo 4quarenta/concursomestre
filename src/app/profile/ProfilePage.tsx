@@ -416,22 +416,42 @@ type ProfileTransaction = Omit<Transaction, 'status' | 'amount'> & {
 
 const resolveProfileRetentionOffer = (transaction: ProfileTransaction) => {
     const rawTransaction = transaction as ProfileTransaction & {
-        retention_offer?: Record<string, unknown> | null;
+        retention_offer?: Record<string, unknown> | string | null;
         retention_offer_status?: string | null;
         retention_offer_id?: string | number | null;
+        retentionOffer?: Record<string, unknown> | string | null;
+        retentionOfferStatus?: string | null;
+        retentionOfferId?: string | number | null;
+        retention_offer_refund_amount?: number | string | null;
+        retention_offer_paid_plan?: string | null;
+        retention_offer_offered_days?: number | string | null;
+        retentionOfferRefundAmount?: number | string | null;
+        retentionOfferPaidPlan?: string | null;
+        retentionOfferOfferedDays?: number | string | null;
     };
-    const source = rawTransaction.retentionOffer || rawTransaction.retention_offer;
-    const flattenedStatus = rawTransaction.retention_offer_status;
+    const rawSource = rawTransaction.retentionOffer || rawTransaction.retention_offer;
+    let source: Record<string, unknown> | null = null;
+    if (rawSource && typeof rawSource === 'object') {
+        source = rawSource as Record<string, unknown>;
+    } else if (typeof rawSource === 'string') {
+        try {
+            const parsed = JSON.parse(rawSource);
+            if (parsed && typeof parsed === 'object') source = parsed as Record<string, unknown>;
+        } catch {
+            // Ignore malformed legacy payloads and keep the flattened status fallback.
+        }
+    }
+    const flattenedStatus = rawTransaction.retention_offer_status ?? rawTransaction.retentionOfferStatus;
     if (!source && !flattenedStatus) return null;
 
-    const values = (source || {}) as Record<string, unknown>;
+    const values = source || {};
     return {
-        id: String(values.id ?? values.offer_id ?? rawTransaction.retention_offer_id ?? ''),
+        id: String(values.id ?? values.offer_id ?? rawTransaction.retention_offer_id ?? rawTransaction.retentionOfferId ?? ''),
         status: String(values.status ?? values.offer_status ?? flattenedStatus ?? ''),
-        refundAmount: Number(values.refundAmount ?? values.refund_amount ?? 0),
-        paidPlan: String(values.paidPlan ?? values.paid_plan ?? ''),
+        refundAmount: Number(values.refundAmount ?? values.refund_amount ?? rawTransaction.retention_offer_refund_amount ?? rawTransaction.retentionOfferRefundAmount ?? 0),
+        paidPlan: String(values.paidPlan ?? values.paid_plan ?? rawTransaction.retention_offer_paid_plan ?? rawTransaction.retentionOfferPaidPlan ?? ''),
         currentRenewalAt: (values.currentRenewalAt ?? values.current_renewal_at ?? null) as string | null,
-        offeredDays: Number(values.offeredDays ?? values.offered_days ?? 0),
+        offeredDays: Number(values.offeredDays ?? values.offered_days ?? rawTransaction.retention_offer_offered_days ?? rawTransaction.retentionOfferOfferedDays ?? 0),
         expectedRenewalAt: (values.expectedRenewalAt ?? values.expected_renewal_at ?? null) as string | null,
         expiresAt: (values.expiresAt ?? values.expires_at ?? null) as string | null,
         userNote: (values.userNote ?? values.user_note ?? null) as string | null,
