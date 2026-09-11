@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "contracts:check": "node scripts/check-contracts.mjs",
-    "qa:smoke": "node scripts/qa-smoke.mjs"
+    "qa:smoke": "node scripts/qa-smoke.mjs",
+    "store:check": "node scripts/store-readiness-check.mjs"
   },
   "dependencies": {
     "@expo/ui": "~57.0.17",
