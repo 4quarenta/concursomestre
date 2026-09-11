@@ -414,6 +414,31 @@ type ProfileTransaction = Omit<Transaction, 'status' | 'amount'> & {
     method?: string;
 };
 
+const resolveProfileRetentionOffer = (transaction: ProfileTransaction) => {
+    const rawTransaction = transaction as ProfileTransaction & {
+        retention_offer?: Record<string, unknown> | null;
+        retention_offer_status?: string | null;
+        retention_offer_id?: string | number | null;
+    };
+    const source = rawTransaction.retentionOffer || rawTransaction.retention_offer;
+    const flattenedStatus = rawTransaction.retention_offer_status;
+    if (!source && !flattenedStatus) return null;
+
+    const values = (source || {}) as Record<string, unknown>;
+    return {
+        id: String(values.id ?? values.offer_id ?? rawTransaction.retention_offer_id ?? ''),
+        status: String(values.status ?? values.offer_status ?? flattenedStatus ?? ''),
+        refundAmount: Number(values.refundAmount ?? values.refund_amount ?? 0),
+        paidPlan: String(values.paidPlan ?? values.paid_plan ?? ''),
+        currentRenewalAt: (values.currentRenewalAt ?? values.current_renewal_at ?? null) as string | null,
+        offeredDays: Number(values.offeredDays ?? values.offered_days ?? 0),
+        expectedRenewalAt: (values.expectedRenewalAt ?? values.expected_renewal_at ?? null) as string | null,
+        expiresAt: (values.expiresAt ?? values.expires_at ?? null) as string | null,
+        userNote: (values.userNote ?? values.user_note ?? null) as string | null,
+        providerConfirmedAt: (values.providerConfirmedAt ?? values.provider_confirmed_at ?? null) as string | null,
+    };
+};
+
 type ProfileServiceActionResponse<TData extends Record<string, unknown> = Record<string, unknown>> = {
     success?: boolean;
     message?: string | null;
@@ -2184,10 +2209,9 @@ const Profile: React.FC = () => {
         && subscriptionTotalCycleDays > 0,
     );
     const hasPendingRefundRequest = userTransactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested');
-    const activeRetentionOffer = userTransactions.find((transaction) => {
-        const status = String(transaction.retentionOffer?.status || '').toUpperCase();
-        return ['PENDING', 'ACCEPTED_PENDING_BENEFIT'].includes(status);
-    })?.retentionOffer || null;
+    const activeRetentionOffer = userTransactions
+        .map(resolveProfileRetentionOffer)
+        .find((offer) => ['PENDING', 'ACCEPTED_PENDING_BENEFIT'].includes(String(offer?.status || '').toUpperCase())) || null;
     const installmentCount = Math.max(1, Number(activeSubscription?.total_installments || 1));
     const paidInstallments = Math.max(0, Number(activeSubscription?.paid_installments || 0));
     const firstPaidPlanTransactionAt = userTransactions
