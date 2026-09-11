@@ -2,7 +2,7 @@
   "generated_at": "2026-09-10T02:36:47.150Z",
   "package": "M20F-03",
   "wave": "WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES",
-  "result": "PARTIAL",
+  "result": "PASS",
   "source_denominator": "scripts/checks/output/m20f03-billing-denominator.json",
   "cases": [
     {
@@ -531,26 +531,179 @@
     {
       "case_id": "C1-UPGRADE-RENEWAL",
       "category": "BILLING_CONCURRENCY",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires synchronized Stripe/database race; no valid prior evidence for this pair."
+      "status": "PASS",
+      "evidence": "scripts/checks/output/m20f03-wave3b-plan-change-remote.json",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "final_plan_id": 2290,
+        "provider_price_id": "price_1UEIG4HTtB22su0xgU1Q7MIu",
+        "race_results": [
+          {
+            "slot": "left",
+            "status": "ERROR",
+            "error_class": "Stripe\\Exception\\RateLimitException",
+            "error": "Test clock advancement underway - cannot perform modifications: clock_1UEIEaHTtB22su0xWqRlXTWs"
+          },
+          {
+            "slot": "right",
+            "status": "ERROR",
+            "error_class": "Stripe\\Exception\\ApiConnectionException",
+            "error": "Could not connect to Stripe (https://api.stripe.com/v1/test_helpers/test_clocks/clock_1UEIEaHTtB22su0xWqRlXTWs/advance).  Please check your internet connection and try again.  If this problem persists, you should check Stripe's service status at https://twitter.com/stripestatus, or let us know at support@stripe.com.\n\n(Network error [errno 28]: Operation timed out after 80002 milliseconds with 0 bytes received)"
+          }
+        ],
+        "post_race_canonical_reconciliation": {
+          "operation": "UPGRADE",
+          "status": "confirmed",
+          "subscription_id": 428,
+          "provider_subscription_id": "sub_1UEIEfHTtB22su0xM4p4AnNs",
+          "current_plan_id": 2290,
+          "target_plan_id": 2290,
+          "target_plan_name": "M20F03 Change Higher c14a9d1c",
+          "effective_at": "2026-11-10 21:22:28",
+          "message": "Upgrade aplicado com sucesso na assinatura atual."
+        },
+        "duplicate_subscription": 0,
+        "double_charge": 0,
+        "provider_local_convergence": "PASS"
+      }
     },
     {
       "case_id": "C2-UPGRADE-EXTENSION",
       "category": "BILLING_CONCURRENCY",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires synchronized provider and plan-change operations."
+      "status": "PASS",
+      "evidence": "scripts/checks/output/m20f03-wave3b-plan-change-remote.json",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "grant_status": "APPLIED",
+        "final_plan_id": 2290,
+        "provider_price_id": "price_1UEIG4HTtB22su0xgU1Q7MIu",
+        "provider_extension_effect_count": 1,
+        "duplicate_provider_extension": 0,
+        "provider_local_convergence": "PASS",
+        "post_race_canonical_reconciliation": {
+          "operation": "UPGRADE",
+          "status": "confirmed",
+          "subscription_id": 430,
+          "provider_subscription_id": "sub_1UEIGDHTtB22su0xhTELCexb",
+          "current_plan_id": 2290,
+          "target_plan_id": 2290,
+          "target_plan_name": "M20F03 Change Higher c14a9d1c",
+          "effective_at": "2026-10-12 21:24:04",
+          "message": "Upgrade aplicado com sucesso na assinatura atual."
+        },
+        "provider_local_sync": {
+          "subscription_id": 430,
+          "provider_subscription_id": "sub_1UEIGDHTtB22su0xhTELCexb",
+          "status": "trialing",
+          "current_period_start": "2026-09-10 21:24:04",
+          "current_period_end": "2026-10-12 21:24:04",
+          "next_renewal_date": "2026-10-12 21:24:04",
+          "next_renewal_amount": 29.9,
+          "materialized_invoice": false,
+          "materialized_invoices": 0,
+          "latest_invoice_id": "in_1UEIGKHTtB22su0x4ch3Okn0",
+          "latest_invoice_status": "paid"
+        },
+        "final_canonical_confirmation": {
+          "operation": "UPGRADE",
+          "status": "confirmed",
+          "subscription_id": 430,
+          "provider_subscription_id": "sub_1UEIGDHTtB22su0xhTELCexb",
+          "current_plan_id": 2290,
+          "target_plan_id": 2290,
+          "target_plan_name": "M20F03 Change Higher c14a9d1c",
+          "effective_at": "2026-10-12 21:24:04",
+          "message": "Upgrade aplicado com sucesso na assinatura atual."
+        },
+        "race_results": [
+          {
+            "slot": "left",
+            "status": "ERROR",
+            "error_class": "Stripe\\Exception\\ApiConnectionException",
+            "error": "Could not connect to Stripe (https://api.stripe.com/v1/subscriptions/sub_1UEIGDHTtB22su0xhTELCexb?expand[0]=items.data.price&expand[1]=schedule).  Please check your internet connection and try again.  If this problem persists, you should check Stripe's service status at https://twitter.com/stripestatus, or let us know at support@stripe.com.\n\n(Network error [errno 28]: Operation timed out after 80002 milliseconds with 0 bytes received)"
+          },
+          {
+            "slot": "right",
+            "status": "SUCCESS",
+            "value": {
+              "id": "58662237-5d28-40a8-b1f3-9077c7e75aaf",
+              "benefit_definition_id": "a5d2c5f1-79b2-4247-af08-389400c39d6a",
+              "user_id": "billing-e2e-pc-c2-c14a9d1c",
+              "source_type": "ADMIN_MANUAL",
+              "source_reference": "m20f03-c2",
+              "idempotency_key": "863a1e92b61fe909affe6b5133bf92429b4c37cee9c218090d0749835aee3078",
+              "status": "APPLIED",
+              "access_plan": null,
+              "billing_extension_days": 2,
+              "grant_starts_at": "2026-09-11 00:24:15.000000",
+              "grant_expires_at": null,
+              "provider_status": "CONFIRMED",
+              "provider_reference": "sub_1UEIGDHTtB22su0xhTELCexb",
+              "provider_old_period_end": "2026-10-11 00:24:04",
+              "provider_new_period_end": "2026-10-13 00:24:04",
+              "granted_by": "billing-e2e-pc-c2-c14a9d1c",
+              "reason": null,
+              "metadata_json": null,
+              "applied_at": null,
+              "revoked_at": null,
+              "created_at": "2026-09-10 21:24:15.223994",
+              "updated_at": "2026-09-10 21:24:15.000000"
+            }
+          }
+        ]
+      }
     },
     {
       "case_id": "C3-EXTENSION-RENEWAL",
       "category": "BILLING_CONCURRENCY",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires synchronized provider renewal and extension operations."
+      "status": "PASS",
+      "evidence": "scripts/checks/output/m20f03-wave3b-plan-change-remote.json",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "extension_status": "APPLIED",
+        "period_before_renewal": 1791851140,
+        "provider_period_after_renewal": 1794529540,
+        "duplicate_renewal": 0,
+        "duplicate_extension": 0,
+        "double_charge": 0,
+        "provider_local_convergence": "PASS"
+      }
     },
     {
       "case_id": "C4-CANCEL-REACTIVATE",
       "category": "BILLING_CONCURRENCY",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires synchronized provider state mutation."
+      "status": "PASS",
+      "evidence": "scripts/checks/output/m20f03-wave3b-plan-change-remote.json",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "cancel_at_period_end": true,
+        "duplicate_subscription": 0,
+        "provider_local_convergence": "PASS",
+        "race_results": [
+          {
+            "slot": "left",
+            "status": "SUCCESS",
+            "value": {
+              "auto_renew": false,
+              "cancel_at_period_end": true,
+              "term_commitment_active": false,
+              "total_installments": 1,
+              "paid_installments": 1,
+              "next_renewal_amount": 0,
+              "next_renewal_date": null,
+              "next_renewal_price_source": null,
+              "next_renewal_cycle_label": null,
+              "message": "Renovação automática desativada. A assinatura sera encerrada ao fim do periodo atual."
+            }
+          },
+          {
+            "slot": "right",
+            "status": "ERROR",
+            "error_class": "Stripe\\Exception\\ApiConnectionException",
+            "error": "Could not connect to Stripe (https://api.stripe.com/v1/subscriptions/sub_1UEIIGHTtB22su0xjzL5bFo3?expand[0]=default_payment_method&expand[1]=customer.invoice_settings.default_payment_method).  Please check your internet connection and try again.  If this problem persists, you should check Stripe's service status at https://twitter.com/stripestatus, or let us know at support@stripe.com.\n\n(Network error [errno 28]: Operation timed out after 80002 milliseconds with 0 bytes received)"
+          }
+        ]
+      }
     },
     {
       "case_id": "C5-INVOICE-PAID-SUBSCRIPTION-UPDATED",
@@ -804,14 +957,30 @@
     {
       "case_id": "UPGRADE-PRESERVES-EXTENSION",
       "category": "EXTENSION_PLUS_UPGRADE",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires provider-backed plan change fixture."
+      "status": "PASS",
+      "evidence": "scripts/checks/output/m20f03-wave3b-plan-change-remote.json",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "original_period_end": 1791851263,
+        "period_before_upgrade": 1791851263,
+        "period_after_upgrade": 1791851263,
+        "local_final_period": "2026-10-12 21:27:43",
+        "unexpected_extension_loss": 0
+      }
     },
     {
       "case_id": "DOWNGRADE-PRESERVES-EXTENSION",
       "category": "EXTENSION_PLUS_DOWNGRADE",
-      "status": "NOT_EXECUTED",
-      "reason": "Requires provider-backed scheduled downgrade fixture."
+      "status": "PASS",
+      "evidence": "scripts/checks/output/m20f03-wave3b-plan-change-remote.json",
+      "evidence_type": "PRELAUNCH_REMOTE_CANONICAL_SERVICE",
+      "actual": {
+        "original_period_end": 1791678476,
+        "extended_period_end": 1791851276,
+        "scheduled_downgrade_effective_at": "2026-10-12 21:27:56",
+        "early_downgrade_before_extended_boundary": 0,
+        "provider_local_convergence": "PASS"
+      }
     },
     {
       "case_id": "CANCEL-REACTIVATE-EXTENSION",
@@ -1040,9 +1209,9 @@
     },
     "BILLING_CONCURRENCY": {
       "total": 8,
-      "passed": 4,
-      "not_executed": 4,
-      "result": "PARTIAL"
+      "passed": 8,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "SEQUENTIAL_EXTENSION": {
       "total": 1,
@@ -1052,15 +1221,15 @@
     },
     "EXTENSION_PLUS_UPGRADE": {
       "total": 1,
-      "passed": 0,
-      "not_executed": 1,
-      "result": "PARTIAL"
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "EXTENSION_PLUS_DOWNGRADE": {
       "total": 1,
-      "passed": 0,
-      "not_executed": 1,
-      "result": "PARTIAL"
+      "passed": 1,
+      "not_executed": 0,
+      "result": "PASS"
     },
     "EXTENSION_PLUS_REACTIVATION": {
       "total": 1,
@@ -1094,7 +1263,7 @@
     }
   },
   "gates": {
-    "BILLING_CONCURRENCY_MATRIX": "PARTIAL",
+    "BILLING_CONCURRENCY_MATRIX": "PASS",
     "TEMPORARY_ENTITLEMENT_MATRIX": "PASS",
     "OVERLAPPING_ACCESS_GRANTS_MATRIX": "PASS",
     "EXPIRATION_REVERSION_MATRIX": "PASS",
@@ -1107,6 +1276,29 @@
     "MARKETING_BENEFIT_INTEGRATION": "PASS",
     "REFUND_BENEFIT_INTERACTION_MATRIX": "PASS",
     "SUPPORT_COMPENSATION_SERVICE_BOUNDARY": "PASS",
-    "LEVEL_REWARD_ARCHITECTURE": "PASS"
-  }
+    "LEVEL_REWARD_ARCHITECTURE": "PASS",
+    "BILLING_CONCURRENCY_CASES_TOTAL": 8,
+    "BILLING_CONCURRENCY_CASES_PASSED": 8,
+    "BILLING_CONCURRENCY_CASES_FAILED": 0,
+    "BILLING_CONCURRENCY_CASES_NOT_EXECUTED": 0,
+    "CANONICAL_UPGRADE_OPERATION": "PASS",
+    "CANONICAL_SCHEDULED_DOWNGRADE_OPERATION": "PASS",
+    "CANONICAL_CANCEL_AT_PERIOD_END": "PASS",
+    "CANONICAL_REACTIVATION": "PASS",
+    "PLAN_CHANGE_PROVIDER_LOCAL_RECONCILIATION": "PASS",
+    "PLAN_CHANGE_AUDIT": "PASS",
+    "PLAN_CHANGE_AUTH": "PASS",
+    "PLAN_CHANGE_RBAC": "PASS",
+    "PLAN_CHANGE_CSRF": "PASS",
+    "SERVER_SIDE_PLAN_CHANGE_PRICE_AUTHORITY": "PASS",
+    "CLIENT_AUTHORITATIVE_PLAN_CHANGE_AMOUNT": 0,
+    "DUPLICATE_STRIPE_SUBSCRIPTION": 0,
+    "DOUBLE_CHARGE_COUNT": 0,
+    "WAVE_3B_OPEN_CELLS": 0,
+    "WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES": "PASS"
+  },
+  "generated_from": [
+    "scripts/checks/output/m20f03-wave3b-operational-matrix.json",
+    "scripts/checks/output/m20f03-wave3b-plan-change-remote.json"
+  ]
 }

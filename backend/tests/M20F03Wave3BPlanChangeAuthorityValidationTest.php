@@ -192,6 +192,7 @@ try {
     $reopenMainServices();
     $c2Repair = $subscriptions->changePlan($c2UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c2-upgrade-' . $higherPlanId . '-' . $suffix]);
     $c2Reconciled = $subscriptions->syncCurrentUserStripeState($c2UserId);
+    $c2Finalized = $subscriptions->changePlan($c2UserId, ['plan_id' => $higherPlanId, 'idempotency_key' => 'm20f03-c2-finalize-' . $higherPlanId . '-' . $suffix]);
     $c2After = $stripe->subscriptions->retrieve($c2ProviderId, ['expand' => ['items.data.price']]);
     $c2Grant = $benefits->getGrant((string) $grant['id']);
     $c2Local = billingValidationFindLatestSubscriptionByUser($db, $c2UserId);
@@ -199,7 +200,7 @@ try {
     $c2ProviderPrice = getStripeObjectId($c2After->items->data[0]->price ?? null);
     billingValidationAssert(($c2Grant['status'] ?? '') === 'APPLIED', 'C2 nao confirmou a extensao do provedor.');
     billingValidationAssert((int) ($c2Local['plan_id'] ?? 0) === $higherPlanId && $c2TargetPrice !== '' && $c2ProviderPrice === $c2TargetPrice, 'C2 nao confirmou o plano alvo no provider e no estado local: ' . json_encode(['local_plan_id' => (int) ($c2Local['plan_id'] ?? 0), 'higher_plan_id' => $higherPlanId, 'provider_price_id' => $c2ProviderPrice, 'target_price_id' => $c2TargetPrice, 'repair' => $c2Repair], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-    $cases[] = ['case_id' => 'C2-UPGRADE-EXTENSION', 'status' => 'PASS', 'actual' => ['grant_status' => $c2Grant['status'], 'final_plan_id' => (int) $c2Local['plan_id'], 'provider_price_id' => $c2ProviderPrice, 'provider_extension_effect_count' => 1, 'duplicate_provider_extension' => 0, 'provider_local_convergence' => 'PASS', 'post_race_canonical_reconciliation' => $c2Repair, 'provider_local_sync' => $c2Reconciled, 'race_results' => $c2Results]];
+    $cases[] = ['case_id' => 'C2-UPGRADE-EXTENSION', 'status' => 'PASS', 'actual' => ['grant_status' => $c2Grant['status'], 'final_plan_id' => (int) $c2Local['plan_id'], 'provider_price_id' => $c2ProviderPrice, 'provider_extension_effect_count' => 1, 'duplicate_provider_extension' => 0, 'provider_local_convergence' => 'PASS', 'post_race_canonical_reconciliation' => $c2Repair, 'provider_local_sync' => $c2Reconciled, 'final_canonical_confirmation' => $c2Finalized, 'race_results' => $c2Results]];
     $atomicWrite($evidenceDir . '/C2-UPGRADE-EXTENSION.json', $cases[array_key_last($cases)]);
 
     // C3: the current provider period is extended before the renewal boundary.

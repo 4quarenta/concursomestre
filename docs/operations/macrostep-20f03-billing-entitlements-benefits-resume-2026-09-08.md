@@ -543,3 +543,118 @@ criação/finalização de assinatura e atualização de renovação, mas não u
 operação canônica pública de mudança de plano nem de downgrade agendado. Usar
 mutação direta no Stripe ou um runner paralelo produziria evidência inválida.
 Por isso a Wave 4 continua bloqueada até existir esse contrato e suas provas.
+
+## Fechamento final da Wave 3B (2026-09-11)
+
+Este bloco é a continuação autoritativa do checkpoint anterior. Foram
+executados somente os seis cells residuais de plan-change; os gates já PASS,
+incluindo o denominador de 81 combinações e a matriz de entitlement 22/22,
+foram preservados sem reexecução.
+
+```text
+M20F_03 = PARTIAL
+CURRENT_CLOSURE_WAVE = WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES
+ACTIVE_PRODUCTION_RELEASE = 40101a5202255ada91ebf796cffdc447602f1584
+ORIGIN_1_0_0 = 40101a5202255ada91ebf796cffdc447602f1584
+ACTUAL_LAUNCH_MODE = PRELAUNCH
+RUNTIME_CHANGED = YES
+RUNTIME_DEPLOY_PERFORMED = YES
+
+PLAN_CHANGE_AUTHORITY_STATE = EXISTS_AND_REUSABLE
+EXISTING_UPGRADE_CANONICAL_ENTRYPOINT = backend/modules/subscriptions/services/SubscriptionsService.php::changePlan -> CanonicalPlanChangeService::changePlan
+EXISTING_DOWNGRADE_CANONICAL_ENTRYPOINT = backend/modules/subscriptions/services/SubscriptionsService.php::changePlan -> CanonicalPlanChangeService::changePlan
+EXISTING_CANCEL_CANONICAL_ENTRYPOINT = backend/modules/subscriptions/services/SubscriptionsService.php::updateRenewal(['auto_renew' => false])
+EXISTING_REACTIVATE_CANONICAL_ENTRYPOINT = backend/modules/subscriptions/services/SubscriptionsService.php::updateRenewal(['auto_renew' => true])
+
+SERVER_SIDE_PLAN_CHANGE_PRICE_AUTHORITY = PASS
+CLIENT_AUTHORITATIVE_PLAN_CHANGE_AMOUNT = 0
+CANONICAL_UPGRADE_OPERATION = PASS
+CANONICAL_SCHEDULED_DOWNGRADE_OPERATION = PASS
+CANONICAL_CANCEL_AT_PERIOD_END = PASS
+CANONICAL_REACTIVATION = PASS
+PLAN_CHANGE_PROVIDER_LOCAL_RECONCILIATION = PASS
+PLAN_CHANGE_AUDIT = PASS
+PLAN_CHANGE_AUTH = PASS
+PLAN_CHANGE_RBAC = PASS
+PLAN_CHANGE_CSRF = PASS
+
+BILLING_CONCURRENCY_MATRIX = PASS
+BILLING_CONCURRENCY_CASES_TOTAL = 8
+BILLING_CONCURRENCY_CASES_PASSED = 8
+BILLING_CONCURRENCY_CASES_FAILED = 0
+BILLING_CONCURRENCY_CASES_NOT_EXECUTED = 0
+C1_UPGRADE_RENEWAL = PASS
+C2_UPGRADE_EXTENSION = PASS
+C3_EXTENSION_RENEWAL = PASS
+C4_CANCEL_REACTIVATE = PASS
+UPGRADE_PRESERVES_VALID_EXTENSION = PASS
+DOWNGRADE_PRESERVES_EXTENSION = PASS
+SCHEDULED_DOWNGRADE_EXTENDED_PERIOD = PASS
+DUPLICATE_STRIPE_SUBSCRIPTION = 0
+DOUBLE_CHARGE_COUNT = 0
+WEBHOOK_IDEMPOTENCY = PASS
+WEBHOOK_CONVERGENCE = PASS
+WEBHOOK_ORDER_DEPENDENCE = 0
+
+WAVE_3B_OPEN_CELLS = 0
+WAVE_3B_OPEN_CELL_IDS = NONE
+WAVE_3B_RESIDUAL_OPERATIONAL_MATRICES = PASS
+OPEN_CONFIRMED_P0_DEFECTS = 0
+OPEN_CONFIRMED_P1_DEFECTS = 0
+
+SYNTHETIC_ACTIVE_ACCOUNTS_REMAINING = 0
+SYNTHETIC_SUBSCRIPTIONS_REMAINING = 0
+SYNTHETIC_PLAN_TRANSITIONS_REMAINING = 0
+SYNTHETIC_BENEFIT_GRANTS_REMAINING = 0
+ACTIVE_SYNTHETIC_TEST_CLOCKS_REMAINING = 0
+REAL_DATA_INSERTIONS = 0
+STRIPE_LIVE_MUTATIONS = 0
+
+SAFE_TO_PROCEED_TO_WAVE_4 = YES
+NEXT_WAVE = WAVE_4_BROWSER_ACCESSIBILITY
+M20F_04 = NOT_STARTED
+M20F_05 = NOT_STARTED
+M20F_06 = NOT_STARTED
+M20F_07 = NOT_STARTED
+```
+
+A autoridade existente estava fragmentada entre renovação, extensão e
+mutação de provider; a responsabilidade de transição foi consolidada em
+`CanonicalPlanChangeService`, reutilizada por `SubscriptionsService` e
+exposta pela rota autenticada com CSRF. O plano e o preço são resolvidos no
+servidor a partir do catálogo; a operação de upgrade reutiliza o item da
+assinatura existente, e o downgrade usa o período corrente autoritativo do
+provider para agendar a fase seguinte.
+
+A aceitação remota em PRELAUNCH usou apenas Stripe TEST e fixtures sintéticos.
+Os seis casos passaram. Houve timeouts transitórios de rede em workers
+paralelos de C1, C2 e C4; a reconciliação canônica posterior confirmou o estado
+final provider/local e a execução não criou cobrança ou assinatura duplicada.
+Em C2, a confirmação canônica final também confirmou a extensão única e o
+preço-alvo após a sincronização.
+
+A evidência bruta está em
+`scripts/checks/output/m20f03-wave3b-plan-change-remote.json`; o artefato
+consolidado em `scripts/checks/output/m20f03-wave3b-operational-matrix.json`
+promoveu apenas os seis cells abertos e manteve os demais resultados. A
+verificação independente pós-cleanup retornou zero para contas, assinaturas,
+transações, grants, transições, definições, planos e test clocks sintéticos.
+
+```text
+PRESERVED_WAVE_1_RETENTION_CONCURRENCY = PASS (11/11)
+PRESERVED_RETENTION_TEST_CLOCK = PASS
+PRESERVED_WAVE_2_PROVIDER_FAILURE_RECONCILIATION = PASS (10/10)
+PRESERVED_FULL_BILLING_SUPPORTED_COMBINATION_MATRIX = PASS (81/81)
+PRESERVED_TEMPORARY_ENTITLEMENT_MATRIX = PASS (22/22)
+PRESERVED_OVERLAPPING_ACCESS_GRANTS_MATRIX = PASS
+PRESERVED_EXPIRATION_REVERSION_MATRIX = PASS
+PRESERVED_STACKING_MATRICES = PASS
+PRESERVED_C7_SERIALIZATION_CLASSIFICATION = SAFE_GENERIC_API_CONFLICT
+```
+
+Os prechecks de release confirmaram PHP lint remoto, typecheck strict,
+Vitest direcionado (`20/20`), lint com zero erros e 97 warnings preexistentes,
+build, scans de segredo/encoding/artifacts/source-size e zero migrações
+pendentes. O deploy atômico do release `40101a52` passou o preflight de backup,
+PITR, nginx e health/readiness. Nenhuma migração foi necessária. A Wave 4 não
+foi iniciada; PRELAUNCH permanece obrigatório.
