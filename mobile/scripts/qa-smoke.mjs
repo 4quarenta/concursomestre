@@ -45,6 +45,9 @@ if (!fs.existsSync(appJsonPath)) {
   if (app?.ios?.bundleIdentifier !== 'com.concursomestre.mobile') {
     fail('iOS bundleIdentifier esperado: com.concursomestre.mobile.');
   }
+  if (app?.ios?.supportsTablet !== false) {
+    fail('Primeiro release iOS deve permanecer restrito a iPhone ate haver QA dedicado de iPad.');
+  }
   if (!/^\d+$/.test(String(app?.ios?.buildNumber || ''))) {
     fail('iOS buildNumber deve ser numerico.');
   }
@@ -89,7 +92,6 @@ if (!fs.existsSync(easJsonPath)) {
   }
 }
 
-// Superficie obrigatoria do MVP.
 [
   'mobile/app/(app)/(tabs)/questoes.tsx',
   'mobile/app/(app)/(tabs)/simulados.tsx',
@@ -102,7 +104,6 @@ if (!fs.existsSync(easJsonPath)) {
   'mobile/app/+not-found.tsx',
 ].forEach((file) => requireFile(file));
 
-// Recursos publicos exigidos para distribuicao e suporte.
 [
   'src/app/privacy/page.tsx',
   'src/app/terms/page.tsx',
@@ -110,7 +111,6 @@ if (!fs.existsSync(easJsonPath)) {
   'src/app/account-deletion/page.tsx',
 ].forEach((file) => requireFile(file));
 
-// Bridges antigas nao podem voltar ao bundle publicavel.
 [
   'mobile/app/(app)/SimulationRun.tsx',
   'mobile/app/(app)/MainTabs.tsx',
@@ -138,7 +138,6 @@ requireText(
   'Runtime deve exigir configuracao explicita da API fora de desenvolvimento.',
 );
 
-// Links publicos devem permanecer HTTPS e no dominio oficial.
 for (const [key, route] of Object.entries({
   privacy: '/privacy',
   terms: '/terms',
@@ -187,7 +186,6 @@ requireText(
   'Recurso web de exclusao deve encaminhar ao fluxo autenticado real.',
 );
 
-// As rotas ativas devem apontar para as features novas.
 requireText(
   'mobile/app/(app)/(tabs)/questoes.tsx',
   'QuestionsScreenV2',
