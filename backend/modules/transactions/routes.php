@@ -210,6 +210,7 @@ function handleTransactionsRejectRefundRoute(PDO $db): void
         assertTransactionsMutationCsrf();
         $adminContext = requirePlatformAdminSessionContext($db);
         $body = json_decode(file_get_contents('php://input'), true) ?: [];
+        $body['actor_id'] = (string) $adminContext['admin_user_id'];
         $controller = buildTransactionsController($db);
         $payload = $controller->rejectRefund($body);
 
