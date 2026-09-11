@@ -4,16 +4,37 @@ Atualizado em 10/09/2026.
 
 Este documento registra requisitos que precisam estar resolvidos antes de declarar o app publicavel nas lojas. Requisitos de politica devem ser revalidados imediatamente antes da submissao.
 
+## Estado tecnico
+
+A base mobile agora trabalha com dois canais separados:
+
+- `preview`: distribuicao direta para testes, gerando APK Android instalavel;
+- `production`: binario destinado as lojas, com API publica HTTPS e superficie de conta sem compra, upgrade, reativacao paga ou redirecionamento ao Stripe Billing Portal.
+
+Identificadores nativos atuais:
+
+- App: `ConcursoMestre`
+- Versao: `1.0.0`
+- Android package: `com.concursomestre.mobile`
+- Android versionCode: `1`
+- iOS bundleIdentifier: `com.concursomestre.mobile`
+- iOS buildNumber: `1`
+
 ## Recursos publicos
 
-Rotas ja existentes/conectadas no projeto:
+URLs oficiais centralizadas em `mobile/src/config/publicLinks.ts`:
 
 - Politica de Privacidade: `https://concursomestre.com/privacy`
 - Termos de Uso: `https://concursomestre.com/terms`
 - Suporte: `https://concursomestre.com/support`
 - Exclusao de conta: `https://concursomestre.com/account-deletion`
 
-O app centraliza essas URLs em `mobile/src/config/publicLinks.ts`. Privacidade, Termos e Suporte ficam acessiveis antes do login; Termos e Privacidade tambem aparecem no fluxo de cadastro.
+Privacidade, Termos e Suporte ficam acessiveis antes do login. Termos e Privacidade tambem aparecem no cadastro.
+
+A exclusao de conta possui dois caminhos:
+
+1. dentro do app, em Conta > Exclusao da conta, com reautenticacao;
+2. fora do app, pela URL publica acima, que encaminha ao fluxo autenticado da plataforma web em `/profile/security`.
 
 ### Gate de conteudo legal
 
@@ -25,33 +46,35 @@ A existencia da rota nao significa aprovacao juridica do conteudo. Na auditoria 
 
 Nao alterar apenas a data para simular revisao.
 
+## Billing por canal
+
+### Preview / distribuicao direta
+
+O APK de teste continua usando `AccountScreen` e preserva a superficie administrativa ja existente para assinaturas atuais.
+
+### Store
+
+O perfil `production` define `EXPO_PUBLIC_DISTRIBUTION_CHANNEL=store`. Nesse canal a tab Conta usa `StoreAccountScreen`, que:
+
+- reconhece o plano e a assinatura ja associados a conta;
+- nao inicia compra, upgrade ou reativacao paga;
+- nao abre Stripe Billing Portal;
+- permite desativar a renovacao da assinatura existente;
+- permite alterar senha;
+- permite solicitar exclusao da conta;
+- expoe Privacidade, Termos, Suporte e Exclusao web.
+
+Esse isolamento reduz o risco de um binario de loja direcionar o usuario a um metodo de pagamento externo para conteudo digital.
+
+Se compras digitais forem adicionadas dentro do binario de loja, deverao ser implementadas conforme o mecanismo de billing e as regras da loja/regiao aplicavel antes da publicacao.
+
+Referencias oficiais:
+
+- Apple App Review Guidelines: https://developer.apple.com/app-store/review/guidelines/
+- Google Play Payments: https://support.google.com/googleplay/android-developer/answer/9858738
+- Google Play Payments FAQ: https://support.google.com/googleplay/android-developer/answer/10281818
+
 ## Android / Google Play
-
-### Compatibilidade tecnica
-
-- Expo SDK 57 usa `compileSdkVersion 36` e `targetSdkVersion 36`.
-- Desde 31/08/2026, novos apps e updates para celulares/tablets precisam mirar Android 16 / API 36 ou superior.
-- O stack atual atende esse requisito, sujeito a confirmacao no AAB final gerado.
-
-Referencias oficiais:
-- https://docs.expo.dev/versions/latest/
-- https://developer.android.com/google/play/requirements/target-sdk
-
-### Billing
-
-O ConcursoMestre oferece assinatura para acesso a conteudo/funcionalidade digital. Apps distribuidos pelo Google Play que vendem esse tipo de acesso precisam usar Google Play Billing, salvo programa/excecao aplicavel.
-
-Antes da submissao deve ser escolhida e implementada uma estrategia explicita:
-
-1. Google Play Billing para compras/assinaturas originadas no Android; ou
-2. programa de billing alternativo elegivel e devidamente inscrito/configurado; ou
-3. app sem oferta/CTA de compra externa dentro da versao Play, preservando apenas acesso a assinatura adquirida por canal permitido, se a politica vigente permitir esse modelo.
-
-Nao considerar o portal Stripe atual como solucao automaticamente compativel com a Play Store.
-
-Referencias oficiais:
-- https://support.google.com/googleplay/android-developer/answer/9858738
-- https://support.google.com/googleplay/android-developer/answer/10281818
 
 ### Exclusao de conta
 
@@ -61,66 +84,113 @@ Referencias oficiais:
 - a pagina publica nao permite exclusao anonima e encaminha ao fluxo autenticado.
 
 Pendente antes da submissao:
+
 - confirmar a pagina em producao depois do deploy da branch;
 - revisar a descricao de retencao com a Politica de Privacidade;
-- informar a URL no Play Console.
+- informar `https://concursomestre.com/account-deletion` no Play Console.
 
 Referencia oficial:
+
 - https://support.google.com/googleplay/android-developer/answer/13327111
 
-## iOS / App Store
+### Pendencias externas Google Play
 
-### Conta
+- [ ] Criar/vincular o app no Google Play Console.
+- [ ] Configurar credencial de assinatura Android/EAS.
+- [ ] Gerar o primeiro AAB de producao.
+- [ ] Enviar inicialmente para a faixa Internal testing.
+- [ ] Preencher Data safety com base no inventario real de dados e SDKs.
+- [ ] Informar a URL publica de exclusao da conta.
+- [ ] Informar a Politica de Privacidade.
+- [ ] Preencher classificacao indicativa, categoria, publico-alvo e declaracoes obrigatorias.
+- [ ] Adicionar descricao, icone, feature graphic e screenshots finais.
+- [ ] Revisar qualquer SDK de anuncios/analytics antes de declarar Data safety.
+
+## iOS / App Store
 
 A Apple exige exclusao de conta dentro do app quando o app permite criacao de conta. O fluxo nativo ja existe no MVP e deve ser validado no RC fisico.
 
 Referencia oficial:
-- https://developer.apple.com/app-store/review/guidelines/
 
-### Assinaturas e conteudo digital
+- https://developer.apple.com/support/offering-account-deletion-in-your-app
 
-O ConcursoMestre desbloqueia conteudo/funcionalidade digital por assinatura. A regra geral da App Store exige In-App Purchase para esse tipo de desbloqueio, salvo excecao aplicavel.
+### Pendencias externas App Store
 
-Antes da submissao deve ser definido:
-- se o produto se enquadra legitimamente em alguma excecao das diretrizes; ou
-- implementar assinatura via StoreKit / In-App Purchase para o iOS; e
-- remover/ocultar CTAs de compra externa que nao sejam permitidos na storefront/regiao aplicavel.
+- [ ] Criar/vincular o app no App Store Connect.
+- [ ] Vincular credenciais/certificados Apple ao EAS.
+- [ ] Gerar build de producao para dispositivo real/TestFlight.
+- [ ] Preencher App Privacy com base no inventario real de dados e SDKs.
+- [ ] Informar Politica de Privacidade e URL de Suporte.
+- [ ] Revisar declaracao de criptografia/export compliance antes de configurar qualquer flag automatica.
+- [ ] Preencher classificacao etaria, categoria e metadados da listagem.
+- [ ] Adicionar screenshots finais nos tamanhos exigidos.
+- [ ] Submeter primeiro ao TestFlight e executar smoke test em aparelho real.
 
-Nao considerar o portal Stripe atual como solucao automaticamente compativel com a App Store.
+## EAS
 
-Referencia oficial:
-- https://developer.apple.com/app-store/review/guidelines/
+`mobile/eas.json` possui os perfis:
 
-## Distribuicao
+- `preview`: distribuicao interna + APK Android;
+- `preview-simulator`: build para iOS Simulator;
+- `production`: distribuicao `store` + Android App Bundle;
+- `submit.production.android`: primeira submissao na faixa `internal` da Play Console.
 
-`mobile/eas.json` ja possui perfis:
+A API publica utilizada pelos perfis distribuiveis e:
 
-- `development`: development client interno;
-- `preview`: APK Android interno;
-- `preview-simulator`: build de iOS Simulator;
-- `production`: distribuicao de loja e Android App Bundle;
-- `submit.production`: reservado para submissao depois da vinculacao das contas.
+`https://concursomestre.com/api/`
+
+Nenhuma credencial de assinatura ou chave de loja deve ser versionada no GitHub.
 
 Pendente por depender do titular das contas:
+
 - vincular o projeto a uma conta Expo/EAS;
 - configurar credenciais de assinatura Android;
 - configurar Apple Developer/App Store Connect;
 - configurar Google Play Console/service account quando aplicavel;
 - gerar e validar os builds assinados finais.
 
-## Pendencias comuns das duas lojas
+## Inventario de dados
 
-- Release Candidate validado em aparelho real.
-- Revisao final de Politica de Privacidade e Termos.
-- Confirmacao das URLs publicas em producao.
-- Declaracoes de coleta/uso de dados coerentes com o codigo e backend.
-- Screenshots e textos da loja.
-- Classificacao etaria/categoria.
-- Credenciais de conta de revisao caso conteudo autenticado seja necessario para avaliacao.
-- Estrategia de billing aprovada para Android e iOS.
-- AAB Android assinado e validado.
-- Archive iOS/TestFlight assinado e validado.
+Antes de preencher Google Data safety ou Apple App Privacy, auditar o binario final e listar exatamente:
 
-## Gate
+- dados cadastrais coletados;
+- dados de uso/estudo;
+- autenticacao e identificadores;
+- dados de pagamento processados por terceiros;
+- analytics/crash reporting, se houver;
+- SDKs de publicidade, quando forem adicionados;
+- finalidade de cada coleta, retencao e compartilhamento.
 
-F8 nao pode ser marcada como concluida enquanto billing, revisao legal, recursos publicos em producao, credenciais, assets/metadados e builds assinados nao estiverem resolvidos. O codigo pode estar funcionalmente pronto antes disso, mas nao deve ser chamado de publicavel nas lojas.
+## Comandos de distribuicao
+
+Executar a partir de `mobile/` apos vincular o projeto a conta Expo/EAS:
+
+```bash
+npx eas-cli build --platform android --profile preview
+npx eas-cli build --platform ios --profile preview-simulator
+npx eas-cli build --platform android --profile production
+npx eas-cli build --platform ios --profile production
+```
+
+Primeiro envio Android para a faixa de testes interna:
+
+```bash
+npx eas-cli submit --platform android --profile production --latest
+```
+
+No iOS, o fluxo recomendado e enviar o build de producao ao TestFlight e so depois iniciar App Review.
+
+## Gate final da F8
+
+F8 nao pode ser marcada como completamente concluida enquanto estes itens externos permanecerem pendentes:
+
+- revisao legal final de Privacidade e Termos;
+- URLs publicas confirmadas no ambiente de producao;
+- contas e credenciais das lojas;
+- inventario/declarações de dados;
+- assets e metadados das lojas;
+- AAB Android assinado validado;
+- build iOS/TestFlight assinado validado;
+- smoke test em aparelhos reais.
+
+O codigo pode atingir `STORE-CODE-READY` antes disso, mas nao deve ser chamado de publicado ou aprovado nas lojas.
