@@ -51,20 +51,30 @@ export const AdminConfirmDialog = ({
   onCancel,
   children,
 }: AdminConfirmDialogProps) => {
+  const titleId = React.useId();
+  const descriptionId = React.useId();
+
   if (!isOpen) {
     return null;
   }
 
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-sm">
-      <div className={`${ADMIN_MODAL_PANEL_CLASS} w-full max-w-md`}>
+      <div
+        className={`${ADMIN_MODAL_PANEL_CLASS} w-full max-w-md`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
+      >
         <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex items-start gap-4 px-5 py-4`}>
           <div className={`rounded-sm p-2 ${tone === 'danger' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'}`}>
             <AlertTriangle size={18} />
           </div>
           <div className="space-y-1">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
-            <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p>
+            <h3 id={titleId} className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
+            <p id={descriptionId} className="text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p>
           </div>
         </div>
 
