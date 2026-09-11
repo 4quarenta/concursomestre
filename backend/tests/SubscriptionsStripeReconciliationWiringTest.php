@@ -102,8 +102,8 @@ assertOrderStripeReconciliationWiring(
 
 assertContainsStripeReconciliationWiring(
     $servicePath,
-    "if (in_array(\$currentStatus, ['approved', 'completed', 'refunded'], true))",
-    'A late payment_failed event must not downgrade an approved Stripe transaction'
+    "if (in_array(\$currentStatus, ['approved', 'completed', 'refund_requested', 'refunded', 'partially_refunded'], true))",
+    'A late provider event must not overwrite a captured or refund-requested Stripe transaction'
 );
 
 assertContainsStripeReconciliationWiring(

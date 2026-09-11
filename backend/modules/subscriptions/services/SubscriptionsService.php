@@ -5582,7 +5582,7 @@ class SubscriptionsService
         $existing = $check->fetch(PDO::FETCH_ASSOC);
         if ($existing) {
             $currentStatus = strtolower(trim((string) ($existing['status'] ?? '')));
-            if (in_array($currentStatus, ['approved', 'completed', 'refunded', 'partially_refunded'], true)) {
+            if (in_array($currentStatus, ['approved', 'completed', 'refund_requested', 'refunded', 'partially_refunded'], true)) {
                 return false;
             }
 
