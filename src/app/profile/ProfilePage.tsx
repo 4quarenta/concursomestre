@@ -2423,6 +2423,16 @@ const Profile: React.FC = () => {
     const handleRetentionDecision = async (decision: 'ACCEPT' | 'DECLINE') => {
         const offerId = String(activeRetentionOffer?.id || '');
         if (!offerId || isDecidingRetentionOffer) return;
+        if (decision === 'DECLINE') {
+            const confirmed = await confirm({
+                title: 'Recusar oferta de retenção',
+                description: 'Deseja realmente recusar a oferta e receber o reembolso?',
+                confirmText: 'Recusar e reembolsar',
+                cancelText: 'Manter oferta',
+                type: 'warning',
+            });
+            if (!confirmed) return;
+        }
         setIsDecidingRetentionOffer(true);
         try {
             const result = await transactionsService.decideRefundRetentionOffer(offerId, decision);
