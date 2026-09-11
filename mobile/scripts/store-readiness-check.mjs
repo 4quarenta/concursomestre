@@ -16,6 +16,10 @@ for (const file of [
   'src/config/publicLinks.ts',
   'src/features/account/screens/StoreAccountScreen.tsx',
   'app/(app)/(tabs)/conta.tsx',
+  'DATA_SAFETY_DRAFT.md',
+  'STORE_METADATA_DRAFT.md',
+  'STORE_READINESS.md',
+  'SUBMISSION_ROLLOUT_CHECKLIST.md',
 ]) {
   if (!hasMobile(file)) fail(`Arquivo obrigatorio de store ausente: mobile/${file}`);
 }
@@ -33,6 +37,7 @@ if (hasMobile('eas.json')) {
   const eas = JSON.parse(readMobile('eas.json'));
   const preview = eas?.build?.preview;
   const production = eas?.build?.production;
+  const androidSubmit = eas?.submit?.production?.android;
 
   if (preview?.distribution !== 'internal' || preview?.android?.buildType !== 'apk') {
     fail('EAS preview deve continuar gerando APK de distribuicao interna.');
@@ -54,6 +59,9 @@ if (hasMobile('eas.json')) {
   }
   if (Object.prototype.hasOwnProperty.call(production?.env || {}, 'EXPO_PUBLIC_SCREENSHOT_MODE')) {
     fail('EAS production nao pode definir EXPO_PUBLIC_SCREENSHOT_MODE.');
+  }
+  if (androidSubmit?.track !== 'internal') {
+    fail('Primeira submissao Android deve permanecer na faixa internal ate o beta ser validado.');
   }
 }
 
@@ -92,6 +100,31 @@ if (hasMobile('src/features/account/screens/StoreAccountScreen.tsx')) {
   ]) {
     if (!storeAccount.includes(required)) {
       fail(`StoreAccountScreen perdeu requisito obrigatorio: ${required}`);
+    }
+  }
+}
+
+if (hasMobile('DATA_SAFETY_DRAFT.md')) {
+  const dataSafety = readMobile('DATA_SAFETY_DRAFT.md');
+  for (const required of ['Google', 'Apple', 'dados']) {
+    if (!dataSafety.toLowerCase().includes(required.toLowerCase())) {
+      fail(`DATA_SAFETY_DRAFT.md perdeu contexto obrigatorio: ${required}`);
+    }
+  }
+}
+
+if (hasMobile('STORE_METADATA_DRAFT.md')) {
+  const metadata = readMobile('STORE_METADATA_DRAFT.md');
+  if (!metadata.includes('ConcursoMestre')) {
+    fail('STORE_METADATA_DRAFT.md deve identificar claramente o produto.');
+  }
+}
+
+if (hasMobile('SUBMISSION_ROLLOUT_CHECKLIST.md')) {
+  const submission = readMobile('SUBMISSION_ROLLOUT_CHECKLIST.md');
+  for (const required of ['Google Play', 'App Store', 'rollout']) {
+    if (!submission.toLowerCase().includes(required.toLowerCase())) {
+      fail(`Checklist de submissao perdeu requisito obrigatorio: ${required}`);
     }
   }
 }
