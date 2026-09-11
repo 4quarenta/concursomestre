@@ -83,6 +83,33 @@ describe('transactionsService', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('preserves retention offer metadata across API naming conventions', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        rows: [{
+          id: 11,
+          status: 'refund_requested',
+          retention_offer: {
+            id: 'offer-11',
+            offer_status: 'PENDING',
+            offered_days: 2,
+            expires_at: '2026-09-12 00:00:00',
+          },
+        }],
+      },
+    });
+
+    const rows = await transactionsService.list({ userId: 'usr-2' });
+    const offer = (rows[0] as typeof rows[0] & { retentionOffer?: { id?: string; status?: string; offeredDays?: number } }).retentionOffer;
+
+    expect(offer).toEqual(expect.objectContaining({
+      id: 'offer-11',
+      status: 'PENDING',
+      offeredDays: 2,
+    }));
+  });
+
   it('creates a material purchase through the official endpoint', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,

@@ -41,6 +41,49 @@ type RefundMutationPayload = {
   };
 };
 
+type TransactionRetentionOffer = {
+  id?: string | number;
+  status?: string;
+  refundAmount?: number | string;
+  paidPlan?: string;
+  currentRenewalAt?: string | null;
+  offeredDays?: number | string;
+  expectedRenewalAt?: string | null;
+  expiresAt?: string | null;
+  userNote?: string | null;
+  providerConfirmedAt?: string | null;
+  providerReference?: string | null;
+  benefitGrantId?: string | number | null;
+};
+
+const normalizeTransactionRows = (rows: Transaction[]): Transaction[] => rows.map((row) => {
+  const raw = row as Transaction & {
+    retention_offer?: Record<string, unknown> | null;
+    retentionOffer?: TransactionRetentionOffer | null;
+  };
+  const offer = raw.retentionOffer || raw.retention_offer;
+  if (!offer || typeof offer !== 'object') return row;
+
+  const source = offer as Record<string, unknown>;
+  return {
+    ...row,
+    retentionOffer: {
+      id: String(source.id ?? source.offer_id ?? ''),
+      status: String(source.status ?? source.offer_status ?? ''),
+      refundAmount: Number(source.refundAmount ?? source.refund_amount ?? 0),
+      paidPlan: String(source.paidPlan ?? source.paid_plan ?? ''),
+      currentRenewalAt: (source.currentRenewalAt ?? source.current_renewal_at ?? null) as string | null,
+      offeredDays: Number(source.offeredDays ?? source.offered_days ?? 0),
+      expectedRenewalAt: (source.expectedRenewalAt ?? source.expected_renewal_at ?? null) as string | null,
+      expiresAt: (source.expiresAt ?? source.expires_at ?? null) as string | null,
+      userNote: (source.userNote ?? source.user_note ?? null) as string | null,
+      providerConfirmedAt: (source.providerConfirmedAt ?? source.provider_confirmed_at ?? null) as string | null,
+      providerReference: (source.providerReference ?? source.provider_reference ?? null) as string | null,
+      benefitGrantId: (source.benefitGrantId ?? source.benefit_grant_id ?? null) as string | number | null,
+    },
+  } as Transaction;
+});
+
 /**
  * Normaliza respostas da API para manter os consumidores desacoplados do formato legado.
  * @since 1.0.0
@@ -70,7 +113,7 @@ export const transactionsService = {
         });
 
         const payload = readApiData<{ rows?: Transaction[] }>(response, {});
-        return payload.rows || [];
+        return normalizeTransactionRows(payload.rows || []);
       },
       3000,
     );
