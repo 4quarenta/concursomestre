@@ -52,6 +52,9 @@ if (hasMobile('eas.json')) {
   if (production?.env?.EXPO_PUBLIC_API_BASE_URL !== 'https://concursomestre.com/api/') {
     fail('EAS production deve usar a API publica HTTPS do ConcursoMestre.');
   }
+  if (Object.prototype.hasOwnProperty.call(production?.env || {}, 'EXPO_PUBLIC_SCREENSHOT_MODE')) {
+    fail('EAS production nao pode definir EXPO_PUBLIC_SCREENSHOT_MODE.');
+  }
 }
 
 if (hasMobile('app/(app)/(tabs)/conta.tsx')) {
