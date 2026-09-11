@@ -1,6 +1,6 @@
 # ConcursoMestre Mobile — Metadados de loja
 
-Atualizado em 10/09/2026.
+Atualizado em 11/09/2026.
 
 Este arquivo prepara o conteudo operacional para Google Play Console e App Store Connect. Os textos abaixo foram escritos para refletir o escopo do primeiro release: Questoes, Simulados e Conta.
 
@@ -12,6 +12,7 @@ Este arquivo prepara o conteudo operacional para Google Play Console e App Store
 - Versao inicial: `1.0.0`
 - Android package: `com.concursomestre.mobile`
 - iOS bundle identifier: `com.concursomestre.mobile`
+- Escopo iOS inicial: iPhone; suporte a iPad fica fora do primeiro release ate QA dedicado.
 
 ## URLs oficiais
 
@@ -73,6 +74,12 @@ O `mobile/eas.json` ja deixa `submit.production.android.track=internal` para o p
 
 ## App Store
 
+### Dispositivos do primeiro release
+
+`iPhone`
+
+O `mobile/app.json` usa `ios.supportsTablet=false`. iPad nao deve ser anunciado nem tratado como plataforma validada neste release. O suporte pode ser habilitado depois de uma rodada especifica de layout, screenshots e QA em tablet.
+
 ### Nome
 
 `ConcursoMestre`
@@ -123,7 +130,7 @@ Limite vigente: 30 caracteres.
 
 ### Fluxo inicial de distribuicao
 
-Primeiro build assinado -> TestFlight -> smoke test em aparelho real -> App Review.
+Primeiro build assinado -> TestFlight -> smoke test em iPhone real -> App Review.
 
 ---
 
@@ -152,7 +159,7 @@ Capturar somente do Release Candidate validado, sem dados pessoais reais:
 8. Resultado/historico;
 9. Conta na variante `store`.
 
-As screenshots de loja devem ser produzidas a partir do canal `store`, nao da tela de Conta completa do APK direto, para refletir exatamente o binario submetido.
+As screenshots de loja devem ser produzidas a partir do canal `store`, nao da tela de Conta completa do APK direto, para refletir exatamente o binario submetido. Para iOS, gerar somente o conjunto de screenshots exigido para iPhone enquanto `supportsTablet=false`.
 
 ## Assets ainda dependentes do RC
 
