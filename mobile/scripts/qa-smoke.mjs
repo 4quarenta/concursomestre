@@ -55,6 +55,40 @@ if (!fs.existsSync(appJsonPath)) {
   }
 }
 
+const easJsonPath = path.join(mobileRoot, 'eas.json');
+if (!fs.existsSync(easJsonPath)) {
+  fail('mobile/eas.json ausente.');
+} else {
+  const eas = JSON.parse(fs.readFileSync(easJsonPath, 'utf8'));
+  const preview = eas?.build?.preview;
+  const previewSimulator = eas?.build?.['preview-simulator'];
+  const production = eas?.build?.production;
+  const submitAndroid = eas?.submit?.production?.android;
+  const publicApi = 'https://concursomestre.com/api/';
+
+  if (eas?.cli?.appVersionSource !== 'local') {
+    fail('EAS deve manter versionamento nativo autoritativo no repositorio.');
+  }
+  if (preview?.distribution !== 'internal' || preview?.android?.buildType !== 'apk') {
+    fail('Perfil EAS preview deve gerar APK instalavel por distribuicao interna.');
+  }
+  if (preview?.env?.EXPO_PUBLIC_API_BASE_URL !== publicApi) {
+    fail('Perfil EAS preview deve apontar para a API publica HTTPS.');
+  }
+  if (previewSimulator?.ios?.simulator !== true) {
+    fail('Perfil EAS preview-simulator deve permanecer configurado para iOS Simulator.');
+  }
+  if (production?.distribution !== 'store' || production?.android?.buildType !== 'app-bundle') {
+    fail('Perfil EAS production deve gerar artefato Android de loja (AAB).');
+  }
+  if (production?.env?.EXPO_PUBLIC_API_BASE_URL !== publicApi) {
+    fail('Perfil EAS production deve apontar para a API publica HTTPS.');
+  }
+  if (submitAndroid?.track !== 'internal' || submitAndroid?.releaseStatus !== 'completed') {
+    fail('EAS Submit Android deve iniciar pela faixa internal da Play Console.');
+  }
+}
+
 // Superficie obrigatoria do MVP.
 [
   'mobile/app/(app)/(tabs)/questoes.tsx',
@@ -141,6 +175,16 @@ requireText(
   'mobile/src/screens/auth/RegisterScreen.tsx',
   'PUBLIC_LINKS.privacy',
   'Privacidade deve estar acessivel no cadastro.',
+);
+requireText(
+  'mobile/src/features/account/screens/AccountScreen.tsx',
+  'requestAccountDeletion',
+  'Exclusao de conta deve permanecer acessivel dentro do aplicativo.',
+);
+requireText(
+  'src/app/account-deletion/page.tsx',
+  '/profile/security',
+  'Recurso web de exclusao deve encaminhar ao fluxo autenticado real.',
 );
 
 // As rotas ativas devem apontar para as features novas.
