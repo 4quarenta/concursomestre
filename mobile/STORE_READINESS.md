@@ -6,7 +6,7 @@ Este documento registra requisitos que precisam estar resolvidos antes de declar
 
 ## Estado tecnico
 
-A base mobile agora trabalha com dois canais separados:
+A base mobile trabalha com dois canais separados:
 
 - `preview`: distribuicao direta para testes, gerando APK Android instalavel;
 - `production`: binario destinado as lojas, com API publica HTTPS e superficie de conta sem compra, upgrade, reativacao paga ou redirecionamento ao Stripe Billing Portal.
@@ -38,19 +38,35 @@ A exclusao de conta possui dois caminhos:
 
 ### Gate de conteudo legal
 
-A existencia da rota nao significa aprovacao juridica do conteudo. Na auditoria de 10/09/2026, `privacy` e `terms` ainda exibiam ultima atualizacao de 24/05/2024 e continham referencias que precisam ser reconciliadas com o produto atual. Portanto:
+A auditoria tecnica de 10/09/2026 encontrou e corrigiu conteudo legado em `privacy` e `terms`.
+
+Corrigido no codigo:
+
+- data de atualizacao movida de 24/05/2024 para 10/09/2026 somente depois da revisao do texto;
+- removida referencia combinada `Pagar.me/Stripe`; o backend atual auditado usa integracao Stripe;
+- removidas promessas de que metadados do gateway nao passam/nunca ficam no backend;
+- exclusao passou a refletir o comportamento real: o pedido e registrado e a conta fica pendente de exclusao, sem prometer eliminacao instantanea;
+- incluida possibilidade de retencao por obrigacao legal, fiscal, exercicio de direitos, seguranca ou prevencao a fraude;
+- direitos LGPD foram descritos sem prometer funcionalidades que o codigo nao comprova;
+- compartilhamento com provedores de IA passou a ser descrito de forma condicional, sem garantir politica de treinamento de terceiros que nao esteja comprovada;
+- removidos fallbacks `dpo@concursomestre.ai` e `juridico@concursomestre.ai`; sem e-mail configurado no admin, as paginas encaminham a Central de Suporte;
+- Termos passaram a separar contratos por canal e nao prometem reembolso absoluto fora da legislacao/canal aplicavel;
+- Termos deixam explicito que IA e conteudo educacional podem conter imprecisoes e que a plataforma nao garante aprovacao.
+
+Estado:
 
 - rotas publicas: PRONTAS no codigo;
 - conexao com o app: PRONTA;
-- revisao juridica/conteudo e publicacao definitiva: PENDENTE antes da submissao.
+- revisao tecnica de coerencia: CONCLUIDA;
+- validacao juridica/titular e confirmacao em producao: PENDENTES antes da submissao.
 
-Nao alterar apenas a data para simular revisao.
+O `store:check` impede a reintroducao das inconsistencias legais mais criticas identificadas nesta auditoria.
 
 ## Billing por canal
 
 ### Preview / distribuicao direta
 
-O APK de teste continua usando `AccountScreen` e preserva a superficie administrativa ja existente para assinaturas atuais.
+O APK de teste usa `AccountScreen` e preserva a superficie administrativa ja existente para assinaturas atuais.
 
 ### Store
 
@@ -81,12 +97,14 @@ Referencias oficiais:
 - solicitacao dentro do app: implementada;
 - fluxo autenticado web em `/profile/security`: existente;
 - pagina publica descobrivel `/account-deletion`: implementada;
-- a pagina publica nao permite exclusao anonima e encaminha ao fluxo autenticado.
+- a pagina publica nao permite exclusao anonima e encaminha ao fluxo autenticado;
+- backend mobile exige senha atual e marca a conta como pendente de exclusao.
 
 Pendente antes da submissao:
 
-- confirmar a pagina em producao depois do deploy da branch;
-- revisar a descricao de retencao com a Politica de Privacidade;
+- confirmar as paginas em producao depois do deploy da branch;
+- validar o tratamento operacional/final dos pedidos pendentes de exclusao;
+- validar a descricao de retencao com o titular/revisao juridica;
 - informar `https://concursomestre.com/account-deletion` no Play Console.
 
 Referencia oficial:
@@ -108,7 +126,7 @@ Referencia oficial:
 
 ## iOS / App Store
 
-A Apple exige exclusao de conta dentro do app quando o app permite criacao de conta. O fluxo nativo ja existe no MVP e deve ser validado no RC fisico.
+A Apple exige exclusao de conta dentro do app quando o app permite criacao de conta. O fluxo nativo existe no MVP e deve ser validado no RC fisico.
 
 Referencia oficial:
 
@@ -151,15 +169,26 @@ Pendente por depender do titular das contas:
 
 ## Inventario de dados
 
-Antes de preencher Google Data safety ou Apple App Privacy, auditar o binario final e listar exatamente:
+`DATA_SAFETY_DRAFT.md` mapeia por categoria o que foi observado no cliente e o que ainda deve ser verificado no backend/provedores.
 
-- dados cadastrais coletados;
+Antes de finalizar Google Data safety ou Apple App Privacy, confirmar especialmente:
+
+- dados cadastrais e identificadores;
 - dados de uso/estudo;
-- autenticacao e identificadores;
-- dados de pagamento processados por terceiros;
+- logs de autenticacao/IP/user-agent e retencao;
+- dados de pagamento e processadores efetivamente ativos;
+- provedores de IA acionados pelos fluxos finais;
 - analytics/crash reporting, se houver;
-- SDKs de publicidade, quando forem adicionados;
-- finalidade de cada coleta, retencao e compartilhamento.
+- SDKs de publicidade, se forem adicionados;
+- finalidade, retencao e compartilhamento de cada categoria.
+
+## GitHub Actions / RC
+
+No head desta fase, GitHub-hosted runners passaram a falhar antes do primeiro step (`steps: []`, sem logs). O GitHub Status estava operacional e a mesma conta havia executado CI do SnapGym com sucesso horas antes. Isso aponta para problema de provisionamento/entitlement/uso no nivel do runner ou conta, nao para erro registrado no codigo.
+
+Para repositorios privados, GitHub-hosted runners usam a franquia/orcamento de Actions. Como a conexao GitHub deste ambiente nao expoe Billing, o titular deve confirmar em `Settings > Billing` se ha cota/orcamento disponivel antes de abrir chamado com GitHub Support.
+
+Esse diagnostico permanece como hipotese operacional ate ser confirmado na conta.
 
 ## Comandos de distribuicao
 
@@ -184,13 +213,13 @@ No iOS, o fluxo recomendado e enviar o build de producao ao TestFlight e so depo
 
 F8 nao pode ser marcada como completamente concluida enquanto estes itens externos permanecerem pendentes:
 
-- revisao legal final de Privacidade e Termos;
+- validacao juridica/titular final de Privacidade e Termos;
 - URLs publicas confirmadas no ambiente de producao;
 - contas e credenciais das lojas;
-- inventario/declarações de dados;
+- inventario/declarações de dados reconciliados com producao;
 - assets e metadados das lojas;
 - AAB Android assinado validado;
 - build iOS/TestFlight assinado validado;
 - smoke test em aparelhos reais.
 
-O codigo pode atingir `STORE-CODE-READY` antes disso, mas nao deve ser chamado de publicado ou aprovado nas lojas.
+O codigo esta em estado `STORE-CODE-READY`, mas isso nao equivale a publicado ou aprovado nas lojas.
