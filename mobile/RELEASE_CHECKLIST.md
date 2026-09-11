@@ -44,9 +44,10 @@ O `store:check` valida especificamente:
 - ausência de Stripe Billing Portal/checkout/CTA externo na superfície de Conta da loja;
 - cancelamento de renovação existente sem reativação paga;
 - exclusão de conta nativa e web;
-- URLs de Privacidade, Termos e Suporte.
+- URLs de Privacidade, Termos e Suporte;
+- ausência das principais referências legais legadas identificadas na auditoria de 10/09/2026.
 
-> Estado em 10/09/2026: execuções recentes do GitHub Actions encerraram antes de iniciar qualquer step (`steps: []`). Este item permanece pendente até o runner voltar a provisionar jobs normalmente.
+> Estado: GitHub-hosted runners passaram a encerrar antes do primeiro step (`steps: []`) e sem logs. GitHub Status estava operacional e a mesma conta executou CI do SnapGym com sucesso horas antes. Em repositório privado, confirmar cota/orçamento de Actions no Billing da conta antes de tratar como erro de código.
 
 ## Build / distribuição
 
@@ -89,10 +90,14 @@ O `store:check` valida especificamente:
 - [x] Privacidade, Termos e Suporte acessíveis antes do login
 - [x] Termos e Privacidade acessíveis no cadastro
 - [x] Exclusão de conta acessível dentro do app
-- [ ] Deploy/validação das quatro URLs em produção
-- [ ] Revisão jurídica/conteúdo de Privacidade e Termos
+- [x] Revisão técnica de coerência da Política de Privacidade concluída em 10/09/2026
+- [x] Revisão técnica de coerência dos Termos de Uso concluída em 10/09/2026
+- [x] Conteúdo legado de 2024, gateways antigos e promessas absolutas removidos
+- [x] Retenção/exclusão alinhadas ao fluxo real de `pending_deletion`
+- [ ] Deploy/validação HTTP das quatro URLs em produção
+- [ ] Validação jurídica/titular final de Privacidade e Termos
 
-Observação: na auditoria de 10/09/2026, Privacidade e Termos ainda exibiam data de atualização de 24/05/2024 e referências que precisam ser reconciliadas com o produto atual. A rota pronta não equivale a conteúdo legal aprovado.
+A revisão técnica não equivale a parecer jurídico. Os textos devem ser lidos e aprovados pelo titular/responsável antes da submissão definitiva.
 
 ## Billing / política de loja
 
@@ -133,8 +138,6 @@ Executar somente depois de existir APK do head atual.
 
 ## Smoke test da variante Store
 
-Obrigatório antes da submissão, porque a tab Conta muda de superfície conforme o canal.
-
 - [ ] Build iniciado com `EXPO_PUBLIC_DISTRIBUTION_CHANNEL=store`
 - [ ] Conta exibe plano/status existente
 - [ ] Nenhum botão abre Stripe, checkout ou página de compra
@@ -159,11 +162,12 @@ O `.app.zip` do workflow de preview é apenas para iOS Simulator. iPhone físico
 - [x] Recurso web externo de exclusão implementado no código
 - [x] Política/Termos/Suporte possuem rotas públicas
 - [x] Perfis EAS de distribuição preparados
-- [x] Estratégia técnica de billing para o primeiro binário Google Play definida: sem compra externa no canal `store`
-- [x] Estratégia técnica de billing para o primeiro binário App Store definida: sem compra externa no canal `store`
+- [x] Estratégia técnica de billing Google Play definida: sem compra externa no canal `store`
+- [x] Estratégia técnica de billing App Store definida: sem compra externa no canal `store`
+- [x] Revisão técnica de Política/Termos concluída
 - [x] `DATA_SAFETY_DRAFT.md` mapeado por categoria
 - [x] `STORE_METADATA_DRAFT.md` preparado com campos por loja
-- [ ] Revisão legal final
+- [ ] Validação jurídica/titular final
 - [ ] URLs confirmadas em produção
 - [ ] Credenciais/contas de desenvolvedor e assinatura configuradas
 - [ ] AAB Android final validado
@@ -187,7 +191,7 @@ Até esses critérios serem atendidos, o código pode estar RC-ready, mas não d
 
 F8 pode ser considerada concluída para submissão quando:
 
-1. Privacidade e Termos forem revisados e publicados;
+1. Privacidade e Termos tiverem validação final do titular/responsável e estiverem publicados;
 2. URLs públicas forem verificadas em produção;
 3. contas/credenciais EAS, Google Play e Apple estiverem vinculadas;
 4. inventário de dados for reconciliado com backend/provedores;
