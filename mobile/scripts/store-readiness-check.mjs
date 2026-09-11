@@ -4,14 +4,12 @@ import path from 'node:path';
 const mobileRoot = process.cwd();
 const repoRoot = path.resolve(mobileRoot, '..');
 const failures = [];
-const warnings = [];
 
 const readRepo = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 const readMobile = (relativePath) => fs.readFileSync(path.join(mobileRoot, relativePath), 'utf8');
 const hasRepo = (relativePath) => fs.existsSync(path.join(repoRoot, relativePath));
 const hasMobile = (relativePath) => fs.existsSync(path.join(mobileRoot, relativePath));
 const fail = (message) => failures.push(message);
-const warn = (message) => warnings.push(message);
 
 for (const file of [
   'eas.json',
@@ -105,16 +103,60 @@ if (hasRepo('src/app/account-deletion/page.tsx')) {
   }
 }
 
-if (hasRepo('src/app/privacy/page.tsx') && readRepo('src/app/privacy/page.tsx').includes('24 de Maio de 2024')) {
-  warn('Politica de Privacidade ainda exibe atualizacao de 24/05/2024; revisao juridica final continua pendente.');
-}
-if (hasRepo('src/app/terms/page.tsx') && readRepo('src/app/terms/page.tsx').includes('24 de Maio de 2024')) {
-  warn('Termos de Uso ainda exibem atualizacao de 24/05/2024; revisao juridica final continua pendente.');
+if (hasRepo('src/app/privacy/page.tsx')) {
+  const privacy = readRepo('src/app/privacy/page.tsx');
+  const obsoletePrivacyTokens = [
+    '24 de Maio de 2024',
+    'Pagar.me/Stripe',
+    'dpo@concursomestre.ai',
+    'A exclusão integral da sua conta remove suas notas sistêmicas, dados e correlações.',
+  ];
+
+  for (const token of obsoletePrivacyTokens) {
+    if (privacy.includes(token)) {
+      fail(`Politica de Privacidade reintroduziu conteudo legado ou absoluto: ${token}`);
+    }
+  }
+
+  for (const required of [
+    '10 de Setembro de 2026',
+    '/account-deletion',
+    '/profile/security',
+    'A eliminação não é necessariamente instantânea',
+    'Não vendemos dados pessoais',
+  ]) {
+    if (!privacy.includes(required)) {
+      fail(`Politica de Privacidade perdeu salvaguarda obrigatoria: ${required}`);
+    }
+  }
 }
 
-if (warnings.length > 0) {
-  console.warn('\nStore readiness warnings:\n');
-  for (const message of warnings) console.warn(`- ${message}`);
+if (hasRepo('src/app/terms/page.tsx')) {
+  const terms = readRepo('src/app/terms/page.tsx');
+  const obsoleteTermsTokens = [
+    '24 de Maio de 2024',
+    'juridico@concursomestre.ai',
+    'de forma irrevogável e irretratável',
+    'você tem até 7 dias corridos contados da primeira assinatura para exigir reembolso integral',
+  ];
+
+  for (const token of obsoleteTermsTokens) {
+    if (terms.includes(token)) {
+      fail(`Termos de Uso reintroduziram conteudo legado ou absoluto: ${token}`);
+    }
+  }
+
+  for (const required of [
+    '10 de Setembro de 2026',
+    '/account-deletion',
+    '/privacy',
+    'não representa garantia de aprovação',
+    'não é necessariamente instantânea',
+  ]) {
+    if (!terms.includes(required)) {
+      fail(`Termos de Uso perderam salvaguarda obrigatoria: ${required}`);
+    }
+  }
 }
 
 if (failures.length > 0) {
