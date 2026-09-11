@@ -1,6 +1,6 @@
 # ConcursoMestre Mobile — Store Readiness
 
-Atualizado em 10/09/2026.
+Atualizado em 11/09/2026.
 
 Este documento registra requisitos que precisam estar resolvidos antes de declarar o app publicavel nas lojas. Requisitos de politica devem ser revalidados imediatamente antes da submissao.
 
@@ -19,6 +19,7 @@ Identificadores nativos atuais:
 - Android versionCode: `1`
 - iOS bundleIdentifier: `com.concursomestre.mobile`
 - iOS buildNumber: `1`
+- iOS primeiro release: iPhone (`supportsTablet=false`); iPad fica fora do escopo ate QA dedicado.
 
 ## Recursos publicos
 
@@ -126,6 +127,8 @@ Referencia oficial:
 
 ## iOS / App Store
 
+O primeiro release iOS foi deliberadamente limitado a iPhone. `ios.supportsTablet=false` permanece protegido pelo smoke gate ate existir QA dedicado de iPad. Isso evita anunciar compatibilidade com tablet sem validacao de layout, screenshots e fluxo real.
+
 A Apple exige exclusao de conta dentro do app quando o app permite criacao de conta. O fluxo nativo existe no MVP e deve ser validado no RC fisico.
 
 Referencia oficial:
@@ -141,8 +144,8 @@ Referencia oficial:
 - [ ] Informar Politica de Privacidade e URL de Suporte.
 - [ ] Revisar declaracao de criptografia/export compliance antes de configurar qualquer flag automatica.
 - [ ] Preencher classificacao etaria, categoria e metadados da listagem.
-- [ ] Adicionar screenshots finais nos tamanhos exigidos.
-- [ ] Submeter primeiro ao TestFlight e executar smoke test em aparelho real.
+- [ ] Adicionar screenshots finais de iPhone nos tamanhos exigidos.
+- [ ] Submeter primeiro ao TestFlight e executar smoke test em iPhone real.
 
 ## EAS
 
@@ -216,7 +219,7 @@ F8 nao pode ser marcada como completamente concluida enquanto estes itens extern
 - validacao juridica/titular final de Privacidade e Termos;
 - URLs publicas confirmadas no ambiente de producao;
 - contas e credenciais das lojas;
-- inventario/declarações de dados reconciliados com producao;
+- inventario/declaracoes de dados reconciliados com producao;
 - assets e metadados das lojas;
 - AAB Android assinado validado;
 - build iOS/TestFlight assinado validado;
