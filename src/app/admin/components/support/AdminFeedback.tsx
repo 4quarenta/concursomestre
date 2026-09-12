@@ -407,7 +407,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
         access_plan: draft.mode === 'BILLING_EXTENSION_ONLY' ? '' : draft.accessPlan,
         ticket_reference: ticket,
         reason,
-        idempotency_key: `support-case:${item.id}:${item.user_id}:${days}:${ticket}`,
+        idempotency_key: `support-case:${item.id}:${item.user_id}:${days}:${ticket}:${draft.mode}`,
       });
       await fetchFeedback();
       addToast(result.message || 'Compensação registrada pelo suporte.', 'success');
