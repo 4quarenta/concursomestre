@@ -9,7 +9,7 @@
 *
 */
 
-import React from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Info, Trash2 } from 'lucide-react';
 
@@ -36,6 +36,51 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   type = 'info',
   isProcessing = false,
 }) => {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return undefined;
+
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusFirstControl = () => {
+      const firstControl = dialog?.querySelector<HTMLElement>(focusableSelector);
+      firstControl?.focus();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCancel();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    const frameId = window.requestAnimationFrame(focusFirstControl);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [isOpen, onCancel]);
+
   if (!isOpen) return null;
   if (typeof document === 'undefined') return null;
 
@@ -63,21 +108,29 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in slide-in-from-bottom-4 duration-500 dark:border-slate-800 dark:bg-slate-900">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        className="w-full max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in slide-in-from-bottom-4 duration-500 dark:border-slate-800 dark:bg-slate-900"
+      >
         <div className="space-y-6 p-8 text-center">
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 shadow-inner dark:border-slate-700 dark:bg-slate-800">
             {getIcon()}
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-slate-100">{title}</h3>
-            <p className="text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+            <h3 id={titleId} className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-slate-100">{title}</h3>
+            <p id={descriptionId} className="text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
               {description}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 pt-2">
             <button
+              type="button"
               onClick={onCancel}
               disabled={isProcessing}
               className="h-14 rounded-2xl border border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-all active:scale-95 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
@@ -85,6 +138,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
               {cancelText}
             </button>
             <button
+              type="button"
               onClick={onConfirm}
               disabled={isProcessing}
               className={`h-14 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white transition-all active:scale-95 shadow-lg disabled:cursor-not-allowed disabled:opacity-70 ${getButtonClass()}`}
