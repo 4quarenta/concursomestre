@@ -27,6 +27,7 @@ import { Address, DiscountCode, Plan, PlanEntitlements, UserProfile } from '@typ
 import { authFlowService } from '@services/auth';
 import { isCanonicalSessionData } from '@services/auth/session';
 import { cardsService, type SavedCard } from '@services/billing';
+import { profileService, type AuthenticatedPersonalProfile } from '@services/profile';
 import { getEnabledStripePaymentMethods } from '@services/payments/stripePaymentMethodsConfig';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import type { Stripe, StripeCardCvcElement } from '@stripe/stripe-js';
@@ -112,6 +113,18 @@ const buildCheckoutRequirementSeed = (user?: UserProfile | null) => ({
     neighborhood: user?.address?.neighborhood || '',
     city: user?.address?.city || '',
     state: user?.address?.state || '',
+});
+
+const buildCheckoutRequirementSeedFromPersonalProfile = (profile?: AuthenticatedPersonalProfile | null) => ({
+    name: profile?.displayName || '',
+    cpf: profile?.personal.cpf || '',
+    zipCode: profile?.personal.address?.zipCode || '',
+    street: profile?.personal.address?.street || '',
+    number: profile?.personal.address?.number || '',
+    complement: profile?.personal.address?.complement || '',
+    neighborhood: profile?.personal.address?.neighborhood || '',
+    city: profile?.personal.address?.city || '',
+    state: profile?.personal.address?.state || '',
 });
 
 const isSameActiveSubscriptionPlan = (currentPlan: Plan | null | undefined, targetPlan: Plan | null | undefined, activePlanId?: number | null) => {
@@ -1097,6 +1110,8 @@ const CheckoutPage: React.FC = () => {
             });
 
             await refreshUser();
+            const refreshedProfile = await profileService.getPersonalProfile();
+            setCheckoutRequirementData(buildCheckoutRequirementSeedFromPersonalProfile(refreshedProfile));
       addToast('Perfil atualizado. Agora você já pode concluir a compra.', 'success');
         } catch (error) {
             clientLog.warn('Failed to update checkout requirements', error);
@@ -1511,38 +1526,44 @@ const CheckoutPage: React.FC = () => {
     const stripeBillingMode = selectedStripeInstallmentCount > 1 ? 'term_recurring' : 'single_installment';
 
     useEffect(() => {
-        const frameId = window.requestAnimationFrame(() => {
-            setCheckoutRequirementData(buildCheckoutRequirementSeed(currentUser));
-        });
+        let active = true;
 
-        return () => window.cancelAnimationFrame(frameId);
-    }, [
-        currentUser,
-        currentUser?.id,
-        currentUser?.name,
-        currentUser?.cpf,
-        currentUser?.address?.zipCode,
-        currentUser?.address?.street,
-        currentUser?.address?.number,
-        currentUser?.address?.complement,
-        currentUser?.address?.neighborhood,
-        currentUser?.address?.city,
-        currentUser?.address?.state,
-    ]);
+        if (!currentUser?.id) {
+            setCheckoutRequirementData(buildCheckoutRequirementSeed(null));
+            return () => {
+                active = false;
+            };
+        }
+
+        setCheckoutRequirementData(buildCheckoutRequirementSeed(currentUser));
+        void profileService.getPersonalProfile()
+            .then((profile) => {
+                if (!active) return;
+                setCheckoutRequirementData(buildCheckoutRequirementSeedFromPersonalProfile(profile));
+            })
+            .catch((error) => {
+                if (!active) return;
+                clientLog.warn('Failed to load checkout personal profile', error);
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [currentUser?.id]);
 
     const getMissingCheckoutRequirements = () => {
         if (!currentUser) return ['login'];
 
         const missing: string[] = [];
         const data = {
-            name: currentUser.name,
-            cpf: currentUser.cpf,
-            zipCode: currentUser.address?.zipCode,
-            street: currentUser.address?.street,
-            number: currentUser.address?.number,
-            neighborhood: currentUser.address?.neighborhood,
-            city: currentUser.address?.city,
-            state: currentUser.address?.state,
+            name: checkoutRequirementData.name,
+            cpf: checkoutRequirementData.cpf,
+            zipCode: checkoutRequirementData.zipCode,
+            street: checkoutRequirementData.street,
+            number: checkoutRequirementData.number,
+            neighborhood: checkoutRequirementData.neighborhood,
+            city: checkoutRequirementData.city,
+            state: checkoutRequirementData.state,
         };
 
         Object.entries(data).forEach(([key, value]) => {
