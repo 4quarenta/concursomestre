@@ -51,6 +51,16 @@ class AdminFeedbackController
         return $this->service->listThreads($filters);
     }
 
+    public function listSupportOperators(): array
+    {
+        return $this->service->listSupportOperators();
+    }
+
+    public function assignThread(int $threadId, ?string $assignedTo): array
+    {
+        return $this->service->assignThread($threadId, $assignedTo);
+    }
+
     /**
      * Atualiza o status de um feedback.
      *

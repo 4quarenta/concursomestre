@@ -75,6 +75,64 @@ class AdminFeedbackService
     }
 
     /**
+     * Lista apenas operadores administrativos aptos a receber suporte.
+     *
+     * @since 1.0.0
+     */
+    public function listSupportOperators(): array
+    {
+        return [
+            'items' => $this->repository->listSupportOperators(),
+        ];
+    }
+
+    /**
+     * Atribui, reatribui ou remove o operador de uma thread de suporte.
+     *
+     * @since 1.0.0
+     */
+    public function assignThread(int $threadId, ?string $assignedTo): array
+    {
+        $this->validator->validateThreadId($threadId);
+        $thread = $this->repository->findThreadById($threadId);
+        if (!$thread || ($thread['parent_id'] ?? null) !== null) {
+            throw new InvalidArgumentException('Somente a conversa principal pode ser atribuída.');
+        }
+
+        $type = strtolower(trim((string) ($thread['type'] ?? '')));
+        if (in_array($type, ['platform-rating', 'other'], true)) {
+            throw new InvalidArgumentException('Esta fila não aceita atribuição de suporte.');
+        }
+
+        $normalizedAssignee = $assignedTo !== null ? trim($assignedTo) : null;
+        if ($normalizedAssignee === '') {
+            $normalizedAssignee = null;
+        }
+
+        if ($normalizedAssignee !== null && !$this->repository->findSupportOperatorById($normalizedAssignee)) {
+            throw new InvalidArgumentException('Operador de suporte inválido ou inativo.');
+        }
+
+        $db = $this->repository->getConnection();
+        $db->beginTransaction();
+        try {
+            $result = $this->repository->updateAssignment($threadId, $normalizedAssignee);
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $e;
+        }
+
+        return $result + [
+            'assigned_user' => $normalizedAssignee !== null
+                ? $this->repository->findSupportOperatorById($normalizedAssignee)
+                : null,
+        ];
+    }
+
+    /**
      * Atualiza o status de uma thread e dispara notificacao ao usuario.
      *
      * @since 1.0.0

@@ -216,6 +216,14 @@ function handleAdminFeedbackRoute(PDO $db): void
         );
 
         if ($method === 'GET') {
+            if (trim((string) ($_GET['action'] ?? '')) === 'operators') {
+                $payload = $controller->listSupportOperators();
+                logAdminAudit($db, $adminUserId, 'feedback.list_operators', 'feedback', null, [
+                    'count' => count($payload['items'] ?? []),
+                ]);
+                Response::success($payload);
+            }
+
             $threadId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 
             if ($threadId > 0) {
@@ -251,6 +259,23 @@ function handleAdminFeedbackRoute(PDO $db): void
             $data = json_decode(file_get_contents('php://input'), true) ?: [];
             $feedbackId = isset($data['id']) ? (int) $data['id'] : 0;
             $action = trim((string) ($data['action'] ?? ''));
+
+            if (in_array($action, ['assign', 'unassign'], true)) {
+                $assignedTo = $action === 'unassign'
+                    ? null
+                    : trim((string) ($data['assignee_id'] ?? ''));
+                $assignment = $controller->assignThread($feedbackId, $assignedTo);
+
+                logAdminAudit($db, $adminUserId, 'feedback.assignment', 'feedback', (string) $feedbackId, [
+                    'previous_assigned_to' => $assignment['previous_assigned_to'] ?? null,
+                    'assigned_to' => $assignment['assigned_to'] ?? null,
+                    'changed' => (bool) ($assignment['changed'] ?? false),
+                ]);
+
+                Response::success($assignment, ($assignment['changed'] ?? false)
+                    ? 'Atribuição de suporte atualizada.'
+                    : 'Atribuição já estava neste estado.');
+            }
 
             if ($action === 'publish_home' || $action === 'unpublish_home') {
                 $controller->updateHomePublication($feedbackId, $action === 'publish_home');

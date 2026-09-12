@@ -221,6 +221,15 @@ export interface AdminFeedbackThread {
   public_headline?: string | null;
   home_published_at?: string | null;
   reply_count?: number;
+  assigned_to?: string | null;
+  assigned_user_name?: string | null;
+  assigned_user_role?: string | null;
+}
+
+export interface AdminFeedbackOperator {
+  id: string;
+  name: string;
+  role: 'admin' | 'staff' | string;
 }
 
 export interface AdminFeedbackReply extends AdminFeedbackThread {

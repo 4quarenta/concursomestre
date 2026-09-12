@@ -27,6 +27,7 @@ import type {
   AdminReportWorkbenchSuggestion,
   AdminFeedbackThread,
   AdminFeedbackReply,
+  AdminFeedbackOperator,
   CacheStatsPayload,
   SystemLogsPayload,
   AdminSecurityIpsPayload,
@@ -1310,6 +1311,22 @@ export const adminService = {
       },
       15_000,
     );
+  },
+
+  async getFeedbackOperators(): Promise<AdminFeedbackOperator[]> {
+    const response = await requestApi<{ items: AdminFeedbackOperator[] }>(
+      apiClient.get<ApiResponse<{ items: AdminFeedbackOperator[] }>>(`${ENDPOINTS.admin.feedback}?action=operators`),
+    );
+    return readApiData(response, { items: [] }).items || [];
+  },
+
+  async updateFeedbackAssignment(id: number, assigneeId: string | null): Promise<void> {
+    const response = await requestApi<unknown>(adminPut(ENDPOINTS.admin.feedback, {
+      id,
+      action: assigneeId ? 'assign' : 'unassign',
+      ...(assigneeId ? { assignee_id: assigneeId } : {}),
+    }));
+    assertApiSuccess(response, 'Não foi possível atualizar a atribuição.');
   },
 
   /**

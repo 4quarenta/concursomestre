@@ -40,9 +40,11 @@ class AdminFeedbackRepository
         $this->ensureFeedbackSchema();
 
         $stmt = $this->db->prepare(
-            "SELECT f.*, u.name AS user_name, u.email AS user_email, u.role AS user_role
+            "SELECT f.*, u.name AS user_name, u.email AS user_email, u.role AS user_role,
+                    assigned.name AS assigned_user_name, assigned.role AS assigned_user_role
              FROM user_feedback f
              LEFT JOIN users u ON f.user_id = u.id
+             LEFT JOIN users assigned ON f.assigned_to = assigned.id
              WHERE f.id = :id
              LIMIT 1"
         );
@@ -63,9 +65,11 @@ class AdminFeedbackRepository
         $this->ensureFeedbackSchema();
 
         $stmt = $this->db->prepare(
-            "SELECT f.*, u.name AS user_name, u.email AS user_email, u.role AS user_role
+            "SELECT f.*, u.name AS user_name, u.email AS user_email, u.role AS user_role,
+                    assigned.name AS assigned_user_name, assigned.role AS assigned_user_role
              FROM user_feedback f
              LEFT JOIN users u ON f.user_id = u.id
+             LEFT JOIN users assigned ON f.assigned_to = assigned.id
              WHERE f.parent_id = :parent_id
              ORDER BY f.created_at ASC"
         );
@@ -115,9 +119,12 @@ class AdminFeedbackRepository
                 u.name AS user_name,
                 u.email AS user_email,
                 u.role AS user_role,
+                assigned.name AS assigned_user_name,
+                assigned.role AS assigned_user_role,
                 (SELECT COUNT(*) FROM user_feedback r WHERE r.parent_id = f.id) AS reply_count
             FROM user_feedback f
             LEFT JOIN users u ON f.user_id = u.id
+            LEFT JOIN users assigned ON f.assigned_to = assigned.id
             WHERE " . implode(' AND ', $where) . "
             ORDER BY f.created_at DESC
         ";
@@ -146,6 +153,86 @@ class AdminFeedbackRepository
             ':status' => $status,
             ':id' => $feedbackId,
         ]);
+    }
+
+    /**
+     * Retorna operadores ativos autorizados para assumir suporte.
+     *
+     * @since 1.0.0
+     */
+    public function listSupportOperators(): array
+    {
+        $this->ensureFeedbackSchema();
+
+        $stmt = $this->db->query(
+            "SELECT id, name, role
+             FROM users
+             WHERE role IN ('admin', 'staff')
+               AND COALESCE(status, 'active') NOT IN ('deleted', 'pending_deletion', 'banned')
+             ORDER BY name ASC, id ASC"
+        );
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function findSupportOperatorById(string $userId): ?array
+    {
+        $this->ensureFeedbackSchema();
+
+        $stmt = $this->db->prepare(
+            "SELECT id, name, role
+             FROM users
+             WHERE id = :id
+               AND role IN ('admin', 'staff')
+               AND COALESCE(status, 'active') NOT IN ('deleted', 'pending_deletion', 'banned')
+             LIMIT 1"
+        );
+        $stmt->execute([':id' => $userId]);
+        $operator = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $operator ?: null;
+    }
+
+    public function getConnection(): PDO
+    {
+        return $this->db;
+    }
+
+    /**
+     * Atualiza a atribuicao da thread dentro de uma transacao protegida.
+     *
+     * @since 1.0.0
+     */
+    public function updateAssignment(int $threadId, ?string $assignedTo): array
+    {
+        $this->ensureFeedbackSchema();
+
+        $stmt = $this->db->prepare(
+            'SELECT id, parent_id, type, assigned_to FROM user_feedback WHERE id = :id FOR UPDATE'
+        );
+        $stmt->execute([':id' => $threadId]);
+        $thread = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$thread) {
+            throw new InvalidArgumentException('Conversa de suporte não encontrada.');
+        }
+
+        $previous = trim((string) ($thread['assigned_to'] ?? '')) ?: null;
+        if ($previous !== $assignedTo) {
+            $update = $this->db->prepare(
+                'UPDATE user_feedback SET assigned_to = :assigned_to WHERE id = :id'
+            );
+            $update->execute([
+                ':assigned_to' => $assignedTo,
+                ':id' => $threadId,
+            ]);
+        }
+
+        return [
+            'thread_id' => $threadId,
+            'previous_assigned_to' => $previous,
+            'assigned_to' => $assignedTo,
+            'changed' => $previous !== $assignedTo,
+        ];
     }
 
     public function setHomePublication(int $feedbackId, bool $published): void
@@ -234,7 +321,7 @@ class AdminFeedbackRepository
         }
 
         SchemaReadiness::assertTablesAndColumns($this->db, 'feedback administrativo', [
-            'user_feedback' => ['id', 'user_id', 'parent_id', 'type', 'reason', 'details', 'status', 'public_rating', 'public_display_name', 'public_headline', 'public_photo_url', 'home_published_at', 'created_at', 'updated_at'],
+            'user_feedback' => ['id', 'user_id', 'parent_id', 'assigned_to', 'type', 'reason', 'details', 'status', 'public_rating', 'public_display_name', 'public_headline', 'public_photo_url', 'home_published_at', 'created_at', 'updated_at'],
         ]);
 
         $ensured = true;

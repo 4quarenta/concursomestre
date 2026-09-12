@@ -11,8 +11,8 @@
 
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { BookOpenCheck, CheckCircle2, Filter, Gift, Loader2, MessageSquare, Search, Send, Star } from 'lucide-react';
-import { adminService, type AdminFeedbackReply, type AdminFeedbackThread } from '@services/admin/adminService';
+import { BookOpenCheck, CheckCircle2, Filter, Gift, Loader2, MessageSquare, Search, Send, Star, UserRound } from 'lucide-react';
+import { adminService, type AdminFeedbackOperator, type AdminFeedbackReply, type AdminFeedbackThread } from '@services/admin/adminService';
 import { clientLog } from '@services/monitoring/clientLog';
 import {
   compactSupportText,
@@ -197,6 +197,8 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   const [publishingHomeId, setPublishingHomeId] = useState<number | null>(null);
   const [compensationDrafts, setCompensationDrafts] = useState<Record<number, { days: string; ticket: string; reason: string }>>({});
   const [compensatingId, setCompensatingId] = useState<number | null>(null);
+  const [operators, setOperators] = useState<AdminFeedbackOperator[]>([]);
+  const [assigningId, setAssigningId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AdminFeedbackThread['status']>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | string>('all');
@@ -224,6 +226,24 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
 
     return () => window.cancelAnimationFrame(frameId);
   }, [fetchFeedback]);
+
+  useEffect(() => {
+    if (mode !== 'threads') return undefined;
+
+    let active = true;
+    void adminService.getFeedbackOperators()
+      .then((items) => {
+        if (active) setOperators(items);
+      })
+      .catch((error) => {
+        clientLog.warn('Error fetching support operators:', error);
+        addToast('Não foi possível carregar os operadores de suporte.', 'error');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [addToast, mode]);
 
   useEffect(() => {
     if (!loading) {
@@ -397,6 +417,20 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       setCompensatingId(null);
     }
   }, [addToast, compensationDrafts, fetchFeedback]);
+
+  const updateAssignment = useCallback(async (item: AdminFeedbackThread, assigneeId: string) => {
+    setAssigningId(item.id);
+    try {
+      await adminService.updateFeedbackAssignment(item.id, assigneeId || null);
+      await fetchFeedback();
+      addToast(assigneeId ? 'Solicitação atribuída.' : 'Atribuição removida.', 'success');
+    } catch (error) {
+      clientLog.warn('Error updating support assignment:', error);
+      addToast('Não foi possível atualizar a atribuição.', 'error');
+    } finally {
+      setAssigningId(null);
+    }
+  }, [addToast, fetchFeedback]);
 
   if (loading) {
     return (
@@ -628,6 +662,30 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                             </div>
                           ) : (
                             <div className="space-y-4">
+                              {mode === 'threads' ? (
+                                <div className="flex flex-wrap items-center gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                                  <UserRound size={16} className="text-slate-400" aria-hidden="true" />
+                                  <label className="flex min-w-[240px] flex-1 items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                    <span>Operador responsável</span>
+                                    <select
+                                      aria-label="Operador responsável"
+                                      value={item.assigned_to || ''}
+                                      disabled={assigningId === item.id}
+                                      onChange={(event) => void updateAssignment(item, event.target.value)}
+                                      className={`${ADMIN_FIELD_CLASS} min-w-0 flex-1`}
+                                    >
+                                      <option value="">Não atribuído</option>
+                                      {operators.map((operator) => (
+                                        <option key={operator.id} value={operator.id}>{operator.name} ({operator.role})</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  {item.assigned_user_name ? (
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">Atual: {item.assigned_user_name}</span>
+                                  ) : null}
+                                </div>
+                              ) : null}
+
                               <div className="grid gap-3 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.7fr)]">
                                 <div className="space-y-3">
                                   <div>
