@@ -59,7 +59,9 @@ export interface Question {
   enunciado?: string;
   enunciado_clean?: string;
   itens?: QuestionItem[];
+  /** Campos de gabarito existem somente quando o servidor liberou revisao. */
   resposta?: number;
+  correctOptionIndex?: number;
   dificuldade?: number;
   assuntos?: QuestionSubject[];
   bancas?: QuestionAgency[];
@@ -76,9 +78,50 @@ export interface Question {
   commentsCount?: number;
 }
 
+export interface QuestionListFilters {
+  keyword?: string;
+  subject?: string | string[];
+  topic?: string | string[];
+  difficulty?: string | string[];
+  agency?: string | string[];
+  organization?: string | string[];
+  year?: string | number | Array<string | number>;
+  level?: string | string[];
+  role?: string | string[];
+  career?: string | string[];
+  modality?: string | string[];
+  questionIds?: Array<string | number>;
+  onlySaved?: boolean;
+  hasTeacherComment?: boolean;
+  hasDetailedComment?: boolean;
+  excludeCanceled?: boolean;
+  excludeOutdated?: boolean;
+  excludeAnswered?: boolean;
+  /** Oculta gabarito e resposta anterior mesmo para questoes ja resolvidas. */
+  examMode?: boolean;
+}
+
+export interface QuestionPageResult {
+  rows: Question[];
+  total: number;
+  page: number;
+  perPage: number;
+  pages: number;
+}
+
 export interface UserAnswerInput {
   questionId: number;
   selectedOptionIndex: number;
-  isCorrect: boolean;
   timeTaken?: number;
+  /** Compatibilidade temporaria; nunca e enviado pelo service. */
+  isCorrect?: boolean;
+}
+
+export interface QuestionAnswerResult {
+  success: boolean;
+  message?: string;
+  newXp?: number;
+  newLevel?: number;
+  isCorrect?: boolean;
+  correctOptionIndex?: number;
 }

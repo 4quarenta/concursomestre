@@ -21,6 +21,21 @@ export interface UserSubscription {
   total_installments?: number;
   paid_installments?: number;
   recurring_amount?: number;
+  payment_provider?: string;
+  refund_requested?: boolean;
+  is_recurring?: boolean;
+  renewal_iteration?: number;
+  next_renewal_amount?: number;
+  next_renewal_date?: string | number;
+  next_renewal_price_source?: string;
+  next_renewal_cycle_label?: string;
+  payment_block_reason?: string | null;
+  payment_blocking?: boolean;
+  provider_subscription_id?: string;
+  provider_customer_id?: string;
+  provider_schedule_id?: string;
+  provider_current_period_start?: string | number;
+  provider_current_period_end?: string | number;
 }
 
 export interface UserBilling {

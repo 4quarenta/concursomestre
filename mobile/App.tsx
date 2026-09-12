@@ -3,19 +3,22 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { QueryProvider } from '@/providers/QueryProvider';
 import { AppNavigator } from '@/navigation/AppNavigator';
 
 /**
  * Shell principal do app mobile.
- * @since v1.0.0
+ * Mantido temporariamente enquanto as rotas sao migradas para Expo Router.
  */
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="dark" />
-        <AppNavigator />
-      </AuthProvider>
+      <QueryProvider>
+        <AuthProvider>
+          <StatusBar style="auto" />
+          <AppNavigator />
+        </AuthProvider>
+      </QueryProvider>
     </SafeAreaProvider>
   );
 }

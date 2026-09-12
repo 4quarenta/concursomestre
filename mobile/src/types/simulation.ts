@@ -19,6 +19,7 @@ export interface MobileSimulationConfig {
 }
 
 export interface MobileSimulationSeed {
+  id?: string;
   config: MobileSimulationConfig;
   questions: Question[];
   startedAt: number;
