@@ -180,15 +180,56 @@ function m20f04CreateIdentity(AdminUserActionsService $service, string $role, st
 function m20f04Inventory(PDO $db): void
 {
     $statement = $db->query(
-        "SELECT COUNT(*) FROM users
+        "SELECT id, email FROM users
          WHERE email LIKE 'm20f04-%@synthetic.invalid'
-           AND COALESCE(status, 'active') NOT IN ('deleted', 'pending_deletion')"
+           AND COALESCE(status, 'active') NOT IN ('deleted', 'pending_deletion')
+         ORDER BY email ASC"
     );
-    $activeUsers = (int) $statement->fetchColumn();
+    $identities = $statement->fetchAll(PDO::FETCH_ASSOC);
+    $userIds = array_values(array_filter(array_map(
+        static fn (array $identity): string => trim((string) ($identity['id'] ?? '')),
+        $identities
+    )));
+
+    $countByUserIds = static function (string $table, bool $rootOnly = false) use ($db, $userIds): int {
+        if ($userIds === []) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $sql = "SELECT COUNT(*) FROM {$table} WHERE user_id IN ({$placeholders})";
+        if ($rootOnly) {
+            $sql .= ' AND parent_id IS NULL';
+        }
+        $countStatement = $db->prepare($sql);
+        $countStatement->execute($userIds);
+        return (int) $countStatement->fetchColumn();
+    };
+
+    $countRows = static function (string $table, string $column, array $values) use ($db): int {
+        if ($values === []) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($values), '?'));
+        $countStatement = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE {$column} IN ({$placeholders})");
+        $countStatement->execute($values);
+        return (int) $countStatement->fetchColumn();
+    };
+
+    $feedbackCount = $countByUserIds('user_feedback');
+    $rootFeedbackCount = $countByUserIds('user_feedback', true);
+    $grantCount = $countByUserIds('benefit_grants');
+    $codeCount = $countRows('benefit_codes', 'assigned_user_id', $userIds);
 
     fwrite(STDOUT, json_encode([
         'mode' => 'inventory',
-        'active_synthetic_users' => $activeUsers,
+        'active_synthetic_users' => count($identities),
+        'synthetic_support_cases' => $rootFeedbackCount,
+        'synthetic_support_messages' => max(0, $feedbackCount - $rootFeedbackCount),
+        'synthetic_benefit_grants' => $grantCount,
+        'synthetic_benefit_codes' => $codeCount,
+        'synthetic_test_clocks' => 0,
         'synthetic_namespace' => M20F04_SYNTHETIC_EMAIL_PREFIX . '*'
             . M20F04_SYNTHETIC_EMAIL_SUFFIX,
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . PHP_EOL);
