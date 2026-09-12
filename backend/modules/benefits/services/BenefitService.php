@@ -339,6 +339,7 @@ final class BenefitService
         $subscription = $this->findCurrentSubscription($userId);
         $paidPlan = self::canonicalPlan((string) ($subscription['plan_name'] ?? 'Gratuito'));
         $requestedAccessPlan = self::canonicalPlan((string) ($input['access_plan'] ?? ''));
+        $requestedMode = strtoupper(trim((string) ($input['benefit_mode'] ?? $input['mode'] ?? '')));
         $ticketReference = trim((string) ($input['ticket_reference'] ?? ''));
         $reason = trim((string) ($input['reason'] ?? ''));
         if ($ticketReference === '' || strlen($ticketReference) > 160) {
@@ -352,23 +353,39 @@ final class BenefitService
             && normalizePaymentProvider((string) ($subscription['payment_provider'] ?? '')) === 'stripe'
             && trim((string) ($subscription['provider_subscription_id'] ?? '')) !== ''
             && in_array(strtolower((string) ($subscription['status'] ?? '')), ['active', 'trialing', 'past_due'], true);
-        $mode = $forceTemporaryAccess || !$hasStripeSubscription ? 'ACCESS_ONLY' : 'BILLING_EXTENSION_ONLY';
+        if ($requestedMode !== '' && !in_array($requestedMode, self::MODES, true)) {
+            throw new InvalidArgumentException('Modo de compensacao invalido.');
+        }
+        $mode = $requestedMode !== ''
+            ? $requestedMode
+            : ($forceTemporaryAccess || !$hasStripeSubscription ? 'ACCESS_ONLY' : 'BILLING_EXTENSION_ONLY');
+        if (in_array($mode, ['BILLING_EXTENSION_ONLY', 'ACCESS_AND_BILLING_EXTENSION'], true) && !$hasStripeSubscription) {
+            throw new InvalidArgumentException('Compensacao de cobranca exige assinatura Stripe ativa.');
+        }
+        if (in_array($mode, ['ACCESS_ONLY', 'ACCESS_AND_BILLING_EXTENSION'], true) && $requestedMode !== '' && $requestedAccessPlan === 'Gratuito') {
+            throw new InvalidArgumentException('Compensacao de acesso exige plano temporario.');
+        }
         $idempotencyInput = trim((string) ($input['idempotency_key'] ?? ''));
         if ($idempotencyInput === '') {
-            $idempotencyInput = implode('|', [
+            $idempotencyParts = [
                 'support-compensation',
                 $userId,
                 $days,
                 $requestedAccessPlan,
                 $ticketReference,
-            ]);
+            ];
+            if ($requestedMode !== '') {
+                $idempotencyParts[] = $mode;
+            }
+            $idempotencyInput = implode('|', $idempotencyParts);
         }
         $idempotencyKey = hash('sha256', $idempotencyInput);
         $existingGrant = $this->findGrantByIdempotency($idempotencyKey);
         if ($existingGrant) {
-            $existingMode = ((int) ($existingGrant['billing_extension_days'] ?? 0)) > 0
+            $existingDefinition = $this->findDefinition((string) ($existingGrant['benefit_definition_id'] ?? ''));
+            $existingMode = strtoupper((string) ($existingDefinition['benefit_mode'] ?? '')) ?: (((int) ($existingGrant['billing_extension_days'] ?? 0)) > 0
                 ? 'BILLING_EXTENSION_ONLY'
-                : 'ACCESS_ONLY';
+                : 'ACCESS_ONLY');
             $this->audit((string) $existingGrant['id'], null, $actorId, 'support_compensation.idempotent_replay', [
                 'idempotency_key' => $idempotencyKey,
                 'ticket_reference' => $ticketReference,
@@ -385,9 +402,11 @@ final class BenefitService
             'definition_key' => $definitionKey,
             'name' => 'Compensacao de suporte',
             'benefit_mode' => $mode,
-            'access_plan' => $mode === 'ACCESS_ONLY' ? ($forceTemporaryAccess ? $requestedAccessPlan : $paidPlan) : null,
-            'access_duration_days' => $mode === 'ACCESS_ONLY' ? $days : 0,
-            'billing_extension_days' => $mode === 'BILLING_EXTENSION_ONLY' ? $days : 0,
+            'access_plan' => in_array($mode, ['ACCESS_ONLY', 'ACCESS_AND_BILLING_EXTENSION'], true)
+                ? ($forceTemporaryAccess ? $requestedAccessPlan : $paidPlan)
+                : null,
+            'access_duration_days' => in_array($mode, ['ACCESS_ONLY', 'ACCESS_AND_BILLING_EXTENSION'], true) ? $days : 0,
+            'billing_extension_days' => in_array($mode, ['BILLING_EXTENSION_ONLY', 'ACCESS_AND_BILLING_EXTENSION'], true) ? $days : 0,
             'stacking_policy' => 'EXTEND',
             'source_scope' => 'SUPPORT_COMPENSATION',
             'active' => 1,
