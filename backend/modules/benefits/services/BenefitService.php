@@ -339,6 +339,14 @@ final class BenefitService
         $subscription = $this->findCurrentSubscription($userId);
         $paidPlan = self::canonicalPlan((string) ($subscription['plan_name'] ?? 'Gratuito'));
         $requestedAccessPlan = self::canonicalPlan((string) ($input['access_plan'] ?? ''));
+        $ticketReference = trim((string) ($input['ticket_reference'] ?? ''));
+        $reason = trim((string) ($input['reason'] ?? ''));
+        if ($ticketReference === '' || strlen($ticketReference) > 160) {
+            throw new InvalidArgumentException('Ticket ou referencia obrigatoria para compensacao.');
+        }
+        if ($reason === '' || strlen($reason) > 500) {
+            throw new InvalidArgumentException('Motivo obrigatorio para compensacao.');
+        }
         $forceTemporaryAccess = $requestedAccessPlan !== 'Gratuito';
         $hasStripeSubscription = $subscription !== null
             && normalizePaymentProvider((string) ($subscription['payment_provider'] ?? '')) === 'stripe'
@@ -347,13 +355,24 @@ final class BenefitService
         $mode = $forceTemporaryAccess || !$hasStripeSubscription ? 'ACCESS_ONLY' : 'BILLING_EXTENSION_ONLY';
         $idempotencyInput = trim((string) ($input['idempotency_key'] ?? ''));
         if ($idempotencyInput === '') {
-            $idempotencyInput = 'legacy-admin-days-' . $userId . '-' . $days . '-' . bin2hex(random_bytes(8));
+            $idempotencyInput = implode('|', [
+                'support-compensation',
+                $userId,
+                $days,
+                $requestedAccessPlan,
+                $ticketReference,
+            ]);
         }
-        $existingGrant = $this->findGrantByIdempotency(hash('sha256', $idempotencyInput));
+        $idempotencyKey = hash('sha256', $idempotencyInput);
+        $existingGrant = $this->findGrantByIdempotency($idempotencyKey);
         if ($existingGrant) {
             $existingMode = ((int) ($existingGrant['billing_extension_days'] ?? 0)) > 0
                 ? 'BILLING_EXTENSION_ONLY'
                 : 'ACCESS_ONLY';
+            $this->audit((string) $existingGrant['id'], null, $actorId, 'support_compensation.idempotent_replay', [
+                'idempotency_key' => $idempotencyKey,
+                'ticket_reference' => $ticketReference,
+            ]);
             return [
                 'grant' => $existingGrant,
                 'mode' => $existingMode,
@@ -376,12 +395,13 @@ final class BenefitService
 
         $grant = $this->grant($userId, (string) $definition['id'], [
             'source_type' => 'SUPPORT_COMPENSATION',
-            'source_reference' => (string) ($input['ticket_reference'] ?? 'admin-user-action'),
-            'reason' => (string) ($input['reason'] ?? 'Compensacao administrativa'),
+            'source_reference' => $ticketReference,
+            'reason' => $reason,
             'idempotency_key' => $idempotencyInput,
             'metadata' => [
                 'legacy_action' => 'add_days',
                 'operator_id' => $actorId,
+                'ticket_reference' => $ticketReference,
             ],
         ], $actorId);
 
@@ -389,6 +409,24 @@ final class BenefitService
             require_once __DIR__ . '/../../../modules/billing/services/BillingExtensionService.php';
             $grant = (new BillingExtensionService($this->db))->apply((string) $grant['id'], $actorId);
         }
+
+        $after = $this->getUserEntitlement($userId);
+        $this->audit((string) ($grant['id'] ?? ''), null, $actorId, 'support_compensation.created', [
+            'source_type' => 'SUPPORT_COMPENSATION',
+            'ticket_reference' => $ticketReference,
+            'reason' => $reason,
+            'operator_id' => $actorId,
+            'idempotency_key' => $idempotencyKey,
+            'days' => $days,
+            'mode' => $mode,
+            'paid_plan_before' => $paidPlan,
+            'paid_plan_after' => $after['paid_plan'] ?? $paidPlan,
+            'effective_access_before' => $paidPlan,
+            'effective_access_after' => $after['effective_access'] ?? $paidPlan,
+            'billing_period_before' => $subscription['provider_current_period_end'] ?? $subscription['current_period_end'] ?? null,
+            'billing_period_after' => $after['provider_current_period_end'] ?? null,
+            'provider_status' => $grant['provider_status'] ?? null,
+        ]);
 
         return [
             'grant' => $grant,

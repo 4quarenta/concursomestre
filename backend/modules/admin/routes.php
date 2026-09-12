@@ -181,6 +181,19 @@ function handleAdminSystemLogsRoute(PDO $db, ?string $logFilePath = null): void
 }
 
 /**
+ * Exige o contrato CSRF compartilhado para toda mutacao administrativa de
+ * suporte/moderacao.
+ *
+ * @since 1.0.0
+ */
+function requireAdminMutationCsrf(): void
+{
+    if (!assertValidCsrfToken(getCsrfTokenFromCookie(), getCsrfTokenFromRequest())) {
+        Response::forbidden('CSRF token invalido.');
+    }
+}
+
+/**
  * Ponto de entrada do modulo administrativo para feedback e suporte.
  * Preserva o endpoint legado enquanto desloca consulta e atualizacao de
  * conversas para a estrutura modular do backend.
@@ -192,7 +205,7 @@ function handleAdminFeedbackRoute(PDO $db): void
     try {
         $adminContext = requireAdminSessionContext($db);
         $adminUserId = (string) $adminContext['admin_user_id'];
-        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
         $controller = new AdminFeedbackController(
             new AdminFeedbackService(
@@ -234,6 +247,7 @@ function handleAdminFeedbackRoute(PDO $db): void
         }
 
         if ($method === 'PUT') {
+            requireAdminMutationCsrf();
             $data = json_decode(file_get_contents('php://input'), true) ?: [];
             $feedbackId = isset($data['id']) ? (int) $data['id'] : 0;
             $action = trim((string) ($data['action'] ?? ''));
@@ -260,6 +274,7 @@ function handleAdminFeedbackRoute(PDO $db): void
         }
 
         if ($method === 'POST') {
+            requireAdminMutationCsrf();
             $data = json_decode(file_get_contents('php://input'), true) ?: [];
             $parentId = isset($data['parent_id']) ? (int) $data['parent_id'] : 0;
             $details = trim((string) ($data['details'] ?? ''));
@@ -300,6 +315,11 @@ function handleAdminReportModerationRoute(PDO $db): void
     try {
         $adminContext = requireAdminSessionContext($db);
         $adminUserId = (string) $adminContext['admin_user_id'];
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? ''));
+        if ($method !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+        requireAdminMutationCsrf();
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
 
         $reportId = trim((string) ($data['id'] ?? ''));
@@ -518,6 +538,14 @@ function handleAdminUserActionsRoute(PDO $db): void
 
         $context = requirePlatformAdminSessionContext($db);
         $adminUserId = (string) $context['admin_user_id'];
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? ''));
+        if ($method !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+        $csrfCookie = getCsrfTokenFromCookie();
+        if (!assertValidCsrfToken($csrfCookie, getCsrfTokenFromRequest())) {
+            Response::forbidden('CSRF token invalido.');
+        }
         $data = json_decode(file_get_contents('php://input'), true) ?: [];
         $data['_admin_user_id'] = $adminUserId;
 
@@ -1280,6 +1308,7 @@ function handleAdminCommentsModerationRoute(PDO $db): void
         }
 
         if (in_array($method, ['PATCH', 'PUT', 'POST'], true)) {
+            requireAdminMutationCsrf();
             $payload = json_decode(file_get_contents('php://input'), true) ?: [];
             $result = $controller->update($payload, $adminUserId);
             logAdminAudit($db, $adminUserId, 'comments.moderate', 'comment', (string) ($result['id'] ?? ''), [
@@ -1307,6 +1336,11 @@ function handleAdminCommentsModerationBulkRoute(PDO $db): void
     try {
         $context = requireAdminSessionContext($db);
         $adminUserId = (string) $context['admin_user_id'];
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? ''));
+        if ($method !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+        requireAdminMutationCsrf();
         $payload = json_decode(file_get_contents('php://input'), true) ?: [];
         $controller = new AdminCommentsModerationController(
             new AdminCommentsModerationService(

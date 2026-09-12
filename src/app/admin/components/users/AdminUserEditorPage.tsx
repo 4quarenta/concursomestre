@@ -231,6 +231,8 @@ const AdminUserEditorPage = ({
   );
   const [detailTab, setDetailTab] = React.useState<DetailTab>('overview');
   const [daysToAdd, setDaysToAdd] = React.useState('30');
+  const [compensationTicket, setCompensationTicket] = React.useState('');
+  const [compensationReason, setCompensationReason] = React.useState('');
   const [selectedPlanIdOverride, setSelectedPlanIdOverride] = React.useState('');
   const [confirmState, setConfirmState] = React.useState<ConfirmState>(null);
   const title = isNew ? 'Adicionar novo usuario' : profile.name || form.name || 'Editar usuario';
@@ -265,7 +267,11 @@ const AdminUserEditorPage = ({
         : `O periodo ativo sera estendido em ${absoluteDays} dia(s) como cortesia manual.`,
       confirmLabel: isRemovingDays ? 'Remover dias' : 'Aplicar cortesia',
       tone: isRemovingDays ? 'danger' : 'primary',
-      payload: { days },
+      payload: {
+        days,
+        ticket_reference: compensationTicket.trim(),
+        reason: compensationReason.trim(),
+      },
     });
   };
 
@@ -280,7 +286,11 @@ const AdminUserEditorPage = ({
       description: `O usuario sera movido para o plano "${plan?.name || 'selecionado'}".`,
       confirmLabel: 'Aplicar upgrade',
       tone: 'primary',
-      payload: { plan_id: Number(selectedPlanId) },
+      payload: {
+        plan_id: Number(selectedPlanId),
+        ticket_reference: compensationTicket.trim(),
+        reason: compensationReason.trim(),
+      },
     });
   };
 
@@ -646,11 +656,13 @@ const AdminUserEditorPage = ({
                   <div className="mt-5 grid gap-4 md:grid-cols-2">
                     <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-2 p-4`}>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ajustar dias de cortesia</p>
-                      <input type="number" value={daysToAdd} onChange={(event) => setDaysToAdd(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`} />
+                      <AdminFormField label="Dias de compensação" controlId="admin-editor-compensation-days" required><input id="admin-editor-compensation-days" type="number" value={daysToAdd} onChange={(event) => setDaysToAdd(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`} /></AdminFormField>
+                      <AdminFormField label="Ticket ou referência" controlId="admin-editor-compensation-ticket" required><input id="admin-editor-compensation-ticket" type="text" value={compensationTicket} onChange={(event) => setCompensationTicket(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`} placeholder="Ex.: SUP-2026-001" /></AdminFormField>
+                      <AdminFormField label="Motivo" controlId="admin-editor-compensation-reason" required><textarea id="admin-editor-compensation-reason" value={compensationReason} onChange={(event) => setCompensationReason(event.target.value)} className={`${ADMIN_FIELD_CLASS} min-h-20 w-full`} placeholder="Descreva a compensação" /></AdminFormField>
                       <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                         Use valor positivo para adicionar e negativo para remover dias de uma cortesia.
                       </p>
-                      <button type="button" onClick={openAddDaysConfirm} disabled={!activeSubscription || actionLoading === 'add_days' || !onUserAction} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
+                      <button type="button" onClick={openAddDaysConfirm} disabled={!activeSubscription || actionLoading === 'add_days' || !onUserAction || !compensationTicket.trim() || !compensationReason.trim()} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
                         <PlusCircle size={14} /> {actionLoading === 'add_days' ? 'Aplicando...' : 'Aplicar ajuste'}
                       </button>
                     </div>
@@ -660,7 +672,8 @@ const AdminUserEditorPage = ({
                         <option value="">Selecione um plano</option>
                         {availablePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} - {formatCurrency(plan.price)}</option>)}
                       </select>
-                      <button type="button" onClick={openUpgradeConfirm} disabled={!selectedPlanId || actionLoading === 'upgrade_plan' || !onUserAction} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+                      <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Use a mesma referência e motivo para manter a operação idempotente.</p>
+                      <button type="button" onClick={openUpgradeConfirm} disabled={!selectedPlanId || actionLoading === 'upgrade_plan' || !onUserAction || !compensationTicket.trim() || !compensationReason.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
                         <ArrowUpCircle size={14} /> {actionLoading === 'upgrade_plan' ? 'Aplicando...' : 'Confirmar upgrade'}
                       </button>
                     </div>

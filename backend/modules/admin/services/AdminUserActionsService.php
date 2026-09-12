@@ -143,8 +143,8 @@ class AdminUserActionsService
             throw new RuntimeException('Operador administrativo ausente.');
         }
         $grant = (new BenefitService($this->db))->grantSupportCompensation($userId, $days, [
-            'ticket_reference' => (string) ($data['ticket_reference'] ?? 'admin-user-action'),
-            'reason' => (string) ($data['reason'] ?? 'Compensacao administrativa de dias.'),
+            'ticket_reference' => (string) ($data['ticket_reference'] ?? ''),
+            'reason' => (string) ($data['reason'] ?? ''),
             'idempotency_key' => $data['idempotency_key'] ?? null,
             'apply_provider' => true,
         ], $actorId);
@@ -205,7 +205,7 @@ class AdminUserActionsService
         $durationDays = $this->getPlanDurationDays($plan);
         $grant = (new BenefitService($this->db))->grantSupportCompensation($userId, $durationDays, [
             'access_plan' => (string) $plan['name'],
-            'ticket_reference' => (string) ($data['ticket_reference'] ?? 'admin-user-action'),
+            'ticket_reference' => (string) ($data['ticket_reference'] ?? ('admin-upgrade-' . $userId . '-' . $planId)),
             'reason' => (string) ($data['reason'] ?? 'Upgrade administrativo temporario.'),
             'idempotency_key' => $data['idempotency_key'] ?? null,
             'apply_provider' => false,

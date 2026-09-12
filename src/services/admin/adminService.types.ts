@@ -697,6 +697,9 @@ export interface AdminUserActionPayload {
   transaction_id?: number;
   plan_id?: number;
   days?: number;
+  ticket_reference?: string;
+  reason?: string;
+  idempotency_key?: string;
   password?: string;
   name?: string;
   email?: string;

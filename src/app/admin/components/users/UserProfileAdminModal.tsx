@@ -232,6 +232,8 @@ const UserProfileAdminModal = ({
   const reports = normalizedDetailedUser?.reports ?? [];
   const availablePlans = (normalizedDetailedUser?.available_plans ?? []).filter((plan) => Number(plan?.active ?? 1) !== 0);
   const [daysToAdd, setDaysToAdd] = React.useState('30');
+  const [compensationTicket, setCompensationTicket] = React.useState('');
+  const [compensationReason, setCompensationReason] = React.useState('');
   const [selectedPlanIdOverride, setSelectedPlanIdOverride] = React.useState('');
   const [confirmState, setConfirmState] = React.useState<ConfirmState>(null);
 
@@ -273,7 +275,11 @@ const UserProfileAdminModal = ({
         : `O periodo ativo sera estendido em ${absoluteDays} dia(s) como cortesia manual.`,
       confirmLabel: isRemovingDays ? 'Remover dias' : 'Aplicar cortesia',
       tone: isRemovingDays ? 'danger' : 'primary',
-      payload: { days },
+      payload: {
+        days,
+        ticket_reference: compensationTicket.trim(),
+        reason: compensationReason.trim(),
+      },
     });
   };
 
@@ -287,7 +293,11 @@ const UserProfileAdminModal = ({
       description: `O usuario sera movido para o plano "${plan?.name || 'selecionado'}".`,
       confirmLabel: 'Aplicar upgrade',
       tone: 'primary',
-      payload: { plan_id: Number(selectedPlanId) },
+      payload: {
+        plan_id: Number(selectedPlanId),
+        ticket_reference: compensationTicket.trim(),
+        reason: compensationReason.trim(),
+      },
     });
   };
 
@@ -395,11 +405,16 @@ const UserProfileAdminModal = ({
         <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-2 p-4`}>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ajustar dias de cortesia</p>
-            <input type="number" value={daysToAdd} onChange={(event) => setDaysToAdd(event.target.value)} className={ADMIN_FIELD_CLASS} />
+            <label htmlFor="admin-compensation-days" className="text-xs font-semibold text-slate-600 dark:text-slate-300">Dias de compensação</label>
+            <input id="admin-compensation-days" type="number" value={daysToAdd} onChange={(event) => setDaysToAdd(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`} />
+            <label htmlFor="admin-compensation-ticket" className="text-xs font-semibold text-slate-600 dark:text-slate-300">Ticket ou referência</label>
+            <input id="admin-compensation-ticket" type="text" value={compensationTicket} onChange={(event) => setCompensationTicket(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`} required placeholder="Ex.: SUP-2026-001" />
+            <label htmlFor="admin-compensation-reason" className="text-xs font-semibold text-slate-600 dark:text-slate-300">Motivo</label>
+            <textarea id="admin-compensation-reason" value={compensationReason} onChange={(event) => setCompensationReason(event.target.value)} className={`${ADMIN_FIELD_CLASS} min-h-20 w-full`} required placeholder="Descreva a compensação" />
             <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
               Use valor positivo para adicionar e negativo para remover dias de uma cortesia.
             </p>
-            <button type="button" onClick={openAddDaysConfirm} disabled={!activeSubscription || actionLoading === 'add_days'} className={`w-full justify-center ${ADMIN_PRIMARY_BUTTON_CLASS}`}><PlusCircle size={14} /> {actionLoading === 'add_days' ? 'Aplicando...' : 'Aplicar ajuste'}</button>
+            <button type="button" onClick={openAddDaysConfirm} disabled={!activeSubscription || actionLoading === 'add_days' || !compensationTicket.trim() || !compensationReason.trim()} className={`w-full justify-center ${ADMIN_PRIMARY_BUTTON_CLASS}`}><PlusCircle size={14} /> {actionLoading === 'add_days' ? 'Aplicando...' : 'Aplicar ajuste'}</button>
           </div>
           <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-2 p-4`}>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Upgrade manual</p>
@@ -407,7 +422,8 @@ const UserProfileAdminModal = ({
               <option value="">Selecione um plano</option>
               {availablePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} - {formatCurrency(plan.price)}</option>)}
             </select>
-            <button type="button" onClick={openUpgradeConfirm} disabled={!selectedPlanId || actionLoading === 'upgrade_plan'} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"><ArrowUpCircle size={14} /> {actionLoading === 'upgrade_plan' ? 'Aplicando...' : 'Confirmar upgrade'}</button>
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Use a mesma referência e motivo para manter a operação idempotente.</p>
+            <button type="button" onClick={openUpgradeConfirm} disabled={!selectedPlanId || actionLoading === 'upgrade_plan' || !compensationTicket.trim() || !compensationReason.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"><ArrowUpCircle size={14} /> {actionLoading === 'upgrade_plan' ? 'Aplicando...' : 'Confirmar upgrade'}</button>
           </div>
         </div>
       </div>

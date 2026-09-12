@@ -12,6 +12,7 @@
 import { apiClient, ENDPOINTS, assertApiSuccess, downloadAuthenticatedFile, readApiData, resolveApiResourceUrl } from '@services/api';
 import type { ApiResponse } from '@services/api';
 import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
+import { getCsrfToken } from '@services/auth/session';
 import type { ErrorReport, Ranking, SystemSettings, UserProfile } from '@types';
 import { normalizeAdminFeedbackThread, normalizeAdminQuestionListPayload } from './adminService.normalizers';
 import { adaptPublicSystemSettings, type PublicSystemSettingsContract } from './publicSettingsContract';
@@ -66,6 +67,20 @@ export interface AdminBrandAsset {
 }
 
 const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
+
+const adminPost = <T>(endpoint: string, payload: unknown) => {
+  const csrfToken = getCsrfToken();
+  return csrfToken
+    ? apiClient.post<ApiResponse<T>>(endpoint, payload, { headers: { 'X-CSRF-Token': csrfToken } })
+    : apiClient.post<ApiResponse<T>>(endpoint, payload);
+};
+
+const adminPut = <T>(endpoint: string, payload: unknown) => {
+  const csrfToken = getCsrfToken();
+  return csrfToken
+    ? apiClient.put<ApiResponse<T>>(endpoint, payload, { headers: { 'X-CSRF-Token': csrfToken } })
+    : apiClient.put<ApiResponse<T>>(endpoint, payload);
+};
 const toLooseRecord = (value: unknown): AdminLooseRecord | undefined => (
   value && typeof value === 'object' && !Array.isArray(value)
     ? value as AdminLooseRecord
@@ -367,7 +382,7 @@ export const adminService = {
       moderationAction?: string;
     } = {},
   ): Promise<void> {
-    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.reportActions, {
+    const response = await requestApi<unknown>(adminPost(ENDPOINTS.admin.reportActions, {
       id,
       action,
       admin_reason: adminReason,
@@ -427,7 +442,7 @@ export const adminService = {
     user_response?: string;
     internal_note?: string;
   }): Promise<void> {
-    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.reportWorkbench, {
+    const response = await requestApi<unknown>(adminPost(ENDPOINTS.admin.reportWorkbench, {
       operation: 'save_draft',
       ...payload,
     }));
@@ -442,7 +457,7 @@ export const adminService = {
     report_id: string;
     kind?: string;
   }): Promise<AdminReportWorkbenchSuggestion> {
-    const response = await requestApi<AdminReportWorkbenchSuggestion>(apiClient.post<ApiResponse<AdminReportWorkbenchSuggestion>>(
+    const response = await requestApi<AdminReportWorkbenchSuggestion>(adminPost<AdminReportWorkbenchSuggestion>(
       ENDPOINTS.admin.reportWorkbench,
       {
         operation: 'generate_suggestion',
@@ -461,7 +476,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async applyReportModeration(payload: AdminReportWorkbenchApplyPayload): Promise<AdminReportWorkbenchApplyResult> {
-    const response = await requestApi<AdminReportWorkbenchApplyResult>(apiClient.post<ApiResponse<AdminReportWorkbenchApplyResult>>(
+    const response = await requestApi<AdminReportWorkbenchApplyResult>(adminPost<AdminReportWorkbenchApplyResult>(
       ENDPOINTS.admin.reportWorkbench,
       {
         operation: 'apply',
@@ -999,7 +1014,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async updateModerationComment(id: string, status: AdminCommentModerationStatus): Promise<AdminCommentModerationItem> {
-    const response = await requestApi<AdminCommentModerationItem>(apiClient.post<ApiResponse<AdminCommentModerationItem>>(ENDPOINTS.admin.commentsModeration, { id, status }));
+    const response = await requestApi<AdminCommentModerationItem>(adminPost<AdminCommentModerationItem>(ENDPOINTS.admin.commentsModeration, { id, status }));
     const envelope = assertApiSuccess<AdminCommentModerationItem>(response, 'Não foi possível atualizar o comentário.');
     return readApiData<AdminCommentModerationItem>(envelope.raw, {
       id,
@@ -1021,7 +1036,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async bulkUpdateModerationComments(ids: string[], status: AdminCommentModerationStatus): Promise<{ updated: number }> {
-    const response = await requestApi<{ updated: number }>(apiClient.post<ApiResponse<{ updated: number }>>(ENDPOINTS.admin.commentsModerationBulk, { ids, status }));
+    const response = await requestApi<{ updated: number }>(adminPost<{ updated: number }>(ENDPOINTS.admin.commentsModerationBulk, { ids, status }));
     return readApiData(
       assertApiSuccess(response, 'Não foi possível atualizar os comentários selecionados.').raw,
       { updated: 0 },
@@ -1177,7 +1192,10 @@ export const adminService = {
    * @since v1.0.0
    */
   async performUserActionWithResult(payload: AdminUserActionPayload): Promise<AdminUserActionResult> {
-    const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload));
+    const csrfToken = getCsrfToken();
+    const response = await requestApi<AdminLooseRecord>(csrfToken
+      ? apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload, { headers: { 'X-CSRF-Token': csrfToken } })
+      : apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload));
     const result = assertApiSuccess(response, 'Não foi possível executar a ação administrativa.');
     return {
       message: result.message,
@@ -1190,7 +1208,10 @@ export const adminService = {
    * @since v1.0.0
    */
   async performUserAction(payload: AdminUserActionPayload): Promise<void> {
-    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload));
+    const csrfToken = getCsrfToken();
+    const response = await requestApi<unknown>(csrfToken
+      ? apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload, { headers: { 'X-CSRF-Token': csrfToken } })
+      : apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload));
     assertApiSuccess(response, 'Não foi possível executar a ação administrativa.');
   },
 
@@ -1296,12 +1317,12 @@ export const adminService = {
    * @since v1.0.0
    */
   async updateFeedbackStatus(id: number, status: FeedbackStatus): Promise<void> {
-    const response = await requestApi<unknown>(apiClient.put<ApiResponse>(ENDPOINTS.admin.feedback, { id, status }));
+    const response = await requestApi<unknown>(adminPut(ENDPOINTS.admin.feedback, { id, status }));
     assertApiSuccess(response, 'Não foi possível atualizar o feedback.');
   },
 
   async updateFeedbackHomePublication(id: number, published: boolean): Promise<void> {
-    const response = await requestApi<unknown>(apiClient.put<ApiResponse>(ENDPOINTS.admin.feedback, {
+    const response = await requestApi<unknown>(adminPut(ENDPOINTS.admin.feedback, {
       id,
       action: published ? 'publish_home' : 'unpublish_home',
     }));
@@ -1322,7 +1343,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async replyToFeedback(parentId: number, details: string): Promise<void> {
-    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.feedback, {
+    const response = await requestApi<unknown>(adminPost(ENDPOINTS.admin.feedback, {
       parent_id: parentId,
       details,
     }));

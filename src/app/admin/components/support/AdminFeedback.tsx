@@ -11,7 +11,7 @@
 
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { BookOpenCheck, CheckCircle2, Filter, Loader2, MessageSquare, Search, Send, Star } from 'lucide-react';
+import { BookOpenCheck, CheckCircle2, Filter, Gift, Loader2, MessageSquare, Search, Send, Star } from 'lucide-react';
 import { adminService, type AdminFeedbackReply, type AdminFeedbackThread } from '@services/admin/adminService';
 import { clientLog } from '@services/monitoring/clientLog';
 import {
@@ -195,6 +195,8 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   const [sendingReplyId, setSendingReplyId] = useState<number | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
   const [publishingHomeId, setPublishingHomeId] = useState<number | null>(null);
+  const [compensationDrafts, setCompensationDrafts] = useState<Record<number, { days: string; ticket: string; reason: string }>>({});
+  const [compensatingId, setCompensatingId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AdminFeedbackThread['status']>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | string>('all');
@@ -364,6 +366,37 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       setPublishingHomeId(null);
     }
   }, [addToast, fetchFeedback]);
+
+  const grantSupportCompensation = useCallback(async (item: AdminFeedbackThread) => {
+    const draft = compensationDrafts[item.id] || { days: '', ticket: '', reason: '' };
+    const days = Number(draft.days);
+    const ticket = draft.ticket.trim();
+    const reason = draft.reason.trim();
+    if (!Number.isInteger(days) || days < 1 || days > 366 || !ticket || !reason) {
+      addToast('Informe dias, ticket e motivo para registrar a compensação.', 'error');
+      return;
+    }
+
+    setCompensatingId(item.id);
+    try {
+      const result = await adminService.performUserActionWithResult({
+        action: 'add_days',
+        user_id: item.user_id,
+        days,
+        ticket_reference: ticket,
+        reason,
+        idempotency_key: `support-case:${item.id}:${item.user_id}:${days}:${ticket}`,
+      });
+      await fetchFeedback();
+      addToast(result.message || 'Compensação registrada pelo suporte.', 'success');
+      setCompensationDrafts((current) => ({ ...current, [item.id]: { days: '', ticket: '', reason: '' } }));
+    } catch (error) {
+      clientLog.warn('Error granting support compensation:', error);
+      addToast('Não foi possível registrar a compensação.', 'error');
+    } finally {
+      setCompensatingId(null);
+    }
+  }, [addToast, compensationDrafts, fetchFeedback]);
 
   if (loading) {
     return (
@@ -724,6 +757,68 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                                 </div>
                               </div>
                               )}
+
+                              {mode === 'threads' && item.status !== 'resolved' ? (
+                                <form
+                                  className="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700"
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    void grantSupportCompensation(item);
+                                  }}
+                                >
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Compensação de suporte</p>
+                                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">A ação usa a autoridade de Benefits e mantém o plano pago separado.</p>
+                                  </div>
+                                  <div className="grid gap-3 md:grid-cols-3">
+                                    <label className="space-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                      <span>Dias gratuitos</span>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max="366"
+                                        required
+                                        value={compensationDrafts[item.id]?.days || ''}
+                                        onChange={(event) => setCompensationDrafts((current) => ({
+                                          ...current,
+                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '' }), days: event.target.value },
+                                        }))}
+                                        className={`${ADMIN_FIELD_CLASS} w-full`}
+                                      />
+                                    </label>
+                                    <label className="space-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                      <span>Ticket ou referência</span>
+                                      <input
+                                        type="text"
+                                        required
+                                        value={compensationDrafts[item.id]?.ticket || ''}
+                                        onChange={(event) => setCompensationDrafts((current) => ({
+                                          ...current,
+                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '' }), ticket: event.target.value },
+                                        }))}
+                                        className={`${ADMIN_FIELD_CLASS} w-full`}
+                                      />
+                                    </label>
+                                    <label className="space-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                      <span>Motivo</span>
+                                      <input
+                                        type="text"
+                                        required
+                                        value={compensationDrafts[item.id]?.reason || ''}
+                                        onChange={(event) => setCompensationDrafts((current) => ({
+                                          ...current,
+                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '' }), reason: event.target.value },
+                                        }))}
+                                        className={`${ADMIN_FIELD_CLASS} w-full`}
+                                      />
+                                    </label>
+                                  </div>
+                                  <button type="submit" disabled={compensatingId === item.id} className={ADMIN_SECONDARY_BUTTON_CLASS}>
+                                    {compensatingId === item.id ? <Loader2 size={14} className="animate-spin" /> : <Gift size={14} />}
+                                    {compensatingId === item.id ? 'Registrando...' : 'Registrar compensação'}
+                                  </button>
+                                </form>
+                              ) : null}
                             </div>
                           )}
                         </td>
