@@ -1,0 +1,51 @@
+name: Mobile EAS Diagnostic
+
+on:
+  push:
+    branches:
+      - mobile-foundation-refactor
+    paths:
+      - '.github/workflows/mobile-eas-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    name: Verify Expo/EAS readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: mobile-foundation-refactor
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        run: npm ci --prefix mobile
+
+      - name: Check Expo token presence
+        shell: bash
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo 'EXPO_TOKEN is not configured in GitHub Actions.'
+            exit 2
+          fi
+          echo 'EXPO_TOKEN is configured.'
+
+      - name: Verify EAS authentication
+        working-directory: mobile
+        run: npx --yes eas-cli@latest whoami
+
+      - name: Verify EAS project link
+        working-directory: mobile
+        run: npx --yes eas-cli@latest project:info --non-interactive
