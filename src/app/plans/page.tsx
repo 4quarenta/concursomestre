@@ -285,37 +285,8 @@ const PlansPage: React.FC = () => {
 
             <div className="mx-auto grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                     {filteredPlans.map((plan) => {
-                        const getTier = (name: string) => {
-                            const normalized = name.toLowerCase();
-                            if (normalized.includes('elite')) return 3;
-                            if (normalized.includes('pro')) return 2;
-                            if (normalized.includes('essencial')) return 1;
-                            return 0;
-                        };
-
-                        const getTimeScore = (currentPlan: Plan) => {
-                            if (currentPlan.interval_unit === 'year') return 12;
-                            if (currentPlan.interval_unit === 'month') return currentPlan.interval_count || 1;
-                            return 1;
-                        };
-
                         const activeSub = hasActivePlanAccess(currentUser);
-                        const currentPlanName = currentUser?.subscription?.plan?.name || '';
-                        const currentTier = activeSub ? getTier(currentPlanName) : 0;
-                        const currentPlanInList = plans.find((currentPlan) => currentPlan.id === currentUser?.subscription?.plan_id);
-                        const currentTimeScore = currentPlanInList ? getTimeScore(currentPlanInList) : 0;
-                        const planTier = getTier(plan.name);
-                        const planTimeScore = getTimeScore(plan);
                         const isCurrent = currentUser?.subscription?.plan_id === plan.id && activeSub;
-                        const blocksSameTierCycleChange = (
-                            !allowSameTierCycleChangeEnabled
-                            && planTier === currentTier
-                        );
-                        const isLower = !isCurrent && activeSub && (
-                            (planTier < currentTier && planTimeScore <= currentTimeScore)
-                            || blocksSameTierCycleChange
-                        );
-
                         return (
                             <PlanCard
                                 key={plan.id}
@@ -325,7 +296,7 @@ const PlansPage: React.FC = () => {
                                 featuresOverride={getPublicPlanFeaturesForPlan(getCatalogPlanName(plan), systemSettings.planEntitlements)}
                                 onSubscribe={handleSubscribe}
                                 isCurrent={isCurrent}
-                                isDisabled={isLower}
+                                isDisabled={false}
                                 proRatedCredit={globalProRatedCredit}
                                 isLoading={processingId === plan.id}
                             />
