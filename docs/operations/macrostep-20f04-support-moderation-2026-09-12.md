@@ -61,7 +61,9 @@ made.
 
 The current run produced one synthetic support case, one synthetic Benefit
 grant, two synthetic Benefit definitions, and one synthetic exclusive code.
-All are removable by the exact provisioner manifest cleanup below. No Stripe
+The exact manifest cleanup was executed before closing the run. The final
+inventory reported zero active synthetic users, support cases/messages,
+Benefit grants/codes/definitions, and synthetic test clocks. No Stripe
 subscription, test clock, plan transition, live mutation, or real product
 data insertion was created.
 
@@ -78,6 +80,6 @@ data insertion was created.
 M20F-04 remains `PARTIAL`. The authenticated support and Benefits evidence is
 material progress, but the missing gates above prevent a PASS. The synthetic
 email sink was active in the web FPM runtime during mutation-capable tests and
-no external delivery was observed in this run. The sink is removed during
+no external delivery was observed in this run. The sink was removed during
 cleanup; the historical M20F-03 email incident remains historical and is not
 rewritten by this M20F-04 ledger.
