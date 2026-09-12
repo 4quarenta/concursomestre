@@ -14,7 +14,7 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-$m20f04AppRoot = trim((string) (getenv('M20F04_APP_ROOT') ?: dirname(__DIR__, 3)));
+$m20f04AppRoot = trim((string) (getenv('M20F04_APP_ROOT') ?: dirname(__DIR__, 2)));
 if ($m20f04AppRoot === '' || !is_dir($m20f04AppRoot)) {
     fwrite(STDERR, "M20F04_APP_ROOT invalido.\n");
     exit(1);
@@ -38,6 +38,7 @@ function m20f04Arguments(): array
         'output' => '',
         'manifest' => '',
         'execute' => '',
+        'user_count' => 1,
     ];
 
     foreach (array_slice($GLOBALS['argv'], 1) as $argument) {
@@ -63,6 +64,14 @@ function m20f04Arguments(): array
         }
         if (str_starts_with($argument, '--execute=')) {
             $options['execute'] = substr($argument, 10);
+            continue;
+        }
+        if (str_starts_with($argument, '--user-count=')) {
+            $userCount = (int) substr($argument, 13);
+            if ($userCount < 1 || $userCount > 2) {
+                throw new InvalidArgumentException('Use --user-count=1 ou --user-count=2.');
+            }
+            $options['user_count'] = $userCount;
             continue;
         }
 
@@ -391,10 +400,11 @@ try {
 
     $outputPath = m20f04RequireEphemeralPath((string) ($options['output'] ?? ''));
     $nonce = bin2hex(random_bytes(8));
-    $identities = [
-        m20f04CreateIdentity($service, 'user', $nonce),
-        m20f04CreateIdentity($service, 'admin', $nonce),
-    ];
+    $identities = [m20f04CreateIdentity($service, 'admin', $nonce)];
+    $userCount = (int) ($options['user_count'] ?? 1);
+    for ($userIndex = 0; $userIndex < $userCount; $userIndex++) {
+        $identities[] = m20f04CreateIdentity($service, 'user', $nonce . '-' . ($userIndex + 1));
+    }
 
     $credentials = [
         'purpose' => 'M20F-04 authenticated synthetic acceptance',

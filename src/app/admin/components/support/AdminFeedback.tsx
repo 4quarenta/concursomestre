@@ -195,7 +195,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   const [sendingReplyId, setSendingReplyId] = useState<number | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
   const [publishingHomeId, setPublishingHomeId] = useState<number | null>(null);
-  const [compensationDrafts, setCompensationDrafts] = useState<Record<number, { days: string; ticket: string; reason: string }>>({});
+  const [compensationDrafts, setCompensationDrafts] = useState<Record<number, { days: string; ticket: string; reason: string; mode: 'ACCESS_ONLY' | 'BILLING_EXTENSION_ONLY' | 'ACCESS_AND_BILLING_EXTENSION'; accessPlan: string }>>({});
   const [compensatingId, setCompensatingId] = useState<number | null>(null);
   const [operators, setOperators] = useState<AdminFeedbackOperator[]>([]);
   const [assigningId, setAssigningId] = useState<number | null>(null);
@@ -388,7 +388,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   }, [addToast, fetchFeedback]);
 
   const grantSupportCompensation = useCallback(async (item: AdminFeedbackThread) => {
-    const draft = compensationDrafts[item.id] || { days: '', ticket: '', reason: '' };
+    const draft = compensationDrafts[item.id] || { days: '', ticket: '', reason: '', mode: 'ACCESS_ONLY' as const, accessPlan: 'Pro' };
     const days = Number(draft.days);
     const ticket = draft.ticket.trim();
     const reason = draft.reason.trim();
@@ -403,13 +403,15 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
         action: 'add_days',
         user_id: item.user_id,
         days,
+        benefit_mode: draft.mode,
+        access_plan: draft.mode === 'BILLING_EXTENSION_ONLY' ? '' : draft.accessPlan,
         ticket_reference: ticket,
         reason,
         idempotency_key: `support-case:${item.id}:${item.user_id}:${days}:${ticket}`,
       });
       await fetchFeedback();
       addToast(result.message || 'Compensação registrada pelo suporte.', 'success');
-      setCompensationDrafts((current) => ({ ...current, [item.id]: { days: '', ticket: '', reason: '' } }));
+      setCompensationDrafts((current) => ({ ...current, [item.id]: { days: '', ticket: '', reason: '', mode: 'ACCESS_ONLY', accessPlan: 'Pro' } }));
     } catch (error) {
       clientLog.warn('Error granting support compensation:', error);
       addToast('Não foi possível registrar a compensação.', 'error');
@@ -828,7 +830,40 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Compensação de suporte</p>
                                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">A ação usa a autoridade de Benefits e mantém o plano pago separado.</p>
                                   </div>
-                                  <div className="grid gap-3 md:grid-cols-3">
+                                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+                                    <label className="space-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                      <span>Modo de compensação</span>
+                                      <select
+                                        aria-label="Modo de compensação"
+                                        value={compensationDrafts[item.id]?.mode || 'ACCESS_ONLY'}
+                                        onChange={(event) => setCompensationDrafts((current) => ({
+                                          ...current,
+                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '', mode: 'ACCESS_ONLY', accessPlan: 'Pro' }), mode: event.target.value as 'ACCESS_ONLY' | 'BILLING_EXTENSION_ONLY' | 'ACCESS_AND_BILLING_EXTENSION' },
+                                        }))}
+                                        className={`${ADMIN_FIELD_CLASS} w-full`}
+                                      >
+                                        <option value="ACCESS_ONLY">Acesso temporário</option>
+                                        <option value="BILLING_EXTENSION_ONLY">Extensão de cobrança</option>
+                                        <option value="ACCESS_AND_BILLING_EXTENSION">Acesso + cobrança</option>
+                                      </select>
+                                    </label>
+                                    <label className="space-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                      <span>Plano temporário</span>
+                                      <select
+                                        aria-label="Plano temporário"
+                                        disabled={compensationDrafts[item.id]?.mode === 'BILLING_EXTENSION_ONLY'}
+                                        value={compensationDrafts[item.id]?.accessPlan || 'Pro'}
+                                        onChange={(event) => setCompensationDrafts((current) => ({
+                                          ...current,
+                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '', mode: 'ACCESS_ONLY', accessPlan: 'Pro' }), accessPlan: event.target.value },
+                                        }))}
+                                        className={`${ADMIN_FIELD_CLASS} w-full`}
+                                      >
+                                        <option value="Essencial">Essencial</option>
+                                        <option value="Pro">Pro</option>
+                                        <option value="Elite">Elite</option>
+                                      </select>
+                                    </label>
                                     <label className="space-y-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
                                       <span>Dias gratuitos</span>
                                       <input
@@ -839,7 +874,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                                         value={compensationDrafts[item.id]?.days || ''}
                                         onChange={(event) => setCompensationDrafts((current) => ({
                                           ...current,
-                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '' }), days: event.target.value },
+                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '', mode: 'ACCESS_ONLY', accessPlan: 'Pro' }), days: event.target.value },
                                         }))}
                                         className={`${ADMIN_FIELD_CLASS} w-full`}
                                       />
@@ -852,7 +887,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                                         value={compensationDrafts[item.id]?.ticket || ''}
                                         onChange={(event) => setCompensationDrafts((current) => ({
                                           ...current,
-                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '' }), ticket: event.target.value },
+                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '', mode: 'ACCESS_ONLY', accessPlan: 'Pro' }), ticket: event.target.value },
                                         }))}
                                         className={`${ADMIN_FIELD_CLASS} w-full`}
                                       />
@@ -865,7 +900,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                                         value={compensationDrafts[item.id]?.reason || ''}
                                         onChange={(event) => setCompensationDrafts((current) => ({
                                           ...current,
-                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '' }), reason: event.target.value },
+                                          [item.id]: { ...(current[item.id] || { days: '', ticket: '', reason: '', mode: 'ACCESS_ONLY', accessPlan: 'Pro' }), reason: event.target.value },
                                         }))}
                                         className={`${ADMIN_FIELD_CLASS} w-full`}
                                       />

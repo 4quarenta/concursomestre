@@ -706,6 +706,8 @@ export interface AdminUserActionPayload {
   transaction_id?: number;
   plan_id?: number;
   days?: number;
+  benefit_mode?: 'ACCESS_ONLY' | 'BILLING_EXTENSION_ONLY' | 'ACCESS_AND_BILLING_EXTENSION';
+  access_plan?: string;
   ticket_reference?: string;
   reason?: string;
   idempotency_key?: string;

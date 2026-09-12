@@ -145,6 +145,8 @@ class AdminUserActionsService
         $grant = (new BenefitService($this->db))->grantSupportCompensation($userId, $days, [
             'ticket_reference' => (string) ($data['ticket_reference'] ?? ''),
             'reason' => (string) ($data['reason'] ?? ''),
+            'benefit_mode' => (string) ($data['benefit_mode'] ?? ''),
+            'access_plan' => (string) ($data['access_plan'] ?? ''),
             'idempotency_key' => $data['idempotency_key'] ?? null,
             'apply_provider' => true,
         ], $actorId);
