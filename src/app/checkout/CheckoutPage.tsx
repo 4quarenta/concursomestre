@@ -28,6 +28,7 @@ import { authFlowService } from '@services/auth';
 import { isCanonicalSessionData } from '@services/auth/session';
 import { cardsService, type SavedCard } from '@services/billing';
 import { profileService, type AuthenticatedPersonalProfile } from '@services/profile';
+import { subscriptionsService } from '@services/subscriptions';
 import { getEnabledStripePaymentMethods } from '@services/payments/stripePaymentMethodsConfig';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import type { Stripe, StripeCardCvcElement } from '@stripe/stripe-js';
@@ -643,6 +644,42 @@ const CheckoutPage: React.FC = () => {
         return false;
     }, [addToast, checkoutReturnSignal, hasRepeatedActivePlanPurchase, repeatedPurchaseMessage, router, step]);
 
+    const isCanonicalPlanChangeRequest = () => Boolean(
+        plan
+        && currentUser
+        && hasActivePlanAccess(currentUser)
+        && currentUser.subscription?.plan_id
+        && Number(currentUser.subscription.plan_id) !== Number(plan.id),
+    );
+
+    const completeCanonicalPlanChange = async () => {
+        if (!plan) return;
+
+        checkoutCompletionInProgressRef.current = true;
+        setCheckoutCompletionInProgress(true);
+        setProcessing(true);
+        try {
+            const result = await subscriptionsService.changePlan(plan.id, getCheckoutAttemptId());
+            const resultStatus = String(result.status || '').trim().toLowerCase();
+            if (!['confirmed', 'idempotent_replay', 'noop'].includes(resultStatus)) {
+                throw new Error(String(result.message || 'A mudança de plano não foi confirmada pela assinatura atual.'));
+            }
+
+            setConfirmedCheckoutSummary({
+                displayName: planDisplayLabel,
+                billingCycle,
+                totalDue: 0,
+                billingLabel: 'Sem cobrança imediata',
+            });
+            setCountdown(10);
+            setStep('success');
+            await refreshUser();
+            addToast(String(result.message || 'Plano atualizado com sucesso na assinatura atual.'), 'success');
+        } finally {
+            setProcessing(false);
+        }
+    };
+
     useEffect(() => {
         if (loading) return;
         if (checkoutCompletionInProgressRef.current || checkoutReturnSignal || step === 'success') return;
@@ -1188,6 +1225,11 @@ const CheckoutPage: React.FC = () => {
         if (!ensurePlanPurchaseAllowed()) return;
         if (!ensureCheckoutRequirements()) return;
 
+        if (isCanonicalPlanChangeRequest()) {
+            await completeCanonicalPlanChange();
+            return undefined;
+        }
+
         setProcessing(true);
         try {
             const response = await planService.createStripeSubscription({
@@ -1371,6 +1413,11 @@ const CheckoutPage: React.FC = () => {
         }
         if (!ensureCheckoutRequirements()) {
             throw new Error('Complete seu perfil e confirme o e-mail antes de concluir a compra.');
+        }
+
+        if (isCanonicalPlanChangeRequest()) {
+            await completeCanonicalPlanChange();
+            return;
         }
 
         setProcessing(true);
