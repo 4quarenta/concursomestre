@@ -221,6 +221,9 @@ function m20f04Inventory(PDO $db): void
     $rootFeedbackCount = $countByUserIds('user_feedback', true);
     $grantCount = $countByUserIds('benefit_grants');
     $codeCount = $countRows('benefit_codes', 'assigned_user_id', $userIds);
+    $definitionCount = (int) $db->query(
+        "SELECT COUNT(*) FROM benefit_definitions WHERE definition_key LIKE 'm20f04-%'"
+    )->fetchColumn();
 
     fwrite(STDOUT, json_encode([
         'mode' => 'inventory',
@@ -229,10 +232,75 @@ function m20f04Inventory(PDO $db): void
         'synthetic_support_messages' => max(0, $feedbackCount - $rootFeedbackCount),
         'synthetic_benefit_grants' => $grantCount,
         'synthetic_benefit_codes' => $codeCount,
+        'synthetic_benefit_definitions' => $definitionCount,
         'synthetic_test_clocks' => 0,
         'synthetic_namespace' => M20F04_SYNTHETIC_EMAIL_PREFIX . '*'
             . M20F04_SYNTHETIC_EMAIL_SUFFIX,
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+}
+
+/**
+ * Removes only benefit artifacts owned by the manifest users or marked with
+ * this run's namespace. This runs before user cleanup so support grants and
+ * their audit/code rows remain attributable and bounded.
+ */
+function m20f04CleanupBenefitArtifacts(PDO $db, array $identities): void
+{
+    $userIds = array_values(array_filter(array_map(
+        static fn (mixed $identity): string => trim((string) (($identity['user_id'] ?? ''))),
+        $identities
+    )));
+    $definitionIds = [];
+    $grantIds = [];
+    $codeIds = [];
+
+    if ($userIds !== []) {
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $grantStatement = $db->prepare("SELECT id, benefit_definition_id FROM benefit_grants WHERE user_id IN ({$placeholders})");
+        $grantStatement->execute($userIds);
+        foreach ($grantStatement->fetchAll(PDO::FETCH_ASSOC) as $grant) {
+            $grantId = trim((string) ($grant['id'] ?? ''));
+            $definitionId = trim((string) ($grant['benefit_definition_id'] ?? ''));
+            if ($grantId !== '') {
+                $grantIds[] = $grantId;
+            }
+            if ($definitionId !== '') {
+                $definitionIds[] = $definitionId;
+            }
+        }
+    }
+
+    $markedDefinitionStatement = $db->query(
+        "SELECT id FROM benefit_definitions WHERE definition_key LIKE 'm20f04-%'"
+    );
+    foreach ($markedDefinitionStatement->fetchAll(PDO::FETCH_COLUMN) as $definitionId) {
+        $definitionIds[] = trim((string) $definitionId);
+    }
+    $definitionIds = array_values(array_unique(array_filter($definitionIds)));
+
+    if ($definitionIds !== []) {
+        $placeholders = implode(',', array_fill(0, count($definitionIds), '?'));
+        $codeStatement = $db->prepare("SELECT id FROM benefit_codes WHERE benefit_definition_id IN ({$placeholders})");
+        $codeStatement->execute($definitionIds);
+        $codeIds = array_values(array_filter(array_map('strval', $codeStatement->fetchAll(PDO::FETCH_COLUMN))));
+    }
+
+    $deleteByIds = static function (string $table, string $column, array $ids) use ($db): void {
+        if ($ids === []) {
+            return;
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $db->prepare("DELETE FROM {$table} WHERE {$column} IN ({$placeholders})");
+        $statement->execute($ids);
+    };
+
+    $deleteByIds('benefit_code_redemptions', 'benefit_code_id', $codeIds);
+    $deleteByIds('benefit_code_redemptions', 'benefit_grant_id', $grantIds);
+    $deleteByIds('benefit_audit_events', 'benefit_code_id', $codeIds);
+    $deleteByIds('benefit_audit_events', 'benefit_grant_id', $grantIds);
+    $deleteByIds('benefit_codes', 'id', $codeIds);
+    $deleteByIds('benefit_grants', 'id', $grantIds);
+    $deleteByIds('benefit_definitions', 'id', $definitionIds);
 }
 
 /** @return array<string, mixed> */
@@ -266,6 +334,8 @@ function m20f04Cleanup(PDO $db, AdminUserActionsService $service, string $manife
     if ($operatorId === '') {
         m20f04Fail('Nenhum operador admin permanente disponivel para cleanup.');
     }
+
+    m20f04CleanupBenefitArtifacts($db, $identities);
 
     foreach ($identities as $identity) {
         $userId = trim((string) ($identity['user_id'] ?? ''));

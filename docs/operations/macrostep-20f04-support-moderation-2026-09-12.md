@@ -32,18 +32,38 @@ Closed M20F-03 financial gates were preserved and not rerun.
 - Effective PHP-FPM pool configuration was checked with `php-fpm -t` and
   `-tt`; the temporary synthetic email sink was active before any mutation.
 
-## Not proven
+## Authenticated evidence
 
-Authenticated Admin/User browser acceptance was not executed. No canonical
-synthetic identity provisioning command, test fixture endpoint, or credentials
-were available in the workspace or deployment environment. Consequently the
-following remain open: support user/admin E2E, Support Compensation E2E,
-authenticated benefits visibility, mobile authenticated flows, and the
-authenticated accessibility gates. This is an execution/provisioning blocker,
-not evidence of a product defect.
+The CLI-only provisioner created exactly one synthetic User and one synthetic
+Admin through `AdminUserActionsService`, after the PRELAUNCH/FPM sink preflight.
+Normal browser login returned HTTP 200 for both roles. The live authenticated
+contexts then proved user support create/list/detail/reply and admin queue,
+detail, reply, and status-transition interactions. The Admin Benefits surface
+also accepted a synthetic definition, a `USER_EXCLUSIVE` code bound to the
+synthetic User, and a manual grant, all through the browser and the shared
+Benefit authority.
 
-No synthetic account, session, subscription, transition, retention offer,
-benefit grant, or Stripe mutation was created by this run.
+The rotating refresh token invalidated a storage state after its capturing
+context was closed. The remaining authenticated interactions therefore ran in
+the same live context that completed normal login; this is recorded as a
+harness limitation, not an auth bypass.
+
+## Remaining evidence
+
+M20F-04 remains `PARTIAL`. Authenticated moderation mutation evidence,
+Support Compensation access/billing/combined browser evidence, exclusive-code
+target redemption and wrong-user denial, true barrier-based compensation
+concurrency, the full mobile matrix, and the complete accessibility matrix
+were not proven before the login rate limiter returned `Retry-After: 563`.
+The generic Benefit Code creation and manual grant do not substitute for the
+missing Support Compensation exclusive-code proof. No claim of M20F-04 PASS is
+made.
+
+The current run produced one synthetic support case, one synthetic Benefit
+grant, two synthetic Benefit definitions, and one synthetic exclusive code.
+All are removable by the exact provisioner manifest cleanup below. No Stripe
+subscription, test clock, plan transition, live mutation, or real product
+data insertion was created.
 
 ## Network classification
 
@@ -55,6 +75,9 @@ benefit grant, or Stripe mutation was created by this run.
 
 ## Status
 
-M20F-04 remains `PARTIAL`. The missing authenticated browser evidence prevents
-an M20F-04 PASS. The historical M20F-03 email incident remains historical and
-was not repeated; current-run external email deliveries are zero.
+M20F-04 remains `PARTIAL`. The authenticated support and Benefits evidence is
+material progress, but the missing gates above prevent a PASS. The synthetic
+email sink was active in the web FPM runtime during mutation-capable tests and
+no external delivery was observed in this run. The sink is removed during
+cleanup; the historical M20F-03 email incident remains historical and is not
+rewritten by this M20F-04 ledger.
