@@ -675,7 +675,9 @@ const Profile: React.FC = () => {
             userId: String(currentUser?.id || ''),
             limit: 50,
         }),
-        enabled: Boolean(currentUser?.id) && isBillingSection && hasSyncedBillingSnapshot,
+        // O historico de transacoes tambem carrega ofertas de retencao pendentes.
+        // Ele nao deve aguardar a sincronizacao Stripe em background para ficar visivel.
+        enabled: Boolean(currentUser?.id) && isBillingSection,
         staleTime: 60_000,
         retry: 1,
         refetchOnWindowFocus: false,
