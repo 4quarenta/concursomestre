@@ -230,10 +230,16 @@ export const transactionsService = {
   },
 
   async decideRefundRetentionOffer(offerId: string, decision: 'ACCEPT' | 'DECLINE'): Promise<RefundMutationResponse> {
-    const response = await apiClient.post<RefundMutationPayload>(ENDPOINTS.transactions.retentionOfferDecision, {
-      offer_id: offerId,
-      decision,
-    });
+    const csrfToken = getCsrfToken();
+    const response = csrfToken
+      ? await apiClient.post<RefundMutationPayload>(ENDPOINTS.transactions.retentionOfferDecision, {
+        offer_id: offerId,
+        decision,
+      }, { headers: { 'X-CSRF-Token': csrfToken } })
+      : await apiClient.post<RefundMutationPayload>(ENDPOINTS.transactions.retentionOfferDecision, {
+        offer_id: offerId,
+        decision,
+      });
     const envelope = assertApiSuccess(response, 'Não foi possível registrar a decisão da oferta.');
     const payload = readApiData<RefundMutationPayload>(response, {});
     return { message: payload.message || payload.data?.message || envelope.message };

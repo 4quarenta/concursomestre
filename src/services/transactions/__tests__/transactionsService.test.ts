@@ -18,10 +18,11 @@ type MockApiResponse = {
   error?: string;
 } | null | undefined;
 
-const { mockGet, mockPost, mockDelete } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockDelete, mockGetCsrfToken } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
   mockDelete: vi.fn(),
+  mockGetCsrfToken: vi.fn(),
 }));
 
 vi.mock('@services/api', () => ({
@@ -53,8 +54,13 @@ vi.mock('@services/api', () => ({
       refund: 'transactions/refund.php',
       approveRefund: 'transactions/approve_refund.php',
       rejectRefund: 'transactions/reject_refund.php',
+      retentionOfferDecision: 'transactions/retention_offer_decision.php',
     },
   },
+}));
+
+vi.mock('@services/auth/session', () => ({
+  getCsrfToken: mockGetCsrfToken,
 }));
 
 import { transactionsService } from '../transactionsService';
@@ -62,6 +68,7 @@ import { transactionsService } from '../transactionsService';
 describe('transactionsService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetCsrfToken.mockReturnValue(null);
   });
 
   it('loads transactions from the official endpoint', async () => {
@@ -158,6 +165,21 @@ describe('transactionsService', () => {
       reason: undefined,
     });
     expect(response.message).toBe('Proposta enviada ao usuario.');
+  });
+
+  it('sends the official CSRF header for user retention decisions', async () => {
+    mockGetCsrfToken.mockReturnValue('csrf-test-token');
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Decisão registrada.',
+    });
+
+    await transactionsService.decideRefundRetentionOffer('offer-1', 'ACCEPT');
+
+    expect(mockPost).toHaveBeenCalledWith('transactions/retention_offer_decision.php', {
+      offer_id: 'offer-1',
+      decision: 'ACCEPT',
+    }, { headers: { 'X-CSRF-Token': 'csrf-test-token' } });
   });
 
   it('cancels refund requests through the official transactions facade', async () => {
