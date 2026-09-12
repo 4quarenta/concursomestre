@@ -76,7 +76,7 @@ export default function BenefitsPanel({ userKey }: { userKey: string }): React.J
             Resgatar
           </button>
         </form>
-        {redemption.isSuccess ? <p className="mt-3 text-xs font-bold text-emerald-600">Código aceito. Benefícios de cobrança aparecem somente após confirmação do provedor.</p> : null}
+        {redemption.isSuccess ? <p role="status" aria-live="polite" className="mt-3 text-xs font-bold text-emerald-600">Código aceito. Benefícios de cobrança aparecem somente após confirmação do provedor.</p> : null}
         {redemption.isError ? <p role="alert" className="mt-3 text-xs font-bold text-rose-600">{readApiErrorMessage(redemption.error, 'Não foi possível resgatar este código.')}</p> : null}
       </section>
 
