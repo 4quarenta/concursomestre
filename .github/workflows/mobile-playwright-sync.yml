@@ -1,0 +1,48 @@
+name: Mobile Playwright dependency sync
+
+on:
+  push:
+    branches:
+      - mobile-foundation-refactor
+    paths:
+      - '.github/workflows/mobile-playwright-sync.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Add Playwright for store captures
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout mobile branch
+        uses: actions/checkout@v4
+        with:
+          ref: mobile-foundation-refactor
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --prefix mobile
+
+      - name: Add Playwright dev dependency
+        run: npm install --prefix mobile --save-dev playwright
+
+      - name: Commit generated package files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile/package.json mobile/package-lock.json
+          if git diff --cached --quiet; then
+            echo "No dependency changes required."
+            exit 0
+          fi
+          git commit -m "chore(mobile): add Playwright screenshot dependency"
+          git push origin HEAD:mobile-foundation-refactor
