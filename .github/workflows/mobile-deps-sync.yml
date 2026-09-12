@@ -1,0 +1,53 @@
+name: Mobile dependency sync
+
+on:
+  push:
+    branches:
+      - mobile-foundation-refactor
+    paths:
+      - '.github/workflows/mobile-deps-sync.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Align Expo dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout mobile branch
+        uses: actions/checkout@v4
+        with:
+          ref: mobile-foundation-refactor
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --prefix mobile
+
+      - name: Align dependencies with Expo SDK
+        working-directory: mobile
+        run: npx expo install --fix
+
+      - name: Verify alignment
+        working-directory: mobile
+        run: npx expo install --check
+
+      - name: Commit generated package files
+        shell: bash
+        run: |
+          if git diff --quiet -- mobile/package.json mobile/package-lock.json; then
+            echo "No dependency changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile/package.json mobile/package-lock.json
+          git commit -m "chore(mobile): align Expo SDK 57 dependencies"
+          git push origin HEAD:mobile-foundation-refactor
