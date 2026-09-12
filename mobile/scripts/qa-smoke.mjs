@@ -188,8 +188,13 @@ requireText(
 
 requireText(
   'mobile/app/(app)/(tabs)/questoes.tsx',
+  'QuestionsScreen',
+  'A tab Questoes deve continuar usando a tela canonica da feature Questoes.',
+);
+requireText(
+  'mobile/src/features/questions/screens/QuestionsScreen.tsx',
   'QuestionsScreenV2',
-  'A tab Questoes deve continuar usando QuestionsScreenV2.',
+  'A tela canonica da feature Questoes deve continuar apontando para QuestionsScreenV2.',
 );
 requireText(
   'mobile/app/(app)/(tabs)/conta.tsx',
