@@ -158,7 +158,7 @@ if (hasRepo('src/app/privacy/page.tsx')) {
     '10 de Setembro de 2026',
     '/account-deletion',
     '/profile/security',
-    'A eliminação não é necessariamente instantânea',
+    'eliminação não é necessariamente instantânea',
     'Não vendemos dados pessoais',
   ]) {
     if (!privacy.includes(required)) {
