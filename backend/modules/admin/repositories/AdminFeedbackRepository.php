@@ -40,11 +40,12 @@ class AdminFeedbackRepository
         $this->ensureFeedbackSchema();
 
         $stmt = $this->db->prepare(
-            "SELECT f.*, u.name AS user_name, u.email AS user_email, u.role AS user_role,
+            "SELECT f.*, assignment.assigned_to, u.name AS user_name, u.email AS user_email, u.role AS user_role,
                     assigned.name AS assigned_user_name, assigned.role AS assigned_user_role
              FROM user_feedback f
              LEFT JOIN users u ON f.user_id = u.id
-             LEFT JOIN users assigned ON f.assigned_to = assigned.id
+             LEFT JOIN support_case_assignments assignment ON assignment.feedback_id = f.id
+             LEFT JOIN users assigned ON assignment.assigned_to = assigned.id
              WHERE f.id = :id
              LIMIT 1"
         );
@@ -65,11 +66,12 @@ class AdminFeedbackRepository
         $this->ensureFeedbackSchema();
 
         $stmt = $this->db->prepare(
-            "SELECT f.*, u.name AS user_name, u.email AS user_email, u.role AS user_role,
+            "SELECT f.*, assignment.assigned_to, u.name AS user_name, u.email AS user_email, u.role AS user_role,
                     assigned.name AS assigned_user_name, assigned.role AS assigned_user_role
              FROM user_feedback f
              LEFT JOIN users u ON f.user_id = u.id
-             LEFT JOIN users assigned ON f.assigned_to = assigned.id
+             LEFT JOIN support_case_assignments assignment ON assignment.feedback_id = f.id
+             LEFT JOIN users assigned ON assignment.assigned_to = assigned.id
              WHERE f.parent_id = :parent_id
              ORDER BY f.created_at ASC"
         );
@@ -119,12 +121,14 @@ class AdminFeedbackRepository
                 u.name AS user_name,
                 u.email AS user_email,
                 u.role AS user_role,
+                assignment.assigned_to,
                 assigned.name AS assigned_user_name,
                 assigned.role AS assigned_user_role,
                 (SELECT COUNT(*) FROM user_feedback r WHERE r.parent_id = f.id) AS reply_count
             FROM user_feedback f
             LEFT JOIN users u ON f.user_id = u.id
-            LEFT JOIN users assigned ON f.assigned_to = assigned.id
+            LEFT JOIN support_case_assignments assignment ON assignment.feedback_id = f.id
+            LEFT JOIN users assigned ON assignment.assigned_to = assigned.id
             WHERE " . implode(' AND ', $where) . "
             ORDER BY f.created_at DESC
         ";
@@ -208,7 +212,11 @@ class AdminFeedbackRepository
         $this->ensureFeedbackSchema();
 
         $stmt = $this->db->prepare(
-            'SELECT id, parent_id, type, assigned_to FROM user_feedback WHERE id = :id FOR UPDATE'
+            'SELECT f.id, f.parent_id, f.type, assignment.assigned_to
+             FROM user_feedback f
+             LEFT JOIN support_case_assignments assignment ON assignment.feedback_id = f.id
+             WHERE f.id = :id
+             FOR UPDATE'
         );
         $stmt->execute([':id' => $threadId]);
         $thread = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -218,13 +226,22 @@ class AdminFeedbackRepository
 
         $previous = trim((string) ($thread['assigned_to'] ?? '')) ?: null;
         if ($previous !== $assignedTo) {
-            $update = $this->db->prepare(
-                'UPDATE user_feedback SET assigned_to = :assigned_to WHERE id = :id'
-            );
-            $update->execute([
-                ':assigned_to' => $assignedTo,
-                ':id' => $threadId,
-            ]);
+            if ($assignedTo === null) {
+                $update = $this->db->prepare(
+                    'DELETE FROM support_case_assignments WHERE feedback_id = :id'
+                );
+                $update->execute([':id' => $threadId]);
+            } else {
+                $update = $this->db->prepare(
+                    'INSERT INTO support_case_assignments (feedback_id, assigned_to, created_at, updated_at)
+                     VALUES (:id, :assigned_to, NOW(), NOW())
+                     ON DUPLICATE KEY UPDATE assigned_to = VALUES(assigned_to), updated_at = NOW()'
+                );
+                $update->execute([
+                    ':id' => $threadId,
+                    ':assigned_to' => $assignedTo,
+                ]);
+            }
         }
 
         return [
@@ -321,7 +338,8 @@ class AdminFeedbackRepository
         }
 
         SchemaReadiness::assertTablesAndColumns($this->db, 'feedback administrativo', [
-            'user_feedback' => ['id', 'user_id', 'parent_id', 'assigned_to', 'type', 'reason', 'details', 'status', 'public_rating', 'public_display_name', 'public_headline', 'public_photo_url', 'home_published_at', 'created_at', 'updated_at'],
+            'user_feedback' => ['id', 'user_id', 'parent_id', 'type', 'reason', 'details', 'status', 'public_rating', 'public_display_name', 'public_headline', 'public_photo_url', 'home_published_at', 'created_at', 'updated_at'],
+            'support_case_assignments' => ['feedback_id', 'assigned_to', 'created_at', 'updated_at'],
         ]);
 
         $ensured = true;
