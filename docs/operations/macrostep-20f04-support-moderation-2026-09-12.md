@@ -8,11 +8,13 @@ Closed M20F-03 financial gates were preserved and not rerun.
 
 ## Runtime change
 
-- Release commit: `c39d6bfc378512a5d0f310b9ccba47d43ee999b4`
+- Initial release commit: `c39d6bfc378512a5d0f310b9ccba47d43ee999b4`
+- Active runtime release: `a35c134f1bf316d853b0da9aa94f44310edaf20a`
 - Deployment target: production PRELAUNCH
 - Runtime changes: admin mutation CSRF/method enforcement, canonical support
-  compensation fields and audit metadata, and the Admin support-case
-  compensation entrypoint through `BenefitService`.
+  compensation fields and audit metadata, the Admin support-case compensation
+  entrypoint through `BenefitService`, and explicit support compensation mode
+  validation for access, billing extension, or both.
 - No migration was required; the production dry-run reported zero pending
   migrations.
 
