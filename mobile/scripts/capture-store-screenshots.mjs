@@ -47,6 +47,15 @@ const authenticatedTargets = [
 
 const targets = authenticatedVariant ? authenticatedTargets : releaseTargets;
 
+const assertNavigationSucceeded = (response, route) => {
+  if (!response) {
+    throw new Error(`Navegacao sem resposta HTTP em ${route}.`);
+  }
+  if (response.status() >= 400) {
+    throw new Error(`Navegacao falhou em ${route}: HTTP ${response.status()}.`);
+  }
+};
+
 const waitForAppToSettle = async (page, target) => {
   await page.waitForLoadState('domcontentloaded');
   await page.locator('body').waitFor({ state: 'visible', timeout: 15_000 });
@@ -68,6 +77,7 @@ const waitForAppToSettle = async (page, target) => {
 const assertNoFatalRenderError = async (page, route) => {
   const body = await page.locator('body').innerText().catch(() => '');
   const fatalMarkers = [
+    '404 Not Found',
     'Application error',
     'Something went wrong',
     'Unexpected Application Error',
@@ -87,7 +97,11 @@ const loginWithRealAccount = async (page) => {
     );
   }
 
-  await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  const response = await page.goto(`${baseUrl}/login`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 30_000,
+  });
+  assertNavigationSucceeded(response, '/login');
   await page.getByPlaceholder('voce@exemplo.com').fill(screenshotEmail);
   await page.getByPlaceholder('Sua senha').fill(screenshotPassword);
   await page.getByText('Entrar', { exact: true }).last().click();
@@ -125,7 +139,8 @@ try {
 
   for (const target of targets) {
     const url = `${baseUrl}${target.route}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    assertNavigationSucceeded(response, target.route);
     await waitForAppToSettle(page, target);
     await assertNoFatalRenderError(page, target.route);
 
