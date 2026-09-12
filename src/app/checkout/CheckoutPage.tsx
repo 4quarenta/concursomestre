@@ -114,12 +114,6 @@ const buildCheckoutRequirementSeed = (user?: UserProfile | null) => ({
     state: user?.address?.state || '',
 });
 
-const getPlanTimeScore = (currentPlan: Pick<Plan, 'interval_unit' | 'interval_count'>) => {
-    if (currentPlan.interval_unit === 'year') return 12;
-    if (currentPlan.interval_unit === 'month') return currentPlan.interval_count || 1;
-    return 1;
-};
-
 const isSameActiveSubscriptionPlan = (currentPlan: Plan | null | undefined, targetPlan: Plan | null | undefined, activePlanId?: number | null) => {
     if (!targetPlan) return false;
 
@@ -538,10 +532,8 @@ const CheckoutPage: React.FC = () => {
             if (currentUser) {
                 const currentPlanInList = plans.find((candidatePlan) => candidatePlan.id === currentUser.subscription?.plan_id);
                 const currentPlanTier = getPlanTierScore(currentUser.subscription?.plan?.name || '');
-                const currentTimeScore = currentPlanInList ? getPlanTimeScore(currentPlanInList) : 1;
 
                 const targetPlanTier = getPlanTierScore(found.name);
-                const targetPlanTimeScore = getPlanTimeScore(found);
 
                 if (hasActivePlanAccess(currentUser) && !checkoutCompletionInProgressRef.current && !checkoutReturnSignal) {
                     if (isSameActiveSubscriptionPlan(currentUser.subscription?.plan || currentPlanInList, found, currentUser.subscription?.plan_id)) {
@@ -550,10 +542,7 @@ const CheckoutPage: React.FC = () => {
                         return;
                     }
 
-                    if (
-                        (targetPlanTier < currentPlanTier && targetPlanTimeScore <= currentTimeScore)
-                        || (!allowSameTierCycleChangeEnabled && targetPlanTier === currentPlanTier)
-                    ) {
+                    if (!allowSameTierCycleChangeEnabled && targetPlanTier === currentPlanTier) {
                         addToast(`Você já possui o plano ${currentUser.subscription?.plan?.name || 'Premium'}. Não é possível assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
                         router.push(buildProfilePath('billing'));
                         return;
