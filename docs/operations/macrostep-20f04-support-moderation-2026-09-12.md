@@ -256,3 +256,59 @@ these four interactions. M20F-05, M20F-06, and M20F-07 remain not started.
 - The probe identity was removed immediately afterward. Canonical inventory
   again reported zero active synthetic users, support cases/messages, Benefit
   grants/codes/definitions, and synthetic test clocks.
+
+## Corrective bulk accessibility closure - 2026-09-13
+
+- The preceding interaction evidence contained one invalid accessibility claim:
+  the bulk action selector in `AdminCommentsModerationSection` had no
+  accessible name. This was reproduced in the real authenticated browser flow
+  (`actionLabel=null`) and classified as a confirmed product accessibility
+  defect, not a harness gap.
+- The canonical fix adds `aria-label="Ações em massa"` to the existing bulk
+  action selector. No business, provider, financial, authentication, RBAC,
+  CSRF, or rate-limit behavior was changed. The fix was committed as
+  `c09b7b15418dbae08ac4456fc8f08468daff9b96`, packaged with SHA-256
+  `ff23953e5159136bb29168ebd4591efb41d297749af112fac7bed2f78fbf3dfa`, and
+  deployed atomically to production PRELAUNCH.
+- The focused post-deploy rerun used one normal Admin login and fresh
+  canonical synthetic moderation rows. At 390px, two labelled rows were
+  selected, `Aprovar` was submitted through
+  `/api/admin/comments_moderation_bulk.php` with HTTP 200, and both selected
+  rows persisted as `Aprovado` after reload; expected selected rows were 2,
+  changed rows were 2, and unselected rows changed were 0. At 390px and
+  430px, the page had no horizontal overflow and the primary action remained
+  reachable.
+- The focused accessibility rerun confirmed the accessible selector name,
+  labelled checkboxes, visible keyboard focus for the selector, selection and
+  apply controls, queue headers, and one accessible status region. Invisible
+  focus, keyboard traps, unlabelled critical bulk controls, unassociated
+  errors, unclassified 404s, product 404s, and unexpected network failures
+  were all zero.
+- Email isolation was rechecked before the mutation batch: the effective FPM
+  pool had `CM_SYNTHETIC_EMAIL_SINK=1` and the service was active. Synthetic
+  mail remained inside the synthetic sink; new external deliveries were zero.
+  The historical M20F-03 email incident remains recorded separately and is
+  not rewritten.
+- Evidence was persisted before cleanup. Canonical cleanup reported zero
+  active synthetic users, support cases/messages, Benefit grants/codes/
+  definitions, and synthetic test clocks. Deleted-account tombstones and
+  immutable audit history remain only under the existing retention policy.
+
+### Corrective closure result
+
+- `M20F04_BULK_SELECTION=PASS`
+- `M20F04_BULK_ACTION_EXECUTION=PASS`
+- `M20F04_BULK_ACTION_PERSISTED_RESULT=PASS`
+- `M20F04_BULK_ACTION_ACCESSIBILITY=PASS`
+- `M20F04_KEYBOARD_ACCESSIBILITY=PASS`
+- `M20F04_FORM_ACCESSIBILITY=PASS`
+- `M20F04_STATUS_FEEDBACK_ACCESSIBILITY=PASS`
+- `M20F04_QUEUE_ACCESSIBILITY=PASS`
+- `M20F04_MOBILE_ACCESSIBILITY_INTERSECTION=PASS`
+- `M20F04_ACCESSIBILITY_ACCEPTANCE=PASS`
+- `M20F04_BLUEPRINT_CAPABILITY_MATRIX=PASS`
+- `M20F04_MISSING_CAPABILITIES=NONE`
+
+This corrective section supersedes the prior bulk accessibility observation
+for the affected control. Closed M20F-04 business/provider matrices were not
+rerun. M20F-05, M20F-06, and M20F-07 remain not started.
