@@ -169,3 +169,74 @@ interaction through the Support/Moderation row menus, mobile Compensation form
 interaction, confirmed bulk checkbox state, and complete authenticated
 keyboard/status/dialog intersection evidence. M20F-05, M20F-06, and M20F-07
 remain not started.
+
+## Final interaction evidence closure - 2026-09-13
+
+- This was an evidence-only delta. The active runtime remained
+  `8a0aac9ae673142e83064b1355accea583745805` in production PRELAUNCH; origin
+  was ahead only by documentation/ledger commits, so no runtime deploy was
+  required. The PHP-FPM web sink preflight passed with
+  `CM_SYNTHETIC_EMAIL_SINK=1` and the FPM service active.
+- One synthetic User and one synthetic Admin were provisioned through the
+  canonical PRELAUNCH provisioner. Both authenticated through the normal login
+  form with HTTP 200 and authenticated dashboard state. No auth bypass,
+  fabricated cookie, login storm, rate-limit bypass, or product configuration
+  change was used.
+- Admin Support mobile interaction passed at 430px and 390px. The queue and
+  detail rendered without horizontal overflow; the real assignment control was
+  reached and the assignment request returned HTTP 200 with the persisted
+  success state. The action was executed at 390px after the queue/detail path
+  was verified at both mobile widths.
+- Moderation mobile interaction passed at 390px. The real row action opened the
+  moderation workbench, the safe canonical `keep_current_content` decision was
+  submitted through the UI, and the workbench closed with an HTTP 200 response
+  and visible success state. No direct moderation API substitution was used.
+- Support Compensation mobile interaction passed at 390px. The real detail
+  form was opened, `ACCESS_ONLY`, one free day, ticket/reference, and reason
+  were entered, and the submit returned HTTP 200 through
+  `/api/admin/user_actions.php`. The confirmation and resulting status were
+  visible in the authenticated Admin UI.
+- Bulk interaction passed at 390px. Both synthetic pending comment rows were
+  selected through their labelled checkboxes, `Aprovar` was chosen, the bulk
+  request returned HTTP 200, and both rows were verified as `Aprovado` after
+  switching to `Todos` and reloading. Expected selected rows: 2; changed rows:
+  2; unselected synthetic rows changed: 0.
+- Accessibility evidence from the same real surfaces passed: five critical
+  Support/Compensation controls had visible focus, zero keyboard traps and zero
+  invisible-focus observations; critical labels were associated; Support and
+  Moderation queue actions were discoverable; bulk checkboxes and operation
+  were reachable; and status feedback was exposed through the shared status
+  region. The previously closed dialog gate remains PASS. Mobile intersection
+  checks at 390px and 430px found zero blocking overflow, clipped dialogs, or
+  hidden validation.
+- Browser diagnostics recorded zero product 404s, zero unclassified 404s, and
+  zero API/route/asset failures. One aborted Google Tag Manager telemetry fetch
+  was classified as expected external browser telemetry noise, not a product
+  network failure. No GET request mutated financial or support state.
+- Evidence was persisted before cleanup. Canonical cleanup removed the two
+  synthetic identities and dependent state; the final inventory reported zero
+  active synthetic users, support cases/messages, Benefit grants/codes/
+  definitions, and synthetic test clocks. The sink captured synthetic mail and
+  recorded zero external deliveries. Immutable audit/tombstone records remain
+  only under the existing retention policy.
+
+### Closure result
+
+- `SUPPORT_ADMIN_MOBILE=PASS`
+- `MODERATION_MOBILE_ACCEPTANCE=PASS`
+- `SUPPORT_COMPENSATION_MOBILE=PASS`
+- `M20F04_FINAL_AUTHENTICATED_MOBILE=PASS`
+- `M20F04_KEYBOARD_ACCESSIBILITY=PASS`
+- `M20F04_FORM_ACCESSIBILITY=PASS`
+- `M20F04_DIALOG_ACCESSIBILITY=PASS`
+- `M20F04_STATUS_FEEDBACK_ACCESSIBILITY=PASS`
+- `M20F04_QUEUE_ACCESSIBILITY=PASS`
+- `M20F04_BULK_ACTION_ACCESSIBILITY=PASS`
+- `M20F04_MOBILE_ACCESSIBILITY_INTERSECTION=PASS`
+- `M20F04_ACCESSIBILITY_ACCEPTANCE=PASS`
+- `M20F04_BULK_ACTION_PERSISTED_RESULT=PASS`
+- `M20F04_BLUEPRINT_CAPABILITY_MATRIX=PASS`
+- `M20F04_MISSING_CAPABILITIES=NONE`
+
+This section supersedes the immediately preceding evidence-gap section for
+these four interactions. M20F-05, M20F-06, and M20F-07 remain not started.
