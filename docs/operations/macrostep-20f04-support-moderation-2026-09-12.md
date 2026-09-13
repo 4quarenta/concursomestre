@@ -108,3 +108,10 @@ Evidence files are kept under `.codex-tmp/m20f04-target-final-evidence.json`, `.
 - Browser diagnostics for the final moderation acceptance had no page errors, console errors, failed requests, or HTTP errors. Expected RSC prefetch aborts remain harness noise only.
 
 This section supersedes the earlier partial-state observations for the same synthetic identities. Evidence is recorded before cleanup; the final synthetic inventory must be read after cleanup and must not be inferred from this section.
+
+## Final closure audit - 2026-09-13
+
+- The post-acceptance cleanup removed the second delta batch as well. The canonical inventory reports zero active synthetic users, support cases/messages, Benefit grants/codes/definitions, and test clocks. The exact Stripe TEST subscription was canceled and its customer deleted; local synthetic subscription and transaction rows are zero.
+- The attempted final authenticated viewport/accessibility delta did not produce acceptance evidence. One run reached the real forms but the harness crashed on an unsupported Playwright `Locator.isRequired()` call; the corrected retry was stopped at login timeout after the rate-limit window. No rate-limit configuration was changed and no authentication bypass was used.
+- Therefore the M20F-04 result remains `PARTIAL`. The missing gates are final authenticated mobile/accessibility evidence for the complete Support/Benefits surface and must not be promoted from stale or detached observations. M20F-05, M20F-06, and M20F-07 remain not started.
+- Immutable synthetic audit history remains under policy: deleted-account tombstones are retained for privacy/audit semantics, and the moderation history row remains immutable. These are not mutable fixtures and are reported separately from the zero active-fixture counters.
