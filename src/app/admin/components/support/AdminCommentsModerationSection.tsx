@@ -393,6 +393,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
             <select
               value={bulkAction}
               onChange={(event) => setBulkAction(event.target.value as BulkModerationAction)}
+              aria-label="Ações em massa"
               className={`${ADMIN_FIELD_CLASS} w-56`}
             >
               <option value="">Acoes em massa</option>
