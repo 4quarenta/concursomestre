@@ -240,3 +240,19 @@ remain not started.
 
 This section supersedes the immediately preceding evidence-gap section for
 these four interactions. M20F-05, M20F-06, and M20F-07 remain not started.
+
+## Mobile navigation probe - 2026-09-13
+
+- A read-only authenticated Admin probe at 390px used the normal login form
+  and confirmed HTTP 200 login, the visible `Abrir menu do admin` drawer,
+  the Support submenu expansion, and navigation from the drawer into the
+  Moderation destination. No page, console, or HTTP errors were observed and
+  no state mutation was issued.
+- The probe's initial exact Support-path assertion was intentionally not used
+  as acceptance evidence because the tab and child entry share the label
+  `Solicitações`; this was a harness locator issue, not a product failure. The
+  actual Support mobile action/detail and Moderation mobile action evidence is
+  recorded in the preceding closure section.
+- The probe identity was removed immediately afterward. Canonical inventory
+  again reported zero active synthetic users, support cases/messages, Benefit
+  grants/codes/definitions, and synthetic test clocks.
