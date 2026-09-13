@@ -122,3 +122,50 @@ This section supersedes the earlier partial-state observations for the same synt
 - The authenticated mobile/accessibility runner made one normal login attempt per role. Both login API responses returned HTTP 200, but the browser remained at `/auth?mode=login` with no authenticated `Sair` state. No page error, console error, failed request, or HTTP error was observed. No product mutation was executed in this failed attempt.
 - Classification: `HARNESS_DEFECT` / `EVIDENCE_GAP`. This does not prove a product accessibility defect, but it also does not prove the required authenticated mobile and accessibility gates. Rate limiting and authentication configuration were not changed, and no bypass or fabricated cookie was used.
 - The final cleanup inventory again reports zero active synthetic users, support cases/messages, benefits, subscriptions, transactions, sessions, refresh tokens, and test clocks. Deleted-account tombstones and immutable audit rows remain separately attributable.
+
+## Final mobile and accessibility closure attempt - 2026-09-13
+
+- The active runtime remained `8a0aac9ae673142e83064b1355accea583745805` in
+  production PRELAUNCH. The web PHP-FPM pool had `CM_SYNTHETIC_EMAIL_SINK=1`
+  and the FPM service was active before the synthetic moderation fixture was
+  created. No real data or Stripe LIVE mutation was used.
+- The final consolidated browser run used one normal login per role. User and
+  Admin login responses were HTTP 200 with authenticated dashboard state. No
+  page errors, console errors, failed requests, or unexpected HTTP errors were
+  recorded.
+- User Support was positively exercised at 430px and 390px: the synthetic
+  conversation was visible, the conversation opened through the User UI, and
+  `scrollWidth == clientWidth` at both widths. The Admin Support queue and the
+  pending Moderation report were also rendered at mobile widths with no
+  horizontal overflow.
+- The Admin Support detail was positively inspected at the responsive surface;
+  the real Compensation fields were present and named: operator, mode,
+  temporary plan, free days, ticket/reference, and reason. The critical form
+  focus checks were 6/6 visible, with zero invisible focus observations. A
+  shared live status region was present.
+- The Comments moderation queue rendered two canonical synthetic comments at
+  390px with three labelled checkboxes and the supported bulk-action options.
+  The checkbox remained unconfirmed after the probe click, so bulk selection
+  is recorded as an evidence gap rather than PASS.
+- Responsive action controls use the shared `AdminRowActions` pattern: desktop
+  actions are hidden below `sm` and exposed through a native `<details><summary>`
+  menu. The final probe did not complete the menu interaction for Support or
+  Moderation before the terminal timeout. Consequently Admin mobile detail,
+  Compensation mobile interaction, Moderation mobile action/dialog operation,
+  and the full keyboard/status/mobile-accessibility intersection remain
+  `EVIDENCE_GAP`; this is not classified as a product defect.
+- Existing authenticated Moderation dialog evidence remains preserved from the
+  prior canonical E2E. No new moderation decision was submitted in this delta.
+- The exact synthetic manifest cleanup ran after evidence persistence. Final
+  canonical inventory reported `active_synthetic_users=0`,
+  `synthetic_support_cases=0`, `synthetic_support_messages=0`,
+  `synthetic_benefit_grants=0`, `synthetic_benefit_codes=0`, and
+  `synthetic_benefit_definitions=0`. Deleted-account tombstones and immutable
+  audit history remain separately attributable under retention policy.
+
+M20F-04 remains `PARTIAL`. No M20F-04 P0/P1 product defect was confirmed, but
+the following closure evidence is still missing: final authenticated mobile
+interaction through the Support/Moderation row menus, mobile Compensation form
+interaction, confirmed bulk checkbox state, and complete authenticated
+keyboard/status/dialog intersection evidence. M20F-05, M20F-06, and M20F-07
+remain not started.
