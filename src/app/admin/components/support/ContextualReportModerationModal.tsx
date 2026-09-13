@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import {
@@ -58,6 +58,15 @@ const ACTIONS_REQUIRING_DECISION_NOTE = new Set([
   'request_more_information',
   'remove_comment',
 ]);
+
+const FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  '[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 const getReportDate = (report: ErrorReport) => {
   const raw = Number(report.timestamp || 0);
@@ -236,6 +245,63 @@ const getFirstTeacherCommentId = (workbench: AdminReportWorkbenchPayload | undef
 };
 
 const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualReportModerationModalProps) => {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    const frameId = window.requestAnimationFrame(() => {
+      dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter((element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true');
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      document.removeEventListener('keydown', handleKeyDown);
+      const previouslyFocused = previouslyFocusedRef.current;
+      previouslyFocusedRef.current = null;
+      if (previouslyFocused?.isConnected) {
+        window.requestAnimationFrame(() => previouslyFocused.focus());
+      }
+    };
+  }, []);
   const { addToast } = useToast();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -453,7 +519,15 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4">
-      <div className={`${ADMIN_MODAL_PANEL_CLASS} my-2 flex max-h-[calc(100dvh-1rem)] w-full max-w-7xl flex-col shadow-2xl sm:my-4 sm:max-h-[calc(100dvh-2rem)]`}>
+      <div
+        ref={dialogRef}
+        className={`${ADMIN_MODAL_PANEL_CLASS} my-2 flex max-h-[calc(100dvh-1rem)] w-full max-w-7xl flex-col shadow-2xl sm:my-4 sm:max-h-[calc(100dvh-2rem)]`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
+      >
         <div className={`${ADMIN_MODAL_HEADER_CLASS} shrink-0`}>
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -464,10 +538,10 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
               <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">#{report.id}</span>
               <span className="rounded-full bg-amber-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">Pendente</span>
             </div>
-            <h3 className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">
+            <h3 id={titleId} className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">
               {workbench?.configuration.title || 'Carregando moderação...'}
             </h3>
-            <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+            <p id={descriptionId} className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
               Revise o contexto, escolha uma ação real e edite a resposta que será enviada ao usuário.
             </p>
           </div>
