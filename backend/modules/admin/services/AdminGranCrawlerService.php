@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../questions/services/PrivateQuestionIngestionService.php';
+require_once __DIR__ . '/../../ingestion/providers/GranIngestionBoundary.php';
 require_once __DIR__ . '/AdminGranTaxonomySyncService.php';
 
 /**
@@ -85,6 +86,7 @@ final class AdminGranCrawlerService
             'collectionRequestUrl' => $request['url'],
         ]);
         $pagination = $this->readPagination($remotePayload, $request['perPage']);
+        $ingestionPreview = (new GranIngestionBoundary())->previewPayloads($payloads);
 
         return [
             'page' => $request['page'],
@@ -100,6 +102,7 @@ final class AdminGranCrawlerService
                 ),
                 $payloads
             )),
+            'ingestionPreview' => $ingestionPreview,
             'payloads' => $payloads,
         ];
     }
@@ -444,11 +447,15 @@ final class AdminGranCrawlerService
             }
             $preparedPayloads[] = $payload;
         }
+        $ingestionPreview = (new GranIngestionBoundary())->previewPayloads($preparedPayloads);
+        if (($ingestionPreview['metrics']['rejected'] ?? 0) > 0) {
+            throw new InvalidArgumentException('A pre-validacao do pipeline de ingestao rejeitou um ou mais itens.');
+        }
         return (new PrivateQuestionIngestionService($this->db))->enqueueBatchFromAdminSession(
             $preparedPayloads,
             $actorUserId,
             $baseIdempotencyKey
-        );
+        ) + ['ingestionPreview' => $ingestionPreview];
     }
 
     /** @return array<string,mixed> */
