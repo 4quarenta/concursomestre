@@ -93,7 +93,7 @@ chmod -R go-w "$release_dir"
 find "$release_dir" -type d -exec chmod g+rx {} +
 
 cm_run composer install --working-dir="$release_dir/backend" --no-dev --prefer-dist --no-interaction --no-progress --classmap-authoritative
-cm_run_in "$release_dir" npm ci --no-audit --no-fund
+cm_run_in "$release_dir" npm ci --include=dev --no-audit --no-fund
 cm_run_in "$release_dir" npm run build
 cm_run_in "$release_dir" npm prune --omit=dev --no-audit --no-fund
 chgrp -R "$CM_APP_GROUP" "$release_dir"
