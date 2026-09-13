@@ -83,3 +83,28 @@ email sink was active in the web FPM runtime during mutation-capable tests and
 no external delivery was observed in this run. The sink was removed during
 cleanup; the historical M20F-03 email incident remains historical and is not
 rewritten by this M20F-04 ledger.
+## Final delta evidence - 2026-09-12
+
+- Runtime candidate: `a77782cb019b061d04f25603e0a7aa894c7b77b6`, deployed atomically to PRELAUNCH. Migration dry-run reported zero pending migrations.
+- Support assignment: PASS through the Admin UI. Queue, detail, assignment PUT 200, status PUT 200, and audit visibility were observed. Assignment is persisted in `support_case_assignments`.
+- Support compensation access: PASS through the Admin Support UI. The response was 200 and the User Benefits surface showed the resulting temporary access without changing the paid plan.
+- Support compensation concurrency: PASS with two live authenticated Admin pages released at the same logical start. Both canonical requests returned 200 through idempotent replay; duplicate grant and extension effects were zero.
+- USER_EXCLUSIVE code: wrong User redemption was denied with 409 and no benefit; the target User redemption had already passed through the normal User Benefits UI with 200 and one active benefit.
+- Billing and combined Support compensation were exercised through the Admin UI and returned canonical 400 validation because the synthetic User is Free and has no active Stripe TEST subscription. They remain unclosed; no direct Stripe mutation was used.
+- Moderation queue routes loaded in an authenticated Admin session. No pending report/comment existed in the final run, and the User question surface did not expose a reportable question link, so authenticated approve/reject/resolve/bulk evidence remains unexecuted rather than being claimed PASS.
+- Mobile layout checks on the rendered User/Admin surfaces reported `scrollWidth == clientWidth` at 390 and 430. Full action-level mobile evidence remains partial where the target control was not mounted.
+- Browser diagnostics: no page errors; the only recorded non-2xx responses were expected business validation/denial responses from canonical POST actions.
+
+Evidence files are kept under `.codex-tmp/m20f04-target-final-evidence.json`, `.codex-tmp/m20f04-admin-final-evidence.json`, and `.codex-tmp/m20f04-other-final-evidence.json` until cleanup is complete.
+
+## Final prerequisite closure - 2026-09-13
+
+- Canonical runtime release: `8a0aac9ae673142e83064b1355accea583745805`, deployed atomically to production PRELAUNCH. Origin `1.0.0` points to the same commit; the release manifest and migration dry-run were verified after deployment.
+- Canonical checkout proof: the synthetic User selected `/plans`, opened `/checkout/5`, completed the normal Stripe Elements TEST flow, and received the product confirmation `PAGAMENTO APROVADO`. Local subscription `504` converged with Stripe TEST subscription `sub_1UF0uGHTtB22su0xv3qdLlOx`; `livemode=false`, status `trialing`, and provider/local period end matched. No LIVE mutation or real payment method was used.
+- Support Compensation billing: PASS through the Admin Support UI. The canonical Benefits/Billing authority applied one provider-confirmed billing extension using current provider state; no duplicate billing extension effect was observed.
+- Support Compensation combined: PASS through the Admin Support UI after the provider extension fix. The canonical authority applied exactly one `ACCESS_AND_BILLING_EXTENSION` grant, one confirmed provider extension, and preserved the paid base plan. The fixed grant was `d377e32c-5331-4185-ae81-8c39f171eda9`; duplicate grant and duplicate provider-extension effects were zero for the acceptance case.
+- Authenticated moderation: PASS through the Admin UI. The synthetic fixture used `QuestionsService`, `CommentsService`, and `ReportsService`; direct raw DB insertion was zero. Two comments were moderated (`approved` and `spam`) and the synthetic report was resolved through `Manter conteúdo atual`, persisted as `ignored` with workflow `closed`, response, operator, and resolution timestamp.
+- Runtime defect fixed: `AdminSupportSection` could render the contextual and legacy report modals simultaneously for the same report, intercepting the concluding action. Release `8a0aac9a` retains the legacy fallback only when the report is outside the contextual group. Targeted ESLint, typecheck, strict typecheck, build/deploy, and post-deploy moderation acceptance passed.
+- Browser diagnostics for the final moderation acceptance had no page errors, console errors, failed requests, or HTTP errors. Expected RSC prefetch aborts remain harness noise only.
+
+This section supersedes the earlier partial-state observations for the same synthetic identities. Evidence is recorded before cleanup; the final synthetic inventory must be read after cleanup and must not be inferred from this section.
