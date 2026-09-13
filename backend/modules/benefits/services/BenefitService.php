@@ -424,7 +424,7 @@ final class BenefitService
             ],
         ], $actorId);
 
-        if ($mode === 'BILLING_EXTENSION_ONLY' && !empty($input['apply_provider'])) {
+        if (in_array($mode, ['BILLING_EXTENSION_ONLY', 'ACCESS_AND_BILLING_EXTENSION'], true) && !empty($input['apply_provider'])) {
             require_once __DIR__ . '/../../../modules/billing/services/BillingExtensionService.php';
             $grant = (new BillingExtensionService($this->db))->apply((string) $grant['id'], $actorId);
         }
