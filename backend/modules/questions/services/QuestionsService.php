@@ -24,6 +24,7 @@ require_once __DIR__ . '/../../seo/services/PublicSeoEnvelopeService.php';
 require_once __DIR__ . '/../../seo/routes/PublicRouteBuilder.php';
 require_once __DIR__ . '/../../seo/taxonomy/KnowledgeTaxonomyHierarchyValidator.php';
 require_once __DIR__ . '/../../filters/professional/ProfessionalTaxonomyReadinessValidator.php';
+require_once __DIR__ . '/../../ingestion/domain/BrowserFixturePublicationPolicy.php';
 
 class QuestionsService
 {
@@ -994,6 +995,10 @@ class QuestionsService
                 $savepoint = 'question_import_' . $questionPosition;
                 $this->repository->createSavepoint($savepoint);
                 try {
+
+                if (BrowserFixturePublicationPolicy::shouldFailFirstRetryableAttempt($question, $payload)) {
+                    throw new RuntimeException('Falha temporaria deterministica do provider fixture; tente novamente.');
+                }
 
                 $questionSource = is_array($question['source'] ?? null) ? $question['source'] : [];
                 $contextTempId = trim((string) (

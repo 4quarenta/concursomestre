@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../../ingestion/domain/BrowserFixturePublicationPolicy.php';
 
 /**
  * Authenticates and queues payloads from a local, operator-controlled crawler.
@@ -195,6 +196,7 @@ final class PrivateQuestionIngestionService
         if ($questions === []) {
             throw new InvalidArgumentException('Selecione ao menos uma questao para importar.');
         }
+        $this->assertPublicationGuardAllows($questions);
         if (count($questions) > $this->maxQuestionsPerJob()) {
             throw new InvalidArgumentException(sprintf(
                 'O lote possui %d questoes. Divida-o em lotes de no maximo %d.',
@@ -331,6 +333,7 @@ final class PrivateQuestionIngestionService
             if ($questions === []) {
                 continue;
             }
+            $this->assertPublicationGuardAllows($questions);
             $questionCount += count($questions);
             foreach ($questions as $position => $question) {
                 if (!is_array($question)) {
@@ -543,7 +546,7 @@ final class PrivateQuestionIngestionService
                     'Um dos rascunhos originais nao esta disponivel. Abra o item para moderacao antes de tentar novamente.'
                 );
             }
-            $payloads[] = $payload;
+            $payloads[] = $this->prepareRetryPayload($payload, (int) ($row['attempt_count'] ?? 1));
             $attemptFingerprint[] = [
                 'id' => (int) $row['id'],
                 'attempt' => max(1, (int) ($row['attempt_count'] ?? 1)) + 1,
@@ -565,6 +568,31 @@ final class PrivateQuestionIngestionService
             'failureIds' => $ids,
             'retriedCount' => count($ids),
         ];
+    }
+
+    /** @param array<int,array<string,mixed>> $questions */
+    private function assertPublicationGuardAllows(array $questions): void
+    {
+        foreach ($questions as $question) {
+            if (is_array($question) && BrowserFixturePublicationPolicy::isPublicationBlocked($question)) {
+                throw new DomainException('A guarda de publicacao bloqueou este candidato sintetico.');
+            }
+        }
+    }
+
+    /** @param array<string,mixed> $payload @return array<string,mixed> */
+    private function prepareRetryPayload(array $payload, int $attemptCount): array
+    {
+        $questions = is_array($payload['questions'] ?? null) ? $payload['questions'] : [];
+        foreach ($questions as $question) {
+            if (!is_array($question)) continue;
+            $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+            if (strtolower(trim((string) ($source['provider'] ?? ''))) === BrowserFixturePublicationPolicy::PROVIDER
+                && strtolower(trim((string) ($source['fixtureStatus'] ?? ''))) === BrowserFixturePublicationPolicy::RETRYABLE_FAILURE) {
+                return BrowserFixturePublicationPolicy::markRetryAttempt($payload, max(2, $attemptCount + 1));
+            }
+        }
+        return $payload;
     }
 
     /** @return array{failureId:int,status:string} */

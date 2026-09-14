@@ -16,6 +16,7 @@ require_once __DIR__ . '/domain/TaxonomyResolutionPolicy.php';
 require_once __DIR__ . '/domain/TaxonomyResolver.php';
 require_once __DIR__ . '/domain/FieldOwnershipPolicy.php';
 require_once __DIR__ . '/domain/DeprecationPolicy.php';
+require_once __DIR__ . '/domain/BrowserFixturePublicationPolicy.php';
 require_once __DIR__ . '/security/AssetUrlPolicy.php';
 require_once __DIR__ . '/security/ContentSecurityPolicy.php';
 require_once __DIR__ . '/persistence/IngestionPersistencePort.php';
