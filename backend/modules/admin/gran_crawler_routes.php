@@ -99,6 +99,18 @@ function handleAdminGranCrawlerRoute(PDO $db): void
             Response::success($result, 'JSON da extensao carregado para revisao.');
         }
 
+        if ($action === 'map_fixture_provider') {
+            RateLimiter::enforceProfile('admin_crawler_mapping', $actorUserId);
+            $result = $service->mapBrowserFixtureProvider($input, $actorUserId);
+            logAdminAudit($db, $actorUserId, 'gran_crawler.fixture_provider_map', 'question_ingestion', (string) ($result['runId'] ?? ''), [
+                'provider' => (string) ($result['provider'] ?? ''),
+                'page' => (int) ($result['page'] ?? 0),
+                'per_page' => (int) ($result['perPage'] ?? 0),
+                'question_count' => (int) ($result['questionCount'] ?? 0),
+            ]);
+            Response::success($result, 'Provider fixture M20F-05 carregado para revisao.');
+        }
+
         if ($action === 'map_and_enqueue_publication') {
             RateLimiter::enforceProfile('admin_crawler_mapping', $actorUserId);
             $result = $service->mapAndEnqueuePublication($input, $actorUserId);

@@ -100,7 +100,7 @@ final class IngestionOrchestrator
             );
             if (!$dryRun && !$sameSourceVersion) {
                 $applied = $this->persistence->apply($item, $plan, $runId);
-                return $this->result($item, $plan, $applied['canonicalEntityId']);
+                return $this->result($item, $plan, $applied['canonicalEntityId'], $applied['action'] ?? null);
             }
             IngestionObservability::event('item_state', ['runId' => $runId, 'domain' => $item->domain, 'state' => IngestionStateMachine::COMPLETED, 'action' => IngestionPlan::NO_CHANGE, 'dryRun' => $dryRun]);
             return $this->result($item, $plan);
@@ -138,16 +138,16 @@ final class IngestionOrchestrator
             return $this->result($item, $plan);
         }
         $applied = $this->persistence->apply($item, $plan, $runId);
-        return $this->result($item, $plan, $applied['canonicalEntityId']);
+        return $this->result($item, $plan, $applied['canonicalEntityId'], $applied['action'] ?? null);
     }
 
     /** @return array<string,mixed> */
-    private function result(CanonicalIngestionItem $item, IngestionPlan $plan, ?string $canonicalId = null): array
+    private function result(CanonicalIngestionItem $item, IngestionPlan $plan, ?string $canonicalId = null, ?string $action = null): array
     {
         return [
             'itemId' => $item->idempotencyKey(),
             'domain' => $item->domain,
-            'action' => $plan->action,
+            'action' => $action ?? $plan->action,
             'state' => $plan->state,
             'reasonCodes' => $plan->reasonCodes,
             'canonicalEntityId' => $canonicalId ?? $plan->canonicalEntityId,

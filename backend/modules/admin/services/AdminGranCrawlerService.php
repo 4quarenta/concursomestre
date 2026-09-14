@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../questions/services/PrivateQuestionIngestionService.php';
 require_once __DIR__ . '/../../ingestion/providers/GranIngestionBoundary.php';
+require_once __DIR__ . '/../../ingestion/providers/BrowserFixtureProviderAdapter.php';
 require_once __DIR__ . '/AdminGranTaxonomySyncService.php';
 
 /**
@@ -389,6 +390,69 @@ final class AdminGranCrawlerService
             'questionCount' => (int) ($mapped['questionCount'] ?? 0),
             'fileCount' => (int) ($mapped['fileCount'] ?? 0),
             'batch' => $batch,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function mapBrowserFixtureProvider(array $input, string $actorUserId): array
+    {
+        $actorUserId = trim($actorUserId);
+        if ($actorUserId === '' || strlen($actorUserId) > 80) {
+            throw new DomainException('Sessao administrativa invalida para o provider fixture.');
+        }
+        $runId = trim((string) ($input['runId'] ?? ''));
+        if ($runId === '') {
+            $runId = 'm20f05-' . gmdate('YmdHis') . '-' . substr(bin2hex(random_bytes(8)), 0, 12);
+        }
+        if (strlen($runId) > 80 || preg_match('/^[a-z0-9_.:-]+$/i', $runId) !== 1) {
+            throw new InvalidArgumentException('Identidade sintetica de execucao invalida.');
+        }
+        $page = max(1, min(3, (int) ($input['page'] ?? 1)));
+        $perPage = max(1, min(3, (int) ($input['perPage'] ?? 3)));
+
+        $fixture = new BrowserFixtureProviderAdapter();
+        $collection = $fixture->collectPage($runId, $page, $perPage);
+        $repository = new PdoIngestionMetadataRepository($this->db);
+        $session = new CanonicalImportSessionService($repository);
+        $session->start($runId, BrowserFixtureProviderAdapter::provider(), BrowserFixtureProviderAdapter::contractVersion());
+        $session->transition($runId, 'CREATED', 'COLLECTING', [
+            'actor' => $actorUserId,
+            'page' => $collection['page'],
+            'perPage' => $collection['perPage'],
+        ]);
+        $session->transition($runId, 'COLLECTING', 'COLLECTED', [
+            'received' => count($collection['items']),
+            'total' => $collection['total'],
+            'pages' => $collection['pages'],
+        ]);
+
+        $ingestionPreview = (new GranIngestionBoundary())->previewPayloads(
+            $collection['payloads'],
+            $runId,
+            BrowserFixtureProviderAdapter::provider()
+        );
+        $sessionPreview = $session->preview(
+            $runId,
+            $collection['items'],
+            array_map(
+                static fn (array $item): string => (string) ($item['sourceEntityId'] ?? ''),
+                is_array($ingestionPreview['items'] ?? null) ? $ingestionPreview['items'] : []
+            )
+        );
+
+        return [
+            'runId' => $runId,
+            'provider' => BrowserFixtureProviderAdapter::provider(),
+            'page' => $collection['page'],
+            'perPage' => $collection['perPage'],
+            'total' => $collection['total'],
+            'pages' => $collection['pages'],
+            'requestUrl' => 'fixture://m20f05/browser-provider?page=' . $collection['page'],
+            'tokenExpiresAt' => null,
+            'questionCount' => $this->countPayloadQuestions($collection['payloads']),
+            'fileCount' => 0,
+            'ingestionPreview' => $ingestionPreview + ['sessionPreview' => $sessionPreview],
+            'payloads' => $collection['payloads'],
         ];
     }
 

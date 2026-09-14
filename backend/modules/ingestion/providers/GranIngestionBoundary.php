@@ -14,13 +14,14 @@ require_once __DIR__ . '/../IngestionPipeline.php';
 final class GranIngestionBoundary
 {
     /** @return array{runId:string,provider:string,contractVersion:string,publicationGuard:string,items:list<array<string,mixed>>,metrics:array<string,int>} */
-    public function previewPayloads(array $payloads, ?string $runId = null): array
+    public function previewPayloads(array $payloads, ?string $runId = null, string $defaultProvider = 'gran'): array
     {
         $runId ??= self::uuid();
+        $defaultProvider = strtolower(trim($defaultProvider)) ?: 'gran';
         $store = new InMemoryIngestionStore();
         $orchestrator = new IngestionOrchestrator(
             $store,
-            writerRegistry: new IngestionWriterRegistry(['gran']),
+            writerRegistry: new IngestionWriterRegistry([$defaultProvider]),
         );
         $items = [];
         $seen = [];
@@ -38,6 +39,7 @@ final class GranIngestionBoundary
                     continue;
                 }
                 $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+                $provider = strtolower(trim((string) ($source['provider'] ?? $defaultProvider))) ?: $defaultProvider;
                 $externalId = trim((string) ($source['externalId'] ?? ''));
                 if ($externalId === '') {
                     $externalId = trim((string) ($question['tempId'] ?? ''));
@@ -50,11 +52,11 @@ final class GranIngestionBoundary
                 $normalizedPayload = [
                     'statement' => $statement,
                     'source' => [
-                        'provider' => 'gran',
+                        'provider' => $provider,
                         'externalId' => $externalId,
                     ],
                     'domainIdentity' => [
-                        'provider' => 'gran',
+                        'provider' => $provider,
                         'entityType' => 'question',
                         'externalId' => $externalId,
                     ],
@@ -62,13 +64,13 @@ final class GranIngestionBoundary
                 $contentHash = CanonicalIngestionItem::payloadHash($normalizedPayload);
                 $item = new CanonicalIngestionItem(
                     'question',
-                    'gran',
+                    $provider,
                     'question',
                     $externalId,
                     $contentHash,
                     $runId . ':' . $externalId,
                     $normalizedPayload,
-                    ['reference' => 'gran://question/' . $externalId],
+                    ['reference' => $provider . '://question/' . $externalId],
                 );
                 $metrics['received']++;
 
@@ -108,7 +110,7 @@ final class GranIngestionBoundary
 
         return [
             'runId' => $runId,
-            'provider' => 'gran',
+            'provider' => $defaultProvider,
             'contractVersion' => 'question-ingestion.v1',
             'publicationGuard' => 'REVIEW_REQUIRED',
             'items' => $items,

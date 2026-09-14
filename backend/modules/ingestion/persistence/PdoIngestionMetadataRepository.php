@@ -103,11 +103,35 @@ final class PdoIngestionMetadataRepository implements IngestionPersistencePort
             throw new LogicException('Persistencia canonica obrigatoria para mutacao de ingestao.');
         }
         $startedTransaction = !$this->db->inTransaction();
+        $lockName = $this->concurrencyLockName($item->idempotencyKey());
+        $lockAcquired = false;
         if ($startedTransaction) {
             $this->db->beginTransaction();
         }
         try {
+            $lockAcquired = $this->acquireConcurrencyLock($lockName);
             $this->startRun($runId, $item->sourceProvider, $this->contractVersion($item));
+
+            // Re-read after serialization so a losing worker cannot repeat the
+            // canonical write that the winner already committed.
+            if ($plan->action === IngestionPlan::CREATE) {
+                $existing = $this->findBySourceIdentity($item);
+                if ($existing !== null) {
+                    $canonicalId = (string) ($existing['canonical_entity_id'] ?? $canonicalId);
+                    $this->recordProvenance($item, $runId, $canonicalId);
+                    $this->recordEvent($runId, $item, IngestionStateMachine::COMPLETED, [
+                        'action' => IngestionPlan::NO_CHANGE,
+                        'reasonCode' => 'concurrent_idempotent_replay',
+                    ]);
+                    if ($startedTransaction) {
+                        $this->db->commit();
+                    }
+                    return [
+                        'canonicalEntityId' => $canonicalId,
+                        'action' => IngestionPlan::NO_CHANGE,
+                    ];
+                }
+            }
             if ($mutatesCanonical) {
                 $canonicalResult = $this->canonicalPersistence->persist($item, $plan, $canonicalId);
                 $canonicalId = $canonicalResult['canonicalEntityId'];
@@ -160,6 +184,10 @@ final class PdoIngestionMetadataRepository implements IngestionPersistencePort
                 $this->db->rollBack();
             }
             throw $exception;
+        } finally {
+            if ($lockAcquired) {
+                $this->releaseConcurrencyLock($lockName);
+            }
         }
     }
 
@@ -239,6 +267,27 @@ final class PdoIngestionMetadataRepository implements IngestionPersistencePort
     private function contractVersion(CanonicalIngestionItem $item): string
     {
         return $item->domain . '-ingestion.v1';
+    }
+
+    private function concurrencyLockName(string $idempotencyKey): string
+    {
+        return 'cm-ingest-' . substr(hash('sha256', $idempotencyKey), 0, 54);
+    }
+
+    private function acquireConcurrencyLock(string $lockName): bool
+    {
+        $stmt = $this->db->prepare('SELECT GET_LOCK(:lock_name, 15)');
+        $stmt->execute([':lock_name' => $lockName]);
+        if ((int) $stmt->fetchColumn() !== 1) {
+            throw new RuntimeException('Nao foi possivel adquirir lock de concorrencia da ingestao.');
+        }
+        return true;
+    }
+
+    private function releaseConcurrencyLock(string $lockName): void
+    {
+        $stmt = $this->db->prepare('SELECT RELEASE_LOCK(:lock_name)');
+        $stmt->execute([':lock_name' => $lockName]);
     }
 
     /** @param array<string,mixed> $row @return array<string,mixed> */

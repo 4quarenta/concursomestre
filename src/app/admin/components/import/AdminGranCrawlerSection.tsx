@@ -100,6 +100,8 @@ export type GranImportPayload = {
 };
 
 type GranFetchResult = {
+  runId?: string;
+  provider?: string;
   page: number;
   perPage: number;
   total: number;
@@ -561,6 +563,7 @@ const AdminGranCrawlerSection = ({
     () => partitionGranReviewPayloads(result?.payloads || []),
     [result?.payloads],
   );
+  const isFixtureResult = result?.provider === 'm20f05-fixture';
 
   const checkCollector = React.useCallback(async (showFailure = false, force = false) => {
     if (!force && collectorStatusCache && Date.now() - collectorStatusCache.checkedAt < COLLECTOR_STATUS_CACHE_MS) {
@@ -832,6 +835,36 @@ const AdminGranCrawlerSection = ({
       if (!controller.signal.aborted) setIsFetching(false);
     }
   }, [checkCollector, collectMappedPage, collectorState, page, year]);
+
+  const handleFixtureFetch = React.useCallback(async (requestedPage?: number) => {
+    const targetPage = requestedPage ?? page;
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    setIsFetching(true);
+    setError('');
+    try {
+      const response = await apiClient.post(ENDPOINT, {
+        action: 'map_fixture_provider',
+        page: targetPage,
+        perPage: Math.min(3, Math.max(1, perPage)),
+      }, { signal: controller.signal });
+      const data = readApiData<GranFetchResult>(response);
+      setResult(data);
+      setPage(data.page);
+      setPerPage(data.perPage);
+      if (data.requestUrl) setGranRequestUrl(data.requestUrl);
+    } catch (requestError: unknown) {
+      if (controller.signal.aborted) return;
+      const axiosError = requestError as {
+        response?: { data?: { message?: string } };
+        message?: string;
+      };
+      setError(axiosError.response?.data?.message || axiosError.message || 'Nao foi possivel carregar o provider fixture.');
+    } finally {
+      if (!controller.signal.aborted) setIsFetching(false);
+    }
+  }, [page, perPage]);
 
   const loadFailureHistory = React.useCallback(async (
     cursor?: number | null,
@@ -1986,6 +2019,15 @@ const AdminGranCrawlerSection = ({
             {isFetching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
             Carregar questões
           </button>
+          <button
+            type="button"
+            onClick={() => void handleFixtureFetch()}
+            disabled={isFetching || automaticMode}
+            className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-5 py-2.5 text-xs disabled:opacity-50`}
+          >
+            {isFetching ? <Loader2 size={15} className="animate-spin" /> : <PlugZap size={15} />}
+            Carregar fixture M20F-05
+          </button>
           <span className="inline-flex items-center gap-2 text-xs text-slate-500">
             <ShieldCheck size={15} className="text-emerald-600" />
             Host e rota fixos, sem redirects; credencial isolada na extensão
@@ -2027,7 +2069,7 @@ const AdminGranCrawlerSection = ({
               </button>
               <button
                 type="button"
-                onClick={() => void handleFetch(Math.max(1, page - 1))}
+                onClick={() => void (isFixtureResult ? handleFixtureFetch(Math.max(1, page - 1)) : handleFetch(Math.max(1, page - 1)))}
                 disabled={isFetching || page <= 1}
                 className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs disabled:opacity-40`}
                 aria-label="Página anterior"
@@ -2039,7 +2081,7 @@ const AdminGranCrawlerSection = ({
               </span>
               <button
                 type="button"
-                onClick={() => void handleFetch(page + 1)}
+                onClick={() => void (isFixtureResult ? handleFixtureFetch(page + 1) : handleFetch(page + 1))}
                 disabled={isFetching || (result.pages > 0 && page >= result.pages)}
                 className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-xs disabled:opacity-40`}
                 aria-label="Próxima página"

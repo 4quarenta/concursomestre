@@ -26,4 +26,5 @@ require_once __DIR__ . '/observability/IngestionObservability.php';
 require_once __DIR__ . '/orchestration/IngestionOrchestrator.php';
 require_once __DIR__ . '/orchestration/IngestionBatchRunner.php';
 require_once __DIR__ . '/orchestration/IngestionRunTracker.php';
+require_once __DIR__ . '/services/CanonicalImportSessionService.php';
 require_once __DIR__ . '/adapters/ArraySourceAdapter.php';
