@@ -511,7 +511,30 @@ final class AdminGranCrawlerService
             }
             $preparedPayloads[] = $payload;
         }
-        $ingestionPreview = (new GranIngestionBoundary())->previewPayloads($preparedPayloads);
+        $previewProviders = [];
+        foreach ($preparedPayloads as $preparedPayload) {
+            $import = is_array($preparedPayload['import'] ?? null) ? $preparedPayload['import'] : [];
+            $importProvider = strtolower(trim((string) ($import['sourceType'] ?? $import['source_type'] ?? '')));
+            foreach (is_array($preparedPayload['questions'] ?? null) ? $preparedPayload['questions'] : [] as $question) {
+                if (!is_array($question)) {
+                    continue;
+                }
+                $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+                $provider = strtolower(trim((string) ($source['provider'] ?? $importProvider ?? '')));
+                if ($provider !== '') {
+                    $previewProviders[$provider] = true;
+                }
+            }
+        }
+        if (count($previewProviders) > 1) {
+            throw new InvalidArgumentException('A pre-validacao aceita somente uma fonte por lote de publicacao.');
+        }
+        $previewProvider = array_key_first($previewProviders) ?: 'gran';
+        $ingestionPreview = (new GranIngestionBoundary())->previewPayloads(
+            $preparedPayloads,
+            null,
+            $previewProvider,
+        );
         if (($ingestionPreview['metrics']['rejected'] ?? 0) > 0) {
             throw new InvalidArgumentException('A pre-validacao do pipeline de ingestao rejeitou um ou mais itens.');
         }
