@@ -196,7 +196,7 @@ final class PrivateQuestionIngestionService
         if ($questions === []) {
             throw new InvalidArgumentException('Selecione ao menos uma questao para importar.');
         }
-        $this->assertPublicationGuardAllows($questions);
+        $this->assertPublicationGuardAllows($questions, $payload);
         if (count($questions) > $this->maxQuestionsPerJob()) {
             throw new InvalidArgumentException(sprintf(
                 'O lote possui %d questoes. Divida-o em lotes de no maximo %d.',
@@ -333,7 +333,7 @@ final class PrivateQuestionIngestionService
             if ($questions === []) {
                 continue;
             }
-            $this->assertPublicationGuardAllows($questions);
+            $this->assertPublicationGuardAllows($questions, $payload);
             $questionCount += count($questions);
             foreach ($questions as $position => $question) {
                 if (!is_array($question)) {
@@ -571,10 +571,10 @@ final class PrivateQuestionIngestionService
     }
 
     /** @param array<int,array<string,mixed>> $questions */
-    private function assertPublicationGuardAllows(array $questions): void
+    private function assertPublicationGuardAllows(array $questions, array $payload = []): void
     {
         foreach ($questions as $question) {
-            if (is_array($question) && BrowserFixturePublicationPolicy::isPublicationBlocked($question)) {
+            if (is_array($question) && BrowserFixturePublicationPolicy::isPublicationBlocked($question, $payload)) {
                 throw new DomainException('A guarda de publicacao bloqueou este candidato sintetico.');
             }
         }
@@ -587,8 +587,7 @@ final class PrivateQuestionIngestionService
         foreach ($questions as $question) {
             if (!is_array($question)) continue;
             $source = is_array($question['source'] ?? null) ? $question['source'] : [];
-            if (strtolower(trim((string) ($source['provider'] ?? ''))) === BrowserFixturePublicationPolicy::PROVIDER
-                && strtolower(trim((string) ($source['fixtureStatus'] ?? ''))) === BrowserFixturePublicationPolicy::RETRYABLE_FAILURE) {
+            if (BrowserFixturePublicationPolicy::isRetryableFailure($question, $payload)) {
                 return BrowserFixturePublicationPolicy::markRetryAttempt($payload, max(2, $attemptCount + 1));
             }
         }

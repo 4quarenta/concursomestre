@@ -102,7 +102,8 @@ final class BrowserFixtureProviderAdapter
     /** @return array<string,mixed> */
     private function payload(array $record, string $runId, int $page, int $perPage): array
     {
-        $externalId = (string) $record['id'];
+        $baseExternalId = (string) $record['id'];
+        $externalId = $baseExternalId . ':' . $runId;
         $statement = (string) $record['statement'];
         $reviewReason = match ((string) $record['status']) {
             'duplicate' => 'fixture_duplicate_candidate',
@@ -121,6 +122,8 @@ final class BrowserFixtureProviderAdapter
                 'collectionPage' => $page,
                 'collectionPerPage' => $perPage,
                 'syntheticRunId' => $runId,
+                'fixtureExternalId' => $baseExternalId,
+                'fixtureStatus' => (string) $record['status'],
                 'publicationGuard' => (string) $record['status'] === 'publishable'
                     ? 'SYNTHETIC_PRELAUNCH_REVIEW_REQUIRED'
                     : 'BLOCKED_OR_REVIEW_REQUIRED',
