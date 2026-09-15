@@ -90,12 +90,12 @@ final class BrowserFixtureProviderAdapter
     private function records(): array
     {
         return [
-            ['id' => 'm20f05-valid-001', 'statement' => 'Questao fixture valida para selecao.', 'status' => 'publishable', 'version' => '1'],
-            ['id' => 'm20f05-duplicate-001', 'statement' => 'Questao fixture duplicada controlada.', 'status' => 'duplicate', 'version' => '1'],
-            ['id' => 'm20f05-changed-001', 'statement' => 'Questao fixture com mudanca externa.', 'status' => 'changed', 'version' => '2'],
-            ['id' => 'm20f05-invalid-001', 'statement' => '', 'status' => 'invalid', 'version' => '1'],
-            ['id' => 'm20f05-retry-001', 'statement' => 'Questao fixture para tentativa repetivel.', 'status' => 'retryable_failure', 'version' => '1'],
-            ['id' => 'm20f05-blocked-001', 'statement' => 'Questao fixture bloqueada pela guarda de publicacao.', 'status' => 'publication_blocked', 'version' => '1'],
+            ['id' => 'm20f05-valid-001', 'questionNumber' => 1, 'statement' => 'Questao fixture valida para selecao.', 'status' => 'publishable', 'version' => '1'],
+            ['id' => 'm20f05-duplicate-001', 'questionNumber' => 2, 'statement' => 'Questao fixture duplicada controlada.', 'status' => 'duplicate', 'version' => '1'],
+            ['id' => 'm20f05-changed-001', 'questionNumber' => 3, 'statement' => 'Questao fixture com mudanca externa.', 'status' => 'changed', 'version' => '2'],
+            ['id' => 'm20f05-invalid-001', 'questionNumber' => 4, 'statement' => '', 'status' => 'invalid', 'version' => '1'],
+            ['id' => 'm20f05-retry-001', 'questionNumber' => 5, 'statement' => 'Questao fixture para tentativa repetivel.', 'status' => 'retryable_failure', 'version' => '1'],
+            ['id' => 'm20f05-blocked-001', 'questionNumber' => 6, 'statement' => 'Questao fixture bloqueada pela guarda de publicacao.', 'status' => 'publication_blocked', 'version' => '1'],
         ];
     }
 
@@ -127,6 +127,7 @@ final class BrowserFixtureProviderAdapter
                 'publicationGuard' => (string) $record['status'] === 'publishable'
                     ? 'SYNTHETIC_PRELAUNCH_REVIEW_REQUIRED'
                     : 'BLOCKED_OR_REVIEW_REQUIRED',
+                'questionNumber' => (int) $record['questionNumber'],
             ],
             'exam' => [
                 'sourceKey' => self::provider() . ':exam:m20f05',
@@ -147,6 +148,8 @@ final class BrowserFixtureProviderAdapter
                     'externalId' => $externalId,
                     'fixtureStatus' => (string) $record['status'],
                 ],
+                'questionNumber' => (int) $record['questionNumber'],
+                'question_number' => (int) $record['questionNumber'],
                 'content' => [
                     'statement' => $statement,
                     'statementClean' => strip_tags($statement),
