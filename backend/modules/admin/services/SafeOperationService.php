@@ -51,7 +51,7 @@ final class SafeOperationService
         $idempotencyHash = hash('sha256', $idempotency);
         $existing = $this->repository->findByIdempotency($actorUserId, $idempotencyHash);
         if ($existing !== null) {
-            return $this->publicRun($existing);
+            return $this->publicPreview($existing);
         }
 
         $scope = [
@@ -425,6 +425,39 @@ final class SafeOperationService
             'expected_count' => (int) $run['expected_count'],
             'actual_count' => $run['actual_count'] === null ? null : (int) $run['actual_count'],
             'recovery_status' => $run['recovery_status'],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function publicPreview(array $run): array
+    {
+        $scope = json_decode((string) ($run['target_scope_json'] ?? '{}'), true);
+        $scope = is_array($scope) ? $scope : [];
+        $operationType = (string) ($run['operation_type'] ?? '');
+        $definition = SafeOperationPolicy::definition($operationType);
+        $result = json_decode((string) ($run['result_json'] ?? '{}'), true);
+        $snapshot = is_array($result['snapshot'] ?? null) ? $result['snapshot'] : [
+            'affected_count' => (int) ($run['expected_count'] ?? 0),
+            'affected_resources' => [],
+            'truncated' => false,
+            'protected_resources' => ['non_matching_namespace', 'symlink', 'current_production_log', 'application_data'],
+        ];
+
+        return [
+            'operation_id' => $run['operation_id'],
+            'operation_type' => $operationType,
+            'environment' => $run['environment'],
+            'risk_class' => $run['risk_class'],
+            'namespace' => (string) ($scope['namespace'] ?? $run['namespace_key']),
+            'snapshot' => $snapshot,
+            'preview_fingerprint' => $run['preview_fingerprint'],
+            'preview_expires_at' => $run['preview_expires_at'],
+            'confirmation_required' => true,
+            'execution_allowed' => (bool) $definition['execution_allowed'],
+            'recovery' => [
+                'class' => $run['recovery_class'],
+                'status' => $run['recovery_status'],
+            ],
         ];
     }
 
