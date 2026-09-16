@@ -147,6 +147,8 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           {toasts.map((toast) => (
             <div
               key={toast.id}
+              role={toast.type === 'error' ? 'alert' : 'status'}
+              aria-atomic="true"
               className={[
                 'pointer-events-auto flex min-w-[250px] max-w-[400px] items-center justify-between gap-4 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-xl',
                 'animate-in slide-in-from-right-4 fade-in duration-300',

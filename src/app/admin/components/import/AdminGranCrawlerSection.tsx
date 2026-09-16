@@ -2035,8 +2035,13 @@ const AdminGranCrawlerSection = ({
         </div>
       </section>
 
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {currentBatch ? `Publicação: ${statusLabel[currentBatch.status] || currentBatch.status}. ${currentBatch.published} publicadas, ${currentBatch.duplicates} já existentes, ${currentBatch.failures} falhas. ` : ''}
+        {failureHistory.openCount > 0 ? `${failureHistory.openCount} falhas aguardando nova tentativa. ` : ''}
+        {failureHistory.retryingCount > 0 ? `${failureHistory.retryingCount} novas tentativas em andamento.` : ''}
+      </div>
       {error ? (
-        <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+        <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
           {error}
         </div>
       ) : null}
