@@ -19,12 +19,13 @@ assertSafeOperationContract($policy['cache.synthetic_expired_cleanup']['executio
 
 $policyPath = (string) file_get_contents(__DIR__ . '/../modules/admin/services/SafeOperationPolicy.php');
 $servicePath = (string) file_get_contents(__DIR__ . '/../modules/admin/services/SafeOperationService.php');
+$repositoryPath = (string) file_get_contents(__DIR__ . '/../modules/admin/repositories/SafeOperationRepository.php');
 $routesPath = (string) file_get_contents(__DIR__ . '/../modules/admin/routes.php');
 
 assertSafeOperationContract(str_contains($servicePath, 'preview_fingerprint'), 'SafeOperation must persist and verify the preview fingerprint.');
 assertSafeOperationContract(str_contains($servicePath, 'confirmation_expires_at'), 'SafeOperation must expire scoped confirmations.');
 assertSafeOperationContract(str_contains($servicePath, 'stale_preview'), 'SafeOperation must deny stale previews.');
-assertSafeOperationContract(str_contains($servicePath, 'FOR UPDATE'), 'SafeOperation must serialize concurrent execution.');
+assertSafeOperationContract(str_contains($repositoryPath, 'FOR UPDATE'), 'SafeOperation repository must serialize concurrent execution.');
 assertSafeOperationContract(str_contains($servicePath, 'PROHIBITED_IN_PRODUCTION'), 'Global reset must be prohibited in production execution.');
 assertSafeOperationContract(str_contains($routesPath, 'requireAdminMutationCsrf();'), 'SafeOperation mutations must require the shared CSRF contract.');
 assertSafeOperationContract(str_contains($routesPath, 'handleAdminSafeOperationsRoute'), 'The SafeOperation endpoint must delegate to the canonical admin route.');
