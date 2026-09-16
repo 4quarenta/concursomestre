@@ -708,7 +708,7 @@ function handleAdminSafeOperationsRoute(PDO $db): void
     } catch (SafeOperationDenied $exception) {
         $status = in_array($exception->errorCode, [
             'stale_preview', 'expired_preview', 'expired_confirmation', 'invalid_transition',
-            'operation_scope_denied', 'execution_prohibited', 'recovery_unavailable', 'invalid_confirmation',
+            'operation_scope_denied', 'execution_prohibited', 'recovery_unavailable', 'invalid_confirmation', 'execution_failed',
         ], true) ? 409 : 422;
         Response::error($exception->getMessage(), $status, null, $exception->errorCode);
     } catch (InvalidArgumentException $exception) {

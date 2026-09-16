@@ -191,11 +191,20 @@ final class SafeOperationService
                 throw new SafeOperationDenied('Recuperacao operacional indisponivel.', 'recovery_unavailable');
             }
 
+            $this->assertExecutableScope($operationType, $namespace, $currentSnapshot);
             $this->repository->update($operationId, ['status' => 'EXECUTING']);
-            $actualCount = $this->apply($operationType, $namespace);
+            $actualCount = $this->apply($operationType, $namespace, $currentSnapshot);
+            $expectedCount = count((array) ($currentSnapshot['affected_resources'] ?? []));
+            if ($actualCount !== $expectedCount) {
+                throw new SafeOperationDenied('A operacao nao conseguiu aplicar todo o escopo confirmado.', 'execution_failed');
+            }
+            $postcondition = $this->postcondition($operationType, $namespace);
+            if ((int) ($postcondition['remaining_affected_count'] ?? 0) !== 0) {
+                throw new SafeOperationDenied('A operacao nao satisfez o pos-condicao do escopo.', 'execution_failed');
+            }
             $result = [
                 'affected_count' => $actualCount,
-                'postcondition' => $this->postcondition($operationType, $namespace),
+                'postcondition' => $postcondition,
             ];
             $this->repository->update($operationId, [
                 'status' => 'EXECUTED',
@@ -274,9 +283,8 @@ final class SafeOperationService
         ];
     }
 
-    private function apply(string $operationType, string $namespace): int
+    private function apply(string $operationType, string $namespace, array $snapshot): int
     {
-        $snapshot = $this->snapshot($operationType, $namespace);
         $directory = $this->scopeDirectory($operationType, $namespace, false);
         $count = 0;
         foreach (($snapshot['affected_resources'] ?? []) as $name) {
@@ -291,6 +299,22 @@ final class SafeOperationService
             }
         }
         return $count;
+    }
+
+    /** @param array<string, mixed> $snapshot */
+    private function assertExecutableScope(string $operationType, string $namespace, array $snapshot): void
+    {
+        $directory = $this->scopeDirectory($operationType, $namespace, false);
+        if (!is_dir($directory) || !is_writable($directory)) {
+            throw new SafeOperationDenied('Escopo operacional sem permissao de escrita para o runtime.', 'filesystem_not_writable');
+        }
+
+        foreach ((array) ($snapshot['affected_resources'] ?? []) as $name) {
+            $path = $directory . DIRECTORY_SEPARATOR . basename((string) $name);
+            if (!is_file($path) || is_link($path)) {
+                throw new SafeOperationDenied('Recurso do escopo mudou antes da execucao.', 'stale_preview');
+            }
+        }
     }
 
     private function postcondition(string $operationType, string $namespace): array
