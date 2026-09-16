@@ -24,7 +24,7 @@ export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'benefits' | 'automation' | 'analytics';
 export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links' | 'featured-organizations';
 export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments';
-export type AdminSettingsSection = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
+export type AdminSettingsSection = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs' | 'safe-operations';
 
 export type AdminNavigationTab = {
   key: AdminPageTab;
@@ -158,7 +158,7 @@ export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as c
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'benefits', 'automation', 'analytics'] as const;
 export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links', 'featured-organizations'] as const;
 export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments'] as const;
-export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'gamification', 'notifications', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs'] as const;
+export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'gamification', 'notifications', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs', 'safe-operations'] as const;
 
 /**
  * Valida a seção do grupo Painel.
@@ -297,6 +297,7 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   seo: { tab: 'settings', section: 'seo' },
   performance: { tab: 'settings', section: 'performance' },
   logs: { tab: 'settings', section: 'logs' },
+  'safe-operations': { tab: 'settings', section: 'safe-operations' },
 };
 
 /**
@@ -364,6 +365,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'seo', label: 'SEO' },
     { key: 'performance', label: 'Performance' },
     { key: 'logs', label: 'Logs' },
+    { key: 'safe-operations', label: 'Operações seguras' },
   ],
 };
 
