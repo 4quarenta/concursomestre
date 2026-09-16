@@ -247,6 +247,7 @@ export const ENDPOINTS = {
         logs: 'admin/logs.php',
         files: 'admin/files.php',
         benefits: 'admin/benefits.php',
+        safeOperations: 'admin/safe-operations.php',
     },
 
     subscriptions: {

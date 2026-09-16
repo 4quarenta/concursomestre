@@ -42,6 +42,7 @@ require_once __DIR__ . '/services/AdminAnalyticsService.php';
 require_once __DIR__ . '/services/AdminCommentsModerationService.php';
 require_once __DIR__ . '/services/AdminSecurityIpsService.php';
 require_once __DIR__ . '/services/AdminPlanCatalogService.php';
+require_once __DIR__ . '/services/SafeOperationService.php';
 require_once __DIR__ . '/repositories/AdminSystemLogRepository.php';
 require_once __DIR__ . '/repositories/AdminFeedbackRepository.php';
 require_once __DIR__ . '/repositories/AdminReportModerationRepository.php';
@@ -56,6 +57,7 @@ require_once __DIR__ . '/repositories/AdminAnalyticsRepository.php';
 require_once __DIR__ . '/repositories/AdminCommentsModerationRepository.php';
 require_once __DIR__ . '/repositories/AdminSecurityIpsRepository.php';
 require_once __DIR__ . '/repositories/AdminPlanCatalogRepository.php';
+require_once __DIR__ . '/repositories/SafeOperationRepository.php';
 require_once __DIR__ . '/validators/AdminSystemLogValidator.php';
 require_once __DIR__ . '/validators/AdminFeedbackValidator.php';
 require_once __DIR__ . '/validators/AdminReportModerationValidator.php';
@@ -131,20 +133,7 @@ function handleAdminSystemLogsRoute(PDO $db, ?string $logFilePath = null): void
                 Response::error('Metodo nao permitido.', 405);
             }
 
-            $payload = $controller->clearLogs();
-
-            logAdminAudit(
-                $adminContext['db'],
-                $adminContext['admin_user_id'],
-                'clear_system_logs',
-                'system_logs',
-                null,
-                [
-                    'path' => $payload['path'],
-                ]
-            );
-
-            Response::success($payload, 'Logs limpos com sucesso.');
+            Response::conflict('A limpeza direta de logs foi desativada. Use a autoridade de Operacoes Seguras.');
         }
 
         if (!in_array($action, ['list', 'info'], true)) {
@@ -646,29 +635,8 @@ function handleAdminDatabaseResetRoute(PDO $db): void
 {
     try {
         $context = requirePlatformAdminSessionContext($db);
-        $adminUserId = (string) $context['admin_user_id'];
-        $data = json_decode(file_get_contents('php://input'), true) ?: [];
-
-        $controller = new AdminDatabaseMaintenanceController(
-            new AdminDatabaseMaintenanceService(
-                $db,
-                new AdminDatabaseMaintenanceRepository($db),
-                new AdminDatabaseMaintenanceValidator()
-            )
-        );
-
-        $payload = $controller->reset($adminUserId, $data);
-
-        logAdminAudit(
-            $db,
-            $adminUserId,
-            (string) $payload['audit_action'],
-            (string) $payload['audit_entity_type'],
-            $payload['audit_entity_id'] ?? null,
-            $payload['audit_metadata'] ?? []
-        );
-
-        Response::success($payload['data'] ?? [], (string) ($payload['message'] ?? 'Reset concluido com sucesso.'));
+        unset($context);
+        Response::conflict('O reset direto de banco foi desativado. O reset amplo permanece somente em preview pela autoridade de Operacoes Seguras.');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());
     } catch (Throwable $e) {
@@ -692,6 +660,66 @@ function handleAdminDatabaseResetRoute(PDO $db): void
 }
 
 /**
+ * Ponto unico para preview, confirmacao, execucao e historico das operacoes
+ * administrativas sensiveis. O endpoint nunca aceita alvo SQL, shell, tabela
+ * ou caminho de arquivo vindo do cliente.
+ *
+ * @since 1.0.0
+ */
+function handleAdminSafeOperationsRoute(PDO $db): void
+{
+    try {
+        $context = requirePlatformAdminSessionContext($db);
+        $adminUserId = (string) $context['admin_user_id'];
+        $sessionIdentity = (string) ($context['payload']['session_id'] ?? '');
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $action = strtolower(trim((string) ($_GET['action'] ?? 'catalog')));
+        $service = new SafeOperationService($db, new SafeOperationRepository($db));
+
+        if ($method === 'GET') {
+            if ($action === 'history') {
+                Response::success(['items' => $service->history($adminUserId)]);
+            }
+            if ($action !== 'catalog') {
+                Response::badRequest('Acao de operacao segura invalida.');
+            }
+            Response::success($service->catalog());
+        }
+
+        if ($method !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+
+        requireAdminMutationCsrf();
+        $payload = json_decode(file_get_contents('php://input') ?: '', true);
+        if (!is_array($payload)) {
+            Response::badRequest('Payload de operacao segura invalido.');
+        }
+
+        $result = match ($action) {
+            'preview' => $service->preview($adminUserId, $sessionIdentity, $payload),
+            'confirm' => $service->confirm($adminUserId, $sessionIdentity, $payload),
+            'execute' => $service->execute($adminUserId, $sessionIdentity, $payload),
+            'cleanup' => ['removed' => $service->cleanup($adminUserId, $payload)],
+            default => throw new SafeOperationDenied('Acao de operacao segura invalida.', 'unknown_action'),
+        };
+
+        Response::success($result, 'Operacao segura processada.');
+    } catch (SafeOperationDenied $exception) {
+        $status = in_array($exception->errorCode, [
+            'stale_preview', 'expired_preview', 'expired_confirmation', 'invalid_transition',
+            'operation_scope_denied', 'execution_prohibited', 'recovery_unavailable', 'invalid_confirmation',
+        ], true) ? 409 : 422;
+        Response::error($exception->getMessage(), $status, null, $exception->errorCode);
+    } catch (InvalidArgumentException $exception) {
+        Response::validationError($exception->getMessage());
+    } catch (Throwable $exception) {
+        error_log('[admin_safe_operations_route] ' . $exception->getMessage());
+        Response::serverError('Nao foi possivel processar a operacao segura.', $exception);
+    }
+}
+
+/**
  * Ponto de entrada do modulo administrativo para gerenciamento de cache.
  * Preserva o endpoint legado `api/cache/manage.php` sem manter regra procedural.
  *
@@ -705,6 +733,10 @@ function handleAdminCacheRoute(PDO $db): void
         $action = trim((string) ($_GET['action'] ?? 'stats'));
         $method = (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET');
         $body = json_decode(file_get_contents('php://input'), true) ?: [];
+
+        if (in_array($action, ['clear', 'clean'], true)) {
+            Response::conflict('A limpeza direta de cache foi desativada. Use a autoridade de Operacoes Seguras.');
+        }
 
         $controller = new AdminCacheController(
             new AdminCacheService(

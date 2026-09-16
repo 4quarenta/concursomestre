@@ -36,7 +36,6 @@ final class AdminSystemLogPathResolver
             '/var/log/php8.3-fpm.log',
             '/var/log/php8.2-fpm.log',
             '/var/log/php-fpm/error.log',
-            'C:\\xampp\\apache\\logs\\error.log',
         ];
     }
 }

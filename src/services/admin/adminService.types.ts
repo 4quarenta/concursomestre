@@ -733,6 +733,59 @@ export interface AdminDatabaseResetPayload {
   tables: string[];
 }
 
+export interface SafeOperationDefinition {
+  operation_type: string;
+  label: string;
+  risk_class: string;
+  recovery_class: string;
+  target: string;
+  execution_allowed: boolean;
+}
+
+export interface SafeOperationCatalogPayload {
+  environment: string;
+  operations: SafeOperationDefinition[];
+}
+
+export interface SafeOperationSnapshot {
+  affected_count: number;
+  affected_resources?: string[];
+  protected_resources?: string[];
+  protected_domains?: Record<string, string>;
+  schema_guard?: Record<string, unknown>;
+  execution?: string;
+  truncated?: boolean;
+}
+
+export interface SafeOperationPreviewPayload {
+  operation_id: string;
+  operation_type: string;
+  environment: string;
+  risk_class: string;
+  namespace: string;
+  snapshot: SafeOperationSnapshot;
+  preview_fingerprint: string;
+  preview_expires_at: string;
+  confirmation_required: boolean;
+  execution_allowed: boolean;
+  recovery: { class: string; status: string };
+}
+
+export interface SafeOperationConfirmationPayload {
+  operation_id: string;
+  status: string;
+  confirmation_token: string;
+  confirmation_expires_at: string;
+}
+
+export interface SafeOperationExecutionPayload {
+  operation_id: string;
+  status: string;
+  actual_count?: number;
+  postcondition?: Record<string, unknown>;
+  recovery_status?: string;
+}
+
 export interface AdminTwoFactorSetupPayload {
   secret: string;
   qrCodeUrl: string;

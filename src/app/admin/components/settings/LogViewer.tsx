@@ -11,8 +11,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Info, Loader2, RefreshCcw, Terminal, Trash2, X } from 'lucide-react';
-import { useConfirm } from '@providers/ModalProvider';
+import { Download, Info, Loader2, RefreshCcw, Terminal, X } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import { adminService, type SystemLogsPayload } from '@services/admin/adminService';
 import { clientLog } from '@services/monitoring/clientLog';
@@ -157,12 +156,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
  */
 export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded = false }) => {
   const { addToast } = useToast();
-  const confirm = useConfirm();
   const [logPayload, setLogPayload] = useState<SystemLogsPayload>({ lines: [] });
   const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [activeCategory, setActiveCategory] = useState<LogCategoryFilter>('all');
   const [displayMode, setDisplayMode] = useState<LogDisplayMode>('all');
@@ -192,30 +189,6 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
       addToast(getErrorMessage(error, 'Não foi possível baixar os logs.'), 'error');
     } finally {
       setDownloading(false);
-    }
-  };
-
-  const handleClearLogs = async () => {
-    if (clearing) return;
-    const confirmed = await confirm({
-      title: 'Limpar logs do servidor',
-      description: 'Esta ação remove o histórico atual do visualizador de logs. Deseja continuar?',
-      confirmText: 'Limpar logs',
-      cancelText: 'Cancelar',
-      type: 'danger',
-    });
-    if (!confirmed) return;
-
-    setClearing(true);
-    try {
-      const nextPayload = await adminService.clearSystemLogs();
-      setLogPayload(nextPayload);
-      setLogs(Array.isArray(nextPayload.lines) ? nextPayload.lines : []);
-      addToast('Logs limpos com sucesso.', 'success');
-    } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Não foi possível limpar os logs.'), 'error');
-    } finally {
-      setClearing(false);
     }
   };
 
@@ -350,10 +323,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
             {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Baixar
           </button>
-          <button type="button" onClick={() => void handleClearLogs()} disabled={clearing} className={`${ADMIN_SECONDARY_BUTTON_CLASS} text-rose-700 dark:text-rose-300`}>
-            {clearing ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            Limpar
-          </button>
+          <span className="border border-amber-200 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 dark:border-amber-900/40 dark:text-amber-300">Limpeza via Operações seguras</span>
           {!embedded && (
             <button type="button" onClick={onClose} className="rounded-sm p-2 text-slate-500 transition-colors hover:bg-slate-200 dark:hover:bg-slate-800">
               <X size={18} />

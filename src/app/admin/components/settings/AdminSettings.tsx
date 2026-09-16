@@ -11,11 +11,10 @@
 
 import Image from 'next/image';
 import React, { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Bell, BookOpen, CalendarDays, Clock, Copy, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
   CheckCircle2, Heart, Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Save, Settings, ShieldAlert, ShieldCheck,
-  ShoppingBag, ShoppingCart, Sparkles, Terminal, Trash2, Trophy, Upload, Users, XCircle, Zap,
+  ShoppingBag, ShoppingCart, Sparkles, Terminal, Trophy, Upload, Users, XCircle, Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import type { AdminSecurityIpsPayload, AdminSettingsTestResult } from '@services/admin/adminService';
@@ -42,6 +41,7 @@ import AdminGamificationSettingsSection from './AdminGamificationSettingsSection
 import AdminNotificationSettingsSection from './AdminNotificationSettingsSection';
 import StripePaymentMethodsSettings from './StripePaymentMethodsSettings';
 import AdminLaunchModeControl from './AdminLaunchModeControl';
+import SafeOperationsPanel from './SafeOperationsPanel';
 import { mergeSeoSettings } from './seoSettings';
 import {
   ADMIN_FIELD_CLASS,
@@ -65,7 +65,7 @@ import {
 } from '@constants/subscriptions/planEntitlements';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
-type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
+type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs' | 'safe-operations';
 type AdminSettingsTabs = React.ComponentProps<typeof AdminSettingsTabsBar>['tabs'];
 
 interface AdminIntegrationCheck {
@@ -96,7 +96,6 @@ interface AdminSettingsProps {
 
 const inputClassName = `w-full ${ADMIN_FIELD_CLASS}`;
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
-const RESET_TABLE_EXCLUSIONS = new Set(['settings', 'system_settings']);
 const DEFAULT_LIMITED_OFFER_EXTENSION_MS = 7 * 24 * 60 * 60 * 1000;
 const AD_PLAN_BENEFIT_KEYS: PlanBenefitKey[] = [
   'ads.adsense_banner',
@@ -233,14 +232,6 @@ const AdminSettings = ({
   const [twoFactorStep, setTwoFactorStep] = useState<'status' | 'setup' | 'verify'>('status');
   const [twoFactorData, setTwoFactorData] = useState<{ secret: string; qrCodeUrl: string } | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [dbTables, setDbTables] = useState<string[]>([]);
-  const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
-  const [resetPassword, setResetPassword] = useState('');
-  const [reset2FACode, setReset2FACode] = useState('');
-  const [resetConfirmText, setResetConfirmText] = useState('');
-  const [resetError, setResetError] = useState<string | null>(null);
-  const [isResetting, setIsResetting] = useState(false);
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isTestingIntegrations, setIsTestingIntegrations] = useState(false);
@@ -275,18 +266,6 @@ const AdminSettings = ({
 
     return () => cancelAnimationFrame(frame);
   }, [initialSection]);
-
-  useEffect(() => {
-    if (!isResetModalOpen) return;
-    adminService.listResettableTables().then((tables) => {
-      const resettableTables = tables
-        .filter((table) => !RESET_TABLE_EXCLUSIONS.has(String(table).trim().toLowerCase()))
-        .sort((left, right) => left.localeCompare(right, 'pt-BR'));
-
-      setDbTables(resettableTables);
-      setSelectedTables(new Set(resettableTables));
-    }).catch(() => addToast('Não foi possível carregar as tabelas do reset.', 'error'));
-  }, [isResetModalOpen, addToast]);
 
   const changeSection = (section: AdminSettingsTab) => {
     setActiveTab(section);
@@ -493,24 +472,6 @@ const AdminSettings = ({
     }
   };
 
-  const handleSystemReset = async () => {
-    if (resetConfirmText !== 'RESETAR') {
-      setResetError('Digite RESETAR para confirmar.');
-      return;
-    }
-    setIsResetting(true);
-    setResetError(null);
-    try {
-      await adminService.resetDatabase({ password: resetPassword, twoFactorCode: reset2FACode, tables: Array.from(selectedTables) });
-      addToast('Sistema resetado com sucesso. Redirecionando...', 'success');
-      setTimeout(() => { window.location.href = '/auth'; }, 1500);
-    } catch (error: unknown) {
-      setResetError(getErrorMessage(error, 'Falha ao resetar o sistema.'));
-    } finally {
-      setIsResetting(false);
-    }
-  };
-
   const handleTestSmtp = async () => {
     if (isTestingSmtp) return;
     setIsTestingSmtp(true);
@@ -662,6 +623,7 @@ const AdminSettings = ({
     { id: 'seo', label: 'SEO', icon: Globe },
     { id: 'performance', label: 'Performance', icon: Database },
     { id: 'logs', label: 'Logs', icon: FileText },
+    { id: 'safe-operations', label: 'Operações seguras', icon: ShieldCheck },
   ];
   const integrationChecks = useMemo<[string, AdminIntegrationCheck][]>(() => {
     const statusOrder: Record<string, number> = {
@@ -906,10 +868,9 @@ const AdminSettings = ({
             {twoFactorStep === 'setup' && twoFactorData && <div className="space-y-4"><Image src={twoFactorData.qrCodeUrl} alt="QR 2FA" width={160} height={160} unoptimized className="h-40 w-40 rounded-sm border border-slate-300 bg-white p-3" /><code className="block rounded-sm bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-950 dark:text-slate-100">{twoFactorData.secret}</code><button type="button" onClick={() => setTwoFactorStep('verify')} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em] dark:bg-sky-700 dark:text-white dark:hover:bg-sky-800`}>Já escaneei</button></div>}
             {twoFactorStep === 'verify' && <div className="space-y-4"><input type="text" maxLength={6} value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} placeholder="000000" className={`${inputClassName} text-center text-2xl font-black tracking-widest`} /><button type="button" onClick={verifyAndEnable2FA} className="rounded-sm border border-emerald-700 bg-emerald-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Ativar 2FA</button></div>}
           </div>
-          <div className="rounded-sm border border-rose-200 bg-rose-50 p-4 sm:p-5 md:p-6 dark:border-rose-900/30 dark:bg-rose-900/10">
-            <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-rose-700 dark:text-rose-300"><Trash2 size={20} /> Reset geral</h3>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Apaga conteúdo operacional com autenticação forte.</p>
-            <button type="button" onClick={() => setIsResetModalOpen(true)} className="mt-5 rounded-sm border border-rose-700 bg-rose-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Resetar conteúdo</button>
+          <div className="rounded-sm border border-amber-200 bg-amber-50 p-4 sm:p-5 md:p-6 dark:border-amber-900/30 dark:bg-amber-900/10">
+            <h3 className="mb-2 flex items-center gap-2 text-lg font-black text-amber-800 dark:text-amber-200"><ShieldCheck size={20} /> Operações destrutivas</h3>
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Reset amplo está bloqueado. Limpezas operacionais exigem preview e confirmação na aba Operações seguras.</p>
           </div>
           <div className={`${ADMIN_PAGE_PANEL_CLASS} lg:col-span-2`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1093,7 +1054,6 @@ const AdminSettings = ({
               </div>
             </div>
           </div>
-          {isResetModalOpen && createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md"><div className="w-full max-w-2xl rounded-2xl border border-rose-100 bg-white p-8 shadow-2xl dark:border-rose-900/30 dark:bg-slate-900"><h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Confirmação de reset</h3>{resetError && <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 dark:border-rose-900/30 dark:bg-rose-900/20"><XCircle size={18} className="mt-0.5 text-rose-600" /><p className="text-xs font-bold text-rose-800 dark:text-rose-300">{resetError}</p></div>}<div className="mt-6 space-y-4"><div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">{dbTables.map((table) => <label key={table} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={selectedTables.has(table)} onChange={() => setSelectedTables((current) => { const next = new Set(current); if (next.has(table)) { next.delete(table); } else { next.add(table); } return next; })} /><span className="font-mono">{table}</span></label>)}</div><div className="grid gap-4 md:grid-cols-2"><input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Senha do admin" className={inputClassName} /><input type="text" value={reset2FACode} onChange={(e) => setReset2FACode(e.target.value)} placeholder="Codigo 2FA" className={inputClassName} /></div><input type="text" value={resetConfirmText} onChange={(e) => setResetConfirmText(e.target.value)} placeholder="Digite RESETAR" className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-600 outline-none dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300" /></div><div className="mt-8 flex gap-3"><button type="button" onClick={() => { setIsResetModalOpen(false); setResetError(null); }} className="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancelar</button><button type="button" onClick={handleSystemReset} disabled={isResetting || resetConfirmText !== 'RESETAR'} className={`flex-[2] rounded-2xl py-4 text-[10px] font-black uppercase tracking-[0.18em] text-white ${resetConfirmText === 'RESETAR' ? 'bg-rose-600' : 'bg-slate-300'}`}>{isResetting ? <Loader2 size={14} className="mx-auto animate-spin" /> : 'Executar reset'}</button></div></div></div>, document.body)}
         </div>
       )}
 
@@ -1716,6 +1676,7 @@ const AdminSettings = ({
       )}
       {activeTab === 'performance' && <div className={ADMIN_PAGE_PANEL_CLASS}><AdminCacheManagement /></div>}
       {activeTab === 'logs' && <LogViewer isOpen embedded />}
+      {activeTab === 'safe-operations' && <SafeOperationsPanel />}
     </div>
   );
 };

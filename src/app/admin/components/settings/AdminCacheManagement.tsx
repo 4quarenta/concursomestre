@@ -10,7 +10,7 @@
 */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Clock, Database, Loader2, RefreshCcw, Trash2, X } from 'lucide-react';
+import { CheckCircle2, Clock, Database, Loader2, RefreshCcw } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import { adminService, type CacheStatsPayload } from '@services/admin/adminService';
 import {
@@ -20,7 +20,6 @@ import {
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
 } from '../shared/adminPanelStyles';
-import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 /**
  * Controle operacional do cache administrativo.
@@ -32,7 +31,6 @@ const AdminCacheManagement = () => {
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [draftTtl, setDraftTtl] = useState('300');
-  const [isClearCacheDialogOpen, setIsClearCacheDialogOpen] = useState(false);
 
   const fetchCacheStats = useCallback(async () => {
     setLoadingKey((current) => current || 'refresh');
@@ -87,7 +85,6 @@ const AdminCacheManagement = () => {
       addToast(errorMessage, 'error');
     } finally {
       setLoadingKey(null);
-      setIsClearCacheDialogOpen(false);
     }
   };
 
@@ -103,17 +100,6 @@ const AdminCacheManagement = () => {
 
   return (
     <div className="space-y-6">
-      <AdminConfirmDialog
-        isOpen={isClearCacheDialogOpen}
-        title="Limpar todo o cache"
-        description="Essa ação remove todas as entradas do cache administrativo e operacional. Use apenas quando precisar forcar uma nova reconstrucao do runtime."
-        confirmLabel="Limpar cache"
-        tone="danger"
-        loading={loadingKey === 'clear'}
-        onConfirm={() => void runAction('clear', () => adminService.clearCache())}
-        onCancel={() => setIsClearCacheDialogOpen(false)}
-      />
-
       {message && (
         <div className="flex items-center gap-2 rounded-sm border border-emerald-300 bg-emerald-50 p-4 text-sm font-medium text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/10 dark:text-emerald-300">
           <CheckCircle2 size={16} />
@@ -204,24 +190,9 @@ const AdminCacheManagement = () => {
           <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Operacoes</h4>
           <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Executa limpeza real e recarrega o estado vindo do backend oficial.</p>
           <div className="mt-6 space-y-3">
-            <button
-              type="button"
-              onClick={() => void runAction('clean', () => adminService.cleanExpiredCache())}
-              disabled={!!loadingKey}
-              className="flex w-full items-center justify-center gap-2 rounded-sm border border-amber-600 bg-amber-600 px-6 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loadingKey === 'clean' ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-              Limpar expirados
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsClearCacheDialogOpen(true)}
-              disabled={!!loadingKey}
-              className="flex w-full items-center justify-center gap-2 rounded-sm border border-rose-700 bg-rose-700 px-6 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <X size={14} />
-              Limpar todo cache
-            </button>
+            <div className="border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
+              Limpeza de cache exige preview e confirmação na aba Operações seguras.
+            </div>
             <button
               type="button"
               onClick={() => void fetchCacheStats()}

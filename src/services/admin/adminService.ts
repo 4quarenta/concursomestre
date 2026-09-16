@@ -48,6 +48,10 @@ import type {
   AdminUserActionPayload,
   AdminUserActionResult,
   AdminDatabaseResetPayload,
+  SafeOperationCatalogPayload,
+  SafeOperationPreviewPayload,
+  SafeOperationConfirmationPayload,
+  SafeOperationExecutionPayload,
   AdminTwoFactorSetupPayload,
   AdminSettingsTestResult,
   AdminQuestionListPayload,
@@ -1311,6 +1315,36 @@ export const adminService = {
       },
       15_000,
     );
+  },
+
+  async getSafeOperationCatalog(): Promise<SafeOperationCatalogPayload> {
+    const response = await requestApi<SafeOperationCatalogPayload>(apiClient.get<ApiResponse<SafeOperationCatalogPayload>>(`${ENDPOINTS.admin.safeOperations}?action=catalog`));
+    return readApiData(response, { environment: '', operations: [] });
+  },
+
+  async getSafeOperationHistory(): Promise<Array<Record<string, unknown>>> {
+    const response = await requestApi<{ items?: Array<Record<string, unknown>> }>(apiClient.get<ApiResponse<{ items?: Array<Record<string, unknown>> }>>(`${ENDPOINTS.admin.safeOperations}?action=history`));
+    return readApiData(response, { items: [] }).items || [];
+  },
+
+  async previewSafeOperation(payload: { operation_type: string; namespace: string; idempotency_key: string }): Promise<SafeOperationPreviewPayload> {
+    const response = await requestApi<SafeOperationPreviewPayload>(adminPost(`${ENDPOINTS.admin.safeOperations}?action=preview`, payload));
+    return readApiData(assertApiSuccess(response, 'Não foi possível gerar o preview da operação.'), {} as SafeOperationPreviewPayload);
+  },
+
+  async confirmSafeOperation(payload: { operation_id: string; preview_fingerprint: string }): Promise<SafeOperationConfirmationPayload> {
+    const response = await requestApi<SafeOperationConfirmationPayload>(adminPost(`${ENDPOINTS.admin.safeOperations}?action=confirm`, payload));
+    return readApiData(assertApiSuccess(response, 'Não foi possível confirmar a operação.'), {} as SafeOperationConfirmationPayload);
+  },
+
+  async executeSafeOperation(payload: { operation_id: string; preview_fingerprint: string; confirmation_token: string }): Promise<SafeOperationExecutionPayload> {
+    const response = await requestApi<SafeOperationExecutionPayload>(adminPost(`${ENDPOINTS.admin.safeOperations}?action=execute`, payload));
+    return readApiData(assertApiSuccess(response, 'Não foi possível executar a operação segura.'), {} as SafeOperationExecutionPayload);
+  },
+
+  async cleanupSafeOperation(payload: { namespace: string }): Promise<number> {
+    const response = await requestApi<{ removed?: number }>(adminPost(`${ENDPOINTS.admin.safeOperations}?action=cleanup`, payload));
+    return Number(readApiData(assertApiSuccess(response, 'Não foi possível limpar os registros da operação.'), { removed: 0 }).removed || 0);
   },
 
   async getFeedbackOperators(): Promise<AdminFeedbackOperator[]> {
