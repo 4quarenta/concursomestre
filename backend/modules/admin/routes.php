@@ -200,7 +200,7 @@ function handleAdminFeedbackRoute(PDO $db): void
             new AdminFeedbackService(
                 new AdminFeedbackRepository($db),
                 new AdminFeedbackValidator(),
-                new AdminUserCommunicationService()
+                new AdminUserCommunicationService($db)
             )
         );
 
@@ -349,7 +349,7 @@ function handleAdminReportModerationRoute(PDO $db): void
                 $db,
                 new AdminReportModerationRepository($db),
                 new AdminReportModerationValidator(),
-                new AdminUserCommunicationService()
+                new AdminUserCommunicationService($db)
             )
         );
 
@@ -406,7 +406,7 @@ function handleAdminReportWorkbenchRoute(PDO $db): void
         $controller = new AdminReportWorkbenchController(
             new AdminReportWorkbenchService(
                 new AdminReportWorkbenchRepository($db),
-                new AdminUserCommunicationService()
+                new AdminUserCommunicationService($db)
             )
         );
 

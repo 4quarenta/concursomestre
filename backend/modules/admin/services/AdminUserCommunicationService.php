@@ -13,6 +13,8 @@
 
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
+require_once __DIR__ . '/../../../config/database.php';
 
 /**
  * Servico transversal do modulo admin para comunicacao automatica com usuarios.
@@ -20,6 +22,13 @@ require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
  */
 class AdminUserCommunicationService
 {
+    private ?PDO $db;
+
+    public function __construct(?PDO $db = null)
+    {
+        $this->db = $db;
+    }
+
     /**
      * Envia o email disparado quando o admin responde uma conversa de feedback.
      *
@@ -77,12 +86,13 @@ class AdminUserCommunicationService
         );
 
         if ($template['enabled']) {
-            Mailer::send(
+            $this->queueTransactionalEmail(
+                'support.feedback.reply',
+                'feedback:reply:' . (string) ($thread['id'] ?? $thread['feedback_id'] ?? 'unknown') . ':' . hash('sha256', $replyMessage),
+                $thread,
                 $email,
                 $userName,
-                $template['subject'],
-                $template['htmlBody'],
-                $template['textBody']
+                $template
             );
         }
     }
@@ -143,12 +153,13 @@ class AdminUserCommunicationService
         );
 
         if ($template['enabled']) {
-            Mailer::send(
+            $this->queueTransactionalEmail(
+                'support.feedback.status',
+                'feedback:status:' . (string) ($thread['id'] ?? $thread['feedback_id'] ?? 'unknown') . ':' . $status,
+                $thread,
                 $email,
                 $userName,
-                $template['subject'],
-                $template['htmlBody'],
-                $template['textBody']
+                $template
             );
         }
     }
@@ -226,14 +237,54 @@ class AdminUserCommunicationService
         );
 
         if ($template['enabled']) {
-            Mailer::send(
+            $this->queueTransactionalEmail(
+                'support.report.decision',
+                'report:decision:' . (string) ($report['id'] ?? $report['report_id'] ?? 'unknown') . ':' . $action . ':' . hash('sha256', $adminReason),
+                $report,
                 $email,
                 $userName,
-                $template['subject'],
-                $template['htmlBody'],
-                $template['textBody']
+                $template
             );
         }
+    }
+
+    private function queueTransactionalEmail(
+        string $eventType,
+        string $idempotencyKey,
+        array $recipientContext,
+        string $email,
+        string $userName,
+        array $template
+    ): void {
+        if (!$template['enabled']) {
+            return;
+        }
+
+        $recipientUserId = trim((string) ($recipientContext['user_id'] ?? $recipientContext['userId'] ?? $recipientContext['reporter_id'] ?? ''));
+        CommunicationService::fromDatabase($this->database())->publish([
+            'eventType' => $eventType,
+            'idempotencyKey' => $idempotencyKey,
+            'deliveryClass' => CommunicationPolicy::CLASS_TRANSACTIONAL,
+            'recipientUserId' => $recipientUserId !== '' ? $recipientUserId : null,
+            'recipientEmail' => $email,
+            'channels' => [CommunicationPolicy::CHANNEL_EMAIL],
+            'payload' => [
+                'recipientName' => $userName,
+                'emailSubject' => $template['subject'],
+                'emailHtml' => $template['htmlBody'],
+                'emailText' => $template['textBody'],
+            ],
+        ]);
+    }
+
+    private function database(): PDO
+    {
+        if ($this->db instanceof PDO) {
+            return $this->db;
+        }
+
+        $this->db = (new Database())->getConnection();
+        return $this->db;
     }
 
     /**

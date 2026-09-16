@@ -6,6 +6,7 @@ require_once __DIR__ . '/../repositories/MarketingAutomationRepository.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 
 /**
  * Executor das regras de campanha salvas no painel de marketing.
@@ -75,7 +76,7 @@ class MarketingAutomationService
                 }
 
                 $summary['eligible']++;
-                $eventKey = $this->buildEventKey($campaignSlug, $rule);
+                $eventKey = $this->buildEventKey($campaignSlug, $rule, $userId);
 
                 if ($dryRun) {
                     $result['claimed']++;
@@ -176,18 +177,12 @@ class MarketingAutomationService
         $title = $this->personalize($rule['subject'], $user, $promotion);
         $message = $this->personalize($rule['message'], $user, $promotion);
 
+        $channels = [];
         if (in_array($rule['channel'], ['notification', 'both'], true)) {
-            $delivery['notification'] = createNotification(
-                $this->repository->getConnection(),
-                $userId,
-                $title,
-                $message,
-                'info',
-                'system',
-                $actionUrl
-            );
+            $channels[] = CommunicationPolicy::CHANNEL_IN_APP;
         }
 
+        $emailPayload = [];
         if (in_array($rule['channel'], ['email', 'both'], true) && $email !== '') {
             $absoluteActionUrl = $this->absoluteAppUrl($actionUrl);
             $messageHtml = nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
@@ -214,13 +209,39 @@ class MarketingAutomationService
                 $this->repository->getConnection()
             );
 
-            $delivery['email'] = Mailer::send(
-                $email,
-                $userName,
-                $template['subject'],
-                $template['htmlBody'],
-                $template['textBody']
-            );
+            $channels[] = CommunicationPolicy::CHANNEL_EMAIL;
+            $emailPayload = [
+                'recipientName' => $userName,
+                'emailSubject' => $template['subject'],
+                'emailHtml' => $template['htmlBody'],
+                'emailText' => $template['textBody'],
+            ];
+        }
+
+        if ($channels !== []) {
+            $result = CommunicationService::fromDatabase($this->repository->getConnection())->publish([
+                'eventType' => 'marketing.campaign.message',
+                'idempotencyKey' => 'marketing:' . $userId . ':' . $this->buildEventKey(
+                    $this->normalizeSlug((string) ($promotion['slug'] ?? $promotion['name'] ?? 'campanha')),
+                    $rule,
+                    $userId
+                ),
+                'deliveryClass' => CommunicationPolicy::CLASS_MARKETING,
+                'recipientUserId' => $userId,
+                'recipientEmail' => $email,
+                'channels' => $channels,
+                'title' => $title,
+                'message' => $message,
+                'type' => 'info',
+                'category' => 'system',
+                'link' => $actionUrl,
+                'payload' => array_merge([
+                    'campaign' => trim((string) ($promotion['name'] ?? '')),
+                    'actionUrl' => $actionUrl,
+                ], $emailPayload),
+            ]);
+            $delivery['notification'] = ($result['channels'][CommunicationPolicy::CHANNEL_IN_APP] ?? null) === 'processed';
+            $delivery['email'] = in_array($result['channels'][CommunicationPolicy::CHANNEL_EMAIL] ?? null, ['queued', 'processed'], true);
         }
 
         return $delivery;
@@ -235,9 +256,9 @@ class MarketingAutomationService
         ]);
     }
 
-    private function buildEventKey(string $campaignSlug, array $rule): string
+    private function buildEventKey(string $campaignSlug, array $rule, string $userId): string
     {
-        return $campaignSlug . ':' . $rule['condition'];
+        return $campaignSlug . ':' . $rule['condition'] . ':' . $userId;
     }
 
     private function emptySummary(): array

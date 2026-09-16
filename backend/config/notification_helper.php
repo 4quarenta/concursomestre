@@ -13,6 +13,21 @@
 
 // config/notification_helper.php
 require_once __DIR__ . '/../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/../shared/communications/CommunicationService.php';
+
+function notificationHelperCommunicationFoundationAvailable(PDO $db): bool
+{
+    try {
+        $stmt = $db->query(
+            "SELECT COUNT(*) FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME IN ('communication_intents', 'communication_deliveries', 'communication_preferences', 'communication_audit_events')"
+        );
+        return (int) $stmt->fetchColumn() === 4;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
 function notificationHelperReadSystemSetting(PDO $db, string $key, $fallback = null)
 {
     try {
@@ -211,6 +226,26 @@ function createNotification(
                 $financialAmount,
                 $financialAmountLabel
             );
+        }
+
+        if (notificationHelperCommunicationFoundationAvailable($db)) {
+            // O helper legado nao recebe a identidade do agregado. Nao invente
+            // uma chave semantica que possa suprimir duas notificacoes legitimas.
+            $idempotencySeed = 'legacy-notification:' . bin2hex(random_bytes(16));
+            $result = CommunicationService::fromDatabase($db)->publish([
+                'eventType' => 'notification.' . ($ruleKey !== null && trim($ruleKey) !== '' ? trim($ruleKey) : 'legacy'),
+                'idempotencyKey' => $idempotencySeed,
+                'deliveryClass' => CommunicationPolicy::CLASS_TRANSACTIONAL,
+                'recipientUserId' => $userId,
+                'channels' => [CommunicationPolicy::CHANNEL_IN_APP],
+                'title' => $title,
+                'message' => $message,
+                'type' => $type,
+                'category' => $category,
+                'link' => $link,
+                'payload' => ['source' => 'notification_helper'],
+            ]);
+            return (bool) ($result['created'] ?? false);
         }
 
         ensureNotificationTableSupportsCurrentContract($db);

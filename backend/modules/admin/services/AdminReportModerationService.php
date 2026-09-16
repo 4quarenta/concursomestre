@@ -42,7 +42,7 @@ class AdminReportModerationService
         $this->db = $db;
         $this->repository = $repository;
         $this->validator = $validator;
-        $this->communicationService = $communicationService ?? new AdminUserCommunicationService();
+        $this->communicationService = $communicationService ?? new AdminUserCommunicationService($db);
     }
 
     /**

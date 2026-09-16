@@ -55,8 +55,9 @@ foreach ([
 }
 
 foreach ([
-    'createNotification',
-    'Mailer::send',
+    'CommunicationService',
+    'CommunicationPolicy::CHANNEL_IN_APP',
+    'CommunicationPolicy::CHANNEL_EMAIL',
     'resolveSystemEmailTemplate',
     'marketing_campaign_message',
     'normalizeActionUrl',

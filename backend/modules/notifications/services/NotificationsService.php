@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 
 /*
 * ----------------------------------------------------
@@ -216,6 +217,34 @@ class NotificationsService
                 'created_at' => date('Y-m-d H:i:s'),
             ];
 
+            if ($this->communicationFoundationAvailable()) {
+                $result = CommunicationService::fromDatabase($this->repository->getConnection())->publish([
+                    'eventType' => 'system.admin.alert',
+                    'idempotencyKey' => 'admin-notification:' . $authenticatedUserId . ':' . $targetUserId . ':' . hash('sha256', implode('|', [
+                        $notification['title'],
+                        $notification['message'],
+                        (string) ($notification['link'] ?? ''),
+                        (string) ($notification['event_key'] ?? ''),
+                    ])),
+                    'deliveryClass' => CommunicationPolicy::CLASS_TRANSACTIONAL,
+                    'recipientUserId' => (string) $targetUserId,
+                    'channels' => [CommunicationPolicy::CHANNEL_IN_APP],
+                    'title' => $notification['title'],
+                    'message' => $notification['message'],
+                    'type' => $notification['type'],
+                    'category' => $notification['category'],
+                    'link' => $notification['link'],
+                    'evidenceUrl' => $notification['evidence_url'],
+                    'entityType' => $notification['entity_type'],
+                    'entityId' => $notification['entity_id'],
+                    'actionKey' => $notification['action_key'],
+                ]);
+                if (!empty($result['created'])) {
+                    $created[] = $this->mapNotificationRow($notification);
+                }
+                continue;
+            }
+
             $this->repository->insert($notification);
             $created[] = $this->mapNotificationRow($notification);
         }
@@ -300,5 +329,19 @@ class NotificationsService
         }
 
         return SignedKeysetCursor::encode('notifications.list', $createdAt, $id);
+    }
+
+    private function communicationFoundationAvailable(): bool
+    {
+        try {
+            $stmt = $this->repository->getConnection()->query(
+                "SELECT COUNT(*) FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME IN ('communication_intents', 'communication_deliveries', 'communication_preferences', 'communication_audit_events')"
+            );
+            return (int) $stmt->fetchColumn() === 4;
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 }

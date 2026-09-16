@@ -11,6 +11,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../shared/events/TransactionalOutbox.php';
 require_once __DIR__ . '/../../modules/questions/repositories/QuestionsRepository.php';
 require_once __DIR__ . '/../../modules/questions/services/QuestionsRewardService.php';
+require_once __DIR__ . '/../../shared/communications/CommunicationService.php';
 
 $limit = max(1, min(100, (int) ($argv[1] ?? 25)));
 $workerSlot = preg_replace('/[^a-zA-Z0-9_-]/', '-', trim((string) (getenv('WORKER_SLOT') ?: 'manual'))) ?: 'manual';
@@ -19,6 +20,7 @@ $db = (new Database())->getConnection();
 $outbox = new TransactionalOutbox($db);
 $repository = new QuestionsRepository($db);
 $rewards = new QuestionsRewardService($repository);
+$communications = CommunicationService::fromDatabase($db);
 $processed = 0;
 $failed = 0;
 
@@ -36,6 +38,12 @@ foreach ($outbox->claimBatch($workerId, $limit) as $event) {
                 throw new RuntimeException('Evento de resposta sem usuario.');
             }
             $rewards->applyAnswerProgressRewards($userId, !empty($payload['isCorrect']));
+        } elseif ((string) ($event['event_type'] ?? '') === 'communication.intent.dispatch') {
+            $intentId = trim((string) ($payload['intentId'] ?? ''));
+            if ($intentId === '') {
+                throw new RuntimeException('Evento de comunicacao sem intentId.');
+            }
+            $communications->dispatchEmail($intentId);
         } else {
             throw new RuntimeException('Tipo de evento sem consumidor: ' . (string) ($event['event_type'] ?? ''));
         }

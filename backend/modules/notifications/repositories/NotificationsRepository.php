@@ -32,6 +32,11 @@ class NotificationsRepository
         $this->ensureSchema();
     }
 
+    public function getConnection(): PDO
+    {
+        return $this->db;
+    }
+
     /**
      * Lista as notificacoes mais recentes do destinatario informado.
      *

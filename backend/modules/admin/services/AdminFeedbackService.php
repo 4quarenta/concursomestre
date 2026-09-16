@@ -37,7 +37,8 @@ class AdminFeedbackService
     ) {
         $this->repository = $repository;
         $this->validator = $validator;
-        $this->communicationService = $communicationService ?? new AdminUserCommunicationService();
+        $this->communicationService = $communicationService
+            ?? new AdminUserCommunicationService($repository->getConnection());
     }
 
     /**
