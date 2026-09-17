@@ -15,6 +15,7 @@ require_once __DIR__ . '/../repositories/AuthRepository.php';
 require_once __DIR__ . '/../validators/AuthValidator.php';
 require_once __DIR__ . '/../../../shared/auth/AuthSession.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../../shared/auth/GoogleAuthenticator.php';
 require_once __DIR__ . '/../../../shared/legal/LegalAcceptance.php';
@@ -909,13 +910,20 @@ class AuthService
         );
 
         if ($template['enabled']) {
-            Mailer::send(
-                (string) $normalized['email'],
-                (string) $user['name'],
-                $template['subject'],
-                $template['htmlBody'],
-                $template['textBody']
-            );
+            CommunicationService::queueEmail($this->repository->getConnection(), [
+                'eventType' => 'auth.password.reset',
+                'idempotencyKey' => 'auth-password-reset:' . (string) $user['id'] . ':' . (string) $token,
+                'recipientUserId' => (string) $user['id'],
+                'recipientEmail' => (string) $normalized['email'],
+                'recipientName' => (string) $user['name'],
+                'subject' => $template['subject'],
+                'html' => $template['htmlBody'],
+                'text' => $template['textBody'],
+                'templateKey' => 'auth_password_reset',
+                'category' => 'account',
+                'entityType' => 'password_reset',
+                'entityId' => (string) $token,
+            ]);
         }
 
         return [
@@ -1018,13 +1026,20 @@ class AuthService
         );
 
         if ($template['enabled']) {
-            Mailer::send(
-                (string) $user['email'],
-                (string) $user['name'],
-                $template['subject'],
-                $template['htmlBody'],
-                $template['textBody']
-            );
+            CommunicationService::queueEmail($this->repository->getConnection(), [
+                'eventType' => 'auth.email.confirmation.resend',
+                'idempotencyKey' => 'auth-confirmation-resend:' . (string) $user['id'] . ':' . $token,
+                'recipientUserId' => (string) $user['id'],
+                'recipientEmail' => (string) $user['email'],
+                'recipientName' => (string) $user['name'],
+                'subject' => $template['subject'],
+                'html' => $template['htmlBody'],
+                'text' => $template['textBody'],
+                'templateKey' => 'auth_email_confirmation_resend',
+                'category' => 'account',
+                'entityType' => 'email_verification',
+                'entityId' => $token,
+            ]);
         }
 
         return [
@@ -1780,7 +1795,19 @@ class AuthService
         }
 
         try {
-            Mailer::send($email, $name, $template['subject'], $template['htmlBody'], $template['textBody']);
+            CommunicationService::queueEmail($this->repository->getConnection(), [
+                'eventType' => 'auth.email.confirmation',
+                'idempotencyKey' => 'auth-confirmation:' . $token,
+                'recipientEmail' => $email,
+                'recipientName' => $name,
+                'subject' => $template['subject'],
+                'html' => $template['htmlBody'],
+                'text' => $template['textBody'],
+                'templateKey' => 'auth_email_confirmation',
+                'category' => 'account',
+                'entityType' => 'email_verification',
+                'entityId' => $token,
+            ]);
 
             return [
                 'status' => 'sent',
@@ -1835,7 +1862,19 @@ class AuthService
 
         try {
             if ($template['enabled']) {
-                Mailer::send($email, $name, $template['subject'], $template['htmlBody'], $template['textBody']);
+                CommunicationService::queueEmail($this->repository->getConnection(), [
+                    'eventType' => 'auth.account.welcome',
+                    'idempotencyKey' => 'auth-welcome:' . strtolower($email),
+                    'recipientEmail' => $email,
+                    'recipientName' => $name,
+                    'subject' => $template['subject'],
+                    'html' => $template['htmlBody'],
+                    'text' => $template['textBody'],
+                    'templateKey' => 'auth_welcome',
+                    'category' => 'account',
+                    'entityType' => 'user',
+                    'entityId' => strtolower($email),
+                ]);
             }
         } catch (Throwable $e) {
             error_log('Welcome mailer error: ' . $e->getMessage());

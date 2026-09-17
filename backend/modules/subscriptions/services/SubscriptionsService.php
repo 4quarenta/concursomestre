@@ -19,6 +19,7 @@ require_once __DIR__ . '/../../transactions/services/TransactionsRefundSupport.p
 require_once __DIR__ . '/../../transactions/services/RefundRetentionExpiryProcessor.php';
 require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../../config/stripe.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
@@ -2463,7 +2464,7 @@ class SubscriptionsService
             );
 
             if ($template['enabled']) {
-                Mailer::send((string) $admin['email'], (string) $admin['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+                $this->queueTransactionalEmail('billing.subscription.admin_refund_pending', 'subscription-refund-pending:' . $transactionId . ':admin:' . (string) $admin['id'], $admin, $template, 'subscription_refund_pending_admin', 'billing', 'transaction', $transactionId);
             }
         } catch (Throwable $error) {
             error_log('[subscriptions_service] admin pending refund notification error: ' . $error->getMessage());
@@ -4817,7 +4818,7 @@ class SubscriptionsService
         );
 
         if ($template['enabled']) {
-            Mailer::send((string) $user['email'], (string) $user['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+            $this->queueTransactionalEmail('billing.refund.completed', 'subscription-refund-completed:' . (string) ($transaction['id'] ?? $user['id'] ?? ''), $user, $template, 'subscription_refund_processed', 'billing', 'subscription', (string) ($subscription['id'] ?? $user['id'] ?? ''));
         }
     }
 
@@ -6033,13 +6034,7 @@ class SubscriptionsService
                         continue;
                     }
 
-                    Mailer::send(
-                        (string) $admin['email'],
-                        (string) ($admin['name'] ?? 'Admin'),
-                        (string) $template['subject'],
-                        (string) $template['htmlBody'],
-                        (string) $template['textBody']
-                    );
+                    $this->queueTransactionalEmail('billing.subscription.admin_transaction', 'subscription-admin-transaction:' . ($invoiceId !== '' ? $invoiceId : hash('sha256', $message)) . ':admin:' . (string) $admin['id'], $admin, $template, 'subscription_new_admin', 'billing', 'invoice', $invoiceId !== '' ? $invoiceId : null);
                 } catch (Throwable $adminEmailError) {
                     error_log('[subscriptions_service] financial admin subscription email recipient error: ' . $adminEmailError->getMessage());
                 }
@@ -7366,13 +7361,7 @@ class SubscriptionsService
             );
 
             if ($template['enabled']) {
-                Mailer::send(
-                    (string) $user['email'],
-                    (string) $user['name'],
-                    $template['subject'],
-                    $template['htmlBody'],
-                    $template['textBody']
-                );
+                $this->queueTransactionalEmail('billing.subscription.cancellation', 'subscription-cancellation:' . (string) ($subscription['id'] ?? $user['id'] ?? '') . ':refund', $user, $template, 'subscription_cancellation_outcome', 'billing', 'subscription', (string) ($subscription['id'] ?? $user['id'] ?? ''));
             }
             return;
         }
@@ -7408,13 +7397,7 @@ class SubscriptionsService
             );
 
             if ($template['enabled']) {
-                Mailer::send(
-                    (string) $user['email'],
-                    (string) $user['name'],
-                    $template['subject'],
-                    $template['htmlBody'],
-                    $template['textBody']
-                );
+                $this->queueTransactionalEmail('billing.subscription.cancellation', 'subscription-cancellation:' . (string) ($subscription['id'] ?? $user['id'] ?? '') . ':pending', $user, $template, 'subscription_cancellation_outcome', 'billing', 'subscription', (string) ($subscription['id'] ?? $user['id'] ?? ''));
             }
             return;
         }
@@ -7448,13 +7431,32 @@ class SubscriptionsService
         );
 
         if ($template['enabled']) {
-            Mailer::send(
-                (string) $user['email'],
-                (string) $user['name'],
-                $template['subject'],
-                $template['htmlBody'],
-                $template['textBody']
-            );
+            $this->queueTransactionalEmail('billing.subscription.cancellation', 'subscription-cancellation:' . (string) ($subscription['id'] ?? $user['id'] ?? '') . ':closed', $user, $template, 'subscription_cancellation_outcome', 'billing', 'subscription', (string) ($subscription['id'] ?? $user['id'] ?? ''));
         }
+    }
+    private function queueTransactionalEmail(
+        string $eventType,
+        string $idempotencyKey,
+        array $recipient,
+        array $template,
+        string $templateKey,
+        string $category,
+        string $entityType,
+        ?string $entityId
+    ): void {
+        CommunicationService::queueEmail($this->db, [
+            'eventType' => $eventType,
+            'idempotencyKey' => $idempotencyKey,
+            'recipientUserId' => $recipient['id'] ?? null,
+            'recipientEmail' => (string) ($recipient['email'] ?? ''),
+            'recipientName' => (string) ($recipient['name'] ?? 'Usuário'),
+            'subject' => (string) $template['subject'],
+            'html' => (string) $template['htmlBody'],
+            'text' => (string) $template['textBody'],
+            'templateKey' => $templateKey,
+            'category' => $category,
+            'entityType' => $entityType,
+            'entityId' => $entityId,
+        ]);
     }
 }

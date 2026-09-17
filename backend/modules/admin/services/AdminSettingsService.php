@@ -15,6 +15,7 @@ require_once __DIR__ . '/../repositories/AdminSettingsRepository.php';
 require_once __DIR__ . '/../validators/AdminSettingsValidator.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/EmailProviderAdapter.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../subscriptions/services/SubscriptionsService.php';
 require_once __DIR__ . '/../../subscriptions/repositories/SubscriptionsRepository.php';
@@ -246,7 +247,7 @@ class AdminSettingsService
             'APP_ENV' => (string) ($payload['appMode'] ?? 'production'),
             'MAIL_CONFIG_DISABLE_DATABASE' => '1',
         ], function () use ($smtpData, &$message): void {
-            Mailer::send(
+            (new EmailProviderAdapter())->send(
                 $smtpData['targetEmail'],
                 'Administrador',
                 'Teste SMTP - ConcursoMestre',
@@ -305,7 +306,7 @@ class AdminSettingsService
             'APP_ENV' => (string) ($payload['appMode'] ?? 'production'),
             'MAIL_CONFIG_DISABLE_DATABASE' => '1',
         ], function () use ($smtpData, $template, $templateName, &$message): void {
-            Mailer::send(
+            (new EmailProviderAdapter())->send(
                 $smtpData['targetEmail'],
                 'Administrador',
                 '[TESTE] ' . (string) $template['subject'],

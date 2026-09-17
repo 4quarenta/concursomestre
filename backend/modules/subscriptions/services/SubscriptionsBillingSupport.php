@@ -21,6 +21,7 @@
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../config/stripe.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 
@@ -2376,13 +2377,20 @@ function sendSubscriptionWelcomeEmail(PDO $db, array $user, array $subscriptionC
     );
 
     if ($template['enabled']) {
-        Mailer::send(
-            $email,
-            (string) ($user['name'] ?? 'Assinante'),
-            $template['subject'],
-            $template['htmlBody'],
-            $template['textBody']
-        );
+        CommunicationService::queueEmail($db, [
+            'eventType' => 'billing.subscription.welcome',
+            'idempotencyKey' => 'subscription-welcome:' . getBestTransactionReference($transaction, (string) ($subscriptionContext['provider_subscription_id'] ?? $email)),
+            'recipientUserId' => $user['id'] ?? null,
+            'recipientEmail' => $email,
+            'recipientName' => (string) ($user['name'] ?? 'Assinante'),
+            'subject' => $template['subject'],
+            'html' => $template['htmlBody'],
+            'text' => $template['textBody'],
+            'templateKey' => 'subscription_welcome',
+            'category' => 'billing',
+            'entityType' => 'subscription',
+            'entityId' => (string) ($subscriptionContext['id'] ?? $subscriptionContext['provider_subscription_id'] ?? $email),
+        ]);
     }
 }
 
@@ -2588,13 +2596,20 @@ function sendStripePaymentReceiptEmail(PDO $db, array $user, array $subscription
     );
 
     if ($template['enabled']) {
-        Mailer::send(
-            $email,
-            (string) ($user['name'] ?? 'Assinante'),
-            $template['subject'],
-            $template['htmlBody'],
-            $template['textBody']
-        );
+        CommunicationService::queueEmail($db, [
+            'eventType' => 'billing.subscription.payment_receipt',
+            'idempotencyKey' => 'subscription-payment-receipt:' . getBestTransactionReference($transaction, (string) ($invoiceContext['invoice_id'] ?? $email)),
+            'recipientUserId' => $user['id'] ?? null,
+            'recipientEmail' => $email,
+            'recipientName' => (string) ($user['name'] ?? 'Assinante'),
+            'subject' => $template['subject'],
+            'html' => $template['htmlBody'],
+            'text' => $template['textBody'],
+            'templateKey' => 'subscription_payment_receipt',
+            'category' => 'billing',
+            'entityType' => 'invoice',
+            'entityId' => (string) ($invoiceContext['invoice_id'] ?? $transaction['id'] ?? $email),
+        ]);
     }
 }
 
@@ -2656,13 +2671,20 @@ function sendStripePaymentFailureEmail(PDO $db, array $user, array $subscription
     );
 
     if ($template['enabled']) {
-        Mailer::send(
-            $email,
-            (string) ($user['name'] ?? 'Assinante'),
-            $template['subject'],
-            $template['htmlBody'],
-            $template['textBody']
-        );
+        CommunicationService::queueEmail($db, [
+            'eventType' => 'billing.subscription.payment_failed',
+            'idempotencyKey' => 'subscription-payment-failed:' . (string) ($invoiceContext['invoice_id'] ?? $subscriptionContext['provider_subscription_id'] ?? $email),
+            'recipientUserId' => $user['id'] ?? null,
+            'recipientEmail' => $email,
+            'recipientName' => (string) ($user['name'] ?? 'Assinante'),
+            'subject' => $template['subject'],
+            'html' => $template['htmlBody'],
+            'text' => $template['textBody'],
+            'templateKey' => 'subscription_payment_failed',
+            'category' => 'billing',
+            'entityType' => 'invoice',
+            'entityId' => (string) ($invoiceContext['invoice_id'] ?? $subscriptionContext['provider_subscription_id'] ?? $email),
+        ]);
     }
 }
 
@@ -2738,13 +2760,20 @@ function sendStripeRenewalReminderEmail(PDO $db, array $user, array $subscriptio
     );
 
     if ($template['enabled']) {
-        Mailer::send(
-            $email,
-            (string) ($user['name'] ?? 'Assinante'),
-            $template['subject'],
-            $template['htmlBody'],
-            $template['textBody']
-        );
+        CommunicationService::queueEmail($db, [
+            'eventType' => 'billing.subscription.renewal_reminder',
+            'idempotencyKey' => 'subscription-renewal-reminder:' . (string) ($forecast['reminder_key'] ?? $forecast['date'] ?? $email),
+            'recipientUserId' => $user['id'] ?? null,
+            'recipientEmail' => $email,
+            'recipientName' => (string) ($user['name'] ?? 'Assinante'),
+            'subject' => $template['subject'],
+            'html' => $template['htmlBody'],
+            'text' => $template['textBody'],
+            'templateKey' => (string) ($notice['template_key'] ?? 'subscription_renewal_reminder'),
+            'category' => 'billing',
+            'entityType' => 'subscription',
+            'entityId' => (string) ($subscriptionContext['id'] ?? $subscriptionContext['provider_subscription_id'] ?? $email),
+        ]);
     }
 }
 

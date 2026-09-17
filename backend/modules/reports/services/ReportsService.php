@@ -14,6 +14,7 @@
 require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../../shared/pagination/SignedKeysetCursor.php';
 
@@ -211,7 +212,20 @@ class ReportsService
             );
 
             if ($template['enabled']) {
-                Mailer::send((string) $admin['email'], (string) $admin['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+                CommunicationService::queueEmail($this->repository->getConnection(), [
+                    'eventType' => 'moderation.report.created',
+                    'idempotencyKey' => 'moderation-report:' . $reportId . ':admin:' . (string) $admin['id'],
+                    'recipientUserId' => (string) $admin['id'],
+                    'recipientEmail' => (string) $admin['email'],
+                    'recipientName' => (string) $admin['name'],
+                    'subject' => $template['subject'],
+                    'html' => $template['htmlBody'],
+                    'text' => $template['textBody'],
+                    'templateKey' => 'report_created_admin',
+                    'category' => 'moderation',
+                    'entityType' => 'report',
+                    'entityId' => $reportId,
+                ]);
             }
         } catch (Throwable $e) {
             error_log('[ReportsService] Falha ao notificar admin por e-mail: ' . $e->getMessage());

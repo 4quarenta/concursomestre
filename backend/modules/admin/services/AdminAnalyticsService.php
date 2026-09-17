@@ -17,6 +17,8 @@ require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSuppor
 require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
 require_once __DIR__ . '/../../finance/services/ReferralFinance.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
+require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 
 /**
  * Service analitico do admin.
@@ -1388,13 +1390,20 @@ class AdminAnalyticsService
         );
 
         if ($template['enabled']) {
-            Mailer::send(
-                $email,
-                (string) ($user['name'] ?? 'Assinante'),
-                $template['subject'],
-                $template['htmlBody'],
-                $template['textBody']
-            );
+            CommunicationService::queueEmail($db, [
+                'eventType' => 'billing.subscription.payment_method_update',
+                'idempotencyKey' => 'subscription-payment-method-update:' . (string) ($subscriptionContext['id'] ?? $invoiceContext['invoice_id'] ?? $email),
+                'recipientUserId' => $user['id'] ?? null,
+                'recipientEmail' => $email,
+                'recipientName' => (string) ($user['name'] ?? 'Assinante'),
+                'subject' => $template['subject'],
+                'html' => $template['htmlBody'],
+                'text' => $template['textBody'],
+                'templateKey' => 'subscription_payment_method_update',
+                'category' => 'billing',
+                'entityType' => 'subscription',
+                'entityId' => (string) ($subscriptionContext['id'] ?? $invoiceContext['invoice_id'] ?? $email),
+            ]);
         }
     }
 

@@ -14,6 +14,7 @@
 require_once __DIR__ . '/../repositories/TransactionsRepository.php';
 require_once __DIR__ . '/../validators/TransactionsValidator.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/TransactionsRefundSupport.php';
 require_once __DIR__ . '/../../finance/services/FinancialLedger.php';
@@ -1115,7 +1116,20 @@ class TransactionsService
         );
 
         if ($template['enabled']) {
-            Mailer::send((string) $user['email'], (string) $user['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+            CommunicationService::queueEmail($this->db, [
+                'eventType' => 'billing.refund.completed',
+                'idempotencyKey' => 'transaction-refund-completed:' . $transactionId,
+                'recipientUserId' => $userId,
+                'recipientEmail' => (string) $user['email'],
+                'recipientName' => (string) $user['name'],
+                'subject' => $template['subject'],
+                'html' => $template['htmlBody'],
+                'text' => $template['textBody'],
+                'templateKey' => 'transaction_refund_completed',
+                'category' => 'billing',
+                'entityType' => 'transaction',
+                'entityId' => $transactionId,
+            ]);
         }
     }
 
@@ -1178,7 +1192,20 @@ class TransactionsService
         );
 
         if ($template['enabled']) {
-            Mailer::send((string) $user['email'], (string) $user['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+            CommunicationService::queueEmail($this->db, [
+                'eventType' => 'billing.refund.retention_offer.created',
+                'idempotencyKey' => 'transaction-retention-offer:' . (string) ($offer['id'] ?? $transaction['id'] ?? $userId),
+                'recipientUserId' => $userId,
+                'recipientEmail' => (string) $user['email'],
+                'recipientName' => (string) $user['name'],
+                'subject' => $template['subject'],
+                'html' => $template['htmlBody'],
+                'text' => $template['textBody'],
+                'templateKey' => 'transaction_refund_retention_offer',
+                'category' => 'refund_retention',
+                'entityType' => 'refund_retention_offer',
+                'entityId' => (string) ($offer['id'] ?? $transaction['id'] ?? $userId),
+            ]);
         }
     }
 
@@ -1389,7 +1416,20 @@ class TransactionsService
             );
 
             if ($template['enabled']) {
-                Mailer::send((string) $admin['email'], (string) $admin['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+                CommunicationService::queueEmail($this->db, [
+                    'eventType' => 'billing.refund.requested',
+                    'idempotencyKey' => 'transaction-refund-requested:' . $transactionId . ':admin:' . (string) $admin['id'],
+                    'recipientUserId' => (string) $admin['id'],
+                    'recipientEmail' => (string) $admin['email'],
+                    'recipientName' => (string) $admin['name'],
+                    'subject' => $template['subject'],
+                    'html' => $template['htmlBody'],
+                    'text' => $template['textBody'],
+                    'templateKey' => 'transaction_refund_request_admin',
+                    'category' => 'billing',
+                    'entityType' => 'transaction',
+                    'entityId' => $transactionId,
+                ]);
             }
         } catch (Throwable $e) {
             error_log('[transactions_service] admin refund request email error: ' . $e->getMessage());

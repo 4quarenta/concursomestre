@@ -14,6 +14,7 @@
 require_once __DIR__ . '/../../../config/gamification_helper.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 
 /**
@@ -400,7 +401,20 @@ class FeedbackService
             );
 
             if ($template['enabled']) {
-                Mailer::send((string) $admin['email'], (string) $admin['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+                CommunicationService::queueEmail($this->repository->getConnection(), [
+                    'eventType' => 'support.platform_rating.created',
+                    'idempotencyKey' => 'platform-rating:' . $feedbackId . ':admin:' . (string) $admin['id'],
+                    'recipientUserId' => (string) $admin['id'],
+                    'recipientEmail' => (string) $admin['email'],
+                    'recipientName' => (string) $admin['name'],
+                    'subject' => $template['subject'],
+                    'html' => $template['htmlBody'],
+                    'text' => $template['textBody'],
+                    'templateKey' => 'platform_rating_admin',
+                    'category' => 'support',
+                    'entityType' => 'feedback',
+                    'entityId' => (string) $feedbackId,
+                ]);
             }
         } catch (Throwable $e) {
             error_log('[FeedbackService] Falha ao notificar admin sobre avaliação: ' . $e->getMessage());

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/CommunicationPolicy.php';
 require_once __DIR__ . '/CommunicationRepository.php';
+require_once __DIR__ . '/EmailProviderAdapter.php';
 require_once __DIR__ . '/../events/TransactionalOutbox.php';
-require_once __DIR__ . '/../utils/Mailer.php';
 
 /**
  * Autoridade unica para transformar eventos de dominio em intents e deliveries.
@@ -17,7 +17,8 @@ final class CommunicationService
         private readonly PDO $db,
         private readonly CommunicationRepository $repository,
         private readonly CommunicationPolicy $policy,
-        private readonly TransactionalOutbox $outbox
+        private readonly TransactionalOutbox $outbox,
+        private readonly EmailProviderAdapter $emailProvider
     ) {
     }
 
@@ -27,8 +28,48 @@ final class CommunicationService
             $db,
             new CommunicationRepository($db),
             new CommunicationPolicy($db),
-            new TransactionalOutbox($db)
+            new TransactionalOutbox($db),
+            new EmailProviderAdapter()
         );
+    }
+
+    /**
+     * Publica um e-mail transacional sem permitir que o dominio acesse SMTP.
+     * O worker continua sendo o unico executor do provider.
+     */
+    public static function queueEmail(PDO $db, array $email): array
+    {
+        $eventType = trim((string) ($email['eventType'] ?? ''));
+        $idempotencyKey = trim((string) ($email['idempotencyKey'] ?? ''));
+        $recipientEmail = trim((string) ($email['recipientEmail'] ?? ''));
+        if ($eventType === '' || $idempotencyKey === '' || $recipientEmail === '') {
+            throw new InvalidArgumentException('E-mail sem identidade semantica ou destinatario.');
+        }
+
+        return self::fromDatabase($db)->publish([
+            'eventType' => $eventType,
+            'idempotencyKey' => $idempotencyKey,
+            'deliveryClass' => (string) ($email['deliveryClass'] ?? CommunicationPolicy::CLASS_TRANSACTIONAL),
+            'recipientUserId' => $email['recipientUserId'] ?? null,
+            'recipientEmail' => $recipientEmail,
+            'channels' => [CommunicationPolicy::CHANNEL_EMAIL],
+            'title' => (string) ($email['subject'] ?? ''),
+            'message' => (string) ($email['text'] ?? ''),
+            'type' => 'info',
+            'category' => (string) ($email['category'] ?? 'system'),
+            'link' => $email['link'] ?? null,
+            'actorType' => $email['actorType'] ?? null,
+            'actorId' => $email['actorId'] ?? null,
+            'entityType' => $email['entityType'] ?? null,
+            'entityId' => $email['entityId'] ?? null,
+            'payload' => [
+                'recipientName' => (string) ($email['recipientName'] ?? 'Usuário'),
+                'emailSubject' => (string) ($email['subject'] ?? ''),
+                'emailHtml' => (string) ($email['html'] ?? ''),
+                'emailText' => (string) ($email['text'] ?? ''),
+                'templateKey' => $email['templateKey'] ?? null,
+            ],
+        ]);
     }
 
     /**
@@ -206,7 +247,7 @@ final class CommunicationService
 
         $this->repository->markDelivery($intentId, CommunicationPolicy::CHANNEL_EMAIL, 'processing', null, false);
         try {
-            Mailer::send($email, (string) ($payload['recipientName'] ?? 'Usuário'), $subject, $html, $text);
+            $this->emailProvider->send($email, (string) ($payload['recipientName'] ?? 'Usuário'), $subject, $html, $text);
             $this->repository->markDelivery($intentId, CommunicationPolicy::CHANNEL_EMAIL, 'processed');
             $this->repository->updateIntentStatus($intentId, 'processed');
             $this->repository->insertAudit($intentId, 'communication.email.delivered', 'accepted', [

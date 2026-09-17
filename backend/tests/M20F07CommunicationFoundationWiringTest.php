@@ -15,8 +15,11 @@ $repository = (string) file_get_contents($root . '/shared/communications/Communi
 $catalog = (string) file_get_contents($root . '/shared/communications/CommunicationEventCatalog.php');
 $worker = (string) file_get_contents($root . '/scripts/workers/process_platform_events.php');
 $migration = (string) file_get_contents($root . '/database/migrations/20260916_210000_communication_foundation.php');
+$adapter = (string) file_get_contents($root . '/shared/communications/EmailProviderAdapter.php');
 
 $assert($service !== '' && $policy !== '' && $repository !== '' && $catalog !== '', 'Communication foundation files are missing.');
+$assert(str_contains($service, 'queueEmail') && str_contains($service, 'EmailProviderAdapter'), 'Communication provider boundary is incomplete.');
+$assert(str_contains($adapter, 'Mailer::send'), 'The email provider adapter must be the only SMTP-aware boundary.');
 $assert(str_contains($service, 'communication.intent.dispatch'), 'Communication intent was not connected to the canonical outbox.');
 $assert(str_contains($service, 'idempotencyKey'), 'Communication service must require stable idempotency.');
 $assert(str_contains($service, 'CM_SYNTHETIC_EMAIL_SINK'), 'Synthetic email fail-closed guard is missing.');
@@ -31,5 +34,14 @@ $assert(str_contains($migration, 'uq_communication_intent_idempotency'), 'Commun
 $assert(str_contains($migration, 'communication_audit_events'), 'Communication audit schema is missing.');
 $assert(str_contains($policy, 'CLASS_TRANSACTIONAL') && str_contains($policy, 'CLASS_MARKETING'), 'Communication classes are not explicit.');
 $assert(str_contains($catalog, 'marketing.campaign.message') && str_contains($catalog, 'billing.refund.retention_offer.created'), 'Communication event denominator is incomplete.');
+
+$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/modules', FilesystemIterator::SKIP_DOTS));
+foreach ($iterator as $file) {
+    if (!$file->isFile() || $file->getExtension() !== 'php') {
+        continue;
+    }
+    $content = (string) file_get_contents($file->getPathname());
+    $assert(!str_contains($content, $directMailerCall), 'Domain code still calls the SMTP provider directly: ' . $file->getPathname());
+}
 
 fwrite(STDOUT, "M20F07 communication foundation wiring passed.\n");

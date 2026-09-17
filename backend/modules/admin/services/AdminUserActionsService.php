@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../../config/stripe.php';
 require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../transactions/services/TransactionsRefundSupport.php';
 require_once __DIR__ . '/../../benefits/services/BenefitService.php';
@@ -324,7 +325,20 @@ class AdminUserActionsService
             );
 
             if ($template['enabled']) {
-                Mailer::send($email, $name, $template['subject'], $template['htmlBody'], $template['textBody']);
+                CommunicationService::queueEmail($this->db, [
+                    'eventType' => 'benefit.applied',
+                    'idempotencyKey' => 'admin-manual-benefit:' . (string) ($data['grantId'] ?? $data['id'] ?? $email),
+                    'recipientUserId' => $data['userId'] ?? null,
+                    'recipientEmail' => $email,
+                    'recipientName' => $name,
+                    'subject' => $template['subject'],
+                    'html' => $template['htmlBody'],
+                    'text' => $template['textBody'],
+                    'templateKey' => 'subscription_manual_gift',
+                    'category' => 'benefit',
+                    'entityType' => 'benefit_grant',
+                    'entityId' => (string) ($data['grantId'] ?? $data['id'] ?? $email),
+                ]);
             }
         } catch (Throwable $error) {
             error_log('[admin_user_actions] manual grant notification warning: ' . $error->getMessage());
