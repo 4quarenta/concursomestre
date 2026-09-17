@@ -46,8 +46,9 @@ return static function (PDO $db): void {
         created_at DATETIME NOT NULL,
         delivered_at DATETIME NULL,
         UNIQUE KEY uq_communication_delivery_channel (intent_id, channel),
-        INDEX idx_communication_delivery_status (status, created_at),
-        CONSTRAINT fk_communication_delivery_intent FOREIGN KEY (intent_id) REFERENCES communication_intents(id) ON DELETE CASCADE
+        INDEX idx_communication_delivery_status (status, created_at)
+        /* Intent ownership is validated by CommunicationRepository/Service;
+           the migration principal intentionally has no REFERENCES grant. */
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $db->exec("CREATE TABLE IF NOT EXISTS communication_preferences (
@@ -71,7 +72,8 @@ return static function (PDO $db): void {
         metadata_json JSON NOT NULL,
         created_at DATETIME NOT NULL,
         INDEX idx_communication_audit_intent (intent_id, created_at),
-        INDEX idx_communication_audit_event (event_name, created_at),
-        CONSTRAINT fk_communication_audit_intent FOREIGN KEY (intent_id) REFERENCES communication_intents(id) ON DELETE CASCADE
+        INDEX idx_communication_audit_event (event_name, created_at)
+        /* Intent ownership is validated by CommunicationRepository/Service;
+           deletion is restricted to controlled retention/cleanup paths. */
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 };
