@@ -15,6 +15,7 @@
     "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json",
     "typecheck:no-unchecked": "tsc --noEmit -p tsconfig.no-unchecked.json",
     "lint": "node --max-old-space-size=6144 ./node_modules/eslint/bin/eslint.js . --cache --cache-location .tmp/eslint/.cache",
+    "lint:coverage": "node scripts/checks/check-eslint-coverage.mjs",
     "test": "vitest run --pool=threads --maxWorkers=4",
     "mobile:start": "npm --prefix mobile run start",
     "mobile:android": "npm --prefix mobile run android",

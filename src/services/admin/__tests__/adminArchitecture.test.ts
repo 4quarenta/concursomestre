@@ -12,8 +12,9 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = process.cwd();
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 const readFile = (relativePath: string) =>
   fs.readFileSync(path.resolve(root, relativePath), 'utf8');
