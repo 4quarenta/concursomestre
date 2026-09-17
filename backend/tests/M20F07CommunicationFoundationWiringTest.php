@@ -20,6 +20,7 @@ $adapter = (string) file_get_contents($root . '/shared/communications/EmailProvi
 $assert($service !== '' && $policy !== '' && $repository !== '' && $catalog !== '', 'Communication foundation files are missing.');
 $assert(str_contains($service, 'queueEmail') && str_contains($service, 'EmailProviderAdapter'), 'Communication provider boundary is incomplete.');
 $assert(str_contains($adapter, 'Mailer::send'), 'The email provider adapter must be the only SMTP-aware boundary.');
+$assert(str_contains($adapter, 'isPrelaunchWithoutSyntheticSink') && str_contains($adapter, 'SeoLaunchModeAuthority::read'), 'PRELAUNCH email delivery must fail closed when the synthetic sink is absent.');
 $assert(str_contains($service, 'communication.intent.dispatch'), 'Communication intent was not connected to the canonical outbox.');
 $assert(str_contains($service, 'idempotencyKey'), 'Communication service must require stable idempotency.');
 $assert(str_contains($service, 'CM_SYNTHETIC_EMAIL_SINK'), 'Synthetic email fail-closed guard is missing.');
