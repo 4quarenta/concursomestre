@@ -10,7 +10,7 @@ authenticated browser acceptance remain unexecuted.
 Runtime evidence:
 
 - Active PRELAUNCH runtime: `fb25d079`.
-- `origin/1.0.0`: the current origin head includes this acceptance harness and
+- `origin/1.0.0`: `27098806`, the current origin head includes this acceptance harness and
   evidence update; it remains ahead of the active runtime with no runtime
   deploy required.
 - No runtime deploy is required for that origin delta.
@@ -70,7 +70,7 @@ PRELAUNCH runtime, the web-runtime sink proof and an explicit
 `AdminUserActionsService`, publishes through `CommunicationService`, and
 performs exact cleanup.
 
-The latest PRELAUNCH run proved:
+The latest PRELAUNCH run (`m20f07-20260919-dynamic-06`) proved:
 
 - duplicate semantic event: one intent, one in-app notification and one e-mail
   outbox effect;
