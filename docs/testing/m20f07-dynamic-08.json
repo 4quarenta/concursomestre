@@ -1,0 +1,984 @@
+{
+    "m20f07": "PARTIAL",
+    "namespace": "m20f07-20260919-dynamic-08",
+    "harness": {
+        "status": "PASS",
+        "root": "backend/tests/M20F07CanonicalDynamicAcceptanceHarness.php",
+        "entrypoint": "php backend/tests/M20F07CanonicalDynamicAcceptanceHarness.php --execute=M20F07_DYNAMIC_ACCEPTANCE",
+        "parallel_test_communication_authority": 1,
+        "scenario_matrix": "PARTIAL",
+        "missing_scenarios": [
+            "marketing_consent_policy",
+            "delivery_reconciliation",
+            "provider_failure",
+            "worker_recovery",
+            "event_ordering",
+            "communication_preferences_browser",
+            "deep_link_authorization",
+            "user_browser",
+            "admin_browser",
+            "mobile_and_accessibility"
+        ]
+    },
+    "backend": {
+        "idempotency": {
+            "status": "PASS",
+            "duplicate_semantic_notification": 0,
+            "duplicate_semantic_email": 0
+        },
+        "transactional_dispatch": {
+            "status": "PASS"
+        },
+        "marketing_opt_out": {
+            "status": "PASS"
+        },
+        "preference_authority": {
+            "status": "PASS",
+            "marketing_opt_in_email": "queued",
+            "mandatory_email_while_marketing_disabled": "queued",
+            "intent_ids": [
+                "comm-f7bc023bcf0945f20c48b3e134db1e0dbe29c269f54d123976da31d2",
+                "comm-7334733d0e820b3bd575fd273d420e4dcbb98992d4e2adf93f25ffbc"
+            ]
+        },
+        "intent_id": "comm-2003d44d1487a3071f97396016025e944e8f34921ce04e3ce5a13767",
+        "marketing_intent_id": "comm-f1ba30646f0121208c0bbe664315fa6531768028750e0f53bfcac705",
+        "preference_intent_ids": [
+            "comm-f7bc023bcf0945f20c48b3e134db1e0dbe29c269f54d123976da31d2",
+            "comm-7334733d0e820b3bd575fd273d420e4dcbb98992d4e2adf93f25ffbc"
+        ],
+        "retry": {
+            "status": "PASS",
+            "intent_id": "comm-70dface93e6e8c18a1068d900ff267339e8a4b2f3f3d2be1afd7168e",
+            "retry_claimed": true,
+            "delivery_status": "processed",
+            "delivery_attempts": 1
+        },
+        "channel_matrix": {
+            "status": "PASS",
+            "events_expected": 26,
+            "events_tested": 26,
+            "events_passed": 26,
+            "duplicate_notifications": 0,
+            "duplicate_emails": 0,
+            "rows": [
+                {
+                    "event_id": "auth.email.confirmation",
+                    "source_domain": "auth",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "auth.email.confirmation.resend",
+                    "source_domain": "auth",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "auth.account.welcome",
+                    "source_domain": "auth",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "auth.password.reset",
+                    "source_domain": "auth",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "support.feedback.reply",
+                    "source_domain": "support",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "support.feedback.status",
+                    "source_domain": "support",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "support.report.decision",
+                    "source_domain": "support",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.refund.completed",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.refund.requested",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.refund.retention_offer.created",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.welcome",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.payment_receipt",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.payment_failed",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.renewal_reminder",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.cancellation",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.admin_refund_pending",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.admin_transaction",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.refund_processed",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.payment_method_update",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "benefit.applied",
+                    "source_domain": "benefit",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "benefit.refund.completed",
+                    "source_domain": "benefit",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "benefit.refund.retention",
+                    "source_domain": "benefit",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "support.platform_rating.created",
+                    "source_domain": "support",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "moderation.report.created",
+                    "source_domain": "moderation",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "marketing.campaign.message",
+                    "source_domain": "marketing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": false,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "system.admin.alert",
+                    "source_domain": "system",
+                    "expected_channels": [
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                }
+            ],
+            "intent_ids": [
+                "comm-845a61479d5a72d4f7d31c791c67d2a5eb2f47f9828c485fdcead6e3",
+                "comm-8f827b46d8a34dbcf5fcb7cfe49d34173d4a7fcd6165e224d0c56b41",
+                "comm-29c6c11e197ead93b35a3983c186e0076ee6a2dbe6422aae7097bf2e",
+                "comm-af7926e5b8af73eef7b1436b21fefe8bc077253b7e00464a83ad34f7",
+                "comm-374d2b0b5eb4580f16c76191df68c6d504e9cf54dfd03566018190a9",
+                "comm-b7104ad76a9a1bd9515927694146f7b6c4a517948fc337e3eba20c61",
+                "comm-db74129580eee3ad1597196940900129a6ee5e54cfb4d2f4cb35ac35",
+                "comm-78fa564c1d81eddd3d9cf5b992739dacb8ca299a977e153f7605ec54",
+                "comm-4631ffa1b07fbc2c7ca969d703323be12a1583bb0375dbcb2a1ab1f3",
+                "comm-e5eeffc8674f3975b3878c251e9beb53b470676fa92fe4b73c7df400",
+                "comm-bd93c0a388b70792daa1499367b3ebf5bc55ac89209802985926aa0f",
+                "comm-f13c292ff3d988b22594c3a42bcb00149b52ac4ba48badf853a65a66",
+                "comm-db7f7f1c69dc8d59848baaf3385eca3c6a0781c552ea4b8e13c3b3c4",
+                "comm-ebf7fafb932d644765a4f3f039fcb8b068718edde7086ec11c57b12b",
+                "comm-fa473054c1229044e825e90ac346eb6c12df0710defa6de33a3aba36",
+                "comm-54f46d3deba290bba1d45508730f3030f9f20cc78c243da1c4b9a02b",
+                "comm-5c9e0b6ddf56f9f4703818edd76a40d2d5729ca60d8e21f04d57aebf",
+                "comm-ddac1a2893099d598d9096724730aa4293e90e2341f278c07a537c75",
+                "comm-f1ac6f065feb304e8a4e61dcafc5e5f3f981ac6b573453fd52a3bf48",
+                "comm-24583d6989d3c03cf51fcae8c0f350b1c146dc00aec85b6cbe7ef4a3",
+                "comm-ac29ab864e2c01974869f5356e38f8617ae35b47e2af77bbab975f03",
+                "comm-c6e763f16988196de42569eb2c255710458487567e80af821ec88f63",
+                "comm-9d0a9c1c60f730154c9ca882c667b66a9b9de58cb716f1ea8b2eafcd",
+                "comm-60178d909bbf2318da887198c34ffbf6c205661273fd6c04d6069085",
+                "comm-432bd38535a32c99aacd5f51ded1a12c6b7f5f4d09546de501acf2a4",
+                "comm-af5a706422143d034659b61a97e54faab2327df3076f380b274286cb"
+            ]
+        },
+        "concurrency": {
+            "status": "PASS",
+            "workers": 2,
+            "barrier": "PASS",
+            "created_intents": 1,
+            "intent_count": 1,
+            "notification_count": 1,
+            "outbox_count": 1,
+            "worker_results": [
+                {
+                    "intentId": "comm-4efc5fe7dcb7d3dc8d4ba6f79f63c9570917af13a016aecba68aa1ee",
+                    "created": false,
+                    "channels": {
+                        "email": "pending",
+                        "in_app": "processed"
+                    }
+                },
+                {
+                    "intentId": "comm-4efc5fe7dcb7d3dc8d4ba6f79f63c9570917af13a016aecba68aa1ee",
+                    "created": true,
+                    "channels": {
+                        "in_app": "processed",
+                        "email": "queued"
+                    }
+                }
+            ],
+            "intent_id": "comm-4efc5fe7dcb7d3dc8d4ba6f79f63c9570917af13a016aecba68aa1ee"
+        }
+    },
+    "scenarios": {
+        "duplicate_event": {
+            "status": "PASS",
+            "duplicate_semantic_notification": 0,
+            "duplicate_semantic_email": 0
+        },
+        "same_intent_replay": {
+            "status": "PASS"
+        },
+        "marketing_opt_out": {
+            "status": "PASS"
+        },
+        "marketing_consent_policy": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Only the opt-out policy path was exercised; consent-in and consent-out browser evidence is not implemented yet."
+        },
+        "communication_preference_authority": {
+            "status": "PASS",
+            "marketing_opt_in_email": "queued",
+            "mandatory_email_while_marketing_disabled": "queued",
+            "intent_ids": [
+                "comm-f7bc023bcf0945f20c48b3e134db1e0dbe29c269f54d123976da31d2",
+                "comm-7334733d0e820b3bd575fd273d420e4dcbb98992d4e2adf93f25ffbc"
+            ]
+        },
+        "communication_retry": {
+            "status": "PASS",
+            "intent_id": "comm-70dface93e6e8c18a1068d900ff267339e8a4b2f3f3d2be1afd7168e",
+            "retry_claimed": true,
+            "delivery_status": "processed",
+            "delivery_attempts": 1
+        },
+        "delivery_reconciliation": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Provider/local reconciliation runner is not implemented yet."
+        },
+        "concurrent_processing": {
+            "status": "PASS",
+            "workers": 2,
+            "barrier": "PASS",
+            "created_intents": 1,
+            "intent_count": 1,
+            "notification_count": 1,
+            "outbox_count": 1,
+            "worker_results": [
+                {
+                    "intentId": "comm-4efc5fe7dcb7d3dc8d4ba6f79f63c9570917af13a016aecba68aa1ee",
+                    "created": false,
+                    "channels": {
+                        "email": "pending",
+                        "in_app": "processed"
+                    }
+                },
+                {
+                    "intentId": "comm-4efc5fe7dcb7d3dc8d4ba6f79f63c9570917af13a016aecba68aa1ee",
+                    "created": true,
+                    "channels": {
+                        "in_app": "processed",
+                        "email": "queued"
+                    }
+                }
+            ],
+            "intent_id": "comm-4efc5fe7dcb7d3dc8d4ba6f79f63c9570917af13a016aecba68aa1ee"
+        },
+        "provider_failure": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Canonical provider fault injection is not implemented yet."
+        },
+        "worker_recovery": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Worker interruption runner is not implemented yet."
+        },
+        "channel_matrix_26_events": {
+            "status": "PASS",
+            "events_expected": 26,
+            "events_tested": 26,
+            "events_passed": 26,
+            "duplicate_notifications": 0,
+            "duplicate_emails": 0,
+            "rows": [
+                {
+                    "event_id": "auth.email.confirmation",
+                    "source_domain": "auth",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "auth.email.confirmation.resend",
+                    "source_domain": "auth",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "auth.account.welcome",
+                    "source_domain": "auth",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "auth.password.reset",
+                    "source_domain": "auth",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "support.feedback.reply",
+                    "source_domain": "support",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "support.feedback.status",
+                    "source_domain": "support",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "support.report.decision",
+                    "source_domain": "support",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.refund.completed",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.refund.requested",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.refund.retention_offer.created",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.welcome",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.payment_receipt",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.payment_failed",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.renewal_reminder",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.cancellation",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.admin_refund_pending",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.admin_transaction",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.refund_processed",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "billing.subscription.payment_method_update",
+                    "source_domain": "billing",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "benefit.applied",
+                    "source_domain": "benefit",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "benefit.refund.completed",
+                    "source_domain": "benefit",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "benefit.refund.retention",
+                    "source_domain": "benefit",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "support.platform_rating.created",
+                    "source_domain": "support",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "moderation.report.created",
+                    "source_domain": "moderation",
+                    "expected_channels": [
+                        "email"
+                    ],
+                    "actual_channels": [
+                        "email"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "marketing.campaign.message",
+                    "source_domain": "marketing",
+                    "expected_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "email",
+                        "in_app"
+                    ],
+                    "mandatory": false,
+                    "suppression": "none",
+                    "status": "PASS"
+                },
+                {
+                    "event_id": "system.admin.alert",
+                    "source_domain": "system",
+                    "expected_channels": [
+                        "in_app"
+                    ],
+                    "actual_channels": [
+                        "in_app"
+                    ],
+                    "mandatory": true,
+                    "suppression": "none",
+                    "status": "PASS"
+                }
+            ],
+            "intent_ids": [
+                "comm-845a61479d5a72d4f7d31c791c67d2a5eb2f47f9828c485fdcead6e3",
+                "comm-8f827b46d8a34dbcf5fcb7cfe49d34173d4a7fcd6165e224d0c56b41",
+                "comm-29c6c11e197ead93b35a3983c186e0076ee6a2dbe6422aae7097bf2e",
+                "comm-af7926e5b8af73eef7b1436b21fefe8bc077253b7e00464a83ad34f7",
+                "comm-374d2b0b5eb4580f16c76191df68c6d504e9cf54dfd03566018190a9",
+                "comm-b7104ad76a9a1bd9515927694146f7b6c4a517948fc337e3eba20c61",
+                "comm-db74129580eee3ad1597196940900129a6ee5e54cfb4d2f4cb35ac35",
+                "comm-78fa564c1d81eddd3d9cf5b992739dacb8ca299a977e153f7605ec54",
+                "comm-4631ffa1b07fbc2c7ca969d703323be12a1583bb0375dbcb2a1ab1f3",
+                "comm-e5eeffc8674f3975b3878c251e9beb53b470676fa92fe4b73c7df400",
+                "comm-bd93c0a388b70792daa1499367b3ebf5bc55ac89209802985926aa0f",
+                "comm-f13c292ff3d988b22594c3a42bcb00149b52ac4ba48badf853a65a66",
+                "comm-db7f7f1c69dc8d59848baaf3385eca3c6a0781c552ea4b8e13c3b3c4",
+                "comm-ebf7fafb932d644765a4f3f039fcb8b068718edde7086ec11c57b12b",
+                "comm-fa473054c1229044e825e90ac346eb6c12df0710defa6de33a3aba36",
+                "comm-54f46d3deba290bba1d45508730f3030f9f20cc78c243da1c4b9a02b",
+                "comm-5c9e0b6ddf56f9f4703818edd76a40d2d5729ca60d8e21f04d57aebf",
+                "comm-ddac1a2893099d598d9096724730aa4293e90e2341f278c07a537c75",
+                "comm-f1ac6f065feb304e8a4e61dcafc5e5f3f981ac6b573453fd52a3bf48",
+                "comm-24583d6989d3c03cf51fcae8c0f350b1c146dc00aec85b6cbe7ef4a3",
+                "comm-ac29ab864e2c01974869f5356e38f8617ae35b47e2af77bbab975f03",
+                "comm-c6e763f16988196de42569eb2c255710458487567e80af821ec88f63",
+                "comm-9d0a9c1c60f730154c9ca882c667b66a9b9de58cb716f1ea8b2eafcd",
+                "comm-60178d909bbf2318da887198c34ffbf6c205661273fd6c04d6069085",
+                "comm-432bd38535a32c99aacd5f51ded1a12c6b7f5f4d09546de501acf2a4",
+                "comm-af5a706422143d034659b61a97e54faab2327df3076f380b274286cb"
+            ]
+        },
+        "event_ordering": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Stateful ordering runner is not implemented yet."
+        },
+        "communication_preferences_browser": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Authenticated browser runner is not implemented yet."
+        },
+        "deep_link_authorization": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Authenticated browser/RBAC runner is not implemented yet."
+        },
+        "user_browser": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Authenticated browser runner is not implemented yet."
+        },
+        "admin_browser": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Authenticated browser runner is not implemented yet."
+        },
+        "mobile_and_accessibility": {
+            "status": "EVIDENCE_GAP",
+            "reason": "Authenticated browser runner is not implemented yet."
+        }
+    },
+    "cleanup": {
+        "synthetic_active_users_remaining": 0,
+        "synthetic_communication_intents_remaining": 0,
+        "synthetic_communication_preferences_remaining": 0
+    },
+    "real_data_insertions": 0,
+    "real_data_deletions": 0,
+    "stripe_live_mutations": 0,
+    "real_external_email_deliveries": 0
+}

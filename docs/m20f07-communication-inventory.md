@@ -3,8 +3,9 @@
 ## Current State
 
 `M20F-07 = PARTIAL` on the canonical checkout. The structural communication
-foundation, PRELAUNCH e-mail safety boundary, idempotency replay and real
-two-process MySQL idempotency race are proven; provider-failure/retry and
+foundation, PRELAUNCH e-mail safety boundary, idempotency replay, retry,
+preference authority, real two-process MySQL idempotency race and the full
+26-event channel matrix are proven; provider-failure/reconciliation and
 authenticated browser acceptance remain unexecuted.
 
 Runtime evidence:
@@ -70,12 +71,20 @@ PRELAUNCH runtime, the web-runtime sink proof and an explicit
 `AdminUserActionsService`, publishes through `CommunicationService`, and
 performs exact cleanup.
 
-The latest PRELAUNCH run (`m20f07-20260919-dynamic-06`) proved:
+The latest PRELAUNCH run (`m20f07-20260919-dynamic-08`) proved:
+
+The sanitized machine-readable result is archived at
+`docs/testing/m20f07-dynamic-08.json`.
 
 - duplicate semantic event: one intent, one in-app notification and one e-mail
   outbox effect;
 - transactional dispatch replay: processed without a second provider effect;
 - marketing e-mail opt-out suppression;
+- optional marketing enabled/disabled preference policy and mandatory
+  transactional delivery while marketing e-mail is disabled;
+- canonical outbox retry/reclaim after a synthetic temporary failure;
+- all 26 catalog events with expected channel sets, `26/26` passed and zero
+  duplicate in-app or e-mail channel effects;
 - two independent PHP workers behind a real file barrier, one canonical intent,
   one notification and one outbox row;
 - synthetic active users, communication intents and preferences remaining: `0`;
@@ -86,17 +95,19 @@ The latest PRELAUNCH run (`m20f07-20260919-dynamic-06`) proved:
 
 The following gates remain unproven and therefore are not promoted to PASS:
 
-- communication idempotency, real MySQL concurrency, retry and delivery
-  reconciliation;
-- provider-failure, channel and event-ordering matrices;
-- dynamic consent, preference and deep-link authorization scenarios;
+- provider-failure, delivery reconciliation, worker recovery and event-ordering
+  matrices;
+- full marketing consent eligibility/cooldown policy and deep-link
+  authorization;
+- authenticated browser E2E for User/Admin, preferences and negative paths,
+  mobile and accessibility acceptance;
 - authenticated user/admin browser E2E, mobile and accessibility acceptance.
 
 The harness declares the remaining scenarios explicitly as evidence gaps:
-provider failure/retry, worker recovery, delivery reconciliation, the full
-26-event channel matrix, event ordering, consent/preferences browser behavior,
-deep-link authorization, authenticated user/admin browser flows, mobile and
-accessibility acceptance. It does not fabricate those results, so
+provider failure, worker recovery, delivery reconciliation, event ordering,
+full consent, preference/deep-link browser behavior, authenticated user/admin
+browser flows, mobile and accessibility acceptance. It does not fabricate
+those results, so
 `M20F-07 = PARTIAL` remains the correct closure state.
 
 ## Governance

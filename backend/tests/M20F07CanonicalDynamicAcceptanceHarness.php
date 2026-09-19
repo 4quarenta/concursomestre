@@ -28,6 +28,7 @@ require_once $appRoot . '/modules/seo/launch/SeoLaunchModeAuthority.php';
 require_once $appRoot . '/modules/admin/services/AdminUserActionsService.php';
 require_once $appRoot . '/modules/admin/repositories/AdminUserActionsRepository.php';
 require_once $appRoot . '/modules/admin/validators/AdminUserActionsValidator.php';
+require_once $appRoot . '/shared/communications/CommunicationEventCatalog.php';
 require_once $appRoot . '/shared/communications/CommunicationService.php';
 
 const M20F07_EMAIL_SUFFIX = '@synthetic.invalid';
@@ -224,6 +225,12 @@ function m20f07RunConcurrentPublish(PDO $db, array $event, string $runId): array
         "SELECT COUNT(*) FROM platform_event_outbox WHERE event_type = 'communication.intent.dispatch' AND aggregate_id = :id",
         [':id' => $intentId]
     );
+    $outbox = new TransactionalOutbox($db);
+    $outboxRows = $db->prepare("SELECT id FROM platform_event_outbox WHERE aggregate_id = :id AND event_type = 'communication.intent.dispatch'");
+    $outboxRows->execute([':id' => $intentId]);
+    foreach ($outboxRows->fetchAll(PDO::FETCH_ASSOC) ?: [] as $outboxRow) {
+        $outbox->markProcessed((int) $outboxRow['id']);
+    }
     $createdCount = count(array_filter($results, static fn (array $result): bool => ($result['created'] ?? false) === true));
     $sameIntent = count(array_filter($results, static fn (array $result): bool => ($result['intentId'] ?? '') === $intentId));
 
@@ -300,6 +307,117 @@ function m20f07TransactionalEvent(string $runId, string $userId, string $email, 
 }
 
 /** @return array<string, mixed> */
+function m20f07RunChannelMatrix(PDO $db, string $runId, array $user): array
+{
+    $db->prepare('UPDATE communication_preferences SET enabled = 1, updated_at = NOW()
+                  WHERE user_id = :user_id AND delivery_class = :class AND channel = :channel')->execute([
+        ':user_id' => $user['user_id'],
+        ':class' => CommunicationPolicy::CLASS_MARKETING,
+        ':channel' => CommunicationPolicy::CHANNEL_EMAIL,
+    ]);
+    $service = CommunicationService::fromDatabase($db);
+    $catalog = CommunicationEventCatalog::all();
+    $rows = [];
+    $intentIds = [];
+    $passed = 0;
+    $duplicateNotifications = 0;
+    $duplicateEmails = 0;
+
+    foreach ($catalog as $eventType => $definition) {
+        $entityId = $runId . ':channel:' . substr(hash('sha256', $eventType), 0, 16);
+        $event = [
+            'eventType' => $eventType,
+            'idempotencyKey' => $runId . ':channel:' . $eventType,
+            'deliveryClass' => (string) $definition['deliveryClass'],
+            'recipientUserId' => $user['user_id'],
+            'recipientEmail' => $user['email'],
+            'channels' => $definition['channels'],
+            'title' => 'M20F-07 channel matrix ' . $eventType,
+            'message' => 'Synthetic channel matrix event.',
+            'type' => 'info',
+            'category' => (string) $definition['category'],
+            'link' => '/notifications?m20f07=' . rawurlencode($runId),
+            'entityType' => 'm20f07_channel_matrix',
+            'entityId' => $entityId,
+            'payload' => [
+                'recipientName' => 'M20F-07 Synthetic',
+                'emailSubject' => 'M20F-07 channel matrix',
+                'emailHtml' => '<p>Canonical synthetic channel matrix.</p>',
+                'emailText' => 'Canonical synthetic channel matrix.',
+                'templateKey' => $definition['template'],
+            ],
+        ];
+
+        $first = $service->publish($event);
+        $second = $service->publish($event);
+        $intentId = (string) $first['intentId'];
+        $intentIds[] = $intentId;
+        $deliveryCount = m20f07Count($db, 'SELECT COUNT(*) FROM communication_deliveries WHERE intent_id = :id', [':id' => $intentId]);
+        $notificationCount = m20f07Count($db, 'SELECT COUNT(*) FROM notifications WHERE user_id = :user_id AND entity_id = :entity_id', [
+            ':user_id' => $user['user_id'],
+            ':entity_id' => $entityId,
+        ]);
+        $emailDeliveryStatus = null;
+        if (in_array(CommunicationPolicy::CHANNEL_EMAIL, $definition['channels'], true)) {
+            $service->dispatchEmail($intentId);
+            $service->dispatchEmail($intentId);
+            $emailDeliveryStatus = (string) $db->query(
+                "SELECT status FROM communication_deliveries WHERE intent_id = " . $db->quote($intentId) . " AND channel = 'email' LIMIT 1"
+            )->fetchColumn();
+            $outbox = new TransactionalOutbox($db);
+            $outboxRows = $db->prepare("SELECT id FROM platform_event_outbox WHERE aggregate_id = :id AND event_type = 'communication.intent.dispatch'");
+            $outboxRows->execute([':id' => $intentId]);
+            foreach ($outboxRows->fetchAll(PDO::FETCH_ASSOC) ?: [] as $outboxRow) {
+                $outbox->markProcessed((int) $outboxRow['id']);
+            }
+        }
+
+        $expectedChannels = array_fill_keys($definition['channels'], true);
+        $actualChannels = array_keys($first['channels'] ?? []);
+        sort($actualChannels);
+        $expectedChannelNames = array_keys($expectedChannels);
+        sort($expectedChannelNames);
+        $notificationPass = in_array(CommunicationPolicy::CHANNEL_IN_APP, $definition['channels'], true)
+            ? $notificationCount === 1
+            : $notificationCount === 0;
+        $emailPass = in_array(CommunicationPolicy::CHANNEL_EMAIL, $definition['channels'], true)
+            ? $emailDeliveryStatus === 'processed'
+            : $emailDeliveryStatus === null;
+        $rowPass = ($first['created'] ?? false) === true
+            && ($second['created'] ?? true) === false
+            && $actualChannels === $expectedChannelNames
+            && $deliveryCount === count($definition['channels'])
+            && $notificationPass
+            && $emailPass;
+        if ($rowPass) {
+            $passed++;
+        }
+        $duplicateNotifications += max(0, $notificationCount - (in_array(CommunicationPolicy::CHANNEL_IN_APP, $definition['channels'], true) ? 1 : 0));
+        $duplicateEmails += max(0, $deliveryCount - count($definition['channels']));
+        $rows[] = [
+            'event_id' => $eventType,
+            'source_domain' => explode('.', $eventType, 2)[0],
+            'expected_channels' => $expectedChannelNames,
+            'actual_channels' => $actualChannels,
+            'mandatory' => (bool) $definition['mandatory'],
+            'suppression' => 'none',
+            'status' => $rowPass ? 'PASS' : 'FAIL',
+        ];
+    }
+
+    return [
+        'status' => count($catalog) === 26 && $passed === 26 && $duplicateNotifications === 0 && $duplicateEmails === 0 ? 'PASS' : 'FAIL',
+        'events_expected' => 26,
+        'events_tested' => count($catalog),
+        'events_passed' => $passed,
+        'duplicate_notifications' => $duplicateNotifications,
+        'duplicate_emails' => $duplicateEmails,
+        'rows' => $rows,
+        'intent_ids' => $intentIds,
+    ];
+}
+
+/** @return array<string, mixed> */
 function m20f07RunBackendScenarios(PDO $db, string $runId, array $user): array
 {
     $service = CommunicationService::fromDatabase($db);
@@ -336,6 +454,12 @@ function m20f07RunBackendScenarios(PDO $db, string $runId, array $user): array
         "SELECT COUNT(*) FROM communication_deliveries WHERE intent_id = :id AND channel = 'email' AND status = 'processed'",
         [':id' => $intentId]
     );
+    $primaryOutbox = $db->prepare("SELECT id FROM platform_event_outbox WHERE aggregate_id = :id AND event_type = 'communication.intent.dispatch'");
+    $primaryOutbox->execute([':id' => $intentId]);
+    $outbox = new TransactionalOutbox($db);
+    foreach ($primaryOutbox->fetchAll(PDO::FETCH_ASSOC) ?: [] as $outboxRow) {
+        $outbox->markProcessed((int) $outboxRow['id']);
+    }
 
     $preferenceKey = $runId . ':marketing-opt-out';
     $preference = $db->prepare(
@@ -369,6 +493,55 @@ function m20f07RunBackendScenarios(PDO $db, string $runId, array $user): array
         [':key' => $preferenceKey]
     );
 
+    $db->prepare('UPDATE communication_preferences SET enabled = 1, updated_by = :run_id, updated_at = NOW()
+                  WHERE user_id = :user_id AND delivery_class = :class AND channel = :channel')->execute([
+        ':run_id' => $runId,
+        ':user_id' => $user['user_id'],
+        ':class' => CommunicationPolicy::CLASS_MARKETING,
+        ':channel' => CommunicationPolicy::CHANNEL_EMAIL,
+    ]);
+    $marketingOptIn = $service->publish([
+        'eventType' => 'marketing.campaign.message',
+        'idempotencyKey' => $runId . ':marketing-opt-in',
+        'deliveryClass' => CommunicationPolicy::CLASS_MARKETING,
+        'recipientUserId' => $user['user_id'],
+        'recipientEmail' => $user['email'],
+        'channels' => [CommunicationPolicy::CHANNEL_IN_APP, CommunicationPolicy::CHANNEL_EMAIL],
+        'title' => 'M20F-07 synthetic marketing opt-in',
+        'message' => 'Synthetic marketing opt-in policy event.',
+        'category' => 'marketing',
+        'entityType' => 'm20f07_fixture',
+        'entityId' => $runId . ':marketing-opt-in',
+    ]);
+    $db->prepare('UPDATE communication_preferences SET enabled = 0, updated_at = NOW()
+                  WHERE user_id = :user_id AND delivery_class = :class AND channel = :channel')->execute([
+        ':user_id' => $user['user_id'],
+        ':class' => CommunicationPolicy::CLASS_MARKETING,
+        ':channel' => CommunicationPolicy::CHANNEL_EMAIL,
+    ]);
+    $mandatoryEvent = m20f07TransactionalEvent($runId, $user['user_id'], $user['email'], 'mandatory-while-marketing-disabled');
+    $mandatoryEvent['entityId'] = $runId . ':mandatory';
+    $mandatory = $service->publish($mandatoryEvent);
+    $preferenceAuthority = [
+        'status' => (($marketingOptIn['channels']['email'] ?? '') === 'queued'
+            && ($mandatory['channels']['email'] ?? '') === 'queued'
+            && ($mandatory['channels']['in_app'] ?? '') === 'processed') ? 'PASS' : 'FAIL',
+        'marketing_opt_in_email' => $marketingOptIn['channels']['email'] ?? null,
+        'mandatory_email_while_marketing_disabled' => $mandatory['channels']['email'] ?? null,
+        'intent_ids' => [(string) ($marketingOptIn['intentId'] ?? ''), (string) ($mandatory['intentId'] ?? '')],
+    ];
+    foreach ($preferenceAuthority['intent_ids'] as $preferenceIntentId) {
+        if ($preferenceIntentId === '') {
+            continue;
+        }
+        $preferenceOutbox = $db->prepare("SELECT id FROM platform_event_outbox WHERE aggregate_id = :id AND event_type = 'communication.intent.dispatch'");
+        $preferenceOutbox->execute([':id' => $preferenceIntentId]);
+        $preferenceOutboxAuthority = new TransactionalOutbox($db);
+        foreach ($preferenceOutbox->fetchAll(PDO::FETCH_ASSOC) ?: [] as $outboxRow) {
+            $preferenceOutboxAuthority->markProcessed((int) $outboxRow['id']);
+        }
+    }
+
     return [
         'idempotency' => [
             'status' => $idempotencyPass ? 'PASS' : 'FAIL',
@@ -381,8 +554,56 @@ function m20f07RunBackendScenarios(PDO $db, string $runId, array $user): array
         'marketing_opt_out' => [
             'status' => $suppressed === 1 && ($marketing['created'] ?? false) === true ? 'PASS' : 'FAIL',
         ],
+        'preference_authority' => $preferenceAuthority,
         'intent_id' => $intentId,
         'marketing_intent_id' => (string) ($marketing['intentId'] ?? ''),
+        'preference_intent_ids' => $preferenceAuthority['intent_ids'],
+    ];
+}
+
+/** @return array<string, mixed> */
+function m20f07RunRetryScenario(PDO $db, string $runId, array $user): array
+{
+    $event = m20f07TransactionalEvent($runId, $user['user_id'], $user['email'], 'retry');
+    $published = CommunicationService::fromDatabase($db)->publish($event);
+    $intentId = (string) $published['intentId'];
+    $outbox = new TransactionalOutbox($db);
+    $query = $db->prepare("SELECT * FROM platform_event_outbox WHERE aggregate_id = :id AND event_type = 'communication.intent.dispatch' LIMIT 1");
+    $query->execute([':id' => $intentId]);
+    $eventRow = $query->fetch(PDO::FETCH_ASSOC);
+    if (!is_array($eventRow)) {
+        return ['status' => 'FAIL', 'reason' => 'Canonical outbox row was not created.'];
+    }
+    $claimed = $outbox->claimBatch($runId . ':retry-1', 1, 60);
+    $claimedRow = $claimed[0] ?? null;
+    if (!is_array($claimedRow)) {
+        return ['status' => 'FAIL', 'reason' => 'Canonical retry row was not claimed.'];
+    }
+    $outbox->markFailed($claimedRow, new RuntimeException('M20F-07 synthetic temporary provider failure'));
+    $db->prepare('UPDATE platform_event_outbox SET available_at = NOW() WHERE id = :id AND aggregate_id = :aggregate_id')->execute([
+        ':id' => $claimedRow['id'],
+        ':aggregate_id' => $intentId,
+    ]);
+    $retryClaim = $outbox->claimBatch($runId . ':retry-2', 1, 60);
+    $retryRow = $retryClaim[0] ?? null;
+    $dispatch = null;
+    if (is_array($retryRow)) {
+        $dispatch = CommunicationService::fromDatabase($db)->dispatchEmail($intentId);
+        $outbox->markProcessed((int) $retryRow['id']);
+    }
+    $deliveryStatus = (string) $db->query(
+        "SELECT status FROM communication_deliveries WHERE intent_id = " . $db->quote($intentId) . " AND channel = 'email' LIMIT 1"
+    )->fetchColumn();
+    $attempts = (int) $db->query(
+        "SELECT attempts FROM communication_deliveries WHERE intent_id = " . $db->quote($intentId) . " AND channel = 'email' LIMIT 1"
+    )->fetchColumn();
+
+    return [
+        'status' => is_array($retryRow) && ($dispatch['status'] ?? '') === 'processed' && $deliveryStatus === 'processed' && $attempts === 1 ? 'PASS' : 'FAIL',
+        'intent_id' => $intentId,
+        'retry_claimed' => is_array($retryRow),
+        'delivery_status' => $deliveryStatus,
+        'delivery_attempts' => $attempts,
     ];
 }
 
@@ -392,7 +613,10 @@ function m20f07Cleanup(PDO $db, AdminUserActionsService $service, string $runId,
     $intentIds = array_values(array_filter([
         (string) ($backendResult['intent_id'] ?? ''),
         (string) ($backendResult['marketing_intent_id'] ?? ''),
+        (string) ($backendResult['retry']['intent_id'] ?? ''),
         (string) ($backendResult['concurrency']['intent_id'] ?? ''),
+        ...array_map('strval', $backendResult['preference_intent_ids'] ?? []),
+        ...array_map('strval', $backendResult['channel_matrix']['intent_ids'] ?? []),
     ]));
     if ($intentIds !== []) {
         $placeholders = implode(',', array_fill(0, count($intentIds), '?'));
@@ -402,9 +626,9 @@ function m20f07Cleanup(PDO $db, AdminUserActionsService $service, string $runId,
         $db->prepare("DELETE FROM communication_intents WHERE id IN ({$placeholders})")->execute($intentIds);
     }
     $db->prepare('DELETE FROM communication_preferences WHERE updated_by = :run_id')->execute([':run_id' => $runId]);
-    $db->prepare('DELETE FROM notifications WHERE entity_id IN (:run_id, :concurrent_run_id) AND event_key IN (\'support.feedback.reply\', \'marketing.campaign.message\')')->execute([
+    $db->prepare('DELETE FROM notifications WHERE (entity_id = :run_id OR entity_id LIKE :entity_prefix)')->execute([
         ':run_id' => $runId,
-        ':concurrent_run_id' => $runId . ':concurrent',
+        ':entity_prefix' => $runId . ':%',
     ]);
 
     foreach ($users as $user) {
@@ -420,7 +644,10 @@ function m20f07Cleanup(PDO $db, AdminUserActionsService $service, string $runId,
         "SELECT COUNT(*) FROM users WHERE email LIKE :prefix AND COALESCE(status, 'active') NOT IN ('deleted', 'pending_deletion')",
         [':prefix' => M20F07_EMAIL_PREFIX . 'user-' . $runId . '-%' . M20F07_EMAIL_SUFFIX]
     );
-    $remainingIntents = m20f07Count($db, 'SELECT COUNT(*) FROM communication_intents WHERE entity_id = :run_id', [':run_id' => $runId]);
+    $remainingIntents = m20f07Count($db, 'SELECT COUNT(*) FROM communication_intents WHERE entity_id = :run_id OR entity_id LIKE :entity_prefix', [
+        ':run_id' => $runId,
+        ':entity_prefix' => $runId . ':%',
+    ]);
     $remainingPreferences = m20f07Count($db, 'SELECT COUNT(*) FROM communication_preferences WHERE updated_by = :run_id', [':run_id' => $runId]);
 
     return [
@@ -452,6 +679,8 @@ try {
     );
     $users = [m20f07CreateUser($identityService, $runId, 'user')];
     $backend = m20f07RunBackendScenarios($db, $runId, $users[0]);
+    $backend['retry'] = m20f07RunRetryScenario($db, $runId, $users[0]);
+    $backend['channel_matrix'] = m20f07RunChannelMatrix($db, $runId, $users[0]);
     $concurrentEvent = m20f07TransactionalEvent($runId, $users[0]['user_id'], $users[0]['email'], 'concurrent');
     $concurrentEvent['entityId'] = $runId . ':concurrent';
     $backend['concurrency'] = m20f07RunConcurrentPublish($db, $concurrentEvent, $runId);
@@ -469,12 +698,13 @@ try {
         'same_intent_replay' => $backend['transactional_dispatch'],
         'marketing_opt_out' => $backend['marketing_opt_out'],
         'marketing_consent_policy' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Only the opt-out policy path was exercised; consent-in and consent-out browser evidence is not implemented yet.'],
-        'communication_retry' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Canonical provider failure and retry runner is not implemented yet.'],
+        'communication_preference_authority' => $backend['preference_authority'],
+        'communication_retry' => $backend['retry'],
         'delivery_reconciliation' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Provider/local reconciliation runner is not implemented yet.'],
         'concurrent_processing' => $backend['concurrency'],
         'provider_failure' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Canonical provider fault injection is not implemented yet.'],
         'worker_recovery' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Worker interruption runner is not implemented yet.'],
-        'channel_matrix_26_events' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Only the exercised synthetic events were run.'],
+        'channel_matrix_26_events' => $backend['channel_matrix'],
         'event_ordering' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Stateful ordering runner is not implemented yet.'],
         'communication_preferences_browser' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Authenticated browser runner is not implemented yet.'],
         'deep_link_authorization' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Authenticated browser/RBAC runner is not implemented yet.'],
