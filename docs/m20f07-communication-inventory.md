@@ -3,13 +3,16 @@
 ## Current State
 
 `M20F-07 = PARTIAL` on the canonical checkout. The structural communication
-foundation and PRELAUNCH e-mail safety boundary are proven; dynamic provider,
-database-concurrency and authenticated browser acceptance remain unexecuted.
+foundation, PRELAUNCH e-mail safety boundary, idempotency replay and real
+two-process MySQL idempotency race are proven; provider-failure/retry and
+authenticated browser acceptance remain unexecuted.
 
 Runtime evidence:
 
 - Active PRELAUNCH runtime: `fb25d079`.
-- `origin/1.0.0`: `b1a4c6a4`, ahead only with the Windows quality-harness commit.
+- `origin/1.0.0`: the current origin head includes this acceptance harness and
+  evidence update; it remains ahead of the active runtime with no runtime
+  deploy required.
 - No runtime deploy is required for that origin delta.
 - PRELAUNCH health/readiness: HTTP 200, `ready=true`, migrations pending `0`,
   checksum drift `0`.
@@ -55,7 +58,29 @@ the explicit missing-sink probe failed closed before provider delivery.
 - `M20F07_WORKER_EMAIL_SINK_ACTIVE = PASS`
 - `M20F07_POST_DEPLOY_EMAIL_SINK = PASS`
 - `M20F07_REAL_EXTERNAL_EMAIL_DELIVERIES = 0`
-- No synthetic fixture or database mutation was created in this execution.
+- No synthetic fixture remains after the execution; the harness cleanup counters
+  are all zero.
+
+## Canonical Dynamic Harness
+
+The repository-owned CLI entrypoint is
+`backend/tests/M20F07CanonicalDynamicAcceptanceHarness.php`. It requires the
+PRELAUNCH runtime, the web-runtime sink proof and an explicit
+`m20f07-<run-id>` namespace. It creates the synthetic identity through
+`AdminUserActionsService`, publishes through `CommunicationService`, and
+performs exact cleanup.
+
+The latest PRELAUNCH run proved:
+
+- duplicate semantic event: one intent, one in-app notification and one e-mail
+  outbox effect;
+- transactional dispatch replay: processed without a second provider effect;
+- marketing e-mail opt-out suppression;
+- two independent PHP workers behind a real file barrier, one canonical intent,
+  one notification and one outbox row;
+- synthetic active users, communication intents and preferences remaining: `0`;
+- real data insertions/deletions, Stripe LIVE mutations and external e-mail
+  deliveries: `0`.
 
 ## Remaining Closure Evidence
 
@@ -67,9 +92,11 @@ The following gates remain unproven and therefore are not promoted to PASS:
 - dynamic consent, preference and deep-link authorization scenarios;
 - authenticated user/admin browser E2E, mobile and accessibility acceptance.
 
-The repository contains structural wiring tests but no canonical M20F-07
-browser/provider acceptance harness for these scenarios. Creating a parallel
-test-only delivery path would invalidate the requested evidence, so
+The harness declares the remaining scenarios explicitly as evidence gaps:
+provider failure/retry, worker recovery, delivery reconciliation, the full
+26-event channel matrix, event ordering, consent/preferences browser behavior,
+deep-link authorization, authenticated user/admin browser flows, mobile and
+accessibility acceptance. It does not fabricate those results, so
 `M20F-07 = PARTIAL` remains the correct closure state.
 
 ## Governance
