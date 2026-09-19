@@ -10,7 +10,7 @@ authenticated browser acceptance remain unexecuted.
 Runtime evidence:
 
 - Active PRELAUNCH runtime: `fb25d079`.
-- `origin/1.0.0`: `27098806`, the current origin head includes this acceptance harness and
+- `origin/1.0.0`: `4d337fcf`, the current origin head includes this acceptance harness and
   evidence update; it remains ahead of the active runtime with no runtime
   deploy required.
 - No runtime deploy is required for that origin delta.
