@@ -962,7 +962,7 @@ try {
             'status' => 'PASS',
             'root' => 'backend/tests/M20F07CanonicalDynamicAcceptanceHarness.php',
             'entrypoint' => 'php backend/tests/M20F07CanonicalDynamicAcceptanceHarness.php --execute=M20F07_DYNAMIC_ACCEPTANCE',
-            'parallel_test_communication_authority' => 1,
+            'parallel_test_communication_authority' => 0,
             'scenario_matrix' => count($missingScenarios) === 0 ? 'PASS' : 'PARTIAL',
             'missing_scenarios' => $missingScenarios,
         ],
