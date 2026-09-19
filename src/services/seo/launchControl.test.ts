@@ -101,7 +101,7 @@ describe('SEO launch control', () => {
     expect(resolveXRobotsTag('/disciplinas/direito', new URLSearchParams(), 'PRODUCTION'))
       .toBeNull();
     expect(resolveXRobotsTag('/topicos/controle', new URLSearchParams(), 'PRELAUNCH'))
-      .toBe('noindex, follow');
+      .toBe('noindex, nofollow');
   });
 
   it('promotes ready organization routes only in PRODUCTION', () => {
@@ -126,7 +126,7 @@ describe('SEO launch control', () => {
       instanceReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.pending'] },
     })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
     expect(resolveXRobotsTag('/orgaos/policia-federal', new URLSearchParams(), 'PRODUCTION')).toBeNull();
-    expect(resolveXRobotsTag('/orgaos/policia-federal', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
+    expect(resolveXRobotsTag('/orgaos/policia-federal', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, nofollow');
   });
 
   it('keeps contest families protected until PRODUCTION and excludes unpublished instances', () => {
@@ -160,7 +160,7 @@ describe('SEO launch control', () => {
       expect(evaluateSeoLaunchControl({ ...input, launchMode: 'PRELAUNCH', family: family(id) })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
     }
     expect(evaluateSeoLaunchControl({ ...input, family: family('position_detail'), instanceReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.placeholder'] } })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
-    expect(resolveXRobotsTag('/cargos/auditor-fiscal', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
+    expect(resolveXRobotsTag('/cargos/auditor-fiscal', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, nofollow');
   });
 
   it('promotes only READY public simulations in PRODUCTION', () => {
@@ -174,7 +174,7 @@ describe('SEO launch control', () => {
       expect(evaluateSeoLaunchControl({ ...input, launchMode: 'PRELAUNCH', family: family(id) })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
     }
     expect(evaluateSeoLaunchControl({ ...input, family: family('simulation_detail'), instanceReadiness: { status: 'NOT_READY', reasonCodes: ['instance_readiness.invalid_definition'] } })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
-    expect(resolveXRobotsTag('/simulados/simulado-publico', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
+    expect(resolveXRobotsTag('/simulados/simulado-publico', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, nofollow');
     expect(resolveXRobotsTag('/simulados', new URLSearchParams('busca=fiscal'), 'PRODUCTION')).toBe('noindex, follow');
   });
 
@@ -192,7 +192,7 @@ describe('SEO launch control', () => {
       ...input, family: family('marketplace'),
       instanceReadiness: { status: 'NOT_APPLICABLE', reasonCodes: ['instance_readiness.not_applicable'] },
     })).toMatchObject({ indexability: 'NOINDEX', sitemapEligible: false });
-    expect(resolveXRobotsTag('/materiais/guia-de-estudo', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
+    expect(resolveXRobotsTag('/materiais/guia-de-estudo', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, nofollow');
     expect(resolveXRobotsTag('/materiais', new URLSearchParams('busca=direito'), 'PRODUCTION')).toBe('noindex, follow');
     expect(resolveXRobotsTag('/marketplace', new URLSearchParams(), 'PRODUCTION')).toBe('noindex, follow');
   });
@@ -200,7 +200,7 @@ describe('SEO launch control', () => {
   it('keeps canonical metadata while applying PRELAUNCH noindex', () => {
     const metadata = applySeoLaunchModeToMetadata({ alternates: { canonical: '/disciplinas/direito' } }, 'PRELAUNCH');
     expect(metadata.alternates).toEqual({ canonical: '/disciplinas/direito' });
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
   });
 
   it('promotes ready discipline metadata in PRODUCTION without changing canonical identity', () => {
@@ -226,6 +226,6 @@ describe('SEO launch control', () => {
     expect(resolveSeoProductionFamily('/setup').familyEligibility).toBe('PERMANENT_NOINDEX');
     expect(resolveXRobotsTag('/questoes', new URLSearchParams('materia=Direito'), 'PRODUCTION')).toBe('noindex, follow');
     expect(resolveXRobotsTag('/questoes/123/slug', new URLSearchParams(), 'PRODUCTION')).toBeNull();
-    expect(resolveXRobotsTag('/questoes/123/slug', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, follow');
+    expect(resolveXRobotsTag('/questoes/123/slug', new URLSearchParams(), 'PRELAUNCH')).toBe('noindex, nofollow');
   });
 });

@@ -134,6 +134,20 @@ final class CommunicationRepository
         ]);
     }
 
+    public function setDeliveryProviderMessageId(string $intentId, string $channel, string $providerMessageId): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE communication_deliveries
+             SET provider_message_id = :provider_message_id
+             WHERE intent_id = :intent_id AND channel = :channel'
+        );
+        $stmt->execute([
+            ':provider_message_id' => $providerMessageId,
+            ':intent_id' => $intentId,
+            ':channel' => $channel,
+        ]);
+    }
+
     public function updateIntentStatus(string $intentId, string $status, ?string $error = null): void
     {
         $stmt = $this->db->prepare(

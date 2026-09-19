@@ -249,11 +249,11 @@ export const resolveXRobotsTag = (
   const environmentAllowed = launchMode !== undefined
     ? true
     : isSeoRuntimeIndexingAllowed(effectiveLaunchMode, requestOrigin);
-  if (effectiveLaunchMode !== 'PRODUCTION' || !environmentAllowed) return 'noindex, follow';
+  if (effectiveLaunchMode !== 'PRODUCTION' || !environmentAllowed) return 'noindex, nofollow';
   return null;
 };
 
-export const launchModeRobots = (follow = true): NonNullable<Metadata['robots']> => ({
+export const launchModeRobots = (follow = false): NonNullable<Metadata['robots']> => ({
   index: false,
   follow,
   noarchive: true,
@@ -288,7 +288,7 @@ export const applySeoLaunchModeToMetadata = (
     // explicit `index` meta lets the host-aware X-Robots-Tag remain stricter
     // on preview or alternate hosts without emitting contradictory directives.
     ? (hasExplicitNoindex(metadata.robots) ? metadata : { ...metadata, robots: undefined })
-    : { ...metadata, robots: launchModeRobots(true) };
+    : { ...metadata, robots: launchModeRobots(false) };
 };
 
 export const isSeoProductionMode = (launchMode = getSeoLaunchMode()): boolean => (

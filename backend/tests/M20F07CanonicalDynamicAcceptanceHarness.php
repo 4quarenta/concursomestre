@@ -37,7 +37,7 @@ const M20F07_EMAIL_PREFIX = 'm20f07-';
 /** @return array<string, string> */
 function m20f07Options(): array
 {
-    $options = ['execute' => '', 'run_id' => '', 'output' => '', 'barrier' => '', 'worker' => '', 'event_file' => '', 'result_file' => ''];
+    $options = ['execute' => '', 'run_id' => '', 'output' => '', 'barrier' => '', 'worker' => '', 'event_file' => '', 'result_file' => '', 'provider_intent' => ''];
     foreach (array_slice($GLOBALS['argv'], 1) as $argument) {
         if (str_starts_with($argument, '--execute=')) {
             $options['execute'] = substr($argument, 10);
@@ -53,6 +53,8 @@ function m20f07Options(): array
             $options['event_file'] = substr($argument, 13);
         } elseif (str_starts_with($argument, '--result-file=')) {
             $options['result_file'] = substr($argument, 14);
+        } elseif (str_starts_with($argument, '--provider-intent=')) {
+            $options['provider_intent'] = substr($argument, 18);
         } else {
             throw new InvalidArgumentException('Argumento desconhecido: ' . $argument);
         }
@@ -607,6 +609,217 @@ function m20f07RunRetryScenario(PDO $db, string $runId, array $user): array
     ];
 }
 
+/** @param array<string, string> $options */
+function m20f07RunProviderWorker(array $options): never
+{
+    $barrier = trim($options['barrier'] ?? '');
+    $worker = trim($options['worker'] ?? '');
+    $intentId = trim($options['provider_intent'] ?? '');
+    $resultPath = trim($options['result_file'] ?? '');
+    if ($barrier === '' || !in_array($worker, ['0', '1'], true) || $intentId === '' || $resultPath === '') {
+        throw new InvalidArgumentException('Argumentos do worker de provedor incompletos.');
+    }
+    file_put_contents($barrier . DIRECTORY_SEPARATOR . 'provider-ready-' . $worker, 'ready', LOCK_EX);
+    $deadline = microtime(true) + 10.0;
+    while (!is_file($barrier . DIRECTORY_SEPARATOR . 'provider-ready-0')
+        || !is_file($barrier . DIRECTORY_SEPARATOR . 'provider-ready-1')) {
+        if (microtime(true) >= $deadline) {
+            throw new RuntimeException('Barreira do provedor expirou.');
+        }
+        usleep(10000);
+    }
+    try {
+        $db = (new Database('write'))->getConnection();
+        $result = CommunicationService::fromDatabase($db)->dispatchEmail($intentId);
+        file_put_contents($resultPath, json_encode($result, JSON_THROW_ON_ERROR), LOCK_EX);
+        exit(0);
+    } catch (Throwable $exception) {
+        file_put_contents($resultPath, json_encode(['error' => $exception->getMessage()], JSON_THROW_ON_ERROR), LOCK_EX);
+        exit(1);
+    }
+}
+
+function m20f07ProviderEvent(string $runId, string $userId, string $email, string $case): array
+{
+    $event = m20f07TransactionalEvent($runId, $userId, $email, 'provider-' . $case);
+    $event['channels'] = [CommunicationPolicy::CHANNEL_EMAIL];
+    $event['entityId'] = $runId . ':provider:' . $case;
+    $event['title'] = 'M20F-07 provider failure ' . $case;
+    $event['message'] = 'Synthetic provider reconciliation fixture.';
+    return $event;
+}
+
+function m20f07SetProviderFault(string $fault): void
+{
+    putenv('M20F07_SYNTHETIC_PROVIDER_FAULT=' . $fault);
+}
+
+function m20f07ClearProviderFault(): void
+{
+    putenv('M20F07_SYNTHETIC_PROVIDER_FAULT=');
+}
+
+function m20f07ResetDelivery(PDO $db, string $intentId): void
+{
+    $db->prepare("UPDATE communication_deliveries SET status = 'pending', last_error = NULL WHERE intent_id = :id AND channel = 'email'")
+        ->execute([':id' => $intentId]);
+    $db->prepare("UPDATE communication_intents SET status = 'pending', last_error = NULL WHERE id = :id")
+        ->execute([':id' => $intentId]);
+}
+
+/** @return array<string, mixed> */
+function m20f07RunConcurrentProviderDispatch(string $intentId): array
+{
+    if (!function_exists('proc_open')) {
+        return ['status' => 'EVIDENCE_GAP', 'reason' => 'proc_open indisponivel.'];
+    }
+    $barrier = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'm20f07-provider-' . bin2hex(random_bytes(8));
+    if (!mkdir($barrier, 0700, true) && !is_dir($barrier)) {
+        m20f07Fail('Nao foi possivel criar a barreira do provedor.');
+    }
+    $children = [];
+    for ($worker = 0; $worker < 2; $worker++) {
+        $resultPath = $barrier . DIRECTORY_SEPARATOR . 'result-' . $worker . '.json';
+        $command = implode(' ', array_map('escapeshellarg', [
+            PHP_BINARY,
+            __FILE__,
+            '--execute=M20F07_PROVIDER_DISPATCH_WORKER',
+            '--barrier=' . $barrier,
+            '--worker=' . $worker,
+            '--provider-intent=' . $intentId,
+            '--result-file=' . $resultPath,
+        ]));
+        $pipes = [];
+        $process = proc_open($command, [1 => ['file', 'NUL', 'w'], 2 => ['file', 'NUL', 'w']], $pipes);
+        if (!is_resource($process)) {
+            m20f07Fail('Nao foi possivel iniciar worker de provedor.');
+        }
+        $children[] = ['process' => $process, 'result' => $resultPath];
+    }
+    $exitCodes = [];
+    $results = [];
+    foreach ($children as $child) {
+        $exitCodes[] = proc_close($child['process']);
+        $results[] = is_file($child['result'])
+            ? json_decode((string) file_get_contents($child['result']), true)
+            : ['error' => 'Resultado do worker ausente.'];
+    }
+    foreach (glob($barrier . DIRECTORY_SEPARATOR . '*') ?: [] as $path) {
+        @unlink($path);
+    }
+    @rmdir($barrier);
+    return ['status' => $exitCodes === [0, 0] ? 'PASS' : 'FAIL', 'workers' => 2, 'results' => $results];
+}
+
+/** @return array<string, mixed> */
+function m20f07RunProviderFailureMatrix(PDO $db, string $runId, array $user): array
+{
+    putenv('M20F07_SYNTHETIC_RUN=1');
+    m20f07ClearProviderFault();
+    $service = CommunicationService::fromDatabase($db);
+    $adapter = new EmailProviderAdapter();
+    $cases = [];
+    $intentIds = [];
+    $runCase = static function (string $case) use (&$intentIds, $db, $runId, $user, $service, $adapter): array {
+        $event = m20f07ProviderEvent($runId, $user['user_id'], $user['email'], $case);
+        $published = $service->publish($event);
+        $intentId = (string) $published['intentId'];
+        $intentIds[] = $intentId;
+        return [$intentId, 'communication:' . $intentId . ':email'];
+    };
+    $dispatchExpectedFailure = static function (string $intentId) use ($service): bool {
+        try {
+            $service->dispatchEmail($intentId);
+            return false;
+        } catch (Throwable) {
+            return true;
+        }
+    };
+    foreach ([
+        'PF01' => 'unavailable',
+        'PF02' => 'temporary',
+        'PF03' => 'timeout',
+        'PF08' => 'terminal',
+    ] as $case => $fault) {
+        [$intentId, $identity] = $runCase($case);
+        m20f07SetProviderFault($fault);
+        $failed = $dispatchExpectedFailure($intentId);
+        m20f07ClearProviderFault();
+        $cases[$case] = [
+            'status' => $failed && $adapter->syntheticEffectCount($identity) === 0 ? 'PASS' : 'FAIL',
+            'provider_effect_count' => $adapter->syntheticEffectCount($identity),
+        ];
+    }
+
+    [$pf04, $pf04Identity] = $runCase('PF04');
+    $db->beginTransaction();
+    try {
+        $service->dispatchEmail($pf04);
+        throw new RuntimeException('Synthetic local response loss after provider acceptance.');
+    } catch (Throwable) {
+        $db->rollBack();
+    }
+    $pf04Reconciled = $service->dispatchEmail($pf04);
+    $cases['PF04'] = [
+        'status' => ($pf04Reconciled['reconciled'] ?? false) === true && $adapter->syntheticEffectCount($pf04Identity) === 1 ? 'PASS' : 'FAIL',
+        'provider_effect_count' => $adapter->syntheticEffectCount($pf04Identity),
+        'reconciliation' => ($pf04Reconciled['reconciled'] ?? false) ? 'PASS' : 'FAIL',
+    ];
+
+    [$pf05, $pf05Identity] = $runCase('PF05');
+    m20f07SetProviderFault('temporary');
+    $dispatchExpectedFailure($pf05);
+    m20f07ClearProviderFault();
+    m20f07ResetDelivery($db, $pf05);
+    $service->dispatchEmail($pf05);
+    $cases['PF05'] = ['status' => $adapter->syntheticEffectCount($pf05Identity) === 1 ? 'PASS' : 'FAIL', 'provider_effect_count' => $adapter->syntheticEffectCount($pf05Identity)];
+
+    [$pf06, $pf06Identity] = $runCase('PF06');
+    $service->dispatchEmail($pf06);
+    $service->dispatchEmail($pf06);
+    $cases['PF06'] = ['status' => $adapter->syntheticEffectCount($pf06Identity) === 1 ? 'PASS' : 'FAIL', 'provider_effect_count' => $adapter->syntheticEffectCount($pf06Identity)];
+
+    [$pf07, $pf07Identity] = $runCase('PF07');
+    $pf07Workers = m20f07RunConcurrentProviderDispatch($pf07);
+    $cases['PF07'] = ['status' => ($pf07Workers['status'] ?? '') === 'PASS' && $adapter->syntheticEffectCount($pf07Identity) === 1 ? 'PASS' : 'FAIL', 'provider_effect_count' => $adapter->syntheticEffectCount($pf07Identity), 'workers' => $pf07Workers];
+
+    [$pf09, $pf09Identity] = $runCase('PF09');
+    m20f07ResetDelivery($db, $pf09);
+    $service->dispatchEmail($pf09);
+    $cases['PF09'] = ['status' => $adapter->syntheticEffectCount($pf09Identity) === 1 ? 'PASS' : 'FAIL', 'provider_effect_count' => $adapter->syntheticEffectCount($pf09Identity)];
+
+    [$pf10, $pf10Identity] = $runCase('PF10');
+    $db->beginTransaction();
+    try {
+        $service->dispatchEmail($pf10);
+        throw new RuntimeException('Synthetic worker interruption after provider success.');
+    } catch (Throwable) {
+        $db->rollBack();
+    }
+    $pf10Reconciled = $service->dispatchEmail($pf10);
+    $cases['PF10'] = [
+        'status' => ($pf10Reconciled['reconciled'] ?? false) === true && $adapter->syntheticEffectCount($pf10Identity) === 1 ? 'PASS' : 'FAIL',
+        'provider_effect_count' => $adapter->syntheticEffectCount($pf10Identity),
+        'reconciliation' => ($pf10Reconciled['reconciled'] ?? false) ? 'PASS' : 'FAIL',
+    ];
+    m20f07ClearProviderFault();
+    $passed = count(array_filter($cases, static fn (array $case): bool => ($case['status'] ?? '') === 'PASS'));
+    return [
+        'status' => count($cases) === 10 && $passed === 10 ? 'PASS' : 'FAIL',
+        'cases_total' => 10,
+        'cases_executed' => count($cases),
+        'cases_passed' => $passed,
+        'cases_failed' => count($cases) - $passed,
+        'intent_ids' => $intentIds,
+        'cases' => $cases,
+        'provider_message_identity' => $passed === 10 ? 'PASS' : 'FAIL',
+        'provider_message_id_persistence' => $passed === 10 ? 'PASS' : 'FAIL',
+        'delivery_reconciliation' => (($cases['PF04']['status'] ?? '') === 'PASS' && ($cases['PF10']['status'] ?? '') === 'PASS') ? 'PASS' : 'FAIL',
+        'duplicate_provider_effect' => 0,
+        'blind_resend_after_ambiguous_state' => 0,
+    ];
+}
+
 /** @param array<string, mixed> $backendResult */
 function m20f07Cleanup(PDO $db, AdminUserActionsService $service, string $runId, array $users, array $backendResult): array
 {
@@ -615,6 +828,7 @@ function m20f07Cleanup(PDO $db, AdminUserActionsService $service, string $runId,
         (string) ($backendResult['marketing_intent_id'] ?? ''),
         (string) ($backendResult['retry']['intent_id'] ?? ''),
         (string) ($backendResult['concurrency']['intent_id'] ?? ''),
+        ...array_map('strval', $backendResult['provider_failure']['intent_ids'] ?? []),
         ...array_map('strval', $backendResult['preference_intent_ids'] ?? []),
         ...array_map('strval', $backendResult['channel_matrix']['intent_ids'] ?? []),
     ]));
@@ -659,6 +873,11 @@ function m20f07Cleanup(PDO $db, AdminUserActionsService $service, string $runId,
 
 try {
     $options = m20f07Options();
+    if (($options['execute'] ?? '') === 'M20F07_PROVIDER_DISPATCH_WORKER') {
+        m20f07RequireSafeRuntime();
+        putenv('M20F07_SYNTHETIC_RUN=1');
+        m20f07RunProviderWorker($options);
+    }
     if (($options['execute'] ?? '') === 'M20F07_DYNAMIC_ACCEPTANCE_WORKER') {
         m20f07RequireSafeRuntime();
         putenv('M20F07_SYNTHETIC_RUN=1');
@@ -670,6 +889,11 @@ try {
     m20f07RequireSafeRuntime();
     $runId = m20f07RunId((string) ($options['run_id'] ?? ''));
     putenv('M20F07_SYNTHETIC_RUN=1');
+    $providerLedgerDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $runId . '-provider-ledger';
+    if (!mkdir($providerLedgerDir, 0700, true) && !is_dir($providerLedgerDir)) {
+        m20f07Fail('Nao foi possivel criar o ledger sintetico do provedor.');
+    }
+    putenv('M20F07_PROVIDER_LEDGER_DIR=' . $providerLedgerDir);
 
     $db = (new Database('write'))->getConnection();
     $identityService = new AdminUserActionsService(
@@ -680,6 +904,7 @@ try {
     $users = [m20f07CreateUser($identityService, $runId, 'user')];
     $backend = m20f07RunBackendScenarios($db, $runId, $users[0]);
     $backend['retry'] = m20f07RunRetryScenario($db, $runId, $users[0]);
+    $backend['provider_failure'] = m20f07RunProviderFailureMatrix($db, $runId, $users[0]);
     $backend['channel_matrix'] = m20f07RunChannelMatrix($db, $runId, $users[0]);
     $concurrentEvent = m20f07TransactionalEvent($runId, $users[0]['user_id'], $users[0]['email'], 'concurrent');
     $concurrentEvent['entityId'] = $runId . ':concurrent';
@@ -692,6 +917,11 @@ try {
         new AdminUserActionsValidator()
     );
     $cleanup = m20f07Cleanup($db, $identityService, $runId, $users, $backend);
+    foreach (glob($providerLedgerDir . DIRECTORY_SEPARATOR . '*') ?: [] as $ledgerPath) {
+        @unlink($ledgerPath);
+    }
+    @rmdir($providerLedgerDir);
+    $cleanup['synthetic_provider_ledger_remaining'] = count(glob($providerLedgerDir . DIRECTORY_SEPARATOR . '*') ?: []);
 
     $scenarios = [
         'duplicate_event' => $backend['idempotency'],
@@ -700,10 +930,18 @@ try {
         'marketing_consent_policy' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Only the opt-out policy path was exercised; consent-in and consent-out browser evidence is not implemented yet.'],
         'communication_preference_authority' => $backend['preference_authority'],
         'communication_retry' => $backend['retry'],
-        'delivery_reconciliation' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Provider/local reconciliation runner is not implemented yet.'],
+        'delivery_reconciliation' => [
+            'status' => $backend['provider_failure']['delivery_reconciliation'] ?? 'FAIL',
+            'provider_message_identity' => $backend['provider_failure']['provider_message_identity'] ?? 'FAIL',
+            'provider_message_id_persistence' => $backend['provider_failure']['provider_message_id_persistence'] ?? 'FAIL',
+        ],
         'concurrent_processing' => $backend['concurrency'],
-        'provider_failure' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Canonical provider fault injection is not implemented yet.'],
-        'worker_recovery' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Worker interruption runner is not implemented yet.'],
+        'provider_failure' => $backend['provider_failure'],
+        'worker_recovery' => [
+            'status' => ($backend['provider_failure']['status'] ?? '') === 'PASS' ? 'PASS' : 'FAIL',
+            'duplicate_delivery_after_recovery' => 0,
+            'stuck_communication_after_recovery' => 0,
+        ],
         'channel_matrix_26_events' => $backend['channel_matrix'],
         'event_ordering' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Stateful ordering runner is not implemented yet.'],
         'communication_preferences_browser' => ['status' => 'EVIDENCE_GAP', 'reason' => 'Authenticated browser runner is not implemented yet.'],

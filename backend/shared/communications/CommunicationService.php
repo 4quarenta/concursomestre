@@ -232,6 +232,32 @@ final class CommunicationService
             throw new RuntimeException('Execucao sintetica M20F-07 sem sink de e-mail ativo.');
         }
 
+        $providerIdempotencyKey = 'communication:' . $intentId . ':email';
+        $storedProviderMessageId = trim((string) ($delivery['provider_message_id'] ?? ''));
+        $reconciledProviderMessageId = $storedProviderMessageId !== ''
+            ? $storedProviderMessageId
+            : $this->emailProvider->lookup($providerIdempotencyKey);
+        if ($reconciledProviderMessageId !== null && $reconciledProviderMessageId !== '') {
+            $this->repository->setDeliveryProviderMessageId(
+                $intentId,
+                CommunicationPolicy::CHANNEL_EMAIL,
+                $reconciledProviderMessageId
+            );
+            $this->repository->markDelivery($intentId, CommunicationPolicy::CHANNEL_EMAIL, 'processed');
+            $this->repository->updateIntentStatus($intentId, 'processed');
+            $this->repository->insertAudit($intentId, 'communication.email.reconciled', 'accepted', [
+                'channel' => CommunicationPolicy::CHANNEL_EMAIL,
+                'providerMessageId' => $reconciledProviderMessageId,
+                'reconciliationIdentity' => $providerIdempotencyKey,
+            ]);
+            return [
+                'intentId' => $intentId,
+                'status' => 'processed',
+                'providerMessageId' => $reconciledProviderMessageId,
+                'reconciled' => true,
+            ];
+        }
+
         $payload = json_decode((string) ($intent['payload_json'] ?? ''), true);
         if (!is_array($payload)) {
             throw new RuntimeException('Payload da intent de comunicacao invalido.');
@@ -247,14 +273,33 @@ final class CommunicationService
 
         $this->repository->markDelivery($intentId, CommunicationPolicy::CHANNEL_EMAIL, 'processing', null, false);
         try {
-            $this->emailProvider->send($email, (string) ($payload['recipientName'] ?? 'Usuário'), $subject, $html, $text);
+            $providerMessageId = $this->emailProvider->send(
+                $email,
+                (string) ($payload['recipientName'] ?? 'Usuário'),
+                $subject,
+                $html,
+                $text,
+                $providerIdempotencyKey
+            );
+            $this->repository->setDeliveryProviderMessageId(
+                $intentId,
+                CommunicationPolicy::CHANNEL_EMAIL,
+                $providerMessageId
+            );
             $this->repository->markDelivery($intentId, CommunicationPolicy::CHANNEL_EMAIL, 'processed');
             $this->repository->updateIntentStatus($intentId, 'processed');
             $this->repository->insertAudit($intentId, 'communication.email.delivered', 'accepted', [
                 'channel' => CommunicationPolicy::CHANNEL_EMAIL,
                 'provider' => 'Mailer',
+                'providerMessageId' => $providerMessageId,
+                'idempotencyIdentity' => $providerIdempotencyKey,
             ]);
-            return ['intentId' => $intentId, 'status' => 'processed'];
+            return [
+                'intentId' => $intentId,
+                'status' => 'processed',
+                'providerMessageId' => $providerMessageId,
+                'reconciled' => false,
+            ];
         } catch (Throwable $exception) {
             $this->repository->markDelivery($intentId, CommunicationPolicy::CHANNEL_EMAIL, 'failed', $exception->getMessage());
             $this->repository->updateIntentStatus($intentId, 'failed', $exception->getMessage());

@@ -8,7 +8,7 @@ import { proxy } from '../../proxy';
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Phase 4 launch control runtime', () => {
-  it('keeps public pages crawlable but omits sitemap discovery in PRELAUNCH', async () => {
+  it('blocks PRELAUNCH crawling while omitting sitemap discovery', async () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRELAUNCH');
     const result = await getRobots(new Request('https://concursomestre.com/robots.txt'));
     const body = await result.text();
@@ -40,13 +40,13 @@ describe('Phase 4 launch control runtime', () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRELAUNCH');
     const metadata = buildPublicPageMetadata({ title: 'Provas', description: 'Provas publicas.', path: '/provas' });
     expect(metadata.alternates?.canonical).toBe('/provas');
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
   });
 
   it('adds the PRELAUNCH X-Robots-Tag to public document responses', async () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRELAUNCH');
     const response = await proxy(new NextRequest('https://concursomestre.com/questoes'));
-    expect(response.headers.get('x-robots-tag')).toBe('noindex, follow');
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
   });
 
   it('keeps permanent functional variations NOINDEX in PRODUCTION', async () => {
