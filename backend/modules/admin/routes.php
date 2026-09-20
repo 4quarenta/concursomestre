@@ -29,6 +29,8 @@ require_once __DIR__ . '/services/AdminSystemLogService.php';
 require_once __DIR__ . '/services/AdminSystemLogPathResolver.php';
 require_once __DIR__ . '/services/AdminFeedbackService.php';
 require_once __DIR__ . '/services/AdminUserCommunicationService.php';
+require_once __DIR__ . '/services/AdminCommunicationHistoryService.php';
+require_once __DIR__ . '/../../shared/communications/CommunicationRepository.php';
 require_once __DIR__ . '/services/AdminReportModerationService.php';
 require_once __DIR__ . '/services/AdminReportWorkbenchService.php';
 require_once __DIR__ . '/services/AdminStatsService.php';
@@ -179,6 +181,33 @@ function requireAdminMutationCsrf(): void
 {
     if (!assertValidCsrfToken(getCsrfTokenFromCookie(), getCsrfTokenFromRequest())) {
         Response::forbidden('CSRF token invalido.');
+    }
+}
+
+/** Histórico/queue operacional de comunicações. GET é estritamente leitura. */
+function handleAdminCommunicationsRoute(PDO $db): void
+{
+    try {
+        $context = requireAdminSessionContext($db);
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if (!in_array($method, ['GET', 'HEAD'], true)) {
+            Response::error('Metodo nao permitido.', 405);
+        }
+
+        $payload = (new AdminCommunicationHistoryService(new CommunicationRepository($db)))->list($_GET);
+        logAdminAudit($db, (string) $context['admin_user_id'], 'communication.history.view', 'communication', null, [
+            'page' => $payload['page'],
+            'per_page' => $payload['perPage'],
+            'total' => $payload['total'],
+        ]);
+        if ($method === 'HEAD') {
+            http_response_code(200);
+            exit;
+        }
+        Response::success($payload);
+    } catch (Throwable $e) {
+        error_log('[admin_communications_route] ' . $e->getMessage());
+        Response::serverError('Nao foi possivel carregar o historico de comunicacoes.', $e);
     }
 }
 

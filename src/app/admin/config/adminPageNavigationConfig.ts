@@ -23,7 +23,7 @@ export type AdminOperationSection = 'questions' | 'question-groups' | 'exams' | 
 export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'benefits' | 'automation' | 'analytics';
 export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links' | 'featured-organizations';
-export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments';
+export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments' | 'communications';
 export type AdminSettingsSection = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs' | 'safe-operations';
 
 export type AdminNavigationTab = {
@@ -40,13 +40,13 @@ export type AdminNavigationSection = {
   label: string;
 };
 
-export type SupportPendingCounts = Partial<Record<'feedback' | 'threads' | 'reports' | 'comments' | 'refunds', number>>;
+export type SupportPendingCounts = Partial<Record<'feedback' | 'threads' | 'reports' | 'comments' | 'refunds' | 'communications', number>>;
 
 export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['operation', 'support'];
 
 const STAFF_ADMIN_ALLOWED_SECTIONS: Partial<Record<AdminPageTab, string[]>> = {
   operation: ['questions', 'question-groups', 'exams', 'files', 'blog', 'novidades', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
-  support: ['feedback', 'threads', 'reports', 'rankings', 'comments'],
+  support: ['feedback', 'threads', 'reports', 'rankings', 'comments', 'communications'],
 };
 
 export const normalizeAdminUserRole = (role?: string | null) =>
@@ -157,7 +157,7 @@ export const OPERATION_SECTION_KEYS = ['questions', 'question-groups', 'exams', 
 export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as const;
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'benefits', 'automation', 'analytics'] as const;
 export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links', 'featured-organizations'] as const;
-export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments'] as const;
+export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments', 'communications'] as const;
 export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'gamification', 'notifications', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs', 'safe-operations'] as const;
 
 /**
@@ -351,6 +351,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'threads', label: 'Solicitações' },
     { key: 'rankings', label: 'Rankings' },
     { key: 'refunds', label: 'Reembolsos' },
+    { key: 'communications', label: 'Comunicações' },
   ],
   settings: [
     { key: 'general', label: 'Geral' },

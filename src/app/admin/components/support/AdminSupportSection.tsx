@@ -37,6 +37,7 @@ import { marketplaceService } from '@services/marketplace/marketplaceService';
 import { parseEditorialRequestDetails } from '@services/support';
 import { AdminFeedback } from './AdminFeedback';
 import AdminCommentsModerationSection from './AdminCommentsModerationSection';
+import AdminCommunicationHistory from './AdminCommunicationHistory';
 import ContextualReportModerationModal from './ContextualReportModerationModal';
 import {
   ADMIN_MODAL_FOOTER_CLASS,
@@ -103,6 +104,11 @@ const SUPPORT_SECTIONS: Array<{
     key: 'threads',
     label: 'Solicitações',
     description: 'Acompanhe conversas abertas, pedidos editoriais e retornos do suporte.',
+  },
+  {
+    key: 'communications',
+    label: 'Comunicações',
+    description: 'Acompanhe intents, entregas, tentativas, identidade do provedor e reconciliação.',
   },
 ];
 
@@ -795,6 +801,8 @@ const AdminSupportSection = ({
               <Shield size={18} />
             ) : activeSection === 'reports' ? (
               <AlertTriangle size={18} />
+            ) : activeSection === 'communications' ? (
+              <MessageSquareText size={18} />
             ) : (
               <MessageSquareText size={18} />
             )}
@@ -854,6 +862,8 @@ const AdminSupportSection = ({
         </div>
       ) : activeSection === 'comments' ? (
         <AdminCommentsModerationSection onCountsChange={handleModerationCountsChange} />
+      ) : activeSection === 'communications' ? (
+        <AdminCommunicationHistory />
       ) : (
         <AdminFeedback
           mode={activeSection === 'threads' ? 'threads' : 'feedback'}

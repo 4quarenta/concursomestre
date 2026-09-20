@@ -5,6 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/CommunicationPolicy.php';
 require_once __DIR__ . '/CommunicationRepository.php';
 require_once __DIR__ . '/EmailProviderAdapter.php';
+require_once __DIR__ . '/CommunicationDeepLinkPolicy.php';
+require_once __DIR__ . '/CommunicationEventOrderingPolicy.php';
 require_once __DIR__ . '/../events/TransactionalOutbox.php';
 
 /**
@@ -18,7 +20,9 @@ final class CommunicationService
         private readonly CommunicationRepository $repository,
         private readonly CommunicationPolicy $policy,
         private readonly TransactionalOutbox $outbox,
-        private readonly EmailProviderAdapter $emailProvider
+        private readonly EmailProviderAdapter $emailProvider,
+        private readonly CommunicationDeepLinkPolicy $deepLinkPolicy,
+        private readonly CommunicationEventOrderingPolicy $orderingPolicy
     ) {
     }
 
@@ -29,7 +33,9 @@ final class CommunicationService
             new CommunicationRepository($db),
             new CommunicationPolicy($db),
             new TransactionalOutbox($db),
-            new EmailProviderAdapter()
+            new EmailProviderAdapter(),
+            new CommunicationDeepLinkPolicy(),
+            new CommunicationEventOrderingPolicy()
         );
     }
 
@@ -94,8 +100,6 @@ final class CommunicationService
             throw new InvalidArgumentException('Delivery in-app sem destinatario.');
         }
         $payload = is_array($event['payload'] ?? null) ? $event['payload'] : [];
-        $encodedPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-
         $existing = $this->repository->findIntentByKey($idempotencyKey);
         if (is_array($existing)) {
             return [
@@ -104,6 +108,24 @@ final class CommunicationService
                 'channels' => $this->existingChannels((string) $existing['id']),
             ];
         }
+        $safeLink = $this->deepLinkPolicy->authorize($event['link'] ?? null, [
+            'recipientUserId' => $userId,
+            'isAdmin' => (bool) ($event['isAdmin'] ?? false) || strtolower((string) ($event['actorType'] ?? '')) === 'admin',
+        ]);
+        $ordering = $this->orderingPolicy->normalize($event);
+        if ($ordering !== null) {
+            $latest = $this->repository->findLatestIntentByOrderingKey($ordering['key']);
+            $decision = $this->orderingPolicy->decide($latest, $ordering);
+            if ($decision !== 'accept') {
+                return [
+                    'intentId' => is_array($latest) ? (string) $latest['id'] : '',
+                    'created' => false,
+                    'ordered' => $decision,
+                    'channels' => [],
+                ];
+            }
+        }
+        $encodedPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
         $intentId = 'comm-' . substr(hash('sha256', $idempotencyKey), 0, 56);
         $started = !$this->db->inTransaction();
@@ -124,12 +146,30 @@ final class CommunicationService
                 'actor_id' => $this->nullableString($event['actorId'] ?? null),
                 'entity_type' => $this->nullableString($event['entityType'] ?? null),
                 'entity_id' => $this->nullableString($event['entityId'] ?? null),
+                'ordering_key' => $ordering['key'] ?? null,
+                'source_revision' => $ordering['revision'] ?? null,
+                'source_transition_id' => $ordering['transitionId'] ?? null,
+                'source_state' => $ordering['state'] ?? null,
             ]);
 
             if (!$created) {
                 $existing = $this->repository->findIntentByKey($idempotencyKey);
                 if (!is_array($existing)) {
-                    throw new RuntimeException('Intent de comunicacao duplicada sem registro recuperavel.');
+                    $existing = $ordering !== null
+                        ? $this->repository->findLatestIntentByOrderingKey($ordering['key'])
+                        : null;
+                    if (!is_array($existing)) {
+                        throw new RuntimeException('Intent de comunicacao duplicada sem registro recuperavel.');
+                    }
+                    if ($started) {
+                        $this->db->commit();
+                    }
+                    return [
+                        'intentId' => (string) $existing['id'],
+                        'created' => false,
+                        'ordered' => 'duplicate',
+                        'channels' => $this->existingChannels((string) $existing['id']),
+                    ];
                 }
                 if ($started) {
                     $this->db->commit();
@@ -158,7 +198,7 @@ final class CommunicationService
                         'message' => (string) ($event['message'] ?? ''),
                         'type' => (string) ($event['type'] ?? 'info'),
                         'category' => (string) ($event['category'] ?? 'system'),
-                        'link' => $event['link'] ?? null,
+                        'link' => $safeLink,
                         'evidence_url' => $event['evidenceUrl'] ?? null,
                         'event_key' => $eventType,
                         'entity_type' => $event['entityType'] ?? null,
@@ -188,6 +228,10 @@ final class CommunicationService
                 }
 
                 throw new InvalidArgumentException('Canal de comunicacao nao suportado.');
+            }
+
+            if ($ordering !== null) {
+                $this->repository->suppressPendingForOrderingKey($ordering['key'], $ordering['revision']);
             }
 
             $this->repository->insertAudit($intentId, 'communication.intent.created', 'accepted', [

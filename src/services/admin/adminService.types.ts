@@ -21,6 +21,32 @@ export type ReportResolution = 'resolved' | 'ignored';
 export type AdminLooseRecord = Record<string, unknown>;
 export type AdminLaunchMode = 'PRELAUNCH' | 'GO_CANDIDATE' | 'PRODUCTION';
 
+export interface AdminCommunicationHistoryItem {
+  id: string;
+  event_type?: string | null;
+  delivery_class?: string | null;
+  recipient?: string | null;
+  intent_status?: string | null;
+  delivery_status?: string | null;
+  channel?: string | null;
+  attempts?: number | string | null;
+  provider_message_id?: string | null;
+  source_revision?: number | string | null;
+  source_state?: string | null;
+  created_at?: string | null;
+  delivered_at?: string | null;
+  last_error?: string | null;
+  delivery_error?: string | null;
+}
+
+export interface AdminCommunicationHistoryPayload {
+  items: AdminCommunicationHistoryItem[];
+  page: number;
+  perPage: number;
+  total: number;
+  pages: number;
+}
+
 export interface AdminLaunchModeStatus {
   runtimeEnvironment: string;
   actualLaunchMode: AdminLaunchMode;

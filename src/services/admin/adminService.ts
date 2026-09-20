@@ -59,6 +59,7 @@ import type {
   AdminQuestionGroupPayload,
   AdminLaunchMode,
   AdminLaunchModeStatus,
+  AdminCommunicationHistoryPayload,
 } from './adminService.types';
 export * from './adminService.types';
 
@@ -1315,6 +1316,25 @@ export const adminService = {
       },
       15_000,
     );
+  },
+
+  async getCommunicationHistory(params: {
+    page?: number;
+    perPage?: number;
+    search?: string;
+    event_type?: string;
+    delivery_class?: string;
+    status?: string;
+    channel?: string;
+  } = {}): Promise<AdminCommunicationHistoryPayload> {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && String(value).trim() !== '') query.set(key, String(value));
+    });
+    const response = await requestApi<AdminCommunicationHistoryPayload>(apiClient.get<ApiResponse<AdminCommunicationHistoryPayload>>(
+      `${ENDPOINTS.admin.communications}?${query.toString()}`,
+    ));
+    return readApiData(response, { items: [], page: 1, perPage: 25, total: 0, pages: 1 });
   },
 
   async getSafeOperationCatalog(): Promise<SafeOperationCatalogPayload> {
