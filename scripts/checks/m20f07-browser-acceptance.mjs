@@ -203,9 +203,17 @@ try {
   const adminResult = await runAdmin(browser, adminStorage);
   const negative = await browser.newContext({ baseURL: baseUrl, storageState: userStorage, viewport: { width: 1280, height: 900 } });
   const negativePage = await negative.newPage();
+  let negativeRouteStatus = null;
+  negativePage.on('response', (response) => {
+    if (response.request().resourceType() === 'document' && response.url().includes('/admin/settings/logs')) {
+      negativeRouteStatus = response.status();
+    }
+  });
   await negativePage.goto('/admin/settings/logs', { waitUntil: 'domcontentloaded' });
   await dismissCookieConsent(negativePage);
-  const userAdminDenied = new URL(negativePage.url()).pathname.startsWith('/auth') || !new URL(negativePage.url()).pathname.startsWith('/admin');
+  const userAdminDenied = new URL(negativePage.url()).pathname.startsWith('/auth')
+    || !new URL(negativePage.url()).pathname.startsWith('/admin')
+    || (negativeRouteStatus !== null && negativeRouteStatus >= 400);
   await negative.close();
   const payload = {
     success: userResult.notification.persistedReadAfterReload && userResult.preference.savedAndReloaded,
@@ -216,7 +224,7 @@ try {
     unclassifiedAuthRedirects: diagnostics.authRedirects.length,
     user: userResult,
     admin: adminResult,
-    negative: { userAdminDenied },
+    negative: { userAdminDenied, routeStatus: negativeRouteStatus },
     diagnostics,
     checkedAt: new Date().toISOString(),
   };
