@@ -23,34 +23,33 @@ $eventOrderingPassed = 0;
 $eventOrderingCases = [];
 $deepLinkCases = [];
 
-$publish = static function (CommunicationService $service, string $key, string $state, int $revision, string $transitionId) use (&$intentIds, $runId): array {
-    $result = $service->publish([
-        'eventType' => 'support.ticket.status_changed',
-        'idempotencyKey' => $runId . ':' . $key . ':' . $transitionId,
-        'deliveryClass' => CommunicationPolicy::CLASS_TRANSACTIONAL,
-        'recipientUserId' => 'm20f07-synthetic-user',
-        'recipientEmail' => $runId . '@example.invalid',
-        'channels' => [CommunicationPolicy::CHANNEL_EMAIL],
-        'title' => 'M20F-07 synthetic ordering evidence',
-        'message' => $state,
-        'entityType' => 'm20f07-evidence',
-        'entityId' => $runId,
-        'ordering' => [
-            'key' => $runId . ':' . $key,
-            'revision' => $revision,
-            'transitionId' => $transitionId,
-            'state' => $state,
-        ],
-        'payload' => ['runId' => $runId, 'synthetic' => true],
-    ]);
-    if (($result['intentId'] ?? '') !== '') {
-        $intentIds[] = (string) $result['intentId'];
-    }
-    return $result;
-};
-
 try {
     $service = CommunicationService::fromDatabase($db);
+    $publish = static function (string $key, string $state, int $revision, string $transitionId, ?string $idempotencySuffix = null) use (&$intentIds, $runId, $service): array {
+        $result = $service->publish([
+            'eventType' => 'support.ticket.status_changed',
+            'idempotencyKey' => $runId . ':' . $key . ':' . ($idempotencySuffix ?? $transitionId),
+            'deliveryClass' => CommunicationPolicy::CLASS_TRANSACTIONAL,
+            'recipientUserId' => 'm20f07-synthetic-user',
+            'recipientEmail' => $runId . '@example.invalid',
+            'channels' => [CommunicationPolicy::CHANNEL_EMAIL],
+            'title' => 'M20F-07 synthetic ordering evidence',
+            'message' => $state,
+            'entityType' => 'm20f07-evidence',
+            'entityId' => $runId,
+            'ordering' => [
+                'key' => $runId . ':' . $key,
+                'revision' => $revision,
+                'transitionId' => $transitionId,
+                'state' => $state,
+            ],
+            'payload' => ['runId' => $runId, 'synthetic' => true],
+        ]);
+        if (($result['intentId'] ?? '') !== '') {
+            $intentIds[] = (string) $result['intentId'];
+        }
+        return $result;
+    };
 
     $cases = [
         'EO01_pending_confirmed' => static function () use ($publish): bool {
@@ -75,7 +74,7 @@ try {
         },
         'EO05_duplicate_confirmed' => static function () use ($publish): bool {
             $publish('eo05', 'confirmed', 8, 'eo05-confirmed');
-            $duplicate = $publish('eo05', 'confirmed', 8, 'eo05-confirmed-duplicate');
+            $duplicate = $publish('eo05', 'confirmed', 8, 'eo05-confirmed', 'eo05-confirmed-duplicate');
             return ($duplicate['ordered'] ?? '') === 'duplicate';
         },
         'EO06_stale_duplicate_after_terminal' => static function () use ($publish): bool {

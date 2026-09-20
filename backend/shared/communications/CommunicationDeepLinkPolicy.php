@@ -17,7 +17,7 @@ final class CommunicationDeepLinkPolicy
             return null;
         }
 
-        if (preg_match('/[\x00-\x1F\x7F\\]/', $value) === 1) {
+        if (preg_match('/[\x00-\x1F\x7F]/', $value) === 1 || str_contains($value, '\\')) {
             throw new InvalidArgumentException('Deep link de comunicacao contem caracteres invalidos.');
         }
 
