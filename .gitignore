@@ -60,3 +60,5 @@ config/deploy/*.local.json
 *.sql.bak
 *.dump
 *.dump.sql
+# Release archives are generated outside the versioned source tree.
+/*.zip
