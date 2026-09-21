@@ -15,6 +15,7 @@ require_once __DIR__ . '/controllers/StatisticsController.php';
 require_once __DIR__ . '/services/StatisticsService.php';
 require_once __DIR__ . '/repositories/StatisticsRepository.php';
 require_once __DIR__ . '/validators/StatisticsValidator.php';
+require_once __DIR__ . '/security/RemoteFetchDestinationPolicy.php';
 require_once __DIR__ . '/../../config/payment_provider.php';
 require_once __DIR__ . '/../../shared/responses/ApiEnvelope.php';
 require_once __DIR__ . '/../../shared/utils/SimpleCache.php';
@@ -29,9 +30,10 @@ require_once __DIR__ . '/../../shared/responses/Response.php';
 function buildStatisticsContext(PDO $db): array
 {
     $repository = new StatisticsRepository($db);
-    $validator = new StatisticsValidator();
+    $remoteFetchDestinationPolicy = new RemoteFetchDestinationPolicy();
+    $validator = new StatisticsValidator($remoteFetchDestinationPolicy);
     $controller = new StatisticsController(
-        new StatisticsService($repository, $validator, $db)
+        new StatisticsService($repository, $validator, $db, $remoteFetchDestinationPolicy)
     );
 
     return [

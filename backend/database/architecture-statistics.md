@@ -111,6 +111,23 @@ Colunas relevantes para este slice:
 
 ## Fluxo de `banca_info`
 
+O destino remoto da inteligencia da banca e uma fronteira server-owned. O
+cliente ainda pode enviar `url` por compatibilidade, mas o valor passa por
+`RemoteFetchDestinationPolicy`: somente HTTPS na porta 443, hosts aprovados
+por igualdade exata, sem userinfo ou IP literal, e com todos os enderecos DNS
+validados contra redes privadas/reservadas antes de qualquer conexao. A
+conexao usa `CURLOPT_RESOLVE` com os enderecos validados, preservando o
+hostname para SNI/TLS. Redirects nao sao seguidos automaticamente; cada
+`Location` e resolvido e submetido novamente a politica, com no maximo tres
+saltos. A verificacao de certificado e hostname permanece habilitada.
+
+O limite de resposta pode ser configurado pelo operador com
+`STATISTICS_BANCA_MAX_BYTES`, limitado pelo codigo entre 64 KiB e 5 MiB; o
+padrao e 2 MiB. O scraper aceita somente `text/html` e
+`application/xhtml+xml`, nao encaminha credenciais internas e nao persiste
+cookies entre requisicoes. Ausencia ou erro de DNS, certificado, politica,
+timeout, tamanho ou tipo de conteudo falha fechado.
+
 1. O modulo valida a sessao autenticada.
 2. Verifica o beneficio `xray_banca`.
 3. Normaliza e valida a URL da banca.

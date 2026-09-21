@@ -12,6 +12,7 @@
 */
 
 require_once __DIR__ . '/../../../shared/observability/RuntimeMutationEvidence.php';
+require_once __DIR__ . '/../security/RemoteFetchDestinationPolicy.php';
 
 /**
  * Service oficial do dominio de estatisticas.
@@ -29,7 +30,8 @@ class StatisticsService
     public function __construct(
         private readonly StatisticsRepository $repository,
         private readonly StatisticsValidator $validator,
-        private readonly PDO $db
+        private readonly PDO $db,
+        private readonly ?RemoteFetchDestinationPolicy $remoteFetchDestinationPolicy = null
     ) {
     }
 
@@ -724,18 +726,16 @@ class StatisticsService
 
         $lastHttpCode = 0;
         $lastHtml = '';
-        $lastError = '';
         $resolvedUrl = $url;
 
         foreach ($targetUrls as $targetUrl) {
             foreach ($userAgents as $userAgent) {
                 $attempt = $this->fetchHtmlDocument($targetUrl, $userAgent);
                 $lastHttpCode = $attempt['httpCode'];
-                $lastError = $attempt['error'];
 
                 if ($attempt['html'] !== '') {
                     $lastHtml = $attempt['html'];
-                    $resolvedUrl = $targetUrl;
+                    $resolvedUrl = $attempt['resolvedUrl'] ?? $targetUrl;
                     break 2;
                 }
 
@@ -746,7 +746,7 @@ class StatisticsService
         }
 
         if ($lastHtml === '') {
-            error_log('Statistics banca_info failure for ' . $url . '. Last HTTP Code: ' . $lastHttpCode . '. Error: ' . $lastError);
+            error_log('Statistics banca_info failure for approved host ' . $host . '. Last HTTP Code: ' . $lastHttpCode);
 
             return [
                 'success' => false,
@@ -774,54 +774,154 @@ class StatisticsService
      */
     private function fetchHtmlDocument(string $url, string $userAgent): array
     {
-        $curl = curl_init();
-        $cookieFile = dirname(__DIR__, 3) . '/storage/runtime/cookies/cookies_' . md5($url) . '.txt';
+        $policy = $this->remoteFetchDestinationPolicy ?? new RemoteFetchDestinationPolicy();
+        $currentUrl = $url;
+        $visited = [];
+        $maxRedirects = 3;
+        $configuredMaxBytes = function_exists('getEnvString')
+            ? (int) getEnvString('STATISTICS_BANCA_MAX_BYTES', '2097152')
+            : 2 * 1024 * 1024;
+        $maxBytes = min(max($configuredMaxBytes, 64 * 1024), 5 * 1024 * 1024);
 
-        curl_setopt($curl, CURLOPT_URL, $url);
-        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($curl, CURLOPT_MAXREDIRS, 5);
-        curl_setopt($curl, CURLOPT_TIMEOUT, 20);
-        curl_setopt($curl, CURLOPT_ENCODING, '');
-        curl_setopt($curl, CURLOPT_COOKIEJAR, $cookieFile);
-        curl_setopt($curl, CURLOPT_COOKIEFILE, $cookieFile);
-        curl_setopt($curl, CURLOPT_HTTPHEADER, [
-            'Host: ' . (parse_url($url, PHP_URL_HOST) ?: ''),
-            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Cache-Control: max-age=0',
-            'Sec-Fetch-Dest: document',
-            'Sec-Fetch-Mode: navigate',
-            'Sec-Fetch-Site: none',
-            'Sec-Fetch-User: ?1',
-            'Upgrade-Insecure-Requests: 1',
-            'User-Agent: ' . $userAgent,
-        ]);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
+        for ($redirects = 0; $redirects <= $maxRedirects; $redirects++) {
+            try {
+                $destination = $policy->prepare($currentUrl);
+            } catch (Throwable) {
+                return ['html' => '', 'httpCode' => 0, 'error' => 'Remote destination denied.'];
+            }
 
-        if (defined('CURL_HTTP_VERSION_2_0')) {
-            curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
-        }
+            $currentUrl = $destination['url'];
+            if (isset($visited[$currentUrl])) {
+                return ['html' => '', 'httpCode' => 0, 'error' => 'Remote redirect loop denied.'];
+            }
+            $visited[$currentUrl] = true;
 
-        $html = curl_exec($curl);
-        $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        $error = curl_error($curl);
-        curl_close($curl);
+            $curl = curl_init();
+            if ($curl === false) {
+                return ['html' => '', 'httpCode' => 0, 'error' => 'Remote client unavailable.'];
+            }
 
-        if (!is_string($html) || $httpCode !== 200 || !str_contains($html, '<body')) {
+            $headers = [];
+            $body = '';
+            $tooLarge = false;
+            curl_setopt_array($curl, [
+                CURLOPT_URL => $currentUrl,
+                CURLOPT_RETURNTRANSFER => false,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_MAXREDIRS => 0,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_ENCODING => '',
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_RESOLVE => $destination['resolve'],
+                CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$headers): int {
+                    $trimmed = trim($line);
+                    if ($trimmed === '' || !str_contains($trimmed, ':')) {
+                        return strlen($line);
+                    }
+
+                    [$name, $value] = explode(':', $trimmed, 2);
+                    $headers[strtolower(trim($name))] = trim($value);
+                    return strlen($line);
+                },
+                CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$body, &$tooLarge, $maxBytes): int {
+                    if (strlen($body) + strlen($chunk) > $maxBytes) {
+                        $tooLarge = true;
+                        return 0;
+                    }
+
+                    $body .= $chunk;
+                    return strlen($chunk);
+                },
+                CURLOPT_HTTPHEADER => [
+                    'Accept: text/html,application/xhtml+xml',
+                    'Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Cache-Control: no-cache',
+                    'User-Agent: ' . $userAgent,
+                ],
+            ]);
+
+            if (defined('CURL_HTTP_VERSION_2_0')) {
+                curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+            }
+
+            curl_exec($curl);
+            $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $contentType = strtolower(trim(explode(';', (string) ($headers['content-type'] ?? ''), 2)[0]));
+            $location = (string) ($headers['location'] ?? '');
+            $error = curl_error($curl);
+            curl_close($curl);
+
+            if ($tooLarge) {
+                return ['html' => '', 'httpCode' => $httpCode, 'error' => 'Remote response too large.'];
+            }
+
+            if ($httpCode >= 300 && $httpCode < 400 && $location !== '') {
+                if ($redirects === $maxRedirects) {
+                    return ['html' => '', 'httpCode' => $httpCode, 'error' => 'Remote redirect limit reached.'];
+                }
+
+                try {
+                    $currentUrl = $this->resolveRemoteRedirect($currentUrl, $location);
+                } catch (Throwable) {
+                    return ['html' => '', 'httpCode' => $httpCode, 'error' => 'Remote redirect denied.'];
+                }
+                continue;
+            }
+
+            if ($httpCode !== 200
+                || !in_array($contentType, ['text/html', 'application/xhtml+xml'], true)
+                || !str_contains($body, '<body')) {
+                return ['html' => '', 'httpCode' => $httpCode, 'error' => $error];
+            }
+
             return [
-                'html' => '',
+                'html' => $body,
                 'httpCode' => $httpCode,
-                'error' => $error,
+                'error' => '',
+                'resolvedUrl' => $currentUrl,
             ];
         }
 
-        return [
-            'html' => $html,
-            'httpCode' => $httpCode,
-            'error' => '',
-        ];
+        return ['html' => '', 'httpCode' => 0, 'error' => 'Remote redirect denied.'];
+    }
+
+    private function resolveRemoteRedirect(string $currentUrl, string $location): string
+    {
+        $location = trim($location);
+        if ($location === '' || preg_match('/[\x00-\x20\x7f]/', $location) === 1) {
+            throw new InvalidArgumentException('Invalid remote redirect.');
+        }
+
+        if (str_starts_with($location, '//')) {
+            return 'https:' . $location;
+        }
+
+        $locationParts = parse_url($location);
+        if (is_array($locationParts) && isset($locationParts['scheme'])) {
+            return $location;
+        }
+
+        $currentParts = parse_url($currentUrl);
+        if (!is_array($currentParts) || empty($currentParts['host'])) {
+            throw new InvalidArgumentException('Invalid current remote URL.');
+        }
+
+        $origin = 'https://' . strtolower(rtrim((string) $currentParts['host'], '.'));
+        $currentPath = (string) ($currentParts['path'] ?? '/');
+        if (str_starts_with($location, '?')) {
+            return $origin . $currentPath . $location;
+        }
+        if (str_starts_with($location, '#')) {
+            return $origin . $currentPath;
+        }
+        if (str_starts_with($location, '/')) {
+            return $origin . $location;
+        }
+
+        $directory = rtrim(str_replace('\\', '/', dirname($currentPath)), '/');
+        return $origin . ($directory === '' ? '/' : $directory . '/') . $location;
     }
 
     /**

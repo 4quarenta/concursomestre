@@ -8,8 +8,10 @@
 * ----------------------------------------------------
 *
 * @since 1.0.0
-*
-*/
+ *
+ */
+
+require_once __DIR__ . '/../security/RemoteFetchDestinationPolicy.php';
 
 /**
  * Validador do dominio de estatisticas.
@@ -19,6 +21,10 @@
  */
 class StatisticsValidator
 {
+    public function __construct(private readonly ?RemoteFetchDestinationPolicy $remoteFetchDestinationPolicy = null)
+    {
+    }
+
     /**
      * Normaliza os filtros do raio-x.
      *
@@ -57,25 +63,8 @@ class StatisticsValidator
             throw new InvalidArgumentException('URL is required');
         }
 
-        $normalizedUrl = $rawUrl;
-        if (!preg_match('/^https?:\/\//i', $normalizedUrl)) {
-            $normalizedUrl = 'https://' . $normalizedUrl;
-        }
-
-        if (!filter_var($normalizedUrl, FILTER_VALIDATE_URL)) {
-            throw new InvalidArgumentException('Invalid URL format');
-        }
-
-        $parsedUrl = parse_url($normalizedUrl);
-        if (!is_array($parsedUrl) || empty($parsedUrl['scheme']) || empty($parsedUrl['host'])) {
-            throw new InvalidArgumentException('Invalid URL format');
-        }
-
-        return [
-            'url' => $normalizedUrl,
-            'baseUrl' => $parsedUrl['scheme'] . '://' . $parsedUrl['host'],
-            'host' => strtolower((string) $parsedUrl['host']),
-        ];
+        $policy = $this->remoteFetchDestinationPolicy ?? new RemoteFetchDestinationPolicy();
+        return $policy->validateUrl($rawUrl);
     }
 
     /**
