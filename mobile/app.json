@@ -4,28 +4,46 @@
     "slug": "concursomestre-mobile",
     "scheme": "concursomestre",
     "version": "1.0.0",
+    "extra": {
+      "apiBaseUrl": "https://concursomestre.com/api/"
+    },
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.concursomestre.mobile"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.concursomestre.mobile",
+      "buildNumber": "3"
     },
     "android": {
       "package": "com.concursomestre.mobile",
+      "versionCode": 3,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#4F46E5"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#1E1A4D"
       }
     },
     "plugins": [
       "expo-secure-store",
+      "expo-image-picker",
       "expo-asset",
-      "expo-font"
-    ],
-    "extra": {
-      "apiBaseUrl": "https://concursomestre.com/api/"
-    }
+      "expo-font",
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#1E1A4D"
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/analytics"
+    ]
   }
 }

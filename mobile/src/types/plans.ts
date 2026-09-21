@@ -9,10 +9,12 @@ export interface Plan {
   description: string;
   price: number;
   interval_count: number;
-  interval_unit: 'day' | 'week' | 'month' | 'year';
+  interval_unit: "day" | "week" | "month" | "year";
   tier?: number;
   features?: PlanFeature[];
   is_active?: boolean;
+  is_test_plan?: boolean;
+  canonical_name?: string;
 }
 
 export interface CouponValidationResult {

@@ -7,24 +7,24 @@ const read = (relativePath: string) => fs.readFileSync(path.join(root, relativeP
 
 describe('mobile API contract', () => {
   it('keeps native refresh credentials in SecureStore and rotates them single-flight', () => {
-    const store = read('mobile/src/services/auth/sessionStore.ts');
-    const client = read('mobile/src/services/api/client.ts');
+    const store = read('mobile/src/storage/sessionStorage.ts');
+    const client = read('mobile/src/api/client.ts');
 
     expect(store).toContain('REFRESH_TOKEN_KEY');
     expect(store).toContain('CSRF_TOKEN_KEY');
     expect(store).toContain('SecureStore.setItemAsync');
-    expect(client).toContain('let refreshPromise');
-    expect(client).toContain('await sessionStore.clearSession();');
-    expect(client).toContain("'X-Client-Platform': 'concursomestre-mobile'");
+    expect(client).toContain('refreshInFlight');
+    expect(client).toContain('await sessionStorage.clearSession();');
+    expect(client).toContain("'X-ConcursoMestre-Client'");
     expect(client).not.toContain("'http://localhost/questao-pro-backend/api/'");
   });
 
   it('uses the idempotent v2 answer boundary and supports server-side 2FA', () => {
-    const endpoints = read('mobile/src/services/api/endpoints.ts');
+    const endpoints = read('mobile/src/api/endpoints.ts');
     const questions = read('mobile/src/services/questions/questionService.ts');
     const provider = read('mobile/src/providers/AuthProvider.tsx');
 
-    expect(endpoints).toContain("submit: 'v2/questions/answer.php'");
+    expect(endpoints).toMatch(/submit:\s*["']v2\/questions\/answer\.php["']/);
     expect(questions).toContain('idempotencyKey');
     expect(questions).toContain('selectedAlternativeId');
     expect(questions).toContain('Math.min(50, pageSize)');

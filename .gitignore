@@ -17,6 +17,20 @@ dist-ssr
 __pycache__/
 *.py[cod]
 
+# Segredos e configuracoes locais
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.p12
+*.p8
+*.jks
+*.keystore
+*.mobileprovision
+*.cer
+*.der
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

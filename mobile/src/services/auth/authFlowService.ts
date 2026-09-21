@@ -6,8 +6,6 @@ import type { AuthFlowResponse, UserProfile } from '@/types/auth';
 
 type RegisterPayload = {
   name: string;
-  cpf: string;
-  phone: string;
   email: string;
   password: string;
   referralCode?: string | null;
@@ -40,9 +38,23 @@ export const authFlowService = {
   async me(): Promise<UserProfile> {
     const response: any = await apiClient.get<any>(ENDPOINTS.auth.user);
     assertApiSuccess(response, 'Nao foi possivel carregar o perfil.');
-    const data = readApiData<{ user?: UserProfile }>(response, {});
+    const data = readApiData<{
+      user?: UserProfile;
+      subscription?: UserProfile['subscription'];
+      gamification?: { level?: number; xp?: number };
+    }>(response, {});
 
-    return data.user || (response?.user as UserProfile);
+    const user = data.user || (response?.user as UserProfile);
+    if (!user) throw new Error('Sessao invalida retornada pelo backend.');
+
+    // /auth/me devolve assinatura e gamificação no envelope da sessão, fora
+    // de data.user. Mantemos esses dados no mesmo objeto usado pelo app.
+    return {
+      ...user,
+      subscription: data.subscription || user.subscription,
+      level: data.gamification?.level ?? user.level,
+      xp: data.gamification?.xp ?? user.xp,
+    };
   },
 
   async resendConfirmation(email: string): Promise<string> {
@@ -54,9 +66,7 @@ export const authFlowService = {
   async logout(): Promise<void> {
     const refreshToken = sessionStore.getRefreshToken();
     const csrfToken = sessionStore.getCsrfToken();
-    if (!refreshToken || !csrfToken) {
-      return;
-    }
+    if (!refreshToken || !csrfToken) return;
 
     await apiClient.post<any>(ENDPOINTS.auth.logout, { refreshToken, csrfToken });
   },

@@ -186,57 +186,110 @@ class SimulationsService
             $authenticatedUserId,
             $simulationIds
         );
+        $allQuestionIds = [];
+        $prepared = [];
 
-        $simulations = array_map(
-            static function (array $row) use ($answersBySimulation): array {
-                $id = (string) ($row['id'] ?? '');
-                $answers = $answersBySimulation[$id] ?? [];
-                $answerQuestionIds = array_map(
-                    static fn (array $answer): int => (int) ($answer['question_id'] ?? 0),
-                    $answers
-                );
+        foreach ($rows as $row) {
+            $id = (string) ($row['id'] ?? '');
+            $status = (string) ($row['status'] ?? 'completed');
+            $answers = $answersBySimulation[$id] ?? [];
+            $answerQuestionIds = array_map(
+                static fn (array $answer): int => (int) ($answer['question_id'] ?? 0),
+                $answers
+            );
+            $answersPayload = [];
+            foreach ($answers as $answer) {
+                $questionId = (string) ($answer['question_id'] ?? '');
+                if ($questionId === '') {
+                    continue;
+                }
+                $answersPayload[$questionId] = [
+                    'index' => isset($answer['selected_option_index']) ? (int) $answer['selected_option_index'] : null,
+                    'time_taken' => isset($answer['time_taken_seconds']) ? (int) $answer['time_taken_seconds'] : 0,
+                ];
+            }
 
-                $answersPayload = [];
+            $config = [];
+            if (!empty($row['config_json'])) {
+                $decoded = json_decode((string) $row['config_json'], true);
+                $config = is_array($decoded) ? $decoded : [];
+            }
+            $allowInstantFeedback = $status === 'in_progress'
+                && (($config['feedbackMode'] ?? 'after_all') === 'instant');
+            if ($status === 'completed' || $allowInstantFeedback) {
                 foreach ($answers as $answer) {
                     $questionId = (string) ($answer['question_id'] ?? '');
-                    if ($questionId === '') {
-                        continue;
+                    if ($questionId !== '' && isset($answersPayload[$questionId])) {
+                        $answersPayload[$questionId]['is_correct'] = (bool) ($answer['is_correct'] ?? false);
                     }
-
-                    $answersPayload[$questionId] = [
-                        'index' => isset($answer['selected_option_index']) ? (int) $answer['selected_option_index'] : null,
-                        'is_correct' => (bool) ($answer['is_correct'] ?? false),
-                        'time_taken' => isset($answer['time_taken_seconds']) ? (int) $answer['time_taken_seconds'] : 0,
-                    ];
                 }
+            }
 
-                $config = [];
-                if (!empty($row['config_json'])) {
-                    $decoded = json_decode((string) $row['config_json'], true);
-                    $config = is_array($decoded) ? $decoded : [];
-                }
-                $configQuestionIds = is_array($config['questionIds'] ?? null)
-                    ? array_map('intval', $config['questionIds'])
-                    : [];
-                $questionIds = array_values(array_unique(array_filter(array_merge($configQuestionIds, $answerQuestionIds))));
+            $configQuestionIds = is_array($config['questionIds'] ?? null)
+                ? array_map('intval', $config['questionIds'])
+                : [];
+            $questionIds = array_values(array_unique(array_filter(array_merge($configQuestionIds, $answerQuestionIds))));
+            $allQuestionIds = array_merge($allQuestionIds, $questionIds);
+            $prepared[] = compact('row', 'id', 'status', 'answersPayload', 'config', 'questionIds');
+        }
 
-                return [
-                    'id' => $id,
-                    'config' => $config,
-                    'questionIds' => $questionIds,
-                    'answers' => $answersPayload,
-                    'startTime' => !empty($row['start_time']) ? strtotime((string) $row['start_time']) * 1000 : 0,
-                    'endTime' => !empty($row['end_time']) ? strtotime((string) $row['end_time']) * 1000 : null,
-                    'status' => $row['status'] ?? 'completed',
-                    'score' => isset($row['score']) ? (float) $row['score'] : 0,
-                ];
-            },
-            $rows
+        $reviewQuestions = $this->repository->findReviewQuestionsByIds(
+            array_values(array_unique($allQuestionIds))
         );
+        $simulations = array_map(function (array $item) use ($reviewQuestions): array {
+            $row = $item['row'];
+            $questions = [];
+            foreach ($item['questionIds'] as $questionId) {
+                $key = (string) $questionId;
+                if (!isset($reviewQuestions[$key])) {
+                    continue;
+                }
+                $question = $reviewQuestions[$key];
+                if ($item['status'] !== 'completed') {
+                    $question = $this->toExamQuestion($question);
+                }
+                $questions[] = $question;
+            }
 
-        return [
-            'simulations' => $simulations,
-        ];
+            return [
+                'id' => $item['id'],
+                'name' => (string) ($row['name'] ?? ($item['config']['name'] ?? 'Simulado')),
+                'config' => $item['config'],
+                'questionIds' => $item['questionIds'],
+                'questionCount' => count($item['questionIds']),
+                'questions' => $questions,
+                'answers' => $item['answersPayload'],
+                'startTime' => !empty($row['start_time']) ? strtotime((string) $row['start_time']) * 1000 : 0,
+                'endTime' => !empty($row['end_time']) ? strtotime((string) $row['end_time']) * 1000 : null,
+                'status' => $item['status'],
+                'score' => $item['status'] === 'completed' ? (float) ($row['score'] ?? 0) : null,
+            ];
+        }, $prepared);
+
+        return ['simulations' => $simulations];
+    }
+
+    /** Remove pistas de gabarito de questoes pertencentes a tentativas ativas. */
+    private function toExamQuestion(array $question): array
+    {
+        unset(
+            $question['correctOptionIndex'],
+            $question['correct_option_index'],
+            $question['resposta'],
+            $question['resposta_correta']
+        );
+        if (isset($question['itens']) && is_array($question['itens'])) {
+            $question['itens'] = array_map(static function (mixed $item): mixed {
+                if (!is_array($item)) {
+                    return $item;
+                }
+                foreach (['correct', 'isCorrect', 'is_correct', 'correta', 'isAnswer', 'is_answer'] as $key) {
+                    unset($item[$key]);
+                }
+                return $item;
+            }, $question['itens']);
+        }
+        return $question;
     }
 
     /**

@@ -1,11 +1,21 @@
+import { lightTheme } from '@/theme/tokens';
+
+/**
+ * Adaptador temporario para o codigo mobile legado.
+ * Novos componentes devem consumir tokens/tema sem criar cores locais.
+ */
 export const colors = {
-  bg: '#F8FAFC',
-  card: '#FFFFFF',
-  text: '#0F172A',
-  muted: '#64748B',
-  border: '#E2E8F0',
-  primary: '#4F46E5',
-  primaryDark: '#4338CA',
-  success: '#059669',
-  danger: '#DC2626',
+  bg: lightTheme.background,
+  card: lightTheme.surface,
+  text: lightTheme.text,
+  muted: lightTheme.textMuted,
+  border: lightTheme.border,
+  primary: lightTheme.primary,
+  primaryDark: lightTheme.primaryPressed,
+  primarySubtle: lightTheme.primarySubtle,
+  primaryBorder: lightTheme.primaryBorder,
+  onPrimary: lightTheme.onPrimary,
+  success: lightTheme.success,
+  warning: lightTheme.warning,
+  danger: lightTheme.danger,
 } as const;

@@ -1,0 +1,71 @@
+name: Mobile Screenshot RC Run
+
+on:
+  push:
+    branches:
+      - mobile-foundation-refactor
+    paths:
+      - '.github/workflows/mobile-screenshot-rc-run.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: Capture release iPhone screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_PUBLIC_API_BASE_URL: https://concursomestre.com/api/
+      EXPO_PUBLIC_SCREENSHOT_MODE: '1'
+      EXPO_PUBLIC_SCREENSHOT_VARIANT: release-iphone
+      SCREENSHOT_DEVICE: iPhone 14 Pro
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: mobile-foundation-refactor
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        run: npm ci --prefix mobile
+
+      - name: Verify Expo dependency alignment
+        working-directory: mobile
+        run: npx expo install --check
+
+      - name: Run Expo Doctor
+        working-directory: mobile
+        run: npx expo-doctor
+
+      - name: Run RC smoke gate
+        run: npm --prefix mobile run qa:smoke
+
+      - name: Install Chromium for Playwright
+        working-directory: mobile
+        run: npx playwright install --with-deps chromium
+
+      - name: Export Expo web bundle
+        working-directory: mobile
+        run: npx expo export --platform web
+
+      - name: Serve bundle and capture screenshots
+        shell: bash
+        run: |
+          npx serve@latest mobile/dist -l 4173 > /tmp/concursomestre-mobile-web.log 2>&1 &
+          npx wait-on http://127.0.0.1:4173
+          node mobile/scripts/capture-store-screenshots.mjs
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-store-screenshots-release-iphone
+          path: mobile/artifacts/screenshots
+          if-no-files-found: error
+          retention-days: 14

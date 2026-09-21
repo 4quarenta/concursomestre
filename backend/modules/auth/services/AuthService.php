@@ -51,11 +51,20 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function logout(): array
+    public function logout(?array $nativeCredentials = null): array
     {
         $db = $this->repository->getConnection();
         ensureAuthTables($db);
-        logoutAuthSession($db);
+        if ($nativeCredentials !== null) {
+            logoutAuthSession(
+                $db,
+                (string) ($nativeCredentials['refreshToken'] ?? ''),
+                (string) ($nativeCredentials['csrfToken'] ?? ''),
+                false
+            );
+        } else {
+            logoutAuthSession($db);
+        }
 
         return [];
     }
@@ -65,12 +74,18 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function refreshSession(bool $includeUser = false): array
+    public function refreshSession(bool $includeUser = false, ?array $nativeCredentials = null): array
     {
         $db = $this->repository->getConnection();
         ensureAuthTables($db);
 
-        $refreshData = refreshAccessTokenFromCookie($db);
+        $refreshData = $nativeCredentials !== null
+            ? refreshNativeAccessToken(
+                $db,
+                (string) ($nativeCredentials['refreshToken'] ?? ''),
+                (string) ($nativeCredentials['csrfToken'] ?? '')
+            )
+            : refreshAccessTokenFromCookie($db);
         $payload = [
             'token' => $refreshData['token'],
             'authSession' => [
@@ -78,6 +93,11 @@ class AuthService
                 'accessExpiresIn' => $refreshData['access_expires_in'],
             ],
         ];
+
+        if ($nativeCredentials !== null) {
+            $payload['refreshToken'] = $refreshData['refresh_token'];
+            $payload['csrfToken'] = $refreshData['csrf_token'];
+        }
 
         if ($includeUser && !empty($refreshData['user_id'])) {
             $payload = array_merge($payload, $this->buildAuthenticatedSessionPayload((string) $refreshData['user_id']));
@@ -91,7 +111,7 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function login(array $payload): array
+    public function login(array $payload, bool $nativeClient = false): array
     {
         $normalized = $this->validator->validateLoginPayload($payload);
         $user = $this->repository->findUserForLoginByEmail($normalized['email']);
@@ -112,9 +132,9 @@ class AuthService
             'id' => $user['id'],
             'email' => $user['email'],
             'role' => $user['role'],
-        ], false, 'auth_login');
+        ], $nativeClient, 'auth_login', !$nativeClient);
 
-        return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
+        $response = array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
             'authSession' => [
                 'id' => $tokenData['session_id'],
@@ -122,6 +142,12 @@ class AuthService
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
         ]);
+        if ($nativeClient) {
+            $response['refreshToken'] = $tokenData['refresh_token'];
+            $response['csrfToken'] = $tokenData['csrf_token'];
+        }
+
+        return $response;
     }
 
     /**
@@ -129,7 +155,7 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function register(array $payload): array
+    public function register(array $payload, bool $nativeClient = false): array
     {
         $normalized = $this->validator->validateRegisterPayload($payload);
         $this->repository->ensureAuthProfileColumns();
@@ -226,11 +252,11 @@ class AuthService
             'id' => $newUserId,
             'email' => $normalized['email'],
             'role' => 'student',
-        ], false, 'auth_registration');
+        ], $nativeClient, 'auth_registration', !$nativeClient);
 
         $emailDelivery = $this->sendVerificationEmail($normalized['email'], $normalized['name'], $verificationToken);
 
-        return array_merge($this->buildAuthenticatedSessionPayload($newUserId), [
+        $response = array_merge($this->buildAuthenticatedSessionPayload($newUserId), [
             'token' => $tokenData['token'],
             'emailDelivery' => $emailDelivery,
             'authSession' => [
@@ -239,6 +265,12 @@ class AuthService
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
         ]);
+        if ($nativeClient) {
+            $response['refreshToken'] = $tokenData['refresh_token'];
+            $response['csrfToken'] = $tokenData['csrf_token'];
+        }
+
+        return $response;
     }
 
     /**
@@ -1155,7 +1187,7 @@ class AuthService
      *
      * @since 1.0.0
      */
-    public function verifyTwoFactor(array $payload): array
+    public function verifyTwoFactor(array $payload, bool $nativeClient = false): array
     {
         $normalized = $this->validator->validateVerifyTwoFactorPayload($payload);
         $user = $this->repository->findUserForTwoFactorByEmail($normalized['email']);
@@ -1173,9 +1205,9 @@ class AuthService
             'id' => $user['id'],
             'email' => $user['email'],
             'role' => $user['role'],
-        ], false, 'auth_two_factor_completion');
+        ], $nativeClient, 'auth_two_factor_completion', !$nativeClient);
 
-        return array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
+        $response = array_merge($this->buildAuthenticatedSessionPayload((string) $user['id']), [
             'token' => $tokenData['token'],
             'authSession' => [
                 'id' => $tokenData['session_id'],
@@ -1183,6 +1215,12 @@ class AuthService
                 'refreshExpiresAt' => $tokenData['refresh_expires_at'],
             ],
         ]);
+        if ($nativeClient) {
+            $response['refreshToken'] = $tokenData['refresh_token'];
+            $response['csrfToken'] = $tokenData['csrf_token'];
+        }
+
+        return $response;
     }
 
     /**

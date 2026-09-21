@@ -184,6 +184,75 @@ class SimulationsRepository
     }
 
     /**
+     * Hidrata as questoes de simulados persistidos para revisao autenticada.
+     * O gabarito permanece restrito ao historico do proprio usuario.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public function findReviewQuestionsByIds(array $questionIds): array
+    {
+        $ids = [];
+        foreach ($questionIds as $questionId) {
+            if (is_numeric($questionId) && (int) $questionId > 0) {
+                $ids[(int) $questionId] = (int) $questionId;
+            }
+        }
+        $ids = array_values($ids);
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($ids as $index => $questionId) {
+            $key = ':review_question_id_' . $index;
+            $placeholders[] = $key;
+            $params[$key] = $questionId;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT id, enunciado, enunciado_clean, tipo, dificuldade,
+                    resposta_correta_item_index, data_json, anulada, desatualizada
+             FROM questions
+             WHERE id IN (" . implode(', ', $placeholders) . ")"
+        );
+        foreach ($params as $key => $questionId) {
+            $stmt->bindValue($key, $questionId, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $questionId = (string) ($row['id'] ?? '');
+            if ($questionId === '') {
+                continue;
+            }
+
+            $data = json_decode((string) ($row['data_json'] ?? ''), true);
+            $data = is_array($data) ? $data : [];
+            $items = $data['itens'] ?? $data['items'] ?? [];
+            $items = is_array($items) ? array_values($items) : [];
+            $correctIndex = $row['resposta_correta_item_index'] ?? ($data['correctOptionIndex'] ?? null);
+            $correctIndex = is_numeric($correctIndex) ? (int) $correctIndex : -1;
+
+            $result[$questionId] = [
+                'id' => is_numeric($row['id']) ? (int) $row['id'] : $row['id'],
+                'enunciado' => (string) ($row['enunciado'] ?? ''),
+                'enunciado_clean' => (string) ($row['enunciado_clean'] ?? strip_tags((string) ($row['enunciado'] ?? ''))),
+                'tipo' => (string) ($row['tipo'] ?? 'multipla_escolha'),
+                'dificuldade' => (int) ($row['dificuldade'] ?? 1),
+                'itens' => $items,
+                'correctOptionIndex' => $correctIndex,
+                'resposta' => $correctIndex >= 0 ? $correctIndex + 1 : null,
+                'anulada' => !empty($row['anulada']),
+                'desatualizada' => !empty($row['desatualizada']),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * Lista sessoes de simulado do usuario autenticado.
      *
      * @since 1.0.0

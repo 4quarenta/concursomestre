@@ -27,9 +27,9 @@ $authService = mobileApiRead('backend/modules/auth/services/AuthService.php');
 $authSession = mobileApiRead('backend/shared/auth/AuthSession.php');
 $questionRoutes = mobileApiRead('backend/modules/questions/routes.php');
 $cors = mobileApiRead('backend/config/cors.php');
-$mobileClient = mobileApiRead('mobile/src/services/api/client.ts');
-$mobileSession = mobileApiRead('mobile/src/services/auth/sessionStore.ts');
-$mobileEndpoints = mobileApiRead('mobile/src/services/api/endpoints.ts');
+$mobileClient = mobileApiRead('mobile/src/api/client.ts');
+$mobileSession = mobileApiRead('mobile/src/storage/sessionStorage.ts');
+$mobileEndpoints = mobileApiRead('mobile/src/api/endpoints.ts');
 $mobileQuestions = mobileApiRead('mobile/src/services/questions/questionService.ts');
 $mobileProvider = mobileApiRead('mobile/src/providers/AuthProvider.tsx');
 $mobileApp = mobileApiRead('mobile/app.json');
@@ -81,11 +81,11 @@ mobileApiAssert(str_contains($cors, 'Idempotency-Key'), 'Preflight deve permitir
 foreach (['REFRESH_TOKEN_KEY', 'CSRF_TOKEN_KEY', 'SecureStore.setItemAsync', 'SecureStore.deleteItemAsync'] as $expected) {
     mobileApiAssert(str_contains($mobileSession, $expected), 'SecureStore mobile incompleto: ' . $expected);
 }
-mobileApiAssert(str_contains($mobileClient, 'let refreshPromise'), 'Refresh mobile deve ser single-flight.');
-mobileApiAssert(str_contains($mobileClient, 'catch {') && str_contains($mobileClient, 'await sessionStore.clearSession();'), 'Falha no refresh deve limpar a sessao nativa.');
+mobileApiAssert(str_contains($mobileClient, 'refreshInFlight'), 'Refresh mobile deve ser single-flight.');
+mobileApiAssert(str_contains($mobileClient, 'await sessionStorage.clearSession();'), 'Falha autenticada deve limpar a sessao nativa.');
 mobileApiAssert(str_contains($mobileClient, "'X-Client-Platform': 'concursomestre-mobile'"), 'Cliente mobile deve negociar contrato nativo.');
 mobileApiAssert(str_contains($mobileClient, 'refreshToken') && str_contains($mobileClient, 'csrfToken'), 'Cliente mobile deve rotacionar credenciais completas.');
-mobileApiAssert(str_contains($mobileEndpoints, "submit: 'v2/questions/answer.php'"), 'Resposta mobile deve usar endpoint v2 idempotente.');
+mobileApiAssert((bool) preg_match('/submit:\s*["\']v2\\/questions\\/answer\\.php["\']/', $mobileEndpoints), 'Resposta mobile deve usar endpoint v2 idempotente.');
 mobileApiAssert(str_contains($mobileQuestions, 'Math.min(50, pageSize)') && !str_contains($mobileQuestions, 'while (allRows.length < total)'), 'Carga mobile de questoes deve ser limitada por request.');
 mobileApiAssert(str_contains($mobileProvider, 'verifyTwoFactor'), 'Mobile deve concluir 2FA no backend.');
 mobileApiAssert(!str_contains($mobileApp, 'localhost'), 'Build mobile nao pode conter endpoint localhost.');

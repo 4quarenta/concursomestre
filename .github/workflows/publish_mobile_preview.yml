@@ -1,0 +1,273 @@
+name: Publish Mobile Preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - mobile-foundation-refactor
+    paths:
+      - 'mobile/app.json'
+      - '.github/workflows/publish_mobile_preview.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: concursomestre-mobile-preview
+  cancel-in-progress: true
+
+env:
+  EXPO_PUBLIC_API_BASE_URL: https://concursomestre.com/api/
+
+jobs:
+  android:
+    name: Android preview APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci --prefix mobile
+
+      - name: Verify Expo dependencies
+        working-directory: mobile
+        run: npx expo install --check
+
+      - name: Run Expo Doctor
+        working-directory: mobile
+        run: npx expo-doctor
+
+      - name: Verify mobile contracts
+        run: npm --prefix mobile run contracts:check
+
+      - name: Run Release Candidate smoke gate
+        run: npm --prefix mobile run qa:smoke
+
+      - name: Typecheck
+        run: npm --prefix mobile run typecheck
+
+      - name: Generate Android project
+        working-directory: mobile
+        run: npx expo prebuild --platform android --clean --non-interactive
+
+      - name: Build standalone release APK
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease
+
+      - name: Prepare Android asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find mobile/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+          cp "$APK" ConcursoMestre-Android-preview.apk
+          sha256sum ConcursoMestre-Android-preview.apk > ConcursoMestre-Android-preview.apk.sha256
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: concursomestre-android-preview
+          path: |
+            ConcursoMestre-Android-preview.apk
+            ConcursoMestre-Android-preview.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  ios-simulator:
+    name: iOS Simulator preview (optional)
+    runs-on: macos-latest
+    timeout-minutes: 50
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix mobile
+
+      - name: Verify Expo dependencies
+        working-directory: mobile
+        run: npx expo install --check
+
+      - name: Generate iOS project
+        working-directory: mobile
+        run: npx expo prebuild --platform ios --clean --non-interactive
+
+      - name: Install CocoaPods
+        working-directory: mobile
+        run: npx pod-install ios
+
+      - name: Build standalone iOS Simulator app
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          test -n "$WORKSPACE"
+          SCHEME="$(xcodebuild -workspace "$WORKSPACE" -list -json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["workspace"]["schemes"][0])')"
+          test -n "$SCHEME"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/ios-simulator \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Prepare iOS Simulator asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find mobile/build/ios-simulator/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          test -n "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" ConcursoMestre-iOS-Simulator-preview.app.zip
+
+      - name: Upload iOS Simulator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: concursomestre-ios-simulator-preview
+          path: ConcursoMestre-iOS-Simulator-preview.app.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish Android GitHub pre-release
+    needs: [android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(node -p "require('./mobile/app.json').expo.version")"
+          BUILD_NUMBER="$(node -p "require('./mobile/app.json').expo.android.versionCode")"
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Download Android build
+        uses: actions/download-artifact@v4
+        with:
+          name: concursomestre-android-preview
+          path: release-assets
+
+      - name: Create release notes
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+        shell: bash
+        run: |
+          cat > RELEASE_NOTES.md <<EOF
+          ## ConcursoMestre — Preview v${VERSION_NAME} (build ${BUILD_NUMBER})
+
+          ### Estado do projeto
+          - F0–F6 concluídas
+          - F7 — QA e Release Candidate em andamento
+          - navegação do MVP: Questões, Simulados e Conta
+
+          ### Android
+          **ConcursoMestre-Android-preview.apk** é o APK standalone de pré-lançamento para instalação em aparelho Android real.
+
+          O arquivo **ConcursoMestre-Android-preview.apk.sha256** permite validar a integridade do APK.
+
+          ### iOS
+          O build de iOS Simulator é opcional e, quando concluído, é anexado posteriormente a esta mesma pre-release como **ConcursoMestre-iOS-Simulator-preview.app.zip**.
+
+          Esse arquivo não instala diretamente em iPhone físico. A distribuição para iPhone real será feita por TestFlight na etapa de distribuição iOS.
+
+          ### Ambiente
+          Esta preview utiliza a API HTTPS do ConcursoMestre em `https://concursomestre.com/api/`.
+          EOF
+
+      - name: Publish or update GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="mobile-preview-v${VERSION_NAME}-b${BUILD_NUMBER}"
+          TITLE="ConcursoMestre Preview v${VERSION_NAME} (build ${BUILD_NUMBER})"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$TITLE" \
+              --notes-file RELEASE_NOTES.md \
+              --prerelease
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* \
+              --target "$GITHUB_SHA" \
+              --title "$TITLE" \
+              --notes-file RELEASE_NOTES.md \
+              --prerelease
+          fi
+
+  attach-ios:
+    name: Attach optional iOS Simulator asset
+    needs: [ios-simulator, release]
+    if: ${{ needs.ios-simulator.result == 'success' && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(node -p "require('./mobile/app.json').expo.version")"
+          BUILD_NUMBER="$(node -p "require('./mobile/app.json').expo.android.versionCode")"
+          echo "tag=mobile-preview-v${VERSION_NAME}-b${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Download iOS Simulator build
+        uses: actions/download-artifact@v4
+        with:
+          name: concursomestre-ios-simulator-preview
+          path: release-assets
+
+      - name: Attach iOS Simulator build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: gh release upload "$TAG" release-assets/* --clobber

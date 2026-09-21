@@ -1,17 +1,21 @@
 import React from 'react';
-import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
-import { colors } from '@/theme/colors';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { layout, radius, spacing, typography } from '@/theme/tokens';
+import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
 
 interface TextFieldProps {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   placeholder?: string;
-  keyboardType?: TextInputProps['keyboardType'];
+  keyboardType?: 'default' | 'email-address';
   secureTextEntry?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 }
 
+/**
+ * Adaptador visual legado. Sera substituido por controle de plataforma na fase Expo UI.
+ */
 export const TextField: React.FC<TextFieldProps> = ({
   label,
   value,
@@ -21,14 +25,18 @@ export const TextField: React.FC<TextFieldProps> = ({
   secureTextEntry = false,
   autoCapitalize = 'none',
 }) => {
+  const theme = useAppTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        accessibilityLabel={label}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={colors.muted}
+        placeholderTextColor={theme.textMuted}
         keyboardType={keyboardType}
         secureTextEntry={secureTextEntry}
         autoCapitalize={autoCapitalize}
@@ -38,26 +46,24 @@ export const TextField: React.FC<TextFieldProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
   wrapper: {
-    gap: 6,
+    gap: spacing[2],
   },
   label: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.bold,
+    color: theme.textMuted,
   },
   input: {
-    height: 48,
-    borderRadius: 14,
+    minHeight: layout.controlHeight,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-    paddingHorizontal: 14,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+    color: theme.text,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.medium,
+    paddingHorizontal: spacing[4],
   },
 });

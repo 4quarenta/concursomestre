@@ -9,15 +9,26 @@ type AddCommentInput = {
   userId: string;
   userName: string;
   parentId?: string;
-  targetType?: 'question' | 'material';
+  userAvatar?: string;
+  userPlan?: string;
+  targetType?: 'question' | 'material' | 'blog_article';
+};
+
+export type LikeCommentResult = {
+  liked: boolean;
 };
 
 export const commentsService = {
-  async getComments(targetId: string, userId?: string): Promise<QuestionComment[]> {
+  async getComments(
+    targetId: string,
+    userId?: string,
+    targetType: 'question' | 'material' | 'blog_article' = 'question',
+  ): Promise<QuestionComment[]> {
     try {
       const response: any = await apiClient.get<any>(ENDPOINTS.comments.list, {
         params: {
           target_id: targetId,
+          target_type: targetType,
           user_id: userId || '',
         },
       });
@@ -25,6 +36,10 @@ export const commentsService = {
       const payload = readApiData<any>(response, []);
       if (Array.isArray(payload)) {
         return payload as QuestionComment[];
+      }
+
+      if (Array.isArray(payload?.items)) {
+        return payload.items as QuestionComment[];
       }
 
       if (Array.isArray(payload?.comments)) {
@@ -44,6 +59,8 @@ export const commentsService = {
         question_id: input.questionId,
         user_id: input.userId,
         user_name: input.userName,
+        user_avatar: input.userAvatar,
+        user_plan: input.userPlan,
         content: input.content,
         parent_id: input.parentId,
         targetType: input.targetType || 'question',
@@ -57,7 +74,8 @@ export const commentsService = {
         id: commentId,
         userId: input.userId,
         userName: input.userName,
-        userPlan: 'Gratuito',
+        userAvatar: input.userAvatar,
+        userPlan: input.userPlan || 'Gratuito',
         text: input.content,
         date: 'Agora',
         likes: 0,
@@ -70,7 +88,7 @@ export const commentsService = {
     }
   },
 
-  async likeComment(commentId: string, userId?: string): Promise<void> {
+  async likeComment(commentId: string, userId?: string): Promise<LikeCommentResult> {
     try {
       const response: any = await apiClient.post<any>(ENDPOINTS.comments.handle, {
         action: 'like',
@@ -79,6 +97,8 @@ export const commentsService = {
       });
 
       assertApiSuccess(response, 'Nao foi possivel curtir o comentario.');
+      const payload = readApiData<any>(response, {});
+      return { liked: Boolean(payload?.liked ?? response?.liked) };
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel curtir o comentario.'));
     }
@@ -108,20 +128,25 @@ export const commentsService = {
     });
   },
 
-  likeCommentInTree(comments: QuestionComment[], commentId: string): QuestionComment[] {
+  likeCommentInTree(
+    comments: QuestionComment[],
+    commentId: string,
+    result?: LikeCommentResult,
+  ): QuestionComment[] {
     return comments.map((comment) => {
       if (comment.id === commentId) {
+        const liked = result?.liked ?? !comment.isLiked;
         return {
           ...comment,
-          likes: Number(comment.likes || 0) + 1,
-          isLiked: true,
+          likes: Math.max(0, Number(comment.likes || 0) + (liked ? 1 : -1)),
+          isLiked: liked,
         };
       }
 
       if (comment.replies && comment.replies.length > 0) {
         return {
           ...comment,
-          replies: this.likeCommentInTree(comment.replies, commentId),
+          replies: this.likeCommentInTree(comment.replies, commentId, result),
         };
       }
 

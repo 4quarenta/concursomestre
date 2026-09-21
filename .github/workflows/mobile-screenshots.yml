@@ -1,0 +1,98 @@
+name: Mobile Screenshots
+
+on:
+  push:
+    branches:
+      - mobile-foundation-refactor
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-screenshots.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-screenshots
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix mobile
+
+      - name: Typecheck
+        run: npm --prefix mobile run typecheck
+
+      - name: Install Chromium
+        run: npx -y playwright@1.55.0 install --with-deps chromium
+
+      - name: Export screenshot web build
+        working-directory: mobile
+        env:
+          EXPO_PUBLIC_SCREENSHOT_MODE: '1'
+          EXPO_PUBLIC_API_BASE_URL: 'http://127.0.0.1:4010/api/'
+          EXPO_PUBLIC_DISTRIBUTION_CHANNEL: 'store'
+        run: npx expo export --platform web --output-dir dist-screenshots
+
+      - name: Start deterministic mock API
+        working-directory: mobile
+        run: |
+          node scripts/mock-api.mjs > /tmp/concursomestre-mock-api.log 2>&1 &
+          echo $! > /tmp/concursomestre-mock-api.pid
+
+      - name: Start screenshot web server
+        working-directory: mobile
+        run: |
+          npx -y serve@14.2.4 -s dist-screenshots -l 8081 > /tmp/concursomestre-web.log 2>&1 &
+          echo $! > /tmp/concursomestre-web.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8081 >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/concursomestre-web.log
+          exit 1
+
+      - name: Capture app screens
+        run: |
+          mkdir -p mobile/docs/screenshots
+          BASE='http://127.0.0.1:8081'
+          PW='npx -y playwright@1.55.0 screenshot --device="iPhone 13" --full-page --wait-for-timeout=3500'
+          eval "$PW $BASE/login mobile/docs/screenshots/01-login.png"
+          eval "$PW $BASE/cadastro mobile/docs/screenshots/02-cadastro.png"
+          eval "$PW $BASE/questoes mobile/docs/screenshots/03-questoes.png"
+          eval "$PW $BASE/simulados mobile/docs/screenshots/04-simulados.png"
+          eval "$PW $BASE/conta mobile/docs/screenshots/05-conta.png"
+
+      - name: Upload screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: concursomestre-mobile-screenshots
+          path: mobile/docs/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit screenshots to preview branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mobile/docs/screenshots/*.png
+          if git diff --cached --quiet; then
+            echo 'Screenshots unchanged.'
+            exit 0
+          fi
+          git commit -m 'docs(mobile): refresh app screenshots [skip ci]'
+          git push
