@@ -15,7 +15,7 @@ describe('law article metadata', () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRELAUNCH');
     const metadata = buildLawArticleMetadata(item && !('redirectPath' in item) ? item : null);
     expect(metadata.alternates?.canonical).toBe('/lei-comentada/constituicao-federal/artigo-5-a');
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
   });
   it('allows a READY article only in PRODUCTION', () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRODUCTION');

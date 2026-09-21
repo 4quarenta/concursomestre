@@ -18,7 +18,7 @@ describe('professional metadata', () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRELAUNCH');
     const metadata = buildProfessionalMetadata('position', item);
     expect(metadata.alternates?.canonical).toBe('/cargos/auditor-fiscal');
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
     expect(professionalDescription(item!)).toContain('quando disponíveis');
   });
 

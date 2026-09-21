@@ -20,7 +20,7 @@ describe('public Material metadata and launch policy', () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRELAUNCH');
     const metadata = buildMaterialMetadata(material);
     expect(metadata.alternates?.canonical).toBe('/materiais/guia-de-estudo');
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
   });
 
   it('indexes a READY Material only in a controlled PRODUCTION simulation', () => {

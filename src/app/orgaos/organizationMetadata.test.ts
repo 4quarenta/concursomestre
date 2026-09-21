@@ -23,7 +23,7 @@ describe('organization metadata and route readiness', () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRELAUNCH');
     const metadata = buildOrganizationMetadata(organization);
     expect(metadata.alternates?.canonical).toBe('/orgaos/policia-federal');
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
     expect(metadata.openGraph).toMatchObject({ url: '/orgaos/policia-federal' });
   });
 

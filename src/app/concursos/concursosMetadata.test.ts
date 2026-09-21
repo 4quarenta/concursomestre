@@ -16,7 +16,7 @@ describe('/concursos metadata', () => {
   it('keeps the canonical contest hub NOINDEX in PRELAUNCH', async () => {
     const metadata = await generateMetadata({ searchParams: Promise.resolve({}) });
     expect(metadata.alternates?.canonical).toBe('/concursos');
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
   });
 
   it('keeps hub filters on the clean canonical and NOINDEX', async () => {
@@ -32,7 +32,7 @@ describe('/concursos metadata', () => {
   it('gives open contests its own canonical identity', async () => {
     const metadata = await generateOpenMetadata({ searchParams: Promise.resolve({}) });
     expect(metadata.alternates?.canonical).toBe('/concursos-abertos');
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
 
     const emptySearch = await generateOpenMetadata({ searchParams: Promise.resolve({ busca: '' }) });
     expect(emptySearch.alternates?.canonical).toBe('/concursos-abertos');
@@ -42,7 +42,7 @@ describe('/concursos metadata', () => {
   it('uses the persisted detail canonical and omits canonical for missing entities', () => {
     const valid = buildContestMetadata(contest);
     expect(valid.alternates?.canonical).toBe('/concursos/concurso-canonico');
-    expect(valid.robots).toMatchObject({ index: false, follow: true });
+    expect(valid.robots).toMatchObject({ index: false, follow: false });
     expect(buildContestMetadata(null).alternates?.canonical).toBeNull();
   });
 

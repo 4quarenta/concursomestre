@@ -19,7 +19,7 @@ describe('buildTaxonomyDirectoryMetadata', () => {
     vi.stubEnv('SEO_LAUNCH_MODE', 'PRELAUNCH');
     const metadata = build('/disciplinas', {});
     expect(metadata.alternates?.canonical).toBe('/disciplinas');
-    expect(metadata.robots).toMatchObject({ index: false, follow: true });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
   });
 
   it.each([[{ busca: 'direito' }], [{ letra: 'A' }], [{ ordenacao: 'nome' }], [{ busca: ['direito', 'penal'] }]])(
