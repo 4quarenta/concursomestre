@@ -46,6 +46,7 @@ final class CommunicationDeepLinkPolicy
         $path = (string) (parse_url($value, PHP_URL_PATH) ?: '/');
         $allowed = [
             '/^\/(notifications|profile|support|practice|question|read|marketplace|checkout|subscription)(?:\/|$)/',
+            '/^\/(planos|promo)(?:\/|$)/',
             '/^\/admin(?:\/|$)/',
         ];
         foreach ($allowed as $pattern) {
