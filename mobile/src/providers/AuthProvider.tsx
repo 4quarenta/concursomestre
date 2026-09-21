@@ -166,24 +166,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isBootstrapped, setIsBootstrapped] = React.useState(SCREENSHOT_MODE);
 
   const applySessionFromResponse = React.useCallback(async (response: any) => {
-    const payload = response?.data || response;
-    const token = payload?.token || response?.token || null;
-    const refreshToken = payload?.refreshToken || payload?.refresh_token || response?.refreshToken || response?.refresh_token || null;
-    const csrfToken = payload?.csrfToken || payload?.csrf_token || response?.csrfToken || response?.csrf_token || null;
-    const sessionUser = payload?.user || response?.user || null;
-    if (!token || !refreshToken || !csrfToken || !sessionUser) throw new Error('Sessao invalida retornada pelo backend.');
+    // A API de producao ja teve duas formas validas de transportar a sessao:
+    // diretamente no payload e dentro de `data`. O cliente nativo tambem pode
+    // receber o usuario apenas no /auth/me quando o login e servido por uma
+    // instancia antiga do backend. Nao descarte um token utilizavel por causa
+    // dessa diferenca de envelope.
+    const responseObject = response && typeof response === 'object' ? response : {};
+    const dataObject = responseObject.data && typeof responseObject.data === 'object'
+      ? responseObject.data
+      : {};
+    const payload = { ...responseObject, ...dataObject };
+    const token = firstNonEmptyString(
+      payload.token,
+      payload.accessToken,
+      payload.access_token,
+      payload.authSession?.token,
+      payload.session?.token,
+    ) || null;
+    const refreshToken = firstNonEmptyString(
+      payload.refreshToken,
+      payload.refresh_token,
+      payload.authSession?.refreshToken,
+      payload.authSession?.refresh_token,
+      payload.session?.refreshToken,
+      payload.session?.refresh_token,
+    ) || null;
+    const csrfToken = firstNonEmptyString(
+      payload.csrfToken,
+      payload.csrf_token,
+      payload.authSession?.csrfToken,
+      payload.authSession?.csrf_token,
+      payload.session?.csrfToken,
+      payload.session?.csrf_token,
+    ) || null;
+    let sessionUser = payload.user || payload.profile || payload.account || payload.session?.user || null;
+
+    if (!token) throw new Error('Sessao invalida retornada pelo backend.');
+
+    if (!sessionUser) {
+      // Permite concluir o login quando o endpoint devolve o token antes do
+      // DTO do usuario. O /auth/me usa o token recem-recebido e e o contrato
+      // oficial para recuperar a identidade autenticada.
+      await sessionStore.setSession(token, null, refreshToken, csrfToken);
+      try {
+        sessionUser = await authFlowService.me();
+      } catch (error) {
+        await sessionStore.clearSession();
+        throw error;
+      }
+    }
+
     const normalizedUser = normalizeUserProfile({
       ...(sessionUser as UserProfile),
       subscription: payload?.subscription || response?.subscription || (sessionUser as UserProfile).subscription,
       level: payload?.gamification?.level ?? (sessionUser as UserProfile).level,
       xp: payload?.gamification?.xp ?? (sessionUser as UserProfile).xp,
     });
+    if (!normalizedUser?.id) {
+      await sessionStore.clearSession();
+      throw new Error('Sessao invalida retornada pelo backend.');
+    }
     setUser(normalizedUser);
     await sessionStore.setSession(
       token,
       normalizedUser,
-      refreshToken,
-      csrfToken,
+      refreshToken || null,
+      csrfToken || null,
     );
   }, []);
 
