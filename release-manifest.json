@@ -3,9 +3,9 @@
   "product": "ConcursoMestre",
   "version": "1.0.0",
   "revision": "final-macro20f",
-  "commit": "683d8c42ce071ee5f3804f8452adb93b30327872",
-  "gitDirty": false,
-  "generatedAt": "2026-09-21T22:21:06.213Z",
+  "commit": "90d61ef7",
+  "gitDirty": true,
+  "generatedAt": "2026-09-21T23:31:52.423Z",
   "runtime": {
     "node": "v24.20.0",
     "nodeMinimum": "20.19.0",
@@ -96,8 +96,8 @@
     }
   },
   "files": {
-    "package.json": "3d784ba1f020925ae5bfa7fb1f012fd5ad38be7593c04a7846bbf7b72d185878",
-    "package-lock.json": "ff9d2dbb53b015f0489200f0bea3ffbe6ecef937606a4b17782e4a1c59565a90",
+    "package.json": "4c2c533effbcf5d2cc64c6805fca6d22681d793733dee9bd8762c2c7dc752682",
+    "package-lock.json": "ec489eda5050a1ed6c277b6f8cb7a2d5c7d98a2d3accf363e6ea044c62bb63a3",
     "next.config.ts": "08d53607c49115639b0974387e679992e49fa8aaa121f42ddd85213d895a4d48",
     "tsconfig.strict.json": "93d01769af00eff8632b72866758e07a0c173d09da1bf7ec1343065740a2f2fb",
     "tsconfig.no-unchecked.json": "fbe2ea4644aa3321091cb6c18f1b2c27f769f64243fbaaa9e199168360388f7c",
