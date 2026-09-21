@@ -5,8 +5,7 @@ import Link from 'next/link';
 import { AlertCircle, BookOpen, ChevronLeft, CreditCard, FileText, Scale, ShieldCheck, UserCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
-
-const LAST_UPDATED = '10 de Setembro de 2026';
+import { LEGAL_DOCUMENT_VERSION, LEGAL_EFFECTIVE_DATE } from '@services/legal/legalDocumentVersion';
 
 const TermsOfUse: React.FC = () => {
   const router = useRouter();
@@ -45,7 +44,8 @@ const TermsOfUse: React.FC = () => {
             </div>
             <div className="rounded-2xl border border-white/20 bg-white/10 px-5 py-4">
               <span className="block text-[10px] font-black uppercase tracking-widest text-indigo-100">Última atualização</span>
-              <span className="mt-1 block text-sm font-bold">{LAST_UPDATED}</span>
+              <span className="mt-1 block text-sm font-bold">{LEGAL_EFFECTIVE_DATE}</span>
+              <span className="mt-1 block text-[10px] font-semibold text-indigo-100">Versão {LEGAL_DOCUMENT_VERSION}</span>
             </div>
           </div>
         </header>

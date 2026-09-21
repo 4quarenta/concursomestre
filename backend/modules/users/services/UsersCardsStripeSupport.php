@@ -841,11 +841,56 @@ function getStripeCheckoutRequirementErrors(array $user): array
         }
     }
 
+    if (!in_array('cpf', $missing, true) && !isValidStripeCheckoutCpf($requiredFields['cpf'])) {
+        $missing[] = 'cpf';
+    }
+
+    $fieldRules = [
+        'zip_code' => static fn (string $value): bool => strlen((string) preg_replace('/\D+/', '', $value)) === 8,
+        'street' => static fn (string $value): bool => strlen(trim($value)) >= 3,
+        'number' => static fn (string $value): bool => preg_match('/[0-9a-z]/i', trim($value)) === 1,
+        'neighborhood' => static fn (string $value): bool => strlen(trim($value)) >= 2,
+        'city' => static fn (string $value): bool => strlen(trim($value)) >= 2,
+        'state' => static fn (string $value): bool => preg_match('/^[a-z]{2}$/i', trim($value)) === 1,
+    ];
+
+    foreach ($fieldRules as $field => $isValid) {
+        if (!in_array($field, $missing, true) && !$isValid($requiredFields[$field])) {
+            $missing[] = $field;
+        }
+    }
+
     if (empty($user['email_verified'])) {
         $missing[] = 'email_verified';
     }
 
     return $missing;
+}
+
+/**
+ * Valida os digitos verificadores do CPF antes de iniciar o checkout.
+ *
+ * @since 1.0.0
+ */
+function isValidStripeCheckoutCpf(string $value): bool
+{
+    $cpf = preg_replace('/\D+/', '', $value);
+    if (!is_string($cpf) || preg_match('/^\d{11}$/', $cpf) !== 1 || preg_match('/^(\d)\1{10}$/', $cpf) === 1) {
+        return false;
+    }
+
+    for ($position = 9; $position < 11; $position++) {
+        $sum = 0;
+        for ($index = 0; $index < $position; $index++) {
+            $sum += ((int) $cpf[$index]) * (($position + 1) - $index);
+        }
+
+        if ((((10 * $sum) % 11) % 10) !== (int) $cpf[$position]) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /**

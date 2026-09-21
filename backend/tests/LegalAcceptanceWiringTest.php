@@ -34,6 +34,8 @@ $authValidator = file_get_contents($base . '/modules/auth/validators/AuthValidat
 $authService = file_get_contents($base . '/modules/auth/services/AuthService.php');
 $subscriptionsValidator = file_get_contents($base . '/modules/subscriptions/validators/SubscriptionsValidator.php');
 $subscriptionsService = file_get_contents($base . '/modules/subscriptions/services/SubscriptionsService.php');
+$privacyPage = file_get_contents(dirname($base) . '/src/app/privacy/page.tsx');
+$termsPage = file_get_contents(dirname($base) . '/src/app/terms/page.tsx');
 
 assertLegalAcceptanceWiring(str_contains($acceptance, 'hash_equals'), 'Aceite deve validar a versao vigente no servidor.');
 assertLegalAcceptanceWiring(str_contains($acceptance, 'ON DUPLICATE KEY UPDATE id = id'), 'Aceite repetido deve ser idempotente sem substituir historico.');
@@ -47,5 +49,13 @@ assertLegalAcceptanceWiring(substr_count($authService, "'terms_of_use'") >= 2, '
 assertLegalAcceptanceWiring(substr_count($authService, "'privacy_policy'") >= 2, 'Cadastro tradicional e social devem registrar privacidade.');
 assertLegalAcceptanceWiring(str_contains($subscriptionsValidator, 'checkout_adhesion_terms'), 'Checkout deve validar a versao dos Termos de adesao.');
 assertLegalAcceptanceWiring(substr_count($subscriptionsService, 'LegalAcceptance::recordCheckout') >= 2, 'Checkout deve registrar aceite antes dos fluxos de cobranca.');
+assertLegalAcceptanceWiring(
+    str_contains($privacyPage, 'PRIVACY_POLICY_EFFECTIVE_DATE') && str_contains($privacyPage, 'PRIVACY_POLICY_VERSION'),
+    'Politica de Privacidade deve exibir data e versao do contrato legal compartilhado.'
+);
+assertLegalAcceptanceWiring(
+    str_contains($termsPage, 'LEGAL_EFFECTIVE_DATE') && str_contains($termsPage, 'LEGAL_DOCUMENT_VERSION'),
+    'Termos de Uso devem exibir data e versao do contrato legal compartilhado.'
+);
 
 echo "Legal acceptance wiring PASS\n";

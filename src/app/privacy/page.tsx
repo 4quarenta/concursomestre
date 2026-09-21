@@ -5,8 +5,7 @@ import Link from 'next/link';
 import { ChevronLeft, Clock, Database, Globe2, Lock, Scale, Shield, UserCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
-
-const LAST_UPDATED = '10 de Setembro de 2026';
+import { PRIVACY_POLICY_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION } from '@services/legal/legalDocumentVersion';
 
 const PrivacyPolicy: React.FC = () => {
   const router = useRouter();
@@ -45,7 +44,8 @@ const PrivacyPolicy: React.FC = () => {
             </div>
             <div className="rounded-2xl border border-white/20 bg-white/10 px-5 py-4">
               <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-100">Última atualização</span>
-              <span className="mt-1 block text-sm font-bold">{LAST_UPDATED}</span>
+              <span className="mt-1 block text-sm font-bold">{PRIVACY_POLICY_EFFECTIVE_DATE}</span>
+              <span className="mt-1 block text-[10px] font-semibold text-emerald-100">Versão {PRIVACY_POLICY_VERSION}</span>
             </div>
           </div>
         </header>
