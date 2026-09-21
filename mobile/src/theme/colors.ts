@@ -12,8 +12,6 @@ export const colors = {
   border: lightTheme.border,
   primary: lightTheme.primary,
   primaryDark: lightTheme.primaryPressed,
-  primarySubtle: lightTheme.primarySubtle,
-  primaryBorder: lightTheme.primaryBorder,
   onPrimary: lightTheme.onPrimary,
   success: lightTheme.success,
   warning: lightTheme.warning,

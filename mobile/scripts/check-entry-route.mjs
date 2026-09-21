@@ -13,7 +13,7 @@ const source = fs.readFileSync(entryPath, 'utf8');
 const required = [
   "Redirect",
   "useAuth",
-  "'/inicio'",
+  "'/questoes'",
   "'/login'",
 ];
 

@@ -1,7 +1,6 @@
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { readApiData } from '@/services/api/response';
-import { questionFixtureTaxonomies, QUESTION_FIXTURE_MODE } from '@/features/questions/data/questionFixtures';
 
 export type QuestionTaxonomyOption = {
   id?: string | number;
@@ -19,7 +18,6 @@ export type QuestionTaxonomies = {
   materias: QuestionTaxonomyOption[];
   assuntos: QuestionTaxonomyOption[];
   cargos: QuestionTaxonomyOption[];
-  carreiras: QuestionTaxonomyOption[];
   anos: string[];
 };
 
@@ -46,7 +44,6 @@ const normalizeOptions = (rows: unknown): QuestionTaxonomyOption[] => (
 
 export const taxonomyService = {
   async list(): Promise<QuestionTaxonomies> {
-    if (QUESTION_FIXTURE_MODE) return questionFixtureTaxonomies;
     const response: any = await apiClient.get<any>(ENDPOINTS.filters.list);
     const payload = readApiData<any>(response, {});
     const subjectRows = normalizeOptions(payload?.assuntos);
@@ -62,7 +59,6 @@ export const taxonomyService = {
       materias,
       assuntos,
       cargos: normalizeOptions(payload?.cargos),
-      carreiras: normalizeOptions(payload?.carreiras),
       anos: Array.isArray(payload?.anos)
         ? payload.anos.map((value: unknown) => String(value).trim()).filter(Boolean)
         : [],

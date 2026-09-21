@@ -70,8 +70,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFBEB',
   },
   panelDetailed: {
-    borderColor: colors.primaryBorder,
-    backgroundColor: colors.primarySubtle,
+    borderColor: '#C7D2FE',
+    backgroundColor: '#EEF2FF',
   },
   header: {
     flexDirection: 'row',
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     borderColor: '#FDE68A',
   },
   contentCardDetailed: {
-    borderColor: colors.primaryBorder,
+    borderColor: '#C7D2FE',
   },
   contentText: {
     color: colors.text,
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   emptyCardDetailed: {
-    borderColor: colors.primaryBorder,
+    borderColor: '#C7D2FE',
     borderStyle: 'dashed',
   },
   emptyText: {

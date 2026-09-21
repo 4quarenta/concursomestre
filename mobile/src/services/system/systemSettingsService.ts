@@ -106,23 +106,17 @@ const normalizeTaxonomies = (payload: Record<string, unknown>): MobileGlobalTaxo
 
   const agencies = normalizeTaxonomyItems(source.agencies);
   const roles = normalizeTaxonomyItems(source.roles);
-  const careers = normalizeTaxonomyItems(source.careers);
   const years = normalizeYears(source.years);
 
-  return { agencies, roles, careers, years };
+  return { agencies, roles, years };
 };
 
 const normalizePlanDetails = (payload: Record<string, unknown>): MobilePlanDetailsMap => {
-  const plans = payload.plans && typeof payload.plans === 'object'
-    ? payload.plans as Record<string, unknown>
-    : {};
-  const rawPlanDetails = payload.planDetails ?? plans.planDetails;
-
-  if (!rawPlanDetails || typeof rawPlanDetails !== 'object') {
+  if (!payload.planDetails || typeof payload.planDetails !== 'object') {
     return {};
   }
 
-  const source = rawPlanDetails as Record<string, unknown>;
+  const source = payload.planDetails as Record<string, unknown>;
   return Object.entries(source).reduce<MobilePlanDetailsMap>((accumulator, [key, value]) => {
     if (!value || typeof value !== 'object') {
       return accumulator;
@@ -144,16 +138,11 @@ const normalizePlanDetails = (payload: Record<string, unknown>): MobilePlanDetai
 };
 
 const normalizePlanPricing = (payload: Record<string, unknown>): MobilePlanPricingMap => {
-  const plans = payload.plans && typeof payload.plans === 'object'
-    ? payload.plans as Record<string, unknown>
-    : {};
-  const rawPricing = payload.pricing ?? plans.pricing;
-
-  if (!rawPricing || typeof rawPricing !== 'object') {
+  if (!payload.pricing || typeof payload.pricing !== 'object') {
     return {};
   }
 
-  const source = rawPricing as Record<string, unknown>;
+  const source = payload.pricing as Record<string, unknown>;
   return Object.entries(source).reduce<MobilePlanPricingMap>((accumulator, [key, value]) => {
     if (!value || typeof value !== 'object') {
       return accumulator;
@@ -221,11 +210,6 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
       payload,
       'simulationsEnabled',
       DEFAULT_MOBILE_FEATURE_FLAGS.simulationsEnabled,
-    ),
-    studyScheduleEnabled: resolveFeatureFlag(
-      payload,
-      'studyScheduleEnabled',
-      DEFAULT_MOBILE_FEATURE_FLAGS.studyScheduleEnabled,
     ),
     rankingsEnabled: resolveFeatureFlag(
       payload,
@@ -298,7 +282,6 @@ export const systemSettingsService = {
       taxonomies: {
         agencies: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.agencies],
         roles: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.roles],
-        careers: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.careers],
         years: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.years],
       },
     };

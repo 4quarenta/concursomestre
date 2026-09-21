@@ -7,7 +7,6 @@ export interface MobileSimulationConfig {
   questionCount: number;
   timerEnabled: boolean;
   timerMinutes: number;
-  randomOrder?: boolean;
   keyword?: string;
   difficulty?: MobileSimulationDifficulty;
   feedbackMode?: MobileSimulationFeedbackMode;

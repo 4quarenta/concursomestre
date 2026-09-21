@@ -1,6 +1,6 @@
 # ConcursoMestre Mobile — Data Safety / App Privacy
 
-Atualizado em 17/09/2026.
+Atualizado em 10/09/2026.
 
 Este arquivo e um inventario tecnico para preencher Google Play Data safety e Apple App Privacy. Nao substitui revisao juridica nem a auditoria final do backend/provedores.
 
@@ -14,9 +14,7 @@ Primeiro release mobile:
 - autenticacao/cadastro;
 - links externos para Privacidade, Termos, Suporte e Exclusao de conta.
 
-O app passou a incluir o SDK nativo do Firebase Analytics para telemetria de uso. A coleta fica inoperante no Expo Go e so funciona no development build/release configurado com as credenciais reais do projeto Firebase.
-
-As dependencias nativas nao incluem SDK de publicidade, Sentry, camera, fotos, localizacao ou notificacoes push.
+Dependencias nativas atuais nao incluem SDK de publicidade, Firebase Analytics, Sentry, camera, fotos, localizacao ou notificacoes push.
 
 O `app.json` atual nao solicita permissao sensivel de camera, microfone, contatos, localizacao, fotos, saude, SMS ou chamadas.
 
@@ -193,7 +191,7 @@ Pelo codigo mobile auditado nesta fase, o MVP nao solicita diretamente:
 - SMS/chamadas;
 - arquivos pessoais arbitrarios.
 
-Nao ha push notification no primeiro release nem SDK de publicidade. O Firebase Analytics coleta eventos de uso e telas; a declaracao de Data safety/App Privacy ainda precisa ser revisada contra o projeto Firebase e o build final.
+Nao ha push notification no primeiro release e nao ha SDK de publicidade/analytics mobile incluido no `package.json` atual.
 
 ---
 

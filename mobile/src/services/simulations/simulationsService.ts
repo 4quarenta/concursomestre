@@ -97,10 +97,8 @@ const cacheDetail = async (detail: SimulationDetail): Promise<void> => {
   await saveLocalDetails([cached, ...rows.filter((item) => String(item.id) !== String(detail.id))]);
 };
 
-const readRemoteDetails = async (userId?: string): Promise<SimulationDetail[]> => {
-  const response: any = await apiClient.get<any>(ENDPOINTS.simulations.list, {
-    params: userId ? { user_id: userId } : undefined,
-  });
+const readRemoteDetails = async (): Promise<SimulationDetail[]> => {
+  const response: any = await apiClient.get<any>(ENDPOINTS.simulations.list);
   return sortDetails(normalizeSimulationDetails(readApiData<any>(response, []), 'remote').map((item) => ({ ...item, source: 'remote' as const })));
 };
 
@@ -150,9 +148,9 @@ export const simulationsService = {
     }
   },
 
-  async getActiveRemote(userId?: string): Promise<SimulationDetail | null> {
+  async getActiveRemote(): Promise<SimulationDetail | null> {
     try {
-      const remoteRows = await readRemoteDetails(userId);
+      const remoteRows = await readRemoteDetails();
       return remoteRows.find((item) => item.status === 'in_progress' && (item.questions?.length || 0) > 0) || null;
     } catch (error: any) {
       if (error?.response?.status === 404) return null;

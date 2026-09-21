@@ -1,7 +1,6 @@
-import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { colors } from "@/theme/colors";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { colors } from '@/theme/colors';
 
 interface ModulePlaceholderScreenProps {
   title: string;
@@ -9,18 +8,13 @@ interface ModulePlaceholderScreenProps {
   cardTitle?: string;
 }
 
-export const ModulePlaceholderScreen: React.FC<
-  ModulePlaceholderScreenProps
-> = ({ title, description, cardTitle = "Migracao em andamento" }) => {
-  const insets = useSafeAreaInsets();
+export const ModulePlaceholderScreen: React.FC<ModulePlaceholderScreenProps> = ({
+  title,
+  description,
+  cardTitle = 'Migracao em andamento',
+}) => {
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: 16, paddingBottom: 16 + insets.bottom },
-      ]}
-    >
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{title}</Text>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{cardTitle}</Text>
@@ -41,7 +35,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: "900",
+    fontWeight: '900',
     color: colors.text,
   },
   card: {
@@ -54,7 +48,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: "900",
+    fontWeight: '900',
     color: colors.text,
   },
   cardText: {

@@ -3,12 +3,12 @@ import {
   FlatList,
   Modal,
   Pressable,
+  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import type { QuestionTaxonomyOption } from '@/features/questions/api/taxonomyService';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme } from '@/theme/useAppTheme';

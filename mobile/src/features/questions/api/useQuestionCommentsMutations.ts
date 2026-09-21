@@ -7,14 +7,12 @@ export const useAddQuestionCommentMutation = (
   questionId: string | number | undefined,
   userId?: string,
   userName?: string,
-  userAvatar?: string,
-  userPlan?: string,
 ) => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ content, parentId }: { content: string; parentId?: string }) => {
-      if (!questionId || !userId) {
+      if (!questionId || !userId || !userName) {
         throw new Error('Entre na sua conta para comentar nesta questao.');
       }
 
@@ -25,11 +23,7 @@ export const useAddQuestionCommentMutation = (
         questionId: String(questionId),
         content: trimmed,
         userId,
-        // O backend autentica o autor pelo token; o nome e apenas um campo
-        // de apresentacao e pode faltar em sessoes legadas.
-        userName: userName?.trim() || 'Aluno',
-        userAvatar,
-        userPlan,
+        userName,
         parentId,
         targetType: 'question',
       });
@@ -58,13 +52,13 @@ export const useLikeQuestionCommentMutation = (
   return useMutation({
     mutationFn: async (commentId: string) => {
       if (!userId) throw new Error('Entre na sua conta para curtir comentarios.');
-      const result = await commentsService.likeComment(commentId, userId);
-      return { commentId, result };
+      await commentsService.likeComment(commentId, userId);
+      return commentId;
     },
-    onSuccess: ({ commentId, result }) => {
+    onSuccess: (commentId) => {
       queryClient.setQueryData<QuestionComment[]>(
         questionQueryKeys.comments(questionId || 'unknown', userId),
-        (current = []) => commentsService.likeCommentInTree(current, commentId, result),
+        (current = []) => commentsService.likeCommentInTree(current, commentId),
       );
     },
   });

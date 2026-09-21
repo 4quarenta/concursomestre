@@ -4,8 +4,6 @@ export interface QuestionComment {
   userName: string;
   userAvatar?: string;
   userPlan?: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite' | string;
-  userRole?: string;
-  userHasPendingReport?: boolean;
   text: string;
   date?: string;
   likes: number;

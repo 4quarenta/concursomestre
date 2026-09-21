@@ -20,8 +20,8 @@ export default function NotFoundScreen() {
       <View style={styles.card}>
         <Text style={styles.title}>Pagina nao encontrada</Text>
         <Text style={styles.text}>Este link nao corresponde a uma tela valida do ConcursoMestre.</Text>
-        <Pressable accessibilityRole="button" onPress={() => router.replace('/inicio')} style={styles.button}>
-          <Text style={styles.buttonText}>Ir para Inicio</Text>
+        <Pressable accessibilityRole="button" onPress={() => router.replace('/questoes')} style={styles.button}>
+          <Text style={styles.buttonText}>Ir para Questoes</Text>
         </Pressable>
       </View>
     </View>

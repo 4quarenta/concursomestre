@@ -93,7 +93,6 @@ if (!fs.existsSync(easJsonPath)) {
 }
 
 [
-  'mobile/app/(app)/(tabs)/inicio.tsx',
   'mobile/app/(app)/(tabs)/questoes.tsx',
   'mobile/app/(app)/(tabs)/simulados.tsx',
   'mobile/app/(app)/(tabs)/conta.tsx',
@@ -189,16 +188,13 @@ requireText(
 
 requireText(
   'mobile/app/(app)/(tabs)/questoes.tsx',
-  'QuestionFiltersScreen',
-  'A tab Questoes deve usar a configuracao canonica de treino do Lovable.',
+  'QuestionsScreen',
+  'A tab Questoes deve continuar usando a tela canonica da feature Questoes.',
 );
-if (!/pathname:\s*["']\/questao\/\[id\]["']/.test(read('mobile/src/features/questions/screens/QuestionFiltersScreen.tsx'))) {
-  fail('Aplicar filtros deve abrir diretamente a primeira questao.');
-}
 requireText(
-  'mobile/app/(app)/questao/[id].tsx',
-  'QuestionViewScreen',
-  'A rota de questao deve continuar ligada ao detalhe canonico.',
+  'mobile/src/features/questions/screens/QuestionsScreen.tsx',
+  'QuestionsScreenV2',
+  'A tela canonica da feature Questoes deve continuar apontando para QuestionsScreenV2.',
 );
 requireText(
   'mobile/app/(app)/(tabs)/conta.tsx',

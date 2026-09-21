@@ -1,7 +1,7 @@
-import { apiClient } from "@/services/api/client";
-import { ENDPOINTS } from "@/services/api/endpoints";
-import { assertApiSuccess, readApiData } from "@/services/api/response";
-import type { MobileNotification } from "@/types/notifications";
+import { apiClient } from '@/services/api/client';
+import { ENDPOINTS } from '@/services/api/endpoints';
+import { assertApiSuccess, readApiData } from '@/services/api/response';
+import type { MobileNotification } from '@/types/notifications';
 
 type NotificationListPayload = {
   items?: unknown[];
@@ -11,23 +11,19 @@ type NotificationListPayload = {
 };
 
 const toBoolean = (value: unknown): boolean => {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase();
-    if (["1", "true", "yes", "on", "read", "lida"].includes(normalized))
-      return true;
-    if (
-      ["0", "false", "no", "off", "unread", "nao_lida", ""].includes(normalized)
-    )
-      return false;
+    if (['1', 'true', 'yes', 'on', 'read', 'lida'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off', 'unread', 'nao_lida', ''].includes(normalized)) return false;
   }
   return Boolean(value);
 };
 
 const readRows = (payload: unknown): unknown[] => {
   if (Array.isArray(payload)) return payload;
-  if (!payload || typeof payload !== "object") return [];
+  if (!payload || typeof payload !== 'object') return [];
 
   const record = payload as NotificationListPayload;
   if (Array.isArray(record.items)) return record.items;
@@ -38,45 +34,23 @@ const readRows = (payload: unknown): unknown[] => {
   return [];
 };
 
-const normalizeNotification = (
-  row: unknown,
-  index: number,
-): MobileNotification | null => {
-  if (!row || typeof row !== "object") return null;
+const normalizeNotification = (row: unknown, index: number): MobileNotification | null => {
+  if (!row || typeof row !== 'object') return null;
   const record = row as Record<string, any>;
-  const id = String(
-    record.id || record.notification_id || record.uuid || index,
-  ).trim();
+  const id = String(record.id || record.notification_id || record.uuid || index).trim();
 
   if (!id) return null;
 
   return {
     id,
-    userId:
-      record.userId || record.user_id
-        ? String(record.userId || record.user_id)
-        : undefined,
-    title: String(record.title || record.titulo || "Notificacao").trim(),
-    message: String(
-      record.message || record.body || record.mensagem || "",
-    ).trim(),
-    type: String(record.type || record.notification_type || "info"),
-    category: String(record.category || record.categoria || "system"),
-    isRead: toBoolean(
-      record.isRead ?? record.is_read ?? record.read ?? record.read_at,
-    ),
-    timestamp:
-      record.timestamp ||
-      record.createdAt ||
-      record.created_at ||
-      record.created ||
-      record.date,
-    link:
-      record.link ||
-      record.actionUrl ||
-      record.action_url ||
-      record.url ||
-      undefined,
+    userId: record.userId || record.user_id ? String(record.userId || record.user_id) : undefined,
+    title: String(record.title || record.titulo || 'Notificacao').trim(),
+    message: String(record.message || record.body || record.mensagem || '').trim(),
+    type: String(record.type || record.notification_type || 'info'),
+    category: String(record.category || record.categoria || 'system'),
+    isRead: toBoolean(record.isRead ?? record.is_read ?? record.read ?? record.read_at),
+    timestamp: record.timestamp || record.createdAt || record.created_at || record.created || record.date,
+    link: record.link || record.actionUrl || record.action_url || record.url || undefined,
     evidenceUrl: record.evidenceUrl || record.evidence_url || undefined,
     deletedAt: record.deletedAt || record.deleted_at || null,
   };
@@ -85,7 +59,7 @@ const normalizeNotification = (
 const normalizeNotifications = (payload: unknown): MobileNotification[] => {
   return readRows(payload)
     .map((row, index) => normalizeNotification(row, index))
-    .filter((row): row is MobileNotification => Boolean(row));
+    .filter((row): row is MobileNotification => Boolean(row && !row.deletedAt));
 };
 
 /**
@@ -94,9 +68,7 @@ const normalizeNotifications = (payload: unknown): MobileNotification[] => {
  */
 export const notificationService = {
   async list(): Promise<MobileNotification[]> {
-    const response: any = await apiClient.get<any>(
-      ENDPOINTS.notifications.list,
-    );
+    const response: any = await apiClient.get<any>(ENDPOINTS.notifications.list);
     const payload = readApiData<any>(response, []);
     return normalizeNotifications(payload);
   },
@@ -107,68 +79,29 @@ export const notificationService = {
       { notification_id: notificationId },
     );
 
-    assertApiSuccess(
-      response,
-      "Nao foi possivel marcar a notificacao como lida.",
-    );
+    assertApiSuccess(response, 'Nao foi possivel marcar a notificacao como lida.');
     return { success: true };
   },
 
   async markAllAsRead(): Promise<{ success: boolean }> {
-    const response: any = await apiClient.post<any>(
-      ENDPOINTS.notifications.markAllRead,
-    );
-    assertApiSuccess(
-      response,
-      "Nao foi possivel marcar todas as notificacoes como lidas.",
-    );
+    const response: any = await apiClient.post<any>(ENDPOINTS.notifications.markAllRead);
+    assertApiSuccess(response, 'Nao foi possivel marcar todas as notificacoes como lidas.');
     return { success: true };
   },
 
-  async deleteNotification(
-    notificationId: string,
-  ): Promise<{ success: boolean }> {
+  async deleteNotification(notificationId: string): Promise<{ success: boolean }> {
     const response: any = await apiClient.post<any>(
       ENDPOINTS.notifications.delete,
       { notification_id: notificationId },
     );
 
-    assertApiSuccess(response, "Nao foi possivel excluir a notificacao.");
-    return { success: true };
-  },
-
-  async restoreNotification(
-    notificationId: string,
-  ): Promise<{ success: boolean }> {
-    const response: any = await apiClient.post<any>(
-      ENDPOINTS.notifications.restore,
-      { notification_id: notificationId },
-    );
-
-    assertApiSuccess(response, "Nao foi possivel restaurar a notificacao.");
-    return { success: true };
-  },
-
-  async permanentDeleteNotification(
-    notificationId: string,
-  ): Promise<{ success: boolean }> {
-    const response: any = await apiClient.post<any>(
-      ENDPOINTS.notifications.permanentDelete,
-      { notification_id: notificationId },
-    );
-
-    assertApiSuccess(
-      response,
-      "Nao foi possivel excluir definitivamente a notificacao.",
-    );
+    assertApiSuccess(response, 'Nao foi possivel excluir a notificacao.');
     return { success: true };
   },
 
   async clearAll(): Promise<{ success: boolean }> {
-    const response: any = await apiClient.post<any>(
-      ENDPOINTS.notifications.clearAll,
-    );
-    assertApiSuccess(response, "Nao foi possivel limpar as notificacoes.");
+    const response: any = await apiClient.post<any>(ENDPOINTS.notifications.clearAll);
+    assertApiSuccess(response, 'Nao foi possivel limpar as notificacoes.');
     return { success: true };
   },
 };

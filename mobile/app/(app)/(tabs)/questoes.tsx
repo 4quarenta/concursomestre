@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { ModulePlaceholderScreen } from '@/screens/ModulePlaceholderScreen';
-import { QuestionFiltersScreen } from '@/features/questions/screens/QuestionFiltersScreen';
+import { QuestionsScreen } from '@/features/questions/screens/QuestionsScreen';
 
 export default function QuestionsRoute() {
   const { isFeatureEnabled } = useAuth();
@@ -16,5 +16,5 @@ export default function QuestionsRoute() {
     );
   }
 
-  return <QuestionFiltersScreen />;
+  return <QuestionsScreen />;
 }

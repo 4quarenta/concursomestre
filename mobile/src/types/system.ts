@@ -1,7 +1,6 @@
 export type MobileFeatureKey =
   | 'practiceEnabled'
   | 'simulationsEnabled'
-  | 'studyScheduleEnabled'
   | 'rankingsEnabled'
   | 'marketplaceEnabled'
   | 'annotatedLawsEnabled'
@@ -11,7 +10,6 @@ export type MobileFeatureKey =
 export interface MobileFeatureFlags {
   practiceEnabled: boolean;
   simulationsEnabled: boolean;
-  studyScheduleEnabled: boolean;
   rankingsEnabled: boolean;
   marketplaceEnabled: boolean;
   annotatedLawsEnabled: boolean;
@@ -28,7 +26,6 @@ export interface MobileTaxonomyItem {
 export interface MobileGlobalTaxonomies {
   agencies: MobileTaxonomyItem[];
   roles: MobileTaxonomyItem[];
-  careers: MobileTaxonomyItem[];
   years: string[];
 }
 
@@ -62,7 +59,6 @@ export interface MobileSystemSettings {
 export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
   practiceEnabled: true,
   simulationsEnabled: true,
-  studyScheduleEnabled: true,
   rankingsEnabled: true,
   marketplaceEnabled: true,
   annotatedLawsEnabled: false,
@@ -79,7 +75,6 @@ export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
   taxonomies: {
     agencies: [],
     roles: [],
-    careers: [],
     years: [],
   },
 };

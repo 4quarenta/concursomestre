@@ -3,19 +3,13 @@ import type { UserProfile } from '@/types/auth';
 
 const ACCESS_TOKEN_KEY = 'cm_mobile_access_token';
 const USER_KEY = 'cm_mobile_user';
-const REFRESH_TOKEN_KEY = 'cm_mobile_refresh_token';
-const CSRF_TOKEN_KEY = 'cm_mobile_csrf_token';
 
 let accessTokenMemory: string | null = null;
 let currentUserMemory: UserProfile | null = null;
-let refreshTokenMemory: string | null = null;
-let csrfTokenMemory: string | null = null;
 
 export type SessionSnapshot = {
   accessToken: string | null;
   user: UserProfile | null;
-  refreshToken: string | null;
-  csrfToken: string | null;
 };
 
 type SessionListener = (snapshot: SessionSnapshot) => void;
@@ -24,8 +18,6 @@ const sessionListeners = new Set<SessionListener>();
 const currentSnapshot = (): SessionSnapshot => ({
   accessToken: accessTokenMemory,
   user: currentUserMemory,
-  refreshToken: refreshTokenMemory,
-  csrfToken: csrfTokenMemory,
 });
 
 const notifySessionListeners = (): void => {
@@ -45,16 +37,12 @@ const notifySessionListeners = (): void => {
  */
 export const sessionStorage = {
   async hydrate(): Promise<SessionSnapshot> {
-    const [token, userRaw, refreshToken, csrfToken] = await Promise.all([
+    const [token, userRaw] = await Promise.all([
       SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
       SecureStore.getItemAsync(USER_KEY),
-      SecureStore.getItemAsync(REFRESH_TOKEN_KEY),
-      SecureStore.getItemAsync(CSRF_TOKEN_KEY),
     ]);
 
     accessTokenMemory = token || null;
-    refreshTokenMemory = refreshToken || null;
-    csrfTokenMemory = csrfToken || null;
 
     if (userRaw) {
       try {
@@ -69,12 +57,7 @@ export const sessionStorage = {
     return currentSnapshot();
   },
 
-  async setSession(
-    token: string | null,
-    user?: UserProfile | null,
-    refreshToken?: string | null,
-    csrfToken?: string | null,
-  ): Promise<void> {
+  async setSession(token: string | null, user?: UserProfile | null): Promise<void> {
     accessTokenMemory = token || null;
 
     if (accessTokenMemory) {
@@ -92,37 +75,15 @@ export const sessionStorage = {
       }
     }
 
-    if (refreshToken !== undefined) {
-      refreshTokenMemory = refreshToken || null;
-      if (refreshTokenMemory) {
-        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshTokenMemory);
-      } else {
-        await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-      }
-    }
-
-    if (csrfToken !== undefined) {
-      csrfTokenMemory = csrfToken || null;
-      if (csrfTokenMemory) {
-        await SecureStore.setItemAsync(CSRF_TOKEN_KEY, csrfTokenMemory);
-      } else {
-        await SecureStore.deleteItemAsync(CSRF_TOKEN_KEY);
-      }
-    }
-
     notifySessionListeners();
   },
 
   async clearSession(): Promise<void> {
     accessTokenMemory = null;
     currentUserMemory = null;
-    refreshTokenMemory = null;
-    csrfTokenMemory = null;
     await Promise.all([
       SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
       SecureStore.deleteItemAsync(USER_KEY),
-      SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
-      SecureStore.deleteItemAsync(CSRF_TOKEN_KEY),
     ]);
     notifySessionListeners();
   },
@@ -138,13 +99,5 @@ export const sessionStorage = {
 
   getCurrentUser(): UserProfile | null {
     return currentUserMemory;
-  },
-
-  getRefreshToken(): string | null {
-    return refreshTokenMemory;
-  },
-
-  getCsrfToken(): string | null {
-    return csrfTokenMemory;
   },
 };

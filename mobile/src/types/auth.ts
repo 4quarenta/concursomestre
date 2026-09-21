@@ -59,8 +59,6 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  targetExam?: string;
-  photoUrl?: string;
   role?: UserRole;
   isAdmin?: boolean;
   emailVerified?: boolean;
@@ -82,10 +80,6 @@ export interface UserProfile {
 export interface AuthFlowPayload {
   user?: UserProfile;
   token?: string | null;
-  refresh_token?: string | null;
-  refreshToken?: string | null;
-  csrf_token?: string | null;
-  csrfToken?: string | null;
   require2FA?: boolean;
   email?: string;
 }
@@ -96,10 +90,6 @@ export interface AuthFlowResponse {
   data?: AuthFlowPayload;
   user?: UserProfile;
   token?: string | null;
-  refresh_token?: string | null;
-  refreshToken?: string | null;
-  csrf_token?: string | null;
-  csrfToken?: string | null;
   require2FA?: boolean;
   email?: string;
 }

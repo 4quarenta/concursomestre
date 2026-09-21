@@ -4,7 +4,6 @@ export const simulationConfigSchema = z.object({
   questionCount: z.number().int().min(1).max(100),
   timerEnabled: z.boolean(),
   timerMinutes: z.number().int().min(1).max(300),
-  randomOrder: z.boolean().default(true),
   keyword: z.string().max(180).optional(),
   difficulty: z.enum(['all', 'easy', 'medium', 'hard']).default('all'),
   feedbackMode: z.enum(['after_all', 'instant']).default('after_all'),
