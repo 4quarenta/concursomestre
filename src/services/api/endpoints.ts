@@ -181,6 +181,7 @@ export const ENDPOINTS = {
         list: 'usersList',
         profile: 'users/profile.php',
         update: 'users/update.php',
+        communicationPreferences: 'users/communication_preferences.php',
         comments: 'users/comments.php',
         answers: 'users/answers.php',
         myComments: 'users/me/comments.php',

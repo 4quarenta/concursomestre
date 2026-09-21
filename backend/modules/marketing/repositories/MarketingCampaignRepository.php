@@ -251,6 +251,64 @@ final class MarketingCampaignRepository
         return is_array($row) ? $row : null;
     }
 
+    public function listWorkerAudienceBatch(array $rules, ?string $afterUserId, int $limit): array
+    {
+        $this->ensureSchema();
+        $limit = max(1, min(500, $limit));
+        $where = [
+            "COALESCE(u.status, 'active') NOT IN ('deleted', 'pending_deletion', 'banned', 'suspended')",
+            "COALESCE(u.role, 'user') NOT IN ('admin', 'staff')",
+            "COALESCE(u.email, '') <> ''",
+        ];
+        $params = [];
+        foreach (array_slice($rules, 0, 20) as $index => $rule) {
+            $field = (string) ($rule['field'] ?? '');
+            $operator = (string) ($rule['operator'] ?? '');
+            $column = match ($field) {
+                'user_id' => 'LOWER(u.id)',
+                'plan' => "LOWER(COALESCE(CAST(u.plan AS CHAR), ''))",
+                'role' => "LOWER(COALESCE(CAST(u.role AS CHAR), ''))",
+                'account_age_days' => 'GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, u.created_at, NOW()) / 86400))',
+                default => throw new InvalidArgumentException('Campo de audiencia nao suportado.'),
+            };
+            $sqlOperator = match ($operator) {
+                'eq' => '=', 'neq' => '<>', 'gte' => '>=', 'lte' => '<=',
+                default => throw new InvalidArgumentException('Operador de audiencia nao suportado.'),
+            };
+            $placeholder = ':audience_rule_' . $index;
+            $value = trim((string) ($rule['value'] ?? ''));
+            if ($value === '') {
+                throw new InvalidArgumentException('Valor de audiencia invalido.');
+            }
+            if ($field === 'account_age_days') {
+                if (!is_numeric($value)) {
+                    throw new InvalidArgumentException('Idade de conta invalida.');
+                }
+                continue;
+            }
+            if ($field === 'user_id' && !in_array($operator, ['eq', 'neq'], true)) {
+                throw new InvalidArgumentException('ID de usuario aceita apenas igualdade.');
+            }
+            $where[] = "{$column} {$sqlOperator} {$placeholder}";
+            $params[$placeholder] = mb_strtolower($value);
+        }
+        if ($afterUserId !== null && trim($afterUserId) !== '') {
+            $where[] = 'u.id > :after_user_id';
+            $params[':after_user_id'] = trim($afterUserId);
+        }
+
+        $stmt = $this->db->prepare('SELECT u.id, u.name, u.email, u.plan, u.created_at
+            FROM users u WHERE ' . implode(' AND ', $where) . ' ORDER BY u.id ASC LIMIT ' . $limit);
+        $stmt->execute($params);
+        $users = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $last = $users !== [] ? (string) $users[array_key_last($users)]['id'] : null;
+        return [
+            'users' => $users,
+            'nextCursor' => $last,
+            'hasMore' => count($users) === $limit,
+        ];
+    }
+
     public function hasPlan(int $planId): bool
     {
         if ($planId <= 0) {

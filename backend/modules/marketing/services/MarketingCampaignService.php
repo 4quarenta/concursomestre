@@ -12,7 +12,7 @@ final class MarketingCampaignService
     private const INTERACTIONS = ['impression', 'dismissal', 'cta_clicked'];
     private const CHANNELS = ['in_app', 'email', 'notification', 'banner'];
     private const PLACEMENTS = ['topbar', 'home-hero', 'question-sidebar', 'practice-sidebar', 'checkout', 'marketplace', 'plans', 'promo'];
-    private const RULE_FIELDS = ['account_age_days', 'plan', 'role'];
+    private const RULE_FIELDS = ['account_age_days', 'plan', 'role', 'user_id'];
     private const RULE_OPERATORS = ['eq', 'neq', 'gte', 'lte'];
     private const FREQUENCY_WINDOWS = ['session', 'day', 'week', 'ever'];
     private const CONVERSION_EVENTS = [
@@ -37,6 +37,78 @@ final class MarketingCampaignService
     public function listSegments(?string $search): array
     {
         return $this->repository->listSegments($search);
+    }
+
+    public function workerCampaignBatch(string $campaignId, ?string $afterUserId, int $limit): array
+    {
+        $campaign = $this->repository->findCampaign(trim($campaignId));
+        if ($campaign === null) {
+            throw new InvalidArgumentException('Campanha nao encontrada.');
+        }
+        if ((string) ($campaign['status'] ?? '') !== 'active') {
+            return ['campaign' => $campaign, 'users' => [], 'nextCursor' => null, 'hasMore' => false, 'suppressionReason' => 'CAMPAIGN_NOT_ACTIVE'];
+        }
+        $now = time();
+        if (($campaign['starts_at'] ?? null) !== null && strtotime((string) $campaign['starts_at']) > $now) {
+            return ['campaign' => $campaign, 'users' => [], 'nextCursor' => null, 'hasMore' => false, 'suppressionReason' => 'CAMPAIGN_NOT_STARTED'];
+        }
+        if (($campaign['ends_at'] ?? null) !== null && strtotime((string) $campaign['ends_at']) <= $now) {
+            return ['campaign' => $campaign, 'users' => [], 'nextCursor' => null, 'hasMore' => false, 'suppressionReason' => 'CAMPAIGN_ENDED'];
+        }
+        if (!in_array('email', $campaign['channels_json'] ?? [], true)) {
+            return ['campaign' => $campaign, 'users' => [], 'nextCursor' => null, 'hasMore' => false, 'suppressionReason' => 'EMAIL_CHANNEL_NOT_ENABLED'];
+        }
+
+        $segmentId = trim((string) ($campaign['segment_id'] ?? ''));
+        $segment = $segmentId !== '' ? $this->repository->findSegment($segmentId) : null;
+        if ($segmentId !== '' && ($segment === null || (string) ($segment['status'] ?? '') !== 'active')) {
+            return ['campaign' => $campaign, 'users' => [], 'nextCursor' => null, 'hasMore' => false, 'suppressionReason' => 'SEGMENT_NOT_ACTIVE'];
+        }
+
+        $rules = $segment !== null ? $this->normalizeRules($segment['rules_json'] ?? []) : [];
+        $limit = max(1, min(500, $limit));
+        $candidates = $this->repository->listWorkerAudienceBatch($rules, $afterUserId, $limit);
+        $users = [];
+        foreach ($candidates['users'] as $user) {
+            if ($segmentId === '' || $this->matchesSegmentRules($rules, $user)) {
+                $users[] = $user;
+            }
+        }
+
+        return [
+            'campaign' => $campaign,
+            'users' => $users,
+            'nextCursor' => $candidates['nextCursor'],
+            'hasMore' => $candidates['hasMore'],
+            'suppressionReason' => null,
+        ];
+    }
+
+    public function workerRecipientEligibility(string $campaignId, string $userId): array
+    {
+        $campaign = $this->repository->findCampaign(trim($campaignId));
+        if ($campaign === null || (string) ($campaign['status'] ?? '') !== 'active') {
+            return ['eligible' => false, 'reason' => 'CAMPAIGN_NOT_ACTIVE'];
+        }
+        $now = time();
+        if (($campaign['starts_at'] ?? null) !== null && strtotime((string) $campaign['starts_at']) > $now) {
+            return ['eligible' => false, 'reason' => 'CAMPAIGN_NOT_STARTED'];
+        }
+        if (($campaign['ends_at'] ?? null) !== null && strtotime((string) $campaign['ends_at']) <= $now) {
+            return ['eligible' => false, 'reason' => 'CAMPAIGN_ENDED'];
+        }
+        if (!in_array('email', $campaign['channels_json'] ?? [], true)) {
+            return ['eligible' => false, 'reason' => 'EMAIL_CHANNEL_NOT_ENABLED'];
+        }
+        $segmentId = trim((string) ($campaign['segment_id'] ?? ''));
+        if ($segmentId === '') {
+            return ['eligible' => true, 'reason' => 'ALL_ELIGIBLE_AUDIENCE'];
+        }
+        $segment = $this->repository->findSegment($segmentId);
+        if ($segment === null || (string) ($segment['status'] ?? '') !== 'active') {
+            return ['eligible' => false, 'reason' => 'SEGMENT_NOT_ACTIVE'];
+        }
+        return $this->evaluateSegment($segmentId, $userId);
     }
 
     public function evaluateSegment(string $segmentId, ?string $userId): array
@@ -363,7 +435,8 @@ final class MarketingCampaignService
             if (!is_array($rule)) throw new InvalidArgumentException('Regra de segmento invalida.');
             $field = trim((string) ($rule['field'] ?? ''));
             $operator = strtolower(trim((string) ($rule['operator'] ?? '')));
-            if (!in_array($field, self::RULE_FIELDS, true) || !in_array($operator, self::RULE_OPERATORS, true)) throw new InvalidArgumentException('Campo ou operador de segmento invalido.');
+            $allowedOperators = $field === 'user_id' ? ['eq', 'neq'] : self::RULE_OPERATORS;
+            if (!in_array($field, self::RULE_FIELDS, true) || !in_array($operator, $allowedOperators, true)) throw new InvalidArgumentException('Campo ou operador de segmento invalido.');
             $value = $rule['value'] ?? null;
             if (!is_scalar($value) || trim((string) $value) === '') throw new InvalidArgumentException('Valor de regra de segmento invalido.');
             $normalized[] = ['field' => $field, 'operator' => $operator, 'value' => mb_substr(trim((string) $value), 0, 80)];
@@ -432,7 +505,22 @@ final class MarketingCampaignService
     private function segmentValue(array $profile, string $field): mixed
     {
         if ($field === 'account_age_days') return max(0, (int) floor((time() - strtotime((string) $profile['created_at'])) / 86400));
+        if ($field === 'user_id') return $profile['id'] ?? null;
         return $profile[$field] ?? null;
+    }
+
+    private function matchesSegmentRules(array $rules, array $profile): bool
+    {
+        foreach ($rules as $rule) {
+            if (!$this->compareRule(
+                $this->segmentValue($profile, (string) $rule['field']),
+                (string) $rule['operator'],
+                $rule['value']
+            )) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private function compareRule(mixed $actual, string $operator, mixed $expected): bool

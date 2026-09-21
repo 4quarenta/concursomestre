@@ -32,6 +32,7 @@ vi.mock('@services/api', () => ({
     users: {
       profile: 'users/profile.php',
       update: 'users/update.php',
+      communicationPreferences: 'users/communication_preferences.php',
       referralStats: 'referrals/stats.php',
       uploadPhoto: 'users/upload_photo.php',
       removePhoto: 'users/remove_photo.php',
@@ -58,6 +59,10 @@ vi.mock('@services/api', () => ({
       raw: response,
     };
   },
+}));
+
+vi.mock('@services/auth/session', () => ({
+  getCsrfToken: () => 'csrf-test-token',
 }));
 
 import { profileService } from '../profileService';
@@ -100,6 +105,21 @@ describe('profileService', () => {
     expect(mockGet).toHaveBeenCalledWith('users/profile.php');
     expect(result.personal.address?.city).toBe('Sao Paulo');
     expect(result.linkedProviders).toEqual(['google']);
+  });
+
+  it('reads and writes the canonical Marketing email preference with CSRF', async () => {
+    mockGet.mockResolvedValueOnce({ success: true, data: { marketingEmailEnabled: false } });
+    mockPost.mockResolvedValueOnce({ success: true, data: { marketingEmailEnabled: true } });
+
+    await expect(profileService.getMarketingEmailPreference()).resolves.toBe(false);
+    await expect(profileService.updateMarketingEmailPreference(true)).resolves.toBe(true);
+
+    expect(mockGet).toHaveBeenCalledWith('users/communication_preferences.php');
+    expect(mockPost).toHaveBeenCalledWith(
+      'users/communication_preferences.php',
+      { marketingEmailEnabled: true },
+      { headers: { 'X-CSRF-Token': 'csrf-test-token' } },
+    );
   });
 
   it('updates personal data through the self-scoped endpoint', async () => {

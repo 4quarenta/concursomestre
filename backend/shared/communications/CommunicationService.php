@@ -78,6 +78,35 @@ final class CommunicationService
         ]);
     }
 
+    public function marketingEmailPreference(string $userId): bool
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            throw new InvalidArgumentException('Usuario de preferencia invalido.');
+        }
+        return $this->repository->findPreference(
+            $userId,
+            CommunicationPolicy::CLASS_MARKETING,
+            CommunicationPolicy::CHANNEL_EMAIL
+        ) ?? true;
+    }
+
+    public function updateMarketingEmailPreference(string $userId, bool $enabled): bool
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            throw new InvalidArgumentException('Usuario de preferencia invalido.');
+        }
+        $this->repository->savePreference(
+            $userId,
+            CommunicationPolicy::CLASS_MARKETING,
+            CommunicationPolicy::CHANNEL_EMAIL,
+            $enabled,
+            $userId
+        );
+        return $this->marketingEmailPreference($userId);
+    }
+
     /**
      * Publica uma intent idempotente. Retorna created=false em repeticao sem novo efeito.
      * @return array{intentId:string,created:bool,channels:array<string,string>}

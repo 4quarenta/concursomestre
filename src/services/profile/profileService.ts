@@ -437,6 +437,25 @@ export const profileService = {
       : [];
   },
 
+  async getMarketingEmailPreference(): Promise<boolean> {
+    const response = await requestApi<{ marketingEmailEnabled?: boolean }>(
+      apiClient.get<ApiResponse<{ marketingEmailEnabled?: boolean }>>(ENDPOINTS.users.communicationPreferences),
+    );
+    assertApiSuccess(response, 'Não foi possível carregar a preferência de marketing.');
+    return readApiData<{ marketingEmailEnabled?: boolean }>(response, {}).marketingEmailEnabled !== false;
+  },
+
+  async updateMarketingEmailPreference(enabled: boolean): Promise<boolean> {
+    const csrfToken = getCsrfToken();
+    const response = await requestApi<{ marketingEmailEnabled?: boolean }>(apiClient.post<ApiResponse<{ marketingEmailEnabled?: boolean }>>(
+      ENDPOINTS.users.communicationPreferences,
+      { marketingEmailEnabled: enabled },
+      csrfToken ? { headers: { 'X-CSRF-Token': csrfToken } } : undefined,
+    ));
+    assertApiSuccess(response, 'Não foi possível salvar a preferência de marketing.');
+    return readApiData<{ marketingEmailEnabled?: boolean }>(response, {}).marketingEmailEnabled === true;
+  },
+
   /**
    * Registra a solicitação real de exclusão de conta do usuário autenticado.
    */

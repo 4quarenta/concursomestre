@@ -7,6 +7,8 @@ require_once __DIR__ . '/../../../config/notification_helper.php';
 require_once __DIR__ . '/../../../shared/utils/Mailer.php';
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../../shared/communications/CommunicationService.php';
+require_once __DIR__ . '/../../marketing/services/MarketingCampaignService.php';
+require_once __DIR__ . '/../../marketing/repositories/MarketingCampaignRepository.php';
 
 /**
  * Executor das regras de campanha salvas no painel de marketing.
@@ -15,6 +17,8 @@ require_once __DIR__ . '/../../../shared/communications/CommunicationService.php
  */
 class MarketingAutomationService
 {
+    private ?MarketingCampaignService $campaignService = null;
+
     private const ALLOWED_CONDITIONS = [
         'recent_signup',
         'near_subscription',
@@ -34,6 +38,15 @@ class MarketingAutomationService
     {
         $dryRun = (bool) ($options['dry_run'] ?? true);
         $limit = max(1, min(500, (int) ($options['limit'] ?? 100)));
+        $campaignId = trim((string) ($options['campaign_id'] ?? ''));
+        if ($campaignId !== '') {
+            return $this->runCampaignScope(
+                $campaignId,
+                trim((string) ($options['after_user_id'] ?? '')) ?: null,
+                $dryRun,
+                $limit
+            );
+        }
         $promotion = $this->repository->fetchActivePromotion();
 
         if (!$promotion) {
@@ -122,6 +135,185 @@ class MarketingAutomationService
             ],
             'summary' => $summary,
             'rules' => $ruleResults,
+        ];
+    }
+
+    private function runCampaignScope(string $campaignId, ?string $afterUserId, bool $dryRun, int $limit): array
+    {
+        $campaignService = $this->campaignService();
+        $batch = $campaignService->workerCampaignBatch($campaignId, $afterUserId, $limit);
+        $campaign = $batch['campaign'];
+        $summary = $this->emptySummary();
+        $summary['eligible'] = count($batch['users']);
+        $results = [
+            'eligible' => count($batch['users']), 'claimed' => 0, 'sent' => 0,
+            'duplicates' => 0, 'failed' => 0, 'skipped' => 0,
+        ];
+
+        if ($batch['suppressionReason'] !== null) {
+            $summary['skipped'] = 1;
+            $results['skipped'] = 1;
+        }
+
+        $content = is_array($campaign['content_json'] ?? null) ? $campaign['content_json'] : [];
+        $subject = trim((string) ($content['headline'] ?? ''));
+        $message = trim((string) ($content['description'] ?? ''));
+        if ($batch['users'] !== [] && ($subject === '' || $message === '')) {
+            throw new InvalidArgumentException('Campanha de e-mail precisa de assunto e conteudo.');
+        }
+
+        $campaignKey = $this->normalizeSlug((string) $campaign['id']);
+        foreach ($batch['users'] as $user) {
+            $userId = trim((string) ($user['id'] ?? ''));
+            if ($userId === '') {
+                continue;
+            }
+            $eventKey = 'campaign-email:' . substr(hash('sha256', $campaignId . '|' . $userId), 0, 64);
+            if ($dryRun) {
+                $results['claimed']++;
+                $summary['claimed']++;
+                continue;
+            }
+            if (!$this->repository->claimEvent($campaignKey, 'campaign-email', 'campaign_email', $userId, $eventKey, 'email')) {
+                $results['duplicates']++;
+                $summary['duplicates']++;
+                continue;
+            }
+            $results['claimed']++;
+            $summary['claimed']++;
+
+            try {
+                $audienceDecision = $campaignService->workerRecipientEligibility($campaignId, $userId);
+                if (!$audienceDecision['eligible']) {
+                    $this->repository->markEventSkipped($campaignKey, 'campaign-email', $userId, $eventKey, (string) $audienceDecision['reason']);
+                    $results['skipped']++;
+                    $summary['skipped']++;
+                    continue;
+                }
+                $policy = new CommunicationPolicy($this->repository->getConnection());
+                if (!$policy->allows(CommunicationPolicy::CLASS_MARKETING, CommunicationPolicy::CHANNEL_EMAIL, $userId)) {
+                    $this->repository->markEventSkipped($campaignKey, 'campaign-email', $userId, $eventKey, 'MARKETING_EMAIL_PREFERENCE_DISABLED');
+                    $results['skipped']++;
+                    $summary['skipped']++;
+                    continue;
+                }
+
+                $delivery = $this->deliverCampaignEmail($campaign, $user, $subject, $message);
+                if ($delivery['email']) {
+                    $this->repository->markEventSent($campaignKey, 'campaign-email', $userId, $eventKey, $delivery);
+                    $results['sent']++;
+                    $summary['sent']++;
+                } else {
+                    $this->repository->markEventSkipped($campaignKey, 'campaign-email', $userId, $eventKey, 'EMAIL_DELIVERY_NOT_QUEUED');
+                    $results['skipped']++;
+                    $summary['skipped']++;
+                }
+            } catch (Throwable $e) {
+                $this->repository->markEventFailed($campaignKey, 'campaign-email', $userId, $eventKey, $e->getMessage());
+                $results['failed']++;
+                $summary['failed']++;
+            }
+        }
+
+        return [
+            'success' => $summary['failed'] === 0,
+            'dry_run' => $dryRun,
+            'campaign' => [
+                'id' => (string) $campaign['id'],
+                'name' => (string) $campaign['name'],
+                'segment_id' => $campaign['segment_id'] ?? null,
+                'audience_scope' => ($campaign['segment_id'] ?? null) === null ? 'ALL_ELIGIBLE' : 'SELECTED_CANONICAL_SEGMENT',
+                'suppression_reason' => $batch['suppressionReason'],
+            ],
+            'summary' => $summary,
+            'rules' => [[
+                'rule_id' => 'campaign-email',
+                'condition' => 'campaign_email',
+                'channel' => 'email',
+                ...$results,
+                'dry_run' => $dryRun,
+            ]],
+            'next_cursor' => $batch['nextCursor'],
+            'has_more' => $batch['hasMore'],
+        ];
+    }
+
+    private function campaignService(): MarketingCampaignService
+    {
+        if ($this->campaignService === null) {
+            $this->campaignService = new MarketingCampaignService(
+                new MarketingCampaignRepository($this->repository->getConnection())
+            );
+        }
+        return $this->campaignService;
+    }
+
+    private function deliverCampaignEmail(array $campaign, array $user, string $subject, string $message): array
+    {
+        $userId = trim((string) ($user['id'] ?? ''));
+        $email = trim((string) ($user['email'] ?? ''));
+        if ($userId === '' || $email === '') {
+            return ['email' => false, 'action_url' => '/planos'];
+        }
+
+        $name = trim((string) ($user['name'] ?? 'Aluno'));
+        $campaignName = trim((string) ($campaign['name'] ?? ''));
+        $personalizedSubject = $this->personalize($subject, $user, ['name' => $campaignName]);
+        $personalizedMessage = $this->personalize($message, $user, ['name' => $campaignName]);
+        $landingSlug = trim((string) ($campaign['landing_slug'] ?? ''));
+        $actionUrl = $landingSlug !== '' ? '/promo/' . rawurlencode($landingSlug) : '/planos';
+        $template = resolveSystemEmailTemplate(
+            'marketing_campaign_message',
+            [
+                'subject' => $personalizedSubject,
+                'htmlBody' => Mailer::htmlTemplate(
+                    $personalizedSubject,
+                    '<p>{{message_html}}</p>',
+                    '{{action_url}}',
+                    'Ver campanha'
+                ),
+                'textBody' => "{{message}}\n\nAcesse: {{action_url}}",
+            ],
+            [
+                'name' => $name,
+                'title' => $personalizedSubject,
+                'message' => $personalizedMessage,
+                'message_html' => nl2br(htmlspecialchars($personalizedMessage, ENT_QUOTES, 'UTF-8')),
+                'campaign' => $campaignName,
+                'action_url' => $this->absoluteAppUrl($actionUrl),
+            ],
+            $this->repository->getConnection()
+        );
+
+        $result = CommunicationService::fromDatabase($this->repository->getConnection())->publish([
+            'eventType' => 'marketing.campaign.message',
+            'idempotencyKey' => 'marketing:campaign:' . $campaign['id'] . ':' . substr(hash('sha256', $userId), 0, 64),
+            'deliveryClass' => CommunicationPolicy::CLASS_MARKETING,
+            'recipientUserId' => $userId,
+            'recipientEmail' => $email,
+            'channels' => [CommunicationPolicy::CHANNEL_EMAIL],
+            'title' => $personalizedSubject,
+            'message' => $personalizedMessage,
+            'type' => 'info',
+            'category' => 'marketing',
+            'link' => $actionUrl,
+            'entityType' => 'marketing_campaign',
+            'entityId' => (string) $campaign['id'],
+            'payload' => [
+                'campaignId' => (string) $campaign['id'],
+                'campaign' => $campaignName,
+                'recipientName' => $name,
+                'emailSubject' => $template['subject'],
+                'emailHtml' => $template['htmlBody'],
+                'emailText' => $template['textBody'],
+                'templateKey' => 'marketing_campaign_message',
+                'actionUrl' => $actionUrl,
+            ],
+        ]);
+        return [
+            'email' => in_array($result['channels'][CommunicationPolicy::CHANNEL_EMAIL] ?? null, ['queued', 'processed'], true),
+            'action_url' => $actionUrl,
+            'intent_id' => $result['intentId'] ?? null,
         ];
     }
 

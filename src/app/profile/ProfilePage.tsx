@@ -88,6 +88,7 @@ import {
 } from './components/subscriptionDateUtils';
 import { buildPersonalProfileUpdate, isPersonalProfileComplete, validatePersonalProfileUpdate } from './components/personalProfileForm';
 import BrazilianBillingAddressFields from './components/BrazilianBillingAddressFields';
+import MarketingEmailPreferenceControl from './components/MarketingEmailPreferenceControl';
 import BillingPaymentIssueBanner from './components/BillingPaymentIssueBanner';
 import BillingSubscriptionLoadState from './components/BillingSubscriptionLoadState';
 import StudyFocusModal, { type StudyFocusLoadStatus } from './components/StudyFocusModal';
@@ -1884,6 +1885,7 @@ const Profile: React.FC = () => {
             }
 
             await updateUser({ preferences: nextPreferences });
+            addToast('Preferências salvas.', 'success');
         } catch (error: unknown) {
             addToast(readApiErrorMessage(error, 'Não foi possível salvar suas preferências.'), 'error');
         } finally {
@@ -5637,7 +5639,7 @@ const Profile: React.FC = () => {
                             {[
                                { id: 'isPublic', label: 'Perfil público no ranking de XP', desc: 'Permite que seu nome apareça no ranking de nível, sem afetar rankings pós-prova.', checked: privacyPreferencesDraft.isPublic, icon: Users },
                                { id: 'showProfilePhoto', label: 'Mostrar foto no ranking de XP', desc: 'Quando desligado, o ranking usa apenas a inicial do seu nome.', checked: privacyPreferencesDraft.showProfilePhoto, icon: Camera },
-                               { id: 'notifications', label: 'Notificações por e-mail', desc: 'Receba alertas sobre novidades, cobranças e atividades importantes.', checked: privacyPreferencesDraft.notifications, icon: Bell },
+                               { id: 'notifications', label: 'Notificações gerais', desc: 'Preferência geral da conta. Não controla mensagens obrigatórias de cobrança, segurança ou suporte.', checked: privacyPreferencesDraft.notifications, icon: Bell },
                                { id: 'shareData', label: 'Compartilhar dados de estudo', desc: 'Usa sua atividade para melhorar recomendações e estatísticas internas.', checked: privacyPreferencesDraft.shareData, icon: Zap }
                             ].map((item, i) => (
                                <div key={i} className="flex items-center justify-between py-5 group">
@@ -5656,6 +5658,7 @@ const Profile: React.FC = () => {
                                   </div>
                                </div>
                             ))}
+                            <MarketingEmailPreferenceControl userId={currentUserKey} />
                          </div>
 
                          <div className="mt-6 grid gap-4 md:grid-cols-3">

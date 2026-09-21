@@ -38,6 +38,8 @@ function marketingAutomationBoolOption(string $name, bool $fallback): bool
 $executeToken = (string) marketingAutomationCliOption('execute', '');
 $dryRun = marketingAutomationBoolOption('dry-run', $executeToken !== 'PROCESS_MARKETING_AUTOMATIONS');
 $limit = max(1, min(500, (int) marketingAutomationCliOption('limit', '100')));
+$campaignId = trim((string) marketingAutomationCliOption('campaign-id', ''));
+$afterUserId = trim((string) marketingAutomationCliOption('after-user-id', ''));
 
 try {
     $lock = acquireCronLockOrThrow('marketing_automations', 1800);
@@ -47,6 +49,8 @@ try {
     $result = $service->run([
         'dry_run' => $dryRun,
         'limit' => $limit,
+        'campaign_id' => $campaignId,
+        'after_user_id' => $afterUserId,
     ]);
     $lock->release();
 
@@ -63,4 +67,3 @@ try {
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
     exit(1);
 }
-

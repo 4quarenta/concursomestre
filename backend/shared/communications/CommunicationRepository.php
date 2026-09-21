@@ -50,6 +50,40 @@ final class CommunicationRepository
         return is_array($row) ? $row : null;
     }
 
+    public function findPreference(string $userId, string $deliveryClass, string $channel): ?bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT enabled FROM communication_preferences
+             WHERE user_id = :user_id AND delivery_class = :delivery_class
+               AND channel = :channel LIMIT 1'
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':delivery_class' => $deliveryClass,
+            ':channel' => $channel,
+        ]);
+        $value = $stmt->fetchColumn();
+        return $value === false ? null : (bool) $value;
+    }
+
+    public function savePreference(string $userId, string $deliveryClass, string $channel, bool $enabled, string $updatedBy): void
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO communication_preferences (
+                user_id, delivery_class, channel, enabled, updated_by, created_at, updated_at
+             ) VALUES (
+                :user_id, :delivery_class, :channel, :enabled, :updated_by, NOW(), NOW()
+             ) ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), updated_by = VALUES(updated_by), updated_at = NOW()'
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':delivery_class' => $deliveryClass,
+            ':channel' => $channel,
+            ':enabled' => $enabled ? 1 : 0,
+            ':updated_by' => $updatedBy,
+        ]);
+    }
+
     public function insertIntent(array $intent): bool
     {
         $stmt = $this->db->prepare(

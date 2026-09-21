@@ -24,6 +24,7 @@ require_once __DIR__ . '/../../shared/auth/request_auth.php';
 require_once __DIR__ . '/../../shared/responses/Response.php';
 require_once __DIR__ . '/../../shared/security/Recaptcha.php';
 require_once __DIR__ . '/../../shared/middleware/RateLimiter.php';
+require_once __DIR__ . '/../../shared/communications/CommunicationService.php';
 
 /**
  * Resolve a URL publica do frontend para compor links de indicacao.
@@ -260,6 +261,49 @@ function handleUsersAuthenticatedProfileRoute(PDO $db): void
         Response::unauthorized($e->getMessage());
     } catch (Throwable $e) {
         Response::serverError('Failed to fetch user data', $e);
+    }
+}
+
+/** Reads or updates only the current user's optional Marketing email preference. */
+function handleUsersCommunicationPreferencesRoute(PDO $db): void
+{
+    try {
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if (!in_array($method, ['GET', 'POST'], true)) {
+            Response::error('Metodo nao permitido.', 405);
+        }
+
+        if ($method === 'POST') {
+            $csrfCookie = getCsrfTokenFromCookie();
+            if (!assertValidCsrfToken($csrfCookie, getCsrfTokenFromRequest())) {
+                Response::forbidden('CSRF token invalido.');
+            }
+        }
+
+        $payload = verifyAuthenticatedUserPayload();
+        $userId = trim((string) ($payload['user_id'] ?? ''));
+        $service = CommunicationService::fromDatabase($db);
+
+        if ($method === 'GET') {
+            Response::success([
+                'marketingEmailEnabled' => $service->marketingEmailPreference($userId),
+            ], 'Communication preferences retrieved');
+        }
+
+        $body = readUsersJsonRequestBody();
+        if (!array_key_exists('marketingEmailEnabled', $body) || !is_bool($body['marketingEmailEnabled'])) {
+            throw new InvalidArgumentException('Preferencia de e-mail de marketing invalida.');
+        }
+
+        Response::success([
+            'marketingEmailEnabled' => $service->updateMarketingEmailPreference($userId, $body['marketingEmailEnabled']),
+        ], 'Communication preferences updated');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Failed to update communication preferences', $e);
     }
 }
 
