@@ -4,14 +4,14 @@ Plataforma web principal do ConcursoMestre em Next.js App Router, consolidada di
 
 ## Estado atual
 
-- branch de consolidacao: `4quarenta/next-version`
-- versao alvo: `1.0.0`
+- branch unica e padrao: `1.0.0`
+- versao atual: `1.0.0`
 - app web principal: `src/`
 - app mobile Expo: `mobile/`
-- backup historico da SPA anterior: branch `master` no GitHub
+- historico da SPA anterior: preservado no historico Git consolidado em `1.0.0`
 - runtime local atual: `npm run dev` na raiz
 
-Em `2026-04-18`, a migracao foi reiniciada a partir do branch `master` porque a tentativa anterior havia alterado a experiencia visual e funcional da plataforma logada. A regra deste branch e preservar a UI e os fluxos da plataforma web original, mudando apenas a base tecnica para Next.js.
+Em `2026-04-18`, a migracao foi reiniciada a partir do antigo branch `master` porque a tentativa anterior havia alterado a experiencia visual e funcional da plataforma logada. Esse historico foi consolidado em `1.0.0`; a regra atual e preservar a UI e os fluxos da plataforma web original, mudando apenas a base tecnica para Next.js.
 
 ## Arquitetura
 

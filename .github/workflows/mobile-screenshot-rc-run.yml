@@ -3,7 +3,7 @@ name: Mobile Screenshot RC Run
 on:
   push:
     branches:
-      - mobile-foundation-refactor
+      - 1.0.0
     paths:
       - '.github/workflows/mobile-screenshot-rc-run.yml'
 
@@ -23,8 +23,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: mobile-foundation-refactor
 
       - name: Setup Node
         uses: actions/setup-node@v4

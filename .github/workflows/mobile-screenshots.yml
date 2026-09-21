@@ -3,7 +3,7 @@ name: Mobile Screenshots
 on:
   push:
     branches:
-      - mobile-foundation-refactor
+      - 1.0.0
     paths:
       - 'mobile/**'
       - '.github/workflows/mobile-screenshots.yml'

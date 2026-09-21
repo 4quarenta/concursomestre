@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - mobile-foundation-refactor
+      - 1.0.0
     paths:
       - 'mobile/app.json'
       - '.github/workflows/publish_mobile_preview.yml'

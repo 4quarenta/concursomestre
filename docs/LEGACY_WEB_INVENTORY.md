@@ -3,18 +3,18 @@
 ## Data base
 
 - referencia inicial: `2026-04-18`
-- branch de consolidacao: `4quarenta/next-version`
+- branch consolidada atual: `1.0.0`
 
 ## Objetivo
 
-Registrar a decisao de usar a SPA Vite do branch `master` como fonte de verdade para a migracao Next na raiz, sem manter o app Vite ativo neste branch.
+Registrar a decisao historica de usar a SPA Vite do antigo branch `master` como fonte de verdade para a migracao Next na raiz, sem manter o app Vite ativo na arvore atual.
 
 ## Estado atual
 
 - `src/` agora e a aplicacao Next principal
 - a tentativa separada de Next nao faz mais parte da arquitetura ativa deste branch
 - `index.html`, `vite.config.ts` e `tsconfig.legacy.json` foram removidos da raiz
-- o legado Vite permanece como backup historico no branch `master`
+- o legado Vite permanece preservado no historico Git consolidado em `1.0.0`
 - relatorios antigos em `docs/reports/` continuam como evidencias da transicao, mas nao representam mais uma subpasta ativa
 - a retomada de `2026-04-18` restaurou a UI e os fluxos do `master` diretamente dentro da estrutura Next
 

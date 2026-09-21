@@ -111,7 +111,7 @@ explicitly not independent monitoring.
   are inactive, and the legacy backend route returns 404. Final checks found
   no targeted public listener.
 - Independent monitoring: the read-only probe workflow is on the remote
-  default branch `4quarenta/next-version`, with User-Agent
+  default branch `1.0.0`, with User-Agent
   `Concursomestre-External-Monitor/1.0`. No matching access-log request has
   yet appeared after publication, so it is pending the next eligible
   scheduled run; the local negative failure-contract self-test passes.

@@ -3,8 +3,7 @@ name: Mobile CI
 on:
   push:
     branches:
-      - main
-      - '4quarenta/next-version'
+      - 1.0.0
     paths:
       - 'mobile/**'
       - 'backend/api/questions/mobile_list.php'
@@ -17,7 +16,7 @@ on:
       - '.github/workflows/mobile-ci.yml'
   pull_request:
     branches:
-      - main
+      - 1.0.0
       - '4quarenta/**'
     paths:
       - 'mobile/**'

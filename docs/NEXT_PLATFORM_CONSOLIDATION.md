@@ -4,15 +4,15 @@
 
 Consolidar a plataforma web em Next.js na raiz do repositorio, mantendo a UI e a funcionalidade da plataforma web original e preparando a versao `1.0.0` para auditoria de producao.
 
-## Branch de trabalho
+## Branch oficial
 
-- `4quarenta/next-version`
+- `1.0.0`
 
 ## Principios
 
 - o Next e a base operacional padrao do web neste branch
-- a SPA anterior fica preservada no branch `master`, nao na arvore ativa
-- o branch `master` e a referencia historica para paridade visual e funcional
+- a SPA anterior fica preservada no historico Git, nao na arvore ativa
+- o historico consolidado do antigo `master` e a referencia para paridade visual e funcional
 - nenhuma etapa de auditoria deve depender de memoria informal
 - toda decisao de transicao deve gerar evidencia em `docs/`
 - a versao alvo continua sendo `1.0.0`
