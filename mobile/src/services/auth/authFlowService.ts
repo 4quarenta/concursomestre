@@ -1,7 +1,7 @@
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { assertApiSuccess, readApiData } from '@/services/api/response';
-import { sessionStore } from '@/services/auth/sessionStore';
+import { sessionStorage } from '@/storage/sessionStorage';
 import type { AuthFlowResponse, UserProfile } from '@/types/auth';
 
 type RegisterPayload = {
@@ -64,8 +64,8 @@ export const authFlowService = {
   },
 
   async logout(): Promise<void> {
-    const refreshToken = sessionStore.getRefreshToken();
-    const csrfToken = sessionStore.getCsrfToken();
+    const refreshToken = sessionStorage.getRefreshToken();
+    const csrfToken = sessionStorage.getCsrfToken();
     if (!refreshToken || !csrfToken) return;
 
     await apiClient.post<any>(ENDPOINTS.auth.logout, { refreshToken, csrfToken });

@@ -135,7 +135,7 @@ Os arquivos equivalentes em `src/services/api/` são bridges temporárias de com
 
 ### Storage
 
-`src/storage/sessionStorage.ts` é a fonte canônica de persistência da sessão com SecureStore. `src/services/auth/sessionStore.ts` existe somente como bridge para imports antigos.
+`src/storage/sessionStorage.ts` é a fonte canônica de persistência da sessão com SecureStore.
 
 ### Estado
 
@@ -204,7 +204,7 @@ Offline/cache controlado, deep links, notificações, testes, segurança, perfor
 
 - Não remover módulos antigos antes de existir substituto funcional.
 - Não adicionar novas telas ao navigator legado.
-- Não adicionar nova lógica aos bridges em `src/services/api/` e `src/services/auth/sessionStore.ts`.
+- Não adicionar nova lógica aos bridges em `src/services/api/`; a persistência de sessão deve usar diretamente `src/storage/sessionStorage.ts`.
 - Cada feature migrada deve sair do fluxo legado somente após typecheck e teste do caminho principal.
 - Produção deve exigir `EXPO_PUBLIC_API_BASE_URL`; localhost é permitido apenas em desenvolvimento.
 - Bridges de compatibilidade são dívida temporária com fase de remoção definida, não arquitetura permanente.

@@ -1,7 +1,7 @@
 import React from 'react';
 import { authFlowService } from '@/services/auth/authFlowService';
 import { accountService } from '@/services/auth/accountService';
-import { sessionStore } from '@/services/auth/sessionStore';
+import { sessionStorage } from '@/storage/sessionStorage';
 import { readApiErrorMessage } from '@/services/api/response';
 import { questionService } from '@/services/questions/questionService';
 import type { UserProfile } from '@/types/auth';
@@ -207,11 +207,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Permite concluir o login quando o endpoint devolve o token antes do
       // DTO do usuario. O /auth/me usa o token recem-recebido e e o contrato
       // oficial para recuperar a identidade autenticada.
-      await sessionStore.setSession(token, null, refreshToken, csrfToken);
+      await sessionStorage.setSession(token, null, refreshToken, csrfToken);
       try {
         sessionUser = await authFlowService.me();
       } catch (error) {
-        await sessionStore.clearSession();
+        await sessionStorage.clearSession();
         throw error;
       }
     }
@@ -223,11 +223,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       xp: payload?.gamification?.xp ?? (sessionUser as UserProfile).xp,
     });
     if (!normalizedUser?.id) {
-      await sessionStore.clearSession();
+      await sessionStorage.clearSession();
       throw new Error('Sessao invalida retornada pelo backend.');
     }
     setUser(normalizedUser);
-    await sessionStore.setSession(
+    await sessionStorage.setSession(
       token,
       normalizedUser,
       refreshToken || null,
@@ -247,8 +247,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = React.useCallback(async () => {
     if (SCREENSHOT_MODE) return;
-    if (!sessionStore.getAccessToken()) return;
-    const currentUser = normalizeUserProfile(sessionStore.getCurrentUser());
+    if (!sessionStorage.getAccessToken()) return;
+    const currentUser = normalizeUserProfile(sessionStorage.getCurrentUser());
     const [profile, session] = await Promise.all([
       accountService.getUserProfile(),
       authFlowService.me(),
@@ -259,7 +259,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...profile,
     } as UserProfile);
     setUser(normalizedProfile);
-    await sessionStore.setSession(sessionStore.getAccessToken(), normalizedProfile);
+    await sessionStorage.setSession(sessionStorage.getAccessToken(), normalizedProfile);
     await refreshSystemSettings();
   }, [refreshSystemSettings]);
 
@@ -316,13 +316,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // As configuracoes do sistema sao globais da plataforma, nao pertencem
       // a conta que acabou de sair. O listener da sessao recarrega a projecao
       // publica sem autenticar, preservando o estado oficial do servidor.
-      await sessionStore.clearSession();
+      await sessionStorage.clearSession();
       setIsLoading(false);
     }
   }, []);
 
   const updateUser = React.useCallback(async (input: UpdateUserInput) => {
-    if (!user || !sessionStore.getAccessToken()) {
+    if (!user || !sessionStorage.getAccessToken()) {
       throw new Error('Sessao expirada. Faca login novamente.');
     }
     if (SCREENSHOT_MODE) {
@@ -334,15 +334,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const previousUser = normalizeUserProfile(user) as UserProfile;
     const optimisticUser = normalizeUserProfile({ ...previousUser, ...sanitizedInput }) as UserProfile;
     setUser(optimisticUser);
-    await sessionStore.setSession(sessionStore.getAccessToken(), optimisticUser);
+    await sessionStorage.setSession(sessionStorage.getAccessToken(), optimisticUser);
     try {
       await accountService.updateUserProfile(sanitizedInput);
       await refreshProfile();
     } catch (error) {
-      const currentToken = sessionStore.getAccessToken();
+      const currentToken = sessionStorage.getAccessToken();
       if (currentToken) {
         setUser(previousUser);
-        await sessionStore.setSession(currentToken, previousUser);
+        await sessionStorage.setSession(currentToken, previousUser);
       } else {
         // O interceptor ja limpou a sessao apos um 401. Nao restaure o perfil
         // local sem token, pois isso deixa a UI aparentemente autenticada e
@@ -365,11 +365,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }) as UserProfile;
     setUser(nextUser);
     if (SCREENSHOT_MODE) return !isCurrentlySaved;
-    await sessionStore.setSession(sessionStore.getAccessToken(), nextUser);
+    await sessionStorage.setSession(sessionStorage.getAccessToken(), nextUser);
     const saveResult = await questionService.toggleSavedQuestion(user.id, questionKey);
     if (!saveResult.success) {
       setUser(previousUser);
-      await sessionStore.setSession(sessionStore.getAccessToken(), previousUser);
+      await sessionStorage.setSession(sessionStorage.getAccessToken(), previousUser);
       throw new Error(saveResult.message || 'Nao foi possivel atualizar as questoes salvas.');
     }
     return !isCurrentlySaved;
@@ -377,7 +377,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   React.useEffect(() => {
     if (SCREENSHOT_MODE) return undefined;
-    const unsubscribe = sessionStore.subscribe((snapshot) => {
+    const unsubscribe = sessionStorage.subscribe((snapshot) => {
       if (!snapshot.accessToken) {
         setUser(null);
         void refreshSystemSettings();
@@ -394,7 +394,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     const bootstrap = async () => {
       try {
-        const snapshot = await sessionStore.hydrate();
+        const snapshot = await sessionStorage.hydrate();
         if (snapshot.user) setUser(normalizeUserProfile(snapshot.user));
 
         // settings.php e uma projecao publica das configuracoes globais da
@@ -415,12 +415,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...profile,
             } as UserProfile);
             setUser(normalizedProfile);
-            await sessionStore.setSession(snapshot.accessToken, normalizedProfile);
+            await sessionStorage.setSession(snapshot.accessToken, normalizedProfile);
             await publicSettingsPromise;
           } catch (error) {
             const failure = normalizeApiFailure(error);
             if (failure.status === 401 || failure.status === 403) {
-              await sessionStore.clearSession();
+              await sessionStorage.clearSession();
               setUser(null);
               await publicSettingsPromise;
             } else {
