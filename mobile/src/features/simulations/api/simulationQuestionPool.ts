@@ -69,7 +69,8 @@ export const buildSimulationSeed = async (config: MobileSimulationConfig): Promi
     }
   }
 
-  const selected = shuffle(candidates).slice(0, Math.min(config.questionCount, candidates.length));
+  const orderedCandidates = config.randomOrder === false ? candidates : shuffle(candidates);
+  const selected = orderedCandidates.slice(0, Math.min(config.questionCount, candidates.length));
   if (selected.length === 0) {
     throw new Error('Nao foi possivel montar o simulado com esses filtros.');
   }

@@ -54,10 +54,16 @@ const refreshSessionToken = async (): Promise<string | null> => {
   const currentToken = sessionStorage.getAccessToken();
   if (!currentToken) return null;
 
-  const response = await authHttp.post<any>(ENDPOINTS.auth.refresh, undefined, {
+  const response = await authHttp.post<any>(ENDPOINTS.auth.refresh, {
+    includeUser: true,
+    refreshToken: sessionStorage.getRefreshToken(),
+    csrfToken: sessionStorage.getCsrfToken(),
+  }, {
     headers: {
       Authorization: `Bearer ${currentToken}`,
       'X-Auth-Token': currentToken,
+      'X-ConcursoMestre-Client': 'mobile',
+      ...(sessionStorage.getCsrfToken() ? { 'X-CSRF-Token': sessionStorage.getCsrfToken() as string } : {}),
     },
   });
 
@@ -71,6 +77,8 @@ const refreshSessionToken = async (): Promise<string | null> => {
     await sessionStorage.setSession(
       nextToken,
       payload?.data?.user || payload?.user || sessionStorage.getCurrentUser(),
+      payload?.data?.refresh_token || payload?.data?.refreshToken || payload?.refresh_token || payload?.refreshToken || sessionStorage.getRefreshToken(),
+      payload?.data?.csrf_token || payload?.data?.csrfToken || payload?.csrf_token || payload?.csrfToken || sessionStorage.getCsrfToken(),
     );
   }
 
@@ -100,7 +108,18 @@ const isAuthenticationRequest = (config: RetryConfig): boolean => {
   ].some((endpoint) => url.includes(endpoint));
 };
 
+const isLegacySessionFailure = (error: AxiosError): boolean => {
+  if (error.response?.status !== 500) return false;
+  const payload = error.response.data as any;
+  const message = `${payload?.message || ''} ${payload?.error || ''}`;
+  return /sess[aã]o.*(inv[aá]lida|expirada)/i.test(message);
+};
+
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (config.headers) {
+    config.headers['X-ConcursoMestre-Client'] = 'mobile';
+  }
+
   const token = sessionStorage.getAccessToken();
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -120,8 +139,9 @@ apiClient.interceptors.response.use(
     const config = (error.config || {}) as RetryConfig;
     const status = error.response?.status;
     const authRequest = isAuthenticationRequest(config);
+    const sessionFailure = status === 401 || isLegacySessionFailure(error);
 
-    if (status === 401 && !authRequest && !config._retry) {
+    if (sessionFailure && !authRequest && !config._retry) {
       config._retry = true;
       const refreshedToken = await refreshSessionTokenSingleFlight();
 
@@ -132,7 +152,7 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (status === 401 && !authRequest) {
+    if (sessionFailure && !authRequest) {
       await sessionStorage.clearSession();
     }
 

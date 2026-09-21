@@ -11,12 +11,12 @@ import { useAppTheme } from '@/theme/useAppTheme';
 type DifficultyGroup = 'all' | 'easy' | 'medium' | 'hard';
 
 export type AdvancedQuestionFilterValues = {
-  subject?: string;
-  topic?: string;
-  agency?: string;
-  organization?: string;
-  role?: string;
-  year?: string;
+  subject?: string | string[];
+  topic?: string | string[];
+  agency?: string | string[];
+  organization?: string | string[];
+  role?: string | string[];
+  year?: string | string[];
 };
 
 type QuestionsFiltersProps = {
@@ -41,6 +41,10 @@ const difficultyOptions: Array<{ value: DifficultyGroup; label: string }> = [
   { value: 'medium', label: 'Medias' },
   { value: 'hard', label: 'Dificeis' },
 ];
+
+const displayValue = (value?: string | string[]) => (
+  Array.isArray(value) ? value.join(', ') : value
+);
 
 export const QuestionsFilters: React.FC<QuestionsFiltersProps> = ({
   keyword,
@@ -109,42 +113,42 @@ export const QuestionsFilters: React.FC<QuestionsFiltersProps> = ({
           loading={taxonomiesLoading}
           onChange={(value) => setAdvanced('subject', value)}
           options={taxonomies?.materias || []}
-          value={advanced.subject}
+          value={displayValue(advanced.subject)}
         />
         <TaxonomyPickerField
           label="Assunto"
           loading={taxonomiesLoading}
           onChange={(value) => setAdvanced('topic', value)}
           options={taxonomies?.assuntos || []}
-          value={advanced.topic}
+          value={displayValue(advanced.topic)}
         />
         <TaxonomyPickerField
           label="Banca"
           loading={taxonomiesLoading}
           onChange={(value) => setAdvanced('agency', value)}
           options={taxonomies?.bancas || []}
-          value={advanced.agency}
+          value={displayValue(advanced.agency)}
         />
         <TaxonomyPickerField
           label="Orgao"
           loading={taxonomiesLoading}
           onChange={(value) => setAdvanced('organization', value)}
           options={taxonomies?.orgaos || []}
-          value={advanced.organization}
+          value={displayValue(advanced.organization)}
         />
         <TaxonomyPickerField
           label="Cargo"
           loading={taxonomiesLoading}
           onChange={(value) => setAdvanced('role', value)}
           options={taxonomies?.cargos || []}
-          value={advanced.role}
+          value={displayValue(advanced.role)}
         />
         <TaxonomyPickerField
           label="Ano"
           loading={taxonomiesLoading}
           onChange={(value) => setAdvanced('year', value)}
           options={yearOptions}
-          value={advanced.year}
+          value={displayValue(advanced.year)}
         />
       </View>
 

@@ -1,5 +1,6 @@
-import { useColorScheme } from 'react-native';
-import { darkTheme, lightTheme } from '@/theme/tokens';
+import { useColorScheme } from "react-native";
+import { useAppearance } from "@/providers/AppearanceProvider";
+import { darkTheme, lightTheme } from "@/theme/tokens";
 
 /**
  * Tema semantico do ConcursoMestre seguindo a preferencia do sistema.
@@ -7,7 +8,12 @@ import { darkTheme, lightTheme } from '@/theme/tokens';
  */
 export const useAppTheme = () => {
   const colorScheme = useColorScheme();
-  return colorScheme === 'dark' ? darkTheme : lightTheme;
+  const { theme: themePreference } = useAppearance();
+  const isDark =
+    themePreference === "dark" ||
+    (themePreference === "system" && colorScheme === "dark");
+
+  return isDark ? darkTheme : lightTheme;
 };
 
 export type ResolvedAppTheme = ReturnType<typeof useAppTheme>;

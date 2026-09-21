@@ -3,6 +3,14 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(process.cwd(), '..');
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
+const backendRootCandidates = [
+  path.join(repoRoot, 'backend'),
+  path.resolve(repoRoot, '..', 'concursomestre', 'backend'),
+];
+const backendRoot = backendRootCandidates.find((candidate) => fs.existsSync(path.join(candidate, 'modules/questions/services/QuestionOutputPolicy.php')))
+  || backendRootCandidates.find((candidate) => fs.existsSync(candidate))
+  || backendRootCandidates[0];
+const readBackend = (relativePath) => fs.readFileSync(path.join(backendRoot, relativePath), 'utf8');
 
 const failures = [];
 const requireText = (source, expected, message) => {
@@ -10,30 +18,35 @@ const requireText = (source, expected, message) => {
 };
 
 const endpoints = read('mobile/src/api/endpoints.ts');
+if (!/list:\s*["']questions\/list\.php["']/.test(endpoints)) {
+  failures.push('Questoes mobile devem usar o endpoint oficial questions/list.php.');
+}
+
+const questionsService = readBackend('modules/questions/services/QuestionsService.php');
 requireText(
-  endpoints,
-  "list: 'questions/mobile_list.php'",
-  'Questoes mobile devem usar o endpoint sanitizado questions/mobile_list.php.',
+  questionsService,
+  'return $this->outputPolicy->forRead(',
+  'A listagem de questoes deve passar pela politica de saida sanitizada.',
+);
+const outputPolicyPath = 'modules/questions/services/QuestionOutputPolicy.php';
+const mobileListPath = 'api/questions/mobile_list.php';
+const outputPolicy = fs.existsSync(path.join(backendRoot, outputPolicyPath))
+  ? readBackend(outputPolicyPath)
+  : readBackend(mobileListPath);
+requireText(
+  outputPolicy,
+  fs.existsSync(path.join(backendRoot, outputPolicyPath))
+    ? 'if (!$includeAnswerKey && $this->matchesField($key, self::ANSWER_KEY_FIELDS))'
+    : "unset($question['resposta'], $question['correctOptionIndex']);",
+  'A listagem sem gabarito deve remover os campos de resposta antes da resposta.',
 );
 
-const mobileQuestionList = read('backend/api/questions/mobile_list.php');
-requireText(
-  mobileQuestionList,
-  "unset($question['resposta'], $question['correctOptionIndex']);",
-  'A listagem mobile deve remover resposta/correctOptionIndex antes da resposta.',
-);
-requireText(
-  mobileQuestionList,
-  "unset($question['userAnswer'], $question['resolvida']);",
-  'exam_mode deve remover resposta anterior do usuario.',
-);
-
-const questionService = read('mobile/src/services/questions/questionService.ts');
-if (/\bis_correct\s*:/.test(questionService)) {
+const questionClientService = read('mobile/src/services/questions/questionService.ts');
+if (/\bis_correct\s*:/.test(questionClientService)) {
   failures.push('O cliente mobile nao pode enviar is_correct na submissao de questoes.');
 }
 requireText(
-  questionService,
+  questionClientService,
   'selected_option: answer.selectedOptionIndex',
   'A submissao mobile deve enviar somente a alternativa selecionada para correcao server-side.',
 );

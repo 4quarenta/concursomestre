@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF3C7',
   },
   sourceBadgeRemote: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: colors.primarySubtle,
   },
   sourceBadgeText: {
     color: '#92400E',
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   sourceBadgeTextRemote: {
-    color: '#1D4ED8',
+    color: colors.primaryDark,
   },
   input: {
     minHeight: 112,

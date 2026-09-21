@@ -1,59 +1,105 @@
-import React from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { router } from 'expo-router';
-import { useForm } from 'react-hook-form';
-import { useQuestionTaxonomiesQuery } from '@/features/questions/api/useQuestionTaxonomiesQuery';
-import type { QuestionTaxonomyOption } from '@/features/questions/api/taxonomyService';
-import { buildSimulationSeed } from '@/features/simulations/api/simulationQuestionPool';
-import { TaxonomyMultiPickerField } from '@/features/simulations/components/TaxonomyMultiPickerField';
-import {
-  simulationConfigSchema,
-  type SimulationConfigFormValues,
-} from '@/features/simulations/schemas/simulationConfigSchema';
-import { useSimulationRunStore } from '@/state/simulationRunStore';
-import { radius, spacing, typography } from '@/theme/tokens';
-import { useAppTheme } from '@/theme/useAppTheme';
+import React from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useForm } from "react-hook-form";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ContentHeader } from "@/features/content/components/ContentHeader";
+import { buildSimulationSeed } from "@/features/simulations/api/simulationQuestionPool";
+import { simulationConfigSchema, type SimulationConfigFormValues } from "@/features/simulations/schemas/simulationConfigSchema";
+import { useSimulationRunStore } from "@/state/simulationRunStore";
+import { radius, spacing, typography } from "@/theme/tokens";
+import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 
-const QUESTION_COUNT_OPTIONS = [10, 20, 30];
-const TIMER_OPTIONS = [10, 20, 30, 45, 60];
-
-const difficultyOptions: Array<{ value: SimulationConfigFormValues['difficulty']; label: string }> = [
-  { value: 'all', label: 'Todas' },
-  { value: 'easy', label: 'Faceis' },
-  { value: 'medium', label: 'Medias' },
-  { value: 'hard', label: 'Dificeis' },
+const QUESTION_COUNT_OPTIONS = [10, 20, 30, 40, 50];
+const TIME_OPTIONS = [
+  { label: "Sem limite", value: 0 },
+  { label: "1 min/questão", value: 1 },
+  { label: "2 min/questão", value: 2 },
+  { label: "3 min/questão", value: 3 },
+];
+const DIFFICULTY_OPTIONS = [
+  { value: "all" as const, label: "Todas" },
+  { value: "easy" as const, label: "Fácil" },
+  { value: "medium" as const, label: "Média" },
+  { value: "hard" as const, label: "Difícil" },
 ];
 
-const feedbackOptions: Array<{ value: SimulationConfigFormValues['feedbackMode']; label: string }> = [
-  { value: 'after_all', label: 'Resultado no final' },
-  { value: 'instant', label: 'Feedback imediato' },
-];
+type SectionProps = { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle?: string; children: React.ReactNode };
+
+type SimulationFilterType = "banca" | "ano" | "disciplina" | "assunto" | "orgao" | "cargo";
+
+const splitParam = (value?: string | string[]) => {
+  const raw = Array.isArray(value) ? value.join(",") : value || "";
+  return raw.split(",").map((item) => item.trim()).filter((item) => Boolean(item) && item !== "__none__");
+};
+
+const Section: React.FC<SectionProps> = ({ icon, title, subtitle, children }) => {
+  const theme = useAppTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
+  return (
+    <View style={styles.card}>
+      <View style={styles.sectionHeading}>
+        <View style={styles.sectionIcon}><Ionicons name={icon} size={16} color={theme.primary} /></View>
+        <View style={styles.sectionCopy}>
+          <Text style={styles.cardTitle}>{title}</Text>
+          {subtitle ? <Text style={styles.helper}>{subtitle}</Text> : null}
+        </View>
+      </View>
+      {children}
+    </View>
+  );
+};
+
+type SimulationFilterRowProps = {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  values: string[];
+  onPress: () => void;
+};
+
+const SimulationFilterRow: React.FC<SimulationFilterRowProps> = ({ label, icon, values, onPress }) => {
+  const theme = useAppTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Selecionar ${label}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.filterRow, pressed && styles.pressed]}
+    >
+      <View style={styles.filterRowIcon}><Ionicons name={icon} size={17} color={theme.primary} /></View>
+      <View style={styles.filterRowCopy}>
+        <Text style={styles.filterRowLabel}>{label}</Text>
+        <Text numberOfLines={1} style={[styles.filterRowValue, values.length === 0 && styles.filterRowPlaceholder]}>
+          {values.length ? values.join(", ") : "Todos"}
+        </Text>
+      </View>
+      {values.length ? <Text style={styles.filterRowCount}>{values.length}</Text> : null}
+      <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
+    </Pressable>
+  );
+};
 
 export const SimulationConfigScreen: React.FC = () => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
-  const taxonomiesQuery = useQuestionTaxonomiesQuery();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ filterType?: string; values?: string }>();
+  const appliedParam = React.useRef("");
   const setSeed = useSimulationRunStore((state) => state.setSeed);
   const [starting, setStarting] = React.useState(false);
+  const [timePerQuestion, setTimePerQuestion] = React.useState(2);
 
   const { watch, setValue, handleSubmit } = useForm<SimulationConfigFormValues>({
     defaultValues: {
-      questionCount: 10,
+      questionCount: 20,
       timerEnabled: true,
-      timerMinutes: 20,
-      keyword: '',
-      difficulty: 'all',
-      feedbackMode: 'after_all',
+      timerMinutes: 40,
+      keyword: "",
+      difficulty: "all",
+      feedbackMode: "after_all",
+      randomOrder: true,
       subjects: [],
       agencies: [],
       years: [],
@@ -62,185 +108,163 @@ export const SimulationConfigScreen: React.FC = () => {
       topics: [],
     },
   });
-
   const values = watch();
-  const taxonomies = taxonomiesQuery.data;
-  const yearOptions = React.useMemo<QuestionTaxonomyOption[]>(
-    () => (taxonomies?.anos || []).map((year) => ({ nome: year, id: year })),
-    [taxonomies?.anos],
-  );
+
+  React.useEffect(() => {
+    const type = params.filterType as SimulationFilterType | undefined;
+    if (!type || params.values === undefined) return;
+    const key = `${type}:${params.values}`;
+    if (appliedParam.current === key) return;
+    appliedParam.current = key;
+    const next = splitParam(params.values);
+    if (type === "banca") setValue("agencies", next);
+    if (type === "ano") setValue("years", next);
+    if (type === "disciplina") setValue("subjects", next);
+    if (type === "assunto") setValue("topics", next);
+    if (type === "orgao") setValue("organizations", next);
+    if (type === "cargo") setValue("roles", next);
+  }, [params.filterType, params.values, setValue]);
+
+  React.useEffect(() => {
+    setValue("timerEnabled", timePerQuestion > 0);
+    setValue("timerMinutes", timePerQuestion > 0 ? Math.min(300, values.questionCount * timePerQuestion) : 1);
+  }, [setValue, timePerQuestion, values.questionCount]);
+
+  const selectedFilters = values.subjects.length + values.agencies.length + values.years.length + values.topics.length + values.organizations.length + values.roles.length + (values.difficulty !== "all" ? 1 : 0);
 
   const start = handleSubmit(async (formValues) => {
     const parsed = simulationConfigSchema.safeParse(formValues);
     if (!parsed.success) {
-      Alert.alert('Configuracao invalida', parsed.error.issues[0]?.message || 'Revise os dados do simulado.');
+      Alert.alert("Configuração inválida", parsed.error.issues[0]?.message || "Revise os dados do simulado.");
       return;
     }
-
     setStarting(true);
     try {
-      const seed = await buildSimulationSeed({
-        ...parsed.data,
-        keyword: parsed.data.keyword?.trim() || undefined,
-      });
-      setSeed({
-        ...seed,
-        id: `sim-mobile-${seed.startedAt}-${Math.random().toString(36).slice(2, 8)}`,
-      });
-      router.replace('/simulados/executar');
+      const seed = await buildSimulationSeed({ ...parsed.data, keyword: parsed.data.keyword?.trim() || undefined });
+      setSeed({ ...seed, id: `sim-mobile-${seed.startedAt}-${Math.random().toString(36).slice(2, 8)}` });
+      router.replace("/simulados/executar");
     } catch (error: any) {
-      Alert.alert('Simulado', error?.message || 'Nao foi possivel montar o simulado.');
+      Alert.alert("Simulado", error?.message || "Não foi possível montar o simulado.");
     } finally {
       setStarting(false);
     }
   });
 
+  const openPicker = (type: SimulationFilterType, selected: string[]) => {
+    router.push({
+      pathname: "/simulados/filtro/[type]",
+      params: {
+        type,
+        values: selected.join(","),
+        returnTo: "/simulados/novo",
+      },
+    });
+  };
+
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={styles.headerCard}>
-        <Text style={styles.eyebrow}>Simulados</Text>
-        <Text style={styles.title}>Novo simulado</Text>
-        <Text style={styles.description}>
-          A prova e montada pelo servidor a partir dos filtros escolhidos. O app recebe apenas um conjunto limitado de questoes.
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Quantidade de questoes</Text>
-        <View style={styles.chips}>
-          {QUESTION_COUNT_OPTIONS.map((option) => {
-            const active = values.questionCount === option;
-            return (
-              <Pressable key={option} onPress={() => setValue('questionCount', option)} style={[styles.chip, active && styles.chipActive]}>
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{option}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Filtros da prova</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={(value) => setValue('keyword', value)}
-          placeholder="Palavra-chave no enunciado"
-          placeholderTextColor={theme.textSubtle}
-          style={styles.input}
-          value={values.keyword || ''}
-        />
-
-        <Text style={styles.fieldLabel}>Dificuldade</Text>
-        <View style={styles.chips}>
-          {difficultyOptions.map((option) => {
-            const active = values.difficulty === option.value;
-            return (
-              <Pressable key={option.value} onPress={() => setValue('difficulty', option.value)} style={[styles.chip, active && styles.chipActive]}>
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{option.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.pickerGrid}>
-          <TaxonomyMultiPickerField label="Materias" values={values.subjects} options={taxonomies?.materias || []} loading={taxonomiesQuery.isLoading} onChange={(next) => setValue('subjects', next)} />
-          <TaxonomyMultiPickerField label="Assuntos" values={values.topics} options={taxonomies?.assuntos || []} loading={taxonomiesQuery.isLoading} onChange={(next) => setValue('topics', next)} />
-          <TaxonomyMultiPickerField label="Bancas" values={values.agencies} options={taxonomies?.bancas || []} loading={taxonomiesQuery.isLoading} onChange={(next) => setValue('agencies', next)} />
-          <TaxonomyMultiPickerField label="Orgaos" values={values.organizations} options={taxonomies?.orgaos || []} loading={taxonomiesQuery.isLoading} onChange={(next) => setValue('organizations', next)} />
-          <TaxonomyMultiPickerField label="Cargos" values={values.roles} options={taxonomies?.cargos || []} loading={taxonomiesQuery.isLoading} onChange={(next) => setValue('roles', next)} />
-          <TaxonomyMultiPickerField label="Anos" values={values.years} options={yearOptions} loading={taxonomiesQuery.isLoading} onChange={(next) => setValue('years', next)} />
-        </View>
-
-        {taxonomiesQuery.isError ? (
-          <Pressable onPress={() => void taxonomiesQuery.refetch()} style={styles.warningCard}>
-            <Text style={styles.warningText}>Nao foi possivel carregar as taxonomias. Toque para tentar novamente.</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.switchRow}>
-          <View style={styles.switchText}>
-            <Text style={styles.cardTitle}>Cronometro</Text>
-            <Text style={styles.helper}>O tempo continua contando se o app for fechado.</Text>
+    <View style={styles.screen}>
+      <ContentHeader title="Simulado personalizado" subtitle="Monte a prova do seu jeito" />
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 128 + insets.bottom }]} showsVerticalScrollIndicator={false}>
+        <Section icon="options-outline" title="Filtros da prova" subtitle="Abra cada categoria para escolher os itens">
+          <View style={styles.filterList}>
+            <SimulationFilterRow label="Banca" icon="business-outline" values={values.agencies} onPress={() => openPicker("banca", values.agencies)} />
+            <SimulationFilterRow label="Ano" icon="calendar-outline" values={values.years} onPress={() => openPicker("ano", values.years)} />
+            <SimulationFilterRow label="Matérias" icon="book-outline" values={values.subjects} onPress={() => openPicker("disciplina", values.subjects)} />
+            <SimulationFilterRow label="Assuntos" icon="list-outline" values={values.topics} onPress={() => openPicker("assunto", values.topics)} />
+            <SimulationFilterRow label="Órgãos" icon="business-outline" values={values.organizations} onPress={() => openPicker("orgao", values.organizations)} />
+            <SimulationFilterRow label="Cargos" icon="briefcase-outline" values={values.roles} onPress={() => openPicker("cargo", values.roles)} />
           </View>
-          <Switch
-            value={values.timerEnabled}
-            onValueChange={(value) => setValue('timerEnabled', value)}
-            trackColor={{ true: theme.primary }}
-          />
-        </View>
-
-        {values.timerEnabled ? (
-          <View style={styles.chips}>
-            {TIMER_OPTIONS.map((option) => {
-              const active = values.timerMinutes === option;
-              return (
-                <Pressable key={option} onPress={() => setValue('timerMinutes', option)} style={[styles.chip, active && styles.chipActive]}>
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{option} min</Text>
-                </Pressable>
-              );
+        </Section>
+        <Section icon="bar-chart-outline" title="Dificuldade">
+          <View style={styles.optionGridFour}>
+            {DIFFICULTY_OPTIONS.map((option) => {
+              const active = values.difficulty === option.value;
+              return <Pressable key={option.value} onPress={() => setValue("difficulty", option.value)} style={[styles.gridOption, active && styles.gridOptionActive]}><Text style={[styles.gridOptionText, active && styles.gridOptionTextActive]}>{option.label}</Text></Pressable>;
             })}
           </View>
-        ) : null}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Correcao</Text>
-        <View style={styles.stackOptions}>
-          {feedbackOptions.map((option) => {
-            const active = values.feedbackMode === option.value;
-            return (
-              <Pressable key={option.value} onPress={() => setValue('feedbackMode', option.value)} style={[styles.feedbackOption, active && styles.feedbackOptionActive]}>
-                <Text style={[styles.feedbackTitle, active && styles.chipTextActive]}>{option.label}</Text>
-                <Text style={styles.helper}>
-                  {option.value === 'after_all'
-                    ? 'O gabarito so aparece depois da finalizacao.'
-                    : 'Cada resposta e validada no servidor assim que for marcada.'}
-                </Text>
-              </Pressable>
-            );
-          })}
+        </Section>
+        <Section icon="list-outline" title="Quantidade de questões">
+          <View style={styles.optionGridFive}>
+            {QUESTION_COUNT_OPTIONS.map((option) => {
+              const active = values.questionCount === option;
+              return <Pressable key={option} onPress={() => setValue("questionCount", option)} style={[styles.countOption, active && styles.gridOptionActive]}><Text style={[styles.countText, active && styles.gridOptionTextActive]}>{option}</Text></Pressable>;
+            })}
+          </View>
+        </Section>
+        <Section icon="timer-outline" title="Tempo de prova">
+          <View style={styles.optionGridTime}>
+            {TIME_OPTIONS.map((option) => {
+              const active = timePerQuestion === option.value;
+              return <Pressable key={option.value} onPress={() => setTimePerQuestion(option.value)} style={[styles.timeOption, active && styles.gridOptionActive]}><Text style={[styles.gridOptionText, active && styles.gridOptionTextActive]}>{option.label}</Text></Pressable>;
+            })}
+          </View>
+        </Section>
+        <Pressable onPress={() => setValue("randomOrder", !values.randomOrder)} style={styles.randomCard}>
+          <View style={styles.sectionIcon}><Ionicons name="shuffle-outline" size={16} color={theme.primary} /></View>
+          <View style={styles.randomCopy}><Text style={styles.cardTitle}>Ordem aleatória</Text><Text style={styles.helper}>Mistura questões de matérias diferentes</Text></View>
+          <View style={[styles.toggle, values.randomOrder && styles.toggleActive]}><View style={[styles.toggleKnob, values.randomOrder && styles.toggleKnobActive]} /></View>
+        </Pressable>
+        <View style={styles.summary}>
+          <Text style={styles.summaryEyebrow}>Resumo do simulado</Text>
+          <Text style={styles.summaryText}><Text style={styles.summaryStrong}>{values.questionCount} questões</Text>{" · "}{selectedFilters} filtro{selectedFilters === 1 ? "" : "s"}{" · "}{values.difficulty === "all" ? "Todas as dificuldades" : DIFFICULTY_OPTIONS.find((item) => item.value === values.difficulty)?.label}{timePerQuestion > 0 ? ` · ~${values.questionCount * timePerQuestion} min` : " · Sem limite"}</Text>
         </View>
+      </ScrollView>
+      <View style={[styles.ctaBar, { paddingBottom: insets.bottom + spacing[3] }]}>
+        <Pressable disabled={starting} onPress={() => void start()} style={[styles.startButton, starting && styles.disabled]}>
+          {starting ? <ActivityIndicator color={theme.onPrimary} /> : <><Ionicons name="play-outline" size={17} color={theme.onPrimary} /><Text style={styles.startButtonText}>Iniciar simulado · {values.questionCount} questões</Text></>}
+        </Pressable>
       </View>
-
-      <Pressable disabled={starting} onPress={() => void start()} style={[styles.startButton, starting && styles.disabled]}>
-        {starting ? <ActivityIndicator color={theme.onPrimary} /> : <Text style={styles.startButtonText}>Iniciar simulado</Text>}
-      </Pressable>
-    </ScrollView>
+    </View>
   );
 };
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.create({
+const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
   screen: { backgroundColor: theme.background, flex: 1 },
-  content: { gap: spacing[4], padding: spacing[4], paddingBottom: spacing[10] },
-  headerCard: { backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.lg, borderWidth: 1, gap: spacing[2], padding: spacing[4] },
-  eyebrow: { color: theme.textMuted, fontSize: typography.size.xs, fontWeight: typography.weight.extrabold, textTransform: 'uppercase' },
-  title: { color: theme.text, fontSize: typography.size['2xl'], fontWeight: typography.weight.black },
-  description: { color: theme.textMuted, fontSize: typography.size.sm, lineHeight: 20 },
-  card: { backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.lg, borderWidth: 1, gap: spacing[3], padding: spacing[4] },
-  cardTitle: { color: theme.text, fontSize: typography.size.md, fontWeight: typography.weight.bold },
-  fieldLabel: { color: theme.textMuted, fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
-  input: { backgroundColor: theme.surfaceSubtle, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, color: theme.text, minHeight: 48, paddingHorizontal: spacing[3] },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] },
-  chip: { backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
-  chipActive: { backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder },
-  chipText: { color: theme.textMuted, fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
-  chipTextActive: { color: theme.primary },
-  pickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] },
-  switchRow: { alignItems: 'center', flexDirection: 'row', gap: spacing[3], justifyContent: 'space-between' },
-  switchText: { flex: 1, gap: spacing[1] },
+  content: { gap: spacing[4], padding: spacing[5] },
+  card: { backgroundColor: theme.surface, borderRadius: radius.lg, elevation: 1, gap: spacing[3], padding: spacing[4], shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5 },
+  sectionHeading: { alignItems: "center", flexDirection: "row", gap: spacing[3] },
+  sectionIcon: { alignItems: "center", backgroundColor: theme.primarySubtle, borderRadius: radius.md, height: 32, justifyContent: "center", width: 32 },
+  sectionCopy: { flex: 1, gap: spacing[1] },
+  cardTitle: { color: theme.text, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
   helper: { color: theme.textMuted, fontSize: typography.size.xs, lineHeight: 17 },
-  stackOptions: { gap: spacing[2] },
-  feedbackOption: { backgroundColor: theme.surfaceSubtle, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, gap: spacing[1], padding: spacing[3] },
-  feedbackOptionActive: { backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder },
-  feedbackTitle: { color: theme.text, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
-  warningCard: { backgroundColor: theme.warningSubtle, borderRadius: radius.md, padding: spacing[3] },
-  warningText: { color: theme.warning, fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
-  startButton: { alignItems: 'center', backgroundColor: theme.primary, borderRadius: radius.lg, justifyContent: 'center', minHeight: 52, paddingHorizontal: spacing[4] },
-  startButtonText: { color: theme.onPrimary, fontSize: typography.size.md, fontWeight: typography.weight.bold },
+  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
+  chip: { alignItems: "center", backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.pill, borderWidth: 1, flexDirection: "row", gap: spacing[1], paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
+  chipActive: { backgroundColor: theme.primary, borderColor: theme.primary },
+  chipText: { color: theme.text, fontSize: typography.size.xs, fontWeight: typography.weight.medium },
+  chipTextActive: { color: theme.onPrimary, fontWeight: typography.weight.bold },
+  filterList: { borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
+  filterRow: { alignItems: "center", borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing[3], minHeight: 66, paddingHorizontal: spacing[3] },
+  filterRowIcon: { alignItems: "center", backgroundColor: theme.primarySubtle, borderRadius: radius.sm, height: 34, justifyContent: "center", width: 34 },
+  filterRowCopy: { flex: 1, gap: 2 },
+  filterRowLabel: { color: theme.text, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
+  filterRowValue: { color: theme.textMuted, fontSize: typography.size.xs },
+  filterRowPlaceholder: { color: theme.textSubtle },
+  filterRowCount: { color: theme.primary, fontSize: typography.size.xs, fontWeight: typography.weight.bold },
+  optionGridFour: { flexDirection: "row", gap: spacing[2] },
+  optionGridFive: { flexDirection: "row", gap: spacing[2] },
+  optionGridTime: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
+  gridOption: { alignItems: "center", backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flex: 1, minHeight: 42, justifyContent: "center", minWidth: 64, paddingHorizontal: spacing[2] },
+  gridOptionActive: { backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder },
+  gridOptionText: { color: theme.textMuted, fontSize: 11, fontWeight: typography.weight.semibold, textAlign: "center" },
+  gridOptionTextActive: { color: theme.primary },
+  countOption: { alignItems: "center", backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flex: 1, height: 42, justifyContent: "center" },
+  countText: { color: theme.textMuted, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  timeOption: { alignItems: "center", backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flexBasis: "48%", flexGrow: 1, minHeight: 42, justifyContent: "center", paddingHorizontal: spacing[2] },
+  randomCard: { alignItems: "center", backgroundColor: theme.surface, borderRadius: radius.lg, flexDirection: "row", gap: spacing[3], padding: spacing[4] },
+  randomCopy: { flex: 1, gap: spacing[1] },
+  toggle: { backgroundColor: theme.borderStrong, borderRadius: radius.pill, height: 26, justifyContent: "center", padding: 3, width: 48 },
+  toggleActive: { backgroundColor: theme.primary },
+  toggleKnob: { backgroundColor: theme.surface, borderRadius: radius.pill, height: 20, width: 20 },
+  toggleKnobActive: { alignSelf: "flex-end" },
+  summary: { backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder, borderRadius: radius.lg, borderWidth: 1, padding: spacing[4] },
+  summaryEyebrow: { color: theme.primary, fontSize: 11, fontWeight: typography.weight.bold, letterSpacing: 0.7, marginBottom: spacing[1], textTransform: "uppercase" },
+  summaryText: { color: theme.text, fontSize: typography.size.sm, lineHeight: 20 },
+  summaryStrong: { fontWeight: typography.weight.bold },
+  ctaBar: { backgroundColor: theme.surface, borderTopColor: theme.border, borderTopWidth: 1, paddingHorizontal: spacing[5], paddingTop: spacing[3] },
+  startButton: { alignItems: "center", backgroundColor: theme.primary, borderRadius: radius.md, flexDirection: "row", gap: spacing[2], justifyContent: "center", minHeight: 50, paddingHorizontal: spacing[4] },
+  startButtonText: { color: theme.onPrimary, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
   disabled: { opacity: 0.55 },
+  pressed: { opacity: 0.76 },
 });
 
 export default SimulationConfigScreen;

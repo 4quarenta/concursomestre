@@ -124,6 +124,7 @@ Referencia oficial:
 - [ ] Preencher classificacao indicativa, categoria, publico-alvo e declaracoes obrigatorias.
 - [ ] Adicionar descricao, icone, feature graphic e screenshots finais.
 - [ ] Revisar qualquer SDK de anuncios/analytics antes de declarar Data safety.
+- [ ] Disponibilizar `google-services.json` localmente (fora do Git), vincular o projeto Firebase de producao ao package `com.concursomestre.mobile` e validar o Firebase Analytics no development build.
 
 ## iOS / App Store
 

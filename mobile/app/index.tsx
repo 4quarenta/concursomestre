@@ -5,5 +5,5 @@ import { useAuth } from '@/providers/AuthProvider';
 export default function IndexRoute() {
   const { user } = useAuth();
 
-  return <Redirect href={user ? '/questoes' : '/login'} />;
+  return <Redirect href={user ? '/inicio' : '/login'} />;
 }

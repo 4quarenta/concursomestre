@@ -58,6 +58,18 @@ export const normalizeApiFailure = (error: any, fallbackMessage = 'Nao foi possi
     ? error.response.data.error.trim()
     : '';
 
+  // Algumas rotas antigas da produção ainda devolvem 500 para uma sessão
+  // inválida. O cliente trata esse payload como autenticação para conseguir
+  // renovar o token e repetir a requisição sem exigir novo login.
+  if (status === 500 && /sess[aã]o.*(inv[aá]lida|expirada)/i.test(`${responseMessage} ${responseError}`)) {
+    return {
+      kind: 'unauthorized',
+      message: 'Sua sessao expirou. Entre novamente para continuar.',
+      status,
+      retryable: false,
+    };
+  }
+
   if (status !== undefined && status >= 500) {
     return {
       kind: 'server',
