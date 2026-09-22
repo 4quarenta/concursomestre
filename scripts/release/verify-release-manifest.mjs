@@ -18,6 +18,7 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 if (manifest.schemaVersion !== 1 || manifest.product !== 'ConcursoMestre') failures.push('Cabecalho invalido.');
 if (!/^\d+\.\d+\.\d+$/.test(String(manifest.version || ''))) failures.push('Versao sem SemVer.');
 if (!/^[a-f0-9]{7,64}$/i.test(String(manifest.commit || ''))) failures.push('Commit invalido.');
+if (manifest.gitDirty !== false) failures.push('Manifesto nao representa uma arvore canonica limpa.');
 
 const verifyMap = (entries, label) => {
   for (const [relativePath, expectedHash] of Object.entries(entries || {})) {

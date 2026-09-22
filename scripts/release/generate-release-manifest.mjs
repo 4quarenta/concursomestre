@@ -66,7 +66,9 @@ try {
   if (commit === 'unknown') commit = git('rev-parse', 'HEAD');
   dirty = git('status', '--porcelain').length > 0;
 } catch {
-  // O verificador reprova commit desconhecido antes de um deploy real.
+  // Pacotes exportados nao carregam .git. Um commit explicito identifica uma
+  // arvore canonica; sem ele, mantenha o manifesto fail-closed como dirty.
+  dirty = commit === 'unknown';
 }
 
 const files = Object.fromEntries(criticalFiles.map((relativePath) => [
