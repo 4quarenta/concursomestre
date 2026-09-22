@@ -83,9 +83,9 @@ find "$CM_SHARED_DIR/backend/storage" -type d -exec chmod 2770 {} +
 find "$CM_SHARED_DIR/backend/storage" -type f -exec chmod 0660 {} +
 find "$CM_SHARED_DIR/backend/uploads" -type d -exec chmod 2775 {} +
 find "$CM_SHARED_DIR/backend/uploads" -type f -exec chmod 0664 {} +
-rm -rf "$release_dir/backend/storage" "$release_dir/backend/uploads"
-ln -s "$CM_SHARED_DIR/backend/storage" "$release_dir/backend/storage"
-ln -s "$CM_SHARED_DIR/backend/uploads" "$release_dir/backend/uploads"
+# Keep build-time paths inside the release tree. Turbopack rejects a symlink
+# from the project to the shared volume while tracing server assets.
+install -d -m 0770 "$release_dir/backend/storage/runtime" "$release_dir/backend/uploads"
 ln -s "$CM_FRONTEND_ENV_SOURCE" "$release_dir/.env.production"
 ln -s "$CM_BACKEND_ENV_SOURCE" "$release_dir/backend/.env"
 chown -R root:"$CM_APP_GROUP" "$release_dir"
@@ -96,6 +96,10 @@ cm_run composer install --working-dir="$release_dir/backend" --no-dev --prefer-d
 cm_run_in "$release_dir" npm ci --include=dev --no-audit --no-fund
 cm_run_in "$release_dir" npm run build
 cm_run_in "$release_dir" npm prune --omit=dev --no-audit --no-fund
+# Runtime writes must use the shared volume only after the build has finished.
+rm -rf "$release_dir/backend/storage" "$release_dir/backend/uploads"
+ln -s "$CM_SHARED_DIR/backend/storage" "$release_dir/backend/storage"
+ln -s "$CM_SHARED_DIR/backend/uploads" "$release_dir/backend/uploads"
 chgrp -R "$CM_APP_GROUP" "$release_dir"
 chmod -R go-w "$release_dir"
 find "$release_dir" -type d -exec chmod g+rx {} +
