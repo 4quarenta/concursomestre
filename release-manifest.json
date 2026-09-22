@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "product": "ConcursoMestre",
   "version": "1.0.0",
-  "revision": "final-macro20f",
-  "commit": "25a54c3d3160f2379f0c6849740c59246307cb98",
+  "revision": "post-go-final-fixes",
+  "commit": "aa5a5458f08dd0226fdf0d10f20d81d9fb92b267",
   "gitDirty": false,
-  "generatedAt": "2026-09-22T01:37:18.564Z",
+  "generatedAt": "2026-09-22T15:53:35.358Z",
   "runtime": {
     "node": "v24.20.0",
     "nodeMinimum": "20.19.0",
@@ -90,6 +90,7 @@
       "backend/database/migrations/20260916_180000_safe_operations.php": "45e834ee4a2fdbf1c2e57480a2ff58498f1ba88d7ce2ed6ff3e49ab48e40fa14",
       "backend/database/migrations/20260916_210000_communication_foundation.php": "87cf2997fd8389220ebb0627e4c83ad10cd8f2b2869970b05650a4120303220b",
       "backend/database/migrations/20260920_220000_communication_ordering.php": "f5c80465bbdfe428d7b05204c85628dd2a6133fdf3b4fefcf7f74c2f06dc191d",
+      "backend/database/migrations/20260922_120000_changelog_channels.php": "52df221bf53975a67dcf4264d7922e6fe244041ef225dfb0d7d5ddbd041629ea",
       "backend/database/migrations/create_user_material_notes.sql": "2187d9f0e855a41927f976748b8e31d3aca6125e2d24fdad325004d3ba074477",
       "backend/database/migrations/refactor_cleanup.sql": "9ecb430009af8090f669f37c6b56caff4590fb6cd6fe2a9e9b5b82bc42531759",
       "backend/database/migrations/refactor_user_notes.sql": "540eaab854648f6e84dd4c534920ac2af34de92db969ae6ebfd1aa60d18ad68b"
@@ -110,6 +111,7 @@
     "backend/shared/observability/RequestContext.php": "81932e7c7c012af6bdc4d6486c6607262c24bab665dfe6812baf273c99c8126f",
     "backend/shared/health/SystemHealthService.php": "eaa9aa90a15943e6f3282dbe67b8639428ff700029631d1a07f65e923355af80",
     "backend/shared/health/ReleaseMetadata.php": "c98c56f8d1487d488d6c59b08e9471a60597067d46a8026b1a9b09a7f330595b",
+    "backend/shared/health/ReleaseReadinessAuthority.php": "44e8b1c3aba57ac086d680baf175dffde816b00b03bcd331e887026d739f8dbc",
     "backend/shared/http/Request.php": "d7f5690e1b7d188c89614969e30e7f35ac73b1d859608c5017c2188bd69f0286",
     "backend/shared/http/ApiResponse.php": "7b4c670ef6b5fd167e914edff026f3302ff3b52e735cd812f84f1c7c31b012b5",
     "backend/shared/http/LegacyEndpointDeprecation.php": "d8075e3c26b2787e29dee974181afd961d400abe0a5511fddad6db6b4836d0cb",
@@ -121,11 +123,14 @@
     "backend/modules/questions/repositories/QuestionsRepository.php": "1a53503a342eae41f14049b258280755712611d735e2bb59d04f663452128cf2",
     "backend/modules/subscriptions/services/SubscriptionsService.php": "9129cec9397f6f5f68d7ee6dc3d8200b7abdbbb62957087452f352064a33a746",
     "backend/modules/subscriptions/services/CanonicalPlanChangeService.php": "3f88fe9543360620b207b254ff24f526a08276183f7e73d685cd0dce5599d79d",
+    "backend/modules/admin/routes.php": "d3df6c7e723468f988e0789bbbc1d3d9594dc584d10a0f79cbda74a29ef21506",
+    "src/services/admin/adminService.types.ts": "13048f1a9acf230480b2e0961b4fe337a838da72e8c89eb4c424a241fc541db9",
+    "src/app/admin/components/settings/AdminLaunchModeControl.tsx": "f0646b1d2ef4d61a87426e9bfc155eb138adf61a2e4a4a7e8958b726e66db33e",
     "scripts/checks/production-readiness-local.mjs": "5ab7889d2749f339443584a190ebf6a150a5185367e1587391da72b39e83fd08",
     "scripts/checks/check-versioned-secrets.mjs": "73b54f86c41b0370d84d28352c4010d22a1b27afce0d21671a8ca5881b19b853",
     "scripts/checks/check-release-package.mjs": "a54e01e01983284c98132f0416fee24b7d9ec9979bccf071da40793a50ec7970",
     "scripts/checks/check-source-size-budget.mjs": "4ed2967bf37d7c6f67f1e1456e0a2584b4c620ad3fd499b633f86ed46686e9c5",
-    "scripts/release/generate-release-manifest.mjs": "918ab68e7428a56460e5ad43eb9764342b7f487b9b5e51bdc5db6f197086d129",
+    "scripts/release/generate-release-manifest.mjs": "17d0548bd193a2e54e03c05751b59ebb2545386a91c04b7723a5388dc90c3c52",
     "scripts/release/verify-release-manifest.mjs": "74e2d90f1fc9adf6161693def9ecde269c4fc14bb6f017a0b71028676ddf2c18"
   }
 }
