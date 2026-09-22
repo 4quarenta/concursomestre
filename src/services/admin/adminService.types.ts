@@ -53,6 +53,7 @@ export interface AdminLaunchModeStatus {
   publicIndexingState: string;
   technicalReadiness: string;
   releaseRecommendation: string;
+  ownerProductionDecision: string;
 }
 
 export interface AdminUserProfileRecord extends AdminLooseRecord {

@@ -219,6 +219,7 @@ export const adminService = {
       publicIndexingState: 'NOINDEX',
       technicalReadiness: 'NOT_READY',
       releaseRecommendation: 'NO_GO_RECOMMENDED',
+      ownerProductionDecision: 'NOT_MADE_BY_CODEX',
     });
   },
 

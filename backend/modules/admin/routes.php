@@ -876,19 +876,22 @@ function handleAdminLaunchModeRoute(PDO $db): void
 {
     require_once __DIR__ . '/../seo/launch/SeoLaunchMode.php';
     require_once __DIR__ . '/../seo/launch/SeoLaunchModeAuthority.php';
+    require_once __DIR__ . '/../../shared/health/ReleaseReadinessAuthority.php';
 
     try {
         $context = requirePlatformAdminSessionContext($db);
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $currentMode = SeoLaunchModeAuthority::read();
+        $readiness = ReleaseReadinessAuthority::read();
 
         if ($method === 'GET') {
             Response::success([
                 'runtimeEnvironment' => getAppEnv(),
                 'actualLaunchMode' => $currentMode,
                 'publicIndexingState' => $currentMode === SeoLaunchMode::PRODUCTION ? 'INDEX_ELIGIBILITY_EVALUATED' : 'NOINDEX',
-                'technicalReadiness' => 'NOT_READY',
-                'releaseRecommendation' => 'NO_GO_RECOMMENDED',
+                'technicalReadiness' => $readiness['technicalReadiness'],
+                'releaseRecommendation' => $readiness['releaseRecommendation'],
+                'ownerProductionDecision' => $readiness['ownerProductionDecision'],
             ]);
         }
 
@@ -918,6 +921,7 @@ function handleAdminLaunchModeRoute(PDO $db): void
             $correlationId = bin2hex(random_bytes(12));
         }
         $result = SeoLaunchModeAuthority::write($requestedMode, (string) $context['admin_user_id'], $correlationId);
+        $readiness = ReleaseReadinessAuthority::read();
         logAdminAudit(
             $db,
             (string) $context['admin_user_id'],
@@ -935,8 +939,9 @@ function handleAdminLaunchModeRoute(PDO $db): void
             'runtimeEnvironment' => getAppEnv(),
             'actualLaunchMode' => $result['mode'],
             'publicIndexingState' => $result['mode'] === SeoLaunchMode::PRODUCTION ? 'INDEX_ELIGIBILITY_EVALUATED' : 'NOINDEX',
-            'technicalReadiness' => 'NOT_READY',
-            'releaseRecommendation' => 'NO_GO_RECOMMENDED',
+            'technicalReadiness' => $readiness['technicalReadiness'],
+            'releaseRecommendation' => $readiness['releaseRecommendation'],
+            'ownerProductionDecision' => $readiness['ownerProductionDecision'],
         ], 'Launch mode atualizado com trilha de auditoria.');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());

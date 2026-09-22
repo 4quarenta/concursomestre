@@ -30,6 +30,7 @@ const fallbackStatus: AdminLaunchModeStatus = {
   publicIndexingState: 'NOINDEX',
   technicalReadiness: 'NOT_READY',
   releaseRecommendation: 'NO_GO_RECOMMENDED',
+  ownerProductionDecision: 'NOT_MADE_BY_CODEX',
 };
 
 interface Props {
@@ -106,7 +107,7 @@ export default function AdminLaunchModeControl({ addToast }: Props) {
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Estado atual</p>
             <p className="text-lg font-black text-slate-900 dark:text-slate-100">{isLoading ? 'Carregando...' : status.actualLaunchMode}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">Runtime: {status.runtimeEnvironment} · Indexação: {status.publicIndexingState}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Readiness: {status.technicalReadiness} · Recomendação: {status.releaseRecommendation}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Readiness: {status.technicalReadiness} · Recomendação: {status.releaseRecommendation} · Decisão: {status.ownerProductionDecision}</p>
           </div>
           <div className="space-y-3">
             <label className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400" htmlFor="admin-launch-mode-select">Alterar modo</label>
