@@ -86,11 +86,14 @@ find "$CM_SHARED_DIR/backend/uploads" -type f -exec chmod 0664 {} +
 # Keep build-time paths inside the release tree. Turbopack rejects a symlink
 # from the project to the shared volume while tracing server assets.
 install -d -m 0770 "$release_dir/backend/storage/runtime" "$release_dir/backend/uploads"
-ln -s "$CM_FRONTEND_ENV_SOURCE" "$release_dir/.env.production"
-ln -s "$CM_BACKEND_ENV_SOURCE" "$release_dir/backend/.env"
 chown -R root:"$CM_APP_GROUP" "$release_dir"
 chmod -R go-w "$release_dir"
 find "$release_dir" -type d -exec chmod g+rx {} +
+# Create environment symlinks only after recursive release permissions. The
+# targets live outside the release tree and must never be chowned or chmodded
+# as a side effect of preparing a new immutable release.
+ln -s "$CM_FRONTEND_ENV_SOURCE" "$release_dir/.env.production"
+ln -s "$CM_BACKEND_ENV_SOURCE" "$release_dir/backend/.env"
 
 cm_run composer install --working-dir="$release_dir/backend" --no-dev --prefer-dist --no-interaction --no-progress --classmap-authoritative
 cm_run_in "$release_dir" npm ci --include=dev --no-audit --no-fund
