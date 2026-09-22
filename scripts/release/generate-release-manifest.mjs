@@ -63,6 +63,8 @@ for (const relativePath of criticalFiles) {
 let commit = args.get('commit') || process.env.APP_RELEASE_COMMIT || 'unknown';
 let dirty = true;
 try {
+  const gitRoot = path.resolve(git('rev-parse', '--show-toplevel'));
+  if (gitRoot !== path.resolve(root)) throw new Error('exported release tree');
   if (commit === 'unknown') commit = git('rev-parse', 'HEAD');
   dirty = git('status', '--porcelain').length > 0;
 } catch {
