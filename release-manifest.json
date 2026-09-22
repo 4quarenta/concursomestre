@@ -3,9 +3,9 @@
   "product": "ConcursoMestre",
   "version": "1.0.0",
   "revision": "final-macro20f",
-  "commit": "006580060d1092e6cead16dfe6202ed3861fffb9",
+  "commit": "56cf61a698f91b736b739f65e2fd76371a78e2ed",
   "gitDirty": false,
-  "generatedAt": "2026-09-22T01:32:00.178Z",
+  "generatedAt": "2026-09-22T01:35:44.582Z",
   "runtime": {
     "node": "v24.20.0",
     "nodeMinimum": "20.19.0",
@@ -125,7 +125,7 @@
     "scripts/checks/check-versioned-secrets.mjs": "73b54f86c41b0370d84d28352c4010d22a1b27afce0d21671a8ca5881b19b853",
     "scripts/checks/check-release-package.mjs": "a54e01e01983284c98132f0416fee24b7d9ec9979bccf071da40793a50ec7970",
     "scripts/checks/check-source-size-budget.mjs": "4ed2967bf37d7c6f67f1e1456e0a2584b4c620ad3fd499b633f86ed46686e9c5",
-    "scripts/release/generate-release-manifest.mjs": "a43d6eeec4bf877f6a2f88bceef84dc282a5c15f0b35187927517cfe6ecb04f8",
-    "scripts/release/verify-release-manifest.mjs": "a980ce3c0bd2b2405358fc9630a79c489885edba153bbe43f08e446a86f7f5a1"
+    "scripts/release/generate-release-manifest.mjs": "bea2c6199470922ad62e3289f39f6c289a383bb32e4c242c68a7d41723856f51",
+    "scripts/release/verify-release-manifest.mjs": "74e2d90f1fc9adf6161693def9ecde269c4fc14bb6f017a0b71028676ddf2c18"
   }
 }
