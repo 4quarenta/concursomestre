@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -31,6 +42,21 @@ for (const file of [
   'src/app/account-deletion/page.tsx',
 ]) {
   if (!hasRepo(file)) fail(`Recurso web obrigatorio ausente: ${file}`);
+}
+
+if (!hasRepo('contracts/legal/legal-document-versions.v1.json')) {
+  fail('Contrato autoritativo de versoes legais ausente.');
+} else {
+  const legalVersions = JSON.parse(readRepo('contracts/legal/legal-document-versions.v1.json'));
+  for (const documentKey of ['terms_of_use', 'privacy_policy']) {
+    const documentVersion = legalVersions?.documents?.[documentKey];
+    if (!/^\d{4}\.\d{2}$/.test(String(documentVersion?.version || ''))) {
+      fail(`Versao legal invalida ou ausente: ${documentKey}.`);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(documentVersion?.effectiveDate || ''))) {
+      fail(`Data de vigencia legal invalida ou ausente: ${documentKey}.`);
+    }
+  }
 }
 
 if (hasMobile('eas.json')) {
@@ -155,7 +181,8 @@ if (hasRepo('src/app/privacy/page.tsx')) {
   }
 
   for (const required of [
-    '10 de Setembro de 2026',
+    'PRIVACY_POLICY_EFFECTIVE_DATE',
+    'PRIVACY_POLICY_VERSION',
     '/account-deletion',
     '/profile/security',
     'eliminação não é necessariamente instantânea',
@@ -183,7 +210,8 @@ if (hasRepo('src/app/terms/page.tsx')) {
   }
 
   for (const required of [
-    '10 de Setembro de 2026',
+    'LEGAL_EFFECTIVE_DATE',
+    'LEGAL_DOCUMENT_VERSION',
     '/account-deletion',
     '/privacy',
     'não representa garantia de aprovação',

@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import React from 'react';
 import { authFlowService } from '@/services/auth/authFlowService';
 import { accountService } from '@/services/auth/accountService';
@@ -281,7 +292,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel realizar o login.'));
     } finally { setIsLoading(false); }
-  }, [applySessionFromResponse, refreshSystemSettings]);
+  }, [applySessionFromResponse, refreshProfile, refreshSystemSettings]);
 
   const verifyTwoFactor = React.useCallback(async (email: string, code: string) => {
     setIsLoading(true);
@@ -305,7 +316,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel criar a conta.'));
     } finally { setIsLoading(false); }
-  }, [applySessionFromResponse, refreshSystemSettings]);
+  }, [applySessionFromResponse, refreshProfile, refreshSystemSettings]);
 
   const logout = React.useCallback(async () => {
     if (SCREENSHOT_MODE) return;
@@ -419,7 +430,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await publicSettingsPromise;
           } catch (error) {
             const failure = normalizeApiFailure(error);
-            if (failure.status === 401 || failure.status === 403) {
+            // Somente uma credencial invalida remove a sessao local. Um 403
+            // preserva a identidade e representa falta de permissao no recurso.
+            if (failure.status === 401) {
               await sessionStorage.clearSession();
               setUser(null);
               await publicSettingsPromise;

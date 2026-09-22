@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { readApiData } from '@/services/api/response';
@@ -14,8 +25,13 @@ const toNumber = (value: unknown, fallback = 0): number => {
  */
 export const statisticsService = {
   async getUserStatistics(userId: string): Promise<UserStatistics> {
-    const response: any = await apiClient.get<any>(`${ENDPOINTS.statistics.user}/${userId}`, {
-      params: { _: Date.now() },
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) {
+      throw new Error('Sessao sem identificador de usuario. Faca login novamente.');
+    }
+
+    const response: any = await apiClient.get<any>(ENDPOINTS.statistics.user, {
+      params: { user_id: normalizedUserId, _: Date.now() },
     });
 
     const payload = readApiData<any>(response, {});
@@ -33,7 +49,7 @@ export const statisticsService = {
           : [];
 
     return {
-      userId: String(payload?.userId || payload?.user_id || userId),
+      userId: String(payload?.userId || payload?.user_id || normalizedUserId),
       totalQuestionsAnswered: toNumber(payload?.totalQuestionsAnswered ?? payload?.total_questions_answered, 0),
       correctAnswers: toNumber(payload?.correctAnswers ?? payload?.correct_answers, 0),
       wrongAnswers: toNumber(payload?.wrongAnswers ?? payload?.wrong_answers, 0),

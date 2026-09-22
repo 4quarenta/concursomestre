@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import React from "react";
 import {
   ActivityIndicator,
@@ -13,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StandardSectionHeader } from "@/components/layout/StandardSectionHeader";
 import { useAuth } from "@/providers/AuthProvider";
 import { statisticsService } from "@/services/statistics/statisticsService";
+import { readApiErrorMessage } from "@/services/api/response";
 import { radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import type { UserStatistics } from "@/types/statistics";
@@ -47,6 +59,7 @@ export const PerformanceScreen: React.FC = () => {
   const [period, setPeriod] = React.useState<Period>("semanal");
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState("");
 
   const load = React.useCallback(
     async (refresh = false) => {
@@ -56,8 +69,18 @@ export const PerformanceScreen: React.FC = () => {
         return;
       }
       refresh ? setRefreshing(true) : setLoading(true);
+      setErrorMessage("");
       try {
         setStats(await statisticsService.getUserStatistics(user.id));
+      } catch (error) {
+        // A indisponibilidade das estatisticas nao pode derrubar toda a arvore
+        // de navegacao. Mantemos o ultimo resumo seguro e oferecemos retry.
+        setErrorMessage(
+          readApiErrorMessage(
+            error,
+            "Não foi possível carregar seu desempenho agora.",
+          ),
+        );
       } finally {
         refresh ? setRefreshing(false) : setLoading(false);
       }
@@ -125,6 +148,27 @@ export const PerformanceScreen: React.FC = () => {
         />
 
         <View style={styles.body}>
+          {errorMessage ? (
+            <View style={styles.errorCard}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={22}
+                color={theme.danger}
+              />
+              <View style={styles.errorCopy}>
+                <Text style={styles.errorTitle}>Desempenho indisponível</Text>
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void load()}
+                style={styles.retryButton}
+              >
+                <Text style={styles.retryText}>Tentar novamente</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Atividade</Text>
@@ -254,6 +298,34 @@ const createStyles = (theme: ResolvedAppTheme) =>
       shadowColor: theme.text,
       shadowOpacity: 0.08,
       shadowRadius: 8,
+    },
+    errorCard: {
+      alignItems: "flex-start",
+      backgroundColor: theme.surface,
+      borderColor: theme.danger,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      gap: spacing[3],
+      padding: spacing[4],
+    },
+    errorCopy: { gap: spacing[1] },
+    errorTitle: {
+      color: theme.text,
+      fontSize: typography.size.sm,
+      fontWeight: typography.weight.bold,
+    },
+    errorText: { color: theme.textMuted, fontSize: typography.size.sm },
+    retryButton: {
+      alignSelf: "flex-start",
+      backgroundColor: theme.primary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing[3],
+      paddingVertical: spacing[2],
+    },
+    retryText: {
+      color: theme.onPrimary,
+      fontSize: typography.size.sm,
+      fontWeight: typography.weight.bold,
     },
     cardHeader: {
       alignItems: "center",

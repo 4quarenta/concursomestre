@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "contracts:check": "node scripts/check-contracts.mjs",
-    "qa:smoke": "node scripts/qa-smoke.mjs && node scripts/check-entry-route.mjs",
+    "session:check": "node scripts/session-contract-check.mjs",
+    "qa:smoke": "node scripts/session-contract-check.mjs && node scripts/qa-smoke.mjs && node scripts/check-entry-route.mjs",
     "store:check": "node scripts/store-readiness-check.mjs"
   },
   "dependencies": {

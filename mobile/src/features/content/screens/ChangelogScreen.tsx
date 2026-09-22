@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import React from "react";
 import {
   ActivityIndicator,
@@ -11,6 +22,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
 import changelogService from "@/services/changelog/changelogService";
+import { readApiErrorMessage } from "@/services/api/response";
 import type { ChangelogCategory, ChangelogVersion } from "@/types/changelog";
 import { radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
@@ -63,13 +75,17 @@ export function ChangelogScreen() {
   const [versions, setVersions] = React.useState<ChangelogVersion[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState("");
 
   const loadVersions = React.useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
     else setLoading(true);
+    setErrorMessage("");
     try {
       const result = await changelogService.listVersions();
       setVersions(result);
+    } catch (error) {
+      setErrorMessage(readApiErrorMessage(error, "Não foi possível carregar as novidades agora."));
     } finally {
       if (refresh) setRefreshing(false);
       else setLoading(false);
@@ -110,7 +126,18 @@ export function ChangelogScreen() {
           </View>
         </View>
 
-        {loading ? (
+        {errorMessage ? (
+          <View style={styles.stateCard}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="alert-circle-outline" size={36} color={theme.danger} />
+            </View>
+            <Text style={styles.stateTitle}>Novidades indisponíveis</Text>
+            <Text style={styles.stateText}>{errorMessage}</Text>
+            <Pressable onPress={() => void loadVersions(true)} style={styles.retryButton}>
+              <Text style={styles.retryText}>Tentar novamente</Text>
+            </Pressable>
+          </View>
+        ) : loading ? (
           <View style={styles.stateCard}>
             <ActivityIndicator color={theme.primary} />
           </View>

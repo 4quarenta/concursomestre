@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { runtimeConfig } from '@/config/runtime';
 import { sessionStorage } from '@/storage/sessionStorage';
@@ -99,10 +110,14 @@ const refreshSessionToken = async (): Promise<string | null> => {
 
 let refreshInFlight: Promise<string | null> | null = null;
 
+/**
+ * Compartilha uma unica rotacao de credenciais entre requisicoes concorrentes.
+ * Falhas transitorias continuam rejeitadas para que o interceptor preserve a sessao local.
+ * @since v1.0.0
+ */
 const refreshSessionTokenSingleFlight = (): Promise<string | null> => {
   if (!refreshInFlight) {
     refreshInFlight = refreshSessionToken()
-      .catch(() => null)
       .finally(() => {
         refreshInFlight = null;
       });
@@ -152,16 +167,35 @@ apiClient.interceptors.response.use(
     const config = (error.config || {}) as RetryConfig;
     const status = error.response?.status;
     const authRequest = isAuthenticationRequest(config);
-    const sessionFailure = status === 401 || status === 403;
+    // Um 403 representa usuario autenticado sem permissao para o recurso e
+    // nunca deve apagar a sessao. Apenas 401 ou a compatibilidade legada de
+    // sessao invalida em 500 disparam a tentativa de renovacao.
+    const sessionFailure = status === 401 || isLegacySessionFailure(error);
 
     if (sessionFailure && !authRequest && !config._retry) {
       config._retry = true;
-      const refreshedToken = await refreshSessionTokenSingleFlight();
+      try {
+        const refreshedToken = await refreshSessionTokenSingleFlight();
 
-      if (refreshedToken && config.headers) {
-        config.headers.Authorization = `Bearer ${refreshedToken}`;
-        config.headers['X-Auth-Token'] = refreshedToken;
-        return apiClient(config);
+        if (refreshedToken && config.headers) {
+          config.headers.Authorization = `Bearer ${refreshedToken}`;
+          config.headers['X-Auth-Token'] = refreshedToken;
+          return apiClient(config);
+        }
+      } catch (refreshError) {
+        const refreshFailure = normalizeApiFailure(refreshError);
+
+        // 401 e 422 no endpoint de refresh comprovam que as credenciais
+        // persistidas nao podem mais renovar. Timeout, offline, 403 de
+        // seguranca e erro 5xx preservam a sessao para uma tentativa futura.
+        if (refreshFailure.status === 401 || refreshFailure.status === 422) {
+          await sessionStorage.clearSession();
+        }
+
+        if (refreshError instanceof Error) {
+          refreshError.message = refreshFailure.message;
+        }
+        throw refreshError;
       }
     }
 

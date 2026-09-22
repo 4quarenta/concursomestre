@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import React from "react";
 import {
   ActivityIndicator,
@@ -16,6 +27,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { accountService } from "@/services/auth/accountService";
 import { subscriptionsService } from "@/services/subscriptions/subscriptionsService";
+import { readApiErrorMessage } from "@/services/api/response";
 import { radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 
@@ -51,6 +63,17 @@ export const StoreAccountScreen: React.FC = () => {
     subscription?.cancel_at_period_end === true
       ? false
       : subscription?.auto_renew !== false;
+
+  const refresh = async () => {
+    try {
+      await refreshProfile();
+    } catch (error) {
+      Alert.alert(
+        "Conta",
+        readApiErrorMessage(error, "Não foi possível atualizar os dados agora."),
+      );
+    }
+  };
 
   const openPublicLink = async (url: string) => {
     try {
@@ -192,7 +215,7 @@ export const StoreAccountScreen: React.FC = () => {
       refreshControl={
         <RefreshControl
           refreshing={isLoading}
-          onRefresh={() => void refreshProfile()}
+          onRefresh={() => void refresh()}
           tintColor={theme.primary}
         />
       }

@@ -21,6 +21,16 @@ const endpoints = read('mobile/src/api/endpoints.ts');
 if (!/list:\s*["']questions\/list\.php["']/.test(endpoints)) {
   failures.push('Questoes mobile devem usar o endpoint oficial questions/list.php.');
 }
+if (!/user:\s*["']statistics\/user\.php["']/.test(endpoints)) {
+  failures.push('Estatisticas mobile devem usar o endpoint oficial statistics/user.php.');
+}
+const statisticsService = read('mobile/src/services/statistics/statisticsService.ts');
+if (!statisticsService.includes('apiClient.get<any>(ENDPOINTS.statistics.user')) {
+  failures.push('Estatisticas mobile devem chamar o endpoint canônico sem concatenar o ID na rota.');
+}
+if (!statisticsService.includes('user_id: normalizedUserId')) {
+  failures.push('Estatisticas mobile devem enviar user_id na query oficial.');
+}
 
 const questionsService = readBackend('modules/questions/services/QuestionsService.php');
 requireText(

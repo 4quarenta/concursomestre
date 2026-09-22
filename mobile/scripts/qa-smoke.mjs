@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -137,6 +148,31 @@ requireText(
   'mobile/src/config/runtime.ts',
   'EXPO_PUBLIC_API_BASE_URL',
   'Runtime deve exigir configuracao explicita da API fora de desenvolvimento.',
+);
+
+requireText(
+  'mobile/src/api/client.ts',
+  'const sessionFailure = status === 401 || isLegacySessionFailure(error);',
+  'Cliente HTTP deve renovar apenas sessao realmente invalida, sem tratar 403 como logout.',
+);
+requireText(
+  'mobile/src/api/client.ts',
+  'refreshFailure.status === 401 || refreshFailure.status === 422',
+  'Cliente HTTP deve limpar credenciais apenas quando o refresh comprovar invalidade.',
+);
+if (read('mobile/src/api/client.ts').includes('.catch(() => null)')) {
+  fail('Refresh single-flight nao pode converter falha de rede/servidor em sessao invalida.');
+}
+if (read('mobile/src/providers/AuthProvider.tsx').includes('failure.status === 401 || failure.status === 403')) {
+  fail('Bootstrap nao pode apagar a sessao por resposta 403.');
+}
+if (read('mobile/src/features/account/screens/StoreAccountScreen.tsx').includes('onRefresh={() => void refreshProfile()}')) {
+  fail('Refresh da conta nao pode deixar a rejeicao de refreshProfile sem tratamento.');
+}
+requireText(
+  'mobile/src/features/performance/screens/PerformanceScreen.tsx',
+  'readApiErrorMessage',
+  'Tela de Desempenho deve tratar falhas remotas sem derrubar a navegacao.',
 );
 
 for (const [key, route] of Object.entries({

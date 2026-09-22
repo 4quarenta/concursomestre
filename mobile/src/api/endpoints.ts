@@ -95,7 +95,7 @@ export const ENDPOINTS = {
     refund: "transactions/refund.php",
   },
   statistics: {
-    user: "statistics/user",
+    user: "statistics/user.php",
     xray: "statistics/xray.php",
   },
   settings: {
