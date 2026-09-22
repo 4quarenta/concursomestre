@@ -32,7 +32,7 @@ final class MaterialsMarketplaceReadinessReporter
     {
         $materialReady = "status='approved' AND publication_status='published' AND visibility_status='public'
             AND rights_status='approved' AND archived_at IS NULL AND (scheduled_at IS NULL OR scheduled_at<=NOW())
-            AND TRIM(title)<>'' AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$' AND CHAR_LENGTH(slug)<=190
+            AND TRIM(title)<>'' AND REGEXP_LIKE(slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c') AND CHAR_LENGTH(slug)<=190
             AND EXISTS (SELECT 1 FROM material_uploads upload WHERE upload.attached_material_id=materials.id AND upload.status='attached')";
         $listingReady = "({$materialReady}) AND (availability_status='included_in_plan'
             OR (availability_status='available' AND ((is_free=1 AND (price IS NULL OR price=0))

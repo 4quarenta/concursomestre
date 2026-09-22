@@ -331,7 +331,7 @@ try {
                            AND organization.type = 'orgao'
                            AND COALESCE(organization.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
                            AND TRIM(organization.name) <> ''
-                           AND BINARY organization.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                           AND REGEXP_LIKE(organization.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
                            AND CHAR_LENGTH(organization.slug) <= 190
                        WHERE co.contest_id = contests.id
                     ) AS has_ready_organization
@@ -476,7 +476,7 @@ try {
              WHERE id > :cursor
                AND slug IS NOT NULL
                AND slug <> ''
-               AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+               AND REGEXP_LIKE(slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
                AND CHAR_LENGTH(slug) <= 160
                AND (status IN ('active', 'published')
                     OR (status = 'scheduled' AND published_at IS NOT NULL AND published_at <= NOW()))
@@ -524,9 +524,9 @@ try {
                 AND a.official_status IN ('active', 'revoked', 'vetoed')
                 AND TRIM(a.article_number) <> ''
                 AND TRIM(a.official_text) <> ''
-                AND BINARY a.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND REGEXP_LIKE(a.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
                 AND CHAR_LENGTH(a.slug) <= 180
-                AND BINARY l.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND REGEXP_LIKE(l.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
                 AND CHAR_LENGTH(l.slug) <= 160
                 AND (l.status IN ('active', 'published', 'revoked')
                      OR (l.status = 'scheduled' AND l.published_at IS NOT NULL AND l.published_at <= NOW()))
@@ -695,7 +695,7 @@ try {
             AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
             AND {$publicFilterNameClause}
             AND CHAR_LENGTH(f.slug) <= 190
-            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(f.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
           ORDER BY f.id
           LIMIT {$batchSize}",
         static fn (string $slug): string => $routes->boardDetail($slug)
@@ -712,7 +712,7 @@ try {
             AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
             AND {$publicFilterNameClause}
             AND CHAR_LENGTH(f.slug) <= 190
-            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(f.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
           ORDER BY f.id
           LIMIT {$batchSize}",
         static fn (string $slug): string => $routes->organizationDetail($slug)
@@ -731,7 +731,7 @@ try {
             AND COALESCE(f.parent_id, 0) = 0
             AND {$publicFilterNameClause}
             AND CHAR_LENGTH(f.slug) <= 80
-            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(f.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
           ORDER BY f.id
           LIMIT {$batchSize}",
         static fn (string $slug): string => $routes->disciplineDetail($slug)
@@ -751,14 +751,14 @@ try {
             AND COALESCE(root.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
             AND {$publicRootNameClause}
             AND CHAR_LENGTH(root.slug) <= 80
-            AND BINARY root.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(root.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
           WHERE f.id > :cursor
             AND f.type = 'assunto'
             AND f.taxonomy_level = 'topico'
             AND COALESCE(f.meta_materia, 0) = 0
             AND {$publicFilterNameClause}
             AND CHAR_LENGTH(f.slug) <= 80
-            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(f.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
           ORDER BY f.id
           LIMIT {$batchSize}",
         static fn (string $slug): string => $routes->topicDetail($slug)
@@ -777,7 +777,7 @@ try {
             AND COALESCE(subtopic.meta_materia, 0) = 0
             AND {$publicSubtopicNameClause}
             AND CHAR_LENGTH(subtopic.slug) <= 80
-            AND BINARY subtopic.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(subtopic.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
            INNER JOIN filters topic
              ON topic.id = subtopic.parent_id
             AND topic.type = 'assunto'
@@ -785,7 +785,7 @@ try {
             AND COALESCE(topic.meta_materia, 0) = 0
             AND {$publicTopicNameClause}
             AND CHAR_LENGTH(topic.slug) <= 80
-            AND BINARY topic.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(topic.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
            INNER JOIN filters root
              ON root.id = topic.parent_id
             AND root.type = 'assunto'
@@ -794,14 +794,14 @@ try {
             AND COALESCE(root.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
             AND {$publicRootNameClause}
             AND CHAR_LENGTH(root.slug) <= 80
-            AND BINARY root.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(root.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
           WHERE f.id > :cursor
             AND f.type = 'assunto'
             AND f.taxonomy_level = 'assunto'
             AND COALESCE(f.meta_materia, 0) = 0
             AND {$publicFilterNameClause}
             AND CHAR_LENGTH(f.slug) <= 80
-            AND BINARY f.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+            AND REGEXP_LIKE(f.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
           ORDER BY f.id
           LIMIT {$batchSize}",
         static fn (string $slug): string => $routes->subjectDetail($slug)
@@ -825,7 +825,7 @@ try {
                     'cargo não identificado'
                 )
                 AND CHAR_LENGTH(slug) <= 190
-                AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND REGEXP_LIKE(slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
               ORDER BY id
               LIMIT {$batchSize}"
         );

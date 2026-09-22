@@ -336,13 +336,13 @@ class ExamsRepository
             WHERE ce.exam_id = :exam_id AND c.publication_status = 'published'
               AND c.visibility_status = 'public' AND c.archived_at IS NULL
               AND (c.scheduled_at IS NULL OR c.scheduled_at <= NOW())
-              AND BINARY c.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+              AND REGEXP_LIKE(c.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
               AND EXISTS (
                   SELECT 1 FROM contest_organizations public_co
                   INNER JOIN filters public_org ON public_org.id = public_co.organization_filter_id
                       AND public_org.type = 'orgao'
                       AND COALESCE(public_org.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
-                      AND BINARY public_org.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                      AND REGEXP_LIKE(public_org.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
                   WHERE public_co.contest_id = c.id
               )
             LIMIT 1");

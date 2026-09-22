@@ -38,8 +38,8 @@ $assert(substr_count($repository, "p.status_editorial = 'published'") >= 3, 'Exa
 $assert(str_contains($repository, "CAST(p.slug AS BINARY) REGEXP CAST('^[a-z0-9]+(-[a-z0-9]+)*$' AS BINARY)") && str_contains($repository, "TRIM(p.nome) <> ''"), 'Public exam links must require a valid persisted identity.');
 $assert(str_contains($service, 'contestDetail') && str_contains($service, 'redirectSlug'), 'Canonical routes and aliases must be wired.');
 $assert(str_contains($service, "^[a-z0-9]+(?:-[a-z0-9]+)*$"), 'Contest resolver must enforce canonical slug grammar.');
-$assert(str_contains($examRepository, 'contest_organizations public_co') && str_contains($examRepository, "BINARY c.slug REGEXP"), 'Exam interlinks must require a ready canonical contest.');
-$assert(str_contains($organizationRepository, "BINARY c.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'"), 'Organization interlinks must exclude invalid contest slugs.');
+$assert(str_contains($examRepository, 'contest_organizations public_co') && str_contains($examRepository, "REGEXP_LIKE(c.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')"), 'Exam interlinks must require a ready canonical contest.');
+$assert(str_contains($organizationRepository, "REGEXP_LIKE(c.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')"), 'Organization interlinks must exclude invalid contest slugs.');
 $assert(!str_contains($projection, 'internal_notes') && !str_contains($projection, 'provider_identity'), 'Projection allowlist leaked private fields.');
 $assert(str_contains($projection, 'FILTER_FLAG_NO_PRIV_RANGE') && str_contains($projection, "'.internal'"), 'Editorial URLs must reject private/internal destinations.');
 require_once $root . '/modules/contests/projections/PublicContestProjection.php';

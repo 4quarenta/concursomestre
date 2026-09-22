@@ -498,7 +498,7 @@ class FiltersRepository
                 AND relationship.relation_type = 'cargo_organization'
                 AND COALESCE(cargo.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')
                 AND TRIM(cargo.name) <> ''
-                AND BINARY cargo.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND REGEXP_LIKE(cargo.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
               GROUP BY cargo.id, cargo.slug, cargo.name
               ORDER BY cargo.name ASC
               LIMIT :limit"
@@ -553,7 +553,7 @@ class FiltersRepository
                 AND c.visibility_status = 'public'
                 AND c.archived_at IS NULL
                 AND (c.scheduled_at IS NULL OR c.scheduled_at <= NOW())
-                AND BINARY c.slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND REGEXP_LIKE(c.slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
               ORDER BY COALESCE(c.registration_end_at, c.updated_at) DESC, c.id DESC
               LIMIT 8"
         );

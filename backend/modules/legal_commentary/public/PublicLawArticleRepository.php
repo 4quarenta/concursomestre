@@ -61,7 +61,7 @@ final class PublicLawArticleRepository
               WHERE law_id = :previous_law_id
                 AND official_status IN ('active', 'revoked', 'vetoed')
                 AND TRIM(official_text) <> ''
-                AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND REGEXP_LIKE(slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
                 AND (sort_order < :previous_sort OR (sort_order = :previous_sort_equal AND id < :previous_id))
               ORDER BY sort_order DESC, id DESC LIMIT 1)
             UNION ALL
@@ -70,7 +70,7 @@ final class PublicLawArticleRepository
               WHERE law_id = :next_law_id
                 AND official_status IN ('active', 'revoked', 'vetoed')
                 AND TRIM(official_text) <> ''
-                AND BINARY slug REGEXP '^[a-z0-9]+(-[a-z0-9]+)*$'
+                AND REGEXP_LIKE(slug, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')
                 AND (sort_order > :next_sort OR (sort_order = :next_sort_equal AND id > :next_id))
               ORDER BY sort_order, id LIMIT 1)";
         $stmt = $this->db->prepare($sql);

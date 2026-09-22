@@ -139,6 +139,7 @@ function ciCriticalTests(): array
         'tests/LegalCommentaryAdminWiringTest.php',
         'tests/LegalAcceptanceWiringTest.php',
         'tests/MarketingAutomationWiringTest.php',
+        'tests/MySqlRegexCompatibilityWiringTest.php',
         'tests/OperationalLogAlertsWiringTest.php',
         'tests/OperationalLogMaintenanceWiringTest.php',
         'tests/ProductionLogAuditWiringTest.php',
