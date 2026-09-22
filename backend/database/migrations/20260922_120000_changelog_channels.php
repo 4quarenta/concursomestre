@@ -21,7 +21,8 @@ return static function (PDO $db): void {
         $db->exec("ALTER TABLE changelogs ADD COLUMN channel VARCHAR(8) NOT NULL DEFAULT 'BOTH' AFTER status");
     }
 
-    $db->exec("UPDATE changelogs SET channel = 'BOTH' WHERE channel IS NULL OR channel NOT IN ('WEB', 'APP', 'BOTH')");
+    // The column is introduced as NOT NULL with a BOTH default, so existing
+    // rows remain visible on both surfaces without requiring DML privileges.
     $indexExists = $db->query(
         "SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
         . "AND TABLE_NAME = 'changelogs' AND INDEX_NAME = 'idx_changelogs_channel_publication' LIMIT 1"
