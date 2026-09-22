@@ -33,6 +33,7 @@ export const buildChangelogServerUrl = (page = 1, apiBaseUrl?: string): URL => {
   const url = new URL('changelog/list.php', baseUrl);
   url.searchParams.set('page', String(Math.max(1, page)));
   url.searchParams.set('limit', '8');
+  url.searchParams.set('channel', 'WEB');
   return url;
 };
 

@@ -904,7 +904,9 @@ class AuthService
         $this->repository->ensurePasswordResetTable();
         $user = $this->repository->findUserByEmail($normalized['email']);
         if (!$user) {
-            throw new OutOfBoundsException('E-mail nao cadastrado. Deseja criar uma conta?');
+            return [
+                'message' => 'Se este e-mail estiver cadastrado, voce recebera as instrucoes em breve.',
+            ];
         }
 
         $token = bin2hex(random_bytes(32));
@@ -985,6 +987,11 @@ class AuthService
                 password_hash($normalized['password'], PASSWORD_BCRYPT)
             );
             $this->repository->markPasswordResetAsUsed($normalized['token']);
+            revokeAllUserSessionFamilies(
+                $this->repository->getConnection(),
+                (string) $reset['user_id'],
+                'password_reset'
+            );
             $this->repository->commit();
         } catch (Throwable $e) {
             if ($this->repository->inTransaction()) {

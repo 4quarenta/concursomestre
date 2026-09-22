@@ -13,22 +13,27 @@ final class ChangelogRepository
         $limit = (int) $filters['limit'];
         $page = (int) $filters['page'];
         $offset = ($page - 1) * $limit;
-        $total = (int) $this->db->query(
+        $totalStmt = $this->db->prepare(
             "SELECT COUNT(*) FROM changelogs
              WHERE status = 'published'
                AND published_at IS NOT NULL
-               AND published_at <= NOW()"
-        )->fetchColumn();
+               AND published_at <= NOW()
+               AND (channel = :channel OR channel = 'BOTH')"
+        );
+        $totalStmt->execute([':channel' => (string) $filters['channel']]);
+        $total = (int) $totalStmt->fetchColumn();
 
         $stmt = $this->db->prepare(
-            "SELECT id, version, slug, release_date, published_at, title, description, content_json
+            "SELECT id, version, slug, release_date, published_at, title, description, content_json, channel
              FROM changelogs
              WHERE status = 'published'
                AND published_at IS NOT NULL
                AND published_at <= NOW()
+               AND (channel = :channel OR channel = 'BOTH')
              ORDER BY published_at DESC, id DESC
              LIMIT :limit OFFSET :offset"
         );
+        $stmt->bindValue(':channel', (string) $filters['channel'], PDO::PARAM_STR);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
@@ -121,6 +126,7 @@ final class ChangelogRepository
                     description = :description,
                     content_json = :content_json,
                     status = :status_value,
+                    channel = :channel,
                     updated_by = :updated_by,
                     updated_at = NOW()
                  WHERE id = :id"
@@ -134,6 +140,7 @@ final class ChangelogRepository
                 ':description' => $entry['description'],
                 ':content_json' => $contentJson,
                 ':status_value' => $entry['status'],
+                ':channel' => $entry['channel'],
                 ':updated_by' => $actorId,
                 ':id' => $entry['id'],
             ]);
@@ -146,10 +153,10 @@ final class ChangelogRepository
         $stmt = $this->db->prepare(
             'INSERT INTO changelogs (
                 version, slug, release_date, published_at, title, description,
-                content_json, status, created_by, updated_by, created_at, updated_at
+                content_json, status, channel, created_by, updated_by, created_at, updated_at
              ) VALUES (
                 :version, :slug, :release_date, :published_at, :title, :description,
-                :content_json, :status, :created_by, :updated_by, NOW(), NOW()
+                :content_json, :status, :channel, :created_by, :updated_by, NOW(), NOW()
              )'
         );
         $stmt->execute([
@@ -161,6 +168,7 @@ final class ChangelogRepository
             ':description' => $entry['description'],
             ':content_json' => $contentJson,
             ':status' => $entry['status'],
+            ':channel' => $entry['channel'],
             ':created_by' => $actorId,
             ':updated_by' => $actorId,
         ]);

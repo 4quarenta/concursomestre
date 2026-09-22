@@ -645,29 +645,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
       <PromoBanner />
 
-      {showEmailVerificationBanner && user && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
-          <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto flex flex-col gap-3 text-sm font-semibold md:flex-row md:items-center md:justify-between`}>
-            <div className="flex items-start gap-3">
-              <Mail size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
-              <p className="leading-relaxed">
-                Confirme o e-mail <strong>{user.email}</strong> para liberar todos os recursos e receber +50 XP.
-                {hasFailedEmailDeliveryNotice ? ' O envio automático ainda precisa ser refeito.' : ''}
-              </p>
-            </div>
-            <button
-              type="button"
-              disabled={resendTimer > 0 || isResendingConfirmation}
-              onClick={handleResendConfirmation}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/30 dark:bg-slate-950/40 dark:text-amber-100 dark:hover:bg-amber-500/10"
-            >
-              {isResendingConfirmation ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-              {resendTimer > 0 ? `Aguarde ${resendTimer}s` : 'Reenviar e-mail'}
-            </button>
-          </div>
-        </div>
-      )}
-
       {showVerificationModal && user && !user.emailVerified && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 max-w-md w-full rounded-2xl p-8 shadow-2xl relative animate-scale-in border border-slate-100 dark:border-slate-800 text-center">
@@ -905,6 +882,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         {/* Main Content Area */}
         <main className="min-h-0 flex flex-1 flex-col overflow-hidden">
+          {showEmailVerificationBanner && user && (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+              <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto flex w-full flex-col gap-3 text-sm font-semibold md:flex-row md:items-center md:justify-between`}>
+                <div className="flex min-w-0 items-start gap-3">
+                  <Mail size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                  <p className="leading-relaxed">
+                    Confirme o e-mail <strong>{user.email}</strong> para liberar todos os recursos e receber +50 XP.
+                    {hasFailedEmailDeliveryNotice ? ' O envio automático ainda precisa ser refeito.' : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={resendTimer > 0 || isResendingConfirmation}
+                  onClick={handleResendConfirmation}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/30 dark:bg-slate-950/40 dark:text-amber-100 dark:hover:bg-amber-500/10"
+                >
+                  {isResendingConfirmation ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
+                  {resendTimer > 0 ? `Aguarde ${resendTimer}s` : 'Reenviar e-mail'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Desktop Top Bar with Notifications */}
           <div className={`${isSimulationFullscreenPage ? 'hidden' : 'hidden md:flex'} z-20 items-center justify-end bg-slate-50/80 p-4 px-6 backdrop-blur transition-colors dark:bg-slate-950/80 lg:px-8`}>
             <div className="flex items-center gap-4">

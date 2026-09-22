@@ -714,6 +714,10 @@ const Simulation: React.FC = () => {
       }
    }, [step, isImmersiveEnabled, leaveFullscreenMode]);
 
+   useEffect(() => () => {
+      void exitSimulationFullscreen(document);
+   }, []);
+
    // Verificar se o usuário pode criar sim personalizado (apenas Pro ou Elite)
    const canCreateCustomSim = Boolean(currentUser && currentUser.plan && currentUser.plan !== 'Gratuito' && currentUser.plan !== 'Essencial');
 
@@ -808,9 +812,11 @@ const Simulation: React.FC = () => {
       registerSimulationElapsed(activeSession.id, elapsedSimulationSeconds);
       setActiveSession(canonicalSession);
       addSimulation(canonicalSession, false);
+      // Results and review are outside the immersive surface; leave both app and native fullscreen.
+      leaveFullscreenMode();
       setStep('result');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-   }, [activeSession, addSimulation, addToast, registerSimulationElapsed, timeLeft]);
+   }, [activeSession, addSimulation, addToast, leaveFullscreenMode, registerSimulationElapsed, timeLeft]);
 
    useEffect(() => {
       if (step !== 'active' || timeLeft <= 0) {

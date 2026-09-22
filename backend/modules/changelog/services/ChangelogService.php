@@ -96,6 +96,7 @@ final class ChangelogService
             'description' => trim((string) ($row['description'] ?? '')),
             'content' => $this->validator->normalizeContentJson($row['content_json'] ?? null),
             'status' => trim((string) ($row['status'] ?? 'published')),
+            'channel' => strtoupper(trim((string) ($row['channel'] ?? 'BOTH'))),
             'createdAt' => $row['created_at'] ?? null,
             'updatedAt' => $row['updated_at'] ?? null,
             'createdBy' => [

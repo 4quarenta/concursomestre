@@ -40,6 +40,7 @@ const emptyDraft = (): ChangelogDraft => ({
   description: '',
   content: [emptySection()],
   status: 'draft',
+  channel: 'BOTH',
 });
 
 const slugify = (value: string) => value
@@ -59,6 +60,7 @@ const entryToDraft = (entry: ChangelogEntry): ChangelogDraft => ({
   description: entry.description,
   content: entry.content.length > 0 ? entry.content : [emptySection()],
   status: entry.status,
+  channel: entry.channel ?? 'BOTH',
 });
 
 const labelClass = 'mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500';
@@ -232,6 +234,7 @@ export default function AdminChangelogEditPage() {
                 <div className={ADMIN_SURFACE_HEADER_CLASS}><h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Publicação</h2></div>
                 <div className="space-y-4 p-5">
                   <label><span className={labelClass}>Status</span><select className={`${ADMIN_FIELD_CLASS} w-full`} value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as ChangelogDraft['status'] }))}><option value="draft">Rascunho</option><option value="published">Publicado</option><option value="archived">Arquivado</option></select></label>
+                  <label><span className={labelClass}>Canal</span><select className={`${ADMIN_FIELD_CLASS} w-full`} value={draft.channel} onChange={(event) => setDraft((current) => ({ ...current, channel: event.target.value as ChangelogDraft['channel'] }))}><option value="WEB">Web</option><option value="APP">Aplicativo</option><option value="BOTH">Web e aplicativo</option></select></label>
                   <p className="text-xs leading-5 text-slate-500">Somente itens publicados aparecem em `/novidades`.</p>
                   {draft.id ? <button type="button" onClick={() => setArchiveOpen(true)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-red-200 text-sm font-bold text-red-600 hover:bg-red-50"><Trash2 size={15} /> Arquivar</button> : null}
                 </div>

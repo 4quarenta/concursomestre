@@ -5,6 +5,7 @@ declare(strict_types=1);
 final class ChangelogValidator
 {
     private const ENTRY_STATUSES = ['draft', 'published', 'archived'];
+    private const ENTRY_CHANNELS = ['WEB', 'APP', 'BOTH'];
     private const SUGGESTION_STATUSES = [
         'pending',
         'under_review',
@@ -48,9 +49,14 @@ final class ChangelogValidator
 
     public function validatePublicList(array $query): array
     {
+        $channel = strtoupper(trim((string) ($query['channel'] ?? 'WEB')));
+        if (!in_array($channel, self::ENTRY_CHANNELS, true)) {
+            throw new InvalidArgumentException('Canal de novidades invalido.');
+        }
         return [
             'page' => max(1, (int) ($query['page'] ?? 1)),
             'limit' => max(1, min(20, (int) ($query['limit'] ?? 8))),
+            'channel' => $channel,
         ];
     }
 
@@ -75,6 +81,7 @@ final class ChangelogValidator
         $description = trim((string) ($payload['description'] ?? ''));
         $slug = $this->slugify((string) ($payload['slug'] ?? $title));
         $status = strtolower(trim((string) ($payload['status'] ?? 'draft')));
+        $channel = strtoupper(trim((string) ($payload['channel'] ?? 'BOTH')));
         $releaseDate = $this->normalizeDate((string) ($payload['releaseDate'] ?? $payload['release_date'] ?? ''));
         $content = $this->normalizeContentJson($payload['content'] ?? $payload['content_json'] ?? []);
 
@@ -90,6 +97,9 @@ final class ChangelogValidator
         if (!in_array($status, self::ENTRY_STATUSES, true)) {
             throw new InvalidArgumentException('Status editorial invalido.');
         }
+        if (!in_array($channel, self::ENTRY_CHANNELS, true)) {
+            throw new InvalidArgumentException('Canal de novidades invalido.');
+        }
         if ($content === []) {
             throw new InvalidArgumentException('Adicione pelo menos uma mudanca.');
         }
@@ -103,6 +113,7 @@ final class ChangelogValidator
             'description' => $description,
             'content' => $content,
             'status' => $status,
+            'channel' => $channel,
         ];
     }
 

@@ -11,7 +11,7 @@
 *
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -527,6 +527,25 @@ const NoDataState = () => (
     <p className="mx-auto mt-2 max-w-xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
       Tente remover o filtro de cargo ou ano. O Raio-X precisa de questões vinculadas à banca para gerar uma leitura confiável.
     </p>
+  </div>
+);
+
+const AnalysisErrorState = ({ onRetry }: { onRetry: () => void }) => (
+  <div className={`${PANEL_CLASS} border-dashed px-6 py-14 text-center`}>
+    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 dark:bg-rose-500/10 dark:text-rose-300">
+      <AlertTriangle size={30} />
+    </div>
+    <h3 className="mt-5 text-lg font-black text-slate-900 dark:text-slate-100">Não foi possível concluir o Raio-X</h3>
+    <p className="mx-auto mt-2 max-w-xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+      A consulta falhou antes de gerar um diagnóstico. Tente novamente sem alterar os filtros.
+    </p>
+    <button
+      type="button"
+      onClick={onRetry}
+      className="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-indigo-600 px-4 text-xs font-black uppercase tracking-widest text-white hover:bg-indigo-700"
+    >
+      Tentar novamente
+    </button>
   </div>
 );
 
@@ -1077,6 +1096,8 @@ const BankAnalysis: React.FC = () => {
   const [bankDetails, setBankDetails] = useState<{ description?: string; website?: string } | null>(null);
   const [bankScrapedInfo, setBankScrapedInfo] = useState<{ emAndamento: BankIntelLink[]; realizados: BankIntelLink[] } | null>(null);
   const [isLoadingBankInfo, setIsLoadingBankInfo] = useState(false);
+  const [hasRequestedAnalysis, setHasRequestedAnalysis] = useState(false);
+  const [analysisError, setAnalysisError] = useState(false);
 
   const hasXRayAccess = hasPlanBenefit(currentUser, 'xray_banca', systemSettings.planEntitlements);
   const xrayRequiredPlan = getBenefitRequiredPlan('xray_banca', systemSettings.planEntitlements);
@@ -1107,35 +1128,50 @@ const BankAnalysis: React.FC = () => {
   const topTopics = useMemo(() => (stats ? flattenTopics(stats) : []), [stats]);
 
   useEffect(() => {
-    if (!selectedAgency || !hasXRayAccess) {
-      const resetFrame = window.requestAnimationFrame(() => {
-        setBankDetails(null);
-        setBankScrapedInfo(null);
-        setStats(null);
-        setIsAnalyzing(false);
-      });
+    const frameId = window.requestAnimationFrame(() => {
+      setHasRequestedAnalysis(false);
+      setStats(null);
+      setBankDetails(null);
+      setBankScrapedInfo(null);
+      setIsAnalyzing(false);
+      setAnalysisError(false);
+    });
 
-      return () => window.cancelAnimationFrame(resetFrame);
-    }
+    return () => window.cancelAnimationFrame(frameId);
+  }, [selectedAgency, selectedRole, selectedYear]);
+
+  const handleRunAnalysis = useCallback(() => {
+    if (!selectedAgency || !hasXRayAccess || isAnalyzing || hasRequestedAnalysis) return;
 
     let isActive = true;
     const agencyData = agencyOptions.find((agency) => getTaxonomyName(agency) === selectedAgency);
-    const initFrame = window.requestAnimationFrame(() => {
-      if (!isActive) return;
-      setIsAnalyzing(true);
-      setProgress(0);
-      setLoadingText('Conectando à base de questões...');
-      setStats(null);
-      setBankDetails(agencyData ? { description: agencyData.description, website: agencyData.website } : null);
-      setBankScrapedInfo(null);
-      setIsLoadingBankInfo(Boolean(agencyData?.website));
-    });
+    setHasRequestedAnalysis(true);
+    setAnalysisError(false);
+    setIsAnalyzing(true);
+    setProgress(0);
+    setLoadingText('Conectando à base de questões...');
+    setBankDetails(agencyData ? { description: agencyData.description, website: agencyData.website } : null);
+    setIsLoadingBankInfo(Boolean(agencyData?.website));
+
+    const steps = [
+      { pct: 20, text: 'Varrendo questões da banca...' },
+      { pct: 45, text: 'Medindo concentração por matéria...' },
+      { pct: 70, text: 'Cruzando tópicos, dificuldade e contexto...' },
+      { pct: 90, text: 'Montando diagnóstico estratégico...' },
+    ];
+    let currentStep = 0;
+    const interval = window.setInterval(() => {
+      if (currentStep < steps.length) {
+        setProgress(steps[currentStep].pct);
+        setLoadingText(steps[currentStep].text);
+        currentStep += 1;
+      }
+    }, 450);
 
     if (agencyData?.website) {
       bankAnalysisService.getBankIntel(agencyData.website)
         .then((data) => {
-          if (!isActive) return;
-          setBankScrapedInfo({ emAndamento: data.emAndamento || [], realizados: data.realizados || [] });
+          if (isActive) setBankScrapedInfo({ emAndamento: data.emAndamento || [], realizados: data.realizados || [] });
         })
         .catch((error) => {
           clientLog.warn('Failed fetching bank intel', error);
@@ -1146,22 +1182,6 @@ const BankAnalysis: React.FC = () => {
         });
     }
 
-    const steps = [
-      { pct: 20, text: 'Varrendo questões da banca...' },
-      { pct: 45, text: 'Medindo concentração por matéria...' },
-      { pct: 70, text: 'Cruzando tópicos, dificuldade e contexto...' },
-      { pct: 90, text: 'Montando diagnóstico estratégico...' },
-    ];
-    let currentStep = 0;
-
-    const interval = window.setInterval(() => {
-      if (currentStep < steps.length) {
-        setProgress(steps[currentStep].pct);
-        setLoadingText(steps[currentStep].text);
-        currentStep += 1;
-      }
-    }, 450);
-
     bankAnalysisService.getXrayStats({
       banca: selectedAgency,
       cargo: selectedRole || undefined,
@@ -1171,27 +1191,23 @@ const BankAnalysis: React.FC = () => {
       window.clearInterval(interval);
       setProgress(100);
       setLoadingText('Diagnóstico concluído');
-      window.setTimeout(() => {
-        if (!isActive) return;
-        setStats(data);
-        setIsAnalyzing(false);
-      }, 350);
+      setStats(data);
+      setIsAnalyzing(false);
     }).catch((error) => {
       if (!isActive) return;
       clientLog.warn('Failed to fetch xray stats', error);
       window.clearInterval(interval);
       setLoadingText('Erro na análise.');
-      window.setTimeout(() => {
-        if (isActive) setIsAnalyzing(false);
-      }, 900);
+      setHasRequestedAnalysis(false);
+      setAnalysisError(true);
+      setIsAnalyzing(false);
     });
 
     return () => {
       isActive = false;
-      window.cancelAnimationFrame(initFrame);
       window.clearInterval(interval);
     };
-  }, [agencyOptions, hasXRayAccess, selectedAgency, selectedRole, selectedYear]);
+  }, [agencyOptions, hasRequestedAnalysis, hasXRayAccess, isAnalyzing, selectedAgency, selectedRole, selectedYear]);
 
   if (!hasXRayAccess) {
     return (
@@ -1262,10 +1278,28 @@ const BankAnalysis: React.FC = () => {
             {years.map((year) => <option key={year} value={year}>{year}</option>)}
           </SelectField>
         </div>
+        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            A seleção não inicia a análise. Escolha os filtros e confirme quando quiser consultar os dados.
+          </p>
+          <button
+            type="button"
+            onClick={handleRunAnalysis}
+            disabled={!selectedAgency || isAnalyzing || hasRequestedAnalysis}
+            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isAnalyzing ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
+            {isAnalyzing ? 'Analisando...' : 'Realizar Raio-X'}
+          </button>
+        </div>
       </section>
 
       {!selectedAgency ? (
         <EmptyAnalysisState />
+      ) : !hasRequestedAnalysis ? (
+        <EmptyAnalysisState />
+      ) : analysisError ? (
+        <AnalysisErrorState onRetry={handleRunAnalysis} />
       ) : isAnalyzing ? (
         <XrayLoadingState loadingText={loadingText} progress={progress} />
       ) : stats && stats.total > 0 && diagnosis ? (

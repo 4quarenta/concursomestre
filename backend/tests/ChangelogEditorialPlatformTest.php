@@ -19,6 +19,7 @@ $entry = $validator->validateSave([
     'description' => 'Os filtros foram reorganizados para encontrar conteudo com menos passos.',
     'releaseDate' => '2026-08-10',
     'status' => 'published',
+    'channel' => 'APP',
     'content' => [[
         'title' => 'O que mudou',
         'icon' => 'Sparkles',
@@ -26,6 +27,7 @@ $entry = $validator->validateSave([
     ]],
 ]);
 assertChangelogEditorial($entry['slug'] === 'agora-ficou-mais-facil-revisar-questoes', 'The slug must be canonical.');
+assertChangelogEditorial($entry['channel'] === 'APP', 'The editorial channel must be validated and preserved.');
 assertChangelogEditorial(count($entry['content']) === 1, 'At least one user-facing section must be preserved.');
 
 $suggestion = $validator->validateSuggestionUpdate(['id' => 7, 'status' => 'completed']);
@@ -53,6 +55,8 @@ foreach (['requireAdminSessionContext', 'handleChangelogAdminSaveRoute', 'handle
 
 $repository = (string) file_get_contents($backend . '/modules/changelog/repositories/ChangelogRepository.php');
 assertChangelogEditorial(str_contains($repository, "status = 'published'"), 'The public query must serialize only published entries.');
+assertChangelogEditorial(str_contains($repository, 'content_json, channel'), 'The public query must expose the persisted audience channel.');
+assertChangelogEditorial(str_contains($repository, "channel = 'BOTH'"), 'The public query must include entries shared across channels.');
 assertChangelogEditorial(str_contains($repository, "f.type = 'suggestion'"), 'The suggestion queue must only include suggestions.');
 assertChangelogEditorial(str_contains($repository, 'f.platform_version'), 'The suggestion queue must expose its platform version snapshot.');
 assertChangelogEditorial(str_contains($repository, 'LIMIT :limit OFFSET :offset'), 'Admin queues must be paginated.');

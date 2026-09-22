@@ -120,6 +120,14 @@ export const FAQ_DATA: FaqCategory[] = [
         q: 'Como altero minha forma de pagamento?',
         a: 'A área de assinatura e cobrança no perfil concentra dados de plano, status de recorrência e métodos de pagamento suportados pela plataforma.',
       },
+      {
+        q: 'O que acontece se uma cobrança mensal falhar?',
+        a: 'A assinatura segue o estado informado na área de cobrança enquanto a plataforma processa novas tentativas e a reconciliação. O acesso e eventuais benefícios obedecem ao estado confirmado, sem garantia de manutenção indefinida após uma situação terminal.',
+      },
+      {
+        q: 'Posso reativar uma assinatura cancelada?',
+        a: 'Quando essa opção estiver disponível para a assinatura, use Perfil > Assinatura. A tela informa se a reativação ainda é permitida e qual será o próximo ciclo.',
+      },
     ],
   },
   {
@@ -141,6 +149,14 @@ export const FAQ_DATA: FaqCategory[] = [
       {
         q: 'Meus dados de pagamento estão seguros?',
         a: 'Sim. O processamento usa provedores oficiais e a plataforma evita armazenar dados sensíveis completos de cartão.',
+      },
+      {
+        q: 'Como crio uma conta e verifico meu e-mail?',
+        a: 'Use o cadastro com seus dados reais e confirme o link enviado para o e-mail informado. Recursos que exigem conta verificada permanecem bloqueados até a confirmação.',
+      },
+      {
+        q: 'Como redefino minha senha?',
+        a: 'Na tela de login, solicite a redefinição com o e-mail da conta. O link tem validade limitada e só pode ser usado uma vez. Se não chegar, confira spam e solicite um novo link sem compartilhar o token.',
       },
     ],
   },
@@ -183,6 +199,10 @@ export const FAQ_DATA: FaqCategory[] = [
       {
         q: 'Como avalio a plataforma?',
         a: 'No perfil, use Avaliar plataforma. O modal mostra suas avaliações anteriores e envia uma nova avaliação para revisão administrativa.',
+      },
+      {
+        q: 'Existe aplicativo móvel?',
+        a: 'Use o aplicativo móvel apenas quando ele estiver disponível pelos canais oficiais informados pela plataforma. Recursos ou integrações ainda não ativados não são considerados disponíveis.',
       },
     ],
   },

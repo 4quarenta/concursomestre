@@ -64,7 +64,7 @@ const shouldReplaceVisiblePlan = (current: Plan, candidate: Plan, cycle: Billing
 };
 
 const PlansPage: React.FC = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, isLoading: isAuthLoading } = useAuth();
     const systemSettings = useAppConfigStore((state) => state.systemSettings);
     const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
     const { addToast } = useToast();
@@ -88,12 +88,17 @@ const PlansPage: React.FC = () => {
     }, [addToast]);
 
     useEffect(() => {
+        if (!isAuthLoading && !currentUser) {
+            router.replace('/auth?mode=login&redirect=%2Fplans');
+            return;
+        }
+
         const timerId = window.setTimeout(() => {
-            void loadPlans();
+            if (!isAuthLoading && currentUser) void loadPlans();
         }, 0);
 
         return () => window.clearTimeout(timerId);
-    }, [loadPlans]);
+    }, [currentUser, isAuthLoading, loadPlans, router]);
 
     const planDisplayNames = useMemo(() => {
         return plans.reduce<Record<number, string>>((accumulator, plan) => {
@@ -234,7 +239,7 @@ const PlansPage: React.FC = () => {
         router.push(`/checkout/${plan.id}`);
     };
 
-    if (loading || !isSystemSettingsLoaded) {
+    if (isAuthLoading || !currentUser || loading || !isSystemSettingsLoaded) {
         return (
             <div className="flex items-center justify-center py-20">
                 <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-indigo-500" />

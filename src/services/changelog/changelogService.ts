@@ -8,6 +8,7 @@ export type ChangelogSection = {
 };
 
 export type ChangelogStatus = 'draft' | 'published' | 'archived';
+export type ChangelogChannel = 'WEB' | 'APP' | 'BOTH';
 
 export type ChangelogEntry = {
   id: number;
@@ -19,6 +20,7 @@ export type ChangelogEntry = {
   description: string;
   content: ChangelogSection[];
   status: ChangelogStatus;
+  channel?: ChangelogChannel;
   createdAt?: string | null;
   updatedAt?: string | null;
   createdBy?: { id: string | null; name: string | null };
@@ -28,7 +30,7 @@ export type ChangelogEntry = {
 export type ChangelogDraft = Pick<
   ChangelogEntry,
   'title' | 'slug' | 'releaseDate' | 'description' | 'content' | 'status'
-> & { id: number | null; version?: string };
+> & { id: number | null; version?: string; channel: ChangelogChannel };
 
 export type ChangelogPage = {
   items: ChangelogEntry[];
@@ -88,6 +90,7 @@ export const BASELINE_1_0_0_CHANGELOG: ChangelogEntry = {
   title: 'O ConcursoMestre está no ar',
   description: 'A primeira versão pública reúne as principais ferramentas para organizar seus estudos e acompanhar seu desempenho.',
   status: 'published',
+  channel: 'BOTH',
   content: [
     {
       title: 'Estudo mais completo',

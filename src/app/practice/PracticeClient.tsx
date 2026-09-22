@@ -1106,7 +1106,8 @@ const Practice: React.FC<PracticeProps> = ({
   const [pendingFilters, setPendingFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
   const [isFiltering, setIsFiltering] = useState(false);
   const [filterTimestamp, setFilterTimestamp] = useState(0); // Force reset on filter
-  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  // List is the neutral default. An explicit server preference is applied below.
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -1122,7 +1123,7 @@ const Practice: React.FC<PracticeProps> = ({
   const hasBootstrappedQuestionsRef = useRef('');
   const bootstrapRequestIdRef = useRef(0);
   const hasHydratedInitialPageRef = useRef(false);
-  const hasAppliedPreferredViewRef = useRef(false);
+  const appliedPreferredViewUserIdRef = useRef<string | null>(null);
   const loaderRef = useRef<HTMLDivElement>(null);
   const loadMoreRequestRef = useRef(false);
   const pageRootRef = useRef<HTMLDivElement>(null);
@@ -1173,13 +1174,16 @@ const Practice: React.FC<PracticeProps> = ({
   }, [sanitizeFiltersForCurrentPlan]);
 
   useEffect(() => {
-    if (!currentUser?.id || hasAppliedPreferredViewRef.current) {
+    if (!currentUser?.id) {
+      appliedPreferredViewUserIdRef.current = null;
       return;
     }
 
+    if (appliedPreferredViewUserIdRef.current === currentUser.id) return;
+    appliedPreferredViewUserIdRef.current = currentUser.id;
+
     const preferredView = currentUser.preferences?.defaultPracticeView;
     if (preferredView === 'list' || preferredView === 'card') {
-      hasAppliedPreferredViewRef.current = true;
       const frameId = window.requestAnimationFrame(() => setViewMode(preferredView));
       return () => window.cancelAnimationFrame(frameId);
     }
@@ -2436,6 +2440,24 @@ const Practice: React.FC<PracticeProps> = ({
               </button>
             </div>
           )
+        ) : paginatedList.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-10 sm:p-14 md:p-20 text-center space-y-4 transition-colors duration-300">
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-full w-fit mx-auto text-slate-300 dark:text-slate-600"><Search size={48} /></div>
+            <h3 className="text-xl font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Nenhuma questão encontrada</h3>
+            <p className="text-sm text-slate-400 dark:text-slate-600 max-w-xs mx-auto mb-6">Tente ajustar seus filtros para encontrar o que procura.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setFilters(DEFAULT_FILTERS);
+                setPendingFilters(DEFAULT_FILTERS);
+                setLastFetchedPage(1);
+                void ensureQuestionsLoaded(true, {});
+              }}
+              className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
+            >
+              Limpar Filtros
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
             {paginatedList.map((q, i) => (

@@ -10,7 +10,7 @@
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import { filtersService, type AdminFilterListItem } from '@services/filters';
 import type {
@@ -41,6 +41,7 @@ interface AdminFeaturedOrganizationsManagerProps {
 
 const inputClassName = `w-full ${ADMIN_FIELD_CLASS}`;
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
+const normalizeOrganizationSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
 const createDraftOrganization = (filterId: number): LandingFeaturedOrganization => ({
   id: `orgao-draft-${filterId}-${Date.now()}`,
@@ -67,12 +68,20 @@ const AdminFeaturedOrganizationsManager = ({
   ));
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [organizationSearch, setOrganizationSearch] = useState('');
+  const [organizationPage, setOrganizationPage] = useState(1);
+  const [organizationPages, setOrganizationPages] = useState(1);
 
   useEffect(() => {
     let active = true;
-    void filtersService.listAdminPage({ page: 1, perPage: 100, type: 'orgao' })
+    const timerId = window.setTimeout(() => {
+      setIsLoading(true);
+      void filtersService.listAdminPage({ page: organizationPage, perPage: 20, type: 'orgao', search: normalizeOrganizationSearch(organizationSearch) })
       .then((page) => {
-        if (active) setOrganizations(page.rows.filter((item) => item.type === 'orgao'));
+        if (active) {
+          setOrganizations(page.rows.filter((item) => item.type === 'orgao'));
+          setOrganizationPages(Math.max(1, page.pages));
+        }
       })
       .catch(() => {
         if (active) addToast('Nao foi possivel carregar os orgaos para configuracao.', 'error');
@@ -80,11 +89,10 @@ const AdminFeaturedOrganizationsManager = ({
       .finally(() => {
         if (active) setIsLoading(false);
       });
+    }, 250);
 
-    return () => {
-      active = false;
-    };
-  }, [addToast]);
+    return () => { active = false; window.clearTimeout(timerId); };
+  }, [addToast, organizationPage, organizationSearch]);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -111,6 +119,11 @@ const AdminFeaturedOrganizationsManager = ({
   };
 
   const save = async () => {
+    const ids = draftItems.map((item) => item.filterId).filter((id) => id > 0);
+    if (ids.length !== draftItems.length || new Set(ids).size !== ids.length) {
+      addToast('Selecione órgãos canônicos sem repetir identificadores.', 'warning');
+      return;
+    }
     setIsSaving(true);
     try {
       const current = mergeLandingPageContent(systemSettings.landingPageContent);
@@ -142,7 +155,7 @@ const AdminFeaturedOrganizationsManager = ({
             <span className="rounded-sm border border-slate-300 bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300">
               {enabledCount} ativos
             </span>
-            <button type="button" onClick={addItem} disabled={isLoading || draftItems.length >= 6} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
+            <button type="button" onClick={addItem} disabled={isLoading || organizations.length === 0 || draftItems.length >= 6} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
               <Plus size={14} />
               Adicionar orgao
             </button>
@@ -154,6 +167,22 @@ const AdminFeaturedOrganizationsManager = ({
             O logo oficial é resolvido pela taxonomia de órgão selecionada; esta configuração editorial não aceita slug livre nem hotlink.
           </p>
         </div>
+      </section>
+
+      <section className={ADMIN_PAGE_PANEL_CLASS}>
+        <label className={labelClassName} htmlFor="featured-orgao-search">Buscar no diretório canônico</label>
+        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input id="featured-orgao-search" value={organizationSearch} onChange={(event) => { setOrganizationSearch(event.target.value); setOrganizationPage(1); }} className={`${inputClassName} pl-9`} placeholder="Nome ou sigla, com ou sem acento" />
+          </div>
+          <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+            <button type="button" aria-label="Página anterior de órgãos" title="Página anterior" disabled={organizationPage <= 1 || isLoading} onClick={() => setOrganizationPage((page) => Math.max(1, page - 1))} className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-slate-300 disabled:opacity-40 dark:border-slate-700"><ChevronLeft size={15} /></button>
+            <span>Página {organizationPage} de {organizationPages}</span>
+            <button type="button" aria-label="Próxima página de órgãos" title="Próxima página" disabled={organizationPage >= organizationPages || isLoading} onClick={() => setOrganizationPage((page) => Math.min(organizationPages, page + 1))} className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-slate-300 disabled:opacity-40 dark:border-slate-700"><ChevronRight size={15} /></button>
+          </div>
+        </div>
+        {!isLoading && organizations.length === 0 ? <p className="mt-3 text-sm font-medium text-amber-700 dark:text-amber-300">Nenhum órgão aprovado foi encontrado no diretório atual. Não há dados suficientes para fabricar uma seleção.</p> : null}
       </section>
 
       {draftItems.map((item, index) => {
@@ -217,7 +246,7 @@ const AdminFeaturedOrganizationsManager = ({
 
       {!isLoading && draftItems.length === 0 ? (
         <div className={`p-5 text-sm font-medium text-slate-600 dark:text-slate-300 ${ADMIN_MUTED_SURFACE_CLASS}`}>
-          Nenhum orgao foi selecionado para a vitrine.
+          Nenhum órgão foi selecionado para a vitrine. A home permanecerá sem esta seção até que exista um órgão canônico aprovado.
         </div>
       ) : null}
 

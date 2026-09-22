@@ -15,6 +15,7 @@
 export { changelogService } from './changelogService';
 export type {
   ChangelogDraft,
+  ChangelogChannel,
   ChangelogEntry,
   ChangelogPage,
   ChangelogSection,
