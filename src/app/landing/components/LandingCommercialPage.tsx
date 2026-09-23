@@ -504,9 +504,9 @@ const PlatformMockup = ({ themeId }: { themeId: SystemSettings['activeTheme'] })
                       <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--cm-theme-accent)] text-xs font-black text-[var(--cm-theme-accent-ink)]">
                         {index + 1}
                       </span>
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-[11px] font-black text-[var(--cm-theme-header-ink)]">{title}</p>
-                        <p className="text-[10px] font-semibold text-[var(--cm-theme-muted)]">{label}</p>
+                        <p className="truncate text-[10px] font-semibold text-[var(--cm-theme-muted)]">{label}</p>
                       </div>
                     </div>
                   ))}
@@ -529,9 +529,9 @@ const PlatformMockup = ({ themeId }: { themeId: SystemSettings['activeTheme'] })
         <div className="mt-4 space-y-3">
           {content.mobileItems.map(([title, label, progress]) => (
             <div key={title}>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center justify-between gap-2">
                 <p className="truncate text-[10px] font-bold text-[var(--cm-theme-header-ink)]">{title}</p>
-                <p className="text-[8px] font-black text-[var(--cm-theme-muted)]">{label}</p>
+                <p className="max-w-[48%] truncate text-[8px] font-black text-[var(--cm-theme-muted)]">{label}</p>
               </div>
               <div className="mt-1 h-1.5 rounded-full bg-[var(--cm-theme-accent-soft)]">
                 <div className="h-full rounded-full bg-[var(--cm-theme-accent)]" style={{ width: progress }} />
