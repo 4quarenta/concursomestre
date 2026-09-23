@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "product": "ConcursoMestre",
   "version": "1.0.0",
-  "revision": "post-go-theme-20260922",
-  "commit": "068359ec40bde9895d59c5c9341e7b04e3136573",
+  "revision": "post-go-canonical-orgao-20260923",
+  "commit": "2fa5e14d3f10661cdff79fc7b7f2fb5bdbc7036f",
   "gitDirty": false,
-  "generatedAt": "2026-09-23T02:44:30.160Z",
+  "generatedAt": "2026-09-23T03:03:21.199Z",
   "runtime": {
     "node": "v24.20.0",
     "nodeMinimum": "20.19.0",
