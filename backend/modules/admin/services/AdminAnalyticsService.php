@@ -526,6 +526,12 @@ class AdminAnalyticsService
             $totalInstallments = max(1, (int) ($subscription['total_installments'] ?? 1));
             $cycleMetadataInstallments = $totalInstallments;
             $paidInstallments = max(0, (int) ($subscription['paid_installments'] ?? 0));
+            $paidInstallments = $this->resolveProjectionPaidInstallments(
+                $subscription,
+                $paidInstallments,
+                $totalInstallments,
+                $transactions
+            );
             $remainingInstallments = max(0, $totalInstallments - $paidInstallments);
             $autoRenew = (int) ($subscription['auto_renew'] ?? 0) === 1;
             $cancelAtPeriodEnd = (int) ($subscription['cancel_at_period_end'] ?? 0) === 1;
@@ -741,6 +747,66 @@ class AdminAnalyticsService
             'breakdownByMonth' => array_values($monthlyBreakdown),
             'items' => array_values($items),
         ];
+    }
+
+    private function resolveProjectionPaidInstallments(
+        array $subscription,
+        int $storedPaidInstallments,
+        int $totalInstallments,
+        array $transactions
+    ): int {
+        $subscriptionUserId = trim((string) ($subscription['user_id'] ?? ''));
+        $subscriptionPlanId = trim((string) ($subscription['plan_id'] ?? ''));
+        $periodStartValue = $subscription['current_period_start']
+            ?? $subscription['provider_current_period_start']
+            ?? null;
+        $periodStart = null;
+        if ($periodStartValue !== null && trim((string) $periodStartValue) !== '') {
+            try {
+                $periodStart = $this->parseProjectionDate($periodStartValue);
+            } catch (\Throwable) {
+                $periodStart = null;
+            }
+        }
+        $paidEvidenceKeys = [];
+
+        foreach ($transactions as $transaction) {
+            if (!$this->transactionIsProjectionPaidEvidence($transaction)) {
+                continue;
+            }
+
+            if ($subscriptionUserId !== '' && trim((string) ($transaction['user_id'] ?? '')) !== $subscriptionUserId) {
+                continue;
+            }
+
+            $transactionPlanId = trim((string) ($transaction['plan_id'] ?? ''));
+            if ($subscriptionPlanId !== '' && $transactionPlanId !== '' && $transactionPlanId !== $subscriptionPlanId) {
+                continue;
+            }
+
+            $createdAt = trim((string) ($transaction['created_at'] ?? ''));
+            if ($createdAt !== '') {
+                try {
+                    if ($periodStart instanceof \DateTimeImmutable && new \DateTimeImmutable($createdAt) < $periodStart) {
+                        continue;
+                    }
+                } catch (\Throwable) {
+                    // An invalid optional timestamp must not erase valid payment evidence.
+                }
+            }
+
+            $evidenceKey = trim((string) (
+                $transaction['provider_invoice_id']
+                ?? $transaction['provider_payment_intent_id']
+                ?? $transaction['id']
+                ?? ''
+            ));
+            if ($evidenceKey !== '') {
+                $paidEvidenceKeys[$evidenceKey] = true;
+            }
+        }
+
+        return min($totalInstallments, max($storedPaidInstallments, count($paidEvidenceKeys)));
     }
 
     private function buildProjectionPaidEvidenceLookup(array $transactions): array

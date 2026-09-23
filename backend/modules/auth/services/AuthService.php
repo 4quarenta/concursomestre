@@ -19,6 +19,7 @@ require_once __DIR__ . '/../../../shared/communications/CommunicationService.php
 require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
 require_once __DIR__ . '/../../../shared/auth/GoogleAuthenticator.php';
 require_once __DIR__ . '/../../../shared/legal/LegalAcceptance.php';
+require_once __DIR__ . '/../../../shared/billing/BillingAccountAccessPolicy.php';
 require_once __DIR__ . '/../../../config/payment_provider.php';
 require_once __DIR__ . '/../../users/services/UsersService.php';
 require_once __DIR__ . '/../../users/repositories/UsersRepository.php';
@@ -119,6 +120,11 @@ class AuthService
         if (!$user || !password_verify($normalized['password'], (string) ($user['password_hash'] ?? ''))) {
             throw new RuntimeException('Invalid email or password');
         }
+
+        BillingAccountAccessPolicy::assertCanAuthenticate(
+            $this->repository->getConnection(),
+            (string) $user['id']
+        );
 
         if ($this->shouldRequireTwoFactor($user)) {
             return [
@@ -255,6 +261,11 @@ class AuthService
         ], $nativeClient, 'auth_registration', !$nativeClient);
 
         $emailDelivery = $this->sendVerificationEmail($normalized['email'], $normalized['name'], $verificationToken);
+        $this->repository->markEmailVerificationDelivery(
+            $verificationToken,
+            (string) ($emailDelivery['status'] ?? 'failed'),
+            !empty($emailDelivery['reason']) ? (string) $emailDelivery['reason'] : null
+        );
 
         $response = array_merge($this->buildAuthenticatedSessionPayload($newUserId), [
             'token' => $tokenData['token'],
@@ -420,6 +431,11 @@ class AuthService
         if (!$user) {
             throw new RuntimeException('Nao foi possivel localizar a conta autenticada pelo Google.');
         }
+
+        BillingAccountAccessPolicy::assertCanAuthenticate(
+            $this->repository->getConnection(),
+            (string) $user['id']
+        );
 
         if ($this->shouldRequireTwoFactor($user)) {
             return [
@@ -692,6 +708,11 @@ class AuthService
             throw new RuntimeException('Nao foi possivel localizar a conta autenticada pelo provedor social.');
         }
 
+        BillingAccountAccessPolicy::assertCanAuthenticate(
+            $this->repository->getConnection(),
+            (string) $user['id']
+        );
+
         if ($this->shouldRequireTwoFactor($user)) {
             return [
                 'require2FA' => true,
@@ -910,10 +931,11 @@ class AuthService
         }
 
         $token = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $token);
         $expiresAt = date('Y-m-d H:i:s', time() + 3600);
 
         $this->repository->deletePasswordResetsByUserId((string) $user['id']);
-        $this->repository->createPasswordReset((string) $user['id'], $token, $expiresAt);
+        $this->repository->createPasswordReset((string) $user['id'], $tokenHash, $expiresAt);
 
         $appUrl = $this->resolveAppUrl();
         $resetUrl = $appUrl . '/reset-password?token=' . urlencode($token) . '&email=' . urlencode((string) $normalized['email']);
@@ -946,7 +968,7 @@ class AuthService
         if ($template['enabled']) {
             CommunicationService::queueEmail($this->repository->getConnection(), [
                 'eventType' => 'auth.password.reset',
-                'idempotencyKey' => 'auth-password-reset:' . (string) $user['id'] . ':' . (string) $token,
+                'idempotencyKey' => 'auth-password-reset:' . (string) $user['id'] . ':' . $tokenHash,
                 'recipientUserId' => (string) $user['id'],
                 'recipientEmail' => (string) $normalized['email'],
                 'recipientName' => (string) $user['name'],
@@ -956,7 +978,7 @@ class AuthService
                 'templateKey' => 'auth_password_reset',
                 'category' => 'account',
                 'entityType' => 'password_reset',
-                'entityId' => (string) $token,
+                'entityId' => $tokenHash,
             ]);
         }
 

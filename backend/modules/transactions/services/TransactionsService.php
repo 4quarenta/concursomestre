@@ -1736,6 +1736,7 @@ class TransactionsService
         }
         $nextChargeAt = date('Y-m-d H:i:s', $nextChargeTimestamp);
 
+        $paidEvidenceKeys = [];
         $occupiedFutureSlotKeys = [];
 
         foreach ($existingTransactions as $transaction) {
@@ -1751,17 +1752,39 @@ class TransactionsService
                 continue;
             }
 
+            $candidateTimestamp = 0;
+            if (!$candidateTimestamp && !empty($transaction['createdAt'])) {
+                $candidateTimestamp = strtotime((string) $transaction['createdAt']);
+            }
+
             $normalizedStatus = strtolower((string) ($transaction['status'] ?? ''));
-            if (in_array($normalizedStatus, ['approved', 'completed', 'refunded', 'refund_requested'], true)) {
+            if (in_array($normalizedStatus, ['approved', 'completed'], true)) {
+                if ($currentPeriodStartTimestamp && $candidateTimestamp && $candidateTimestamp < $currentPeriodStartTimestamp) {
+                    continue;
+                }
+
+                $paidEvidenceKey = trim((string) (
+                    $transaction['providerInvoiceId']
+                    ?? $transaction['providerPaymentIntentId']
+                    ?? $transaction['externalId']
+                    ?? ''
+                ));
+                if ($paidEvidenceKey === '' && $candidateTimestamp) {
+                    $paidEvidenceKey = date('Y-m-d H:i:s', $candidateTimestamp)
+                        . ':' . number_format((float) ($transaction['amount'] ?? 0), 2, '.', '');
+                }
+                if ($paidEvidenceKey !== '') {
+                    $paidEvidenceKeys[$paidEvidenceKey] = true;
+                }
                 continue;
             }
 
-            $candidateTimestamp = 0;
-            if (!empty($transaction['dueDate'])) {
-                $candidateTimestamp = strtotime((string) $transaction['dueDate']);
+            if (in_array($normalizedStatus, ['refunded', 'refund_requested'], true)) {
+                continue;
             }
-            if (!$candidateTimestamp && !empty($transaction['createdAt'])) {
-                $candidateTimestamp = strtotime((string) $transaction['createdAt']);
+
+            if (!$candidateTimestamp && !empty($transaction['dueDate'])) {
+                $candidateTimestamp = strtotime((string) $transaction['dueDate']);
             }
 
             if ($currentPeriodStartTimestamp && $candidateTimestamp && $candidateTimestamp < $currentPeriodStartTimestamp) {
@@ -1776,6 +1799,14 @@ class TransactionsService
             }
         }
 
+        // The webhook normally advances paid_installments, but the history
+        // endpoint can race that update. Successful local Stripe evidence is
+        // authoritative for presentation and prevents one paid cycle from
+        // producing an extra future projection.
+        $paidInstallments = min(
+            $totalInstallments,
+            max($paidInstallments, count($paidEvidenceKeys))
+        );
         $occupiedFutureSlots = count($occupiedFutureSlotKeys);
         $remainingInstallments = max(0, $totalInstallments - $paidInstallments - $occupiedFutureSlots);
         if ($remainingInstallments <= 0) {

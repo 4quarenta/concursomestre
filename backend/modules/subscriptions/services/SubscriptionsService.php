@@ -28,6 +28,7 @@ require_once __DIR__ . '/SubscriptionsBillingSupport.php';
 require_once __DIR__ . '/StripePaymentApprovalValidator.php';
 require_once __DIR__ . '/SubscriptionsAutomationService.php';
 require_once __DIR__ . '/../../users/services/UsersCardsStripeSupport.php';
+require_once __DIR__ . '/../../../shared/billing/BillingAccountAccessPolicy.php';
 
 use Stripe\Webhook;
 
@@ -2560,6 +2561,8 @@ class SubscriptionsService
             $summary['rows'][] = $localRow;
         }
 
+        $summary['account_access_restrictions'] = BillingAccountAccessPolicy::blockExpiredIfInstalled($this->db, 100);
+
         if (!stripeIsConfigured()) {
             $this->writeSubscriptionCronHeartbeat($summary, false, 'Stripe nao configurado.');
             throw new RuntimeException('Stripe nao configurado.');
@@ -2715,7 +2718,7 @@ class SubscriptionsService
                         (string) ($metadata['plan_name'] ?? $subscriptionRow['plan_name'] ?? 'Assinatura')
                     );
                 } elseif (in_array((string) $subscriptionRow['status'], ['past_due', 'incomplete'], true)) {
-                    $this->revokeUserAccessFromStripeSubscription($subscriptionRow);
+                    $this->preserveAccessDuringBillingGraceOrRevoke($subscriptionRow);
                 }
 
                 $localSubscriptionStatus = strtolower(trim((string) ($subscriptionRow['status'] ?? '')));
@@ -2845,7 +2848,8 @@ class SubscriptionsService
                         if ((string) ($subscriptionRow['status'] ?? '') !== 'past_due') {
                             $this->repository->updateSubscriptionStatusById((int) $subscriptionRow['id'], 'past_due');
                             $subscriptionRow['status'] = 'past_due';
-                            $this->revokeUserAccessFromStripeSubscription($subscriptionRow);
+                            BillingAccountAccessPolicy::recordFailureIfInstalled($this->db, (string) $subscriptionRow['user_id'], (int) ($subscriptionRow['id'] ?? 0) ?: null, (string) ($latestInvoice->id ?? ''));
+                            $this->preserveAccessDuringBillingGraceOrRevoke($subscriptionRow);
 
                             createNotification(
                                 $this->db,
@@ -4082,6 +4086,8 @@ class SubscriptionsService
             (string) ($metadata['plan_name'] ?? $localSubscription['plan_name'] ?? 'Assinatura')
         );
 
+        BillingAccountAccessPolicy::resolveIfInstalled($this->db, (string) $localSubscription['user_id'], 'invoice_paid');
+
         $user = $this->repository->findUserById((string) $localSubscription['user_id']);
         $transaction = findStripeTransactionByInvoiceId($this->db, (string) ($invoice->id ?? ''));
         $paidAmount = round(((float) ($invoice->amount_paid ?? 0)) / 100, 2);
@@ -4217,7 +4223,11 @@ class SubscriptionsService
             $this->syncStripeInvoiceChargeDescription($stripe, $invoice, $localSubscription, $metadata);
         }
 
-        $this->markStripeInvoiceFailure($invoice, $localSubscription);
+        $this->markStripeInvoiceFailure(
+            $invoice,
+            $localSubscription,
+            $eventCreatedAt > 0 ? new DateTimeImmutable('@' . $eventCreatedAt) : null
+        );
 
         if ($localSubscription && !empty($localSubscription['superseded_by_subscription_id'])) {
             return;
@@ -4225,9 +4235,9 @@ class SubscriptionsService
 
         if ($localSubscription) {
             $failedAmount = round(((float) ($invoice->amount_due ?? 0)) / 100, 2);
-            $this->revokeUserAccessFromStripeSubscription($localSubscription);
             $localSubscription['status'] = 'past_due';
             $localSubscription = $this->refreshStripeRenewalProjection($localSubscription, false);
+            $this->preserveAccessDuringBillingGraceOrRevoke($localSubscription);
 
             if (!$wasPastDue) {
                 createNotification(
@@ -4902,6 +4912,21 @@ class SubscriptionsService
     }
 
     /**
+     * Falha de renovacao inicia a janela de 72h; nao remove o plano antes do
+     * bloqueio de conta. Cancelamento/expiracao continua usando a revogacao
+     * imediata normal.
+     */
+    private function preserveAccessDuringBillingGraceOrRevoke(array $subscriptionRow): void
+    {
+        if (BillingAccountAccessPolicy::isInGrace($this->db, (string) ($subscriptionRow['user_id'] ?? ''))) {
+            $this->updateUserAccessFromStripeSubscription($subscriptionRow, (string) ($subscriptionRow['plan_name'] ?? 'Assinatura'));
+            return;
+        }
+
+        $this->revokeUserAccessFromStripeSubscription($subscriptionRow);
+    }
+
+    /**
      * Cancela no provider contratos antigos substituidos por um upgrade pago.
      * A marcacao local permite que o cron repita o cancelamento caso a Stripe
      * esteja temporariamente indisponivel.
@@ -5449,7 +5474,7 @@ class SubscriptionsService
                 (string) ($metadata['plan_name'] ?? $localSubscription['plan_name'] ?? 'Assinatura')
             );
         } elseif (in_array((string) ($localSubscription['status'] ?? ''), ['past_due', 'incomplete'], true)) {
-            $this->revokeUserAccessFromStripeSubscription($localSubscription);
+            $this->preserveAccessDuringBillingGraceOrRevoke($localSubscription);
         }
 
         return $localSubscription;
@@ -5845,7 +5870,7 @@ class SubscriptionsService
      *
      * @since 1.0.0
      */
-    private function markStripeInvoiceFailure($invoice, ?array $localSubscription): void
+    private function markStripeInvoiceFailure($invoice, ?array $localSubscription, ?DateTimeImmutable $occurredAt = null): void
     {
         $invoiceId = (string) $invoice->id;
         $paymentIntentId = getStripeInvoicePaymentIntentId($invoice);
@@ -5859,6 +5884,8 @@ class SubscriptionsService
         if ($localSubscription && empty($localSubscription['superseded_by_subscription_id'])) {
             $this->db->prepare("UPDATE user_subscriptions SET status = 'past_due' WHERE id = :id")
                 ->execute([':id' => $localSubscription['id']]);
+
+            BillingAccountAccessPolicy::recordFailureIfInstalled($this->db, (string) $localSubscription['user_id'], (int) ($localSubscription['id'] ?? 0) ?: null, $invoiceId, $occurredAt);
         }
 
         $existing = $this->repository->findTransactionByProviderInvoiceId($invoiceId);

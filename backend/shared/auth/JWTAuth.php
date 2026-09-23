@@ -14,6 +14,7 @@
 require_once __DIR__ . '/../../config/env.php';
 require_once __DIR__ . '/AuthConfig.php';
 require_once __DIR__ . '/AuthLogger.php';
+require_once __DIR__ . '/../billing/BillingAccountAccessPolicy.php';
 
 class JWTAuth
 {
@@ -200,6 +201,10 @@ class JWTAuth
                 || in_array(strtolower((string) ($session['user_status'] ?? '')), ['deleted', 'pending_deletion'], true)
             ) {
                 return ['valid' => false, 'reason' => 'account_deletion_requested'];
+            }
+
+            if (BillingAccountAccessPolicy::isBlocked($db, (string) $session['user_id'])) {
+                return ['valid' => false, 'reason' => 'billing_account_blocked'];
             }
 
             if (!empty($session['expires_at'])) {

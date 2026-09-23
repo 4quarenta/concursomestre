@@ -715,15 +715,19 @@ class AuthRepository
      */
     public function findActivePasswordResetByToken(string $token): ?array
     {
+        $tokenHash = hash('sha256', $token);
         $stmt = $this->db->prepare(
             "SELECT user_id
              FROM password_resets
-             WHERE token = :token
+             WHERE (token = :token_hash OR token = :legacy_token)
                AND expires_at > NOW()
                AND used = 0
              LIMIT 1"
         );
-        $stmt->execute([':token' => $token]);
+        $stmt->execute([
+            ':token_hash' => $tokenHash,
+            ':legacy_token' => $token,
+        ]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return is_array($row) ? $row : null;
@@ -736,8 +740,15 @@ class AuthRepository
      */
     public function markPasswordResetAsUsed(string $token): void
     {
-        $stmt = $this->db->prepare('UPDATE password_resets SET used = 1 WHERE token = :token');
-        $stmt->execute([':token' => $token]);
+        $stmt = $this->db->prepare(
+            'UPDATE password_resets
+             SET used = 1
+             WHERE token = :token_hash OR token = :legacy_token'
+        );
+        $stmt->execute([
+            ':token_hash' => hash('sha256', $token),
+            ':legacy_token' => $token,
+        ]);
     }
 
     /**
@@ -774,13 +785,40 @@ class AuthRepository
      */
     public function createEmailVerification(string $userId, string $token, string $expiresAt): void
     {
-        $stmt = $this->db->prepare(
-            'INSERT INTO email_verifications (user_id, token, expires_at) VALUES (:user_id, :token, :expires_at)'
+        $hasDeliveryStatus = $this->tableColumnExists('email_verifications', 'delivery_status');
+        $stmt = $this->db->prepare($hasDeliveryStatus
+            ? "INSERT INTO email_verifications
+               (user_id, token, expires_at, delivery_status)
+               VALUES (:user_id, :token, :expires_at, 'pending')"
+            : 'INSERT INTO email_verifications (user_id, token, expires_at) VALUES (:user_id, :token, :expires_at)'
         );
         $stmt->execute([
             ':user_id' => $userId,
             ':token' => $token,
             ':expires_at' => $expiresAt,
+        ]);
+    }
+
+    /**
+     * Registra a disponibilidade do pipeline de verificacao sem persistir o
+     * token ou a mensagem de erro completa do provider.
+     */
+    public function markEmailVerificationDelivery(string $token, string $status, ?string $error = null): void
+    {
+        if (!$this->tableColumnExists('email_verifications', 'delivery_status')) {
+            return;
+        }
+        $stmt = $this->db->prepare(
+            'UPDATE email_verifications
+             SET delivery_status = :status,
+                 delivery_attempted_at = UTC_TIMESTAMP(),
+                 last_delivery_error = :error
+             WHERE token = :token'
+        );
+        $stmt->execute([
+            ':status' => substr(trim($status), 0, 24),
+            ':error' => $error !== null ? substr(trim($error), 0, 500) : null,
+            ':token' => $token,
         ]);
     }
 
@@ -907,6 +945,18 @@ class AuthRepository
         }
 
         $stmt = $this->db->query("SHOW COLUMNS FROM users LIKE " . $this->db->quote($column));
+        return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    private function tableColumnExists(string $table, string $column): bool
+    {
+        if (!preg_match('/^[a-z0-9_]+$/i', $table) || !preg_match('/^[a-z0-9_]+$/i', $column)) {
+            return false;
+        }
+
+        $stmt = $this->db->query(
+            "SHOW COLUMNS FROM `{$table}` LIKE " . $this->db->quote($column)
+        );
         return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
     }
 

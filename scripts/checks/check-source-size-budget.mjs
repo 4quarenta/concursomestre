@@ -6,7 +6,9 @@ import path from 'node:path';
 const hardLimit = 4500;
 const reviewThreshold = 4000;
 const knownDebt = new Map(Object.entries({
-  'backend/modules/subscriptions/services/SubscriptionsService.php': 7463,
+  // Post-go billing-access policy integration is intentionally retained in
+  // this existing authority until the planned service extraction.
+  'backend/modules/subscriptions/services/SubscriptionsService.php': 7490,
   'src/app/admin/components/import/useAdminImportWorkflow.ts': 7101,
   'src/app/profile/ProfilePage.tsx': 5919,
   'src/app/lei-comentada/[slug]/LawDetailClient.tsx': 5228,

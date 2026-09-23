@@ -17,6 +17,7 @@ require_once __DIR__ . '/AuthCookies.php';
 require_once __DIR__ . '/AuthLogger.php';
 require_once __DIR__ . '/../database/SchemaReadiness.php';
 require_once __DIR__ . '/../observability/RuntimeMutationEvidence.php';
+require_once __DIR__ . '/../billing/BillingAccountAccessPolicy.php';
 
 /**
  * Garante que as tabelas de sessão e refresh token existam antes de operar auth.
@@ -63,6 +64,7 @@ function getBearerTokenFromRequest(): string
 function createAuthSessionRow(PDO $db, string $userId, string $csrfToken, string $runtimeEvent = 'auth_login'): array
 {
     ensureAuthTables($db);
+    BillingAccountAccessPolicy::assertCanAuthenticate($db, $userId);
 
     $sessionId = createAuthUuid();
     $now = authNow();
@@ -230,6 +232,7 @@ function issueUserAuthBundle(
     bool $setBrowserCookies = true
 ): array
 {
+    BillingAccountAccessPolicy::assertCanAuthenticate($db, (string) ($user['id'] ?? ''));
     $csrfToken = createOpaqueAuthToken(24);
     $session = createAuthSessionRow($db, (string) $user['id'], $csrfToken, $runtimeEvent);
     $refreshToken = createOpaqueAuthToken(48);
@@ -661,6 +664,16 @@ function refreshAccessTokenUsingToken(
             clearAuthCookies();
         }
         throw new RuntimeException('Usuário não encontrado.');
+    }
+
+    try {
+        BillingAccountAccessPolicy::assertCanAuthenticate($db, (string) $user['id']);
+    } catch (Throwable $billingException) {
+        revokeSessionFamily($db, $sessionId, 'billing_nonpayment');
+        if ($setBrowserCookies) {
+            clearAuthCookies();
+        }
+        throw $billingException;
     }
 
     $newRefreshToken = createOpaqueAuthToken(48);
