@@ -35,7 +35,8 @@ return static function (PDO $db): void {
         if (!$columnExists('email_verifications', 'last_delivery_error')) {
             $db->exec("ALTER TABLE email_verifications ADD COLUMN last_delivery_error VARCHAR(500) NULL AFTER delivery_attempted_at");
         }
-        $db->exec("UPDATE email_verifications SET delivery_status = 'legacy_unverified' WHERE delivery_status IS NULL");
+        // Leave historical rows NULL. The migration principal owns schema changes;
+        // delivery state is populated only by the canonical verification flow.
     }
 
     $db->exec(
