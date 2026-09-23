@@ -10,7 +10,7 @@
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, ChevronLeft, ChevronRight, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
+import { Building2, Check, ChevronLeft, ChevronRight, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import { filtersService, type AdminFilterListItem } from '@services/filters';
 import type {
@@ -63,6 +63,7 @@ const AdminFeaturedOrganizationsManager = ({
 }: AdminFeaturedOrganizationsManagerProps) => {
   const { addToast } = useToast();
   const [organizations, setOrganizations] = useState<AdminFilterListItem[]>([]);
+  const [organizationById, setOrganizationById] = useState<Record<number, AdminFilterListItem>>({});
   const [draftItems, setDraftItems] = useState<LandingFeaturedOrganization[]>(() => (
     mergeLandingPageContent(systemSettings.landingPageContent).featuredOrganizations
   ));
@@ -79,7 +80,12 @@ const AdminFeaturedOrganizationsManager = ({
       void filtersService.listAdminPage({ page: organizationPage, perPage: 20, type: 'orgao', search: normalizeOrganizationSearch(organizationSearch) })
       .then((page) => {
         if (active) {
-          setOrganizations(page.rows.filter((item) => item.type === 'orgao'));
+          const pageOrganizations = page.rows.filter((item) => item.type === 'orgao');
+          setOrganizations(pageOrganizations);
+          setOrganizationById((current) => ({
+            ...current,
+            ...Object.fromEntries(pageOrganizations.map((item) => [Number(item.id), item])),
+          }));
           setOrganizationPages(Math.max(1, page.pages));
         }
       })
@@ -103,19 +109,55 @@ const AdminFeaturedOrganizationsManager = ({
   }, [systemSettings.landingPageContent]);
 
   const selectedIds = useMemo(() => new Set(draftItems.map((item) => item.filterId)), [draftItems]);
+  const knownOrganizations = useMemo(() => (
+    Array.from(new Map([
+      ...Object.values(organizationById),
+      ...organizations,
+    ].map((organization) => [Number(organization.id), organization] as const)).values())
+      .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
+  ), [organizationById, organizations]);
   const enabledCount = draftItems.filter((item) => item.enabled).length;
+
+  useEffect(() => {
+    const missingIds = Array.from(selectedIds).filter((id) => id > 0 && !organizationById[id]);
+    if (missingIds.length === 0) return;
+
+    let active = true;
+    void Promise.all(missingIds.map(async (id) => {
+      try {
+        const organization = await filtersService.getAdminItem(id);
+        return organization.type === 'orgao' ? organization : null;
+      } catch {
+        return null;
+      }
+    })).then((items) => {
+      if (!active) return;
+      const resolved = items.filter((item): item is AdminFilterListItem => item !== null);
+      if (resolved.length === 0) return;
+      setOrganizationById((current) => ({
+        ...current,
+        ...Object.fromEntries(resolved.map((item) => [Number(item.id), item])),
+      }));
+    });
+
+    return () => { active = false; };
+  }, [organizationById, selectedIds]);
 
   const patchItem = (id: string, patch: Partial<LandingFeaturedOrganization>) => {
     setDraftItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   };
 
-  const addItem = () => {
-    const available = organizations.find((organization) => !selectedIds.has(Number(organization.id)));
-    if (!available) {
-      addToast('Todos os orgaos disponiveis ja estao selecionados.', 'info');
+  const selectOrganization = (organization: AdminFilterListItem) => {
+    const filterId = Number(organization.id);
+    if (selectedIds.has(filterId)) {
+      addToast('Este orgao canonico ja esta selecionado.', 'info');
       return;
     }
-    setDraftItems((current) => [...current, createDraftOrganization(Number(available.id))].slice(0, 6));
+    if (draftItems.length >= 6) {
+      addToast('A vitrine permite ate seis orgaos canonicos.', 'info');
+      return;
+    }
+    setDraftItems((current) => [...current, createDraftOrganization(filterId)]);
   };
 
   const save = async () => {
@@ -153,12 +195,8 @@ const AdminFeaturedOrganizationsManager = ({
           </div>
           <div className="flex items-center gap-3">
             <span className="rounded-sm border border-slate-300 bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300">
-              {enabledCount} ativos
+              {draftItems.length}/6 selecionados · {enabledCount} ativos
             </span>
-            <button type="button" onClick={addItem} disabled={isLoading || organizations.length === 0 || draftItems.length >= 6} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
-              <Plus size={14} />
-              Adicionar orgao
-            </button>
           </div>
         </div>
         <div className={`mt-5 flex items-start gap-3 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
@@ -183,6 +221,36 @@ const AdminFeaturedOrganizationsManager = ({
           </div>
         </div>
         {!isLoading && organizations.length === 0 ? <p className="mt-3 text-sm font-medium text-amber-700 dark:text-amber-300">Nenhum órgão aprovado foi encontrado no diretório atual. Não há dados suficientes para fabricar uma seleção.</p> : null}
+        {!isLoading && organizations.length > 0 ? (
+          <div className="mt-4 grid gap-2" aria-label="Resultados do diretório canônico de órgãos">
+            {organizations.map((organization) => {
+              const filterId = Number(organization.id);
+              const isSelected = selectedIds.has(filterId);
+              return (
+                <div key={filterId} className="flex flex-col gap-3 rounded-sm border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-950/30">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-900 dark:text-slate-100">
+                      {organization.name}{organization.sigla ? ` (${organization.sigla})` : ''}
+                    </p>
+                    <p className="mt-1 truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                      ID canônico #{filterId} · /orgaos/{organization.slug}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={isSelected ? `Órgão ${organization.name} selecionado` : `Selecionar órgão ${organization.name}`}
+                    disabled={isSelected || draftItems.length >= 6}
+                    onClick={() => selectOrganization(organization)}
+                    className={`${isSelected ? ADMIN_SECONDARY_BUTTON_CLASS : ADMIN_PRIMARY_BUTTON_CLASS} shrink-0 px-4 py-2 text-[10px] uppercase tracking-[0.16em] disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {isSelected ? <Check size={14} /> : <Plus size={14} />}
+                    {isSelected ? 'Selecionado' : 'Selecionar'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </section>
 
       {draftItems.map((item, index) => {
@@ -197,7 +265,7 @@ const AdminFeaturedOrganizationsManager = ({
                 <div>
                   <p className={labelClassName}>Orgao {index + 1}</p>
                   <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
-                    {organizations.find((organization) => Number(organization.id) === item.filterId)?.name || 'Selecione um orgao'}
+                    {knownOrganizations.find((organization) => Number(organization.id) === item.filterId)?.name || 'Selecione um orgao'}
                   </p>
                 </div>
               </div>
@@ -212,7 +280,7 @@ const AdminFeaturedOrganizationsManager = ({
                 <label className={labelClassName}>Orgao canonico</label>
                 <select value={item.filterId || ''} onChange={(event) => patchItem(item.id, { filterId: Number(event.target.value) })} className={inputClassName}>
                   <option value="" disabled>Selecione...</option>
-                  {organizations.map((organization) => (
+                  {knownOrganizations.map((organization) => (
                     <option key={organization.id} value={organization.id} disabled={selectedIds.has(Number(organization.id)) && Number(organization.id) !== item.filterId}>
                       {organization.name}{organization.sigla ? ` (${organization.sigla})` : ''}
                     </option>
