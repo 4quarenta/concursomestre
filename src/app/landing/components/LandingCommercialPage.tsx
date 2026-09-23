@@ -24,19 +24,22 @@ import {
   ChevronRight,
   ClipboardList,
   FileText,
+  Flame,
   GraduationCap,
   Landmark,
   Menu,
+  PartyPopper,
   Repeat2,
   Scale,
   ShieldCheck,
   Smartphone,
   Star,
+  Sparkles,
   Target,
   X,
   Zap,
 } from 'lucide-react';
-import type { Plan, SystemSettings } from '@types';
+import type { AppPromotionTheme, Plan, SystemSettings } from '@types';
 import { getAssetUrl } from '@services/api';
 import { homeTestimonialsService, resolveHomeTestimonials, type HomeTestimonial } from '@services/marketing/homeTestimonials';
 import {
@@ -320,24 +323,134 @@ const MetricCard = ({
   value: string;
   trend: string;
 }) => (
-  <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">{label}</p>
-    <p className="mt-2 text-xl font-black text-[#07103a]">{value}</p>
+  <div className="rounded-xl border border-[var(--cm-theme-border)] bg-[var(--cm-theme-page)] p-4 shadow-sm">
+    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--cm-theme-muted)]">{label}</p>
+    <p className="mt-2 text-xl font-black text-[var(--cm-theme-header-ink)]">{value}</p>
     <p className="mt-1 text-[11px] font-bold text-emerald-700">{trend}</p>
   </div>
 );
 
-const PlatformMockup = () => (
+const MOCKUP_THEME_ICONS = {
+  'black-friday': Zap,
+  'sao-joao': Flame,
+  carnaval: PartyPopper,
+  academic: GraduationCap,
+  celebration: Sparkles,
+  shopping: Star,
+} as const;
+
+type MockupThemeContent = {
+  promoEyebrow: string;
+  promoTitle: string;
+  promoDetail: string;
+  actionLabel: string;
+  studies: Array<[string, string]>;
+  mobileTitle: string;
+  mobileItems: Array<[string, string, string]>;
+};
+
+const MOCKUP_THEME_CONTENT: Record<AppPromotionTheme, MockupThemeContent> = {
+  default: {
+    promoEyebrow: 'PREPARAÇÃO COM DIREÇÃO',
+    promoTitle: 'Seu próximo estudo já está organizado',
+    promoDetail: 'Prioridades e revisões para você avançar com método.',
+    actionLabel: 'Ver plano',
+    studies: [['D. Administrativo', 'Aula 12'], ['Português', 'Revisão'], ['Raciocínio lógico', 'Questões']],
+    mobileTitle: 'Plano de estudos',
+    mobileItems: [['Dir. Constitucional', 'Concluído', '100%'], ['Português', 'Em andamento', '58%'], ['Raciocínio lógico', 'Pendente', '24%']],
+  },
+  'black-friday': {
+    promoEyebrow: 'OFERTA BLACK FRIDAY',
+    promoTitle: 'Estude mais pagando menos',
+    promoDetail: 'Condição especial para acelerar sua preparação.',
+    actionLabel: 'Ver oferta',
+    studies: [['Plano anual', 'Condição especial'], ['Revisão turbo', 'Hoje'], ['Meta da semana', 'Questões']],
+    mobileTitle: 'Black Friday',
+    mobileItems: [['Plano anual', 'Condição especial', '100%'], ['Revisão turbo', 'Hoje', '58%'], ['Meta da semana', 'Questões', '24%']],
+  },
+  'black-november': {
+    promoEyebrow: 'BLACK NOVEMBER',
+    promoTitle: 'Um mês inteiro para acelerar',
+    promoDetail: 'Mais tempo de campanha para sua rotina de estudos.',
+    actionLabel: 'Ver condições',
+    studies: [['Plano anual', 'Black November'], ['Ciclo de revisão', 'A seguir'], ['Simulado da semana', 'Disponível']],
+    mobileTitle: 'Black November',
+    mobileItems: [['Plano anual', 'Condição especial', '100%'], ['Ciclo de revisão', 'A seguir', '58%'], ['Simulado semanal', 'Disponível', '24%']],
+  },
+  estudante: {
+    promoEyebrow: 'VOLTA ÀS AULAS',
+    promoTitle: 'Retome o ritmo com método',
+    promoDetail: 'Organize sua rotina para o próximo passo.',
+    actionLabel: 'Montar rotina',
+    studies: [['Plano de retomada', 'Semana 1'], ['Português', 'Revisão'], ['Simulado diagnóstico', 'Começar']],
+    mobileTitle: 'Volta às aulas',
+    mobileItems: [['Plano de retomada', 'Semana 1', '100%'], ['Português', 'Revisão', '58%'], ['Simulado inicial', 'Começar', '24%']],
+  },
+  'sao-joao': {
+    promoEyebrow: 'ARRAIÁ DA APROVAÇÃO',
+    promoTitle: 'Aqueça sua preparação',
+    promoDetail: 'Fogueira acesa, revisão em dia e foco no edital.',
+    actionLabel: 'Acender foco',
+    studies: [['Direito Administrativo', 'Fogueira 1'], ['Revisão junina', 'Hoje'], ['Questões da banca', 'Arraiá']],
+    mobileTitle: 'Arraiá da aprovação',
+    mobileItems: [['Direito Administrativo', 'Fogueira 1', '100%'], ['Revisão junina', 'Hoje', '58%'], ['Questões da banca', 'Arraiá', '24%']],
+  },
+  carnaval: {
+    promoEyebrow: 'FOLIA DA APROVAÇÃO',
+    promoTitle: 'Coloque seu estudo na avenida',
+    promoDetail: 'Ritmo, foco e questões todos os dias.',
+    actionLabel: 'Entrar no ritmo',
+    studies: [['Bloco de revisão', 'Concentração'], ['Português', 'Aquecimento'], ['Simulado de ritmo', 'Questões']],
+    mobileTitle: 'Folia da aprovação',
+    mobileItems: [['Bloco de revisão', 'Concentração', '100%'], ['Português', 'Aquecimento', '58%'], ['Simulado de ritmo', 'Questões', '24%']],
+  },
+  'ano-novo': {
+    promoEyebrow: 'ANO NOVO, META NOVA',
+    promoTitle: 'Comece com uma rotina clara',
+    promoDetail: 'Transforme sua meta de aprovação em constância.',
+    actionLabel: 'Definir meta',
+    studies: [['Meta de aprovação', '2026'], ['Primeira revisão', 'Planejada'], ['Simulado de base', 'Começar']],
+    mobileTitle: 'Meta nova',
+    mobileItems: [['Meta de aprovação', '2026', '100%'], ['Primeira revisão', 'Planejada', '58%'], ['Simulado de base', 'Começar', '24%']],
+  },
+  pascoa: {
+    promoEyebrow: 'PÁSCOA DO CONHECIMENTO',
+    promoTitle: 'Colha evolução todos os dias',
+    promoDetail: 'Renove sua preparação com pequenas conquistas.',
+    actionLabel: 'Ver evolução',
+    studies: [['Colheita da semana', '76% de acerto'], ['Revisão essencial', 'Hoje'], ['Questões novas', 'Praticar']],
+    mobileTitle: 'Páscoa do conhecimento',
+    mobileItems: [['Colheita da semana', '76% de acerto', '100%'], ['Revisão essencial', 'Hoje', '58%'], ['Questões novas', 'Praticar', '24%']],
+  },
+  consumidor: {
+    promoEyebrow: 'DIA DO CONSUMIDOR',
+    promoTitle: 'Invista no seu próximo passo',
+    promoDetail: 'Condições especiais para estudar melhor.',
+    actionLabel: 'Ver condições',
+    studies: [['Plano de estudos', 'Personalizado'], ['Questões prioritárias', 'Hoje'], ['Desempenho', 'Acompanhar']],
+    mobileTitle: 'Dia do consumidor',
+    mobileItems: [['Plano de estudos', 'Personalizado', '100%'], ['Questões prioritárias', 'Hoje', '58%'], ['Desempenho', 'Acompanhar', '24%']],
+  },
+};
+
+const PlatformMockup = ({ themeId }: { themeId: SystemSettings['activeTheme'] }) => {
+  const presentation = getPromotionThemePresentation(themeId);
+  const content = MOCKUP_THEME_CONTENT[themeId] || MOCKUP_THEME_CONTENT.default;
+  const ThemeIcon = presentation.motif === 'default'
+    ? Target
+    : MOCKUP_THEME_ICONS[presentation.motif] || Target;
+
+  return (
   <div className="relative mx-auto w-full max-w-3xl">
-    <div className="rounded-2xl border-[10px] border-slate-950 bg-slate-950 shadow-2xl shadow-indigo-100">
-      <div className="rounded-[1.35rem] bg-white p-5">
+    <div className="rounded-2xl border-[10px] border-[var(--cm-theme-header-ink)] bg-[var(--cm-theme-header-ink)] shadow-2xl shadow-[var(--cm-theme-accent-soft)]">
+      <div className="rounded-[1.35rem] bg-[var(--cm-theme-page)] p-5">
         <div className="grid gap-5 md:grid-cols-[155px_1fr]">
-          <aside className="hidden rounded-2xl bg-[#f6f7ff] p-4 md:block">
-            <p className="text-xs font-black text-[#07103a]">Olá, Concurseiro</p>
-            <div className="mt-5 space-y-3 text-[11px] font-bold text-slate-500">
+          <aside className="hidden rounded-2xl bg-[var(--cm-theme-accent-soft)] p-4 md:block">
+            <p className="text-xs font-black text-[var(--cm-theme-header-ink)]">Olá, Concurseiro</p>
+            <div className="mt-5 space-y-3 text-[11px] font-bold text-[var(--cm-theme-muted)]">
               {['Início', 'Plano de estudos', 'Questões', 'Simulados', 'Revisões'].map((item, index) => (
-                <div key={item} className={`flex items-center gap-2 rounded-lg px-2 py-2 ${index === 0 ? 'bg-white text-[#684cff] shadow-sm' : ''}`}>
-                  <span className="h-2 w-2 rounded-full bg-[#7a5cff]" />
+                <div key={item} className={`flex items-center gap-2 rounded-lg px-2 py-2 ${index === 0 ? 'bg-[var(--cm-theme-page)] text-[var(--cm-theme-accent)] shadow-sm' : ''}`}>
+                  <span className="h-2 w-2 rounded-full bg-[var(--cm-theme-accent)]" />
                   {item}
                 </div>
               ))}
@@ -345,7 +458,20 @@ const PlatformMockup = () => (
           </aside>
 
           <div className="min-w-0">
-            <p className="text-sm font-black text-[#07103a]">Seu desempenho</p>
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-[var(--cm-theme-border)] bg-[var(--cm-theme-accent-soft)] px-3 py-2">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--cm-theme-accent)] text-[var(--cm-theme-accent-ink)]">
+                <ThemeIcon size={18} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-[var(--cm-theme-accent)]">{content.promoEyebrow}</p>
+                <p className="truncate text-xs font-bold text-[var(--cm-theme-header-ink)]">{content.promoTitle}</p>
+                <p className="truncate text-[10px] font-medium text-[var(--cm-theme-muted)]">{content.promoDetail}</p>
+              </div>
+              <span className="ml-auto hidden shrink-0 rounded-full bg-[var(--cm-theme-accent)] px-2 py-1 text-[9px] font-black text-[var(--cm-theme-accent-ink)] sm:inline-flex">
+                {content.actionLabel}
+              </span>
+            </div>
+            <p className="text-sm font-black text-[var(--cm-theme-header-ink)]">Seu desempenho</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <MetricCard label="Questões resolvidas" value="1.248" trend="+15% no mês" />
               <MetricCard label="Taxa de acerto" value="76%" trend="+4,8% de evolução" />
@@ -353,38 +479,34 @@ const PlatformMockup = () => (
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_180px]">
-              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-                <p className="text-xs font-black text-[#07103a]">Evolução semanal</p>
+              <div className="rounded-2xl border border-[var(--cm-theme-border)] bg-[var(--cm-theme-page)] p-5 shadow-sm">
+                <p className="text-xs font-black text-[var(--cm-theme-header-ink)]">Evolução semanal</p>
                 <svg viewBox="0 0 420 190" role="img" aria-label="Gráfico de evolução semanal" className="mt-4 h-40 w-full">
                   <defs>
                     <linearGradient id="mockupLineFill" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#7059ff" stopOpacity="0.16" />
-                      <stop offset="100%" stopColor="#7059ff" stopOpacity="0" />
+                      <stop offset="0%" stopColor="var(--cm-theme-accent)" stopOpacity="0.16" />
+                      <stop offset="100%" stopColor="var(--cm-theme-accent)" stopOpacity="0" />
                     </linearGradient>
                   </defs>
                   <path d="M20 150 L70 92 L115 110 L160 64 L205 102 L250 72 L295 98 L340 69 L390 38 L390 174 L20 174 Z" fill="url(#mockupLineFill)" />
-                  <path d="M20 150 L70 92 L115 110 L160 64 L205 102 L250 72 L295 98 L340 69 L390 38" fill="none" stroke="#6b55ff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M20 150 L70 92 L115 110 L160 64 L205 102 L250 72 L295 98 L340 69 L390 38" fill="none" stroke="var(--cm-theme-accent)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
                   {[20, 70, 115, 160, 205, 250, 295, 340, 390].map((x, index) => (
-                    <circle key={x} cx={x} cy={[150, 92, 110, 64, 102, 72, 98, 69, 38][index]} r="5" fill="#6b55ff" />
+                    <circle key={x} cx={x} cy={[150, 92, 110, 64, 102, 72, 98, 69, 38][index]} r="5" fill="var(--cm-theme-accent)" />
                   ))}
                 </svg>
               </div>
 
-              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                <p className="text-xs font-black text-[#07103a]">Próximos estudos</p>
+              <div className="rounded-2xl border border-[var(--cm-theme-border)] bg-[var(--cm-theme-page)] p-4 shadow-sm">
+                <p className="text-xs font-black text-[var(--cm-theme-header-ink)]">Próximos estudos</p>
                 <div className="mt-4 space-y-3">
-                  {[
-                    ['D. Administrativo', 'Aula 12'],
-                    ['Português', 'Revisão'],
-                    ['Raciocínio lógico', 'Questões'],
-                  ].map(([title, label], index) => (
+                  {content.studies.map(([title, label], index) => (
                     <div key={title} className="flex items-center gap-3">
-                      <span className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black text-white ${index === 0 ? 'bg-rose-400' : index === 1 ? 'bg-teal-400' : 'bg-amber-400'}`}>
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--cm-theme-accent)] text-xs font-black text-[var(--cm-theme-accent-ink)]">
                         {index + 1}
                       </span>
                       <div>
-                        <p className="text-[11px] font-black text-[#07103a]">{title}</p>
-                        <p className="text-[10px] font-semibold text-slate-600">{label}</p>
+                        <p className="text-[11px] font-black text-[var(--cm-theme-header-ink)]">{title}</p>
+                        <p className="text-[10px] font-semibold text-[var(--cm-theme-muted)]">{label}</p>
                       </div>
                     </div>
                   ))}
@@ -396,34 +518,35 @@ const PlatformMockup = () => (
       </div>
     </div>
 
-    <div className="absolute -bottom-8 left-2 w-36 rounded-[1.6rem] border-[8px] border-slate-950 bg-slate-950 shadow-2xl shadow-slate-300 sm:left-0 sm:w-48 lg:-left-10 lg:bottom-2">
-      <div className="rounded-[1rem] bg-white p-4">
-        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-950" />
-        <p className="text-[11px] font-black text-[#07103a]">Plano de estudos</p>
+    <div className="absolute -bottom-8 left-2 w-36 rounded-[1.6rem] border-[8px] border-[var(--cm-theme-header-ink)] bg-[var(--cm-theme-header-ink)] shadow-2xl shadow-[var(--cm-theme-accent-soft)] sm:left-0 sm:w-48 lg:-left-10 lg:bottom-2">
+      <div className="rounded-[1rem] bg-[var(--cm-theme-page)] p-4">
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[var(--cm-theme-header-ink)]" />
+        <div className="mb-3 rounded-lg border border-[var(--cm-theme-border)] bg-[var(--cm-theme-accent-soft)] p-2">
+          <p className="truncate text-[8px] font-black uppercase tracking-[0.12em] text-[var(--cm-theme-accent)]">{content.promoEyebrow}</p>
+          <p className="mt-1 line-clamp-2 text-[10px] font-black leading-tight text-[var(--cm-theme-header-ink)]">{content.promoTitle}</p>
+        </div>
+        <p className="text-[11px] font-black text-[var(--cm-theme-header-ink)]">{content.mobileTitle}</p>
         <div className="mt-4 space-y-3">
-          {[
-            ['Dir. Constitucional', 'Concluído', 'bg-emerald-400'],
-            ['Português', 'Em andamento', 'bg-amber-400'],
-            ['Raciocínio lógico', 'Pendente', 'bg-slate-300'],
-          ].map(([title, label, color]) => (
+          {content.mobileItems.map(([title, label, progress]) => (
             <div key={title}>
               <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-[10px] font-bold text-[#07103a]">{title}</p>
-                <p className="text-[8px] font-black text-slate-600">{label}</p>
+                <p className="truncate text-[10px] font-bold text-[var(--cm-theme-header-ink)]">{title}</p>
+                <p className="text-[8px] font-black text-[var(--cm-theme-muted)]">{label}</p>
               </div>
-              <div className="mt-1 h-1.5 rounded-full bg-slate-100">
-                <div className={`h-full rounded-full ${color}`} style={{ width: label === 'Concluído' ? '100%' : label === 'Em andamento' ? '58%' : '24%' }} />
+              <div className="mt-1 h-1.5 rounded-full bg-[var(--cm-theme-accent-soft)]">
+                <div className="h-full rounded-full bg-[var(--cm-theme-accent)]" style={{ width: progress }} />
               </div>
             </div>
           ))}
         </div>
-        <div className="mt-5 grid grid-cols-4 gap-2 text-center text-[8px] font-bold text-slate-600">
+        <div className="mt-5 grid grid-cols-4 gap-2 text-center text-[8px] font-bold text-[var(--cm-theme-muted)]">
           {['Início', 'Questões', 'Estat.', 'Mais'].map((item) => <span key={item}>{item}</span>)}
         </div>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 export const HeroSection = ({ themeId = 'default' }: { themeId?: SystemSettings['activeTheme'] }) => {
   const presentation = getPromotionThemePresentation(themeId);
@@ -468,7 +591,7 @@ export const HeroSection = ({ themeId = 'default' }: { themeId?: SystemSettings[
           <p className="mt-4 text-xs font-medium text-[var(--cm-theme-muted)]">Grátis para sempre. Sem cartão de crédito.</p>
         </div>
 
-        <PlatformMockup />
+        <PlatformMockup themeId={themeId} />
       </div>
     </section>
   );

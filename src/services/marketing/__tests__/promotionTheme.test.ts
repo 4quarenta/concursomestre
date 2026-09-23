@@ -36,4 +36,21 @@ describe('promotionTheme', () => {
       motif: 'carnaval',
     });
   });
+
+  it.each([
+    ['black-friday', 'black-friday'],
+    ['black-november', 'black-friday'],
+    ['estudante', 'academic'],
+    ['sao-joao', 'sao-joao'],
+    ['carnaval', 'carnaval'],
+    ['ano-novo', 'celebration'],
+    ['pascoa', 'celebration'],
+    ['consumidor', 'shopping'],
+  ] as const)('keeps a distinct presentation for %s', (themeId, motif) => {
+    const presentation = getPromotionThemePresentation(themeId);
+
+    expect(presentation.id).toBe(themeId);
+    expect(presentation.motif).toBe(motif);
+    expect(presentation.heroMessage).not.toBe('Preparação com direção');
+  });
 });
