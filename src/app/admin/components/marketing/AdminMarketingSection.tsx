@@ -179,7 +179,6 @@ const AdminMarketingSection = ({
           <AdminCampaignOperations />
           <AdminMarketing
             systemSettings={systemSettings}
-            updateSystemSettings={updateSystemSettings}
             saveSystemSettingsNow={saveSystemSettingsNow}
             forcedSection="promo"
             hideSectionTabs
@@ -190,7 +189,6 @@ const AdminMarketingSection = ({
       {activeSection === 'visual-themes' ? (
         <AdminMarketing
           systemSettings={systemSettings}
-          updateSystemSettings={updateSystemSettings}
           saveSystemSettingsNow={saveSystemSettingsNow}
           forcedSection="themes"
           hideSectionTabs

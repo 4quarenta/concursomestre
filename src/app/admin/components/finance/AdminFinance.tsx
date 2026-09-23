@@ -4086,7 +4086,6 @@ const AdminFinance = ({
           <div className="p-5">
             <AdminMarketing
               systemSettings={financeSettings}
-              updateSystemSettings={applyPersistedFinanceSettings}
               saveSystemSettingsNow={saveSystemSettingsNow}
               forcedSection="coupons"
               hideSectionTabs

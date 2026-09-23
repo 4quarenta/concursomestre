@@ -35,7 +35,6 @@ import {
 
 interface AdminMarketingProps {
   systemSettings: SystemSettings;
-  updateSystemSettings: (settings: SystemSettings) => void;
   saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
   forcedSection?: 'coupons' | 'promo' | 'themes';
   hideSectionTabs?: boolean;
@@ -253,7 +252,6 @@ const normalizeCouponDraft = (coupon?: Partial<DiscountCode> | null): CouponDraf
  */
 const AdminMarketing = ({
   systemSettings,
-  updateSystemSettings,
   saveSystemSettingsNow,
   forcedSection,
   hideSectionTabs = false,
@@ -371,8 +369,7 @@ const AdminMarketing = ({
     setSavingKey(actionKey);
 
     try {
-      const persistedSettings = await saveSystemSettingsNow(nextSettings);
-      updateSystemSettings(persistedSettings);
+      await saveSystemSettingsNow(nextSettings);
       addToast(successMessage, 'success');
       return true;
     } catch {
@@ -1355,7 +1352,9 @@ const AdminMarketing = ({
             {Object.entries(themeConfig).map(([id, theme]) => (
               <button
                 key={id}
+                type="button"
                 onClick={() => setDraftTheme(id as AppPromotionTheme)}
+                aria-pressed={draftTheme === id}
                 className={`group relative flex flex-col items-center gap-4 overflow-hidden rounded-sm border p-5 transition-all ${
                   draftTheme === id
                     ? 'border-sky-700 bg-white ring-1 ring-sky-700/20 dark:bg-slate-800'
@@ -1402,9 +1401,10 @@ const AdminMarketing = ({
 
           <div className="flex justify-end">
             <button
+              type="button"
               onClick={() => void handleSaveTheme()}
               disabled={savingKey === 'save-theme'}
-                className={ADMIN_PRIMARY_BUTTON_CLASS}
+              className={ADMIN_PRIMARY_BUTTON_CLASS}
             >
               {savingKey === 'save-theme' ? <Loader2 size={14} className="animate-spin" /> : <Palette size={14} />}
               Aplicar tema visual
