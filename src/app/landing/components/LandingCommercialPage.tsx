@@ -57,6 +57,15 @@ import LandingCommercialFooter from './LandingCommercialFooter';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import HomeSeoSections from './HomeSeoSections';
 import type { HomeFeaturedOrganization, HomeLatestArticle } from '../homeSeoServerData';
+import {
+  getPromotionThemePresentation,
+  resolvePromotionThemeId,
+} from '@services/marketing/promotionTheme';
+import {
+  PromotionThemeHeroMotif,
+  PromotionThemeMasthead,
+  promotionThemeRootStyle,
+} from '@/components/shared/marketing/PromotionThemeSurface';
 
 const NAV_ITEMS = [
   { label: 'Recursos', href: '#recursos' },
@@ -239,34 +248,38 @@ const SectionTitle = ({
   </h2>
 );
 
-export const Header = () => {
+export const Header = ({ themeId = 'default' }: { themeId?: SystemSettings['activeTheme'] }) => {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const isDarkHeader = ['black-friday', 'black-november', 'sao-joao', 'ano-novo', 'consumidor'].includes(themeId);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-100/80 bg-white/90 backdrop-blur-xl">
+    <header
+      className="cm-theme-header sticky top-0 z-40 border-b backdrop-blur-xl"
+      style={{ backgroundColor: 'var(--cm-theme-header)', borderColor: 'var(--cm-theme-border)' }}
+    >
       <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-5 sm:px-8">
-        <PublicBrandLink width={205} priority surface="light" />
+        <PublicBrandLink width={205} priority surface={isDarkHeader ? 'dark' : 'light'} />
 
-        <nav className="hidden items-center gap-10 text-sm font-semibold text-[#1d284f] lg:flex" aria-label="Navegação principal">
+        <nav className="hidden items-center gap-10 text-sm font-semibold text-[var(--cm-theme-header-ink)] lg:flex" aria-label="Navegação principal">
           {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} prefetch={false} className="transition-colors hover:text-[#684cff]">
+            <Link key={item.href} href={item.href} prefetch={false} className="transition-colors hover:text-[var(--cm-theme-accent)]">
               {item.label}
             </Link>
           ))}
         </nav>
 
         <div className="hidden items-center gap-5 lg:flex">
-          <Link href="/auth?mode=login" prefetch={false} className="text-sm font-bold text-[#07103a] transition-colors hover:text-[#684cff]">
+          <Link href="/auth?mode=login" prefetch={false} className="text-sm font-bold text-[var(--cm-theme-header-ink)] transition-colors hover:text-[var(--cm-theme-accent)]">
             Entrar
           </Link>
-          <Link href="/auth?mode=signup" prefetch={false} className="rounded-xl bg-[#07103a] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#111d52]">
+          <Link href="/auth?mode=signup" prefetch={false} className="rounded-xl px-5 py-3 text-sm font-bold shadow-sm transition hover:brightness-95" style={{ backgroundColor: 'var(--cm-theme-accent)', color: 'var(--cm-theme-accent-ink)' }}>
             Começar grátis
           </Link>
         </div>
 
         <button
           type="button"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-[#07103a] lg:hidden"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--cm-theme-border)] text-[var(--cm-theme-header-ink)] lg:hidden"
           onClick={() => setIsMenuOpen((current) => !current)}
           aria-label={isMenuOpen ? 'Fechar menu' : 'Abrir menu'}
           aria-expanded={isMenuOpen}
@@ -276,8 +289,8 @@ export const Header = () => {
       </div>
 
       {isMenuOpen && (
-        <div className="border-t border-slate-100 bg-white px-5 py-5 shadow-lg lg:hidden">
-          <nav className="mx-auto flex max-w-7xl flex-col gap-4 text-sm font-bold text-[#07103a]" aria-label="Navegação mobile">
+        <div className="border-t px-5 py-5 shadow-lg lg:hidden" style={{ backgroundColor: 'var(--cm-theme-header)', borderColor: 'var(--cm-theme-border)' }}>
+          <nav className="mx-auto flex max-w-7xl flex-col gap-4 text-sm font-bold text-[var(--cm-theme-header-ink)]" aria-label="Navegação mobile">
             {NAV_ITEMS.map((item) => (
               <Link key={item.href} href={item.href} prefetch={false} onClick={() => setIsMenuOpen(false)}>
                 {item.label}
@@ -287,7 +300,7 @@ export const Header = () => {
               <Link href="/auth?mode=login" prefetch={false} className="rounded-xl border border-slate-200 px-4 py-3 text-center">
                 Entrar
               </Link>
-              <Link href="/auth?mode=signup" prefetch={false} className="rounded-xl bg-[#07103a] px-4 py-3 text-center text-white">
+              <Link href="/auth?mode=signup" prefetch={false} className="rounded-xl px-4 py-3 text-center" style={{ backgroundColor: 'var(--cm-theme-accent)', color: 'var(--cm-theme-accent-ink)' }}>
                 Começar grátis
               </Link>
             </div>
@@ -412,41 +425,54 @@ const PlatformMockup = () => (
   </div>
 );
 
-export const HeroSection = () => (
-  <section className="mx-auto grid w-full max-w-7xl items-center gap-12 px-5 pb-18 pt-14 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:pb-20 lg:pt-16">
-    <div className="max-w-2xl">
-      <h1 className="text-3xl font-black leading-[1.1] tracking-tight text-[#07103a] sm:text-4xl lg:text-5xl">
-        Se você quer passar, <span className="text-[#684cff]">precisa estudar</span> com estratégia.
-      </h1>
-      <p className="mt-5 max-w-xl text-sm font-medium leading-6 text-slate-600 md:text-base md:leading-7">
-        A plataforma completa para estudar com mais direção, menos promessa e mais resultado.
-      </p>
+export const HeroSection = ({ themeId = 'default' }: { themeId?: SystemSettings['activeTheme'] }) => {
+  const presentation = getPromotionThemePresentation(themeId);
 
-      <div className="mt-7 space-y-3">
-        {HERO_BULLETS.map((item) => (
-          <div key={item} className="flex items-center gap-3 text-sm font-semibold text-[#1d284f]">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#edeaff] text-[#684cff]">
-              <Check size={13} strokeWidth={3} />
-            </span>
-            {item}
+  return (
+    <section className="cm-theme-hero relative isolate overflow-hidden">
+      <PromotionThemeHeroMotif motif={presentation.motif} />
+      <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-5 pb-18 pt-14 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:pb-20 lg:pt-16">
+        <div className="max-w-2xl">
+          {themeId !== 'default' && (
+            <div className="cm-theme-hero__badge mb-5 inline-flex items-center gap-2 rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em]">
+              <span className="h-2 w-2 rounded-full bg-[var(--cm-theme-accent)]" aria-hidden="true" />
+              {presentation.label} · {presentation.heroMessage}
+            </div>
+          )}
+          <h1 className="text-3xl font-black leading-[1.1] tracking-tight text-[var(--cm-theme-ink)] sm:text-4xl lg:text-5xl">
+            Se você quer passar, <span className="text-[var(--cm-theme-accent)]">precisa estudar</span> com estratégia.
+          </h1>
+          <p className="mt-5 max-w-xl text-sm font-medium leading-6 text-[var(--cm-theme-muted)] md:text-base md:leading-7">
+            A plataforma completa para estudar com mais direção, menos promessa e mais resultado.
+          </p>
+
+          <div className="mt-7 space-y-3">
+            {HERO_BULLETS.map((item) => (
+              <div key={item} className="flex items-center gap-3 text-sm font-semibold text-[var(--cm-theme-ink)]">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--cm-theme-accent-soft)] text-[var(--cm-theme-accent)]">
+                  <Check size={13} strokeWidth={3} />
+                </span>
+                {item}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <div className="mt-9 flex flex-col gap-4 sm:flex-row">
-        <Link href="/auth?mode=signup" prefetch={false} className="inline-flex h-12 items-center justify-center rounded-xl bg-[#07103a] px-7 text-sm font-bold text-white shadow-sm transition hover:bg-[#111d52]">
-          Começar grátis
-        </Link>
-        <Link href="#planos" prefetch={false} className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-200 bg-white px-7 text-sm font-bold text-[#07103a] transition hover:border-[#684cff] hover:text-[#684cff]">
-          Ver planos
-        </Link>
-      </div>
-      <p className="mt-4 text-xs font-medium text-slate-500">Grátis para sempre. Sem cartão de crédito.</p>
-    </div>
+          <div className="mt-9 flex flex-col gap-4 sm:flex-row">
+            <Link href="/auth?mode=signup" prefetch={false} className="inline-flex h-12 items-center justify-center rounded-xl px-7 text-sm font-bold shadow-sm transition hover:brightness-95" style={{ backgroundColor: 'var(--cm-theme-accent)', color: 'var(--cm-theme-accent-ink)' }}>
+              Começar grátis
+            </Link>
+            <Link href="#planos" prefetch={false} className="inline-flex h-12 items-center justify-center rounded-xl border bg-transparent px-7 text-sm font-bold text-[var(--cm-theme-ink)] transition hover:border-[var(--cm-theme-accent)] hover:text-[var(--cm-theme-accent)]" style={{ borderColor: 'var(--cm-theme-border)' }}>
+              Ver planos
+            </Link>
+          </div>
+          <p className="mt-4 text-xs font-medium text-[var(--cm-theme-muted)]">Grátis para sempre. Sem cartão de crédito.</p>
+        </div>
 
-    <PlatformMockup />
-  </section>
-);
+        <PlatformMockup />
+      </div>
+    </section>
+  );
+};
 
 export const FeatureCard = ({
   title,
@@ -978,11 +1004,22 @@ const LandingCommercialPage: React.FC<{
   initialSystemSettings?: SystemSettings | null;
   latestArticles?: HomeLatestArticle[];
   featuredOrganizations?: HomeFeaturedOrganization[];
-}> = ({ initialSystemSettings = null, latestArticles = [], featuredOrganizations = [] }) => (
-  <div className="min-h-screen bg-white text-[#07103a]">
-    <Header />
-    <main>
-      <HeroSection />
+}> = ({ initialSystemSettings = null, latestArticles = [], featuredOrganizations = [] }) => {
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const settingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
+  const effectiveSettings = settingsLoaded ? systemSettings : (initialSystemSettings || systemSettings);
+  const themeId = resolvePromotionThemeId(effectiveSettings);
+
+  return (
+    <div
+      className={`cm-landing-theme cm-landing-theme--${themeId} min-h-screen text-[#07103a]`}
+      data-promotion-theme={themeId}
+      style={{ ...promotionThemeRootStyle(themeId), backgroundColor: 'var(--cm-theme-page)' }}
+    >
+      <PromotionThemeMasthead themeId={themeId} promotion={effectiveSettings.activePromotion} />
+      <Header themeId={themeId} />
+      <main>
+      <HeroSection themeId={themeId} />
       <FeaturesSection initialSystemSettings={initialSystemSettings} />
       <HomeSeoSections latestArticles={latestArticles} featuredOrganizations={featuredOrganizations} />
       <ApprovalContextSection />
@@ -991,9 +1028,10 @@ const LandingCommercialPage: React.FC<{
       <PricingSection />
       <FAQSection />
       <FinalCTA />
-    </main>
-    <Footer />
-  </div>
-);
+      </main>
+      <Footer />
+    </div>
+  );
+};
 
 export default LandingCommercialPage;
