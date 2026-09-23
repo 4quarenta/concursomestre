@@ -19,7 +19,6 @@ import {
 } from '@/state/app-config/systemSettings';
 
 const PUBLIC_SETTINGS_FETCH_TIMEOUT_MS = 1800;
-const PUBLIC_SETTINGS_REVALIDATE_SECONDS = 300;
 
 const readEnvelopeData = (payload: unknown): Record<string, unknown> => {
   if (!payload || typeof payload !== 'object') return {};
@@ -61,7 +60,7 @@ export const fetchPublicMarketingSettings = cache(async (): Promise<PublicMarket
     const apiBaseUrl = resolveAbsoluteApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || undefined);
     const response = await fetch(new URL('settings.php', apiBaseUrl).toString(), {
       headers: { Accept: 'application/json' },
-      next: { revalidate: PUBLIC_SETTINGS_REVALIDATE_SECONDS },
+      cache: 'no-store',
       signal: controller.signal,
     });
     if (!response.ok) return EMPTY_PUBLIC_MARKETING_SETTINGS;

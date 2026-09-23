@@ -48,12 +48,12 @@ const SECTIONS: Array<{
   {
     key: 'campaigns',
     label: 'Campanhas',
-    description: 'Promocoes ativas, campanha global e countdown comercial.',
+    description: 'Controle o que pode ser publicado agora e acompanhe campanhas operacionais separadamente.',
   },
   {
     key: 'visual-themes',
     label: 'Temas visuais',
-    description: 'Identidade visual promocional aplicada na plataforma.',
+    description: 'Escolha a identidade visual da plataforma. Tema e oferta sao controles independentes.',
   },
   {
     key: 'social-links',
@@ -168,6 +168,14 @@ const AdminMarketingSection = ({
 
       {activeSection === 'campaigns' ? (
         <div className="space-y-6">
+          <div className="rounded-sm border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800 dark:text-amber-300">
+              Como a publicacao funciona
+            </p>
+            <p className="mt-2 text-sm font-medium leading-6 text-amber-900/80 dark:text-amber-100/80">
+              Campanhas operacionais e a oferta global da home sao autoridades diferentes. Uma oferta pausada nao publica a faixa nem o texto do banner, mesmo que seus banners continuem salvos para uma futura ativacao.
+            </p>
+          </div>
           <AdminCampaignOperations />
           <AdminMarketing
             systemSettings={systemSettings}

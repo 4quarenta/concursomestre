@@ -13,7 +13,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Timer, ArrowRight, X } from 'lucide-react';
-import { buildPromotionPath, isPromotionActiveForSlug } from '@services/marketing/promotionCampaign';
+import { buildPromotionPath, isPromotionRuntimeActive } from '@services/marketing/promotionCampaign';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { analyticsTrackingService } from '@services/analytics/analyticsTrackingService';
 import marketingCampaignService, { type MarketingPublicCampaign } from '@services/marketing/marketingCampaignService';
@@ -24,7 +24,12 @@ const PromoBanner: React.FC = () => {
   const [operationalCampaign, setOperationalCampaign] = React.useState<MarketingPublicCampaign | null>(null);
   const promo = systemSettings.activePromotion;
   const promoEnabled = systemSettings.features.landingPagePromoEnabled;
-  const promotionPath = operationalCampaign?.landingSlug ? `/l/${operationalCampaign.landingSlug}` : buildPromotionPath(promo);
+  const legacyPromotionVisible = isPromotionRuntimeActive(promo);
+  const promotionPath = operationalCampaign?.landingSlug
+    ? `/l/${operationalCampaign.landingSlug}`
+    : legacyPromotionVisible
+      ? buildPromotionPath(promo)
+      : '';
 
   React.useEffect(() => {
     let mounted = true;
@@ -49,9 +54,8 @@ const PromoBanner: React.FC = () => {
     });
   }, [operationalCampaign]);
 
-  const legacyPromotionVisible = isPromotionActiveForSlug(promo, promo.slug);
   if ((!legacyPromotionVisible && !operationalCampaign) || !isVisible || !promoEnabled || !promotionPath) return null;
-  const headline = String(operationalCampaign?.content.headline || promo.bannerText);
+  const headline = String(operationalCampaign?.content.headline || (legacyPromotionVisible ? promo.bannerText : ''));
   const ctaLabel = String(operationalCampaign?.content.ctaLabel || 'Aproveitar Agora');
 
   return (

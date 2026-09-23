@@ -9,6 +9,7 @@ import {
   getPromotionThemePresentation,
   type PromotionThemeMotif,
 } from '@services/marketing/promotionTheme';
+import { isPromotionRuntimeActive } from '@services/marketing/promotionCampaign';
 
 const MOTIF_ICONS: Record<Exclude<PromotionThemeMotif, 'default'>, React.ComponentType<{ size?: number; strokeWidth?: number }>> = {
   'black-friday': Zap,
@@ -52,6 +53,7 @@ export const PromotionThemeMasthead = ({
 }) => {
   const presentation = getPromotionThemePresentation(themeId);
   if (themeId === 'default') return null;
+  const canUsePromotionCopy = isPromotionRuntimeActive(promotion);
 
   return (
     <aside className="cm-promotion-masthead" aria-label={`Campanha ${presentation.label}`}>
@@ -61,7 +63,7 @@ export const PromotionThemeMasthead = ({
           <Timer size={15} aria-hidden="true" />
           {presentation.label}
         </span>
-        <strong>{String(promotion?.bannerText || presentation.heroMessage)}</strong>
+        <strong>{String(canUsePromotionCopy ? promotion?.bannerText : presentation.heroMessage)}</strong>
         <span className="hidden text-xs font-medium opacity-85 sm:inline">{presentation.mastheadMessage}</span>
         <Link href="/planos" prefetch={false} className="cm-promotion-masthead__cta">
           Ver oferta

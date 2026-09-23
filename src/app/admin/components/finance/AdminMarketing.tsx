@@ -19,6 +19,8 @@ import { notificationService } from '@services/notifications';
 import {
   normalizeCampaignBannerActionUrl,
   normalizePromotionNotificationActionUrl,
+  PROMOTION_RUNTIME_STATE_LABELS,
+  resolvePromotionRuntimeState,
 } from '@services/marketing/promotionCampaign';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import {
@@ -266,6 +268,9 @@ const AdminMarketing = ({
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [pendingDeleteCoupon, setPendingDeleteCoupon] = useState<CouponDraft | null>(null);
+  const promotionRuntimeState = resolvePromotionRuntimeState(draftPromotion);
+  const promotionRuntimeStateLabel = PROMOTION_RUNTIME_STATE_LABELS[promotionRuntimeState];
+  const hasSavedBanners = (draftPromotion.siteBanners || []).length > 0;
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -877,9 +882,9 @@ const AdminMarketing = ({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="flex items-center gap-2 text-xl font-black text-slate-900 dark:text-slate-100">
-                  <Megaphone size={20} className="text-sky-700 dark:text-sky-300" /> Campanha ativa
+                  <Megaphone size={20} className="text-sky-700 dark:text-sky-300" /> Oferta global da home
                 </h3>
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Configure a campanha promocional global da plataforma.</p>
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Esta oferta controla a faixa global e o texto promocional legado. Campanhas operacionais sao gerenciadas no bloco acima.</p>
               </div>
               <button
                 onClick={() => setDraftPromotion((current) => {
@@ -894,8 +899,23 @@ const AdminMarketing = ({
                   draftPromotion.isActive ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800'
                 }`}
               >
-                {draftPromotion.isActive ? 'Ativada' : 'Desativada'}
+                {draftPromotion.isActive ? 'Pausar publicacao' : 'Publicar oferta'}
               </button>
+            </div>
+
+            <div className={`grid gap-3 rounded-sm border p-4 md:grid-cols-3 ${promotionRuntimeState === 'active' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/20' : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40'}`}>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Estado efetivo agora</p>
+                <p className="mt-1 text-base font-black text-slate-900 dark:text-slate-100">{promotionRuntimeStateLabel}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Faixa global</p>
+                <p className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-200">{promotionRuntimeState === 'active' ? 'Pode aparecer para o publico' : 'Nao aparece para o publico'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Banners salvos</p>
+                <p className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-200">{hasSavedBanners ? 'Disponiveis para futura publicacao' : 'Nenhum banner cadastrado'}</p>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -923,7 +943,7 @@ const AdminMarketing = ({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-1.5">
-                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Ciclo da campanha</label>
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Status de publicacao</label>
                 <select
                   value={draftPromotion.status || (draftPromotion.isActive ? 'active' : 'paused')}
                   onChange={(event) => {
@@ -935,7 +955,7 @@ const AdminMarketing = ({
                     }));
                   }}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
-                  aria-label="Ciclo da campanha"
+                  aria-label="Status de publicacao da oferta global"
                 >
                   <option value="draft">Rascunho</option>
                   <option value="scheduled">Agendada</option>
@@ -1096,7 +1116,7 @@ const AdminMarketing = ({
                   <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-300">
                     <MonitorSmartphone size={14} /> Banners por area
                   </h4>
-                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Configure exibicoes especificas para topo, checkout, questoes, pratica e marketplace.</p>
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Edite os textos e areas sem publica-los por acidente. A oferta precisa estar publicada para qualquer faixa aparecer.</p>
                 </div>
                 <button
                   type="button"

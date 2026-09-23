@@ -110,7 +110,11 @@ export const AppConfigProvider: React.FC<AppConfigProviderProps> = ({ children, 
         : adminService.getPublicSystemSettings()
     ),
     enabled: settingsQueryEnabled,
-    staleTime: 5 * 60_000,
+    // Public campaign activation/deactivation must not remain stale for the
+    // five-minute admin settings window. The server snapshot is only a
+    // hydration fallback; the browser verifies the current public state.
+    staleTime: mode === 'public' ? 0 : 5 * 60_000,
+    refetchOnMount: mode === 'public' ? 'always' : true,
     initialData: mode === 'public' && initialPublicSettings ? initialPublicSettings : undefined,
   });
 

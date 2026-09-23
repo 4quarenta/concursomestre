@@ -3,6 +3,8 @@ import type { Promotion } from 'types';
 import {
   buildPromotionPath,
   isPromotionActiveForSlug,
+  isPromotionRuntimeActive,
+  resolvePromotionRuntimeState,
   normalizeCampaignBannerActionUrl,
   normalizePromotionNotificationActionUrl,
   normalizePromotionSlug,
@@ -44,6 +46,27 @@ describe('promotion campaign helpers', () => {
       status: 'active',
       endsAt: '2000-01-01T00:00:00.000Z',
     }), 'black-friday')).toBe(false);
+  });
+
+  it('uses one publication rule for every global promotion surface', () => {
+    expect(isPromotionRuntimeActive(makePromotion({ status: 'paused' }))).toBe(false);
+    expect(isPromotionRuntimeActive(makePromotion({ isActive: false, status: 'active' }))).toBe(false);
+    expect(isPromotionRuntimeActive(makePromotion({
+      status: 'active',
+      startsAt: '2999-01-01T00:00:00.000Z',
+    }))).toBe(false);
+    expect(isPromotionRuntimeActive(makePromotion({
+      status: 'active',
+      endsAt: '2000-01-01T00:00:00.000Z',
+    }))).toBe(false);
+    expect(isPromotionRuntimeActive(makePromotion({ status: 'active' }))).toBe(true);
+  });
+
+  it('explains the effective state shown in the admin campaign panel', () => {
+    expect(resolvePromotionRuntimeState(makePromotion({ isActive: false, status: 'paused' }))).toBe('paused');
+    expect(resolvePromotionRuntimeState(makePromotion({ status: 'scheduled', startsAt: '2999-01-01T00:00:00.000Z' }))).toBe('scheduled');
+    expect(resolvePromotionRuntimeState(makePromotion({ status: 'active' }))).toBe('active');
+    expect(resolvePromotionRuntimeState(makePromotion({ status: 'active', endsAt: '2000-01-01T00:00:00.000Z' }))).toBe('ended');
   });
 
   it('builds only canonical promotion paths with a usable slug', () => {
