@@ -2,6 +2,15 @@
 
 Data: `2026-05-05`
 
+## Atualizacao incremental (`2026-09-26`)
+
+- **Crawler Gran: detalhar o estado de questao incompleta. PENDENTE de reproducao e implementacao.** Em `/admin/operation/gran-crawler`, uma questao resgatada do Gran pode aparecer como `Incompleta` sem indicar quais dados ou requisitos estao faltando.
+  - Reproduzir o caso na interface e rastrear o estado desde a resposta/importacao do Gran ate a validacao e a apresentacao no Admin.
+  - Expor, por questao, a lista precisa dos campos/requisitos ausentes ou invalidos, usando a mesma validacao canonica que determina `Incompleta`; nao inferir nem fabricar conteudo.
+  - Diferenciar campo ausente, valor invalido e falha de coleta quando essas causas existirem; manter `Incompleta` como estado agregado e apontar a acao corretiva disponivel.
+  - **Criterio de aceite:** para fixtures com um e varios problemas, o Admin identifica cada campo e motivo; uma questao valida nao mostra pendencias; os motivos persistem/continuam correlacionados durante revisao e retry; incluir teste de API/validador e teste da UI.
+  - **Escopo inicial:** somente questoes Gran no crawler Admin. Nao alterar regras de publicacao nem publicar questoes automaticamente.
+
 ## Atualizacao incremental (`2026-05-30`)
 
 - Etapa "Suite operacional de readiness": **Pronta localmente; pendente execucao em VPS/staging**.
