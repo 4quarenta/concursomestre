@@ -762,7 +762,7 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
         transactionName: `Receita projetada - ${item.planName || item.cycleLabel}`,
         planName: item.planName || item.cycleLabel,
         description: isAutoRenewProjection
-          ? `Renovacao futura ${index + 1} (${item.cycleLabel}).`
+          ? `Ciclo de renovacao estimado ${index + 1} (${item.cycleLabel}).`
           : `Parcela futura ${installmentNumber} de ${item.totalInstallments} (${item.cycleLabel}).`,
         buyerName: item.userName,
         buyerEmail: item.userEmail,
@@ -779,9 +779,7 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
         timestamp: dueTimestamp,
         dateFormatted: new Date(dueTimestamp).toLocaleDateString('pt-BR'),
         dateTimeFormatted: new Date(dueTimestamp).toLocaleString('pt-BR'),
-        scheduleLabel: item.status === 'past_due'
-          ? 'Projecao em risco'
-          : (isAutoRenewProjection ? 'Renovacao futura' : 'Parcela pre-aprovada'),
+        scheduleLabel: item.status === 'past_due' ? 'Projecao em risco' : (isAutoRenewProjection ? 'Projecao de renovacao futura' : 'Projecao de parcela futura'),
         installmentNumber,
         installmentCount: isAutoRenewProjection ? remaining : item.totalInstallments,
         isRevenueProjection: true,
@@ -3275,7 +3273,7 @@ const AdminFinance = ({
                     const fee = revenueRecognized ? (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount) : 0;
                     const net = revenueRecognized ? readTransactionNetAmount(transaction, amount, fee) : 0;
                     const description = transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de assinatura';
-                    const statusLabel = formatTransactionStatusLabel(transactionStatus);
+                    const statusLabel = transaction.isRevenueProjection ? 'Projecao estimada (nao cobrada)' : formatTransactionStatusLabel(transactionStatus);
                     const isRefundActionLocked = refundActionKey !== null;
                     const displayTimestamp = resolveTransactionDisplayTimestamp(transaction, adminFinanceNowMs);
 
@@ -3313,9 +3311,9 @@ const AdminFinance = ({
                           }`}>
                             {transaction.type === 'plan' ? 'Assinatura' : 'Material'}
                           </span>
-                          {transaction.installmentNumber && transaction.installmentCount && (
+                          {transaction.installmentNumber && transaction.installmentCount && !transaction.scheduleLabel?.includes('renovacao') && (
                             <div className="mt-2 text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                              Parcela {transaction.installmentNumber} de {transaction.installmentCount}
+                              Parcela futura {transaction.installmentNumber} de {transaction.installmentCount}
                             </div>
                           )}
                         </td>

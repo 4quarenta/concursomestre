@@ -67,6 +67,8 @@ const SECTIONS: Array<{
   },
 ];
 
+type CampaignWorkspace = 'home-offer' | 'operational-campaigns';
+
 /**
  * Dominio administrativo de marketing.
  * Centraliza landing pages, campanhas e temas visuais sem misturar
@@ -83,6 +85,7 @@ const AdminMarketingSection = ({
   standaloneSection = false,
 }: AdminMarketingSectionProps) => {
   const [activeSection, setActiveSection] = useState<AdminMarketingSectionKey>(initialSection);
+  const [campaignWorkspace, setCampaignWorkspace] = useState<CampaignWorkspace>('home-offer');
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -168,21 +171,51 @@ const AdminMarketingSection = ({
 
       {activeSection === 'campaigns' ? (
         <div className="space-y-6">
-          <div className="rounded-sm border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800 dark:text-amber-300">
-              Como a publicacao funciona
-            </p>
-            <p className="mt-2 text-sm font-medium leading-6 text-amber-900/80 dark:text-amber-100/80">
-              Campanhas operacionais e a oferta global da home sao autoridades diferentes. Uma oferta pausada nao publica a faixa nem o texto do banner, mesmo que seus banners continuem salvos para uma futura ativacao.
-            </p>
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-black text-slate-900 dark:text-slate-100">O que voce quer gerenciar?</h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">A oferta exibida na homepage e as campanhas de audiencia sao controles separados.</p>
+            </div>
+            <div className={`${ADMIN_SEGMENTED_TABS_CLASS} w-fit max-w-full`} role="group" aria-label="Area de campanhas">
+              <button
+                type="button"
+                aria-pressed={campaignWorkspace === 'home-offer'}
+                onClick={() => setCampaignWorkspace('home-offer')}
+                className={`rounded-md border px-4 py-2 text-sm font-bold ${campaignWorkspace === 'home-offer' ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
+              >
+                Oferta da homepage
+              </button>
+              <button
+                type="button"
+                aria-pressed={campaignWorkspace === 'operational-campaigns'}
+                onClick={() => setCampaignWorkspace('operational-campaigns')}
+                className={`rounded-md border px-4 py-2 text-sm font-bold ${campaignWorkspace === 'operational-campaigns' ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
+              >
+                Campanhas operacionais
+              </button>
+            </div>
           </div>
-          <AdminCampaignOperations />
-          <AdminMarketing
-            systemSettings={systemSettings}
-            saveSystemSettingsNow={saveSystemSettingsNow}
-            forcedSection="promo"
-            hideSectionTabs
-          />
+          {campaignWorkspace === 'home-offer' ? (
+            <div className="space-y-4">
+              <div className="rounded-sm border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800 dark:text-amber-300">Publicacao da oferta</p>
+                <p className="mt-2 text-sm font-medium leading-6 text-amber-900/80 dark:text-amber-100/80">
+                  Somente uma oferta ativa e dentro do periodo configurado aparece na homepage. Rascunhos, ofertas pausadas ou encerradas ficam salvos, mas nao sao exibidos.
+                </p>
+              </div>
+              <AdminMarketing
+                systemSettings={systemSettings}
+                saveSystemSettingsNow={saveSystemSettingsNow}
+                forcedSection="promo"
+                hideSectionTabs
+              />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600 dark:text-slate-400">Configure campanhas, segmentos, elegibilidade e desempenho. Esta area nao controla a faixa global da homepage.</p>
+              <AdminCampaignOperations />
+            </div>
+          )}
         </div>
       ) : null}
 

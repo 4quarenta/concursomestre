@@ -91,7 +91,7 @@
       "backend/database/migrations/20260916_210000_communication_foundation.php": "87cf2997fd8389220ebb0627e4c83ad10cd8f2b2869970b05650a4120303220b",
       "backend/database/migrations/20260920_220000_communication_ordering.php": "f5c80465bbdfe428d7b05204c85628dd2a6133fdf3b4fefcf7f74c2f06dc191d",
       "backend/database/migrations/20260922_120000_changelog_channels.php": "ee1bb7c32dfe6e0d3c7b498c9ed5013057970ab4df2edf9f34e577279430e3ab",
-      "backend/database/migrations/20260923_040000_post_go_account_policies.php": "77174e4af6e2d3e9b66fdad1775918453f8c2099c92ead1925cfdda2fb411e1a",
+      "backend/database/migrations/20260923_040000_post_go_account_policies.php": "aa1e8264357417613c257726d51b878ec7fd06bedac915e6fe513342c0910029",
       "backend/database/migrations/create_user_material_notes.sql": "2187d9f0e855a41927f976748b8e31d3aca6125e2d24fdad325004d3ba074477",
       "backend/database/migrations/refactor_cleanup.sql": "9ecb430009af8090f669f37c6b56caff4590fb6cd6fe2a9e9b5b82bc42531759",
       "backend/database/migrations/refactor_user_notes.sql": "540eaab854648f6e84dd4c534920ac2af34de92db969ae6ebfd1aa60d18ad68b"

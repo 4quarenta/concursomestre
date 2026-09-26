@@ -163,4 +163,22 @@ describe('admin collection libraries', () => {
     expect(editorSource).toContain('Busque ou crie uma categoria');
     expect(editorSource).not.toContain('<span className={labelClass}>Nova categoria</span>');
   });
+
+  it('separates homepage offers from operational campaigns', () => {
+    const marketingSource = readSource('src/app/admin/components/marketing/AdminMarketingSection.tsx');
+
+    expect(marketingSource).toContain('Oferta da homepage');
+    expect(marketingSource).toContain('Campanhas operacionais');
+    expect(marketingSource).toContain("campaignWorkspace === 'home-offer'");
+    expect(marketingSource).toContain("campaignWorkspace === 'operational-campaigns'");
+    expect(marketingSource).toContain('Esta area nao controla a faixa global da homepage.');
+  });
+
+  it('labels future revenue rows as estimates rather than pre-approved charges', () => {
+    const financeSource = readSource('src/app/admin/components/finance/AdminFinance.tsx');
+
+    expect(financeSource).toContain("? 'Projecao estimada'");
+    expect(financeSource).toContain('Projecao de renovacao futura');
+    expect(financeSource).toContain('Ciclo estimado');
+  });
 });
