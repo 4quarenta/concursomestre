@@ -17,7 +17,7 @@ export type OfficialOrganizationLogo = {
 
 export const OFFICIAL_ORGANIZATION_LOGOS: readonly OfficialOrganizationLogo[] = [
   {
-    organization: 'Polícia Federal', organizationSlugs: ['policia-federal'], publicPath: '/assets/organizations/policia-federal.png',
+    organization: 'Polícia Federal', organizationSlugs: ['policia-federal', 'departamento-da-policia-federal'], publicPath: '/assets/organizations/policia-federal.png',
     sourceUrl: 'https://www.gov.br/pf/pt-br/principios-fundamentais/simbolos-da-policia-federal-2/emblema.png/view', sourceDomain: 'gov.br', sourceType: 'OFFICIAL', retrievedAt: '2026-08-31', originalMime: 'image/png', normalizedMime: 'image/png', width: 451, height: 566, sha256: '273d85c40c377bf273f98666a660cf9e784911f780c5cba747cdb8b48f3c8652', usageContext: 'ORGANIZATION_IDENTIFICATION', status: 'READY',
   },
   {

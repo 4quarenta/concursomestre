@@ -106,7 +106,10 @@ const safeHomeImageUrl = (value: unknown): string => {
 
 const safeOrganizationImageUrl = (value: unknown): string | null => {
   const candidate = String(value || '').trim();
-  return candidate.startsWith('/assets/organizations/') || candidate.startsWith('/uploads/organizations/')
+  const isCanonicalTaxonomyLogo = /^\/uploads\/admin-assets\/taxonomy-logo\/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:avif|gif|jpe?g|png|webp)$/i.test(candidate);
+  return candidate.startsWith('/assets/organizations/')
+    || candidate.startsWith('/uploads/organizations/')
+    || isCanonicalTaxonomyLogo
     ? candidate
     : null;
 };
