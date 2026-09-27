@@ -534,6 +534,8 @@ const AdminGranCrawlerSection = ({
   const [purgeDiagnosticsConfirmOpen, setPurgeDiagnosticsConfirmOpen] = React.useState(false);
   const [isLoadingFailures, setIsLoadingFailures] = React.useState(false);
   const [failureActionId, setFailureActionId] = React.useState<number | 'all' | 'retention' | null>(null);
+  const [failureActionProgress, setFailureActionProgress] = React.useState('');
+  const [failureActionFeedback, setFailureActionFeedback] = React.useState('');
   const [showProcessingDetails, setShowProcessingDetails] = React.useState(false);
   const [taxonomyExpanded, setTaxonomyExpanded] = React.useState(false);
   const [isCheckingTaxonomyUpdates, setIsCheckingTaxonomyUpdates] = React.useState(false);
@@ -645,12 +647,14 @@ const AdminGranCrawlerSection = ({
         const activeItems = data.failureHistory.items.filter((failure) => (
           failure.status === 'open' || failure.status === 'retrying'
         ));
+        const openCount = Number(data.failureHistory.openCount) || 0;
+        const retryingCount = Number(data.failureHistory.retryingCount) || 0;
         setFailureHistory({
           ...data.failureHistory,
           items: activeItems,
           total: data.failureHistory.total || activeItems.length,
-          openCount: data.failureHistory.openCount || activeItems.filter((failure) => failure.status === 'open').length,
-          retryingCount: data.failureHistory.retryingCount || activeItems.filter((failure) => failure.status === 'retrying').length,
+          openCount: Math.max(openCount, activeItems.filter((failure) => failure.status === 'open').length),
+          retryingCount: Math.max(retryingCount, activeItems.filter((failure) => failure.status === 'retrying').length),
         });
       }
       if (data?.failureRetention && typeof data.failureRetention === 'object') {
@@ -888,11 +892,13 @@ const AdminGranCrawlerSection = ({
       const activeItems = (data.items || []).filter((failure) => (
         failure.status === 'open' || failure.status === 'retrying'
       ));
+      const openCount = Number(data.openCount) || 0;
+      const retryingCount = Number(data.retryingCount) || 0;
       setFailureHistory((current) => ({
         items: cursor ? [...current.items, ...activeItems] : activeItems,
         total: data.total || 0,
-        openCount: data.openCount || 0,
-        retryingCount: data.retryingCount || 0,
+        openCount: Math.max(openCount, activeItems.filter((failure) => failure.status === 'open').length),
+        retryingCount: Math.max(retryingCount, activeItems.filter((failure) => failure.status === 'retrying').length),
         nextCursor: data.nextCursor || null,
       }));
     } catch (requestError) {
@@ -964,6 +970,8 @@ const AdminGranCrawlerSection = ({
     if (failureIds.length === 0) return;
     const actionId = failureIds.length === 1 ? failureIds[0] : 'all';
     setFailureActionId(actionId);
+    setFailureActionProgress('Carregando os detalhes das falhas.');
+    setFailureActionFeedback('');
     setError('');
     try {
       const taxonomyKeys = new Set<GranTaxonomySyncKey>();
@@ -995,14 +1003,23 @@ const AdminGranCrawlerSection = ({
         if (!syncTaxonomies) {
           throw new Error('A sincronizacao das taxonomias nao foi concluida; a publicacao nao foi reenviada.');
         }
-        if (!(await syncTaxonomies(Array.from(taxonomyKeys)))) return;
+        setFailureActionProgress(
+          'Sincronizando o catalogo Gran necessario. As questoes serao enfileiradas assim que essa etapa terminar.',
+        );
+        if (!(await syncTaxonomies(Array.from(taxonomyKeys)))) {
+          throw new Error('A sincronizacao da taxonomia nao terminou; nenhuma questao foi enviada para a fila.');
+        }
       }
 
+      setFailureActionProgress('Enviando as questoes para a fila de publicacao.');
       const response = await apiClient.post(ENDPOINT, {
         action: 'retry_publication_failures',
         failureIds,
       });
       const batch = readApiData<GranPublicationBatch>(response);
+      if (!batch || typeof batch.batchId !== 'string' || batch.batchId.trim() === '') {
+        throw new Error('A API nao confirmou o lote de publicacao. Atualize a fila antes de tentar novamente.');
+      }
       setCurrentBatch(batch);
       setFailureHistory((current) => ({
         ...current,
@@ -1012,12 +1029,15 @@ const AdminGranCrawlerSection = ({
         openCount: Math.max(0, current.openCount - failureIds.length),
         retryingCount: current.retryingCount + failureIds.length,
       }));
+      await loadFailureHistory();
+      setFailureActionFeedback(`Lote ${batch.batchId} confirmado na fila de publicacao.`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel reenviar as questoes selecionadas.');
     } finally {
       setFailureActionId(null);
+      setFailureActionProgress('');
     }
-  }, []);
+  }, [loadFailureHistory]);
 
   const handleRetryFailure = React.useCallback(async (failure: GranPublicationFailure) => {
     await handleRetryFailures([failure]);
@@ -2279,6 +2299,25 @@ const AdminGranCrawlerSection = ({
               Abra o rascunho para editar ou tente publicar novamente sem refazer a coleta inteira.
               Depois de publicada, a questao e removida automaticamente desta lista.
             </p>
+            {failureActionId !== null && failureActionId !== 'retention' ? (
+              <p
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className="mt-2 flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300"
+              >
+                <Loader2 size={13} className="shrink-0 animate-spin" />
+                <span>
+                  {syncingTaxonomyKey && taxonomyProgress
+                    ? taxonomyProgress
+                    : failureActionProgress || 'Preparando nova tentativa.'}
+                </span>
+              </p>
+            ) : failureActionFeedback ? (
+              <p role="status" aria-live="polite" className="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                {failureActionFeedback}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button

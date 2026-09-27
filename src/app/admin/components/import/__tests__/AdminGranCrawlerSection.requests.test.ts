@@ -163,6 +163,12 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain("action: 'get_publication_failure'");
     expect(source).toContain("action: 'retry_publication_failures'");
     expect(source).toContain('failureIds,');
+    expect(source).toContain('A API nao confirmou o lote de publicacao. Atualize a fila antes de tentar novamente.');
+    expect(source).toContain('Lote ${batch.batchId} confirmado na fila de publicacao.');
+    expect(source).toContain('As questoes serao enfileiradas assim que essa etapa terminar.');
+    expect(source).toContain('await loadFailureHistory();');
+    expect(source).toContain('Math.max(openCount, activeItems.filter((failure) => failure.status === \'open\').length)');
+    expect(source).toContain('failureActionProgress');
     expect(source).toContain("action: 'ignore_publication_failure'");
     expect(source).toContain("action: 'ignore_all_publication_failures'");
     expect(source).toContain('data-testid="gran-publication-failure-history"');
