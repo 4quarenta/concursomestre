@@ -522,8 +522,6 @@ export const getQuestionPublicationBlockReasons = (question: Question) => {
   const options = getQuestionOptionTexts(question);
   const type = String(question.tipo || draft.modality || draft.questionType || '').toLowerCase();
   const expectedOptionsCount = getQuestionExpectedOptionsCount(question);
-  const correctOptionIndex = Number(draft.correctOptionIndex);
-  const response = Number(question.resposta);
   const reasons: string[] = [];
 
   if (statement.length < 12) reasons.push('enunciado_ausente');
@@ -531,13 +529,69 @@ export const getQuestionPublicationBlockReasons = (question: Question) => {
   if (!['discursiva', 'redacao', 'estudo de caso'].includes(type)) {
     if (options.length < 2) reasons.push('alternativas_ausentes');
     else if (expectedOptionsCount > 0 && options.length < expectedOptionsCount) reasons.push('alternativas_incompletas');
-    const correctIndex = Number.isInteger(correctOptionIndex) ? correctOptionIndex : null;
-    const responseIndex = Number.isInteger(response) && response > 0 ? response - 1 : null;
-    const answerIndexes = [correctIndex, responseIndex].filter((index): index is number => index !== null);
-    const hasValidAnswer = answerIndexes.some((index) => index >= 0 && index < options.length)
+    const optionRecords = (Array.isArray(question.alternatives) && question.alternatives.length
+      ? question.alternatives.map((alternative, index) => ({
+        label: alternative.label || String.fromCharCode(65 + index),
+        id: alternative.id || '',
+        tempId: alternative.tempId || '',
+        text: alternative.text || '',
+      }))
+      : Array.isArray(question.itens)
+        ? question.itens.map((alternative, index) => {
+          const record = alternative as unknown as Record<string, unknown>;
+          return {
+            label: String(record.rotulo || String.fromCharCode(65 + index)),
+            id: String(record.id || ''),
+            tempId: String(record.tempId || ''),
+            text: String(record.corpo || ''),
+          };
+        })
+        : []).filter((alternative) => stripHtml(alternative.text).trim().length > 0);
+    const normalizeLabel = (value: unknown) => String(value ?? '')
+      .trim()
+      .replace(/^alternativa\s+/i, '')
+      .replace(/^[([{\s]+|[)\]}\s.,:;]+$/g, '')
+      .toLocaleUpperCase('pt-BR');
+    const hasLabel = (label: unknown) => {
+      const normalized = normalizeLabel(label);
+      return Boolean(normalized) && optionRecords.some((alternative) => normalizeLabel(alternative.label) === normalized);
+    };
+    const indexHasOption = (index: number) => (
+      index >= 0 && (index < optionRecords.length
+        || (index < 26 && hasLabel(String.fromCharCode(65 + index))))
+    );
+    const correctOptionIndex = typeof draft.correctOptionIndex === 'number' && Number.isInteger(draft.correctOptionIndex)
+      ? draft.correctOptionIndex
+      : null;
+    const response = typeof question.resposta === 'number' && Number.isInteger(question.resposta)
+      ? question.resposta
+      : null;
+    const answerIndexes = [correctOptionIndex, response !== null && response > 0 ? response - 1 : null]
+      .filter((index): index is number => index !== null);
+    const answer = question.answer;
+    const answerAlternativeIds = [
+      ...(Array.isArray(answer?.correctAlternativeTempIds) ? answer.correctAlternativeTempIds : []),
+      ...(answer?.alternativeId ? [answer.alternativeId] : []),
+    ].map(String);
+    const hasReferencedAnswer = answerAlternativeIds.length > 0 && optionRecords.some((alternative) => (
+      answerAlternativeIds.includes(alternative.id) || answerAlternativeIds.includes(alternative.tempId)
+    ));
+    const answerLabels = [answer?.raw, answer?.value, question.resposta]
+      .flatMap((value) => Array.isArray(value) ? value : [value])
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => {
+        const match = value.trim().match(/^(?:alternativa\s*)?[([{]?([A-Z])[)\]}.,:]?$/i);
+        return match?.[1] || '';
+      })
+      .filter(Boolean);
+    const hasLabeledAnswer = answerLabels.some(hasLabel);
+    const hasValidAnswer = answerIndexes.some(indexHasOption)
+      || hasReferencedAnswer
+      || hasLabeledAnswer
       || Boolean(question.anulada || question.isCanceled || draft.isAttributedToAll || draft.attributedToAll);
     if (!hasValidAnswer) {
-      const missingAlternativeIndex = answerIndexes.find((index) => index >= 0);
+      const missingAlternativeIndex = answerIndexes.find((index) => index >= 0)
+        ?? answerLabels.map((label) => label.charCodeAt(0) - 65).find((index) => index >= 0);
       if (missingAlternativeIndex !== undefined) {
         reasons.push(`gabarito_alternativa_inexistente:${missingAlternativeIndex}`);
       } else {
@@ -3640,12 +3694,61 @@ export const buildCanonicalAlternativesFromQuestion = (question: Question): Ques
   return [];
 };
 
+const resolveCanonicalCorrectAlternative = (
+  question: Question,
+  alternatives: QuestionAlternativePayload[],
+) => {
+  const draft = question as ImportedQuestionDraft;
+  const answer = question.answer;
+  const explicitIndex = Number.isInteger(draft.correctOptionIndex) && Number(draft.correctOptionIndex) >= 0
+    ? Number(draft.correctOptionIndex)
+    : null;
+  const normalizeLabel = (value: unknown) => String(value ?? '')
+    .trim()
+    .replace(/^alternativa\s+/i, '')
+    .replace(/^[([{\s]+|[)\]}\s.,:;]+$/g, '')
+    .toLocaleUpperCase('pt-BR');
+  const byReference = [
+    ...(Array.isArray(answer?.correctAlternativeTempIds) ? answer.correctAlternativeTempIds : []),
+    ...(answer?.alternativeId ? [answer.alternativeId] : []),
+  ].map(String);
+  const referencedAlternative = alternatives.find((alternative) => (
+    byReference.includes(String(alternative.tempId || ''))
+    || byReference.includes(String(alternative.id || ''))
+  ));
+  if (referencedAlternative) return referencedAlternative;
+
+  if (explicitIndex !== null) {
+    const indexedAlternative = alternatives[explicitIndex];
+    if (indexedAlternative) return indexedAlternative;
+    const indexedLabel = String.fromCharCode(65 + explicitIndex);
+    const sparseAlternative = alternatives.find((alternative) => (
+      normalizeLabel(alternative.label) === indexedLabel
+    ));
+    if (sparseAlternative) return sparseAlternative;
+  }
+
+  const answerLabels = [answer?.raw, answer?.value]
+    .map(normalizeLabel)
+    .filter((label) => /^[A-Z]$/.test(label));
+  const labeledAlternative = alternatives.find((alternative) => (
+    answerLabels.includes(normalizeLabel(alternative.label))
+  ));
+  if (labeledAlternative) return labeledAlternative;
+
+  const legacyResponse = Number(question.resposta);
+  if (Number.isInteger(legacyResponse) && legacyResponse > 0) {
+    return alternatives[legacyResponse - 1] || alternatives.find((alternative) => (
+      normalizeLabel(alternative.label) === String.fromCharCode(64 + legacyResponse)
+    )) || null;
+  }
+
+  return null;
+};
+
 export const syncCanonicalQuestionPayload = (question: Question): Question => {
   const alternatives = buildCanonicalAlternativesFromQuestion(question);
-  const correctIndex = Number.isInteger((question as ImportedQuestionDraft).correctOptionIndex)
-    ? Number((question as ImportedQuestionDraft).correctOptionIndex)
-    : Math.max(0, Number(question.resposta || 1) - 1);
-  const correctAlternative = alternatives[correctIndex] || null;
+  const correctAlternative = resolveCanonicalCorrectAlternative(question, alternatives);
   const existingComments = question.editorialComments || {};
   const teacherComment = question.editorial?.find((item) => item.type === 'teacher_comment')?.body
     || existingComments.teacherComment
