@@ -104,6 +104,15 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(reviewCardSource).toContain('Motivo da falha: {queueError}');
   });
 
+  it('shows canonical publication blockers on collapsed Gran review cards', () => {
+    expect(reviewCardSource).toContain('getQuestionPublicationBlockReasons(question).length === 0');
+    expect(reviewCardSource).toContain('const publicationBlockers = describeQuestionPublicationBlockers(question);');
+    expect(reviewCardSource).toContain('Falta para publicar');
+    expect(reviewCardSource).toContain('publicationBlockers.map((blocker)');
+    expect(reviewCardSource.indexOf('Falta para publicar'))
+      .toBeLessThan(reviewCardSource.indexOf('{cardsOnly && !isCardExpanded &&'));
+  });
+
   it('shows the filtered year and per-question outcome details in the latest batch', () => {
     expect(source).toContain('collectionYears?: number[]');
     expect(source).toContain('Detalhes das {currentBatchQuestionDetails.length} questões');

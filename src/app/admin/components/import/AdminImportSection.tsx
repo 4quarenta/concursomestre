@@ -57,7 +57,8 @@ import {
   ADMIN_SECONDARY_BUTTON_CLASS,
 } from '../shared/adminPanelStyles';
 import { EXTERNAL_AI_FULL_BATCH_PROMPT } from './externalAiExamPrompt';
-import { partitionQuestionTaxonomies } from './adminImportWorkflowPublicationCore';
+import { getQuestionPublicationBlockReasons, partitionQuestionTaxonomies } from './adminImportWorkflowPublicationCore';
+import { describeQuestionPublicationBlockers } from './granQuestionCompleteness';
 import { renderQuestionContentWithAssets } from '@/services/questions/questionAssetRenderer';
 
 type GenerateSpecificType = 'teacher' | 'detailed';
@@ -671,25 +672,7 @@ const getQuestionProbablePages = (question: ExtractedQuestionPreview) => (
 );
 
 const isQuestionReadyForPublicationPreview = (question: ExtractedQuestionPreview) => {
-  const statement = getQuestionStatementPreview(question).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  const optionsCount = getFilledQuestionOptionsCount(question);
-  const expectedOptionsCount = getQuestionExpectedOptionsCount(question);
-  const type = asText(question.tipo).toLowerCase();
-  const answer = Number(question.resposta);
-  const correctOptionIndex = Number(question.correctOptionIndex);
-  const discursive = ['discursiva', 'redacao', 'estudo de caso'].includes(type);
-  const hasAnswer = discursive
-    || (Number.isInteger(correctOptionIndex) && correctOptionIndex >= 0 && correctOptionIndex < optionsCount)
-    || (Number.isInteger(answer) && answer > 0 && answer <= optionsCount)
-    || Boolean(question.anulada || question.isCanceled);
-
-  return statement.length >= 12
-    && Boolean(type && type !== 'desconhecido')
-    && (discursive || (
-      optionsCount >= 2
-      && (expectedOptionsCount <= 0 || optionsCount >= expectedOptionsCount)
-      && hasAnswer
-    ));
+  return getQuestionPublicationBlockReasons(question).length === 0;
 };
 
 const getImageDataUri = (imageData?: string) => {
@@ -3160,6 +3143,7 @@ const AdminImportSection = ({
                     || Number(question.resposta || 0) > 0;
                   const queueStatus = reviewQuestionQueueStatuses?.[index];
                   const queueError = reviewQuestionQueueErrors?.[index]?.trim() || '';
+                  const publicationBlockers = describeQuestionPublicationBlockers(question);
                   const isQuestionPublished = publishedQuestionSet.has(questionNumber) || queueStatus === 'published';
                   const publishQuestionAction = `question:${questionNumber}` as const;
                   const isPublicationPending = queueStatus === 'queued' || queueStatus === 'processing';
@@ -3358,6 +3342,19 @@ const AdminImportSection = ({
                         </p>
                       ) : null}
                     </div>
+
+                    {publicationBlockers.length > 0 && (
+                      <div
+                        className="mb-4 rounded-sm border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100"
+                        aria-label={`Pendências para publicação da questão ${questionNumber}`}
+                        data-testid={`question-publication-blockers-${questionNumber}`}
+                      >
+                        <p className="font-black">Falta para publicar</p>
+                        <ul className="mt-1 list-disc space-y-1 pl-5">
+                          {publicationBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+                        </ul>
+                      </div>
+                    )}
 
                     {cardsOnly && !isCardExpanded && (
                       <div className="rounded-sm border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
