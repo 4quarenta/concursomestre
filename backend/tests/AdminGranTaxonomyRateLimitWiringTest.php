@@ -22,7 +22,7 @@ adminGranTaxonomyRateLimitAssert(
     'A sincronizacao de taxonomias precisa de perfil proprio com lotes grandes para nao consumir o limite da coleta avulsa.'
 );
 adminGranTaxonomyRateLimitAssert(
-    substr_count($route, "RateLimiter::enforceProfile('admin_taxonomy_sync', \$actorUserId)") === 7,
+    substr_count($route, "RateLimiter::enforceProfile('admin_taxonomy_sync', \$actorUserId)") === 8,
     'Cada operacao mutavel da sincronizacao Gran deve usar o perfil administrativo de lote.'
 );
 adminGranTaxonomyRateLimitAssert(

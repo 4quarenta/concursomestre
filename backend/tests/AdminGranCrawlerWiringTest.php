@@ -152,15 +152,17 @@ adminGranCrawlerWiringAssert(
     && str_contains($questionsService, 'A imagem da Gran nao foi copiada'),
     'Canonical persistence must reject Gran image URLs that bypassed materialization.'
 );
-$taxonomySyncPosition = strpos($component, 'await syncTaxonomies(Array.from(taxonomyKeys))');
+$taxonomySyncPosition = strpos($component, 'await syncTaxonomies(Array.from(taxonomyTargets.values()))');
 $taxonomyRetryPosition = strpos($component, "action: 'retry_publication_failures'");
 adminGranCrawlerWiringAssert(
     str_contains($questionsService, 'GranTaxonomyNotSynchronizedException')
     && str_contains($questionsService, "'code' => 'gran_taxonomy_not_synced_' . \$taxonomyKey")
     && str_contains($component, 'get_publication_failure')
-    && str_contains($component, 'syncTaxonomies(Array.from(taxonomyKeys))')
-    && str_contains($component, 'handleTaxonomySync([], key, true)')
-    && str_contains($component, 'payloadKey ?? codeKey')
+    && str_contains($component, 'getLegacyTaxonomyTarget(detail.payload, missingName)')
+    && str_contains($component, 'collectGranTaxonomyById(collectorKinds[target.key], target.externalId)')
+    && str_contains($component, "action: 'sync_taxonomy_target'")
+    && str_contains($component, "target.key === 'assunto'")
+    && !str_contains($component, 'handleTaxonomySync([], key, true)')
     && $taxonomySyncPosition !== false
     && $taxonomyRetryPosition !== false
     && $taxonomySyncPosition < $taxonomyRetryPosition,

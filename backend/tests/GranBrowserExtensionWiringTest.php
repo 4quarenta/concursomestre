@@ -18,7 +18,7 @@ $popup = (string) file_get_contents($extension . '/popup.js');
 
 granExtensionAssert(is_array($manifest), 'Manifesto da extensao deve ser JSON valido.');
 granExtensionAssert(($manifest['manifest_version'] ?? null) === 3, 'Extensao deve usar Manifest V3.');
-granExtensionAssert(($manifest['version'] ?? null) === '1.0.21', 'Pacote corrigido deve usar a versao 1.0.21.');
+granExtensionAssert(($manifest['version'] ?? null) === '1.0.22', 'Pacote corrigido deve usar a versao 1.0.22.');
 granExtensionAssert(
     ($manifest['host_permissions'] ?? []) === [
         'https://rota-api.grancursosonline.com.br/*',
@@ -71,8 +71,11 @@ foreach ([
     'assunto_tree:',
     'collectTaxonomyPage',
     'collectTaxonomyBatch',
+    'collectTaxonomyById',
     "'COLLECT_TAXONOMY_PAGE'",
     "'COLLECT_TAXONOMY_BATCH'",
+    "'COLLECT_TAXONOMY_BY_ID'",
+    "params.append('id[]', externalId)",
     "'CHECK_TAXONOMY_UPDATES'",
     "params.set('perPage', '1')",
     'ensureCollectorBridgeInOpenTabs',
