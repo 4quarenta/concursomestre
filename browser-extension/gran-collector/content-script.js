@@ -7,6 +7,7 @@
     'COLLECT_QUESTION',
     'COLLECT_TAXONOMY_PAGE',
     'COLLECT_TAXONOMY_BATCH',
+    'COLLECT_TAXONOMY_BY_ID',
     'CHECK_TAXONOMY_UPDATES',
   ]);
   const CRAWLER_PATH = '/admin/operation/gran-crawler';
@@ -59,9 +60,11 @@
       chrome.runtime.sendMessage({
         action,
         url: action === 'COLLECT' ? String(event.data.url || '') : undefined,
-        externalId: action === 'COLLECT_QUESTION' ? String(event.data.externalId || '') : undefined,
+        externalId: action === 'COLLECT_QUESTION' || action === 'COLLECT_TAXONOMY_BY_ID'
+          ? String(event.data.externalId || '')
+          : undefined,
         subjectSlug: action === 'COLLECT_QUESTION' ? String(event.data.subjectSlug || '') : undefined,
-        kind: action === 'COLLECT_TAXONOMY_PAGE' || action === 'COLLECT_TAXONOMY_BATCH'
+        kind: action === 'COLLECT_TAXONOMY_PAGE' || action === 'COLLECT_TAXONOMY_BATCH' || action === 'COLLECT_TAXONOMY_BY_ID'
           ? String(event.data.kind || '')
           : undefined,
         page: action === 'COLLECT_TAXONOMY_PAGE' ? Number(event.data.page || 1) : undefined,

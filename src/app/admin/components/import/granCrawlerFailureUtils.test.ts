@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getLegacyTaxonomyKey,
   getLegacyTaxonomyName,
+  getLegacyTaxonomyTarget,
   getTaxonomyKeyFromFailureCode,
 } from './granCrawlerFailureUtils';
 
@@ -44,6 +45,8 @@ describe('Gran publication taxonomy failure helpers', () => {
       }],
     };
     expect(getLegacyTaxonomyKey(payload, 'Educação (Professores, Especialistas e outros)')).toBe('orgao');
+    expect(getLegacyTaxonomyTarget(payload, 'Educação (Professores, Especialistas e outros)'))
+      .toEqual({ key: 'orgao', externalId: '506' });
   });
 
   it('routes legacy Gran focus identities in the careers bucket to the area catalog', () => {
@@ -76,5 +79,17 @@ describe('Gran publication taxonomy failure helpers', () => {
     };
 
     expect(getLegacyTaxonomyKey(payload, 'Carreira administrativa')).toBe('carreira');
+    expect(getLegacyTaxonomyTarget(payload, 'Carreira administrativa'))
+      .toEqual({ key: 'carreira', externalId: '21' });
+  });
+
+  it('refuses name-only or ambiguous identities instead of falling back to a full catalog sync', () => {
+    expect(getLegacyTaxonomyTarget({ filters: { organizations: ['Educação'] } }, 'Educação')).toBeNull();
+    expect(getLegacyTaxonomyTarget({
+      filters: {
+        organizations: [{ label: 'Educação', provider: 'gran', externalId: '506' }],
+        roles: [{ label: 'Educação', provider: 'gran', externalId: '507' }],
+      },
+    }, 'Educação')).toBeNull();
   });
 });

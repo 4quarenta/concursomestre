@@ -165,7 +165,8 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('failureIds,');
     expect(source).toContain('A API nao confirmou o lote de publicacao. Atualize a fila antes de tentar novamente.');
     expect(source).toContain('Lote ${batch.batchId} confirmado na fila de publicacao.');
-    expect(source).toContain('As questoes serao enfileiradas assim que essa etapa terminar.');
+    expect(source).toContain('Sincronizando somente as taxonomias ausentes identificadas nas questoes.');
+    expect(source).toContain("action: 'sync_taxonomy_target'");
     expect(source).toContain('await loadFailureHistory();');
     expect(source).toContain('Math.max(openCount, activeItems.filter((failure) => failure.status === \'open\').length)');
     expect(source).toContain('failureActionProgress');

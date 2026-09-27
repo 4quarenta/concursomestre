@@ -428,10 +428,15 @@ const extractRows = (payload) => {
   const candidates = [
     payload?.data?.rows,
     payload?.data?.items,
+    payload?.data?.hits?.hits,
+    payload?.data?.materias,
+    payload?.data?.arvore,
+    payload?.data?.results,
     payload?.rows,
     payload?.itens,
     payload?.items,
     payload?.results,
+    payload?.hits?.hits,
   ];
   return candidates.find(Array.isArray) || [];
 };
@@ -854,6 +859,41 @@ const collectTaxonomyPage = async (kindValue, pageValue, rawRootIds) => {
   };
 };
 
+const collectTaxonomyById = async (kindValue, externalIdValue) => {
+  const kind = String(kindValue || '').trim().toLowerCase();
+  const definition = TAXONOMY_ENDPOINTS[kind];
+  if (!definition || kind === 'assunto_tree') throw new Error('Tipo de taxonomia Gran invalido para consulta individual.');
+  const externalId = String(externalIdValue || '').trim();
+  if (!/^[A-Za-z0-9_-]{1,120}$/.test(externalId)) {
+    throw new Error('Identificador externo da taxonomia invalido.');
+  }
+  const session = await getSession();
+  if (!session) throw new Error('Abra a extensao e conecte uma sessao Gran valida.');
+
+  const params = new URLSearchParams(definition.params);
+  params.set('perPage', '1');
+  params.set('page', '1');
+  params.append('id[]', externalId);
+  const requestUrl = `${GRAN_API_ORIGIN}${definition.path}?${params.toString()}`;
+  const response = await fetchGranJson(requestUrl, session);
+  const rows = extractRows(response.json);
+  const matchingRows = rows.filter((row) => {
+    const record = row?._source && typeof row._source === 'object' ? row._source : row;
+    const id = String(record?.id ?? row?._id ?? '').trim();
+    return id === externalId;
+  });
+  if (matchingRows.length !== 1) {
+    throw new Error('A Gran nao confirmou uma unica taxonomia com o identificador solicitado.');
+  }
+  return {
+    kind,
+    externalId,
+    status: response.status,
+    requestUrl,
+    json: { data: { rows: matchingRows } },
+  };
+};
+
 const collectTaxonomyBatch = async (kindValue, rawRootIds) => {
   const kind = String(kindValue || '').trim().toLowerCase();
   const definition = TAXONOMY_ENDPOINTS[kind];
@@ -996,7 +1036,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     && sender?.id === chrome.runtime.id
     && !sender?.tab;
   const pageAction = [
-    'PING', 'COLLECT', 'COLLECT_QUESTION', 'COLLECT_TAXONOMY_PAGE', 'COLLECT_TAXONOMY_BATCH', 'CHECK_TAXONOMY_UPDATES',
+    'PING', 'COLLECT', 'COLLECT_QUESTION', 'COLLECT_TAXONOMY_PAGE', 'COLLECT_TAXONOMY_BATCH', 'COLLECT_TAXONOMY_BY_ID', 'CHECK_TAXONOMY_UPDATES',
   ].includes(action)
     && isAllowedSender(sender);
   if (!popupAction && !pageAction) {
@@ -1013,6 +1053,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           ? collectTaxonomyPage(message.kind, message.page, message.rootExternalIds)
           : action === 'COLLECT_TAXONOMY_BATCH'
             ? collectTaxonomyBatch(message.kind, message.rootExternalIds)
+            : action === 'COLLECT_TAXONOMY_BY_ID'
+              ? collectTaxonomyById(message.kind, message.externalId)
             : action === 'CHECK_TAXONOMY_UPDATES'
               ? checkTaxonomyUpdates()
         : getStatus();

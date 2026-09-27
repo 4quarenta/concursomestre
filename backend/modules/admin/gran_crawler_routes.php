@@ -187,6 +187,26 @@ function handleAdminGranCrawlerRoute(PDO $db): void
             Response::success($result, 'Lote de taxonomias Gran sincronizado.');
         }
 
+        if ($action === 'sync_taxonomy_target') {
+            RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
+            $kind = strtolower(trim((string) ($input['taxonomyKind'] ?? '')));
+            $externalId = trim((string) ($input['externalId'] ?? ''));
+            $granResponse = $input['granResponse'] ?? null;
+            if (!is_array($granResponse) || $externalId === '') {
+                throw new InvalidArgumentException('A taxonomia Gran solicitada e invalida.');
+            }
+            $result = (new AdminGranTaxonomySyncService($db))->syncTarget($kind, $externalId, $granResponse);
+            logAdminAudit($db, $actorUserId, 'gran_crawler.taxonomy_target_sync', 'filter', null, [
+                'kind' => $kind,
+                'external_id' => $externalId,
+                'processed' => (int) ($result['processed'] ?? 0),
+                'created' => (int) ($result['created'] ?? 0),
+                'updated' => (int) ($result['updated'] ?? 0),
+                'pending' => (int) ($result['pending'] ?? 0),
+            ]);
+            Response::success($result, 'Taxonomia Gran individual sincronizada.');
+        }
+
         if ($action === 'sync_missing_subject_roots') {
             RateLimiter::enforceProfile('admin_taxonomy_sync', $actorUserId);
             $granResponses = $input['granResponses'] ?? null;

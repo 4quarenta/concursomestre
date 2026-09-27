@@ -28,6 +28,7 @@ import {
 } from '../shared/adminPanelStyles';
 import {
   collectGranTaxonomyBatch,
+  collectGranTaxonomyById,
   collectGranQuestions,
   collectGranQuestionById,
   checkGranTaxonomyUpdates,
@@ -37,9 +38,10 @@ import {
 import type { GranCollectorStatus, GranTaxonomyCollectorResult } from './granExtensionBridge';
 import { partitionGranReviewPayloads } from './granCrawlerReviewUtils';
 import {
-  getLegacyTaxonomyKey,
   getLegacyTaxonomyName,
+  getLegacyTaxonomyTarget,
   getTaxonomyKeyFromFailureCode,
+  type GranLegacyTaxonomyTarget,
   type GranTaxonomySyncKey,
 } from './granCrawlerFailureUtils';
 import { splitGranTaxonomyResponses } from './granTaxonomySyncUtils';
@@ -242,7 +244,7 @@ type GranPublicationProgress = Pick<GranPublicationBatch,
   | 'published' | 'duplicates' | 'failures' | 'error' | 'completedAt'>;
 
 const ENDPOINT = 'admin/gran_crawler.php';
-const EXTENSION_DOWNLOAD_URL = '/downloads/concursomestre-coletor-gran-v1.0.21.zip';
+const EXTENSION_DOWNLOAD_URL = '/downloads/concursomestre-coletor-gran-v1.0.22.zip';
 const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
 const GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear';
 const BOOTSTRAP_CACHE_MS = 60_000;
@@ -552,7 +554,7 @@ const AdminGranCrawlerSection = ({
   const bootstrapAbortRef = React.useRef<AbortController | null>(null);
   const automaticAbortRef = React.useRef<AbortController | null>(null);
   const automaticCheckpointRef = React.useRef<GranAutomaticCheckpoint | null>(null);
-  const taxonomySyncForRetryRef = React.useRef<((keys: GranTaxonomySyncKey[]) => Promise<boolean>) | null>(null);
+  const taxonomySyncForRetryRef = React.useRef<((targets: GranLegacyTaxonomyTarget[]) => Promise<boolean>) | null>(null);
   const isMountedRef = React.useRef(false);
   const publicationBatches = React.useMemo(() => currentBatch ? [currentBatch] : [], [currentBatch]);
   const hasActiveJobs = currentBatch !== null && ['pending', 'processing'].includes(currentBatch.status);
@@ -974,7 +976,7 @@ const AdminGranCrawlerSection = ({
     setFailureActionFeedback('');
     setError('');
     try {
-      const taxonomyKeys = new Set<GranTaxonomySyncKey>();
+      const taxonomyTargets = new Map<string, GranLegacyTaxonomyTarget>();
       for (const failure of failures.filter((item) => failureIds.includes(item.failureId))) {
         const codeKey = getTaxonomyKeyFromFailureCode(failure.code);
         const missingName = getLegacyTaxonomyName(failure.message);
@@ -985,28 +987,25 @@ const AdminGranCrawlerSection = ({
           failureId: failure.failureId,
         });
         const detail = readApiData<GranPublicationFailure & { payload?: unknown }>(detailResponse);
-        const payloadKey = missingName
-          ? getLegacyTaxonomyKey(detail.payload, missingName)
+        const target = missingName
+          ? getLegacyTaxonomyTarget(detail.payload, missingName)
           : null;
-        const resolvedKey = payloadKey ?? codeKey;
-        if (!resolvedKey) {
+        if (!target || (codeKey && target.key !== codeKey)) {
           throw new Error(
-            `A taxonomia Gran "${missingName}" ainda nao foi sincronizada. `
-            + 'Nao foi possivel identificar com seguranca o catalogo correspondente no registro da falha.',
+            `${missingName ? `A taxonomia Gran "${missingName}" ainda nao foi sincronizada. ` : 'A taxonomia Gran desta falha nao foi sincronizada. '}`
+            + 'O registro da falha nao contem uma identidade externa unica; nenhuma sincronizacao ampla foi iniciada.',
           );
         }
-        taxonomyKeys.add(resolvedKey);
+        taxonomyTargets.set(`${target.key}:${target.externalId}`, target);
       }
 
-      if (taxonomyKeys.size > 0) {
+      if (taxonomyTargets.size > 0) {
         const syncTaxonomies = taxonomySyncForRetryRef.current;
         if (!syncTaxonomies) {
           throw new Error('A sincronizacao das taxonomias nao foi concluida; a publicacao nao foi reenviada.');
         }
-        setFailureActionProgress(
-          'Sincronizando o catalogo Gran necessario. As questoes serao enfileiradas assim que essa etapa terminar.',
-        );
-        if (!(await syncTaxonomies(Array.from(taxonomyKeys)))) {
+        setFailureActionProgress('Sincronizando somente as taxonomias ausentes identificadas nas questoes.');
+        if (!(await syncTaxonomies(Array.from(taxonomyTargets.values())))) {
           throw new Error('A sincronizacao da taxonomia nao terminou; nenhuma questao foi enviada para a fila.');
         }
       }
@@ -1733,14 +1732,39 @@ const AdminGranCrawlerSection = ({
   }, [checkCollector, collectorState, finalizeCargoRelationsInChunks, handleCheckTaxonomyUpdates, loadTaxonomyStatus, taxonomyStatuses]);
 
   React.useEffect(() => {
-    taxonomySyncForRetryRef.current = async (keys) => {
-      for (const key of keys) {
-        const synchronized = await handleTaxonomySync([], key, true);
-        if (!synchronized) return false;
+    taxonomySyncForRetryRef.current = async (targets) => {
+      const collectorKinds: Record<GranTaxonomySyncKey, GranTaxonomyCollectorResult['kind']> = {
+        assunto: 'assunto',
+        banca: 'banca',
+        orgao: 'orgao',
+        cargo: 'cargo',
+        carreira: 'carreira',
+        area: 'area',
+      };
+      for (const target of targets) {
+        if (target.key === 'assunto') {
+          throw new Error('A taxonomia de materia depende da arvore e dos seus ancestrais; este retry nao iniciou uma sincronizacao ampla.');
+        }
+        setTaxonomyProgress(`Consultando somente a taxonomia externa ${target.externalId}.`);
+        const collected = await collectGranTaxonomyById(collectorKinds[target.key], target.externalId);
+        const response = await apiClient.post(ENDPOINT, {
+          action: 'sync_taxonomy_target',
+          taxonomyKind: collectorKinds[target.key],
+          externalId: target.externalId,
+          granResponse: collected.json,
+        });
+        const result = readApiData<{ processed?: number; externalId?: string; pending?: number }>(response);
+        if (Number(result?.processed) !== 1 || String(result?.externalId) !== target.externalId) {
+          throw new Error('A API nao confirmou a sincronizacao da taxonomia individual solicitada.');
+        }
+        if (Number(result.pending || 0) > 0) {
+          throw new Error('A taxonomia foi localizada, mas ainda depende de uma relacao hierarquica ausente. Nenhuma questao foi enfileirada.');
+        }
       }
+      setTaxonomyProgress('Taxonomias ausentes sincronizadas individualmente.');
       return true;
     };
-  }, [handleTaxonomySync]);
+  }, []);
 
   const pendingTaxonomySteps = GRAN_TAXONOMY_CATEGORIES.flatMap((category) => {
     const status = taxonomyStatuses[category.key];

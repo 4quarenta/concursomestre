@@ -386,6 +386,55 @@ final class AdminGranTaxonomySyncService
     }
 
     /**
+     * Sincroniza uma unica identidade externa solicitada por um retry.
+     * A resposta da Gran e validada antes de qualquer escrita, para impedir
+     * que uma consulta ignorada/falha materialize uma pagina inteira.
+     *
+     * @return array{kind:string,externalId:string,processed:int,created:int,updated:int,pending:int}
+     */
+    public function syncTarget(string $kind, string $externalId, array $granResponse): array
+    {
+        $kind = strtolower(trim($kind));
+        $externalId = $this->readExternalId($externalId) ?? '';
+        $config = self::KINDS[$kind] ?? null;
+        if ($config === null || in_array($kind, ['assunto', 'assunto_tree'], true) || $externalId === '') {
+            throw new InvalidArgumentException('A sincronizacao individual desta taxonomia nao e suportada.');
+        }
+
+        $matching = [];
+        foreach ($this->normalizeFlatRecords($this->extractRows($granResponse)) as $record) {
+            if ($this->readExternalId($record['id'] ?? null) === $externalId) {
+                $matching[$externalId] = $record;
+            }
+        }
+        if (count($matching) !== 1) {
+            throw new InvalidArgumentException('A Gran nao retornou exatamente a taxonomia solicitada. Nenhum catalogo foi sincronizado.');
+        }
+
+        StaticSitemapMutationInvalidator::invalidate('FILTER_IMPORT_MUTATION');
+        $this->db->beginTransaction();
+        try {
+            $record = array_values($matching)[0];
+            $result = $this->upsert($config, $record);
+            $this->db->commit();
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
+
+        return [
+            'kind' => $kind,
+            'externalId' => $externalId,
+            'processed' => 1,
+            'created' => $result['created'] ? 1 : 0,
+            'updated' => $result['created'] ? 0 : 1,
+            'pending' => $result['pending'] ? 1 : 0,
+        ];
+    }
+
+    /**
      * Consolida varias paginas em uma unica operacao HTTP administrativa.
      *
      * @param list<array<string, mixed>> $granResponses

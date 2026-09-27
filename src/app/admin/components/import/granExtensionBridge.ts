@@ -88,7 +88,7 @@ const createRequestId = () => {
 };
 
 const requestExtension = <T,>(
-  type: 'PING' | 'COLLECT' | 'COLLECT_QUESTION' | 'COLLECT_TAXONOMY_PAGE' | 'COLLECT_TAXONOMY_BATCH' | 'CHECK_TAXONOMY_UPDATES',
+  type: 'PING' | 'COLLECT' | 'COLLECT_QUESTION' | 'COLLECT_TAXONOMY_PAGE' | 'COLLECT_TAXONOMY_BATCH' | 'COLLECT_TAXONOMY_BY_ID' | 'CHECK_TAXONOMY_UPDATES',
   payload: Record<string, unknown> = {},
   timeoutMs = DEFAULT_TIMEOUT_MS,
   signal?: AbortSignal,
@@ -248,6 +248,15 @@ export const collectGranTaxonomyBatch = (
   'COLLECT_TAXONOMY_BATCH',
   { kind, rootExternalIds },
   10 * 60_000,
+);
+
+export const collectGranTaxonomyById = (
+  kind: GranTaxonomyCollectorResult['kind'],
+  externalId: string,
+) => requestExtension<GranTaxonomyCollectorResult & { externalId: string }>(
+  'COLLECT_TAXONOMY_BY_ID',
+  { kind, externalId },
+  DEFAULT_TIMEOUT_MS,
 );
 
 export const checkGranTaxonomyUpdates = () => requestExtension<GranTaxonomyUpdateCheckResult>(

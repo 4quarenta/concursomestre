@@ -18,6 +18,15 @@ export function getLegacyTaxonomyName(message: string): string | null {
 }
 
 export function getLegacyTaxonomyKey(payload: unknown, taxonomyName: string): GranTaxonomySyncKey | null {
+  return getLegacyTaxonomyTarget(payload, taxonomyName)?.key ?? null;
+}
+
+export type GranLegacyTaxonomyTarget = {
+  key: GranTaxonomySyncKey;
+  externalId: string;
+};
+
+export function getLegacyTaxonomyTarget(payload: unknown, taxonomyName: string): GranLegacyTaxonomyTarget | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
   const record = payload as Record<string, unknown>;
   const candidates: Record<string, unknown>[] = [record];
@@ -51,7 +60,7 @@ export function getLegacyTaxonomyKey(payload: unknown, taxonomyName: string): Gr
     ['area', ['areas', 'levels', 'niveis', 'focos', 'careers', 'carreiras']],
   ];
   const normalizedName = taxonomyName.trim().toLocaleLowerCase('pt-BR');
-  const matches = new Set<GranTaxonomySyncKey>();
+  const matches = new Map<string, GranLegacyTaxonomyTarget>();
   for (const candidate of candidates) {
     const canonical = candidate._canonical_contract && typeof candidate._canonical_contract === 'object'
       ? candidate._canonical_contract as Record<string, unknown>
@@ -65,38 +74,37 @@ export function getLegacyTaxonomyKey(payload: unknown, taxonomyName: string): Gr
       for (const field of fields) {
         const value = filters[field];
         const items = Array.isArray(value) ? value : value ? [value] : [];
-        if (items.some((item) => {
-          if (typeof item === 'string') return item.trim().toLocaleLowerCase('pt-BR') === normalizedName;
-          if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+        for (const item of items) {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
           const taxonomy = item as Record<string, unknown>;
-          const provider = String(taxonomy.provider ?? taxonomy.sourceProvider ?? taxonomy.source_provider ?? '').toLowerCase();
-          const hasExternalIdentity = Boolean(taxonomy.externalId ?? taxonomy.sourceExternalId ?? taxonomy.source_external_id);
+          const externalId = String(taxonomy.externalId ?? taxonomy.sourceExternalId ?? taxonomy.source_external_id ?? '').trim();
+          if (externalId === '') continue;
           const entityType = String(
             taxonomy.sourceEntityType ?? taxonomy.source_entity_type ?? taxonomy.entityType ?? taxonomy.entity_type ?? '',
           ).toLowerCase();
           const name = String(taxonomy.label ?? taxonomy.name ?? taxonomy.nome ?? '').trim().toLocaleLowerCase('pt-BR');
-          if (name !== normalizedName || !(provider === 'gran' || hasExternalIdentity)) return false;
+          if (name !== normalizedName) continue;
 
           if (field === 'careers' || field === 'carreiras') {
             // The import contract stores Gran focus/area identities in the
             // careers bucket. When older payloads omit sourceEntityType, the
             // server also defaults this bucket to the Gran "area" catalog.
             const careerKey = entityType === 'carreira' ? 'carreira' : 'area';
-            matches.add(careerKey);
-            return false;
+            matches.set(`${careerKey}:${externalId}`, { key: careerKey, externalId });
+            continue;
           }
           if (entityType === 'area') {
-            matches.add('area');
-            return false;
+            matches.set(`area:${externalId}`, { key: 'area', externalId });
+            continue;
           }
           if (entityType === 'carreira') {
-            matches.add('carreira');
-            return false;
+            matches.set(`carreira:${externalId}`, { key: 'carreira', externalId });
+            continue;
           }
-          return true;
-        })) matches.add(key);
+          matches.set(`${key}:${externalId}`, { key, externalId });
+        }
       }
     }
   }
-  return matches.size === 1 ? Array.from(matches)[0] : null;
+  return matches.size === 1 ? Array.from(matches.values())[0] : null;
 }

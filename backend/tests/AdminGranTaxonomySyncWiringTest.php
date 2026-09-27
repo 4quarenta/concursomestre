@@ -91,7 +91,8 @@ granTaxonomySyncAssert(
     && str_contains($route, "'changedCategories'")
     && str_contains($route, "'checkedCatalogs'")
     && str_contains($route, "'mark_taxonomy_synced'")
-    && substr_count($route, "RateLimiter::enforceProfile('admin_taxonomy_sync'") === 7,
+    && str_contains($route, "'sync_taxonomy_target'")
+    && substr_count($route, "RateLimiter::enforceProfile('admin_taxonomy_sync'") === 8,
     'Rotas administrativas da sincronizacao Gran ausentes.'
 );
 granTaxonomySyncAssert(
@@ -141,10 +142,38 @@ granTaxonomySyncAssert(
     && str_contains($section, "action: 'check_taxonomy_updates'")
     && str_contains($section, 'handleCheckTaxonomyUpdates')
     && str_contains($section, 'handleTaxonomySync')
+    && str_contains($section, 'collectGranTaxonomyById')
+    && str_contains($section, "action: 'sync_taxonomy_target'")
+    && str_contains($section, 'getLegacyTaxonomyTarget')
+    && str_contains($section, 'Consultando somente a taxonomia externa')
     && str_contains($section, 'taxonomyExpanded')
     && str_contains($section, 'gran-taxonomy-check-result')
     && str_contains($section, 'Verificar atualizacoes'),
     'Painel deve verificar manifestos sem escrita, iniciar fechado e sincronizar apenas catalogos necessarios.'
+);
+granTaxonomySyncAssert(
+    str_contains($syncService, 'public function syncTarget')
+    && str_contains($syncService, 'count($matching) !== 1')
+    && str_contains($syncService, 'Nenhum catalogo foi sincronizado')
+    && str_contains($extensionWorker, 'const collectTaxonomyById')
+    && str_contains($extensionWorker, "params.append('id[]', externalId)")
+    && str_contains($extensionWorker, 'matchingRows.length !== 1')
+    && str_contains($section, 'taxonomyTargets.values()')
+    && str_contains($section, "target.key === 'assunto'")
+    && str_contains($route, "'sync_taxonomy_target'")
+    && str_contains($section, "action: 'finalize_cargo_taxonomy_relations'"),
+    'Retry deve buscar e sincronizar uma identidade Gran por ID, recusando resposta ampla e sem reconciliar todo o catalogo.'
+);
+$retrySyncStart = strpos($section, 'taxonomySyncForRetryRef.current = async (targets)');
+$retrySyncEnd = strpos($section, 'const pendingTaxonomySteps', $retrySyncStart === false ? 0 : $retrySyncStart);
+$retrySyncBody = $retrySyncStart !== false && $retrySyncEnd !== false
+    ? substr($section, $retrySyncStart, $retrySyncEnd - $retrySyncStart)
+    : '';
+granTaxonomySyncAssert(
+    $retrySyncBody !== ''
+    && !str_contains($retrySyncBody, 'handleTaxonomySync')
+    && !str_contains($retrySyncBody, 'finalizeCargoRelationsInChunks'),
+    'O retry individual nao pode chamar sincronizador de catalogo ou reconciliacao global de cargos.'
 );
 granTaxonomySyncAssert(
     str_contains($route, "'taxonomy_hierarchy_gaps'")
