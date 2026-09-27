@@ -40,6 +40,25 @@ describe('Gran question publication blocker descriptions', () => {
     ] }))).toContain('Alternativas incompletas: 3 de 5 preenchidas.');
   });
 
+  it('does not call an existing answer key missing when its alternative was not extracted', () => {
+    const blockers = describeQuestionPublicationBlockers(question({
+      itens: [
+        { corpo: 'Alternativa A' },
+        { corpo: 'Alternativa B' },
+      ],
+      resposta: 0,
+      correctOptionIndex: 2,
+    }));
+
+    expect(blockers).toContain('Alternativas incompletas: 2 de 5 preenchidas.');
+    expect(blockers).toContain('Gabarito C informado, mas a alternativa correspondente não foi extraída ou está vazia.');
+    expect(blockers).not.toContain('Gabarito ausente; marque a alternativa correta, ou indique se a questão foi anulada/atribuída a todos.');
+  });
+
+  it('accepts a valid answer index even when the legacy response field is empty', () => {
+    expect(describeQuestionPublicationBlockers(question({ resposta: 0, correctOptionIndex: 2 }))).toEqual([]);
+  });
+
   it('does not show blockers when the canonical validator considers the question ready', () => {
     expect(describeQuestionPublicationBlockers(question())).toEqual([]);
   });

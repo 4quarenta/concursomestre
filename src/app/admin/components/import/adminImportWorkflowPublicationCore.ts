@@ -531,10 +531,19 @@ export const getQuestionPublicationBlockReasons = (question: Question) => {
   if (!['discursiva', 'redacao', 'estudo de caso'].includes(type)) {
     if (options.length < 2) reasons.push('alternativas_ausentes');
     else if (expectedOptionsCount > 0 && options.length < expectedOptionsCount) reasons.push('alternativas_incompletas');
-    const hasValidAnswer = (Number.isInteger(correctOptionIndex) && correctOptionIndex >= 0 && correctOptionIndex < options.length)
-      || (Number.isInteger(response) && response > 0 && response <= options.length)
+    const correctIndex = Number.isInteger(correctOptionIndex) ? correctOptionIndex : null;
+    const responseIndex = Number.isInteger(response) && response > 0 ? response - 1 : null;
+    const answerIndexes = [correctIndex, responseIndex].filter((index): index is number => index !== null);
+    const hasValidAnswer = answerIndexes.some((index) => index >= 0 && index < options.length)
       || Boolean(question.anulada || question.isCanceled || draft.isAttributedToAll || draft.attributedToAll);
-    if (!hasValidAnswer) reasons.push('gabarito_ausente');
+    if (!hasValidAnswer) {
+      const missingAlternativeIndex = answerIndexes.find((index) => index >= 0);
+      if (missingAlternativeIndex !== undefined) {
+        reasons.push(`gabarito_alternativa_inexistente:${missingAlternativeIndex}`);
+      } else {
+        reasons.push('gabarito_ausente');
+      }
+    }
   }
 
   return Array.from(new Set(reasons));
