@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
+require_once __DIR__ . '/ImportedExamSlugPolicy.php';
 
 /**
  * Repository oficial do dominio de questes.
@@ -2757,6 +2758,8 @@ class QuestionsRepository
             return (int) $existingId;
         }
 
+        $record['slug'] = $this->resolveUniqueImportedExamSlug($record, $sourceProvider, $sourceExternalId);
+
         $insertStmt = $this->db->prepare(
             "INSERT INTO provas (
                 nome,
@@ -2810,6 +2813,55 @@ class QuestionsRepository
         $newExamId = (int) $this->db->lastInsertId();
         $this->syncImportedExamCanonicalData($newExamId, $record);
         return $newExamId;
+    }
+
+    private function resolveUniqueImportedExamSlug(array $record, string $sourceProvider, string $sourceExternalId): string
+    {
+        $baseSlug = trim((string) ($record['slug'] ?? ''));
+        $findOwner = $this->db->prepare(
+            'SELECT id, nome, ano, source_provider, source_external_id
+             FROM provas WHERE slug = :slug LIMIT 1'
+        );
+        $findOwner->execute([':slug' => $baseSlug]);
+        $owner = $findOwner->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($owner) || (int) ($record['id'] ?? 0) === (int) ($owner['id'] ?? 0)) {
+            return $baseSlug;
+        }
+
+        $ownerProvider = trim((string) ($owner['source_provider'] ?? ''));
+        $ownerExternalId = trim((string) ($owner['source_external_id'] ?? ''));
+        if ($sourceProvider !== '' && $sourceExternalId !== ''
+            && $ownerProvider === $sourceProvider && $ownerExternalId === $sourceExternalId) {
+            return $baseSlug;
+        }
+
+        $identity = $sourceProvider !== '' && $sourceExternalId !== ''
+            ? strtolower($sourceProvider) . ':' . $sourceExternalId
+            : strtolower(trim((string) ($record['nome'] ?? ''))) . ':' . (int) ($record['ano'] ?? 0);
+        $findCandidate = $this->db->prepare(
+            'SELECT id, nome, ano, source_provider, source_external_id
+             FROM provas WHERE slug = :slug LIMIT 1'
+        );
+        foreach ([12, 20, 32, 48, 64] as $digestLength) {
+            $candidate = ImportedExamSlugPolicy::collisionCandidate($baseSlug, $identity, $digestLength);
+            $findCandidate->execute([':slug' => $candidate]);
+            $candidateOwner = $findCandidate->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($candidateOwner)) {
+                return $candidate;
+            }
+
+            $sameSource = $sourceProvider !== '' && $sourceExternalId !== ''
+                && trim((string) ($candidateOwner['source_provider'] ?? '')) === $sourceProvider
+                && trim((string) ($candidateOwner['source_external_id'] ?? '')) === $sourceExternalId;
+            $sameLegacyIdentity = $sourceProvider === '' && $sourceExternalId === ''
+                && (string) ($candidateOwner['nome'] ?? '') === (string) ($record['nome'] ?? '')
+                && (int) ($candidateOwner['ano'] ?? 0) === (int) ($record['ano'] ?? 0);
+            if ($sameSource || $sameLegacyIdentity) {
+                return $candidate;
+            }
+        }
+
+        throw new RuntimeException('Nao foi possivel resolver uma colisao de slug da prova importada.');
     }
 
     private function syncImportedExamCanonicalData(int $examId, array $record): void
