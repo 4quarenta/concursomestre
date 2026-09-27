@@ -33,4 +33,16 @@ describe('Gran publication taxonomy failure helpers', () => {
     expect(getLegacyTaxonomyKey({ filters: { organizations: ['Educação'], careers: ['Educação'] } }, 'Educação'))
       .toBeNull();
   });
+
+  it('finds taxonomy inside the persisted single-question failure payload', () => {
+    const payload = {
+      schemaVersion: 'question-import.v2',
+      questions: [{
+        filters: {
+          organizations: [{ label: 'Educação (Professores, Especialistas e outros)', provider: 'gran', externalId: '506' }],
+        },
+      }],
+    };
+    expect(getLegacyTaxonomyKey(payload, 'Educação (Professores, Especialistas e outros)')).toBe('orgao');
+  });
 });
