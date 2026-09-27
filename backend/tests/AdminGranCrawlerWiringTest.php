@@ -152,6 +152,19 @@ adminGranCrawlerWiringAssert(
     && str_contains($questionsService, 'A imagem da Gran nao foi copiada'),
     'Canonical persistence must reject Gran image URLs that bypassed materialization.'
 );
+$taxonomySyncPosition = strpos($component, 'await syncTaxonomies(Array.from(taxonomyKeys))');
+$taxonomyRetryPosition = strpos($component, "action: 'retry_publication_failures'");
+adminGranCrawlerWiringAssert(
+    str_contains($questionsService, 'GranTaxonomyNotSynchronizedException')
+    && str_contains($questionsService, "'code' => 'gran_taxonomy_not_synced_' . \$taxonomyKey")
+    && str_contains($component, 'get_publication_failure')
+    && str_contains($component, 'syncTaxonomies(Array.from(taxonomyKeys))')
+    && str_contains($component, 'handleTaxonomySync([], key, true)')
+    && $taxonomySyncPosition !== false
+    && $taxonomyRetryPosition !== false
+    && $taxonomySyncPosition < $taxonomyRetryPosition,
+    'Retry must classify an unsynchronized Gran taxonomy, synchronize its precise category, then enqueue publication.'
+);
 adminGranCrawlerWiringAssert(
     str_contains($questionsService, "'files' => array_values(array_filter(")
     && str_contains($questionsService, "\$examPayload['files']")

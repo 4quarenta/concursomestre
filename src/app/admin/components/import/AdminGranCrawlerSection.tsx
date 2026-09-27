@@ -36,6 +36,12 @@ import {
 } from './granExtensionBridge';
 import type { GranCollectorStatus, GranTaxonomyCollectorResult } from './granExtensionBridge';
 import { partitionGranReviewPayloads } from './granCrawlerReviewUtils';
+import {
+  getLegacyTaxonomyKey,
+  getLegacyTaxonomyName,
+  getTaxonomyKeyFromFailureCode,
+  type GranTaxonomySyncKey,
+} from './granCrawlerFailureUtils';
 import { splitGranTaxonomyResponses } from './granTaxonomySyncUtils';
 import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from './granCrawlerUrl';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
@@ -544,6 +550,7 @@ const AdminGranCrawlerSection = ({
   const bootstrapAbortRef = React.useRef<AbortController | null>(null);
   const automaticAbortRef = React.useRef<AbortController | null>(null);
   const automaticCheckpointRef = React.useRef<GranAutomaticCheckpoint | null>(null);
+  const taxonomySyncForRetryRef = React.useRef<((keys: GranTaxonomySyncKey[]) => Promise<boolean>) | null>(null);
   const isMountedRef = React.useRef(false);
   const publicationBatches = React.useMemo(() => currentBatch ? [currentBatch] : [], [currentBatch]);
   const hasActiveJobs = currentBatch !== null && ['pending', 'processing'].includes(currentBatch.status);
@@ -959,6 +966,39 @@ const AdminGranCrawlerSection = ({
     setFailureActionId(actionId);
     setError('');
     try {
+      const taxonomyKeys = new Set<GranTaxonomySyncKey>();
+      for (const failure of failures.filter((item) => failureIds.includes(item.failureId))) {
+        const codeKey = getTaxonomyKeyFromFailureCode(failure.code);
+        if (codeKey) {
+          taxonomyKeys.add(codeKey);
+          continue;
+        }
+        const missingName = getLegacyTaxonomyName(failure.message);
+        if (!missingName) continue;
+
+        const detailResponse = await apiClient.post(ENDPOINT, {
+          action: 'get_publication_failure',
+          failureId: failure.failureId,
+        });
+        const detail = readApiData<GranPublicationFailure & { payload?: unknown }>(detailResponse);
+        const legacyKey = getLegacyTaxonomyKey(detail.payload, missingName);
+        if (!legacyKey) {
+          throw new Error(
+            `A taxonomia Gran "${missingName}" ainda nao foi sincronizada. `
+            + 'Nao foi possivel identificar com seguranca o catalogo correspondente no registro da falha.',
+          );
+        }
+        taxonomyKeys.add(legacyKey);
+      }
+
+      if (taxonomyKeys.size > 0) {
+        const syncTaxonomies = taxonomySyncForRetryRef.current;
+        if (!syncTaxonomies) {
+          throw new Error('A sincronizacao das taxonomias nao foi concluida; a publicacao nao foi reenviada.');
+        }
+        if (!(await syncTaxonomies(Array.from(taxonomyKeys)))) return;
+      }
+
       const response = await apiClient.post(ENDPOINT, {
         action: 'retry_publication_failures',
         failureIds,
@@ -1471,7 +1511,8 @@ const AdminGranCrawlerSection = ({
   const handleTaxonomySync = React.useCallback(async (
     _steps: GranTaxonomyCollectorResult['kind'][],
     syncKey: string,
-  ) => {
+    force = false,
+  ): Promise<boolean> => {
     const selectedCategories = syncKey === 'pending'
       ? GRAN_TAXONOMY_CATEGORIES
       : GRAN_TAXONOMY_CATEGORIES.filter((category) => category.key === syncKey);
@@ -1479,16 +1520,16 @@ const AdminGranCrawlerSection = ({
     if (!isTaxonomyVerificationFresh(effectiveStatuses, selectedCategories.map((category) => category.key))) {
       setTaxonomyProgress('Verificando atualizacoes antes de sincronizar.');
       const checkedStatuses = await handleCheckTaxonomyUpdates(true);
-      if (!checkedStatuses) return;
+      if (!checkedStatuses) return false;
       effectiveStatuses = checkedStatuses;
     }
     const effectiveSteps = selectedCategories.flatMap((category) => {
       const status = effectiveStatuses[category.key];
-      return status?.ready && status.updateAvailable !== true ? [] : category.steps;
+      return !force && status?.ready && status.updateAvailable !== true ? [] : category.steps;
     });
     if (effectiveSteps.length === 0) {
       setTaxonomyProgress('Todos os catalogos selecionados ja estao sincronizados.');
-      return;
+      return true;
     }
     const subjectStatus = effectiveStatuses.assunto;
     const shouldRecoverSubjectRoots = effectiveSteps.some((step) => step === 'assunto_tree' || step === 'assunto')
@@ -1510,7 +1551,7 @@ const AdminGranCrawlerSection = ({
       const ready = await checkCollector(true);
       if (!ready) {
         setTaxonomyProgress('');
-        return;
+        return false;
       }
     }
 
@@ -1657,17 +1698,30 @@ const AdminGranCrawlerSection = ({
           `${summary.pending} relação${summary.pending === 1 ? '' : 'ões'} ainda não foi retornada pela árvore da Gran. `
           + 'O catálogo continua marcado como pendente e nenhuma questão com essa hierarquia deve ser publicada.',
         );
+        return false;
       } else {
         setTaxonomyProgress('Taxonomias sincronizadas. As próximas questões usarão os IDs locais corretos.');
+        return true;
       }
     } catch (requestError: unknown) {
       const axiosError = requestError as { response?: { data?: { message?: string } }; message?: string };
       setTaxonomyProgress('');
       setError(axiosError.response?.data?.message || axiosError.message || 'Não foi possível sincronizar as taxonomias da Gran.');
+      return false;
     } finally {
       setSyncingTaxonomyKey(null);
     }
   }, [checkCollector, collectorState, finalizeCargoRelationsInChunks, handleCheckTaxonomyUpdates, loadTaxonomyStatus, taxonomyStatuses]);
+
+  React.useEffect(() => {
+    taxonomySyncForRetryRef.current = async (keys) => {
+      for (const key of keys) {
+        const synchronized = await handleTaxonomySync([], key, true);
+        if (!synchronized) return false;
+      }
+      return true;
+    };
+  }, [handleTaxonomySync]);
 
   const pendingTaxonomySteps = GRAN_TAXONOMY_CATEGORIES.flatMap((category) => {
     const status = taxonomyStatuses[category.key];

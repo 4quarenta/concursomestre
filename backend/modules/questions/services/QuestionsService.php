@@ -26,6 +26,19 @@ require_once __DIR__ . '/../../seo/taxonomy/KnowledgeTaxonomyHierarchyValidator.
 require_once __DIR__ . '/../../filters/professional/ProfessionalTaxonomyReadinessValidator.php';
 require_once __DIR__ . '/../../ingestion/domain/BrowserFixturePublicationPolicy.php';
 
+final class GranTaxonomyNotSynchronizedException extends InvalidArgumentException
+{
+    public function __construct(
+        public readonly string $taxonomyType,
+        string $taxonomyName
+    ) {
+        parent::__construct(
+            'A taxonomia Gran "' . $taxonomyName . '" ainda nao foi sincronizada. '
+            . 'Sincronize as taxonomias da Gran antes de publicar o lote.'
+        );
+    }
+}
+
 class QuestionsService
 {
     public function __construct(
@@ -2994,6 +3007,24 @@ class QuestionsService
      */
     private function buildSanitizedBulkImportDiagnostic(Throwable $error): array
     {
+        if ($error instanceof GranTaxonomyNotSynchronizedException) {
+            $taxonomyKey = match (strtolower(trim($error->taxonomyType))) {
+                'assunto', 'assuntos', 'materia', 'materias', 'topico', 'topicos', 'subject', 'subjects', 'topic', 'topics', 'subtopic', 'subtopics' => 'assunto',
+                'banca', 'bancas', 'examboard', 'examboards' => 'banca',
+                'orgao', 'orgaos', 'organization', 'organizations' => 'orgao',
+                'cargo', 'cargos', 'role', 'roles' => 'cargo',
+                'carreira', 'carreiras', 'career', 'careers' => 'carreira',
+                'area', 'areas', 'nivel', 'niveis', 'level', 'levels', 'focus', 'focuses', 'foco', 'focos' => 'area',
+                default => '',
+            };
+            if ($taxonomyKey !== '') {
+                return [
+                    'code' => 'gran_taxonomy_not_synced_' . $taxonomyKey,
+                    'message' => substr($error->getMessage(), 0, 300),
+                ];
+            }
+        }
+
         $isContractError = $error instanceof InvalidArgumentException
             || $error instanceof OutOfBoundsException
             || $error instanceof DomainException;
@@ -3720,10 +3751,7 @@ class QuestionsService
                         $sourceIdentity['externalId']
                     );
                     if ($id === null) {
-                        throw new InvalidArgumentException(
-                            'A taxonomia Gran "' . $name . '" ainda nao foi sincronizada. '
-                            . 'Sincronize as taxonomias da Gran antes de publicar o lote.'
-                        );
+                        throw new GranTaxonomyNotSynchronizedException($filterType, $name);
                     }
                 }
 
