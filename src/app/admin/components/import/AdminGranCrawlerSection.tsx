@@ -969,26 +969,25 @@ const AdminGranCrawlerSection = ({
       const taxonomyKeys = new Set<GranTaxonomySyncKey>();
       for (const failure of failures.filter((item) => failureIds.includes(item.failureId))) {
         const codeKey = getTaxonomyKeyFromFailureCode(failure.code);
-        if (codeKey) {
-          taxonomyKeys.add(codeKey);
-          continue;
-        }
         const missingName = getLegacyTaxonomyName(failure.message);
-        if (!missingName) continue;
+        if (!codeKey && !missingName) continue;
 
         const detailResponse = await apiClient.post(ENDPOINT, {
           action: 'get_publication_failure',
           failureId: failure.failureId,
         });
         const detail = readApiData<GranPublicationFailure & { payload?: unknown }>(detailResponse);
-        const legacyKey = getLegacyTaxonomyKey(detail.payload, missingName);
-        if (!legacyKey) {
+        const payloadKey = missingName
+          ? getLegacyTaxonomyKey(detail.payload, missingName)
+          : null;
+        const resolvedKey = payloadKey ?? codeKey;
+        if (!resolvedKey) {
           throw new Error(
             `A taxonomia Gran "${missingName}" ainda nao foi sincronizada. `
             + 'Nao foi possivel identificar com seguranca o catalogo correspondente no registro da falha.',
           );
         }
-        taxonomyKeys.add(legacyKey);
+        taxonomyKeys.add(resolvedKey);
       }
 
       if (taxonomyKeys.size > 0) {

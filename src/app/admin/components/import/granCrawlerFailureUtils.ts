@@ -47,8 +47,8 @@ export function getLegacyTaxonomyKey(payload: unknown, taxonomyName: string): Gr
     ['banca', ['examBoards', 'exam_boards', 'bancas']],
     ['orgao', ['organizations', 'orgaos']],
     ['cargo', ['roles', 'cargos']],
-    ['carreira', ['careers', 'carreiras']],
-    ['area', ['areas', 'levels', 'niveis', 'focos']],
+    ['carreira', ['careerPaths', 'career_paths']],
+    ['area', ['areas', 'levels', 'niveis', 'focos', 'careers', 'carreiras']],
   ];
   const normalizedName = taxonomyName.trim().toLocaleLowerCase('pt-BR');
   const matches = new Set<GranTaxonomySyncKey>();
@@ -71,8 +71,29 @@ export function getLegacyTaxonomyKey(payload: unknown, taxonomyName: string): Gr
           const taxonomy = item as Record<string, unknown>;
           const provider = String(taxonomy.provider ?? taxonomy.sourceProvider ?? taxonomy.source_provider ?? '').toLowerCase();
           const hasExternalIdentity = Boolean(taxonomy.externalId ?? taxonomy.sourceExternalId ?? taxonomy.source_external_id);
+          const entityType = String(
+            taxonomy.sourceEntityType ?? taxonomy.source_entity_type ?? taxonomy.entityType ?? taxonomy.entity_type ?? '',
+          ).toLowerCase();
           const name = String(taxonomy.label ?? taxonomy.name ?? taxonomy.nome ?? '').trim().toLocaleLowerCase('pt-BR');
-          return name === normalizedName && (provider === 'gran' || hasExternalIdentity);
+          if (name !== normalizedName || !(provider === 'gran' || hasExternalIdentity)) return false;
+
+          if (field === 'careers' || field === 'carreiras') {
+            // The import contract stores Gran focus/area identities in the
+            // careers bucket. When older payloads omit sourceEntityType, the
+            // server also defaults this bucket to the Gran "area" catalog.
+            const careerKey = entityType === 'carreira' ? 'carreira' : 'area';
+            matches.add(careerKey);
+            return false;
+          }
+          if (entityType === 'area') {
+            matches.add('area');
+            return false;
+          }
+          if (entityType === 'carreira') {
+            matches.add('carreira');
+            return false;
+          }
+          return true;
         })) matches.add(key);
       }
     }

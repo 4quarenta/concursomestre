@@ -12,5 +12,10 @@ if ($resolver === false || $insert === false || $resolver > $insert) {
 if (!str_contains($repository, 'ImportedExamSlugPolicy::collisionCandidate')) {
     throw new RuntimeException('Imported exam slug collision policy is not connected to persistence.');
 }
+if (!str_contains($repository, 'ImportedExamIdentityPolicy::isSameGranExam')
+    || !str_contains($repository, 'preserve its')
+    || !str_contains($repository, '$this->syncImportedExamFiles((int) $existingId, $record);')) {
+    throw new RuntimeException('Equivalent Gran proofs must reuse the canonical proof without replacing its source identity.');
+}
 
 fwrite(STDOUT, "ImportedExamSlugCollisionWiringTest: PASS\n");

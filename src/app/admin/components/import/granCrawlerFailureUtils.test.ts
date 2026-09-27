@@ -45,4 +45,36 @@ describe('Gran publication taxonomy failure helpers', () => {
     };
     expect(getLegacyTaxonomyKey(payload, 'Educação (Professores, Especialistas e outros)')).toBe('orgao');
   });
+
+  it('routes legacy Gran focus identities in the careers bucket to the area catalog', () => {
+    const payload = {
+      schemaVersion: 'question-import.v2',
+      questions: [{
+        filters: {
+          carreiras: [{
+            label: 'Educação (Professores, Especialistas e outros)',
+            provider: 'gran',
+            externalId: '506',
+          }],
+        },
+      }],
+    };
+
+    expect(getLegacyTaxonomyKey(payload, 'Educação (Professores, Especialistas e outros)')).toBe('area');
+  });
+
+  it('uses an explicit source entity type when a careers-bucket identity is not a focus area', () => {
+    const payload = {
+      filters: {
+        careers: [{
+          label: 'Carreira administrativa',
+          provider: 'gran',
+          sourceEntityType: 'carreira',
+          externalId: '21',
+        }],
+      },
+    };
+
+    expect(getLegacyTaxonomyKey(payload, 'Carreira administrativa')).toBe('carreira');
+  });
 });

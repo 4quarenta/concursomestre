@@ -160,6 +160,7 @@ adminGranCrawlerWiringAssert(
     && str_contains($component, 'get_publication_failure')
     && str_contains($component, 'syncTaxonomies(Array.from(taxonomyKeys))')
     && str_contains($component, 'handleTaxonomySync([], key, true)')
+    && str_contains($component, 'payloadKey ?? codeKey')
     && $taxonomySyncPosition !== false
     && $taxonomyRetryPosition !== false
     && $taxonomySyncPosition < $taxonomyRetryPosition,

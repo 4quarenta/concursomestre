@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
 require_once __DIR__ . '/../../seo/sitemaps/StaticSitemapMutationInvalidator.php';
+require_once __DIR__ . '/ImportedExamIdentityPolicy.php';
 require_once __DIR__ . '/ImportedExamSlugPolicy.php';
 
 /**
@@ -2667,7 +2668,8 @@ class QuestionsRepository
         }
 
         $stmt = $this->db->prepare(
-            "SELECT id
+            "SELECT id, nome, ano, banca_id, orgao_id, cargo_id, nivel_id,
+                    tipo_prova_id, carreira_id, source_provider, source_external_id
              FROM provas
              WHERE (source_provider = :source_provider AND source_external_id = :source_external_id)
                 OR id = :id
@@ -2693,16 +2695,12 @@ class QuestionsRepository
             ':ano_name' => (int) $record['ano'],
         ]);
 
-        $existingId = $stmt->fetchColumn();
+        $existingRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+        $existingId = is_array($existingRecord) ? (int) $existingRecord['id'] : false;
         if ($existingId !== false) {
             if ($sourceProvider !== '' && $sourceExternalId !== '') {
-                $existingSource = $this->db->prepare(
-                    'SELECT source_provider, source_external_id FROM provas WHERE id = :id LIMIT 1'
-                );
-                $existingSource->execute([':id' => (int) $existingId]);
-                $existingIdentity = $existingSource->fetch(PDO::FETCH_ASSOC) ?: [];
-                $existingProvider = trim((string) ($existingIdentity['source_provider'] ?? ''));
-                $existingExternalId = trim((string) ($existingIdentity['source_external_id'] ?? ''));
+                $existingProvider = trim((string) ($existingRecord['source_provider'] ?? ''));
+                $existingExternalId = trim((string) ($existingRecord['source_external_id'] ?? ''));
 
                 if ($existingProvider === '' && $existingExternalId === '') {
                     $attachSource = $this->db->prepare(
@@ -2717,6 +2715,15 @@ class QuestionsRepository
                         ':source_external_id' => $sourceExternalId,
                         ':id' => (int) $existingId,
                     ]);
+                    $this->syncImportedExamFiles((int) $existingId, $record);
+                    return (int) $existingId;
+                }
+
+                if ($sourceProvider === 'gran'
+                    && ImportedExamIdentityPolicy::isSameGranExam($record, $existingRecord)) {
+                    // Different question/exam aliases can describe the same
+                    // Gran proof. Reuse the canonical proof and preserve its
+                    // original provider identity and editorial publication state.
                     $this->syncImportedExamFiles((int) $existingId, $record);
                     return (int) $existingId;
                 }
