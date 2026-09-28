@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
+const { mockGet, mockPost } = vi.hoisted(() => ({ mockGet: vi.fn(), mockPost: vi.fn() }));
 
 vi.mock('@services/api', () => ({
-  apiClient: { get: mockGet },
+  apiClient: { get: mockGet, post: mockPost },
   assertApiSuccess: vi.fn(),
   readApiData: (response: { data?: unknown } | null | undefined, fallback: unknown) => response?.data ?? fallback,
   ENDPOINTS: {
     changelog: {
       list: 'changelog/list.php',
+      latestUnread: 'changelog/latest_unread.php',
+      markViewed: 'changelog/mark_viewed.php',
       adminList: 'changelog/admin/list.php',
       adminDetail: 'changelog/admin/detail.php',
       adminSave: 'changelog/admin/save.php',
@@ -22,6 +24,34 @@ import { changelogService } from '../changelogService';
 
 describe('changelogService', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('loads the authenticated latest unread published entry', async () => {
+    mockGet.mockResolvedValueOnce({ data: { item: {
+      id: 9,
+      version: '1.2.0',
+      slug: 'novidade-recente',
+      releaseDate: '2026-09-20',
+      publishedAt: '2026-09-20 12:00:00',
+      title: 'Nova experiência',
+      description: 'Veja as melhorias.',
+      content: [{ title: 'Produto', icon: 'Sparkles', items: ['Novo recurso.'] }],
+      status: 'published',
+      channel: 'WEB',
+    } } });
+
+    const entry = await changelogService.latestUnread();
+
+    expect(mockGet).toHaveBeenCalledWith('changelog/latest_unread.php');
+    expect(entry?.id).toBe(9);
+  });
+
+  it('marks the acknowledgement through the authenticated mutation', async () => {
+    mockPost.mockResolvedValueOnce({ data: { success: true } });
+
+    await changelogService.markViewed(9);
+
+    expect(mockPost).toHaveBeenCalledWith('changelog/mark_viewed.php', { id: 9 });
+  });
 
   it('loads the canonical public novidades page', async () => {
     mockGet.mockResolvedValueOnce({

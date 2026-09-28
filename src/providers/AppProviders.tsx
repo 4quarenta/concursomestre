@@ -20,6 +20,7 @@ import { PlatformMetadataProvider } from './PlatformMetadataProvider';
 import { ThemeProvider } from './ThemeProvider';
 import { SetupGate } from './SetupGate';
 import AdNavigationPopController from '@/components/shared/feedback/AdNavigationPopController';
+import ChangelogReleaseModal from '@/components/shared/changelog/ChangelogReleaseModal';
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -43,7 +44,10 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children, initialPub
                 <AppConfigProvider initialPublicSettings={initialPublicSettings}>
                   <AdNavigationPopController />
                   <ModalProvider>
-                    <NotificationsProvider>{children}</NotificationsProvider>
+                    <NotificationsProvider>
+                      <ChangelogReleaseModal />
+                      {children}
+                    </NotificationsProvider>
                   </ModalProvider>
                 </AppConfigProvider>
               </AuthProvider>

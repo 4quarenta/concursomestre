@@ -38,6 +38,50 @@ function handleChangelogListRoute(PDO $db): void
     }
 }
 
+function handleChangelogLatestUnreadRoute(PDO $db): void
+{
+    try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+        $payload = verifyAuthenticatedUserPayload();
+        $userId = trim((string) ($payload['user_id'] ?? ''));
+        Response::success(['item' => buildChangelogController($db)->latestUnreadForUser($userId)]);
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel verificar as novidades.', $e);
+    }
+}
+
+function handleChangelogMarkViewedRoute(PDO $db): void
+{
+    try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+            Response::error('Metodo nao permitido.', 405);
+        }
+        $payload = verifyAuthenticatedUserPayload();
+        $userId = trim((string) ($payload['user_id'] ?? ''));
+        $body = readChangelogJsonBody();
+        $id = filter_var($body['id'] ?? null, FILTER_VALIDATE_INT);
+        if (!$id || $id <= 0) {
+            throw new InvalidArgumentException('Identificador da novidade invalido.');
+        }
+        buildChangelogController($db)->markViewedForUser($userId, (int) $id);
+        Response::success(['id' => (int) $id], 'Novidade marcada como vista.');
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
+    } catch (RuntimeException $e) {
+        Response::unauthorized($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel registrar a leitura da novidade.', $e);
+    }
+}
+
 function handleChangelogAdminListRoute(PDO $db): void
 {
     try {

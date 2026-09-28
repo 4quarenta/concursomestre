@@ -15,6 +15,16 @@ final class ChangelogController
         return $this->service->listPublic($query);
     }
 
+    public function latestUnreadForUser(string $userId): ?array
+    {
+        return $this->service->latestUnreadForUser($userId);
+    }
+
+    public function markViewedForUser(string $userId, int $changelogId): void
+    {
+        $this->service->markViewedForUser($userId, $changelogId);
+    }
+
     public function listAdmin(array $query): array
     {
         return $this->service->listAdmin($query);

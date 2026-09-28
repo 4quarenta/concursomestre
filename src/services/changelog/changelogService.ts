@@ -133,6 +133,22 @@ export const normalizePublicChangelogPage = (page: ChangelogPage): ChangelogPage
 };
 
 export const changelogService = {
+  async latestUnread(): Promise<ChangelogEntry | null> {
+    const response = await apiClient.get<ApiResponse<{ item: ChangelogEntry | null }>>(ENDPOINTS.changelog.latestUnread);
+    const entry = readApiData<{ item: ChangelogEntry | null }>(response, { item: null }).item;
+    if (!entry) return null;
+    const sanitized = normalizePublicChangelogPage({
+      items: [entry],
+      pageInfo: { page: 1, limit: 1, total: 1, totalPages: 1, hasMore: false },
+    }).items.find((item) => item.id === entry.id);
+    return sanitized ?? null;
+  },
+
+  async markViewed(id: number): Promise<void> {
+    const response = await apiClient.post<ApiResponse>(ENDPOINTS.changelog.markViewed, { id });
+    assertApiSuccess(response, 'Não foi possível registrar a leitura da novidade.');
+  },
+
   async list(params: Record<string, string | number | undefined> = {}): Promise<ChangelogPage> {
     const response = await apiClient.get<ApiResponse<ChangelogPage>>(ENDPOINTS.changelog.list, { params });
     return normalizePublicChangelogPage(readApiData(response, emptyPage()));

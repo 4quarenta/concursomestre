@@ -35,6 +35,8 @@ export const ENDPOINTS = {
 
     changelog: {
         list: 'changelog/list.php',
+        latestUnread: 'changelog/latest_unread.php',
+        markViewed: 'changelog/mark_viewed.php',
         adminList: 'changelog/admin/list.php',
         adminDetail: 'changelog/admin/detail.php',
         adminSave: 'changelog/admin/save.php',

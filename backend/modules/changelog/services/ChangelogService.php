@@ -18,6 +18,22 @@ final class ChangelogService
         return $this->mapPage($this->repository->listPublic($this->validator->validatePublicList($query)));
     }
 
+    public function latestUnreadForUser(string $userId): ?array
+    {
+        if (trim($userId) === '') {
+            throw new InvalidArgumentException('Usuario invalido.');
+        }
+        $entry = $this->repository->findLatestUnreadForUser($userId);
+        return $entry ? $this->mapEntry($entry) : null;
+    }
+
+    public function markViewedForUser(string $userId, int $changelogId): void
+    {
+        if (trim($userId) === '' || $changelogId <= 0 || !$this->repository->markViewedForUser($userId, $changelogId)) {
+            throw new OutOfBoundsException('Novidade publicada nao encontrada.');
+        }
+    }
+
     public function listAdmin(array $query): array
     {
         return $this->mapPage($this->repository->listAdmin($this->validator->validateAdminList($query)));

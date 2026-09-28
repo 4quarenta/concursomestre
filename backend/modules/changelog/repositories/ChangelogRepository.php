@@ -44,6 +44,66 @@ final class ChangelogRepository
         ];
     }
 
+    public function findLatestUnreadForUser(string $userId, string $channel = 'WEB'): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT c.id, c.version, c.slug, c.release_date, c.published_at, c.title,
+                    c.description, c.content_json, c.channel
+             FROM changelogs c
+             LEFT JOIN changelog_user_reads r ON r.user_id = :user_id
+             WHERE c.status = 'published'
+               AND c.published_at IS NOT NULL
+               AND c.published_at <= NOW()
+               AND (c.channel = :channel OR c.channel = 'BOTH')
+               AND (r.viewed_through_at IS NULL OR c.published_at > r.viewed_through_at)
+             ORDER BY c.published_at DESC, c.id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([':user_id' => $userId, ':channel' => $channel]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : null;
+    }
+
+    public function markViewedForUser(string $userId, int $changelogId, string $channel = 'WEB'): bool
+    {
+        $stmt = $this->db->prepare(
+            "INSERT INTO changelog_user_reads (user_id, viewed_through_at, updated_at)
+             SELECT :user_id, c.published_at, NOW()
+             FROM changelogs c
+             WHERE c.id = :changelog_id
+               AND c.status = 'published'
+               AND c.published_at IS NOT NULL
+               AND c.published_at <= NOW()
+               AND (c.channel = :channel OR c.channel = 'BOTH')
+             ON DUPLICATE KEY UPDATE
+               viewed_through_at = GREATEST(changelog_user_reads.viewed_through_at, VALUES(viewed_through_at)),
+               updated_at = NOW()"
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':changelog_id' => $changelogId,
+            ':channel' => $channel,
+        ]);
+        return $stmt->rowCount() > 0 || $this->hasRead($userId, $changelogId);
+    }
+
+    private function hasRead(string $userId, int $changelogId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT 1
+             FROM changelog_user_reads r
+             INNER JOIN changelogs c ON c.id = :changelog_id
+             WHERE r.user_id = :user_id
+               AND c.status = 'published'
+               AND c.published_at IS NOT NULL
+               AND c.published_at <= r.viewed_through_at
+               AND (c.channel = 'WEB' OR c.channel = 'BOTH')
+             LIMIT 1"
+        );
+        $stmt->execute([':user_id' => $userId, ':changelog_id' => $changelogId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
     public function listAdmin(array $filters): array
     {
         $conditions = ['1 = 1'];
