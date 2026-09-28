@@ -34,6 +34,7 @@ import {
 } from '@services/plans/planAccess';
 import { incrementDailyUsageCount, readDailyUsageCount } from '@services/plans/clientUsageQuota';
 import { questionService } from '@services/questions';
+import { createAnswerSubmissionAuthError } from '@services/questions/answerSubmissionAuth';
 import { reportsService } from '@services/reports';
 import { commentService } from '@services/comments';
 import { clientLog } from '@services/monitoring/clientLog';
@@ -1563,24 +1564,17 @@ const Practice: React.FC<PracticeProps> = ({
   }, []);
 
   const handleAnswer = useCallback((ans: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>) => {
+    if (authIsLoading) {
+      throw createAnswerSubmissionAuthError('pending');
+    }
     if (!currentUser) {
-      setAuthModalConfig({
-        title: "Responda Já!",
-        description: "Crie uma conta gratuita em segundos para salvar suas resoluções, ganhar XP e monitorar sua evolução."
-      });
-      setShowAuthModal(true);
-      return;
+      throw createAnswerSubmissionAuthError('required');
     }
     if (!currentUser.emailVerified) {
-      setAuthModalConfig({
-        title: "Confirme seu E-mail",
-        description: "Para responder questões e ganhar XP, você precisa confirmar seu e-mail. Verifique sua caixa de entrada."
-      });
-      setShowAuthModal(true);
-      return;
+      throw createAnswerSubmissionAuthError('verification-required');
     }
     return dispatchAnswer(ans);
-  }, [currentUser, dispatchAnswer]);
+  }, [authIsLoading, currentUser, dispatchAnswer]);
 
   const handleFilterChange = useCallback((key: PracticeFilterKey, value: PracticeFilterValue) => {
     if (isPracticeFilterLocked(key)) {

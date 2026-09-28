@@ -27,6 +27,8 @@ import MathRichText from '@/components/shared/math/MathRichText';
 import { commentService } from '@services/comments';
 import { clientLog } from '@services/monitoring/clientLog';
 import { getPlanUsageLimitKeyFromError } from '@services/plans/planUsageLimitError';
+import { getAnswerSubmissionAuthState } from '@services/questions/answerSubmissionAuth';
+import { getAccessToken, refreshAuthSession } from '@services/auth/session';
 
 const fixHtmlImages = (html: string) => {
   const normalizedHtml = normalizeQuestionRichHtml(html);
@@ -407,13 +409,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   mode = 'practice', hideFeedback = false, currentUserId, currentUserName, onGuestAction, isHighlighted = false
 }) => {
   const router = useRouter();
-  const { currentUser, updateUser } = useAuth();
+  const { currentUser, isLoading: authIsLoading, updateUser } = useAuth();
   const { addToast } = useToast();
   const authenticatedUserId = currentUser?.id;
   const systemSettings = useAppConfigStore((store) => store.systemSettings);
   const setQuestionComments = useQuestionBankStore((store) => store.setQuestionComments);
   const deleteQuestionComment = useQuestionBankStore((store) => store.deleteQuestionComment);
   const [selectedOptionId, setSelectedOptionId] = useState<number | string | null>(null);
+  const [isRecoveringAnswerSession, setIsRecoveringAnswerSession] = useState(false);
   const [eliminatedOptionIds, setEliminatedOptionIds] = useState<(number | string)[]>([]);
   const [showComments, setShowComments] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
@@ -596,6 +599,34 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
     return readDailyUsageCount(authenticatedUserId, 'questions_per_day') >= questionsPerDayLimit;
   }, [authenticatedUserId, mode, questionsPerDayLimit, questionsPerDayUnlimited]);
+  const resolveMissingAnswerSession = React.useCallback(async (action: 'answer' | 'verify-email') => {
+    if (authIsLoading || isRecoveringAnswerSession) {
+      return;
+    }
+
+    if (!getAccessToken()) {
+      onGuestAction?.(action);
+      return;
+    }
+
+    setIsRecoveringAnswerSession(true);
+    try {
+      const snapshot = await refreshAuthSession({
+        reason: 'manual',
+        force: true,
+        allowAnonymousFailure: true,
+      });
+      if (snapshot?.currentUser) {
+        addToast('Sessão reconhecida. Tente responder novamente.', 'success');
+      } else {
+        addToast('Não foi possível confirmar sua sessão. Atualize a página ou entre novamente.', 'warning');
+      }
+    } catch {
+      addToast('Não foi possível confirmar sua sessão. Atualize a página ou entre novamente.', 'warning');
+    } finally {
+      setIsRecoveringAnswerSession(false);
+    }
+  }, [addToast, authIsLoading, isRecoveringAnswerSession, onGuestAction]);
 
   useEffect(() => {
     if (!editorialFeedbackQuestionId) {
@@ -978,12 +1009,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   }, [isHistoryModalOpen, question.id, existingAnswer, currentUser?.id]);
 
   const handleSubmit = async () => {
-    if (isCanceledQuestion) {
+    if (isCanceledQuestion || authIsLoading || isRecoveringAnswerSession) {
       return;
     }
 
     if (!currentUser) {
-      onGuestAction?.('answer');
+      await resolveMissingAnswerSession('answer');
       return;
     }
     if (!currentUser.emailVerified) {
@@ -1027,6 +1058,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       answerSubmissionKeyRef.current = null;
       incrementDailyUsageCount(authenticatedUserId, 'questions_per_day');
     } catch (error) {
+      const authState = getAnswerSubmissionAuthState(error);
+      if (authState === 'pending') {
+        return;
+      }
+      if (authState === 'required') {
+        await resolveMissingAnswerSession('answer');
+        return;
+      }
+      if (authState === 'verification-required') {
+        await resolveMissingAnswerSession('verify-email');
+        return;
+      }
       const limitKey = getPlanUsageLimitKeyFromError(error);
       if (limitKey) {
         openUsageLimitUpgrade('Limite de questões ou simulados', limitKey);
@@ -1046,12 +1089,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
 
   const handleOptionClick = (id: number | string) => {
-    if (isCanceledQuestion) {
+    if (isCanceledQuestion || authIsLoading || isRecoveringAnswerSession) {
       return;
     }
 
     if (!currentUser) {
-      onGuestAction?.('answer');
+      void resolveMissingAnswerSession('answer');
       return;
     }
     if (!currentUser.emailVerified) {
@@ -1605,8 +1648,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <div key={index} className="flex gap-1.5 items-stretch group sm:gap-2">
                 {!isCanceledQuestion && !isSubmitted && mode === 'practice' && (
                   <button
+                    disabled={authIsLoading || isRecoveringAnswerSession}
                     onClick={() => setEliminatedOptionIds(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id])}
-                    className={`px-1.5 sm:px-2 transition-all flex items-center justify-center rounded-lg sm:rounded-xl ${isEliminated ? 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800' : 'text-slate-200 dark:text-slate-700 hover:text-indigo-400 group-hover:bg-slate-50 dark:group-hover:bg-slate-800'}`}
+                    className={`px-1.5 sm:px-2 transition-all flex items-center justify-center rounded-lg sm:rounded-xl disabled:cursor-wait disabled:opacity-50 ${isEliminated ? 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800' : 'text-slate-200 dark:text-slate-700 hover:text-indigo-400 group-hover:bg-slate-50 dark:group-hover:bg-slate-800'}`}
                     title="Eliminar"
                   >
                     {isEliminated ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -1614,7 +1658,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 )}
                 <div className={`flex-1 flex flex-col gap-2`}>
                   <button
-                    disabled={isCanceledQuestion || (isSubmitted && !hideFeedback)}
+                    disabled={authIsLoading || isRecoveringAnswerSession || isCanceledQuestion || (isSubmitted && !hideFeedback)}
                     onClick={() => !isEliminated && handleOptionClick(item.id)}
                     className={`flex flex-col gap-2 p-3 sm:p-4 rounded-xl border transition-all text-left relative overflow-hidden disabled:cursor-not-allowed ${isCanceledQuestion ? 'opacity-80' : ''} ${btnClass}`}
                   >
@@ -1741,11 +1785,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
           {!isSubmitted && mode === 'practice' ? (
             <button
-              disabled={isCanceledQuestion || selectedOptionId === null || isSubmittingAnswer}
+              disabled={authIsLoading || isRecoveringAnswerSession || isCanceledQuestion || selectedOptionId === null || isSubmittingAnswer}
               onClick={handleSubmit}
               className="inline-flex items-center gap-2 px-8 py-3 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest rounded-xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all disabled:opacity-30 text-[10px] shadow-lg shadow-slate-200 dark:shadow-none"
             >
-              {isCanceledQuestion ? 'Questão anulada' : isSubmittingAnswer ? 'Salvando...' : 'Responder'}
+              {isCanceledQuestion ? 'Questão anulada' : authIsLoading || isRecoveringAnswerSession ? 'Verificando sessão...' : isSubmittingAnswer ? 'Salvando...' : 'Responder'}
             </button>
           ) : null}
         </div>
