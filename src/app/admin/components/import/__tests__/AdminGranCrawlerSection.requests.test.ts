@@ -45,7 +45,9 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).not.toContain('visibilitychange');
     expect(source).toContain('const ACTIVE_BATCH_STATUS_REFRESH_MS = 15_000;');
     expect(source).toContain("action: 'publication_batch_progress'");
-    expect(source).toContain("document.visibilityState !== 'visible'");
+    expect(source).toContain('useGranPublicationPolling({');
+    expect(source).toContain('refreshFailures: loadFailureHistory');
+    expect(source).toContain("action: complete ? 'publication_batch_status' : 'publication_batch_progress'");
   });
 
   it('shows only the current processing summary and no processing history', () => {

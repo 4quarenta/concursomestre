@@ -503,6 +503,16 @@ class QuestionsValidator
         $payload['orgaos'] = $this->normalizeCanonicalFilterItems($filters['organizations'] ?? $filters['orgaos'] ?? []);
         $payload['cargos'] = $this->normalizeCanonicalFilterItems($filters['roles'] ?? $filters['cargos'] ?? []);
         $payload['carreiras'] = $this->normalizeCanonicalFilterItems($filters['careers'] ?? $filters['carreiras'] ?? []);
+        // Preserve the provider namespace before the legacy/canonical buckets
+        // collapse into the same local filter type. Gran area:69 is not carreira:69.
+        foreach ($payload['carreiras'] as &$career) {
+            if (strtolower(trim((string) ($career['provider'] ?? ''))) !== 'gran') continue;
+            $entityType = trim((string) ($career['sourceEntityType'] ?? $career['source_entity_type'] ?? ''));
+            $career['sourceEntityType'] = $entityType !== ''
+                ? $entityType
+                : (isset($filters['careers']) ? 'area' : 'carreira');
+        }
+        unset($career);
         $payload['anos'] = $this->normalizeCanonicalFilterItems($filters['years'] ?? $filters['anos'] ?? []);
         $payload['niveis'] = $this->normalizeCanonicalFilterItems($filters['levels'] ?? $filters['niveis'] ?? []);
         $payload['tiposProva'] = $this->normalizeCanonicalFilterItems($filters['examTypes'] ?? $filters['tiposProva'] ?? $filters['tipos_prova'] ?? []);

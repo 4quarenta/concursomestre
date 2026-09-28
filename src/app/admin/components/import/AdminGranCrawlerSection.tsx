@@ -45,6 +45,7 @@ import {
   type GranTaxonomySyncKey,
 } from './granCrawlerFailureUtils';
 import { splitGranTaxonomyResponses } from './granTaxonomySyncUtils';
+import { useGranPublicationPolling } from './useGranPublicationPolling';
 import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from './granCrawlerUrl';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
@@ -1153,43 +1154,32 @@ const AdminGranCrawlerSection = ({
     return batch;
   }, []);
 
-  React.useEffect(() => {
-    if (!currentBatch || automaticMode || !['pending', 'processing'].includes(currentBatch.status)) {
-      return undefined;
+  const readPolledBatch = React.useCallback(async (batchId: string, complete: boolean, signal: AbortSignal) => {
+    const response = await apiClient.post(ENDPOINT, {
+      action: complete ? 'publication_batch_status' : 'publication_batch_progress',
+      batchId,
+    }, { signal });
+    return readApiData<GranPublicationBatch>(response);
+  }, []);
+
+  const applyPolledBatch = React.useCallback((batch: GranPublicationBatch, complete: boolean) => {
+    setCurrentBatch((existing) => existing?.batchId === batch.batchId ? { ...existing, ...batch } : existing);
+    if (complete) {
+      bootstrapCache = null;
+      setFailureActionFeedback(`Lote ${batch.batchId} concluido: ${batch.published} publicada(s), ${batch.duplicates} ja existente(s), ${batch.failures} falha(s).`);
     }
+  }, []);
 
-    const controller = new AbortController();
-    let timer: number | null = null;
-    const refreshProgress = async () => {
-      if (controller.signal.aborted || document.visibilityState !== 'visible') return;
-      try {
-        const response = await apiClient.post(ENDPOINT, {
-          action: 'publication_batch_progress',
-          batchId: currentBatch.batchId,
-        }, { signal: controller.signal });
-        const progress = readApiData<GranPublicationProgress>(response);
-        if (!controller.signal.aborted) {
-          setCurrentBatch((existing) => (
-            existing?.batchId === currentBatch.batchId
-              ? { ...existing, ...progress }
-              : existing
-          ));
-        }
-      } catch {
-        // O worker continua independente da tela; uma falha de observacao nao pode interromper a fila.
-      } finally {
-        if (!controller.signal.aborted && document.visibilityState === 'visible') {
-          timer = window.setTimeout(refreshProgress, ACTIVE_BATCH_STATUS_REFRESH_MS);
-        }
-      }
-    };
-
-    timer = window.setTimeout(refreshProgress, ACTIVE_BATCH_STATUS_REFRESH_MS);
-    return () => {
-      controller.abort();
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [automaticMode, currentBatch?.batchId, currentBatch?.status]);
+  useGranPublicationPolling({
+    batchId: currentBatch?.batchId,
+    status: currentBatch?.status,
+    automaticMode,
+    retryingCount: failureHistory.retryingCount,
+    intervalMs: ACTIVE_BATCH_STATUS_REFRESH_MS,
+    readBatch: readPolledBatch,
+    refreshFailures: loadFailureHistory,
+    onBatch: applyPolledBatch,
+  });
 
   const stopAutomaticMode = React.useCallback((message = 'Modo automatico interrompido pelo administrador.') => {
     const checkpoint = automaticCheckpointRef.current;
@@ -2471,7 +2461,7 @@ const AdminGranCrawlerSection = ({
                         {isActing || failure.status === 'retrying'
                           ? <Loader2 size={13} className="animate-spin" />
                           : <RefreshCw size={13} />}
-                        Tentar novamente
+                        {failure.status === 'retrying' ? 'Aguardando publicacao' : 'Tentar novamente'}
                       </button>
                       <button
                         type="button"

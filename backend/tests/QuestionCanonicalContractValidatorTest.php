@@ -74,4 +74,27 @@ assertCanonicalQuestionContract(
 );
 assertCanonicalQuestionContract(count($result['taxonomies']['banca']) === 1, 'examBoards deve ser normalizado para taxonomia de banca.');
 
+foreach ([
+    ['carreiras', [], 'carreira'],
+    ['careers', [], 'area'],
+    ['carreiras', ['sourceEntityType' => 'area'], 'area'],
+    ['careers', ['sourceEntityType' => 'carreira'], 'carreira'],
+    ['carreiras', ['source_entity_type' => 'area'], 'area'],
+] as [$bucket, $identity, $expectedType]) {
+    $question = $payload;
+    unset($question['filters']['careers']);
+    $question['filters'][$bucket] = [array_merge([
+        'label' => 'Educacao', 'provider' => 'gran', 'externalId' => 7,
+    ], $identity)];
+    $validated = $validator->validateSavePayload($question);
+    assertCanonicalQuestionContract(
+        ($validated['taxonomies']['carreira'][0]['sourceEntityType'] ?? '') === $expectedType,
+        "Gran {$bucket} must preserve its external namespace ({$expectedType})."
+    );
+    assertCanonicalQuestionContract(
+        $validated['taxonomies']['carreira'][0]['externalId'] === 7,
+        'Provider identity must not be replaced by a name or local ID.'
+    );
+}
+
 fwrite(STDOUT, "Question canonical contract validator assertions passed.\n");

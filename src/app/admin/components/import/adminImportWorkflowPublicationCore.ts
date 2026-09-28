@@ -2754,6 +2754,7 @@ export const toQuestionFilterValue = (
       'taxonomyLevel',
       'taxonomy_level',
       'provider',
+      'sourceEntityType',
       'externalId',
       'externalParentId',
       'externalRootId',
