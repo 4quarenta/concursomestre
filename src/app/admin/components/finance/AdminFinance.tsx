@@ -3275,12 +3275,7 @@ const AdminFinance = ({
                     const net = revenueRecognized ? readTransactionNetAmount(transaction, amount, fee) : 0;
                     const description = transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de assinatura';
                     const statusLabel = transaction.isRevenueProjection ? 'Projecao estimada (nao cobrada)' : formatTransactionStatusLabel(transactionStatus);
-                    const installmentLabel = getTransactionInstallmentLabel({
-                      installmentNumber: transaction.installmentNumber,
-                      installmentCount: transaction.installmentCount,
-                      isRevenueProjection: transaction.isRevenueProjection,
-                      transactionStatus,
-                    });
+                    const installmentLabel = getTransactionInstallmentLabel(transaction);
                     const isRefundActionLocked = refundActionKey !== null;
                     const displayTimestamp = resolveTransactionDisplayTimestamp(transaction, adminFinanceNowMs);
 

@@ -2,14 +2,14 @@ export type InstallmentLabelInput = {
   installmentNumber?: number;
   installmentCount?: number;
   isRevenueProjection?: boolean;
-  transactionStatus?: string;
+  status?: string;
 };
 
 export const getTransactionInstallmentLabel = ({
   installmentNumber,
   installmentCount,
   isRevenueProjection = false,
-  transactionStatus = '',
+  status = '',
 }: InstallmentLabelInput): string | null => {
   const number = Number(installmentNumber || 0);
   const count = Number(installmentCount || 0);
@@ -20,7 +20,7 @@ export const getTransactionInstallmentLabel = ({
 
   const prefix = isRevenueProjection
     ? 'Parcela futura'
-    : ['approved', 'completed'].includes(transactionStatus.trim().toLowerCase())
+    : ['approved', 'completed', 'paid', 'succeeded'].includes(status.trim().toLowerCase())
       ? 'Parcela paga'
       : 'Parcela';
 

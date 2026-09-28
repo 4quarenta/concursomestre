@@ -6,7 +6,7 @@ describe('getTransactionInstallmentLabel', () => {
     expect(getTransactionInstallmentLabel({
       installmentNumber: 1,
       installmentCount: 2,
-      transactionStatus: 'approved',
+      status: 'approved',
     })).toBe('Parcela paga 1 de 2');
   });
 
@@ -15,7 +15,7 @@ describe('getTransactionInstallmentLabel', () => {
       installmentNumber: 2,
       installmentCount: 2,
       isRevenueProjection: true,
-      transactionStatus: 'pre-approved',
+      status: 'pre-approved',
     })).toBe('Parcela futura 2 de 2');
   });
 
@@ -23,7 +23,7 @@ describe('getTransactionInstallmentLabel', () => {
     expect(getTransactionInstallmentLabel({
       installmentNumber: 1,
       installmentCount: 2,
-      transactionStatus: 'pending',
+      status: 'pending',
     })).toBe('Parcela 1 de 2');
   });
 
