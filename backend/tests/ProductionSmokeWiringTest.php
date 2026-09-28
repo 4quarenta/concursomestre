@@ -140,8 +140,8 @@ assertContainsProductionSmoke(
 
 assertContainsProductionSmoke(
     $script,
-    'NEXT_REDIRECT',
-    'Production smoke must fail if the legacy questions route still leaks a redirect payload'
+    "'expected_location_path_prefix' => '/questoes/'",
+    'Production smoke must verify the legacy question route redirects to the canonical question path'
 );
 
 assertContainsProductionSmoke(

@@ -600,7 +600,7 @@ function smokeWebChecks(?string $webBaseUrl, ?int $publicQuestionId, int $timeou
             'path' => '/question/' . $publicQuestionId,
             'allow_redirect' => true,
             'expected_status' => 308,
-            'body_must_not_contain_any' => ['NEXT_REDIRECT'],
+            'expected_location_path_prefix' => '/questoes/',
         ];
     }
 
@@ -614,6 +614,11 @@ function smokeWebChecks(?string $webBaseUrl, ?int $publicQuestionId, int $timeou
         $containsExpected = empty($mustContain) || smokeBodyHasAny($body, $mustContain);
         $containsForbidden = !empty($mustNotContain) && smokeBodyHasAny($body, $mustNotContain);
         $missingHeaders = smokeFindMissingHeaders($result['headers'] ?? [], $check['required_headers'] ?? []);
+        $expectedLocationPathPrefix = $check['expected_location_path_prefix'] ?? null;
+        $location = (string) ($result['headers']['location'] ?? '');
+        $locationPath = $location !== '' ? parse_url($location, PHP_URL_PATH) : null;
+        $locationOk = !is_string($expectedLocationPathPrefix)
+            || (is_string($locationPath) && strpos($locationPath, $expectedLocationPathPrefix) === 0);
 
         $statusCode = (int) $result['status_code'];
         $allowsRedirect = !empty($check['allow_redirect']);
@@ -627,6 +632,7 @@ function smokeWebChecks(?string $webBaseUrl, ?int $publicQuestionId, int $timeou
             && $result['error'] === null
             && $containsExpected
             && !$containsForbidden
+            && $locationOk
             && count($missingHeaders) === 0;
 
         $results[] = [
@@ -637,6 +643,7 @@ function smokeWebChecks(?string $webBaseUrl, ?int $publicQuestionId, int $timeou
             'duration_ms' => $result['duration_ms'],
             'contains_expected_marker' => $containsExpected,
             'contains_forbidden_marker' => $containsForbidden,
+            'location_ok' => $locationOk,
             'missing_headers' => $missingHeaders,
             'error' => $result['error'],
         ];
