@@ -84,6 +84,7 @@ import AdminMarketing from './AdminMarketing';
 import AdminFinanceAnalyticsPanel from './AdminFinanceAnalyticsPanel';
 import AdminReferralPayoutPanel from './AdminReferralPayoutPanel';
 import AdminFinanceTransactionOverview from './AdminFinanceTransactionOverview';
+import { getTransactionInstallmentLabel } from './transactionInstallmentLabel';
 import AdminBenefitsPanel from './AdminBenefitsPanel';
 import RefundRetentionOfferFields, { EMPTY_RETENTION_OFFER_DRAFT, isRetentionOfferDraftValid, serializeRetentionOfferDraft, type RetentionOfferDraft } from './RefundRetentionOfferFields';
 import { buildAdminUserEditPath } from '../../config/adminPageNavigationConfig';
@@ -3274,6 +3275,12 @@ const AdminFinance = ({
                     const net = revenueRecognized ? readTransactionNetAmount(transaction, amount, fee) : 0;
                     const description = transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de assinatura';
                     const statusLabel = transaction.isRevenueProjection ? 'Projecao estimada (nao cobrada)' : formatTransactionStatusLabel(transactionStatus);
+                    const installmentLabel = getTransactionInstallmentLabel({
+                      installmentNumber: transaction.installmentNumber,
+                      installmentCount: transaction.installmentCount,
+                      isRevenueProjection: transaction.isRevenueProjection,
+                      transactionStatus,
+                    });
                     const isRefundActionLocked = refundActionKey !== null;
                     const displayTimestamp = resolveTransactionDisplayTimestamp(transaction, adminFinanceNowMs);
 
@@ -3311,9 +3318,9 @@ const AdminFinance = ({
                           }`}>
                             {transaction.type === 'plan' ? 'Assinatura' : 'Material'}
                           </span>
-                          {transaction.installmentNumber && transaction.installmentCount && !transaction.scheduleLabel?.includes('renovacao') && (
+                          {installmentLabel && !transaction.scheduleLabel?.toLowerCase().includes('renovacao') && (
                             <div className="mt-2 text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                              Parcela futura {transaction.installmentNumber} de {transaction.installmentCount}
+                              {installmentLabel}
                             </div>
                           )}
                         </td>
