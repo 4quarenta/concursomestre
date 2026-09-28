@@ -533,8 +533,6 @@ class AdminAnalyticsService
                 $transactions
             );
             $remainingInstallments = max(0, $totalInstallments - $paidInstallments);
-            $autoRenew = (int) ($subscription['auto_renew'] ?? 0) === 1;
-            $cancelAtPeriodEnd = (int) ($subscription['cancel_at_period_end'] ?? 0) === 1;
 
             if (!in_array($status, ['active', 'trialing', 'past_due', 'canceled', 'cancelled'], true)) {
                 continue;
@@ -552,23 +550,12 @@ class AdminAnalyticsService
                 continue;
             }
 
-            $isRecurringRenewal = $autoRenew && !$cancelAtPeriodEnd && in_array($status, ['active', 'trialing'], true);
             $projectionCycles = $remainingInstallments;
             $projectionMode = 'installments';
 
-            if ($totalInstallments <= 1 || $remainingInstallments <= 0) {
-                if (!$isRecurringRenewal) {
-                    continue;
-                }
-
-                $projectionCycles = 12;
-                $remainingInstallments = 12;
-                $paidInstallments = 0;
-                $totalInstallments = 12;
-                $projectionMode = 'auto_renew';
-            }
-
-            if ($projectionCycles <= 0) {
+            // Revenue projection represents contracted balance only, not an
+            // arbitrary horizon of future automatic renewals.
+            if ($totalInstallments <= 1 || $projectionCycles <= 0) {
                 continue;
             }
 
