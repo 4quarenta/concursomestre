@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { UserProfile } from '@types';
-import { getAccessPlanName, getEffectivePlanName, hasActivePlanAccess, isPlanAtLeast } from '../planAccess';
+import { getAccessPlanName, getAvailableUpgradePlanName, getEffectivePlanName, hasActivePlanAccess, isPlanAtLeast } from '../planAccess';
 
 const makeUser = (patch: Partial<UserProfile>): UserProfile => ({
   id: 'user-1',
@@ -105,5 +105,23 @@ describe('planAccess helpers', () => {
     expect(getAccessPlanName(user)).toBe('Gratuito');
     expect(getEffectivePlanName(user)).toBe('Gratuito');
     expect(isPlanAtLeast(user, 'Pro')).toBe(false);
+  });
+
+  it('offers the next enabled tier when the recommended upgrade plan is disabled', () => {
+    expect(getAvailableUpgradePlanName('Pro', {
+      Gratuito: { enabled: true },
+      Essencial: { enabled: true },
+      Pro: { enabled: false },
+      Elite: { enabled: true },
+    })).toBe('Elite');
+  });
+
+  it('does not offer a disabled plan or fall back to a lower tier', () => {
+    expect(getAvailableUpgradePlanName('Pro', {
+      Gratuito: { enabled: true },
+      Essencial: { enabled: true },
+      Pro: { enabled: false },
+      Elite: { enabled: false },
+    })).toBeNull();
   });
 });

@@ -171,6 +171,16 @@ export const isPlanEnabledByName = (
   return rawPlanConfig.enabled;
 };
 
+export const getAvailableUpgradePlanName = (
+  requiredPlan: string | null | undefined,
+  configuredPlanDetails?: Partial<Record<PlanName, { enabled?: boolean }>> | null,
+): CanonicalPlanName | null => {
+  const minimumIndex = PLAN_ORDER.indexOf(getCanonicalPlanDetailsName(requiredPlan));
+  return PLAN_ORDER
+    .slice(Math.max(0, minimumIndex))
+    .find((planName) => isPlanEnabledByName(planName, configuredPlanDetails)) ?? null;
+};
+
 export const getConfiguredPlanDisplayName = (
   planName: string | null | undefined,
   configuredPlanDetails?: Partial<Record<PlanName, { displayName?: string }>> | null,

@@ -14,7 +14,7 @@ import { createPortal } from 'react-dom';
 import { Crown, CheckCircle2, X, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { CanonicalPlanName, getEffectivePlanDisplayName } from '@services/plans/planAccess';
+import { CanonicalPlanName, getAvailableUpgradePlanName, getEffectivePlanDisplayName } from '@services/plans/planAccess';
 import { getBenefitDefinition, getEnabledBenefitKeysForPlan, getIncrementalBenefitKeysForPlan } from '@constants/subscriptions/planEntitlements';
 import { buildProfilePath } from '../../../app/profile/profileNavigation';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
@@ -38,11 +38,16 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
     if (!isOpen) return null;
 
-    const benefitKeys = (
-        getIncrementalBenefitKeysForPlan(requiredPlan, systemSettings.planEntitlements).length > 0
-            ? getIncrementalBenefitKeysForPlan(requiredPlan, systemSettings.planEntitlements)
-            : getEnabledBenefitKeysForPlan(requiredPlan, systemSettings.planEntitlements)
-    ).slice(0, 4);
+    const offerPlan = getAvailableUpgradePlanName(requiredPlan, systemSettings.planDetails);
+    const displayedPlan = offerPlan ?? requiredPlan;
+
+    const benefitKeys = offerPlan
+        ? (
+            getIncrementalBenefitKeysForPlan(displayedPlan, systemSettings.planEntitlements).length > 0
+                ? getIncrementalBenefitKeysForPlan(displayedPlan, systemSettings.planEntitlements)
+                : getEnabledBenefitKeysForPlan(displayedPlan, systemSettings.planEntitlements)
+        ).slice(0, 4)
+        : [];
 
     const benefits = benefitKeys.map((benefitKey) => getBenefitDefinition(benefitKey).label);
 
@@ -59,11 +64,11 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                     </div>
 
                     <div className="relative flex flex-col items-center gap-2 z-10">
-                        <div className={`p-4 rounded-2xl backdrop-blur-md border shadow-xl ${requiredPlan === 'Elite' ? 'bg-amber-500/20 border-amber-500/40 text-amber-500' : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'}`}>
+                        <div className={`p-4 rounded-2xl backdrop-blur-md border shadow-xl ${displayedPlan === 'Elite' ? 'bg-amber-500/20 border-amber-500/40 text-amber-500' : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'}`}>
                             <Crown size={40} className="animate-pulse" />
                         </div>
-                        <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${requiredPlan === 'Elite' ? 'bg-amber-950/40 border-amber-500/30 text-amber-400' : 'bg-indigo-950/40 border-indigo-500/30 text-indigo-300'}`}>
-                            Recurso {requiredPlan}
+                        <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${displayedPlan === 'Elite' ? 'bg-amber-950/40 border-amber-500/30 text-amber-400' : 'bg-indigo-950/40 border-indigo-500/30 text-indigo-300'}`}>
+                            {offerPlan ? `Recurso ${displayedPlan}` : 'Plano indisponível'}
                         </span>
                     </div>
 
@@ -82,12 +87,14 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                         </h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
                             {currentUser ? `Você está no plano ${getEffectivePlanDisplayName(currentUser)}. ` : ''}
-                            Faça o upgrade para acessar essa e outras ferramentas exclusivas.
+                            {offerPlan
+                                ? 'Faça o upgrade para acessar essa e outras ferramentas exclusivas.'
+                                : 'No momento não há um plano ativo que inclua este recurso. Consulte os planos disponíveis.'}
                         </p>
                     </div>
 
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-800">
-                        <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">Incluso no plano {requiredPlan}</p>
+                        <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">{offerPlan ? `Incluso no plano ${displayedPlan}` : 'Benefícios do plano indisponíveis'}</p>
                         <ul className="space-y-3">
                             {benefits.map((benefit, i) => (
                                 <li key={i} className="flex items-start gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -102,16 +109,18 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                         onClick={() => {
                             onClose();
                             // Se estiver logado vai para o perfil; se não, abre o cadastro.
-                            if (currentUser) {
+                            if (!offerPlan) {
+                                router.push('/plans');
+                            } else if (currentUser) {
                                 router.push(buildProfilePath('billing'));
                             } else {
                                 router.push('/auth?register=true');
                             }
                         }}
-                        className={`group flex items-center justify-center gap-3 w-full h-14 text-white rounded-2xl font-black text-xs uppercase tracking-[0.15em] shadow-lg transition-all active:scale-95 ${requiredPlan === 'Elite' ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-amber-900/20' : 'bg-slate-900 dark:bg-indigo-600 hover:bg-indigo-600 dark:hover:bg-indigo-500'}`}
+                        className={`group flex items-center justify-center gap-3 w-full h-14 text-white rounded-2xl font-black text-xs uppercase tracking-[0.15em] shadow-lg transition-all active:scale-95 ${displayedPlan === 'Elite' ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-amber-900/20' : 'bg-slate-900 dark:bg-indigo-600 hover:bg-indigo-600 dark:hover:bg-indigo-500'}`}
                     >
-                        {requiredPlan === 'Elite' ? <Sparkles size={16} /> : <Crown size={16} />}
-                        {currentUser ? 'Fazer Upgrade Agora' : 'Começar Gratuitamente'}
+                        {displayedPlan === 'Elite' ? <Sparkles size={16} /> : <Crown size={16} />}
+                        {!offerPlan ? 'Ver planos disponíveis' : currentUser ? `Conhecer Plano ${displayedPlan}` : 'Começar Gratuitamente'}
                     </button>
 
                     {!currentUser && (

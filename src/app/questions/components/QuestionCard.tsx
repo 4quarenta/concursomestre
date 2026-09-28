@@ -26,6 +26,7 @@ import { maybeShowQuestionAnswerInterstitial } from '@services/ads/adService';
 import MathRichText from '@/components/shared/math/MathRichText';
 import { commentService } from '@services/comments';
 import { clientLog } from '@services/monitoring/clientLog';
+import { getPlanUsageLimitKeyFromError } from '@services/plans/planUsageLimitError';
 
 const fixHtmlImages = (html: string) => {
   const normalizedHtml = normalizeQuestionRichHtml(html);
@@ -325,8 +326,10 @@ import { useRouter } from 'next/navigation';
 import AdBanner from '../../../components/shared/feedback/AdBanner';
 import {
   getAccessPlanName,
+  getAvailableUpgradePlanName,
   getBenefitPlanLabel,
   getBenefitRequiredPlan,
+  getConfiguredPlanDisplayName,
   getNextPlanForHigherUsageLimit,
   getPlanUsageLimitForPlanName,
   hasPlanBenefit,
@@ -545,14 +548,21 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isPreparingNoteModal, setIsPreparingNoteModal] = useState(false);
   // Modal de upgrade de plano
-  const [planUpgradeModal, setPlanUpgradeModal] = useState<{ featureName: string; requiredPlan: string; planLabel: string } | null>(null);
-  const openPlanUpgrade = React.useCallback((featureName: string, benefitKey: PlanBenefitKey) => {
+  const [planUpgradeModal, setPlanUpgradeModal] = useState<{ featureName: string; requiredPlan: string; planLabel: string; planAvailable: boolean } | null>(null);
+  const showPlanUpgrade = React.useCallback((featureName: string, requiredPlan: string, fallbackLabel?: string) => {
+    const availablePlan = getAvailableUpgradePlanName(requiredPlan, systemSettings.planDetails);
     setPlanUpgradeModal({
       featureName,
-      requiredPlan: getBenefitRequiredPlan(benefitKey, systemSettings.planEntitlements),
-      planLabel: getBenefitPlanLabel(benefitKey, systemSettings.planEntitlements),
+      requiredPlan: availablePlan ?? requiredPlan,
+      planLabel: availablePlan
+        ? `Plano ${getConfiguredPlanDisplayName(availablePlan, systemSettings.planDetails)}`
+        : fallbackLabel || 'Nenhum plano ativo disponível',
+      planAvailable: availablePlan !== null,
     });
-  }, [systemSettings.planEntitlements]);
+  }, [systemSettings.planDetails]);
+  const openPlanUpgrade = React.useCallback((featureName: string, benefitKey: PlanBenefitKey) => {
+    showPlanUpgrade(featureName, getBenefitRequiredPlan(benefitKey, systemSettings.planEntitlements));
+  }, [showPlanUpgrade, systemSettings.planEntitlements]);
 
   const currentAccessPlanName = getAccessPlanName(currentUser);
   const questionsPerDayLimit = getPlanUsageLimitForPlanName(
@@ -577,12 +587,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   );
   const openUsageLimitUpgrade = React.useCallback((featureName: string, limitKey: PlanUsageLimitKey) => {
     const nextPlan = getNextPlanForHigherUsageLimit(currentAccessPlanName, limitKey, systemSettings.planUsageLimits);
-    setPlanUpgradeModal({
-      featureName,
-      requiredPlan: nextPlan,
-      planLabel: nextPlan === 'Elite' ? 'Plano Elite' : `Plano ${nextPlan} ou superior`,
-    });
-  }, [currentAccessPlanName, systemSettings.planUsageLimits]);
+    showPlanUpgrade(featureName, nextPlan);
+  }, [currentAccessPlanName, showPlanUpgrade, systemSettings.planUsageLimits]);
   const hasReachedDailyQuestionLimit = React.useCallback(() => {
     if (mode !== 'practice' || questionsPerDayUnlimited || questionsPerDayLimit === null) {
       return false;
@@ -1021,6 +1027,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       answerSubmissionKeyRef.current = null;
       incrementDailyUsageCount(authenticatedUserId, 'questions_per_day');
     } catch (error) {
+      const limitKey = getPlanUsageLimitKeyFromError(error);
+      if (limitKey) {
+        openUsageLimitUpgrade('Limite de questões ou simulados', limitKey);
+        return;
+      }
       clientLog.warn('[QuestionCard] Failed to submit answer:', error);
       addToast('Não foi possível salvar sua resposta. Tente novamente.', 'error');
       return;
@@ -1637,7 +1648,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <button
                 onClick={() => {
                   if (!canSeeTeacher) {
-                    setPlanUpgradeModal({ featureName: 'Gabarito Comentado', requiredPlan: teacherRequiredPlan, planLabel: teacherPlanLabel });
+                    showPlanUpgrade('Gabarito Comentado', teacherRequiredPlan, teacherPlanLabel);
                     return;
                   }
                   const shouldOpen = !showTeacherComment;
@@ -1660,7 +1671,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <button
                 onClick={() => {
                   if (!canSeeDetailed) {
-                    setPlanUpgradeModal({ featureName: 'Análise Detalhada', requiredPlan: detailedRequiredPlan, planLabel: detailedPlanLabel });
+                    showPlanUpgrade('Análise Detalhada', detailedRequiredPlan, detailedPlanLabel);
                     return;
                   }
                   const shouldOpen = !showDetailedComment;
@@ -1955,9 +1966,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 mb-1">{planUpgradeModal.featureName}</h3>
         <p className="text-xs font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-4">{planUpgradeModal.planLabel}</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
-          Este recurso está disponível apenas para assinantes do{' '}
-          <strong className="text-slate-700 dark:text-slate-200">{planUpgradeModal.planLabel}</strong>.
-          Faça upgrade para desbloquear todos os recursos premium.
+          {planUpgradeModal.planAvailable ? (
+            <>Este recurso está disponível no{' '}
+              <strong className="text-slate-700 dark:text-slate-200">{planUpgradeModal.planLabel}</strong>.
+              Faça upgrade para continuar.</>
+          ) : 'No momento não há um plano ativo que inclua este recurso. Consulte os planos disponíveis.'}
         </p>
         <div className="flex gap-3">
           <button
