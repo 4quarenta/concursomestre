@@ -86,10 +86,13 @@ export function getLegacyTaxonomyTarget(payload: unknown, taxonomyName: string):
           if (name !== normalizedName) continue;
 
           if (field === 'careers' || field === 'carreiras') {
-            // The import contract stores Gran focus/area identities in the
-            // careers bucket. When older payloads omit sourceEntityType, the
-            // server also defaults this bucket to the Gran "area" catalog.
-            const careerKey = entityType === 'carreira' ? 'carreira' : 'area';
+            // The canonical `careers` bucket defaults to Gran focus/area, while
+            // legacy `carreiras` values represent the Gran career taxonomy.
+            const careerKey = entityType === 'area'
+              ? 'area'
+              : entityType === 'carreira'
+                ? 'carreira'
+                : field === 'carreiras' ? 'carreira' : 'area';
             matches.set(`${careerKey}:${externalId}`, { key: careerKey, externalId });
             continue;
           }

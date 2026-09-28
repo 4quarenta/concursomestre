@@ -49,12 +49,12 @@ describe('Gran publication taxonomy failure helpers', () => {
       .toEqual({ key: 'orgao', externalId: '506' });
   });
 
-  it('routes legacy Gran focus identities in the careers bucket to the area catalog', () => {
+  it('routes canonical careers identities to the area catalog', () => {
     const payload = {
       schemaVersion: 'question-import.v2',
       questions: [{
         filters: {
-          carreiras: [{
+          careers: [{
             label: 'Educação (Professores, Especialistas e outros)',
             provider: 'gran',
             externalId: '506',
@@ -64,6 +64,23 @@ describe('Gran publication taxonomy failure helpers', () => {
     };
 
     expect(getLegacyTaxonomyKey(payload, 'Educação (Professores, Especialistas e outros)')).toBe('area');
+  });
+
+  it('routes the persisted legacy carreiras field to the career catalog', () => {
+    const payload = {
+      schemaVersion: 'question-import.v2',
+      questions: [{
+        filters: {
+          carreiras: [
+            { id: 811, label: 'Educação (Professores, Especialistas e outros)', provider: 'gran', externalId: '7' },
+            { id: 812, label: 'Educação / Professor', provider: 'gran', externalId: '69' },
+          ],
+        },
+      }],
+    };
+
+    expect(getLegacyTaxonomyTarget(payload, 'Educação (Professores, Especialistas e outros)'))
+      .toEqual({ key: 'carreira', externalId: '7' });
   });
 
   it('uses an explicit source entity type when a careers-bucket identity is not a focus area', () => {
