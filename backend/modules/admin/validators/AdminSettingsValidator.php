@@ -108,6 +108,10 @@ class AdminSettingsValidator
             }
         }
 
+        if (array_key_exists('recaptchaEnabled', $payload)) {
+            $payload['recaptchaEnabled'] = $this->normalizeBooleanValue($payload['recaptchaEnabled']);
+        }
+
         if (isset($payload['adsenseClientId'])) {
             $payload['adsenseClientId'] = $this->validateAdsensePublisherId($payload['adsenseClientId']);
         }
@@ -313,6 +317,31 @@ class AdminSettingsValidator
         }
 
         return $payload;
+    }
+
+    /**
+     * Impede ativar reCAPTCHA sem o par de chaves exigido pelo runtime.
+     * O segredo atual permanece exclusivamente no ambiente protegido.
+     */
+    public function assertRecaptchaActivationConfiguration(
+        array $payload,
+        string $existingSiteKey,
+        bool $existingSecretConfigured
+    ): void {
+        if (($payload['recaptchaEnabled'] ?? false) !== true) {
+            return;
+        }
+
+        $siteKey = array_key_exists('recaptchaSiteKey', $payload)
+            ? trim((string) $payload['recaptchaSiteKey'])
+            : trim($existingSiteKey);
+        $submittedSecret = trim((string) ($payload['recaptchaSecretKey'] ?? ''));
+
+        if ($siteKey === '' || ($submittedSecret === '' && !$existingSecretConfigured)) {
+            throw new InvalidArgumentException(
+                'Não é possível ativar o reCAPTCHA: configure a site key e a secret key antes de salvar.'
+            );
+        }
     }
 
     /**

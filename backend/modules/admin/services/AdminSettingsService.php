@@ -155,6 +155,15 @@ class AdminSettingsService
         $data = $this->validator->validateUpdatePayload($payload);
         $data = $this->normalizeFeatureSettingsPayload($data);
         $this->validateFeaturedOrganizationFilterTypes($data);
+        if (($data['recaptchaEnabled'] ?? false) === true) {
+            $persistedSettings = $this->repository->fetchAllSystemSettings();
+            $existingRecaptchaSecret = $_ENV['RECAPTCHA_SECRET_KEY'] ?? getenv('RECAPTCHA_SECRET_KEY') ?? '';
+            $this->validator->assertRecaptchaActivationConfiguration(
+                $data,
+                (string) ($persistedSettings['recaptchaSiteKey'] ?? ''),
+                trim((string) $existingRecaptchaSecret) !== ''
+            );
+        }
         $this->log('POST Request Start. Payload keys: ' . implode(', ', array_keys($data)));
 
         $shouldSyncStripeRenewalProjection = isset($data['pricing'], $data['planDetails'])
