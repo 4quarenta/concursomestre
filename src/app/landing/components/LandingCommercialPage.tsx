@@ -1030,7 +1030,7 @@ const LandingCommercialPage: React.FC<{
       <FAQSection />
       <FinalCTA />
       </main>
-      <Footer />
+      <Footer landingContent={effectiveSettings.landingPageContent} />
     </div>
   );
 };

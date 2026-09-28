@@ -32,7 +32,6 @@ import {
   normalizeNotificationSettings,
 } from '@constants/gamificationNotificationSettings';
 import AdminSettingsTabsBar from './AdminSettingsTabsBar';
-import { LogViewer } from './LogViewer';
 import AdminCacheManagement from './AdminCacheManagement';
 import AdminSeoSettingsSection from './AdminSeoSettingsSection';
 import AdminBrandAssetUpload from './AdminBrandAssetUpload';
@@ -65,7 +64,7 @@ import {
 } from '@constants/subscriptions/planEntitlements';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
-type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs' | 'safe-operations';
+type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'safe-operations';
 type AdminSettingsTabs = React.ComponentProps<typeof AdminSettingsTabsBar>['tabs'];
 
 interface AdminIntegrationCheck {
@@ -187,6 +186,7 @@ const stripFeatureFlagAliases = (settings: SystemSettings): SystemSettings => {
 
 const ADMIN_SECRET_SETTING_KEYS = [
   'smtpPass',
+  'resendApiKey',
   'geminiApiKey',
   'openaiApiKey',
   'recaptchaSecretKey',
@@ -226,7 +226,6 @@ const AdminSettings = ({
   const { currentUser, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminSettingsTab>(initialSection);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   const [localSettings, setLocalSettings] = useState<SystemSettings>(systemSettings);
   const [localSeoSettings, setLocalSeoSettings] = useState<SeoSettings>(() => mergeSeoSettings(systemSettings.seo));
   const [twoFactorStep, setTwoFactorStep] = useState<'status' | 'setup' | 'verify'>('status');
@@ -603,6 +602,7 @@ const AdminSettings = ({
   const isFacebookAuthConfigured = !!(localSettings.hasFacebookAuthConfigured || (localSettings.facebookAuthAppId && localSettings.facebookAuthAppSecret));
   const isAppleAuthConfigured = !!(localSettings.hasAppleAuthConfigured || localSettings.appleAuthClientId);
   const isSmtpPasswordConfigured = !!(localSettings.hasSmtpPasswordConfigured || localSettings.smtpPass);
+  const isResendApiKeyConfigured = !!(localSettings.hasResendApiKeyConfigured || localSettings.resendApiKey);
   const gamificationSettings = useMemo(
     () => normalizeGamificationSettings(localSettings.gamification),
     [localSettings.gamification],
@@ -623,7 +623,6 @@ const AdminSettings = ({
     { id: 'ads', label: 'Anuncios', icon: Megaphone },
     { id: 'seo', label: 'SEO', icon: Globe },
     { id: 'performance', label: 'Performance', icon: Database },
-    { id: 'logs', label: 'Logs', icon: FileText },
     { id: 'safe-operations', label: 'Operações seguras', icon: ShieldCheck },
   ];
   const integrationChecks = useMemo<[string, AdminIntegrationCheck][]>(() => {
@@ -714,7 +713,6 @@ const AdminSettings = ({
 
   return (
     <div className="space-y-5 md:space-y-6">
-      <LogViewer isOpen={isLogViewerOpen} onClose={() => setIsLogViewerOpen(false)} />
       {standaloneSection ? (
         <div className="mb-4 flex justify-end">
           <button
@@ -748,10 +746,6 @@ const AdminSettings = ({
                 </h3>
                 <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Configurações principais da plataforma.</p>
               </div>
-              <button type="button" onClick={() => setIsLogViewerOpen(true)} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
-                <Terminal size={14} />
-                Visualizar logs
-              </button>
             </div>
             <div className="divide-y divide-slate-200 dark:divide-slate-800">
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
@@ -1068,23 +1062,28 @@ const AdminSettings = ({
             <button type="button" onClick={() => void handleTestIntegrations()} disabled={isTestingIntegrations} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>{isTestingIntegrations ? 'Testando...' : 'Testar integrações'}</button>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <select value={localSettings.paymentCheckoutMode || 'internal'} onChange={(e) => setField('paymentCheckoutMode', e.target.value as 'internal' | 'redirect')} className={inputClassName}><option value="internal">Checkout interno</option><option value="redirect">Checkout externo</option></select>
-            <label className={`flex items-center justify-between px-4 py-3 ${ADMIN_MUTED_SURFACE_CLASS}`}><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">reCAPTCHA v3 ativo</span><input type="checkbox" checked={!!localSettings.recaptchaEnabled} onChange={(e) => setField('recaptchaEnabled', e.target.checked)} className="h-4 w-4 rounded-sm border-slate-300 text-sky-700" /></label>
+            <div className="md:col-span-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Pagamentos</div>
+            <label className="space-y-2"><span className={labelClassName}>Experiência de checkout</span><select value={localSettings.paymentCheckoutMode || 'internal'} onChange={(e) => setField('paymentCheckoutMode', e.target.value as 'internal' | 'redirect')} className={inputClassName}><option value="internal">Checkout interno</option><option value="redirect">Checkout externo</option></select></label>
             <input value={localSettings.stripePublishableKey || localSettings.stripeKey || ''} onChange={(e) => setField('stripePublishableKey', e.target.value)} className={inputClassName} placeholder="Stripe publishable key" />
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeSecretKey || ''} onChange={(e) => setField('stripeSecretKey', e.target.value)} className={inputClassName} placeholder={isStripeSecretConfigured ? 'Digite uma nova chave para substituir a atual' : 'Stripe secret key'} /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe webhook secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeWebhookConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeWebhookConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeWebhookSecret || ''} onChange={(e) => setField('stripeWebhookSecret', e.target.value)} className={inputClassName} placeholder={isStripeWebhookConfigured ? 'Digite um novo segredo para substituir o atual' : 'Stripe webhook secret'} /></div>
+            <div className="md:col-span-2 mt-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Proteção e login</div>
+            <label className={`flex items-center justify-between gap-4 px-4 py-3 ${ADMIN_MUTED_SURFACE_CLASS}`}><span><span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">reCAPTCHA v3</span><span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Protege cadastro, login e fluxos de recuperação.</span></span><input type="checkbox" checked={!!localSettings.recaptchaEnabled} onChange={(e) => setField('recaptchaEnabled', e.target.checked)} className="h-4 w-4 rounded-sm border-slate-300 text-sky-700" /></label>
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>Google OAuth Client ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${localSettings.hasGoogleAuthClientConfigured || localSettings.googleAuthClientId ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{localSettings.hasGoogleAuthClientConfigured || localSettings.googleAuthClientId ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.googleAuthClientId || ''} onChange={(e) => setField('googleAuthClientId', e.target.value)} className={inputClassName} placeholder="000000000000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use o Client ID do aplicativo Web do Google Cloud. Origens autorizadas: http://localhost:3000 e o domínio de produção.</p></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Facebook App ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isFacebookAuthConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isFacebookAuthConfigured ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.facebookAuthAppId || ''} onChange={(e) => setField('facebookAuthAppId', e.target.value)} className={inputClassName} placeholder="Facebook App ID" /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Facebook App Secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isFacebookAuthConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isFacebookAuthConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.facebookAuthAppSecret || ''} onChange={(e) => setField('facebookAuthAppSecret', e.target.value)} className={inputClassName} placeholder={isFacebookAuthConfigured ? 'Digite um novo segredo para substituir o atual' : 'Facebook App Secret'} /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Apple Client ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isAppleAuthConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isAppleAuthConfigured ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.appleAuthClientId || ''} onChange={(e) => setField('appleAuthClientId', e.target.value)} className={inputClassName} placeholder="com.concursomestre.web" /></div>
             <div className="space-y-2"><input value={localSettings.appleAuthRedirectUri || ''} onChange={(e) => setField('appleAuthRedirectUri', e.target.value)} className={inputClassName} placeholder="Apple Redirect URI (opcional)" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Se vazio, o login usa automaticamente a origem atual + /auth.</p></div>
-            <input value={localSettings.googleAnalyticsId || ''} onChange={(e) => setField('googleAnalyticsId', e.target.value)} className={inputClassName} placeholder="Google Analytics ID" />
-            <input value={localSettings.metaPixelId || ''} onChange={(e) => setField('metaPixelId', e.target.value)} className={inputClassName} placeholder="Meta Pixel ID" />
+            <div className="md:col-span-2 mt-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Medição</div>
+            <label className="space-y-2"><span className={labelClassName}>Google Analytics</span><input value={localSettings.googleAnalyticsId || ''} onChange={(e) => setField('googleAnalyticsId', e.target.value)} className={inputClassName} placeholder="ID de medição" /></label>
+            <label className="space-y-2"><span className={labelClassName}>Meta Pixel</span><input value={localSettings.metaPixelId || ''} onChange={(e) => setField('metaPixelId', e.target.value)} className={inputClassName} placeholder="ID do pixel" /></label>
+            <div className="md:col-span-2 mt-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Inteligência artificial</div>
             <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Provedor padrão de IA</span><select value={localSettings.aiProvider || 'gemini'} onChange={(e) => setField('aiProvider', e.target.value)} className={inputClassName}><option value="gemini">Gemini</option><option value="openai">OpenAI / ChatGPT</option><option value="auto">Automático: OpenAI se configurado, senão Gemini</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Todas as gerações passam pelo backend. O frontend nunca recebe a chave do provedor.</p></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Gemini API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isGeminiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isGeminiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.geminiApiKey || ''} onChange={(e) => setField('geminiApiKey', e.target.value)} className={inputClassName} placeholder={isGeminiConfigured ? 'Digite uma nova chave para substituir a atual' : 'Gemini API key'} />{localSettings.hasGeminiApiKeyConfigured && !localSettings.geminiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend.</p>}</div>
             <div className="space-y-2"><span className={labelClassName}>Modelo padrão do Gemini</span><select value={localSettings.geminiModel || 'gemini-3.5-flash'} onChange={(e) => setField('geminiModel', e.target.value)} className={inputClassName}><option value="gemini-3.5-flash">Gemini 3.5 Flash</option><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option><option value="gemini-3-flash">Gemini 3 Flash</option><option value="gemini-2.5-flash">Gemini 2.5 Flash</option><option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Aplicado às gerações, análises, importações de PDF e moderação assistida. Se o modelo não estiver disponível para a chave, o gateway tenta um fallback compatível.</p></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>OpenAI API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isOpenAiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isOpenAiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.openaiApiKey || ''} onChange={(e) => setField('openaiApiKey', e.target.value)} className={inputClassName} placeholder={isOpenAiConfigured ? 'Digite uma nova chave para substituir a atual' : 'OpenAI API key'} />{localSettings.hasOpenAiApiKeyConfigured && !localSettings.openaiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend.</p>}</div>
             <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Modelo padrão do ChatGPT</span><select value={localSettings.openAiModel || 'gpt-4o-mini'} onChange={(e) => setField('openAiModel', e.target.value)} className={inputClassName}>{localSettings.openAiModel && !['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-4.1-nano', 'o4-mini'].includes(localSettings.openAiModel) ? <option value={localSettings.openAiModel}>{localSettings.openAiModel}</option> : null}<option value="gpt-4o-mini">GPT-4o Mini</option><option value="gpt-4o">GPT-4o</option><option value="gpt-4.1-mini">GPT-4.1 Mini</option><option value="gpt-4.1">GPT-4.1</option><option value="gpt-4.1-nano">GPT-4.1 Nano</option><option value="o4-mini">o4-mini</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Aplicado às gerações, análises, importações de PDF e moderação assistida quando o provedor escolhido for OpenAI/ChatGPT.</p></div>
+            <div className="md:col-span-2 mt-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Credenciais de proteção</div>
             <div className="space-y-2"><input value={localSettings.recaptchaSiteKey || ''} onChange={(e) => setField('recaptchaSiteKey', e.target.value)} className={inputClassName} placeholder="reCAPTCHA v3 site key" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use chaves do reCAPTCHA v3. O token agora é gerado automaticamente no envio de login, cadastro e reset.</p></div>
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>reCAPTCHA v3 secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isRecaptchaSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isRecaptchaSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.recaptchaSecretKey || ''} onChange={(e) => setField('recaptchaSecretKey', e.target.value)} className={inputClassName} placeholder={isRecaptchaSecretConfigured ? 'Digite um novo segredo para substituir o atual' : 'reCAPTCHA v3 secret key'} /></div>
             {localSettings.recaptchaEnabled && (!isRecaptchaSiteKeyConfigured || !isRecaptchaSecretConfigured) && <p className="text-sm font-medium text-amber-700 dark:text-amber-300 md:col-span-2">Para ativar o reCAPTCHA, informe a site key e a secret key. Sem ambas, a configuração não será salva como ativa.</p>}
@@ -1153,23 +1152,62 @@ const AdminSettings = ({
         <div className={`space-y-6 ${ADMIN_PAGE_PANEL_CLASS}`}>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Mail size={20} className="text-sky-700 dark:text-sky-300" /> SMTP</h3>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Teste real via backend oficial. A senha salva fica oculta e so e substituida quando uma nova senha e informada.</p>
+              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Mail size={20} className="text-sky-700 dark:text-sky-300" /> Envio de e-mails</h3>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Escolha o provedor e configure a conexão usada pelo sender oficial. A senha salva fica oculta.</p>
             </div>
             <button type="button" onClick={() => void handleTestSmtp()} disabled={isTestingSmtp} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>{isTestingSmtp ? 'Testando...' : 'Testar SMTP'}</button>
           </div>
+          <div className="rounded-md border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <label className="block max-w-xl space-y-2">
+              <span className={labelClassName}>Provedor de envio</span>
+              <select
+                value={localSettings.emailProvider || 'smtp'}
+                onChange={(event) => {
+                  const provider = event.target.value as 'smtp' | 'resend';
+                  setLocalSettings((current) => ({
+                    ...current,
+                    emailProvider: provider,
+                    ...(provider === 'resend' ? {
+                      smtpHost: 'smtp.resend.com',
+                      smtpPort: 587,
+                      smtpSecure: 'tls',
+                      smtpUser: 'resend',
+                    } : {}),
+                  }));
+                }}
+                className={inputClassName}
+              >
+                <option value="resend">Resend (SMTP)</option>
+                <option value="smtp">Outro provedor SMTP</option>
+              </select>
+              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                {localSettings.emailProvider === 'resend'
+                  ? 'Usa smtp.resend.com por TLS. Informe uma API key do Resend e use um domínio remetente verificado.'
+                  : 'Use os dados SMTP fornecidos pelo serviço de e-mail escolhido.'}
+              </p>
+            </label>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <input value={localSettings.smtpHost || ''} onChange={(e) => setField('smtpHost', e.target.value)} className={inputClassName} placeholder="Host SMTP" />
-            <input type="number" value={String(localSettings.smtpPort || 587)} onChange={(e) => setField('smtpPort', Number(e.target.value))} className={inputClassName} placeholder="Porta" />
-            <select value={localSettings.smtpSecure || 'tls'} onChange={(e) => setField('smtpSecure', e.target.value as 'tls' | 'ssl')} className={inputClassName}><option value="tls">TLS</option><option value="ssl">SSL</option></select>
-            <input value={localSettings.smtpUser || ''} onChange={(e) => setField('smtpUser', e.target.value)} className={inputClassName} placeholder="Usuário SMTP" />
-            <div className="space-y-2">
+            <input aria-label="Host SMTP" value={localSettings.smtpHost || ''} readOnly={localSettings.emailProvider === 'resend'} onChange={(e) => setField('smtpHost', e.target.value)} className={`${inputClassName} ${localSettings.emailProvider === 'resend' ? 'opacity-70' : ''}`} placeholder="Host SMTP" />
+            <input aria-label="Porta SMTP" type="number" value={String(localSettings.smtpPort || 587)} readOnly={localSettings.emailProvider === 'resend'} onChange={(e) => setField('smtpPort', Number(e.target.value))} className={`${inputClassName} ${localSettings.emailProvider === 'resend' ? 'opacity-70' : ''}`} placeholder="Porta" />
+            <select aria-label="Segurança SMTP" value={localSettings.smtpSecure || 'tls'} disabled={localSettings.emailProvider === 'resend'} onChange={(e) => setField('smtpSecure', e.target.value as 'tls' | 'ssl')} className={`${inputClassName} ${localSettings.emailProvider === 'resend' ? 'opacity-70' : ''}`}><option value="tls">TLS</option><option value="ssl">SSL</option></select>
+            <input aria-label="Usuário SMTP" value={localSettings.smtpUser || ''} readOnly={localSettings.emailProvider === 'resend'} onChange={(e) => setField('smtpUser', e.target.value)} className={`${inputClassName} ${localSettings.emailProvider === 'resend' ? 'opacity-70' : ''}`} placeholder="Usuário SMTP" />
+            {localSettings.emailProvider === 'resend' ? (
+              <div className="space-y-2 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <span className={labelClassName}>API key do Resend</span>
+                  <span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isResendApiKeyConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isResendApiKeyConfigured ? 'Configurada' : 'Ausente'}</span>
+                </div>
+                <input type="password" value={localSettings.resendApiKey || ''} onChange={(e) => setField('resendApiKey', e.target.value)} className={inputClassName} placeholder={isResendApiKeyConfigured ? 'Digite uma nova API key para substituir a atual' : 're_...'} autoComplete="new-password" />
+                <p className="text-xs text-slate-500 dark:text-slate-400">A chave é guardada como segredo de ambiente e nunca é devolvida ao navegador.</p>
+              </div>
+            ) : <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className={labelClassName}>Senha SMTP</span>
                 <span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isSmtpPasswordConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isSmtpPasswordConfigured ? 'Configurada' : 'Ausente'}</span>
               </div>
               <input type="password" value={localSettings.smtpPass || ''} onChange={(e) => setField('smtpPass', e.target.value)} className={inputClassName} placeholder={isSmtpPasswordConfigured ? 'Digite uma nova senha para substituir a atual' : 'Senha SMTP'} />
-            </div>
+            </div>}
             <input value={localSettings.mailFromAddress || ''} onChange={(e) => setField('mailFromAddress', e.target.value)} className={inputClassName} placeholder="E-mail remetente" />
             <input value={localSettings.mailFromName || ''} onChange={(e) => setField('mailFromName', e.target.value)} className={inputClassName} placeholder="Nome remetente" />
             <div className="grid gap-4 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:col-span-2 md:grid-cols-[minmax(0,1fr)_180px] md:items-center">
@@ -1677,7 +1715,6 @@ const AdminSettings = ({
         />
       )}
       {activeTab === 'performance' && <div className={ADMIN_PAGE_PANEL_CLASS}><AdminCacheManagement /></div>}
-      {activeTab === 'logs' && <LogViewer isOpen embedded />}
       {activeTab === 'safe-operations' && <SafeOperationsPanel />}
     </div>
   );

@@ -14,6 +14,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { SIMULATION_IMMERSIVE_EVENT } from '@services/simulations/simulationLayout';
 import { Subject, SimulationSession, SimulationConfig, Question, TaxonomyItem, UserProfile } from '../../types';
 import {
    PlayCircle, Clock, ChevronRight, BrainCircuit, Filter, Target, RotateCcw, LayoutGrid,
@@ -671,6 +672,7 @@ const Simulation: React.FC = () => {
          }
       const queryString = next.toString();
       router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+      window.dispatchEvent(new CustomEvent(SIMULATION_IMMERSIVE_EVENT, { detail: { search: queryString ? `?${queryString}` : '' } }));
    }, [pathname, router, searchParams]);
 
    const enterFullscreenMode = React.useCallback(() => {

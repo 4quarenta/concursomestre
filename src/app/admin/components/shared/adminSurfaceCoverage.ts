@@ -101,7 +101,6 @@ export const ADMIN_SURFACE_COVERAGE: AdminSurfaceCoverageEntry[] = [
   comparableCollection('support.refunds', 'Solicitações de reembolso'),
   comparableCollection('support.comments', 'Comentários'),
   comparableCollection('settings.email-templates', 'Templates de e-mail'),
-  comparableCollection('settings.logs', 'Logs'),
   comparableEditor('editor.question', 'Editor de questão'),
   comparableEditor('editor.exam', 'Editor de prova'),
   comparableEditor('editor.blog', 'Editor de post'),

@@ -78,6 +78,6 @@ describe('admin routing', () => {
     expect(paths).toHaveLength(configuredCount);
     expect(new Set(paths).size).toBe(paths.length);
     expect(paths).toContain('/admin/panel/dashboard');
-    expect(paths).toContain('/admin/settings/logs');
+    expect(paths).not.toContain('/admin/settings/logs');
   });
 });

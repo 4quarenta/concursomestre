@@ -62,6 +62,11 @@ class Mailer {
         $fromEmail = $fromEmail ?: 'no-reply@concursomestre.local';
         $hasSmtpCredentials = $smtpHost !== '' && $smtpUser !== '' && $smtpPass !== '';
 
+        if (($mailConfig['emailProvider'] ?? 'smtp') === 'resend'
+            && (str_ends_with(strtolower($fromEmail), '.local') || !filter_var($fromEmail, FILTER_VALIDATE_EMAIL))) {
+            throw new RuntimeException('Configure um remetente verificado antes de enviar pelo Resend.');
+        }
+
         if (isProductionEnv() && !$hasSmtpCredentials) {
             self::logMailEvent("SMTP transacional nao configurado em producao; envio bloqueado para {$toEmail} - Assunto: {$subject}");
             throw new RuntimeException('SMTP transacional nao configurado para producao.');

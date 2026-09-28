@@ -18,9 +18,8 @@ type MockApiResponse = {
   error?: string;
 } | null | undefined;
 
-const { mockClearRequestCoalescing, mockDownloadAuthenticatedFile, mockGet, mockPost, mockPut } = vi.hoisted(() => ({
+const { mockClearRequestCoalescing, mockGet, mockPost, mockPut } = vi.hoisted(() => ({
   mockClearRequestCoalescing: vi.fn(),
-  mockDownloadAuthenticatedFile: vi.fn(),
   mockGet: vi.fn(),
   mockPost: vi.fn(),
   mockPut: vi.fn(),
@@ -32,7 +31,6 @@ vi.mock('@services/api', () => ({
     post: mockPost,
     put: mockPut,
   },
-  downloadAuthenticatedFile: mockDownloadAuthenticatedFile,
   readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
@@ -75,7 +73,6 @@ vi.mock('@services/api', () => ({
       uploadBrandAsset: 'admin/brand_asset_upload.php',
     },
     rankings: { update: 'rankingsUpdate', delete: 'rankingsDelete' },
-    system: { logs: 'system/logs.php' },
   },
 }));
 
@@ -420,62 +417,6 @@ describe('adminService', () => {
     expect(mockPost).toHaveBeenCalledWith('admin/cache.php?action=settings', { enabled: true, default_ttl: 120 });
     expect(mockPost).toHaveBeenCalledWith('admin/cache.php?action=clear', {});
     expect(mockClearRequestCoalescing).toHaveBeenCalledTimes(2);
-  });
-
-  it('returns normalized system logs payload', async () => {
-    mockGet.mockResolvedValueOnce({
-      success: true,
-      data: {
-        lines: ['linha 1', 'linha 2'],
-        path: 'C:\\xampp\\apache\\logs\\error.log',
-      },
-    });
-
-    const logs = await adminService.getSystemLogs();
-
-    expect(mockGet).toHaveBeenCalledWith('system/logs.php');
-    expect(logs).toEqual(['linha 1', 'linha 2']);
-  });
-
-  it('loads the complete system log payload for the viewer', async () => {
-    mockGet.mockResolvedValueOnce({
-      success: true,
-      data: {
-        lines: ['linha 1'],
-        path: 'C:\\xampp\\apache\\logs\\error.log',
-        size_bytes: 120,
-        updated_at: '2026-04-27T10:00:00+00:00',
-      },
-    });
-
-    const payload = await adminService.getSystemLogPayload();
-
-    expect(mockGet).toHaveBeenCalledWith('system/logs.php');
-    expect(payload.size_bytes).toBe(120);
-    expect(payload.lines).toEqual(['linha 1']);
-  });
-
-  it('clears system logs through the official admin endpoint', async () => {
-    mockPost.mockResolvedValueOnce({
-      success: true,
-      data: {
-        lines: [],
-        cleared: true,
-      },
-    });
-
-    const payload = await adminService.clearSystemLogs();
-
-    expect(mockPost).toHaveBeenCalledWith('system/logs.php?action=clear', {});
-    expect(payload.cleared).toBe(true);
-  });
-
-  it('downloads system logs through an authenticated file request', async () => {
-    mockDownloadAuthenticatedFile.mockResolvedValueOnce(undefined);
-
-    await adminService.downloadSystemLogs();
-
-    expect(mockDownloadAuthenticatedFile).toHaveBeenCalledWith('system/logs.php?action=download', 'concurso-mestre-logs.log');
   });
 
   it('loads user details through the official admin endpoint', async () => {

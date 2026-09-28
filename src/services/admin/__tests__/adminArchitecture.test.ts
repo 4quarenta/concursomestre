@@ -259,8 +259,8 @@ describe('admin architecture', () => {
     ]);
   });
 
-  it('keeps the log viewer inside settings and out of admin shared', () => {
-    expect(fs.existsSync(path.resolve(root, 'src/app/admin/components/settings/LogViewer.tsx'))).toBe(true);
+  it('does not expose the unavailable log viewer inside settings', () => {
+    expect(fs.existsSync(path.resolve(root, 'src/app/admin/components/settings/LogViewer.tsx'))).toBe(false);
     expect(fs.existsSync(path.resolve(root, 'src/app/admin/components/shared/LogViewer.tsx'))).toBe(false);
   });
 

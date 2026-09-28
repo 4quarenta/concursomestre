@@ -177,8 +177,8 @@ describe('admin collection libraries', () => {
   it('labels future revenue rows as estimates rather than pre-approved charges', () => {
     const financeSource = readSource('src/app/admin/components/finance/AdminFinance.tsx');
 
-    expect(financeSource).toContain("? 'Projecao estimada'");
+    expect(financeSource).toContain("? 'Projecao estimada (nao cobrada)'");
     expect(financeSource).toContain('Projecao de renovacao futura');
-    expect(financeSource).toContain('Ciclo estimado');
+    expect(financeSource).toContain('Ciclo de renovacao estimado');
   });
 });

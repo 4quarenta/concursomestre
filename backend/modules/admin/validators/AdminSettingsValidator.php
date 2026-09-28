@@ -40,8 +40,17 @@ class AdminSettingsValidator
             throw new InvalidArgumentException('Dados invalidos.');
         }
 
+        if (array_key_exists('emailProvider', $payload)) {
+            $emailProvider = strtolower(trim((string) $payload['emailProvider']));
+            if (!in_array($emailProvider, ['smtp', 'resend'], true)) {
+                throw new InvalidArgumentException('Provedor de e-mail invalido.');
+            }
+            $payload['emailProvider'] = $emailProvider;
+        }
+
         foreach ([
             'smtpPass',
+            'resendApiKey',
             'geminiApiKey',
             'openaiApiKey',
             'recaptchaSecretKey',
@@ -351,11 +360,15 @@ class AdminSettingsValidator
      */
     public function validateSmtpTestPayload(array $payload): array
     {
-        $smtpHost = trim((string) ($payload['smtpHost'] ?? ''));
-        $smtpUser = trim((string) ($payload['smtpUser'] ?? ''));
-        $smtpPort = (int) ($payload['smtpPort'] ?? 587);
-        $smtpSecure = strtolower(trim((string) ($payload['smtpSecure'] ?? 'tls')));
-        $mailFrom = trim((string) ($payload['mailFromAddress'] ?? $smtpUser));
+        $emailProvider = strtolower(trim((string) ($payload['emailProvider'] ?? 'smtp')));
+        if (!in_array($emailProvider, ['smtp', 'resend'], true)) {
+            throw new InvalidArgumentException('Provedor de e-mail invalido.');
+        }
+        $smtpHost = $emailProvider === 'resend' ? 'smtp.resend.com' : trim((string) ($payload['smtpHost'] ?? ''));
+        $smtpUser = $emailProvider === 'resend' ? 'resend' : trim((string) ($payload['smtpUser'] ?? ''));
+        $smtpPort = $emailProvider === 'resend' ? 587 : (int) ($payload['smtpPort'] ?? 587);
+        $smtpSecure = $emailProvider === 'resend' ? 'tls' : strtolower(trim((string) ($payload['smtpSecure'] ?? 'tls')));
+        $mailFrom = trim((string) ($payload['mailFromAddress'] ?? ($emailProvider === 'resend' ? '' : $smtpUser)));
         $mailFromName = trim((string) ($payload['mailFromName'] ?? 'ConcursoMestre'));
         $targetEmail = trim((string) ($payload['targetEmail'] ?? $mailFrom));
         $emailLogoUrl = $this->validateOptionalHttpUrl($payload['emailLogoUrl'] ?? '', 'Logo padrao dos e-mails');
@@ -380,16 +393,21 @@ class AdminSettingsValidator
             throw new InvalidArgumentException('E-mail remetente invalido.');
         }
 
+        if ($emailProvider === 'resend' && $mailFrom === '') {
+            throw new InvalidArgumentException('Informe um remetente verificado no Resend antes de testar.');
+        }
+
         if ($targetEmail === '' || filter_var($targetEmail, FILTER_VALIDATE_EMAIL) === false) {
             throw new InvalidArgumentException('E-mail de teste invalido.');
         }
 
         return [
+            'emailProvider' => $emailProvider,
             'smtpHost' => $smtpHost,
             'smtpPort' => $smtpPort,
             'smtpSecure' => $smtpSecure,
             'smtpUser' => $smtpUser,
-            'smtpPass' => (string) ($payload['smtpPass'] ?? ''),
+            'smtpPass' => (string) ($emailProvider === 'resend' ? ($payload['resendApiKey'] ?? '') : ($payload['smtpPass'] ?? '')),
             'mailFromAddress' => $mailFrom !== '' ? $mailFrom : $smtpUser,
             'mailFromName' => $mailFromName !== '' ? $mailFromName : 'ConcursoMestre',
             'targetEmail' => $targetEmail,

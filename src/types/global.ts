@@ -1500,6 +1500,9 @@ export interface SystemSettings {
   referralPayoutCycleDays?: number;
   referralPayoutDay?: number;
   appMode?: 'development' | 'production';
+  emailProvider?: 'smtp' | 'resend';
+  resendApiKey?: string;
+  hasResendApiKeyConfigured?: boolean;
   smtpHost?: string;
   smtpPort?: number;
   smtpSecure?: 'tls' | 'ssl';

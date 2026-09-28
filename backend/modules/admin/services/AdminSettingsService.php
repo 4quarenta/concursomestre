@@ -71,6 +71,7 @@ class AdminSettingsService
         $envOpenAiModel = $_ENV['OPENAI_MODEL'] ?? getenv('OPENAI_MODEL') ?? null;
         $envAiProvider = $_ENV['AI_PROVIDER'] ?? getenv('AI_PROVIDER') ?? null;
         $envSmtpPass = $_ENV['SMTP_PASS'] ?? getenv('SMTP_PASS') ?? null;
+        $envResendApiKey = $_ENV['RESEND_API_KEY'] ?? getenv('RESEND_API_KEY') ?? null;
         $envGoogleClientId = $_ENV['GOOGLE_CLIENT_ID'] ?? getenv('GOOGLE_CLIENT_ID') ?? getenv('GOOGLE_OAUTH_CLIENT_ID') ?? null;
         $envFacebookAppId = $_ENV['FACEBOOK_APP_ID'] ?? getenv('FACEBOOK_APP_ID') ?? getenv('META_APP_ID') ?? null;
         $envFacebookAppSecret = $_ENV['FACEBOOK_APP_SECRET'] ?? getenv('FACEBOOK_APP_SECRET') ?? getenv('META_APP_SECRET') ?? null;
@@ -96,6 +97,8 @@ class AdminSettingsService
         }
 
         $settings['paymentProvider'] = 'stripe';
+        $emailProvider = strtolower(trim((string) ($settings['emailProvider'] ?? 'smtp')));
+        $settings['emailProvider'] = in_array($emailProvider, ['smtp', 'resend'], true) ? $emailProvider : 'smtp';
         $settings['paymentCheckoutMode'] = !empty($settings['paymentCheckoutMode']) ? $settings['paymentCheckoutMode'] : 'internal';
         $settings['cardVaultProvider'] = 'stripe';
         $settings['stripePaymentMethods'] = normalizeStripePaymentMethodsConfig($settings['stripePaymentMethods'] ?? null);
@@ -123,6 +126,8 @@ class AdminSettingsService
             && (!empty($envFacebookAppSecret) || !empty($settings['facebookAuthAppSecret'] ?? null));
         $settings['hasAppleAuthConfigured'] = !empty($envAppleClientId) || !empty($settings['appleAuthClientId'] ?? null);
         $settings['hasSmtpPasswordConfigured'] = !empty($settings['smtpPass'] ?? null) || !empty($envSmtpPass);
+        unset($settings['resendApiKey']);
+        $settings['hasResendApiKeyConfigured'] = !empty($envResendApiKey);
         $settings['appMode'] = !empty($settings['appMode'])
             ? $settings['appMode']
             : (($_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? 'development') === 'production' ? 'production' : 'development');
@@ -242,7 +247,7 @@ class AdminSettingsService
     public function testSmtp(array $payload): array
     {
         $smtpData = $this->validator->validateSmtpTestPayload($payload);
-        $smtpData['smtpPass'] = $this->resolveSmtpPassword((string) $smtpData['smtpPass']);
+        $smtpData['smtpPass'] = $this->resolveSmtpPassword((string) $smtpData['smtpPass'], (string) $smtpData['emailProvider']);
 
         $message = 'SMTP validado com sucesso.';
         $this->withTemporaryMailEnvironment([
@@ -296,7 +301,7 @@ class AdminSettingsService
     public function testEmailTemplate(array $payload): array
     {
         $smtpData = $this->validator->validateSmtpTestPayload($payload);
-        $smtpData['smtpPass'] = $this->resolveSmtpPassword((string) $smtpData['smtpPass']);
+        $smtpData['smtpPass'] = $this->resolveSmtpPassword((string) $smtpData['smtpPass'], (string) $smtpData['emailProvider']);
         $templateData = $this->validator->validateEmailTemplateTestPayload($payload);
         $variables = $this->buildEmailTemplateTestVariables($smtpData['targetEmail'], (string) ($smtpData['emailLogoUrl'] ?? ''));
         $template = $this->resolveEmailTemplateForTest($templateData, $variables);
@@ -847,19 +852,21 @@ class AdminSettingsService
      *
      * @since 1.0.0
      */
-    private function resolveSmtpPassword(string $incomingPassword): string
+    private function resolveSmtpPassword(string $incomingPassword, string $provider = 'smtp'): string
     {
         if ($incomingPassword !== '') {
             return $incomingPassword;
         }
 
-        $environmentPassword = trim((string) ($_ENV['SMTP_PASS'] ?? getenv('SMTP_PASS') ?? ''));
+        $secretKey = $provider === 'resend' ? 'RESEND_API_KEY' : 'SMTP_PASS';
+        $environmentPassword = trim((string) ($_ENV[$secretKey] ?? getenv($secretKey) ?? ''));
         if ($environmentPassword !== '') {
             return $environmentPassword;
         }
 
         $settings = $this->repository->fetchAllSystemSettings();
-        $storedPassword = trim((string) ($settings['smtpPass'] ?? ''));
+        $settingKey = $provider === 'resend' ? 'resendApiKey' : 'smtpPass';
+        $storedPassword = trim((string) ($settings[$settingKey] ?? ''));
 
         if ($storedPassword !== '') {
             return $storedPassword;
@@ -946,6 +953,10 @@ class AdminSettingsService
         if (!empty($data['smtpPass'] ?? null)) {
             $envUpdates['SMTP_PASS'] = (string) $data['smtpPass'];
         }
+
+        if (!empty($data['resendApiKey'] ?? null)) {
+            $envUpdates['RESEND_API_KEY'] = (string) $data['resendApiKey'];
+        }
     }
 
     /**
@@ -963,6 +974,7 @@ class AdminSettingsService
             'recaptchaSecretKey',
             'facebookAuthAppSecret',
             'smtpPass',
+            'resendApiKey',
             'stripeSecretKey',
             'stripeWebhookSecret',
             'stripeKey',
@@ -979,6 +991,7 @@ class AdminSettingsService
             'hasFacebookAuthConfigured',
             'hasAppleAuthConfigured',
             'hasSmtpPasswordConfigured',
+            'hasResendApiKeyConfigured',
         ];
         $featureKeys = [];
 
@@ -1040,6 +1053,7 @@ class AdminSettingsService
             $settings['recaptchaSecretKey'],
             $settings['facebookAuthAppSecret'],
             $settings['smtpPass'],
+            $settings['resendApiKey'],
             $settings['stripeSecretKey'],
             $settings['stripeWebhookSecret']
         );

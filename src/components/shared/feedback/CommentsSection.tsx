@@ -12,6 +12,7 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageSquare, XCircle, ThumbsUp, Reply, Crown, Zap, Star, Flag, Trash2 } from 'lucide-react';
 import RichTextEditor from '../ui/RichTextEditor';
 import type { QuestaoComentario as Comment } from '@types';
@@ -522,11 +523,11 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                 )}
             </div>
 
-            {reportingCommentId && (
-                <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            {reportingCommentId && typeof document !== 'undefined' && createPortal(
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closeReportModal(); }}>
+                    <div role="dialog" aria-modal="true" aria-labelledby="comment-report-title" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
                         <div className="mb-4">
-                            <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Reportar comentário</h4>
+                            <h4 id="comment-report-title" className="text-sm font-black text-slate-900 dark:text-slate-100">Reportar comentário</h4>
                             <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
                                 Informe o motivo da denúncia para ajudar a moderação.
                             </p>
@@ -579,7 +580,8 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

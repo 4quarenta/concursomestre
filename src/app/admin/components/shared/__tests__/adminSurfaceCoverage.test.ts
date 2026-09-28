@@ -16,7 +16,7 @@ describe('admin surface coverage', () => {
   it('keeps every comparable list and editor on a canonical interaction contract', () => {
     const summary = getAdminSurfaceCoverageSummary();
 
-    expect(summary.comparableLists).toBe(26);
+    expect(summary.comparableLists).toBe(25);
     expect(summary.standardizedLists).toBe(summary.comparableLists);
     expect(summary.editableSurfaces).toBe(7);
     expect(summary.standardizedEditors).toBe(summary.editableSurfaces);

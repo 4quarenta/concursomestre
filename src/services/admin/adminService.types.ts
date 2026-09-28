@@ -276,14 +276,6 @@ export interface CacheStatsPayload {
   supports_size_estimate?: boolean;
 }
 
-export interface SystemLogsPayload {
-  lines: string[];
-  path?: string;
-  size_bytes?: number;
-  updated_at?: string | null;
-  cleared?: boolean;
-}
-
 export interface AdminSecurityIpSignal {
   key: string;
   label: string;

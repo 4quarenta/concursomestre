@@ -21,11 +21,12 @@ require_once dirname(__DIR__, 2) . '/config/env.php';
  * quando preenchidos e o .env funciona como fallback operacional.
  *
  * @since 1.0.0
- * @return array{smtpHost:string,smtpUser:string,smtpPass:string,smtpPort:int,smtpSecure:string,mailFromAddress:string,mailFromName:string,emailLogoUrl:string,source:string}
+ * @return array{emailProvider:string,smtpHost:string,smtpUser:string,smtpPass:string,smtpPort:int,smtpSecure:string,mailFromAddress:string,mailFromName:string,emailLogoUrl:string,source:string}
  */
 function resolveMailConfiguration(?PDO $db = null, bool $allowDatabase = true): array
 {
     $config = [
+        'emailProvider' => 'smtp',
         'smtpHost' => getEnvString('SMTP_HOST'),
         'smtpUser' => getEnvString('SMTP_USER'),
         'smtpPass' => getEnvString('SMTP_PASS'),
@@ -40,6 +41,11 @@ function resolveMailConfiguration(?PDO $db = null, bool $allowDatabase = true): 
     $databaseDisabled = getEnvString('MAIL_CONFIG_DISABLE_DATABASE', '0') === '1';
     $settings = ($allowDatabase && !$databaseDisabled) ? loadMailConfigurationSettings($db) : [];
     if ($settings !== []) {
+        $provider = strtolower(trim((string) ($settings['emailProvider'] ?? 'smtp')));
+        $config['emailProvider'] = in_array($provider, ['smtp', 'resend'], true) ? $provider : 'smtp';
+        if (array_key_exists('emailProvider', $settings)) {
+            $config['source'] = 'system_settings';
+        }
         foreach (['smtpHost', 'smtpUser', 'smtpPass', 'smtpSecure', 'mailFromAddress', 'mailFromName', 'emailLogoUrl'] as $key) {
             $value = trim((string) ($settings[$key] ?? ''));
             if ($value !== '') {
@@ -55,7 +61,9 @@ function resolveMailConfiguration(?PDO $db = null, bool $allowDatabase = true): 
         }
     }
 
-    if ($config['mailFromAddress'] === '' && $config['smtpUser'] !== '') {
+    $config = applyMailProviderTransport($config, $config['emailProvider'], getEnvString('RESEND_API_KEY'));
+
+    if ($config['emailProvider'] === 'smtp' && $config['mailFromAddress'] === '' && $config['smtpUser'] !== '') {
         $config['mailFromAddress'] = $config['smtpUser'];
     }
 
@@ -65,6 +73,23 @@ function resolveMailConfiguration(?PDO $db = null, bool $allowDatabase = true): 
 
     if (!in_array($config['smtpSecure'], ['tls', 'ssl'], true)) {
         $config['smtpSecure'] = 'tls';
+    }
+
+    return $config;
+}
+
+/** Applies provider-owned SMTP coordinates without sharing credentials between providers. */
+function applyMailProviderTransport(array $config, string $provider, string $resendApiKey = ''): array
+{
+    if ($provider === 'resend') {
+        $config['emailProvider'] = 'resend';
+        $config['smtpHost'] = 'smtp.resend.com';
+        $config['smtpUser'] = 'resend';
+        $config['smtpPass'] = $resendApiKey;
+        $config['smtpPort'] = 587;
+        $config['smtpSecure'] = 'tls';
+    } else {
+        $config['emailProvider'] = 'smtp';
     }
 
     return $config;
@@ -87,6 +112,7 @@ function loadMailConfigurationSettings(?PDO $db = null): array
         }
 
         $keys = [
+            'emailProvider',
             'smtpHost',
             'smtpUser',
             'smtpPass',

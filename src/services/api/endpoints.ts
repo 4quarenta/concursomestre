@@ -355,9 +355,6 @@ export const ENDPOINTS = {
         studySession: 'statistics/study-session.php',
     },
 
-    system: {
-        logs: 'system/logs.php',
-    },
 } as const;
 
 export default ENDPOINTS;

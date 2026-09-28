@@ -12,6 +12,7 @@
 */
 
 import Link from 'next/link';
+import type { LandingPageContent } from '@types';
 import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { landingSocialIconMap } from '../landingContent';
@@ -46,10 +47,11 @@ const FOOTER_COLUMNS = [
   },
 ];
 
-const LandingCommercialFooter = () => {
+const LandingCommercialFooter = ({ landingContent }: { landingContent?: LandingPageContent | null }) => {
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const settingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
-  const socialLinks = useAppConfigStore((state) => state.systemSettings.landingPageContent?.socialLinks ?? [])
+  const configuredSocialLinks = useAppConfigStore((state) => state.systemSettings.landingPageContent?.socialLinks ?? []);
+  const socialLinks = (landingContent?.socialLinks ?? configuredSocialLinks)
     .filter((link) => link.enabled && /^https?:\/\//i.test(link.url));
 
   return (

@@ -19,6 +19,7 @@ import {
 import { getAssetUrl } from '@services/api';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import { isPlatformOriginalQuestion, isQuestionCanceled, questionService, type QuestionEditorialFeedbackKind, type QuestionEditorialFeedbackSnapshot, type QuestionEditorialFeedbackValue } from '@services/questions';
+import { resolveQuestionStatsTotal } from '@services/questions/questionStatsPresentation';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import { renderQuestionContentWithAssets } from '@services/questions/questionAssetRenderer';
 import { maybeShowQuestionAnswerInterstitial } from '@services/ads/adService';
@@ -846,8 +847,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const apiTotal = Math.max(0, Number(localStats?.totalAttempts || 0));
     const distributionTotal = statsOptionRows.reduce((sum, row) => sum + row.count, 0);
 
-    return distributionTotal > 0 ? distributionTotal : apiTotal;
+    return resolveQuestionStatsTotal(apiTotal, distributionTotal);
   }, [localStats?.totalAttempts, statsOptionRows]);
+  const statsDistributionTotal = useMemo(
+    () => statsOptionRows.reduce((sum, row) => sum + row.count, 0),
+    [statsOptionRows],
+  );
 
   useEffect(() => {
     // Reset session state ONLY when question changes
@@ -1766,7 +1771,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
                     <div className="space-y-3">
                       {statsOptionRows.map(({ item, index: idx, count }) => {
-                        const total = displayedStatsTotal || 1;
+                        const total = Math.max(displayedStatsTotal, statsDistributionTotal) || 1;
                         const percent = total > 0 ? Math.round((count / total) * 100) : 0;
 
                         return (
@@ -1787,6 +1792,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                           </div>
                         );
                       })}
+                      {displayedStatsTotal > statsDistributionTotal ? (
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                          {displayedStatsTotal - statsDistributionTotal} resposta(s) sem alternativa identificada
+                        </div>
+                      ) : null}
+                      {statsDistributionTotal !== displayedStatsTotal ? (
+                        <p className="text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                          O total geral é a referência; a distribuição por alternativa pode divergir em registros históricos.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 )}

@@ -604,11 +604,16 @@ class QuestionsRepository
                 SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct_count,
                 SUM(CASE WHEN is_correct = 1 THEN 0 ELSE 1 END) AS wrong_count,
                 COUNT(*) AS total_attempts
-             FROM user_answers
-             WHERE question_id = :question_id"
+             FROM (
+                SELECT is_correct FROM user_answers WHERE question_id = :active_question_id
+                UNION ALL
+                SELECT is_correct FROM user_answers_archive WHERE question_id = :archive_question_id
+             ) answer_history"
         );
-        $stmt->bindValue(':question_id', $questionId);
-        $stmt->execute();
+        $stmt->execute([
+            ':active_question_id' => $questionId,
+            ':archive_question_id' => $questionId,
+        ]);
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
         $correct = (int) ($row['correct_count'] ?? 0);

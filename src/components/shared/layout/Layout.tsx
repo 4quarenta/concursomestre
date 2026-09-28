@@ -47,6 +47,7 @@ import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 import { clientLog } from '@services/monitoring/clientLog';
 import UserAvatar from '../ui/UserAvatar';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import { isSimulationImmersivePath, SIMULATION_IMMERSIVE_EVENT } from '@services/simulations/simulationLayout';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -257,10 +258,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     };
   }, [locationHash, locationSearch, pathname]);
   const canOpenAdminPanel = canAccessAdminPanel(user);
-  const simulationSearchParams = React.useMemo(
-    () => new URLSearchParams(location.search),
-    [location.search],
-  );
   const isStrictAdmin = Boolean(user?.isAdmin || user?.role === 'admin');
   const practiceEnabled = resolveSystemFeatureFlag(systemSettings, 'practiceEnabled');
   const annotatedLawsEnabled = resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled');
@@ -294,6 +291,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       window.removeEventListener('hashchange', syncLocation);
       window.removeEventListener('popstate', syncLocation);
     };
+  }, [pathname]);
+
+  React.useEffect(() => {
+    if (!pathname?.startsWith('/simulation')) {
+      return undefined;
+    }
+
+    const handleImmersiveChange = (event: Event) => {
+      const search = (event as CustomEvent<{ search?: string }>).detail?.search;
+      setLocationSearch(search || '');
+    };
+
+    window.addEventListener(SIMULATION_IMMERSIVE_EVENT, handleImmersiveChange);
+    return () => window.removeEventListener(SIMULATION_IMMERSIVE_EVENT, handleImmersiveChange);
   }, [pathname]);
 
   React.useEffect(() => {
@@ -630,8 +641,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const isDashboardPage = location.pathname.startsWith('/admin') || location.pathname === '/partner-dashboard';
-  const isSimulationFullscreenPage = location.pathname.startsWith('/simulation')
-    && simulationSearchParams.get('immersive') === '1';
+  const isSimulationFullscreenPage = isSimulationImmersivePath(location.pathname, location.search);
   const hasMobileTopHeader = !isDashboardPage && !isSimulationFullscreenPage;
   const hasFailedEmailDeliveryNotice = Boolean(
     user

@@ -9,7 +9,7 @@
 *
 */
 
-import { apiClient, ENDPOINTS, assertApiSuccess, downloadAuthenticatedFile, readApiData, resolveApiResourceUrl } from '@services/api';
+import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, resolveApiResourceUrl } from '@services/api';
 import type { ApiResponse } from '@services/api';
 import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
 import { getCsrfToken } from '@services/auth/session';
@@ -29,7 +29,6 @@ import type {
   AdminFeedbackReply,
   AdminFeedbackOperator,
   CacheStatsPayload,
-  SystemLogsPayload,
   AdminSecurityIpsPayload,
   AdminStatsPayload,
   AdminAnalyticsRange,
@@ -577,53 +576,6 @@ export const adminService = {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clean`, {}));
     clearRequestCoalescing();
     return assertApiSuccess(response, 'Não foi possível limpar o cache expirado.').message || 'Entradas expiradas removidas.';
-  },
-
-  /**
-   * Carrega o payload de logs exibido no viewer administrativo.
-   * @since v1.0.0
-   */
-  async getSystemLogPayload(): Promise<SystemLogsPayload> {
-    const response = await requestApi<SystemLogsPayload>(apiClient.get<ApiResponse<SystemLogsPayload>>(ENDPOINTS.system.logs));
-    return readApiData(response, {
-      lines: [],
-      path: '',
-      size_bytes: 0,
-      updated_at: null,
-    });
-  },
-
-  /**
-   * Carrega as linhas de log exibidas no viewer administrativo.
-   * @since v1.0.0
-   */
-  async getSystemLogs(): Promise<string[]> {
-    const payload = await adminService.getSystemLogPayload();
-    return payload.lines || [];
-  },
-
-  /**
-   * Baixa o arquivo de log usando o fluxo autenticado do backend.
-   * @since v1.0.0
-   */
-  async downloadSystemLogs(): Promise<void> {
-    await downloadAuthenticatedFile(`${ENDPOINTS.system.logs}?action=download`, 'concurso-mestre-logs.log');
-  },
-
-  /**
-   * Limpa o arquivo de log pelo endpoint administrativo.
-   * @since v1.0.0
-   */
-  async clearSystemLogs(): Promise<SystemLogsPayload> {
-    const response = await requestApi<SystemLogsPayload>(apiClient.post<ApiResponse<SystemLogsPayload>>(`${ENDPOINTS.system.logs}?action=clear`, {}));
-    assertApiSuccess(response, 'Não foi possível limpar os logs.');
-    return readApiData(response, {
-      lines: [],
-      path: '',
-      size_bytes: 0,
-      updated_at: null,
-      cleared: true,
-    });
   },
 
   /**
