@@ -124,6 +124,21 @@ function ensureRecaptchaMobilePassed(PDO $db, ?string $token, string $expectedAc
 }
 
 /**
+ * Permite que o contrato nativo atual omita captcha somente no login/cadastro.
+ * A ausência de token é a única condição dispensada; um token fornecido segue
+ * pela validação Enterprise e não pode ser tratado como aprovação implícita.
+ */
+function isNativeMobileAuthRecaptchaExemptFlow(array $options, ?string $token): bool
+{
+    if (($options['nativeMobileAuthExempt'] ?? false) !== true || trim((string) $token) !== '') {
+        return false;
+    }
+
+    $action = normalizeRecaptchaActionName((string) ($options['action'] ?? ''));
+    return in_array($action, ['auth_login', 'auth_register'], true);
+}
+
+/**
  * Verifica se o reCAPTCHA esta habilitado nas configuracoes globais.
  *
  * @since 1.0.0
@@ -325,11 +340,15 @@ function postRecaptchaVerification(string $secretKey, string $token): array
 /**
  * Exige que o reCAPTCHA passe antes de seguir com operacoes sensiveis.
  *
- * @param array{action?: string, minimumScore?: float|int|string} $options
+ * @param array{action?: string, minimumScore?: float|int|string, nativeMobile?: bool, nativeMobileAuthExempt?: bool} $options
  * @since 1.0.0
  */
 function ensureRecaptchaPassed(PDO $db, ?string $token, array $options = []): void
 {
+    if (isNativeMobileAuthRecaptchaExemptFlow($options, $token)) {
+        return;
+    }
+
     if (!empty($options['nativeMobile'])) {
         ensureRecaptchaMobilePassed($db, $token, (string) ($options['mobileAction'] ?? 'login'));
         return;

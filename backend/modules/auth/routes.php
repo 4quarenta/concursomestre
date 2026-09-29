@@ -129,6 +129,7 @@ function handleAuthLoginRoute(PDO $db): void
         ensureRecaptchaPassed($db, $normalizedPayload['captchaToken'], [
             'action' => 'auth_login',
             'nativeMobile' => isNativeMobileAuthRequest(),
+            'nativeMobileAuthExempt' => isNativeMobileAuthRequest(),
             'mobileAction' => 'login',
         ]);
 
@@ -289,6 +290,7 @@ function handleAuthRegisterRoute(PDO $db): void
         ensureRecaptchaPassed($db, $normalizedPayload['captchaToken'], [
             'action' => 'auth_register',
             'nativeMobile' => isNativeMobileAuthRequest(),
+            'nativeMobileAuthExempt' => isNativeMobileAuthRequest(),
             'mobileAction' => 'register',
         ]);
 
