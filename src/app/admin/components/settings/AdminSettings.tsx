@@ -47,6 +47,7 @@ import {
   ADMIN_MUTED_SURFACE_CLASS,
   ADMIN_PAGE_PANEL_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SEGMENTED_TABS_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
   ADMIN_TAB_BUTTON_ACTIVE_CLASS,
   ADMIN_TAB_BUTTON_IDLE_CLASS,
@@ -65,6 +66,7 @@ import {
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'mobile-app' | 'safe-operations';
+type AdminMobileAppTab = 'version';
 type AdminSettingsTabs = React.ComponentProps<typeof AdminSettingsTabsBar>['tabs'];
 
 interface AdminIntegrationCheck {
@@ -226,6 +228,7 @@ const AdminSettings = ({
   const { currentUser, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminSettingsTab>(initialSection);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [mobileAppTab, setMobileAppTab] = useState<AdminMobileAppTab>('version');
   const [localSettings, setLocalSettings] = useState<SystemSettings>(systemSettings);
   const [localSeoSettings, setLocalSeoSettings] = useState<SeoSettings>(() => mergeSeoSettings(systemSettings.seo));
   const [twoFactorStep, setTwoFactorStep] = useState<'status' | 'setup' | 'verify'>('status');
@@ -1717,13 +1720,35 @@ const AdminSettings = ({
       )}
       {activeTab === 'performance' && <div className={ADMIN_PAGE_PANEL_CLASS}><AdminCacheManagement /></div>}
       {activeTab === 'mobile-app' && (
-        <section className={`${ADMIN_PAGE_PANEL_CLASS} space-y-5 p-5`}>
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Versão e atualização do aplicativo</h2>
-            <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
-              Configure a versão recomendada e, opcionalmente, bloqueie versões antigas. A versão instalada no celular só muda com um novo build e publicação na loja.
-            </p>
+        <div className="space-y-4">
+          <div className={ADMIN_SEGMENTED_TABS_CLASS} role="tablist" aria-label="Configurações do aplicativo">
+            <button
+              id="admin-mobile-app-tab-version"
+              type="button"
+              role="tab"
+              aria-selected={mobileAppTab === 'version'}
+              aria-controls="admin-mobile-app-panel-version"
+              onClick={() => setMobileAppTab('version')}
+              className={`rounded-sm border px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition-colors ${
+                mobileAppTab === 'version' ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS
+              }`}
+            >
+              Versão
+            </button>
           </div>
+          {mobileAppTab === 'version' && (
+          <section
+            id="admin-mobile-app-panel-version"
+            role="tabpanel"
+            aria-labelledby="admin-mobile-app-tab-version"
+            className={`${ADMIN_PAGE_PANEL_CLASS} space-y-5 p-5`}
+          >
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Versão e atualização do aplicativo</h2>
+              <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
+                Configure a versão recomendada e, opcionalmente, bloqueie versões antigas. A versão instalada no celular só muda com um novo build e publicação na loja.
+              </p>
+            </div>
           <label className="flex items-start gap-3 rounded-md border border-slate-200 p-4 dark:border-slate-800">
             <input
               type="checkbox"
@@ -1786,7 +1811,9 @@ const AdminSettings = ({
             />
           </label>
           <p className="text-xs text-amber-800 dark:text-amber-300">A versão mínima é aplicada imediatamente aos clientes que consultarem as configurações. Antes de ativá-la, confirme que a versão recomendada já está publicada e que os links das lojas funcionam.</p>
-        </section>
+          </section>
+          )}
+        </div>
       )}
       {activeTab === 'safe-operations' && <SafeOperationsPanel />}
     </div>
