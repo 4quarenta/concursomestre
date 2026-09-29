@@ -19,6 +19,7 @@ import type { UserProfile } from '@/types/auth';
 import { systemSettingsService } from '@/services/system/systemSettingsService';
 import type { MobileFeatureKey, MobileSystemSettings } from '@/types/system';
 import { normalizeApiFailure } from '@/api/errors';
+import { mobileRecaptchaService, type MobileRecaptchaAction } from '@/services/security/mobileRecaptchaService';
 
 type LoginInput = { email: string; password: string };
 type RegisterInput = { name: string; email: string; password: string };
@@ -251,9 +252,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const settings = await systemSettingsService.getSystemSettings();
       setSystemSettings(settings);
+      if (settings.recaptchaEnabled) {
+        void mobileRecaptchaService.prepare(settings.recaptchaAndroidSiteKey);
+      }
     } catch {
       // Nao bloqueia auth se settings estiver indisponivel.
     }
+  }, []);
+
+  const createAuthCaptchaToken = React.useCallback(async (action: MobileRecaptchaAction): Promise<string | undefined> => {
+    if (SCREENSHOT_MODE) return undefined;
+    let settings: MobileSystemSettings;
+    try {
+      settings = await systemSettingsService.getSystemSettings();
+      setSystemSettings(settings);
+    } catch {
+      throw new Error('Nao foi possivel carregar a verificacao de seguranca. Verifique sua conexao e tente novamente.');
+    }
+    if (!settings.recaptchaEnabled) return undefined;
+    return mobileRecaptchaService.execute(settings.recaptchaAndroidSiteKey, action);
   }, []);
 
   const refreshProfile = React.useCallback(async () => {
@@ -277,7 +294,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = React.useCallback(async (input: LoginInput) => {
     setIsLoading(true);
     try {
-      const response = await authFlowService.login(input);
+      const captchaToken = await createAuthCaptchaToken('login');
+      const response = await authFlowService.login({ ...input, captchaToken });
       const payload = response?.data || response;
       if (payload?.require2FA || response?.require2FA) {
         return {
@@ -292,7 +310,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel realizar o login.'));
     } finally { setIsLoading(false); }
-  }, [applySessionFromResponse, refreshProfile, refreshSystemSettings]);
+  }, [applySessionFromResponse, createAuthCaptchaToken, refreshProfile, refreshSystemSettings]);
 
   const verifyTwoFactor = React.useCallback(async (email: string, code: string) => {
     setIsLoading(true);
@@ -309,14 +327,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = React.useCallback(async (input: RegisterInput) => {
     setIsLoading(true);
     try {
-      const response = await authFlowService.register(input);
+      const captchaToken = await createAuthCaptchaToken('register');
+      const response = await authFlowService.register({ ...input, captchaToken });
       await applySessionFromResponse(response);
       try { await refreshProfile(); } catch { /* cadastro ja foi concluido */ }
       await refreshSystemSettings();
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel criar a conta.'));
     } finally { setIsLoading(false); }
-  }, [applySessionFromResponse, refreshProfile, refreshSystemSettings]);
+  }, [applySessionFromResponse, createAuthCaptchaToken, refreshProfile, refreshSystemSettings]);
 
   const logout = React.useCallback(async () => {
     if (SCREENSHOT_MODE) return;

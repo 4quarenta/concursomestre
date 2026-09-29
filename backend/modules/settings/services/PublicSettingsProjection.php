@@ -116,6 +116,7 @@ final class PublicSettingsProjection
                 'recaptcha' => self::rename($settings, [
                     'recaptchaEnabled' => 'enabled',
                     'recaptchaSiteKey' => 'siteKey',
+                    'recaptchaAndroidSiteKey' => 'androidSiteKey',
                 ]),
                 'google' => self::rename($settings, [
                     'googleAuthClientId' => 'clientId',

@@ -9,11 +9,13 @@ type RegisterPayload = {
   email: string;
   password: string;
   referralCode?: string | null;
+  captchaToken?: string;
 };
 
 type LoginPayload = {
   email: string;
   password: string;
+  captchaToken?: string;
 };
 
 /**

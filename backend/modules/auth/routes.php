@@ -128,11 +128,17 @@ function handleAuthLoginRoute(PDO $db): void
         RateLimiter::enforceProfile('auth_login_subject', strtolower((string) ($normalizedPayload['email'] ?? '')));
         ensureRecaptchaPassed($db, $normalizedPayload['captchaToken'], [
             'action' => 'auth_login',
+            'nativeMobile' => isNativeMobileAuthRequest(),
+            'mobileAction' => 'login',
         ]);
 
         $controller = makeAuthController($db);
         $result = $controller->login($payload, isNativeMobileAuthRequest());
         Response::success($result, !empty($result['require2FA']) ? '2FA verification required' : 'Login successful');
+    } catch (RecaptchaValidationException $e) {
+        Response::validationError($e->getMessage());
+    } catch (RecaptchaUnavailableException $e) {
+        Response::error($e->getMessage(), 503, null, 'recaptcha_unavailable');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());
     } catch (PDOException $e) {
@@ -282,6 +288,8 @@ function handleAuthRegisterRoute(PDO $db): void
         RateLimiter::enforceProfile('auth_register_subject', strtolower((string) ($normalizedPayload['email'] ?? '')));
         ensureRecaptchaPassed($db, $normalizedPayload['captchaToken'], [
             'action' => 'auth_register',
+            'nativeMobile' => isNativeMobileAuthRequest(),
+            'mobileAction' => 'register',
         ]);
 
         $controller = makeAuthController($db);
@@ -291,6 +299,10 @@ function handleAuthRegisterRoute(PDO $db): void
             ? 'Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta.'
             : 'Cadastro realizado, mas o e-mail de confirmacao ainda nao foi enviado. Tente reenviar em instantes.';
         Response::success($result, $message);
+    } catch (RecaptchaValidationException $e) {
+        Response::validationError($e->getMessage());
+    } catch (RecaptchaUnavailableException $e) {
+        Response::error($e->getMessage(), 503, null, 'recaptcha_unavailable');
     } catch (DomainException $e) {
         Response::error($e->getMessage(), 409, null, 'conflict');
     } catch (InvalidArgumentException $e) {
@@ -479,11 +491,17 @@ function handleAuthForgotPasswordRoute(PDO $db): void
         RateLimiter::enforceProfile('auth_password', strtolower((string) ($normalizedPayload['email'] ?? '')));
         ensureRecaptchaPassed($db, $normalizedPayload['captchaToken'], [
             'action' => 'auth_forgot_password',
+            'nativeMobile' => isNativeMobileAuthRequest(),
+            'mobileAction' => 'forgot_password',
         ]);
 
         $controller = makeAuthController($db);
         $result = $controller->requestPasswordReset($payload);
         Response::success([], $result['message'] ?? 'Se este e-mail estiver cadastrado, voce recebera as instrucoes em breve.');
+    } catch (RecaptchaValidationException $e) {
+        Response::validationError($e->getMessage());
+    } catch (RecaptchaUnavailableException $e) {
+        Response::error($e->getMessage(), 503, null, 'recaptcha_unavailable');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());
     } catch (OutOfBoundsException $e) {
@@ -514,10 +532,16 @@ function handleAuthResetPasswordRoute(PDO $db): void
         $normalizedPayload = $validator->validateResetPasswordPayload($payload);
         ensureRecaptchaPassed($db, $normalizedPayload['captchaToken'], [
             'action' => 'auth_reset_password',
+            'nativeMobile' => isNativeMobileAuthRequest(),
+            'mobileAction' => 'reset_password',
         ]);
         $controller = makeAuthController($db);
         $result = $controller->resetPassword($payload);
         Response::success([], $result['message'] ?? 'Senha alterada com sucesso!');
+    } catch (RecaptchaValidationException $e) {
+        Response::validationError($e->getMessage());
+    } catch (RecaptchaUnavailableException $e) {
+        Response::error($e->getMessage(), 503, null, 'recaptcha_unavailable');
     } catch (InvalidArgumentException $e) {
         Response::validationError($e->getMessage());
     } catch (RuntimeException $e) {

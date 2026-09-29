@@ -31,6 +31,8 @@ $projection = PublicSettingsProjection::project([
     'geminiApiKey' => 'gemini-secret',
     'openaiApiKey' => 'openai-secret',
     'smtpPass' => 'smtp-secret',
+    'recaptchaAndroidSiteKey' => 'android-site-key-public',
+    'recaptchaEnterpriseApiKey' => 'enterprise-api-key-secret',
     'adminUserId' => 'admin-private-id',
     'setup' => ['adminUserId' => 'nested-private-id', 'token' => 'private-token'],
     'features' => [
@@ -65,6 +67,7 @@ $projection = PublicSettingsProjection::project([
 assertPublicSettingsContract(
     array_keys($projection) === [
         'contractVersion',
+        'mobileAppUpdatePolicy',
         'branding',
         'features',
         'plans',
@@ -80,6 +83,7 @@ assertPublicSettingsContract(
 );
 assertPublicSettingsContract($projection['contractVersion'] === 'public-settings.v1', 'Contract version is invalid.');
 assertPublicSettingsContract(($projection['branding']['platformVersion'] ?? null) === '1.0.0', 'Platform version is missing.');
+assertPublicSettingsContract(($projection['authentication']['recaptcha']['androidSiteKey'] ?? null) === 'android-site-key-public', 'Android reCAPTCHA site key is missing.');
 assertPublicSettingsContract(($projection['features']['practiceEnabled'] ?? null) === true, 'Allowed feature is missing.');
 assertPublicSettingsContract(($projection['features']['supportDonationsEnabled'] ?? null) === false, 'Support donations feature is missing.');
 assertPublicSettingsContract(!array_key_exists('futureSecretFlag', $projection['features']), 'Unknown feature leaked.');
@@ -100,6 +104,7 @@ foreach ([
     'geminiapikey',
     'openaiapikey',
     'smtppass',
+    'recaptchaenterpriseapikey',
     'adminuserid',
     'setup',
     'token',

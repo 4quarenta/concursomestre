@@ -15,6 +15,114 @@ const DEFAULT_RECAPTCHA_V3_MINIMUM_SCORE = 0.5;
 const GOOGLE_RECAPTCHA_TEST_SITE_KEY = '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
 const GOOGLE_RECAPTCHA_TEST_SECRET_KEY = '6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe';
 
+final class RecaptchaValidationException extends RuntimeException
+{
+}
+
+final class RecaptchaUnavailableException extends RuntimeException
+{
+}
+
+/** Retorna configuracao Enterprise mobile sem expor a chave de avaliacao. */
+function getRecaptchaMobileConfiguration(): array
+{
+    $projectId = trim((string) ($_ENV['RECAPTCHA_ENTERPRISE_PROJECT_ID'] ?? getenv('RECAPTCHA_ENTERPRISE_PROJECT_ID') ?? ''));
+    $apiKey = trim((string) ($_ENV['RECAPTCHA_ENTERPRISE_API_KEY'] ?? getenv('RECAPTCHA_ENTERPRISE_API_KEY') ?? ''));
+    $siteKey = trim((string) ($_ENV['RECAPTCHA_ANDROID_SITE_KEY'] ?? getenv('RECAPTCHA_ANDROID_SITE_KEY') ?? ''));
+    $packageName = trim((string) ($_ENV['RECAPTCHA_ANDROID_PACKAGE_NAME'] ?? getenv('RECAPTCHA_ANDROID_PACKAGE_NAME') ?? 'com.concursomestre.mobile'));
+    $minimumScore = (float) ($_ENV['RECAPTCHA_MOBILE_MINIMUM_SCORE'] ?? getenv('RECAPTCHA_MOBILE_MINIMUM_SCORE') ?? DEFAULT_RECAPTCHA_V3_MINIMUM_SCORE);
+
+    return compact('projectId', 'apiKey', 'siteKey', 'packageName', 'minimumScore');
+}
+
+/** Avalia um token de aplicativo pela API REST do reCAPTCHA Enterprise. */
+function postRecaptchaMobileAssessment(array $config, string $token, string $expectedAction): array
+{
+    $url = 'https://recaptchaenterprise.googleapis.com/v1/projects/'
+        . rawurlencode($config['projectId']) . '/assessments?key=' . rawurlencode($config['apiKey']);
+    $body = json_encode([
+        'event' => [
+            'token' => $token,
+            'siteKey' => $config['siteKey'],
+            'expectedAction' => $expectedAction,
+        ],
+    ], JSON_UNESCAPED_SLASHES);
+    if (!is_string($body)) {
+        throw new RecaptchaUnavailableException('Nao foi possivel validar o reCAPTCHA.');
+    }
+
+    if (function_exists('curl_init')) {
+        $curl = curl_init($url);
+        curl_setopt_array($curl, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT => 8,
+        ]);
+        $rawResponse = curl_exec($curl);
+        $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+        curl_close($curl);
+    } else {
+        $context = stream_context_create(['http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\n",
+            'content' => $body,
+            'timeout' => 8,
+            'ignore_errors' => true,
+        ]]);
+        $rawResponse = @file_get_contents($url, false, $context);
+        $status = 0;
+        foreach (($http_response_header ?? []) as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $matches)) {
+                $status = (int) $matches[1];
+            }
+        }
+    }
+
+    if (!is_string($rawResponse) || $status < 200 || $status >= 300) {
+        throw new RecaptchaUnavailableException('Nao foi possivel validar o reCAPTCHA. Tente novamente.');
+    }
+    $assessment = json_decode($rawResponse, true);
+    if (!is_array($assessment)) {
+        throw new RecaptchaUnavailableException('Resposta invalida ao validar o reCAPTCHA.');
+    }
+    return $assessment;
+}
+
+/** Rejeita token inválido, pacote/ação divergentes ou score abaixo do limite. */
+function assertRecaptchaMobileAssessmentPassed(array $assessment, array $config, string $expectedAction): void
+{
+    $tokenProperties = $assessment['tokenProperties'] ?? [];
+    $riskAnalysis = $assessment['riskAnalysis'] ?? [];
+    $valid = is_array($tokenProperties) && ($tokenProperties['valid'] ?? false) === true;
+    $action = is_array($tokenProperties) ? (string) ($tokenProperties['action'] ?? '') : '';
+    $packageName = (string) ($tokenProperties['androidPackageName'] ?? '');
+    $score = is_array($riskAnalysis) ? ($riskAnalysis['score'] ?? null) : null;
+
+    if (!$valid || $action !== $expectedAction || $packageName !== $config['packageName']
+        || !is_numeric($score) || (float) $score < $config['minimumScore']) {
+        throw new RecaptchaValidationException('Nao foi possivel confirmar o reCAPTCHA. Tente novamente.');
+    }
+}
+
+function ensureRecaptchaMobilePassed(PDO $db, ?string $token, string $expectedAction): void
+{
+    if (!isRecaptchaEnabled($db)) {
+        return;
+    }
+    $config = getRecaptchaMobileConfiguration();
+    if ($config['projectId'] === '' || $config['apiKey'] === '' || $config['siteKey'] === '' || $config['packageName'] === '') {
+        throw new RecaptchaUnavailableException('A verificacao segura do app esta temporariamente indisponivel.');
+    }
+    $normalizedToken = trim((string) $token);
+    if ($normalizedToken === '') {
+        throw new RecaptchaValidationException('Confirme o reCAPTCHA antes de continuar.');
+    }
+    assertRecaptchaMobileAssessmentPassed(postRecaptchaMobileAssessment($config, $normalizedToken, $expectedAction), $config, $expectedAction);
+}
+
 /**
  * Verifica se o reCAPTCHA esta habilitado nas configuracoes globais.
  *
@@ -222,6 +330,10 @@ function postRecaptchaVerification(string $secretKey, string $token): array
  */
 function ensureRecaptchaPassed(PDO $db, ?string $token, array $options = []): void
 {
+    if (!empty($options['nativeMobile'])) {
+        ensureRecaptchaMobilePassed($db, $token, (string) ($options['mobileAction'] ?? 'login'));
+        return;
+    }
     if (!isRecaptchaEnabled($db)) {
         return;
     }

@@ -148,6 +148,7 @@ function ciCriticalTests(): array
         'tests/ProductionReadinessSuiteWiringTest.php',
         'tests/ProductionSmokeWiringTest.php',
         'tests/RecaptchaAdminActivationConfigurationTest.php',
+        'tests/RecaptchaMobileAssessmentTest.php',
         'tests/SecurityHeadersWiringTest.php',
         'tests/SocialAuthProvidersWiringTest.php',
         'tests/StagingHomologationGateWiringTest.php',

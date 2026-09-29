@@ -200,6 +200,12 @@ const resolveBooleanSetting = (
 };
 
 const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
+  const authentication = payload.authentication && typeof payload.authentication === 'object'
+    ? payload.authentication as Record<string, unknown>
+    : {};
+  const recaptcha = authentication.recaptcha && typeof authentication.recaptcha === 'object'
+    ? authentication.recaptcha as Record<string, unknown>
+    : {};
   const rawUpdatePolicy = payload.mobileAppUpdatePolicy && typeof payload.mobileAppUpdatePolicy === 'object'
     ? payload.mobileAppUpdatePolicy as Record<string, unknown>
     : {};
@@ -258,6 +264,9 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
   };
 
   return {
+    recaptchaEnabled: normalizeBooleanLike(recaptcha.enabled ?? payload.recaptchaEnabled)
+      ?? DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaEnabled,
+    recaptchaAndroidSiteKey: String(recaptcha.androidSiteKey ?? payload.recaptchaAndroidSiteKey ?? '').trim() || undefined,
     mobileAppUpdatePolicy: {
       enabled: normalizeBooleanLike(rawUpdatePolicy.enabled) ?? false,
       latestVersion: String(rawUpdatePolicy.latestVersion || '').trim(),
@@ -301,6 +310,8 @@ export const systemSettingsService = {
 
   createDefaultSystemSettings(): MobileSystemSettings {
     return {
+      recaptchaEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaEnabled,
+      recaptchaAndroidSiteKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaAndroidSiteKey,
       mobileAppUpdatePolicy: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.mobileAppUpdatePolicy },
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
       sameTierCycleChangeEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.sameTierCycleChangeEnabled,

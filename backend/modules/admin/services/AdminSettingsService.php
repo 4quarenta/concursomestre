@@ -77,6 +77,7 @@ class AdminSettingsService
         $envFacebookAppSecret = $_ENV['FACEBOOK_APP_SECRET'] ?? getenv('FACEBOOK_APP_SECRET') ?? getenv('META_APP_SECRET') ?? null;
         $envAppleClientId = $_ENV['APPLE_CLIENT_ID'] ?? getenv('APPLE_CLIENT_ID') ?? getenv('APPLE_SERVICE_ID') ?? null;
         $envRecaptchaSecretKey = $_ENV['RECAPTCHA_SECRET_KEY'] ?? getenv('RECAPTCHA_SECRET_KEY') ?? null;
+        $envRecaptchaAndroidSiteKey = $_ENV['RECAPTCHA_ANDROID_SITE_KEY'] ?? getenv('RECAPTCHA_ANDROID_SITE_KEY') ?? null;
 
         if (!empty($envStripePublishableKey)) {
             $settings['stripePublishableKey'] = $envStripePublishableKey;
@@ -118,6 +119,11 @@ class AdminSettingsService
         $settings['hasGeminiApiKeyConfigured'] = !empty($settings['geminiApiKey'] ?? null) || !empty($envGeminiApiKey);
         $settings['hasOpenAiApiKeyConfigured'] = !empty($settings['openaiApiKey'] ?? null) || !empty($envOpenAiApiKey);
         $settings['hasRecaptchaSecretConfigured'] = !empty($envRecaptchaSecretKey);
+        if (is_string($envRecaptchaAndroidSiteKey) && trim($envRecaptchaAndroidSiteKey) !== '') {
+            $settings['recaptchaAndroidSiteKey'] = trim($envRecaptchaAndroidSiteKey);
+        } else {
+            unset($settings['recaptchaAndroidSiteKey']);
+        }
         $settings['recaptchaEnabled'] = $recaptchaFlagEnabled
             && !empty($settings['recaptchaSiteKey'] ?? null)
             && $settings['hasRecaptchaSecretConfigured'];

@@ -60,6 +60,8 @@ export interface MobileAppUpdatePolicy {
 }
 
 export interface MobileSystemSettings {
+  recaptchaEnabled: boolean;
+  recaptchaAndroidSiteKey?: string;
   mobileAppUpdatePolicy: MobileAppUpdatePolicy;
   features: MobileFeatureFlags;
   sameTierCycleChangeEnabled: boolean;
@@ -81,6 +83,8 @@ export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
 };
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
+  recaptchaEnabled: false,
+  recaptchaAndroidSiteKey: undefined,
   mobileAppUpdatePolicy: {
     enabled: false,
     latestVersion: '',
