@@ -26,8 +26,8 @@ final class DatasetResetPolicyV2
     /** @var array<string, string> */
     private const PRESERVE_MANIFEST = [
         'addresses' => 'PRESERVE_REQUIRED_ACCOUNT_PROFILE',
-        'admin_audit_logs' => 'PRESERVE_SECURITY_AUDIT',
         'bank_accounts' => 'PRESERVE_REQUIRED_ACCOUNT_RELATION_IF_PRESENT',
+        'benefit_definitions' => 'PRESERVE_BENEFIT_CONFIGURATION',
         'cache_settings' => 'PRESERVE_SYSTEM_CONFIGURATION',
         'filter_types' => 'PRESERVE_STATIC_CONTRACT',
         'plans' => 'PRESERVE_COMMERCIAL_CONFIGURATION',
@@ -47,6 +47,8 @@ final class DatasetResetPolicyV2
     /** @var array<string, list<string>> */
     private const RESET_DOMAINS = [
         'AUTH_OPERATIONAL_STATE' => [
+            'account_access_restriction_events',
+            'account_access_restrictions',
             'auth_refresh_tokens',
             'auth_sessions',
             'email_verifications',
@@ -143,7 +145,37 @@ final class DatasetResetPolicyV2
             'blog_articles',
             'blog_categories',
             'blog_tags',
+            'changelog_user_reads',
             'changelogs',
+        ],
+        'BENEFITS' => [
+            'benefit_audit_events',
+            'benefit_code_redemptions',
+            'benefit_codes',
+            'benefit_domain_events',
+            'benefit_grants',
+            'refund_retention_offers',
+        ],
+        'COMMUNICATIONS_MARKETING' => [
+            'communication_audit_events',
+            'communication_deliveries',
+            'communication_intents',
+            'communication_preferences',
+            'marketing_campaign_interactions',
+            'marketing_campaigns',
+            'marketing_segments',
+        ],
+        'LEGAL_ACCEPTANCE' => [
+            'legal_document_acceptances',
+        ],
+        'SUPPORT' => [
+            'support_case_assignments',
+        ],
+        'OPERATIONAL_AUDIT' => [
+            'admin_audit_logs',
+            'safe_operation_runs',
+            'unverified_account_cleanup_reviews',
+            'unverified_account_cleanup_runs',
         ],
         'USER_CONTENT_ACTIVITY' => [
             'analytics_lifecycle_events',
@@ -451,7 +483,7 @@ final class DatasetResetPolicyV2
     public static function auditLogPolicy(): array
     {
         return [
-            'admin_audit_logs' => 'PRESERVE_INFRASTRUCTURE_AUDIT',
+            'admin_audit_logs' => 'RESET_TEST_HISTORY',
             'legal_sync_logs' => 'RESET_TEST_HISTORY',
             'material_moderation_events' => 'RESET_TEST_HISTORY',
             'question_editorial_feedback' => 'RESET_TEST_HISTORY',
