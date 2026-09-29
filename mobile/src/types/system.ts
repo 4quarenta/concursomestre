@@ -50,7 +50,17 @@ export interface MobilePlanPricing {
 
 export type MobilePlanPricingMap = Partial<Record<MobilePlanName, MobilePlanPricing>>;
 
+export interface MobileAppUpdatePolicy {
+  enabled: boolean;
+  latestVersion: string;
+  minimumVersion: string;
+  message: string;
+  androidStoreUrl: string;
+  iosStoreUrl: string;
+}
+
 export interface MobileSystemSettings {
+  mobileAppUpdatePolicy: MobileAppUpdatePolicy;
   features: MobileFeatureFlags;
   sameTierCycleChangeEnabled: boolean;
   planDetails: MobilePlanDetailsMap;
@@ -71,6 +81,14 @@ export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
 };
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
+  mobileAppUpdatePolicy: {
+    enabled: false,
+    latestVersion: '',
+    minimumVersion: '',
+    message: '',
+    androidStoreUrl: '',
+    iosStoreUrl: '',
+  },
   features: { ...DEFAULT_MOBILE_FEATURE_FLAGS },
   sameTierCycleChangeEnabled: false,
   planDetails: {},

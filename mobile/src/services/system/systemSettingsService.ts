@@ -200,6 +200,9 @@ const resolveBooleanSetting = (
 };
 
 const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
+  const rawUpdatePolicy = payload.mobileAppUpdatePolicy && typeof payload.mobileAppUpdatePolicy === 'object'
+    ? payload.mobileAppUpdatePolicy as Record<string, unknown>
+    : {};
   const normalizePixKey = () => {
     const rawValue = typeof payload.pixKey === 'string'
       ? payload.pixKey
@@ -255,6 +258,14 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
   };
 
   return {
+    mobileAppUpdatePolicy: {
+      enabled: normalizeBooleanLike(rawUpdatePolicy.enabled) ?? false,
+      latestVersion: String(rawUpdatePolicy.latestVersion || '').trim(),
+      minimumVersion: String(rawUpdatePolicy.minimumVersion || '').trim(),
+      message: String(rawUpdatePolicy.message || '').trim(),
+      androidStoreUrl: String(rawUpdatePolicy.androidStoreUrl || '').trim(),
+      iosStoreUrl: String(rawUpdatePolicy.iosStoreUrl || '').trim(),
+    },
     features,
     sameTierCycleChangeEnabled: resolveBooleanSetting(payload, 'sameTierCycleChangeEnabled', false),
     planDetails: normalizePlanDetails(payload),
@@ -290,6 +301,7 @@ export const systemSettingsService = {
 
   createDefaultSystemSettings(): MobileSystemSettings {
     return {
+      mobileAppUpdatePolicy: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.mobileAppUpdatePolicy },
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
       sameTierCycleChangeEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.sameTierCycleChangeEnabled,
       planDetails: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.planDetails },

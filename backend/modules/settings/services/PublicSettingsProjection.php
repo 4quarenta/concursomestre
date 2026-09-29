@@ -54,6 +54,7 @@ final class PublicSettingsProjection
 
         return [
             'contractVersion' => self::CONTRACT_VERSION,
+            'mobileAppUpdatePolicy' => self::projectMobileAppUpdatePolicy($settings['mobileAppUpdatePolicy'] ?? []),
             'branding' => self::pick($settings, [
                 'appName',
                 'siteName',
@@ -139,6 +140,29 @@ final class PublicSettingsProjection
                 'gamification',
                 'notificationSettings',
             ]),
+        ];
+    }
+
+    private static function projectMobileAppUpdatePolicy(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [
+                'enabled' => false,
+                'latestVersion' => '',
+                'minimumVersion' => '',
+                'message' => '',
+                'androidStoreUrl' => '',
+                'iosStoreUrl' => '',
+            ];
+        }
+
+        return [
+            'enabled' => self::toBoolean($value['enabled'] ?? false),
+            'latestVersion' => (string) ($value['latestVersion'] ?? ''),
+            'minimumVersion' => (string) ($value['minimumVersion'] ?? ''),
+            'message' => (string) ($value['message'] ?? ''),
+            'androidStoreUrl' => (string) ($value['androidStoreUrl'] ?? ''),
+            'iosStoreUrl' => (string) ($value['iosStoreUrl'] ?? ''),
         ];
     }
 

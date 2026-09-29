@@ -71,6 +71,52 @@ class AdminSettingsValidator
             $payload['platformVersion'] = $this->sanitizeString($payload['platformVersion'], 40, 'Versao da plataforma');
         }
 
+        if (array_key_exists('mobileAppUpdatePolicy', $payload)) {
+            $policy = $payload['mobileAppUpdatePolicy'];
+            if (!is_array($policy)) {
+                throw new InvalidArgumentException('Configuracao de atualizacao do aplicativo invalida.');
+            }
+
+            $versionPattern = '/^\\d+\\.\\d+\\.\\d+$/';
+            $latestVersion = trim((string) ($policy['latestVersion'] ?? ''));
+            $minimumVersion = trim((string) ($policy['minimumVersion'] ?? ''));
+            foreach (['latestVersion' => $latestVersion, 'minimumVersion' => $minimumVersion] as $label => $version) {
+                if ($version !== '' && preg_match($versionPattern, $version) !== 1) {
+                    throw new InvalidArgumentException('Versao do aplicativo invalida. Use o formato 1.2.3.');
+                }
+            }
+            if ($latestVersion !== '' && $minimumVersion !== '' && version_compare($minimumVersion, $latestVersion, '>')) {
+                throw new InvalidArgumentException('A versao minima nao pode ser superior a versao recomendada.');
+            }
+
+            $validateStoreUrl = function ($value, string $label): string {
+                $url = $this->validateOptionalHttpUrl($value ?? '', $label);
+                if ($url !== '' && strtolower((string) parse_url($url, PHP_URL_SCHEME)) !== 'https') {
+                    throw new InvalidArgumentException($label . ' deve usar HTTPS.');
+                }
+                return $url;
+            };
+
+            $androidStoreUrl = $validateStoreUrl($policy['androidStoreUrl'] ?? '', 'Link da Play Store');
+            $iosStoreUrl = $validateStoreUrl($policy['iosStoreUrl'] ?? '', 'Link da App Store');
+            $enabled = $this->normalizeBooleanValue($policy['enabled'] ?? false);
+            if ($enabled && ($latestVersion !== '' || $minimumVersion !== '') && $androidStoreUrl === '' && $iosStoreUrl === '') {
+                throw new InvalidArgumentException('Configure ao menos um link de loja antes de ativar a politica de versao.');
+            }
+            if ($enabled && $minimumVersion !== '' && $latestVersion === '') {
+                throw new InvalidArgumentException('Informe a versao recomendada antes de exigir uma versao minima.');
+            }
+
+            $payload['mobileAppUpdatePolicy'] = [
+                'enabled' => $enabled,
+                'latestVersion' => $latestVersion,
+                'minimumVersion' => $minimumVersion,
+                'message' => $this->sanitizeString($policy['message'] ?? '', 300, 'Mensagem de atualizacao', true),
+                'androidStoreUrl' => $androidStoreUrl,
+                'iosStoreUrl' => $iosStoreUrl,
+            ];
+        }
+
         if (isset($payload['supportPhone'])) {
             $payload['supportPhone'] = $this->sanitizeString($payload['supportPhone'], 40, 'Telefone de suporte', true);
         }

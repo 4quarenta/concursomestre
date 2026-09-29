@@ -14,7 +14,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Bell, BookOpen, CalendarDays, Clock, Copy, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
   CheckCircle2, Heart, Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Save, Settings, ShieldAlert, ShieldCheck,
-  ShoppingBag, ShoppingCart, Sparkles, Terminal, Trophy, Upload, Users, XCircle, Zap,
+  ShoppingBag, ShoppingCart, Smartphone, Sparkles, Terminal, Trophy, Upload, Users, XCircle, Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import type { AdminSecurityIpsPayload, AdminSettingsTestResult } from '@services/admin/adminService';
@@ -64,7 +64,7 @@ import {
 } from '@constants/subscriptions/planEntitlements';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
-type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'safe-operations';
+type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'mobile-app' | 'safe-operations';
 type AdminSettingsTabs = React.ComponentProps<typeof AdminSettingsTabsBar>['tabs'];
 
 interface AdminIntegrationCheck {
@@ -623,6 +623,7 @@ const AdminSettings = ({
     { id: 'ads', label: 'Anuncios', icon: Megaphone },
     { id: 'seo', label: 'SEO', icon: Globe },
     { id: 'performance', label: 'Performance', icon: Database },
+    { id: 'mobile-app', label: 'Aplicativo', icon: Smartphone },
     { id: 'safe-operations', label: 'Operações seguras', icon: ShieldCheck },
   ];
   const integrationChecks = useMemo<[string, AdminIntegrationCheck][]>(() => {
@@ -1715,6 +1716,78 @@ const AdminSettings = ({
         />
       )}
       {activeTab === 'performance' && <div className={ADMIN_PAGE_PANEL_CLASS}><AdminCacheManagement /></div>}
+      {activeTab === 'mobile-app' && (
+        <section className={`${ADMIN_PAGE_PANEL_CLASS} space-y-5 p-5`}>
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Versão e atualização do aplicativo</h2>
+            <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-400">
+              Configure a versão recomendada e, opcionalmente, bloqueie versões antigas. A versão instalada no celular só muda com um novo build e publicação na loja.
+            </p>
+          </div>
+          <label className="flex items-start gap-3 rounded-md border border-slate-200 p-4 dark:border-slate-800">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-blue-600"
+              checked={localSettings.mobileAppUpdatePolicy?.enabled ?? false}
+              onChange={(event) => setField('mobileAppUpdatePolicy', {
+                enabled: event.target.checked,
+                latestVersion: localSettings.mobileAppUpdatePolicy?.latestVersion || '',
+                minimumVersion: localSettings.mobileAppUpdatePolicy?.minimumVersion || '',
+                message: localSettings.mobileAppUpdatePolicy?.message || '',
+                androidStoreUrl: localSettings.mobileAppUpdatePolicy?.androidStoreUrl || '',
+                iosStoreUrl: localSettings.mobileAppUpdatePolicy?.iosStoreUrl || '',
+              })}
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">Ativar avisos e bloqueio por versão</span>
+              <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">A versão recomendada exibe um aviso; a mínima impede o uso de versões inferiores.</span>
+            </span>
+          </label>
+          <div className="grid gap-4 md:grid-cols-2">
+            {([
+              ['latestVersion', 'Versão recomendada', 'Ex.: 1.2.0'],
+              ['minimumVersion', 'Versão mínima obrigatória', 'Deixe vazia para não bloquear versões antigas'],
+              ['androidStoreUrl', 'Link da Play Store', 'https://play.google.com/store/apps/details?id=...'],
+              ['iosStoreUrl', 'Link da App Store', 'https://apps.apple.com/...'],
+            ] as const).map(([field, label, placeholder]) => (
+              <label key={field} className="block space-y-2">
+                <span className={labelClassName}>{label}</span>
+                <input
+                  className={inputClassName}
+                  value={localSettings.mobileAppUpdatePolicy?.[field] || ''}
+                  placeholder={placeholder}
+                  onChange={(event) => setField('mobileAppUpdatePolicy', {
+                    enabled: localSettings.mobileAppUpdatePolicy?.enabled ?? false,
+                    latestVersion: localSettings.mobileAppUpdatePolicy?.latestVersion || '',
+                    minimumVersion: localSettings.mobileAppUpdatePolicy?.minimumVersion || '',
+                    message: localSettings.mobileAppUpdatePolicy?.message || '',
+                    androidStoreUrl: localSettings.mobileAppUpdatePolicy?.androidStoreUrl || '',
+                    iosStoreUrl: localSettings.mobileAppUpdatePolicy?.iosStoreUrl || '',
+                    [field]: event.target.value,
+                  })}
+                />
+              </label>
+            ))}
+          </div>
+          <label className="block space-y-2">
+            <span className={labelClassName}>Mensagem exibida no aplicativo</span>
+            <textarea
+              className={`${ADMIN_TEXTAREA_CLASS} min-h-24 w-full`}
+              maxLength={300}
+              value={localSettings.mobileAppUpdatePolicy?.message || ''}
+              onChange={(event) => setField('mobileAppUpdatePolicy', {
+                enabled: localSettings.mobileAppUpdatePolicy?.enabled ?? false,
+                latestVersion: localSettings.mobileAppUpdatePolicy?.latestVersion || '',
+                minimumVersion: localSettings.mobileAppUpdatePolicy?.minimumVersion || '',
+                message: event.target.value,
+                androidStoreUrl: localSettings.mobileAppUpdatePolicy?.androidStoreUrl || '',
+                iosStoreUrl: localSettings.mobileAppUpdatePolicy?.iosStoreUrl || '',
+              })}
+            />
+          </label>
+          <p className="text-xs text-amber-800 dark:text-amber-300">A versão mínima é aplicada imediatamente aos clientes que consultarem as configurações. Antes de ativá-la, confirme que a versão recomendada já está publicada e que os links das lojas funcionam.</p>
+        </section>
+      )}
       {activeTab === 'safe-operations' && <SafeOperationsPanel />}
     </div>
   );

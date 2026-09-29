@@ -1398,6 +1398,14 @@ export interface NotificationSettings {
 export interface SystemSettings {
   appName?: string;
   platformVersion?: string;
+  mobileAppUpdatePolicy?: {
+    enabled: boolean;
+    latestVersion: string;
+    minimumVersion: string;
+    message: string;
+    androidStoreUrl: string;
+    iosStoreUrl: string;
+  };
   activeTheme: AppPromotionTheme;
   paymentProvider?: 'stripe';
   paymentCheckoutMode?: 'internal' | 'redirect';

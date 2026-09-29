@@ -22,6 +22,14 @@ import {
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   platformVersion: '1.0.0',
+  mobileAppUpdatePolicy: {
+    enabled: false,
+    latestVersion: '1.0.0',
+    minimumVersion: '',
+    message: '',
+    androidStoreUrl: '',
+    iosStoreUrl: '',
+  },
   activeTheme: 'default',
   paymentProvider: 'stripe',
   paymentCheckoutMode: 'internal',
