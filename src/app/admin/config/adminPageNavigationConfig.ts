@@ -422,9 +422,6 @@ export const buildAdminChangelogEditPath = (entryId: string | number) =>
 export const buildAdminUserEditPath = (userId: string | number) =>
   `/admin/operation/users/${encodeURIComponent(String(userId))}/edit`;
 
-export const buildAdminLandingPageEditPath = (landingId: string | number) =>
-  `/admin/operation/marketing/landing-pages/${encodeURIComponent(String(landingId))}/edit`;
-
 const normalizeAdminRouteSegment = (value?: string | null) =>
   String(value || '').trim().toLowerCase();
 

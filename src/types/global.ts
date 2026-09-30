@@ -1082,6 +1082,7 @@ export interface MarketingLandingPage {
   id: string;
   title: string;
   slug: string;
+  scriptId?: string;
   status: MarketingLandingPageStatus;
   pageType: MarketingLandingPageType;
   linkedPlanId?: number | null;

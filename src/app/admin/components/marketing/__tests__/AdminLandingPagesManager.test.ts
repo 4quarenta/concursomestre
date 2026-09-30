@@ -8,15 +8,14 @@ const source = fs.readFileSync(
 );
 
 describe('admin landing pages manager', () => {
-  it('persists each operation once without scheduling a second settings update', () => {
+  it('persists availability without bringing back a content editor', () => {
     expect(source).toContain('await saveSystemSettingsNow({');
     expect(source).not.toContain('updateSystemSettings(persisted)');
-  });
-
-  it('uses the canonical editor layout with a publication sidebar', () => {
-    expect(source).toContain("xl:grid-cols-[minmax(0,1fr)_320px]");
-    expect(source).toContain('Salvar alterações');
-    expect(source).toContain('Excluir landing');
-    expect(source).toContain('xl:sticky xl:top-6');
+    expect(source).toContain('MARKETING_LANDING_SCRIPT_REGISTRY');
+    expect(source).toContain('toggleAvailability');
+    expect(source).toContain('Copiar link de');
+    expect(source).not.toContain('Adicionar nova');
+    expect(source).not.toContain('type="file"');
+    expect(source).not.toContain('Excluir landing');
   });
 });

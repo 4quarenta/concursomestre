@@ -63,8 +63,8 @@ vi.mock('@constants/gamificationNotificationSettings', () => ({
 }), { virtual: true });
 
 vi.mock('@services/marketing/promotionCampaign', () => ({
-  normalizeCampaignBannerActionUrl: (value: unknown) => value || '/planos',
-  normalizePromotionNotificationActionUrl: (value: unknown) => value || '/planos',
+  normalizeCampaignBannerActionUrl: (value: unknown) => value || '/elite',
+  normalizePromotionNotificationActionUrl: (value: unknown) => value || '/elite',
 }), { virtual: true });
 
 type SystemSettingsModule = typeof import('../systemSettings');

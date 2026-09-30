@@ -711,7 +711,7 @@ const Marketplace: React.FC = () => {
         }
 
         if (material.offerMode === 'included_in_plan') {
-            router.push('/planos');
+            router.push('/plans');
             return;
         }
 

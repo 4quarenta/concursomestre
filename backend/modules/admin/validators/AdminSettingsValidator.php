@@ -972,6 +972,7 @@ class AdminSettingsValidator
                 'id' => $this->sanitizeString($landingPage['id'] ?? "landing-{$index}", 120, "Landing {$index} > id"),
                 'title' => $this->sanitizeString($landingPage['title'] ?? '', 120, "Landing {$index} > titulo"),
                 'slug' => $slug,
+                'scriptId' => $this->sanitizeString($landingPage['scriptId'] ?? '', 120, "Landing {$index} > componente"),
                 'status' => $this->validateLandingStatus($landingPage['status'] ?? 'draft'),
                 'pageType' => $this->validateLandingPageType($landingPage['pageType'] ?? 'plans'),
                 'linkedPlanId' => $this->validateOptionalPositiveInteger($landingPage['linkedPlanId'] ?? null),

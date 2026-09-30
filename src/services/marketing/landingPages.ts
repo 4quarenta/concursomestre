@@ -74,7 +74,7 @@ export const normalizeLandingSlug = (value: string) => (
 export const buildMarketingLandingPath = (slug: string) => {
   const normalizedSlug = normalizeLandingSlug(slug);
   if (normalizedSlug === 'planos') {
-    return '/planos';
+    return '/elite';
   }
 
   if (normalizedSlug === 'elite') {
@@ -83,6 +83,18 @@ export const buildMarketingLandingPath = (slug: string) => {
 
   return `/l/${normalizedSlug}`;
 };
+
+/** Páginas disponíveis no catálogo de links do marketing; atualize junto da implementação em código. */
+export const MARKETING_LANDING_SCRIPT_REGISTRY = [
+  {
+    id: 'elite-landing',
+    title: 'Landing Plano Elite',
+    slug: 'elite',
+    path: '/elite',
+    componentPath: 'src/app/elite/page.tsx',
+    description: 'Página comercial do Plano Elite.',
+  },
+] as const;
 
 const createDefaultPlanCards = (): MarketingLandingPlanCard[] => ([
   {
@@ -600,11 +612,13 @@ const normalizeFaq = (items: Partial<MarketingLandingFaqItem>[]): MarketingLandi
 
 export const normalizeMarketingLandingPage = (page?: Partial<MarketingLandingPage> | null, siteName = 'ConcursoMestre'): MarketingLandingPage => {
   const fallback = resolveDefaultLandingPage(siteName, page?.slug);
+  const defaultScriptId = normalizeLandingSlug(String(page?.slug || '')) === 'elite' ? 'elite-landing' : '';
 
   return {
     id: sanitizeText(page?.id, fallback.id),
     title: sanitizeText(page?.title, fallback.title),
     slug: normalizeLandingSlug(sanitizeText(page?.slug, fallback.slug)) || fallback.slug,
+    scriptId: sanitizeText(page?.scriptId, defaultScriptId),
     status: page?.status === 'published' ? 'published' : 'draft',
     pageType: 'plans',
     linkedPlanId: typeof page?.linkedPlanId === 'number' ? page.linkedPlanId : (fallback.linkedPlanId ?? null),

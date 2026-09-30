@@ -107,7 +107,7 @@ const createDefaultCampaignBanner = (): MarketingCampaignBanner => ({
   headline: 'Oferta ativa no ConcursoMestre',
   description: 'Mostre a mensagem principal da campanha nesta area.',
   ctaLabel: 'Ver oferta',
-  actionUrl: '/planos',
+  actionUrl: '/elite',
   backgroundColor: '#0f172a',
 });
 
@@ -1055,7 +1055,7 @@ const AdminMarketing = ({
                     value={draftPromotion.notificationActionUrl || ''}
                     onChange={(event) => setDraftPromotion((current) => ({ ...current, notificationActionUrl: event.target.value }))}
                     className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
-                    placeholder="/planos"
+                    placeholder="/elite"
                     aria-label="Link da notificacao"
                   />
                 </div>

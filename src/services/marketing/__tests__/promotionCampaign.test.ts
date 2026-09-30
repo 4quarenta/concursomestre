@@ -75,12 +75,12 @@ describe('promotion campaign helpers', () => {
   });
 
   it('sanitizes unsafe campaign action URLs', () => {
-    expect(sanitizeCampaignActionUrl('javascript:alert(1)')).toBe('/planos');
-    expect(sanitizeCampaignActionUrl('data:text/html,<script>alert(1)</script>')).toBe('/planos');
-    expect(sanitizeCampaignActionUrl('//evil.test/path')).toBe('/planos');
-    expect(sanitizeCampaignActionUrl('/admin')).toBe('/planos');
-    expect(sanitizeCampaignActionUrl('/api/settings.php')).toBe('/planos');
-    expect(sanitizeCampaignActionUrl('/planos?utm=campanha')).toBe('/planos?utm=campanha');
+    expect(sanitizeCampaignActionUrl('javascript:alert(1)')).toBe('/elite');
+    expect(sanitizeCampaignActionUrl('data:text/html,<script>alert(1)</script>')).toBe('/elite');
+    expect(sanitizeCampaignActionUrl('//evil.test/path')).toBe('/elite');
+    expect(sanitizeCampaignActionUrl('/admin')).toBe('/elite');
+    expect(sanitizeCampaignActionUrl('/api/settings.php')).toBe('/elite');
+    expect(sanitizeCampaignActionUrl('/planos?utm=campanha')).toBe('/elite?utm=campanha');
     expect(sanitizeCampaignActionUrl('https://concursomestre.com.br/oferta')).toBe('https://concursomestre.com.br/oferta');
   });
 

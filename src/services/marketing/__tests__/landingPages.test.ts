@@ -38,7 +38,7 @@ describe('marketing landing pages', () => {
   });
 
   it('builds dedicated public paths for the default campaigns', () => {
-    expect(buildMarketingLandingPath('planos')).toBe('/planos');
+    expect(buildMarketingLandingPath('planos')).toBe('/elite');
     expect(buildMarketingLandingPath('elite')).toBe('/elite');
     expect(buildMarketingLandingPath('campanha-especial')).toBe('/l/campanha-especial');
   });

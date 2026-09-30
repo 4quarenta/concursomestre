@@ -74,7 +74,6 @@ describe('Phase 3 metadata authority', () => {
 
   it('keeps migrated route semantics in the real page without a parallel SEO route', () => {
     const practice = source('src/app/practice/PracticePage.tsx');
-    const plans = source('src/app/planos/page.tsx');
     const lawHub = source('src/app/lei-comentada/page.tsx');
     const lawDetail = source('src/app/lei-comentada/[slug]/page.tsx');
     const rootLayout = source('src/app/layout.tsx');
@@ -82,8 +81,7 @@ describe('Phase 3 metadata authority', () => {
     expect(practice).toContain('data-practice-semantic-header');
     expect(practice).toContain('buildCollectionPage');
     expect(practice).toContain('buildBreadcrumbList');
-    expect(plans).toContain('buildWebPage');
-    expect(plans).toContain('buildBreadcrumbList');
+    expect(() => source('src/app/planos/page.tsx')).toThrow();
     expect(lawHub).toContain('fetchLegalCommentaryModuleAvailability');
     expect(lawDetail).toContain('fetchLegalCommentaryModuleAvailability');
     expect(() => source('src/app/@seo/default.tsx')).toThrow();

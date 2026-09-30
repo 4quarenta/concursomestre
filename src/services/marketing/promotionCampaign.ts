@@ -2,7 +2,7 @@ import type { Promotion } from '@types';
 import { normalizeLandingSlug } from './landingPages';
 import { isCampaignWithinWindow } from './marketingConversion';
 
-const DEFAULT_CAMPAIGN_ACTION_URL = '/planos';
+const DEFAULT_CAMPAIGN_ACTION_URL = '/elite';
 const PRIVATE_CAMPAIGN_PATH_PREFIXES = [
   '/admin',
   '/api',
@@ -118,7 +118,11 @@ export const sanitizeCampaignActionUrl = (value: unknown, fallback = DEFAULT_CAM
 
   if (candidate.startsWith('/') && !candidate.startsWith('//')) {
     const path = candidate.split(/[?#]/, 1)[0] || '/';
-    return isPrivateCampaignPath(path) ? safeFallback : candidate;
+    if (isPrivateCampaignPath(path)) {
+      return safeFallback;
+    }
+
+    return path === '/planos' ? `/elite${candidate.slice(path.length)}` : candidate;
   }
 
   if (/^https?:\/\//i.test(candidate)) {
