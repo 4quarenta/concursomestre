@@ -67,6 +67,7 @@ import {
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'mobile-app' | 'safe-operations';
 type AdminMobileAppTab = 'version';
+type AdminIntegrationTab = 'payments' | 'security' | 'analytics' | 'ai';
 type AdminSettingsTabs = React.ComponentProps<typeof AdminSettingsTabsBar>['tabs'];
 
 const SETTINGS_SECTION_FIELDS: Partial<Record<AdminSettingsTab, Array<keyof SystemSettings>>> = {
@@ -252,6 +253,7 @@ const AdminSettings = ({
   const [activeTab, setActiveTab] = useState<AdminSettingsTab>(initialSection);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [mobileAppTab, setMobileAppTab] = useState<AdminMobileAppTab>('version');
+  const [integrationTab, setIntegrationTab] = useState<AdminIntegrationTab>('payments');
   const [localSettings, setLocalSettings] = useState<SystemSettings>(systemSettings);
   const [localSeoSettings, setLocalSeoSettings] = useState<SeoSettings>(() => mergeSeoSettings(systemSettings.seo));
   const [twoFactorStep, setTwoFactorStep] = useState<'status' | 'setup' | 'verify'>('status');
@@ -1098,12 +1100,36 @@ const AdminSettings = ({
             </div>
             <button type="button" onClick={() => void handleTestIntegrations()} disabled={isTestingIntegrations} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>{isTestingIntegrations ? 'Testando...' : 'Testar integrações'}</button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className={`${ADMIN_SEGMENTED_TABS_CLASS} w-full overflow-x-auto`} role="tablist" aria-label="Categorias de integração">
+            {([
+              ['payments', 'Pagamentos', ShoppingCart],
+              ['security', 'Acesso e segurança', ShieldCheck],
+              ['analytics', 'Analytics', Globe],
+              ['ai', 'Inteligência artificial', Zap],
+            ] as const).map(([tab, label, Icon]) => (
+              <button
+                key={tab}
+                id={`admin-integrations-tab-${tab}`}
+                type="button"
+                role="tab"
+                aria-selected={integrationTab === tab}
+                aria-controls="admin-integrations-panel"
+                onClick={() => setIntegrationTab(tab)}
+                className={`flex shrink-0 items-center gap-2 rounded-sm border px-4 py-2 text-xs font-semibold transition-colors ${integrationTab === tab ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
+              >
+                <Icon size={15} /> {label}
+              </button>
+            ))}
+          </div>
+          <div id="admin-integrations-panel" role="tabpanel" aria-labelledby={`admin-integrations-tab-${integrationTab}`} className="grid gap-4 md:grid-cols-2">
+            {integrationTab === 'payments' && <>
             <div className="md:col-span-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Pagamentos</div>
             <label className="space-y-2"><span className={labelClassName}>Experiência de checkout</span><select value={localSettings.paymentCheckoutMode || 'internal'} onChange={(e) => setField('paymentCheckoutMode', e.target.value as 'internal' | 'redirect')} className={inputClassName}><option value="internal">Checkout interno</option><option value="redirect">Checkout externo</option></select></label>
             <input value={localSettings.stripePublishableKey || localSettings.stripeKey || ''} onChange={(e) => setField('stripePublishableKey', e.target.value)} className={inputClassName} placeholder="Stripe publishable key" />
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeSecretKey || ''} onChange={(e) => setField('stripeSecretKey', e.target.value)} className={inputClassName} placeholder={isStripeSecretConfigured ? 'Digite uma nova chave para substituir a atual' : 'Stripe secret key'} /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe webhook secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeWebhookConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeWebhookConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeWebhookSecret || ''} onChange={(e) => setField('stripeWebhookSecret', e.target.value)} className={inputClassName} placeholder={isStripeWebhookConfigured ? 'Digite um novo segredo para substituir o atual' : 'Stripe webhook secret'} /></div>
+            </>}
+            {integrationTab === 'security' && <>
             <div className="md:col-span-2 mt-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Proteção e login</div>
             <label className={`flex items-center justify-between gap-4 px-4 py-3 ${ADMIN_MUTED_SURFACE_CLASS}`}><span><span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">reCAPTCHA v3</span><span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Protege cadastro, login e fluxos de recuperação.</span></span><input type="checkbox" checked={!!localSettings.recaptchaEnabled} onChange={(e) => setField('recaptchaEnabled', e.target.checked)} className="h-4 w-4 rounded-sm border-slate-300 text-sky-700" /></label>
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>Google OAuth Client ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${localSettings.hasGoogleAuthClientConfigured || localSettings.googleAuthClientId ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{localSettings.hasGoogleAuthClientConfigured || localSettings.googleAuthClientId ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.googleAuthClientId || ''} onChange={(e) => setField('googleAuthClientId', e.target.value)} className={inputClassName} placeholder="000000000000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use o Client ID do aplicativo Web do Google Cloud. Origens autorizadas: http://localhost:3000 e o domínio de produção.</p></div>
@@ -1111,21 +1137,28 @@ const AdminSettings = ({
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Facebook App Secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isFacebookAuthConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isFacebookAuthConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.facebookAuthAppSecret || ''} onChange={(e) => setField('facebookAuthAppSecret', e.target.value)} className={inputClassName} placeholder={isFacebookAuthConfigured ? 'Digite um novo segredo para substituir o atual' : 'Facebook App Secret'} /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Apple Client ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isAppleAuthConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isAppleAuthConfigured ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.appleAuthClientId || ''} onChange={(e) => setField('appleAuthClientId', e.target.value)} className={inputClassName} placeholder="com.concursomestre.web" /></div>
             <div className="space-y-2"><input value={localSettings.appleAuthRedirectUri || ''} onChange={(e) => setField('appleAuthRedirectUri', e.target.value)} className={inputClassName} placeholder="Apple Redirect URI (opcional)" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Se vazio, o login usa automaticamente a origem atual + /auth.</p></div>
+            </>}
+            {integrationTab === 'analytics' && <>
             <div className="md:col-span-2 mt-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Medição</div>
             <label className="space-y-2"><span className={labelClassName}>Google Analytics</span><input value={localSettings.googleAnalyticsId || ''} onChange={(e) => setField('googleAnalyticsId', e.target.value)} className={inputClassName} placeholder="ID de medição" /></label>
             <label className="space-y-2"><span className={labelClassName}>Meta Pixel</span><input value={localSettings.metaPixelId || ''} onChange={(e) => setField('metaPixelId', e.target.value)} className={inputClassName} placeholder="ID do pixel" /></label>
+            </>}
+            {integrationTab === 'ai' && <>
             <div className="md:col-span-2 mt-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Inteligência artificial</div>
             <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Provedor padrão de IA</span><select value={localSettings.aiProvider || 'gemini'} onChange={(e) => setField('aiProvider', e.target.value)} className={inputClassName}><option value="gemini">Gemini</option><option value="openai">OpenAI / ChatGPT</option><option value="auto">Automático: OpenAI se configurado, senão Gemini</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Todas as gerações passam pelo backend. O frontend nunca recebe a chave do provedor.</p></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Gemini API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isGeminiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isGeminiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.geminiApiKey || ''} onChange={(e) => setField('geminiApiKey', e.target.value)} className={inputClassName} placeholder={isGeminiConfigured ? 'Digite uma nova chave para substituir a atual' : 'Gemini API key'} />{localSettings.hasGeminiApiKeyConfigured && !localSettings.geminiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend.</p>}</div>
             <div className="space-y-2"><span className={labelClassName}>Modelo padrão do Gemini</span><select value={localSettings.geminiModel || 'gemini-3.5-flash'} onChange={(e) => setField('geminiModel', e.target.value)} className={inputClassName}><option value="gemini-3.5-flash">Gemini 3.5 Flash</option><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option><option value="gemini-3-flash">Gemini 3 Flash</option><option value="gemini-2.5-flash">Gemini 2.5 Flash</option><option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Aplicado às gerações, análises, importações de PDF e moderação assistida. Se o modelo não estiver disponível para a chave, o gateway tenta um fallback compatível.</p></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>OpenAI API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isOpenAiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isOpenAiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.openaiApiKey || ''} onChange={(e) => setField('openaiApiKey', e.target.value)} className={inputClassName} placeholder={isOpenAiConfigured ? 'Digite uma nova chave para substituir a atual' : 'OpenAI API key'} />{localSettings.hasOpenAiApiKeyConfigured && !localSettings.openaiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend.</p>}</div>
             <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Modelo padrão do ChatGPT</span><select value={localSettings.openAiModel || 'gpt-4o-mini'} onChange={(e) => setField('openAiModel', e.target.value)} className={inputClassName}>{localSettings.openAiModel && !['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-4.1-nano', 'o4-mini'].includes(localSettings.openAiModel) ? <option value={localSettings.openAiModel}>{localSettings.openAiModel}</option> : null}<option value="gpt-4o-mini">GPT-4o Mini</option><option value="gpt-4o">GPT-4o</option><option value="gpt-4.1-mini">GPT-4.1 Mini</option><option value="gpt-4.1">GPT-4.1</option><option value="gpt-4.1-nano">GPT-4.1 Nano</option><option value="o4-mini">o4-mini</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Aplicado às gerações, análises, importações de PDF e moderação assistida quando o provedor escolhido for OpenAI/ChatGPT.</p></div>
+            </>}
+            {integrationTab === 'security' && <>
             <div className="md:col-span-2 mt-2 border-b border-slate-200 pb-2 text-xs font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:text-slate-400">Credenciais de proteção</div>
             <div className="space-y-2"><input value={localSettings.recaptchaSiteKey || ''} onChange={(e) => setField('recaptchaSiteKey', e.target.value)} className={inputClassName} placeholder="reCAPTCHA v3 site key" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use chaves do reCAPTCHA v3. O token agora é gerado automaticamente no envio de login, cadastro e reset.</p></div>
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>reCAPTCHA v3 secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isRecaptchaSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isRecaptchaSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.recaptchaSecretKey || ''} onChange={(e) => setField('recaptchaSecretKey', e.target.value)} className={inputClassName} placeholder={isRecaptchaSecretConfigured ? 'Digite um novo segredo para substituir o atual' : 'reCAPTCHA v3 secret key'} /></div>
             {localSettings.recaptchaEnabled && (!isRecaptchaSiteKeyConfigured || !isRecaptchaSecretConfigured) && <p className="text-sm font-medium text-amber-700 dark:text-amber-300 md:col-span-2">Para ativar o reCAPTCHA, informe a site key e a secret key. Sem ambas, a configuração não será salva como ativa.</p>}
+            </>}
           </div>
-          <div className="rounded-sm border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/30 dark:bg-sky-900/10"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Webhook oficial</p><p className="mt-2 break-all text-xs font-mono text-sky-700 dark:text-sky-300">{stripeWebhookUrl}</p></div>
+          {integrationTab === 'payments' && <div className="rounded-sm border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/30 dark:bg-sky-900/10"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Webhook oficial</p><p className="mt-2 break-all text-xs font-mono text-sky-700 dark:text-sky-300">{stripeWebhookUrl}</p></div>}
           {integrationsTestResult && (
             <div className="space-y-4">
               <div className={`flex flex-col gap-4 rounded-sm border p-4 md:flex-row md:items-center md:justify-between ${integrationResultToneClassName}`}>
@@ -1744,7 +1777,7 @@ const AdminSettings = ({
         </div>
       )}
 
-      {activeTab === 'integrations' && <StripePaymentMethodsSettings value={localSettings.stripePaymentMethods} onChange={(stripePaymentMethods) => setField('stripePaymentMethods', stripePaymentMethods)} />}
+      {activeTab === 'integrations' && integrationTab === 'payments' && <StripePaymentMethodsSettings value={localSettings.stripePaymentMethods} onChange={(stripePaymentMethods) => setField('stripePaymentMethods', stripePaymentMethods)} />}
       {activeTab === 'seo' && (
         <AdminSeoSettingsSection
           seoSettings={localSeoSettings}
