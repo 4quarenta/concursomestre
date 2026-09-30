@@ -154,6 +154,14 @@ final class BlogService
         return $this->repository->toggleLike($articleId, $userId);
     }
 
+    public function recordPublicView(int $articleId): array
+    {
+        if ($articleId <= 0) throw new InvalidArgumentException('articleId invalido.');
+        $count = $this->repository->recordPublicView($articleId);
+        if ($count === null) throw new OutOfBoundsException('Noticia nao encontrada.');
+        return ['viewsCount' => $count];
+    }
+
     private function userId(?array $payload): string
     {
         return trim((string) ($payload['user_id'] ?? ''));

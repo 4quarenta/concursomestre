@@ -109,6 +109,7 @@ export const ENDPOINTS = {
         tags: 'blog/tags.php',
         taxonomy: 'blog/taxonomy.php',
         like: 'blog/like.php',
+        view: 'blog/view.php',
         adminList: 'blog/admin/list.php',
         adminDetail: 'blog/admin/detail.php',
         adminSave: 'blog/admin/save.php',

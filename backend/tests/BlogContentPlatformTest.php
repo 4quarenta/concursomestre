@@ -51,6 +51,30 @@ assertBlogPlatform($article['taxonomy']['tags'][0]['kind'] === 'general', 'Legac
 assertBlogPlatform($article['seoTitle'] === $article['title'], 'SEO title must derive from the post title.');
 assertBlogPlatform($article['seoDescription'] === $article['excerpt'], 'SEO description must derive from the post summary.');
 
+$articleWithSources = $validator->validateSave([
+    'title' => 'Fontes multiplas no artigo',
+    'excerpt' => 'Resumo com fontes editoriais validas.',
+    'bodyHtml' => '<p>Conteudo editorial.</p>',
+    'taxonomy' => ['category' => ['label' => 'Editais'], 'tags' => []],
+    'sources' => [
+        ['name' => 'Diario Oficial', 'url' => 'https://example.com/edital'],
+        ['name' => 'Orgao oficial', 'url' => 'https://example.org/concurso'],
+    ],
+    'status' => 'draft',
+]);
+assertBlogPlatform(count($articleWithSources['sources']) === 2, 'Articles must preserve multiple validated sources.');
+assertBlogPlatform($articleWithSources['sourceName'] === 'Diario Oficial', 'The first source must remain available to legacy consumers.');
+
+$articleWithClearedSources = $validator->validateSave([
+    'title' => 'Fontes removidas do artigo',
+    'bodyHtml' => '<p>Conteudo editorial.</p>',
+    'taxonomy' => ['category' => ['label' => 'Editais'], 'tags' => []],
+    'sources' => [],
+    'sourceName' => 'Fonte legada que deve ser removida',
+    'sourceUrl' => 'https://example.com/legacy',
+]);
+assertBlogPlatform($articleWithClearedSources['sources'] === [], 'An explicit empty sources list must clear legacy source fields.');
+
 $regionalTag = $validator->validateTag([
     'label' => 'Nordeste',
     'kind' => 'region',
@@ -91,6 +115,9 @@ $routes = (string) file_get_contents($backend . '/modules/blog/routes.php');
 foreach (['requireAdminSessionContext', 'verifyAuthenticatedUserPayload', 'logAdminAudit', 'RateLimiter'] as $needle) {
     assertBlogPlatform(str_contains($routes, $needle), 'Blog routes are missing ' . $needle . '.');
 }
+foreach (['handleBlogViewRoute', "enforceProfile('blog_view')", "REQUEST_METHOD"] as $needle) {
+    assertBlogPlatform(str_contains($routes, $needle), 'Public view route is missing ' . $needle . '.');
+}
 foreach (['handleBlogTagsRoute', 'handleBlogAdminTagsRoute', 'createTag'] as $needle) {
     assertBlogPlatform(str_contains($routes, $needle), 'Blog tag routes are missing ' . $needle . '.');
 }
@@ -128,6 +155,13 @@ foreach (['AdminCollectionToolbar', 'AdminCollectionPagination', 'ADMIN_COLLECTI
 
 $repository = (string) file_get_contents($backend . '/modules/blog/repositories/BlogRepository.php');
 assertBlogPlatform(str_contains($repository, "'total' => \$total"), 'Admin blog list must return a filtered total.');
+assertBlogPlatform(str_contains($repository, 'view_count = view_count + 1'), 'Public views must be incremented atomically.');
+assertBlogPlatform(str_contains($repository, 'sources_json'), 'Multiple sources must be persisted and hydrated.');
+
+$viewMigration = (string) file_get_contents($backend . '/database/migrations/20260930_160000_blog_sources_and_views.php');
+foreach (['sources_json', 'view_count', 'information_schema.COLUMNS'] as $needle) {
+    assertBlogPlatform(str_contains($viewMigration, $needle), 'Blog view/source migration is missing ' . $needle . '.');
+}
 assertBlogPlatform(str_contains($repository, '$this->databaseNow()'), 'Published posts must use the database clock.');
 assertBlogPlatform(str_contains($repository, 'SELECT DATE_FORMAT(NOW()'), 'The publication clock must match MySQL NOW().');
 assertBlogPlatform(!str_contains($repository, "gmdate('Y-m-d H:i:s')"), 'Blog publishing must not mix UTC with the database timezone.');

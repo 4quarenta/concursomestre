@@ -63,6 +63,7 @@ const emptyDraft = (): BlogArticleInput => ({
   allowComments: true,
   sourceName: '',
   sourceUrl: '',
+  sources: [],
   scheduledAt: null,
 });
 
@@ -99,6 +100,7 @@ const articleToDraft = (article: BlogArticle): BlogArticleInput => ({
   allowComments: article.allowComments,
   sourceName: article.sourceName || '',
   sourceUrl: article.sourceUrl || '',
+  sources: article.sources?.length ? article.sources : (article.sourceName || article.sourceUrl ? [{ name: article.sourceName || '', url: article.sourceUrl || '' }] : []),
   scheduledAt: toLocalDateTimeInput(article.scheduledAt),
 });
 
@@ -404,6 +406,8 @@ const AdminBlogEditPage = () => {
                     placeholder="Escreva o post com subtítulos, listas, fontes e informações úteis."
                     allowImages
                     allowTables
+                    allowLinks
+                    allowHtmlPaste
                     onImageUpload={uploadInlineImage}
                     contentClassName="min-h-[680px] max-h-none"
                   />
@@ -481,17 +485,26 @@ const AdminBlogEditPage = () => {
 
               <section className={ADMIN_SURFACE_CLASS}>
                 <div className={ADMIN_SURFACE_HEADER_CLASS}>
-                  <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Fonte</h2>
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Fontes</h2>
                 </div>
                 <div className="space-y-4 p-5">
-                  <label>
-                    <span className={labelClass}>Nome da fonte</span>
-                    <input className={`${ADMIN_FIELD_CLASS} w-full`} value={draft.sourceName || ''} onChange={(event) => updateDraft('sourceName', event.target.value)} />
-                  </label>
-                  <label>
-                    <span className={labelClass}>URL da fonte</span>
-                    <input className={`${ADMIN_FIELD_CLASS} w-full`} value={draft.sourceUrl || ''} onChange={(event) => updateDraft('sourceUrl', event.target.value)} />
-                  </label>
+                  {(draft.sources || []).map((source, index) => (
+                    <div key={`source-${index}`} className="space-y-3 border-b border-slate-200 pb-4 last:border-0 dark:border-slate-700">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={labelClass}>Fonte {index + 1}</span>
+                        <button type="button" onClick={() => updateDraft('sources', (draft.sources || []).filter((_, itemIndex) => itemIndex !== index))} className="text-xs font-semibold text-red-600 hover:underline">Remover</button>
+                      </div>
+                      <label>
+                        <span className={labelClass}>Nome da fonte</span>
+                        <input className={`${ADMIN_FIELD_CLASS} w-full`} value={source.name} onChange={(event) => updateDraft('sources', (draft.sources || []).map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} />
+                      </label>
+                      <label>
+                        <span className={labelClass}>URL da fonte</span>
+                        <input type="url" className={`${ADMIN_FIELD_CLASS} w-full`} value={source.url} onChange={(event) => updateDraft('sources', (draft.sources || []).map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item))} />
+                      </label>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => updateDraft('sources', [...(draft.sources || []), { name: '', url: '' }])} className={`w-full ${ADMIN_SECONDARY_BUTTON_CLASS}`}>Adicionar fonte</button>
                 </div>
               </section>
 

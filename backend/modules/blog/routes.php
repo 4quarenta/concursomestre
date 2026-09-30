@@ -106,6 +106,26 @@ function handleBlogLikeRoute(PDO $db): void
     }
 }
 
+function handleBlogViewRoute(PDO $db): void
+{
+    try {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) !== 'POST') {
+            Response::badRequest('Metodo invalido.');
+            return;
+        }
+        RateLimiter::enforceProfile('blog_view');
+        $payload = readBlogJsonBody();
+        $articleId = (int) ($payload['articleId'] ?? $payload['article_id'] ?? 0);
+        Response::success(buildBlogController($db)->recordPublicView($articleId));
+    } catch (InvalidArgumentException $e) {
+        Response::badRequest($e->getMessage());
+    } catch (OutOfBoundsException $e) {
+        Response::notFound($e->getMessage());
+    } catch (Throwable $e) {
+        Response::serverError('Nao foi possivel registrar a visualizacao.', $e);
+    }
+}
+
 function handleBlogAdminListRoute(PDO $db): void
 {
     try {

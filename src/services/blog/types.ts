@@ -59,6 +59,7 @@ export type BlogArticle = {
   allowComments: boolean;
   sourceName?: string | null;
   sourceUrl?: string | null;
+  sources?: BlogArticleSource[];
   seoTitle?: string | null;
   seoDescription?: string | null;
   canonicalUrl?: string | null;
@@ -74,8 +75,14 @@ export type BlogArticle = {
   engagement: {
     likesCount: number;
     commentsCount: number;
+    viewsCount?: number;
     isLiked: boolean;
   };
+};
+
+export type BlogArticleSource = {
+  name: string;
+  url: string;
 };
 
 export type BlogPage = {
@@ -144,5 +151,6 @@ export type BlogArticleInput = {
   allowComments: boolean;
   sourceName?: string;
   sourceUrl?: string;
+  sources?: BlogArticleSource[];
   scheduledAt?: string | null;
 };

@@ -20,4 +20,5 @@ final class BlogController
     public function createCategory(array $payload, array $actor): array { return $this->service->createCategory($payload, $actor); }
     public function createTag(array $payload, array $actor): array { return $this->service->createTag($payload, $actor); }
     public function toggleLike(int $articleId, array $viewer): array { return $this->service->toggleLike($articleId, $viewer); }
+    public function recordPublicView(int $articleId): array { return $this->service->recordPublicView($articleId); }
 }

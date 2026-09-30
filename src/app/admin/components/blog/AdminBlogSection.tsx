@@ -205,7 +205,7 @@ const AdminBlogSection = () => {
                   <td className="p-4 text-slate-600 dark:text-slate-300">{article.taxonomy.category.label || '-'}</td>
                   <td className="p-4 text-slate-600 dark:text-slate-300">{article.author?.name || '-'}</td>
                   <td className="p-4 text-slate-600 dark:text-slate-300">
-                    {article.engagement?.likesCount || 0} curtidas · {article.engagement?.commentsCount || 0} comentários
+                    {article.engagement?.viewsCount || 0} visualizações · {article.engagement?.likesCount || 0} curtidas · {article.engagement?.commentsCount || 0} comentários
                   </td>
                   <td className="whitespace-nowrap p-4 text-slate-600 dark:text-slate-300">{formatDate(article.updatedAt)}</td>
                   <td className="p-4"><AdminPublishStateBadge state={resolveAdminPublishState(article as unknown as Record<string, unknown>)} /></td>

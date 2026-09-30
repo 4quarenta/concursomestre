@@ -346,6 +346,7 @@ final class BlogRepository
                 ':allow_comments' => $article['allowComments'] ? 1 : 0,
                 ':source_name' => $article['sourceName'],
                 ':source_url' => $article['sourceUrl'],
+                ':sources_json' => json_encode($article['sources'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
                 ':seo_title' => $article['seoTitle'],
                 ':seo_description' => $article['seoDescription'],
                 ':canonical_url' => $article['canonicalUrl'],
@@ -371,6 +372,7 @@ final class BlogRepository
                         allow_comments = :allow_comments,
                         source_name = :source_name,
                         source_url = :source_url,
+                        sources_json = :sources_json,
                         seo_title = :seo_title,
                         seo_description = :seo_description,
                         canonical_url = :canonical_url,
@@ -389,13 +391,13 @@ final class BlogRepository
                         author_id, author_name, author_role, category_id,
                         title, slug, excerpt, body_html, body_text, reading_minutes,
                         cover_image_url, cover_image_alt, status, featured, allow_comments,
-                        source_name, source_url, seo_title, seo_description, canonical_url,
+                        source_name, source_url, sources_json, seo_title, seo_description, canonical_url,
                         scheduled_at, published_at
                     ) VALUES (
                         :author_id, :author_name, :author_role, :category_id,
                         :title, :slug, :excerpt, :body_html, :body_text, :reading_minutes,
                         :cover_image_url, :cover_image_alt, :status, :featured, :allow_comments,
-                        :source_name, :source_url, :seo_title, :seo_description, :canonical_url,
+                        :source_name, :source_url, :sources_json, :seo_title, :seo_description, :canonical_url,
                         :scheduled_at, :published_at
                     )"
                 );
@@ -424,6 +426,23 @@ final class BlogRepository
         );
         $stmt->execute([':id' => $id]);
         return $stmt->rowCount() > 0;
+    }
+
+    public function recordPublicView(int $articleId): ?int
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE blog_articles
+             SET view_count = view_count + 1
+             WHERE id = :id AND deleted_at IS NULL
+               AND status IN ('published', 'scheduled')
+               AND published_at IS NOT NULL AND published_at <= NOW()"
+        );
+        $stmt->execute([':id' => $articleId]);
+        if ($stmt->rowCount() !== 1) return null;
+        $count = $this->db->prepare('SELECT view_count FROM blog_articles WHERE id = :id LIMIT 1');
+        $count->execute([':id' => $articleId]);
+        $value = $count->fetchColumn();
+        return $value === false ? null : (int) $value;
     }
 
     public function toggleLike(int $articleId, string $userId): array
@@ -543,6 +562,7 @@ final class BlogRepository
                      WHERE cm.target_type = 'blog_article'
                        AND cm.target_id = CAST(a.id AS CHAR)
                        AND cm.moderation_status = 'approved') AS comments_count,
+                    a.view_count AS views_count,
                     CASE WHEN :viewer_user_id_empty = '' THEN 0 ELSE EXISTS(
                         SELECT 1 FROM blog_article_likes vl
                         WHERE vl.article_id = a.id AND vl.user_id = :viewer_user_id_exists
@@ -581,6 +601,11 @@ final class BlogRepository
         $tags = $this->tagsForArticles($ids);
         return array_map(static function (array $row) use ($tags, $includeBody): array {
             $id = (int) $row['id'];
+            $decodedSources = json_decode((string) ($row['sources_json'] ?? ''), true);
+            $sources = is_array($decodedSources) ? array_values(array_filter($decodedSources, static fn ($item): bool => is_array($item))) : [];
+            if ($sources === [] && (!empty($row['source_name']) || !empty($row['source_url']))) {
+                $sources[] = ['name' => (string) ($row['source_name'] ?? ''), 'url' => (string) ($row['source_url'] ?? '')];
+            }
             $article = [
                 'id' => $id,
                 'title' => (string) $row['title'],
@@ -594,6 +619,7 @@ final class BlogRepository
                 'allowComments' => (bool) $row['allow_comments'],
                 'sourceName' => $row['source_name'] ?: null,
                 'sourceUrl' => $row['source_url'] ?: null,
+                'sources' => $sources,
                 'seoTitle' => $row['seo_title'] ?: null,
                 'seoDescription' => $row['seo_description'] ?: null,
                 'canonicalUrl' => $row['canonical_url'] ?: null,
@@ -618,6 +644,7 @@ final class BlogRepository
                 'engagement' => [
                     'likesCount' => (int) $row['likes_count'],
                     'commentsCount' => (int) $row['comments_count'],
+                    'viewsCount' => (int) ($row['views_count'] ?? 0),
                     'isLiked' => (bool) $row['is_liked'],
                 ],
             ];

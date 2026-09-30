@@ -190,13 +190,16 @@ export default async function BlogArticlePage({ params }: PageProps) {
               dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(article.bodyHtml || '') }}
             />
 
-            {article.sourceName || article.sourceUrl ? (
+            {(article.sources?.length || article.sourceName || article.sourceUrl) ? (
               <p className="mt-8 border-l-2 border-slate-300 pl-4 text-xs text-slate-500">
-                Fonte: {article.sourceUrl ? (
-                  <a href={article.sourceUrl} rel="nofollow noopener noreferrer" target="_blank" className="font-bold text-indigo-600 hover:underline">
-                    {article.sourceName || article.sourceUrl}
-                  </a>
-                ) : article.sourceName}
+                <span className="mb-2 block font-bold">Fontes:</span>
+                <span className="flex flex-col gap-1">
+                  {(article.sources?.length ? article.sources : [{ name: article.sourceName || '', url: article.sourceUrl || '' }]).map((source, index) => (
+                    <span key={`${source.url}-${index}`}>
+                      {source.url ? <a href={source.url} rel="nofollow noopener noreferrer" target="_blank" className="font-bold text-indigo-600 hover:underline">{source.name || source.url}</a> : source.name}
+                    </span>
+                  ))}
+                </span>
               </p>
             ) : null}
 

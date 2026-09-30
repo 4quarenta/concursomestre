@@ -18,6 +18,7 @@ import {
   Highlighter,
   ImagePlus,
   Italic,
+  Link2,
   List,
   Pilcrow,
   Quote,
@@ -39,6 +40,8 @@ interface RichTextEditorProps {
   stickyToolbar?: boolean;
   allowImages?: boolean;
   allowTables?: boolean;
+  allowLinks?: boolean;
+  allowHtmlPaste?: boolean;
   onImageUpload?: (file: File) => Promise<{ url: string; alt?: string }>;
   contentClassName?: string;
 }
@@ -104,6 +107,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   stickyToolbar = true,
   allowImages = false,
   allowTables = false,
+  allowLinks = false,
+  allowHtmlPaste = false,
   onImageUpload,
   contentClassName = '',
 }) => {
@@ -129,6 +134,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     insertUnorderedList: false,
   });
   const [activeBlock, setActiveBlock] = useState('P');
+  const [htmlPasteOpen, setHtmlPasteOpen] = useState(false);
+  const [htmlPasteValue, setHtmlPasteValue] = useState('');
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkError, setLinkError] = useState('');
 
   const saveCurrentSelection = React.useCallback(() => {
     if (typeof window === 'undefined') {
@@ -226,6 +236,34 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     emitSanitizedChange();
     window.requestAnimationFrame(refreshToolbarState);
   }, [disabled, emitSanitizedChange, refreshToolbarState, restoreSavedSelection]);
+
+  const applyPastedHtml = () => {
+    const sanitizedHtml = normalizeQuestionRichHtml(htmlPasteValue);
+    if (!sanitizedHtml.trim()) return;
+    insertHtmlAtSelection(sanitizedHtml);
+    setHtmlPasteValue('');
+    setHtmlPasteOpen(false);
+  };
+
+  const applyLink = () => {
+    const normalizedUrl = linkUrl.trim();
+    const savedRange = selectionRangeRef.current;
+    if (!savedRange || savedRange.collapsed) {
+      setLinkError('Selecione primeiro o texto que receberá o link.');
+      return;
+    }
+    if (!/^(https?:\/\/|mailto:|\/)/i.test(normalizedUrl)) {
+      setLinkError('Use um endereço https://, http://, mailto: ou um caminho do site.');
+      return;
+    }
+    restoreSavedSelection();
+    document.execCommand('createLink', false, normalizedUrl);
+    emitSanitizedChange();
+    setLinkUrl('');
+    setLinkError('');
+    setLinkOpen(false);
+    window.requestAnimationFrame(refreshToolbarState);
+  };
 
   const handleImageInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] || null;
@@ -395,6 +433,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
         <ToolbarButton icon={List} command="insertUnorderedList" title="Lista" active={activeCommands.insertUnorderedList} disabled={disabled} onCommand={execCommand} />
 
+        {allowLinks ? (
+          <button type="button" disabled={disabled} onMouseDown={(event) => { event.preventDefault(); saveCurrentSelection(); }} onClick={() => { setLinkError(''); setLinkOpen(true); }} title="Adicionar link ao texto selecionado" aria-label="Adicionar link" className="shrink-0 rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 sm:p-1.5">
+            <Link2 size={16} />
+          </button>
+        ) : null}
+
+        {allowHtmlPaste ? (
+          <button type="button" disabled={disabled} onMouseDown={(event) => { event.preventDefault(); saveCurrentSelection(); }} onClick={() => setHtmlPasteOpen(true)} title="Colar conteúdo HTML formatado" aria-label="Colar HTML" className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+            Colar HTML
+          </button>
+        ) : null}
+
         <div className="mx-0.5 h-4 w-px shrink-0 bg-slate-300 transition-colors dark:bg-slate-700 sm:mx-1" />
 
         {allowImages && (
@@ -513,6 +563,37 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         className={`rich-text-editor-content question-rich-html max-h-64 min-h-[96px] overflow-y-auto p-3 text-sm text-slate-700 outline-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-70 dark:text-slate-300 sm:min-h-[112px] sm:p-4 ${contentClassName}`}
         style={{ whiteSpace: 'pre-wrap' }}
       />
+
+      {htmlPasteOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setHtmlPasteOpen(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="rich-editor-html-title" className="w-full max-w-2xl rounded-md bg-white p-5 shadow-xl dark:bg-slate-900">
+            <h2 id="rich-editor-html-title" className="text-base font-semibold text-slate-900 dark:text-white">Colar HTML</h2>
+            <p className="mt-1 text-sm text-slate-500">A formatação compatível será mantida; scripts e atributos inseguros serão removidos.</p>
+            <textarea autoFocus value={htmlPasteValue} onChange={(event) => setHtmlPasteValue(event.target.value)} className="mt-4 min-h-56 w-full rounded-sm border border-slate-300 p-3 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Cole aqui o código HTML" />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setHtmlPasteOpen(false)} className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancelar</button>
+              <button type="button" disabled={!htmlPasteValue.trim()} onClick={applyPastedHtml} className="rounded-sm bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Inserir formatado</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {allowLinks && linkOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setLinkOpen(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="rich-editor-link-title" className="w-full max-w-lg rounded-md bg-white p-5 shadow-xl dark:bg-slate-900">
+            <h2 id="rich-editor-link-title" className="text-base font-semibold text-slate-900 dark:text-white">Adicionar link ao texto</h2>
+            <label className="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200">
+              Endereço do link
+              <input autoFocus type="url" value={linkUrl} onChange={(event) => { setLinkUrl(event.target.value); setLinkError(''); }} onKeyDown={(event) => { if (event.key === 'Enter') applyLink(); }} className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950" placeholder="https://exemplo.com" />
+            </label>
+            {linkError ? <p role="alert" className="mt-2 text-sm text-red-600">{linkError}</p> : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setLinkOpen(false)} className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancelar</button>
+              <button type="button" disabled={!linkUrl.trim()} onClick={applyLink} className="rounded-sm bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Aplicar link</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       <style>{`
         .rich-text-editor-content:empty:before {

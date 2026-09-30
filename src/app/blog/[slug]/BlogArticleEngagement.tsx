@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Heart } from 'lucide-react';
 import CommentsSection from '@/components/shared/feedback/CommentsSection';
 import { useAuth } from '@/providers/AuthProvider';
@@ -38,6 +38,7 @@ export default function BlogArticleEngagement({
   const [liked, setLiked] = useState(initialIsLiked);
   const [likesCount, setLikesCount] = useState(initialLikesCount);
   const [comments, setComments] = useState<QuestaoComentario[]>([]);
+  const viewRecordedRef = useRef(false);
   const currentUserId = currentUser?.id;
   const displayLiked = Boolean(currentUserId) && liked;
 
@@ -45,6 +46,12 @@ export default function BlogArticleEngagement({
     if (!allowComments) return;
     setComments(await commentService.getComments(String(articleId), currentUser?.id, 'blog_article'));
   };
+
+  useEffect(() => {
+    if (viewRecordedRef.current) return;
+    viewRecordedRef.current = true;
+    void blogService.recordView(articleId).catch(() => undefined);
+  }, [articleId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

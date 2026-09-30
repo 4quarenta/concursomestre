@@ -117,6 +117,28 @@ final class BlogValidator
             }
         }
 
+        $sources = [];
+        $rawSources = $payload['sources'] ?? null;
+        if (is_array($rawSources)) {
+            if (count($rawSources) > 20) {
+                throw new InvalidArgumentException('Um artigo pode ter no maximo 20 fontes.');
+            }
+            foreach ($rawSources as $source) {
+                if (!is_array($source)) continue;
+                $name = $this->limitedOptionalString($source['name'] ?? null, 180);
+                $url = $this->validatedOptionalUrl($source['url'] ?? null);
+                if ($name === null && $url === null) continue;
+                $sources[] = ['name' => $name ?? '', 'url' => $url ?? ''];
+            }
+        }
+        if (!array_key_exists('sources', $payload)) {
+            $legacyName = $this->limitedOptionalString($payload['sourceName'] ?? null, 180);
+            $legacyUrl = $this->validatedOptionalUrl($payload['sourceUrl'] ?? null);
+            if ($legacyName !== null || $legacyUrl !== null) {
+                $sources[] = ['name' => $legacyName ?? '', 'url' => $legacyUrl ?? ''];
+            }
+        }
+
         return [
             'id' => $id,
             'title' => $title,
@@ -135,8 +157,9 @@ final class BlogValidator
             'featured' => filter_var($payload['featured'] ?? false, FILTER_VALIDATE_BOOL),
             'allowComments' => !array_key_exists('allowComments', $payload)
                 || filter_var($payload['allowComments'], FILTER_VALIDATE_BOOL),
-            'sourceName' => $this->limitedOptionalString($payload['sourceName'] ?? null, 180),
-            'sourceUrl' => $this->validatedOptionalUrl($payload['sourceUrl'] ?? null),
+            'sourceName' => $sources[0]['name'] ?? null,
+            'sourceUrl' => $sources[0]['url'] ?? null,
+            'sources' => $sources,
             'seoTitle' => mb_substr($title, 0, 180),
             'seoDescription' => mb_substr($excerpt, 0, 320),
             'canonicalUrl' => null,

@@ -36,6 +36,7 @@ class RateLimiter
         'auth_refresh' => ['max' => 60, 'window' => 60],
         'support_write' => ['max' => 20, 'window' => 300],
         'comment_write' => ['max' => 30, 'window' => 300],
+        'blog_view' => ['max' => 120, 'window' => 60],
         'report_write' => ['max' => 10, 'window' => 600],
         'upload' => ['max' => 20, 'window' => 900],
         'analytics_track' => ['max' => 120, 'window' => 60],

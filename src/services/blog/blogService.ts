@@ -55,6 +55,11 @@ export const blogService = {
     return readApiData(response, { liked: false, likesCount: 0 });
   },
 
+  async recordView(articleId: number): Promise<void> {
+    const response = await apiClient.post<ApiResponse>(ENDPOINTS.blog.view, { articleId });
+    assertApiSuccess(response, 'Nao foi possivel registrar a visualizacao.');
+  },
+
   async adminList(params: Record<string, string | number | undefined> = {}): Promise<BlogPage> {
     const response = await apiClient.get<ApiResponse<BlogPage>>(ENDPOINTS.blog.adminList, { params });
     assertApiSuccess(response, 'Nao foi possivel listar os artigos.');
