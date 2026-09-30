@@ -204,7 +204,7 @@ export const adminService = {
    * Persiste as configurações globais alteradas pelo painel administrativo.
    * @since v1.0.0
    */
-  async saveSystemSettings(settings: SystemSettings): Promise<Partial<SystemSettings>> {
+  async saveSystemSettings(settings: Partial<SystemSettings>): Promise<Partial<SystemSettings>> {
     const response = await requestApi<Partial<SystemSettings>>(apiClient.post<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update, settings));
     const envelope = assertApiSuccess<Partial<SystemSettings>>(response, 'Não foi possível salvar as configurações.');
     return readApiData<Partial<SystemSettings>>(envelope.raw, {});

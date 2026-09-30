@@ -69,6 +69,39 @@ type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications'
 type AdminMobileAppTab = 'version';
 type AdminSettingsTabs = React.ComponentProps<typeof AdminSettingsTabsBar>['tabs'];
 
+const SETTINGS_SECTION_FIELDS: Partial<Record<AdminSettingsTab, Array<keyof SystemSettings>>> = {
+  general: [
+    'siteName', 'platformVersion', 'supportPhone', 'legalContactEmail', 'privacyContactEmail',
+    'platformFeePercent', 'referralCommissionPercent', 'referralRefundGraceDays',
+    'referralPayoutCycleDays', 'referralPayoutDay', 'pixKey', 'appMode', 'dailyMotivationMarkdown',
+  ],
+  modules: ['features'],
+  gamification: ['gamification'],
+  notifications: ['notificationSettings', 'features'],
+  integrations: [
+    'paymentCheckoutMode', 'stripePublishableKey', 'stripeSecretKey', 'stripeWebhookSecret',
+    'stripePaymentMethods', 'recaptchaEnabled', 'recaptchaSiteKey', 'recaptchaSecretKey',
+    'googleAuthClientId', 'facebookAuthAppId', 'facebookAuthAppSecret', 'appleAuthClientId',
+    'appleAuthRedirectUri', 'googleAnalyticsId', 'metaPixelId', 'aiProvider', 'geminiApiKey',
+    'geminiModel', 'openaiApiKey', 'openAiModel',
+  ],
+  email: [
+    'emailProvider', 'resendApiKey', 'smtpHost', 'smtpPort', 'smtpSecure', 'smtpUser', 'smtpPass',
+    'mailFromAddress', 'mailFromName', 'emailLogoUrl',
+  ],
+  'email-templates': ['emailTemplates'],
+  ads: [
+    'adsEnabled', 'adsenseTestMode', 'adsenseClientId', 'adsTxtContent', 'adsenseTopSlotId',
+    'adsenseSidebarSlotId', 'adsenseBottomSlotId', 'adPlacementTopEnabled',
+    'adPlacementSidebarEnabled', 'adPlacementBottomEnabled', 'adPlacementInterstitialEnabled',
+    'adPlacementNavigationPopEnabled', 'facebookAdsId', 'adBannerTop', 'adBannerSidebar',
+    'adBannerBottom', 'adInterstitialSlotId', 'adNavigationPopUrl', 'planEntitlements',
+    'planUsageLimits',
+  ],
+  seo: ['seo'],
+  'mobile-app': ['mobileAppUpdatePolicy'],
+};
+
 interface AdminIntegrationCheck {
   label: string;
   status: string;
@@ -88,7 +121,7 @@ type AdminIntegrationsTestResult = Omit<AdminSettingsTestResult, 'data'> & {
 interface AdminSettingsProps {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => void;
-  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
+  saveSystemSettingsNow: (settings?: Partial<SystemSettings>) => Promise<SystemSettings>;
   addToast: AdminToastFn;
   initialSection?: AdminSettingsTab;
   onSectionChange?: (section: AdminSettingsTab) => void;
@@ -97,7 +130,6 @@ interface AdminSettingsProps {
 
 const inputClassName = `w-full ${ADMIN_FIELD_CLASS}`;
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
-const DEFAULT_LIMITED_OFFER_EXTENSION_MS = 7 * 24 * 60 * 60 * 1000;
 const AD_PLAN_BENEFIT_KEYS: PlanBenefitKey[] = [
   'ads.adsense_banner',
   'ads.facebook_banner',
@@ -112,15 +144,6 @@ const AD_PLAN_BENEFIT_KEYS: PlanBenefitKey[] = [
 const AD_PLAN_LIMIT_KEYS: PlanUsageLimitKey[] = [
   'ad_interstitial_answer_interval',
 ];
-
-const resolveFutureLimitedOfferEndsAt = (value?: string | null) => {
-  const timestamp = new Date(value || '').getTime();
-  if (!value || Number.isNaN(timestamp) || timestamp <= Date.now()) {
-    return new Date(Date.now() + DEFAULT_LIMITED_OFFER_EXTENSION_MS).toISOString();
-  }
-
-  return value;
-};
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   const apiMessage = readApiErrorMessage(error, '');
@@ -409,28 +432,35 @@ const AdminSettings = ({
     return payload as SystemSettings;
   };
 
+  const buildActiveSectionPayload = (): Partial<SystemSettings> => {
+    const fullPayload = buildSettingsPayload() as SystemSettings & Record<string, unknown>;
+    const fields = SETTINGS_SECTION_FIELDS[activeTab] || [];
+    const sectionPayload: Record<string, unknown> = {};
+
+    for (const field of fields) {
+      if (!Object.prototype.hasOwnProperty.call(fullPayload, field)) continue;
+      if (field === 'features') {
+        const featureKeys = activeTab === 'modules'
+          ? featureItems.map((item) => item.id)
+          : ['notificationsEnabled' as const];
+        sectionPayload.features = Object.fromEntries(
+          featureKeys.map((key) => [key, fullPayload.features[key]]),
+        );
+        continue;
+      }
+      sectionPayload[field] = fullPayload[field];
+    }
+
+    if (activeTab === 'seo') {
+      sectionPayload.seo = localSeoSettings;
+    }
+
+    return sectionPayload as Partial<SystemSettings>;
+  };
+
   const handlePersistSettings = async () => {
     if (isSavingSettings) return;
-    const nextSettings = buildSettingsPayload();
-    const limitedOfferCountdown = nextSettings.limitedOfferCountdown;
-    if (limitedOfferCountdown?.enabled) {
-      const resolvedEndsAt = resolveFutureLimitedOfferEndsAt(limitedOfferCountdown.endsAt);
-      if (resolvedEndsAt !== limitedOfferCountdown.endsAt) {
-        nextSettings.limitedOfferCountdown = {
-          ...limitedOfferCountdown,
-          endsAt: resolvedEndsAt,
-        };
-        setLocalSettings((current) => ({
-          ...current,
-          limitedOfferCountdown: {
-            ...(current.limitedOfferCountdown || { enabled: true, endsAt: resolvedEndsAt }),
-            enabled: true,
-            endsAt: resolvedEndsAt,
-          },
-        }));
-        addToast('A oferta por tempo limitado estava sem data valida. Definimos automaticamente um encerramento futuro de 7 dias.', 'info');
-      }
-    }
+    const nextSettings = buildActiveSectionPayload();
 
     setIsSavingSettings(true);
     try {
@@ -718,6 +748,7 @@ const AdminSettings = ({
   return (
     <div className="space-y-5 md:space-y-6">
       {standaloneSection ? (
+        SETTINGS_SECTION_FIELDS[activeTab] ? (
         <div className="mb-4 flex justify-end">
           <button
             onClick={() => void handlePersistSettings()}
@@ -725,14 +756,16 @@ const AdminSettings = ({
             className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-8 py-3 text-xs font-bold uppercase tracking-widest`}
           >
             <Save size={18} />
-            {isSavingSettings ? 'Salvando...' : 'Salvar alteracoes'}
+            {isSavingSettings ? 'Salvando...' : 'Salvar esta seção'}
           </button>
         </div>
+        ) : null
       ) : (
         <AdminSettingsTabsBar
           tabs={settingsTabs}
           activeTab={activeTab}
           isSaving={isSavingSettings}
+          canSave={Boolean(SETTINGS_SECTION_FIELDS[activeTab])}
           onChange={(section) => changeSection(section as AdminSettingsTab)}
           onSave={() => void handlePersistSettings()}
         />

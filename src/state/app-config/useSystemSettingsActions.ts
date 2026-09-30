@@ -29,7 +29,7 @@ export const useSystemSettingsActions = () => {
   const replaceSystemSettings = useAppConfigStore((store) => store.replaceSystemSettings);
 
   const settingsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSystemSettingsRef = useRef<SystemSettings | null>(null);
+  const pendingSystemSettingsRef = useRef<Partial<SystemSettings> | null>(null);
   const isSavingSystemSettingsRef = useRef(false);
   const lastSavedSystemSettingsRef = useRef<SystemSettings>(systemSettings);
 
@@ -39,8 +39,8 @@ export const useSystemSettingsActions = () => {
 
   // eslint-disable-next-line react-hooks/preserve-manual-memoization -- callback reprocessa a fila pendente apos concluir o save atual.
   const flushSystemSettingsSave = useCallback(async () => {
-    const nextSettings = pendingSystemSettingsRef.current;
-    if (!nextSettings) return;
+    const settingsPatch = pendingSystemSettingsRef.current;
+    if (!settingsPatch) return;
 
     if (isSavingSystemSettingsRef.current) {
       return;
@@ -50,8 +50,9 @@ export const useSystemSettingsActions = () => {
     pendingSystemSettingsRef.current = null;
 
     try {
-      const persistedSettings = await adminService.saveSystemSettings(nextSettings);
-      const officialSettings = resolvePersistedSystemSettings(nextSettings, persistedSettings);
+      const optimisticSettings = mergeSystemSettings(lastSavedSystemSettingsRef.current, settingsPatch);
+      const persistedSettings = await adminService.saveSystemSettings(settingsPatch);
+      const officialSettings = resolvePersistedSystemSettings(optimisticSettings, persistedSettings);
 
       lastSavedSystemSettingsRef.current = officialSettings;
       replaceSystemSettings(officialSettings);
@@ -74,7 +75,7 @@ export const useSystemSettingsActions = () => {
   const updateSystemSettings = useCallback((payload: SystemSettings) => {
     const nextSettings = mergeSystemSettings(systemSettings, payload);
     replaceSystemSettings(nextSettings);
-    pendingSystemSettingsRef.current = nextSettings;
+    pendingSystemSettingsRef.current = payload;
 
     if (settingsSaveTimerRef.current) {
       clearTimeout(settingsSaveTimerRef.current);
@@ -97,7 +98,7 @@ export const useSystemSettingsActions = () => {
     pendingSystemSettingsRef.current = null;
 
     if (isSavingSystemSettingsRef.current) {
-      pendingSystemSettingsRef.current = nextSettings;
+      pendingSystemSettingsRef.current = requestedSettings;
       while (isSavingSystemSettingsRef.current || pendingSystemSettingsRef.current) {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
@@ -107,7 +108,7 @@ export const useSystemSettingsActions = () => {
     isSavingSystemSettingsRef.current = true;
 
     try {
-      const persistedSettings = await adminService.saveSystemSettings(nextSettings);
+      const persistedSettings = await adminService.saveSystemSettings(requestedSettings);
       const officialSettings = resolvePersistedSystemSettings(nextSettings, persistedSettings);
       lastSavedSystemSettingsRef.current = officialSettings;
       replaceSystemSettings(officialSettings);

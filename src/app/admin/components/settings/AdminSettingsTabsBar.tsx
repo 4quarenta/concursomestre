@@ -28,6 +28,7 @@ interface AdminSettingsTabsBarProps {
   tabs: AdminSettingsTabItem[];
   activeTab: string;
   isSaving: boolean;
+  canSave: boolean;
   onChange: (section: string) => void;
   onSave: () => void;
 }
@@ -42,6 +43,7 @@ const AdminSettingsTabsBar = ({
   tabs,
   activeTab,
   isSaving,
+  canSave,
   onChange,
   onSave,
 }: AdminSettingsTabsBarProps) => {
@@ -63,14 +65,16 @@ const AdminSettingsTabsBar = ({
         ))}
       </div>
 
-      <button
-        onClick={onSave}
-        disabled={isSaving}
-        className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-6 py-3`}
-      >
-        <Save size={18} />
-        {isSaving ? 'Salvando...' : 'Salvar alteracoes'}
-      </button>
+      {canSave && (
+        <button
+          onClick={onSave}
+          disabled={isSaving}
+          className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-6 py-3`}
+        >
+          <Save size={18} />
+          {isSaving ? 'Salvando...' : 'Salvar esta seção'}
+        </button>
+      )}
     </div>
   );
 };
