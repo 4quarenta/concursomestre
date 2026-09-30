@@ -165,9 +165,9 @@ class AdminSettingsService
     {
         $data = $this->validator->validateUpdatePayload($payload);
         $data = $this->normalizeFeatureSettingsPayload($data);
-        $this->validateFeaturedOrganizationFilterTypes($data);
+        $persistedSettings = $this->repository->fetchAllSystemSettings();
+        $this->validateFeaturedOrganizationFilterTypes($data, $persistedSettings);
         if (($data['recaptchaEnabled'] ?? false) === true) {
-            $persistedSettings = $this->repository->fetchAllSystemSettings();
             $existingRecaptchaSecret = $_ENV['RECAPTCHA_SECRET_KEY'] ?? getenv('RECAPTCHA_SECRET_KEY') ?? '';
             $this->validator->assertRecaptchaActivationConfiguration(
                 $data,
@@ -1327,7 +1327,7 @@ class AdminSettingsService
      * A vitrine de orgaos referencia somente taxonomias existentes e do tipo
      * orgao. O slug e o nome nunca fazem parte do payload persistido.
      */
-    private function validateFeaturedOrganizationFilterTypes(array $payload): void
+    private function validateFeaturedOrganizationFilterTypes(array $payload, array $persistedSettings = []): void
     {
         $content = is_array($payload['landingPageContent'] ?? null) ? $payload['landingPageContent'] : [];
         $items = is_array($content['featuredOrganizations'] ?? null) ? $content['featuredOrganizations'] : [];
@@ -1344,6 +1344,20 @@ class AdminSettingsService
         $statement->execute($filterIds);
         $validIds = array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN) ?: []);
         if (count($validIds) !== count($filterIds)) {
+            $persistedContent = is_array($persistedSettings['landingPageContent'] ?? null)
+                ? $persistedSettings['landingPageContent']
+                : [];
+            $persistedItems = is_array($persistedContent['featuredOrganizations'] ?? null)
+                ? $persistedContent['featuredOrganizations']
+                : [];
+
+            // A full settings save echoes the existing landing-page payload.
+            // Preserve an unchanged legacy list, but reject any new/edited
+            // invalid organization reference.
+            if ($items == $persistedItems) {
+                return;
+            }
+
             throw new InvalidArgumentException('A vitrine aceita somente filtros existentes do tipo orgao.');
         }
     }
