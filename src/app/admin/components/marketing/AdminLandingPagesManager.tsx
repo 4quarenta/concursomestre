@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Check, Code2, Copy, ExternalLink, LoaderCircle, Power } from 'lucide-react';
+import { Code2, LoaderCircle, Search } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import type { MarketingLandingPage, SystemSettings } from '@types';
 import {
@@ -11,7 +11,7 @@ import {
   mergeMarketingLandingPages,
   normalizeLandingSlug,
 } from '@services/marketing/landingPages';
-import { ADMIN_PRIMARY_BUTTON_CLASS, ADMIN_SECONDARY_BUTTON_CLASS, ADMIN_SURFACE_CLASS } from '../shared/adminPanelStyles';
+import { ADMIN_SURFACE_CLASS } from '../shared/adminPanelStyles';
 
 interface AdminLandingPagesManagerProps {
   systemSettings: SystemSettings;
@@ -23,6 +23,8 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
   saveSystemSettingsNow,
 }) => {
   const { addToast } = useToast();
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'published' | 'draft'>('all');
   const [isSavingScript, setIsSavingScript] = useState<string | null>(null);
   const pages = useMemo(
     () => mergeMarketingLandingPages(systemSettings.landingPages, systemSettings.siteName || 'ConcursoMestre'),
@@ -93,80 +95,58 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
         </div>
       </header>
 
-      <div className="grid gap-4 p-5 sm:p-7 lg:grid-cols-2">
-        {MARKETING_LANDING_SCRIPT_REGISTRY.map((script) => {
-          const page = getPageForScript(script.id);
-          const published = page?.status === 'published';
-          const busy = isSavingScript === script.id;
-
-          return (
-            <article key={script.id} className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{script.title}</h3>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{script.description}</p>
-                </div>
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${published
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
-                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                }`}>
-                  {published ? 'Disponível' : 'Indisponível'}
-                </span>
-              </div>
-
-              <div className="mt-5 rounded-xl bg-slate-50 p-4 dark:bg-slate-950/60">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Link da landing</p>
-                <div className="mt-2 flex items-center gap-2">
-                  <Link
-                    href={script.path}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-w-0 flex-1 truncate text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300"
-                  >
-                    {script.path}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => void copyLink(script.path)}
-                    aria-label={`Copiar link de ${script.title}`}
-                    className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:text-slate-300 dark:hover:text-sky-300"
-                  >
-                    <Copy size={15} />
-                  </button>
-                  <Link
-                    href={script.path}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Abrir ${script.title}`}
-                    className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:text-slate-300 dark:hover:text-sky-300"
-                  >
-                    <ExternalLink size={15} />
-                  </Link>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
-                <span>Componente: <code className="text-slate-700 dark:text-slate-200">{script.id}</code></span>
-                <span>Arquivo: <code className="text-slate-700 dark:text-slate-200">{script.componentPath}</code></span>
-              </div>
-
-              <div className="mt-auto flex flex-wrap gap-2 pt-5">
-                <Link href={script.path} target="_blank" rel="noreferrer" className={`${ADMIN_SECONDARY_BUTTON_CLASS} flex-1 justify-center px-4 py-2.5`}>
-                  Ver landing <ArrowUpRight size={15} />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => void toggleAvailability(script.id, !published)}
-                  disabled={busy}
-                  className={`${published ? ADMIN_SECONDARY_BUTTON_CLASS : ADMIN_PRIMARY_BUTTON_CLASS} flex-1 justify-center px-4 py-2.5 disabled:cursor-wait disabled:opacity-60`}
-                >
-                  {busy ? <LoaderCircle size={15} className="animate-spin" /> : published ? <Power size={15} /> : <Check size={15} />}
-                  {busy ? 'Salvando...' : published ? 'Desativar' : 'Ativar'}
-                </button>
-              </div>
-            </article>
-          );
-        })}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+        <nav aria-label="Filtrar landing pages" className="flex gap-4 text-sm">
+          {([
+            ['all', 'Todas'], ['published', 'Disponíveis'], ['draft', 'Indisponíveis'],
+          ] as const).map(([value, label]) => {
+            const count = MARKETING_LANDING_SCRIPT_REGISTRY.filter((script) => value === 'all' || (getPageForScript(script.id)?.status === 'published' ? 'published' : 'draft') === value).length;
+            return <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value} className={`border-b-2 pb-1 ${filter === value ? 'border-sky-600 text-sky-700 dark:text-sky-300' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>{label} ({count})</button>;
+          })}
+        </nav>
+        <label className="flex items-center gap-2 rounded border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+          <Search size={16} className="text-slate-400" />
+          <input aria-label="Buscar landing pages" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar landing..." className="w-52 bg-transparent text-sm outline-none dark:text-slate-200" />
+        </label>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
+            <tr><th scope="col" className="px-5 py-4">Título</th><th scope="col" className="px-5 py-4">Link</th><th scope="col" className="px-5 py-4">Status</th><th scope="col" className="px-5 py-4">Componente</th><th scope="col" className="px-5 py-4">Atualizada</th></tr>
+          </thead>
+          <tbody>
+            {MARKETING_LANDING_SCRIPT_REGISTRY.filter((script) => {
+              const status = getPageForScript(script.id)?.status === 'published' ? 'published' : 'draft';
+              return (filter === 'all' || filter === status) && `${script.title} ${script.path} ${script.id}`.toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR'));
+            }).map((script) => {
+              const page = getPageForScript(script.id);
+              const published = page?.status === 'published';
+              const busy = isSavingScript === script.id;
+              return (
+                <tr key={script.id} className="border-b border-slate-200 odd:bg-white even:bg-slate-50/60 dark:border-slate-800 dark:odd:bg-slate-900 dark:even:bg-slate-950/30">
+                  <td className="px-5 py-5 align-top">
+                    <Link href={script.path} target="_blank" rel="noreferrer" className="font-semibold text-sky-700 hover:underline dark:text-sky-300">{script.title}</Link>
+                    <p className="mt-1 text-slate-500 dark:text-slate-400">{script.description}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
+                      <Link href={script.path} target="_blank" rel="noreferrer" className="hover:underline">Ver</Link>
+                      <span aria-hidden="true" className="text-slate-300">|</span>
+                      <button type="button" onClick={() => void copyLink(script.path)} className="hover:underline">Copiar link</button>
+                      <span aria-hidden="true" className="text-slate-300">|</span>
+                      <button type="button" onClick={() => void toggleAvailability(script.id, !published)} disabled={isSavingScript !== null} className="inline-flex items-center gap-1 hover:underline disabled:opacity-50">
+                        {busy && <LoaderCircle size={12} className="animate-spin" />}{busy ? 'Salvando...' : published ? 'Desativar' : 'Ativar'}
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-5 py-5 align-top"><code className="text-xs text-slate-600 dark:text-slate-300">{script.path}</code></td>
+                  <td className="px-5 py-5 align-top"><span className={`rounded px-2 py-1 text-xs font-semibold ${published ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{published ? 'Disponível' : 'Indisponível'}</span></td>
+                  <td className="px-5 py-5 align-top"><code title={script.componentPath} className="text-xs text-slate-600 dark:text-slate-300">{script.id}</code></td>
+                  <td className="whitespace-nowrap px-5 py-5 align-top text-slate-500 dark:text-slate-400">{page?.updatedAt && !Number.isNaN(Date.parse(page.updatedAt)) ? new Date(page.updatedAt).toLocaleDateString('pt-BR') : '—'}</td>
+                </tr>
+              );
+            })}
+            {!MARKETING_LANDING_SCRIPT_REGISTRY.some((script) => (filter === 'all' || (getPageForScript(script.id)?.status === 'published' ? 'published' : 'draft') === filter) && `${script.title} ${script.path} ${script.id}`.toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR'))) && <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-500">Nenhuma landing page encontrada.</td></tr>}
+          </tbody>
+        </table>
       </div>
 
       <footer className="border-t border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400 sm:px-7">
