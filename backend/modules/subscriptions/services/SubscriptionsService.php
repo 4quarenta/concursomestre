@@ -1095,7 +1095,6 @@ class SubscriptionsService
         if ($job === null) {
             return null;
         }
-
         $eventId = (string) ($job['event_id'] ?? '');
         $claimToken = (string) ($job['claim_token'] ?? '');
         try {
@@ -1103,6 +1102,7 @@ class SubscriptionsService
             if (!is_object($event)) {
                 throw new UnexpectedValueException('Payload Stripe enfileirado invalido.');
             }
+            assertStripeEventMatchesConfiguredMode($event);
             $result = $this->processStripeWebhookEventObject(
                 $event,
                 (string) ($job['payload_hash'] ?? ''),

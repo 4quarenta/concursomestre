@@ -51,13 +51,19 @@ function resolveStripeKeyMode(?string $key): string
 function assertStripeEventMatchesConfiguredMode(object $event): void
 {
     $expectedMode = resolveStripeKeyMode(STRIPE_SECRET_KEY);
-    if ($expectedMode === '' || !property_exists($event, 'livemode')) {
-        return;
+    if ($expectedMode === '') {
+        throw new RuntimeException('Stripe webhook nao configurado.');
     }
 
-    $eventMode = !empty($event->livemode) ? 'live' : 'test';
+    // StripeObject exposes payload fields through __get/__isset, not declared properties.
+    $liveMode = $event->livemode ?? null;
+    if (!is_bool($liveMode)) {
+        throw new UnexpectedValueException('Evento Stripe sem modo valido.');
+    }
+
+    $eventMode = $liveMode ? 'live' : 'test';
     if ($eventMode !== $expectedMode) {
-        throw new InvalidArgumentException('Evento Stripe recebido em ambiente incompatível.');
+        throw new UnexpectedValueException('Evento Stripe recebido em ambiente incompatível.');
     }
 }
 
