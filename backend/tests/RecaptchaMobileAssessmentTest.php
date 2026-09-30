@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/shared/security/Recaptcha.php';
+require_once dirname(__DIR__) . '/shared/http/Request.php';
 
 function assertMobileRecaptchaTest(bool $condition, string $message): void
 {
@@ -15,6 +16,11 @@ $config = [
     'packageName' => 'com.concursomestre.mobile',
     'minimumScore' => 0.5,
 ];
+$validationException = new RecaptchaValidationException('invalid');
+$unavailableException = new RecaptchaUnavailableException('unavailable');
+assertMobileRecaptchaTest($validationException->statusCode() === 422, 'Validation failures should retain their HTTP status.');
+assertMobileRecaptchaTest($unavailableException->statusCode() === 503, 'Provider failures should retain their HTTP status.');
+
 $validAssessment = [
     'tokenProperties' => [
         'valid' => true,
@@ -43,3 +49,4 @@ foreach ([
 }
 
 fwrite(STDOUT, "Mobile reCAPTCHA assessment assertions passed.\n");
+

@@ -11,17 +11,11 @@
 *
 */
 
+require_once __DIR__ . '/../errors/HttpException.php';
+
 const DEFAULT_RECAPTCHA_V3_MINIMUM_SCORE = 0.5;
 const GOOGLE_RECAPTCHA_TEST_SITE_KEY = '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
 const GOOGLE_RECAPTCHA_TEST_SECRET_KEY = '6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe';
-
-final class RecaptchaValidationException extends RuntimeException
-{
-}
-
-final class RecaptchaUnavailableException extends RuntimeException
-{
-}
 
 /** Retorna configuracao Enterprise mobile sem expor a chave de avaliacao. */
 function getRecaptchaMobileConfiguration(): array
@@ -396,3 +390,4 @@ function ensureRecaptchaPassed(PDO $db, ?string $token, array $options = []): vo
         }
     }
 }
+
