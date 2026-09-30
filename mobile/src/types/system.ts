@@ -40,15 +40,19 @@ export interface MobilePlanDetail {
 export type MobilePlanDetailsMap = Record<string, MobilePlanDetail>;
 export type MobilePlanName = 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
 
-export interface MobilePlanPricing {
-  monthly: number;
-  quarterly: number;
-  annual: number;
-  quarterlyDiscountPercent: number;
-  annualDiscountPercent: number;
+export type MobilePlanEntitlementValue = boolean | { enabled?: boolean };
+export type MobilePlanEntitlements = Partial<
+  Record<MobilePlanName, Record<string, MobilePlanEntitlementValue>>
+>;
+
+export interface MobilePlanUsageLimitValue {
+  mode: 'limited' | 'unlimited';
+  value: number | null;
 }
 
-export type MobilePlanPricingMap = Partial<Record<MobilePlanName, MobilePlanPricing>>;
+export type MobilePlanUsageLimits = Partial<
+  Record<MobilePlanName, Record<string, MobilePlanUsageLimitValue>>
+>;
 
 export interface MobileAppUpdatePolicy {
   enabled: boolean;
@@ -59,14 +63,26 @@ export interface MobileAppUpdatePolicy {
   iosStoreUrl: string;
 }
 
+export interface MobilePlanPricing {
+  monthly: number;
+  quarterly: number;
+  annual: number;
+  quarterlyDiscountPercent: number;
+  annualDiscountPercent: number;
+}
+
+export type MobilePlanPricingMap = Partial<Record<MobilePlanName, MobilePlanPricing>>;
+
 export interface MobileSystemSettings {
-  recaptchaEnabled: boolean;
-  recaptchaAndroidSiteKey?: string;
   mobileAppUpdatePolicy: MobileAppUpdatePolicy;
   features: MobileFeatureFlags;
+  recaptchaEnabled: boolean;
+  recaptchaAndroidSiteKey?: string;
   sameTierCycleChangeEnabled: boolean;
   planDetails: MobilePlanDetailsMap;
   pricing: MobilePlanPricingMap;
+  planEntitlements: MobilePlanEntitlements;
+  planUsageLimits: MobilePlanUsageLimits;
   pixKey?: string;
   taxonomies: MobileGlobalTaxonomies;
 }
@@ -83,8 +99,6 @@ export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
 };
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
-  recaptchaEnabled: false,
-  recaptchaAndroidSiteKey: undefined,
   mobileAppUpdatePolicy: {
     enabled: false,
     latestVersion: '',
@@ -94,9 +108,13 @@ export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
     iosStoreUrl: '',
   },
   features: { ...DEFAULT_MOBILE_FEATURE_FLAGS },
+  recaptchaEnabled: false,
+  recaptchaAndroidSiteKey: undefined,
   sameTierCycleChangeEnabled: false,
   planDetails: {},
   pricing: {},
+  planEntitlements: {},
+  planUsageLimits: {},
   pixKey: undefined,
   taxonomies: {
     agencies: [],

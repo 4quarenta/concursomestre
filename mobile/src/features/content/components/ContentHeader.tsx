@@ -1,8 +1,8 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { spacing, typography } from "@/theme/tokens";
+import { AppText, MotionPressable } from "@/components/ui/Primitives";
+import { borders, spacing } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
 
 export const ContentHeader = ({
@@ -20,19 +20,19 @@ export const ContentHeader = ({
         { borderBottomColor: theme.border, backgroundColor: theme.surface },
       ]}
     >
-      <Pressable
+      <MotionPressable
         accessibilityRole="button"
         accessibilityLabel="Voltar"
         onPress={() => router.back()}
-        style={styles.back}
+        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
       >
         <Ionicons name="arrow-back" size={22} color={theme.text} />
-      </Pressable>
+      </MotionPressable>
       <View style={styles.copy}>
-        <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted }]}>
+        <AppText variant="screenTitle">{title}</AppText>
+        <AppText variant="screenDescription" tone="muted">
           {subtitle}
-        </Text>
+        </AppText>
       </View>
     </View>
   );
@@ -41,14 +41,14 @@ export const ContentHeader = ({
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    borderBottomWidth: 1,
+    borderBottomWidth: borders.hairline,
     flexDirection: "row",
     gap: spacing[3],
     paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
+    minHeight: 76,
+    paddingVertical: spacing[3],
   },
-  back: { padding: spacing[1] },
+  back: { alignItems: "center", borderRadius: 8, height: 44, justifyContent: "center", width: 44 },
+  pressed: { opacity: 0.78 },
   copy: { flex: 1, gap: 2 },
-  title: { fontSize: typography.size.lg, fontWeight: typography.weight.bold },
-  subtitle: { fontSize: typography.size.xs },
 });

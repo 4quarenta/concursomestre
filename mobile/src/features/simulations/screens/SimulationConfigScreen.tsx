@@ -1,14 +1,17 @@
 import React from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { AppButton, MotionPressable } from "@/components/ui/Primitives";
+import { GuestAccessSheet } from "@/components/GuestAccessSheet";
 import { useForm } from "react-hook-form";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ContentHeader } from "@/features/content/components/ContentHeader";
+import { useAuth } from "@/providers/AuthProvider";
+import { SimulationSubpageHeader } from "@/features/simulations/components/SimulationSubpageHeader";
 import { buildSimulationSeed } from "@/features/simulations/api/simulationQuestionPool";
 import { simulationConfigSchema, type SimulationConfigFormValues } from "@/features/simulations/schemas/simulationConfigSchema";
 import { useSimulationRunStore } from "@/state/simulationRunStore";
-import { radius, spacing, typography } from "@/theme/tokens";
+import { darkTheme, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 40, 50];
@@ -62,7 +65,7 @@ const SimulationFilterRow: React.FC<SimulationFilterRowProps> = ({ label, icon, 
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   return (
-    <Pressable
+    <MotionPressable
       accessibilityRole="button"
       accessibilityLabel={`Selecionar ${label}`}
       onPress={onPress}
@@ -77,7 +80,7 @@ const SimulationFilterRow: React.FC<SimulationFilterRowProps> = ({ label, icon, 
       </View>
       {values.length ? <Text style={styles.filterRowCount}>{values.length}</Text> : null}
       <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
-    </Pressable>
+    </MotionPressable>
   );
 };
 
@@ -85,10 +88,13 @@ export const SimulationConfigScreen: React.FC = () => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
+  const { user, isGuest } = useAuth();
+  const isVisitor = isGuest || !user?.id;
   const params = useLocalSearchParams<{ filterType?: string; values?: string }>();
   const appliedParam = React.useRef("");
   const setSeed = useSimulationRunStore((state) => state.setSeed);
   const [starting, setStarting] = React.useState(false);
+  const [guestAccessVisible, setGuestAccessVisible] = React.useState(false);
   const [timePerQuestion, setTimePerQuestion] = React.useState(2);
 
   const { watch, setValue, handleSubmit } = useForm<SimulationConfigFormValues>({
@@ -133,6 +139,10 @@ export const SimulationConfigScreen: React.FC = () => {
   const selectedFilters = values.subjects.length + values.agencies.length + values.years.length + values.topics.length + values.organizations.length + values.roles.length + (values.difficulty !== "all" ? 1 : 0);
 
   const start = handleSubmit(async (formValues) => {
+    if (isVisitor) {
+      setGuestAccessVisible(true);
+      return;
+    }
     const parsed = simulationConfigSchema.safeParse(formValues);
     if (!parsed.success) {
       Alert.alert("Configuração inválida", parsed.error.issues[0]?.message || "Revise os dados do simulado.");
@@ -163,9 +173,22 @@ export const SimulationConfigScreen: React.FC = () => {
 
   return (
     <View style={styles.screen}>
-      <ContentHeader title="Simulado personalizado" subtitle="Monte a prova do seu jeito" />
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 128 + insets.bottom }]} showsVerticalScrollIndicator={false}>
-        <Section icon="options-outline" title="Filtros da prova" subtitle="Abra cada categoria para escolher os itens">
+      <SimulationSubpageHeader title="Novo simulado" />
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: 116 + insets.bottom },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.intro}>
+          <Text style={styles.title}>Monte a prova do seu jeito</Text>
+          <Text style={styles.introDescription}>
+            Escolha filtros e personalize seu simulado.
+          </Text>
+        </View>
+
+        <Section icon="options-outline" title="Filtros da prova" subtitle="Selecione os critérios para encontrar questões">
           <View style={styles.filterList}>
             <SimulationFilterRow label="Banca" icon="business-outline" values={values.agencies} onPress={() => openPicker("banca", values.agencies)} />
             <SimulationFilterRow label="Ano" icon="calendar-outline" values={values.years} onPress={() => openPicker("ano", values.years)} />
@@ -175,96 +198,163 @@ export const SimulationConfigScreen: React.FC = () => {
             <SimulationFilterRow label="Cargos" icon="briefcase-outline" values={values.roles} onPress={() => openPicker("cargo", values.roles)} />
           </View>
         </Section>
-        <Section icon="bar-chart-outline" title="Dificuldade">
-          <View style={styles.optionGridFour}>
-            {DIFFICULTY_OPTIONS.map((option) => {
-              const active = values.difficulty === option.value;
-              return <Pressable key={option.value} onPress={() => setValue("difficulty", option.value)} style={[styles.gridOption, active && styles.gridOptionActive]}><Text style={[styles.gridOptionText, active && styles.gridOptionTextActive]}>{option.label}</Text></Pressable>;
-            })}
-          </View>
-        </Section>
+
         <Section icon="list-outline" title="Quantidade de questões">
           <View style={styles.optionGridFive}>
             {QUESTION_COUNT_OPTIONS.map((option) => {
               const active = values.questionCount === option;
-              return <Pressable key={option} onPress={() => setValue("questionCount", option)} style={[styles.countOption, active && styles.gridOptionActive]}><Text style={[styles.countText, active && styles.gridOptionTextActive]}>{option}</Text></Pressable>;
+              return (
+                <MotionPressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setValue("questionCount", option)}
+                  style={[styles.countOption, active && styles.gridOptionActive]}
+                >
+                  <Text style={[styles.countText, active && styles.gridOptionTextActive]}>
+                    {option}
+                  </Text>
+                </MotionPressable>
+              );
             })}
           </View>
         </Section>
+
+        <Section icon="bar-chart-outline" title="Dificuldade">
+          <View style={styles.optionGridFour}>
+            {DIFFICULTY_OPTIONS.map((option) => {
+              const active = values.difficulty === option.value;
+              return (
+                <MotionPressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setValue("difficulty", option.value)}
+                  style={[styles.gridOption, active && styles.gridOptionActive]}
+                >
+                  <Text style={[styles.gridOptionText, active && styles.gridOptionTextActive]}>
+                    {option.label}
+                  </Text>
+                </MotionPressable>
+              );
+            })}
+          </View>
+        </Section>
+
         <Section icon="timer-outline" title="Tempo de prova">
           <View style={styles.optionGridTime}>
             {TIME_OPTIONS.map((option) => {
               const active = timePerQuestion === option.value;
-              return <Pressable key={option.value} onPress={() => setTimePerQuestion(option.value)} style={[styles.timeOption, active && styles.gridOptionActive]}><Text style={[styles.gridOptionText, active && styles.gridOptionTextActive]}>{option.label}</Text></Pressable>;
+              return (
+                <MotionPressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setTimePerQuestion(option.value)}
+                  style={[styles.timeOption, active && styles.gridOptionActive]}
+                >
+                  <Text style={[styles.gridOptionText, active && styles.gridOptionTextActive]}>
+                    {option.label}
+                  </Text>
+                </MotionPressable>
+              );
             })}
           </View>
         </Section>
-        <Pressable onPress={() => setValue("randomOrder", !values.randomOrder)} style={styles.randomCard}>
-          <View style={styles.sectionIcon}><Ionicons name="shuffle-outline" size={16} color={theme.primary} /></View>
-          <View style={styles.randomCopy}><Text style={styles.cardTitle}>Ordem aleatória</Text><Text style={styles.helper}>Mistura questões de matérias diferentes</Text></View>
-          <View style={[styles.toggle, values.randomOrder && styles.toggleActive]}><View style={[styles.toggleKnob, values.randomOrder && styles.toggleKnobActive]} /></View>
-        </Pressable>
+
+        <MotionPressable
+          accessibilityRole="switch"
+          accessibilityState={{ checked: values.randomOrder }}
+          onPress={() => setValue("randomOrder", !values.randomOrder)}
+          style={styles.randomCard}
+        >
+          <View style={styles.sectionIcon}>
+            <Ionicons name="shuffle-outline" size={18} color={theme.primary} />
+          </View>
+          <View style={styles.randomCopy}>
+            <Text style={styles.cardTitle}>Ordem aleatória</Text>
+            <Text style={styles.helper}>Embaralhar questões e alternativas</Text>
+          </View>
+          <View style={[styles.toggle, values.randomOrder && styles.toggleActive]}>
+            <View style={[styles.toggleKnob, values.randomOrder && styles.toggleKnobActive]} />
+          </View>
+        </MotionPressable>
+
         <View style={styles.summary}>
           <Text style={styles.summaryEyebrow}>Resumo do simulado</Text>
-          <Text style={styles.summaryText}><Text style={styles.summaryStrong}>{values.questionCount} questões</Text>{" · "}{selectedFilters} filtro{selectedFilters === 1 ? "" : "s"}{" · "}{values.difficulty === "all" ? "Todas as dificuldades" : DIFFICULTY_OPTIONS.find((item) => item.value === values.difficulty)?.label}{timePerQuestion > 0 ? ` · ~${values.questionCount * timePerQuestion} min` : " · Sem limite"}</Text>
+          <Text style={styles.summaryText}>
+            <Text style={styles.summaryStrong}>{values.questionCount} questões</Text>
+            {" · "}{selectedFilters} filtro{selectedFilters === 1 ? "" : "s"}
+            {" · "}{values.difficulty === "all" ? "Todas as dificuldades" : DIFFICULTY_OPTIONS.find((item) => item.value === values.difficulty)?.label}
+            {timePerQuestion > 0 ? ` · ~${values.questionCount * timePerQuestion} min` : " · Sem limite"}
+          </Text>
         </View>
       </ScrollView>
-      <View style={[styles.ctaBar, { paddingBottom: insets.bottom + spacing[3] }]}>
-        <Pressable disabled={starting} onPress={() => void start()} style={[styles.startButton, starting && styles.disabled]}>
-          {starting ? <ActivityIndicator color={theme.onPrimary} /> : <><Ionicons name="play-outline" size={17} color={theme.onPrimary} /><Text style={styles.startButtonText}>Iniciar simulado · {values.questionCount} questões</Text></>}
-        </Pressable>
+
+      <View style={[styles.ctaBar, { paddingBottom: Math.max(insets.bottom, spacing[3]) + spacing[2] }]}>
+        <AppButton label="Iniciar simulado" loading={starting} disabled={starting} onPress={() => void start()} leading={!starting ? <Ionicons name="play-outline" size={18} color={theme.onPrimary} /> : undefined} style={styles.startButton} />
       </View>
+      <GuestAccessSheet
+        visible={guestAccessVisible}
+        description="Entre ou crie sua conta para iniciar o simulado e salvar seu resultado."
+        onDismiss={() => setGuestAccessVisible(false)}
+      />
     </View>
   );
 };
 
 const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
   screen: { backgroundColor: theme.background, flex: 1 },
-  content: { gap: spacing[4], padding: spacing[5] },
-  card: { backgroundColor: theme.surface, borderRadius: radius.lg, elevation: 1, gap: spacing[3], padding: spacing[4], shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5 },
+  content: { gap: spacing[3], padding: spacing[4] },
+  intro: { gap: spacing[1], paddingBottom: spacing[1] },
+  title: { color: theme.text, fontSize: typography.role.sectionTitle.fontSize, lineHeight: typography.role.sectionTitle.lineHeight, fontWeight: typography.role.sectionTitle.fontWeight },
+  introDescription: { color: theme.textMuted, fontSize: typography.role.body.fontSize, lineHeight: typography.role.body.lineHeight },
+  card: {
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    gap: spacing[3],
+    padding: spacing[3],
+    ...(theme === darkTheme ? shadows.cardDark : {}),
+  },
   sectionHeading: { alignItems: "center", flexDirection: "row", gap: spacing[3] },
-  sectionIcon: { alignItems: "center", backgroundColor: theme.primarySubtle, borderRadius: radius.md, height: 32, justifyContent: "center", width: 32 },
+  sectionIcon: { alignItems: "center", backgroundColor: theme.primarySubtle, borderRadius: radius.md, height: 36, justifyContent: "center", width: 36 },
   sectionCopy: { flex: 1, gap: spacing[1] },
-  cardTitle: { color: theme.text, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
-  helper: { color: theme.textMuted, fontSize: typography.size.xs, lineHeight: 17 },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
-  chip: { alignItems: "center", backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.pill, borderWidth: 1, flexDirection: "row", gap: spacing[1], paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
-  chipActive: { backgroundColor: theme.primary, borderColor: theme.primary },
-  chipText: { color: theme.text, fontSize: typography.size.xs, fontWeight: typography.weight.medium },
-  chipTextActive: { color: theme.onPrimary, fontWeight: typography.weight.bold },
+  cardTitle: { color: theme.text, fontSize: typography.role.sectionTitle.fontSize, lineHeight: typography.role.sectionTitle.lineHeight, fontWeight: typography.role.sectionTitle.fontWeight },
+  helper: { color: theme.textMuted, fontSize: typography.role.caption.fontSize, lineHeight: typography.role.caption.lineHeight },
   filterList: { borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
-  filterRow: { alignItems: "center", borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing[3], minHeight: 66, paddingHorizontal: spacing[3] },
-  filterRowIcon: { alignItems: "center", backgroundColor: theme.primarySubtle, borderRadius: radius.sm, height: 34, justifyContent: "center", width: 34 },
+  filterRow: { alignItems: "center", backgroundColor: theme.surface, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing[3], minHeight: 58, paddingHorizontal: spacing[3] },
+  filterRowIcon: { alignItems: "center", backgroundColor: theme.surfaceSubtle, borderRadius: radius.sm, height: 32, justifyContent: "center", width: 32 },
   filterRowCopy: { flex: 1, gap: 2 },
-  filterRowLabel: { color: theme.text, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
-  filterRowValue: { color: theme.textMuted, fontSize: typography.size.xs },
+  filterRowLabel: { color: theme.text, fontSize: typography.role.bodyStrong.fontSize, lineHeight: typography.role.bodyStrong.lineHeight, fontWeight: typography.role.bodyStrong.fontWeight },
+  filterRowValue: { color: theme.textMuted, fontSize: typography.role.caption.fontSize, lineHeight: typography.role.caption.lineHeight },
   filterRowPlaceholder: { color: theme.textSubtle },
-  filterRowCount: { color: theme.primary, fontSize: typography.size.xs, fontWeight: typography.weight.bold },
-  optionGridFour: { flexDirection: "row", gap: spacing[2] },
+  filterRowCount: { color: theme.textMuted, fontSize: typography.size.xs },
+  optionGridFour: { flexDirection: "row", gap: spacing[1] },
   optionGridFive: { flexDirection: "row", gap: spacing[2] },
   optionGridTime: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
-  gridOption: { alignItems: "center", backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flex: 1, minHeight: 42, justifyContent: "center", minWidth: 64, paddingHorizontal: spacing[2] },
-  gridOptionActive: { backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder },
-  gridOptionText: { color: theme.textMuted, fontSize: 11, fontWeight: typography.weight.semibold, textAlign: "center" },
-  gridOptionTextActive: { color: theme.primary },
-  countOption: { alignItems: "center", backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flex: 1, height: 42, justifyContent: "center" },
-  countText: { color: theme.textMuted, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
-  timeOption: { alignItems: "center", backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flexBasis: "48%", flexGrow: 1, minHeight: 42, justifyContent: "center", paddingHorizontal: spacing[2] },
-  randomCard: { alignItems: "center", backgroundColor: theme.surface, borderRadius: radius.lg, flexDirection: "row", gap: spacing[3], padding: spacing[4] },
+  gridOption: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flex: 1, minHeight: 42, justifyContent: "center", minWidth: 60, paddingHorizontal: spacing[1] },
+  gridOptionActive: { backgroundColor: theme.primarySubtle, borderColor: theme.primary },
+  gridOptionText: { color: theme.textMuted, fontSize: typography.role.label.fontSize, lineHeight: typography.role.label.lineHeight, fontWeight: typography.role.label.fontWeight, textAlign: "center" },
+  gridOptionTextActive: { color: theme.primary, fontWeight: typography.weight.bold },
+  countOption: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flex: 1, height: 42, justifyContent: "center" },
+  countText: { color: theme.textMuted, fontSize: typography.role.bodyStrong.fontSize, lineHeight: typography.role.bodyStrong.lineHeight, fontWeight: typography.role.bodyStrong.fontWeight },
+  timeOption: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.md, borderWidth: 1, flexBasis: "48%", flexGrow: 1, minHeight: 42, justifyContent: "center", paddingHorizontal: spacing[2] },
+  randomCard: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.lg, borderWidth: 1, flexDirection: "row", gap: spacing[3], padding: spacing[3] },
   randomCopy: { flex: 1, gap: spacing[1] },
   toggle: { backgroundColor: theme.borderStrong, borderRadius: radius.pill, height: 26, justifyContent: "center", padding: 3, width: 48 },
   toggleActive: { backgroundColor: theme.primary },
   toggleKnob: { backgroundColor: theme.surface, borderRadius: radius.pill, height: 20, width: 20 },
   toggleKnobActive: { alignSelf: "flex-end" },
   summary: { backgroundColor: theme.primarySubtle, borderColor: theme.primaryBorder, borderRadius: radius.lg, borderWidth: 1, padding: spacing[4] },
-  summaryEyebrow: { color: theme.primary, fontSize: 11, fontWeight: typography.weight.bold, letterSpacing: 0.7, marginBottom: spacing[1], textTransform: "uppercase" },
-  summaryText: { color: theme.text, fontSize: typography.size.sm, lineHeight: 20 },
+  summaryEyebrow: { color: theme.primary, fontSize: typography.role.label.fontSize, lineHeight: typography.role.label.lineHeight, fontWeight: typography.role.label.fontWeight, letterSpacing: 0.7, marginBottom: spacing[1], textTransform: "uppercase" },
+  summaryText: { color: theme.text, fontSize: typography.role.body.fontSize, lineHeight: typography.role.body.lineHeight },
   summaryStrong: { fontWeight: typography.weight.bold },
-  ctaBar: { backgroundColor: theme.surface, borderTopColor: theme.border, borderTopWidth: 1, paddingHorizontal: spacing[5], paddingTop: spacing[3] },
-  startButton: { alignItems: "center", backgroundColor: theme.primary, borderRadius: radius.md, flexDirection: "row", gap: spacing[2], justifyContent: "center", minHeight: 50, paddingHorizontal: spacing[4] },
-  startButtonText: { color: theme.onPrimary, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  ctaBar: { backgroundColor: theme.surface, borderTopColor: theme.border, borderTopWidth: 1, paddingHorizontal: spacing[4], paddingTop: spacing[3] },
+  startButton: { minHeight: 52 },
   disabled: { opacity: 0.55 },
-  pressed: { opacity: 0.76 },
+  pressed: { opacity: 0.94 },
 });
 
 export default SimulationConfigScreen;

@@ -18,6 +18,27 @@ export type LikeCommentResult = {
   liked: boolean;
 };
 
+const normalizeComment = (value: unknown): QuestionComment => {
+  const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const replies = Array.isArray(record.replies) ? record.replies.map(normalizeComment) : [];
+  return {
+    ...(record as unknown as QuestionComment),
+    id: String(record.id ?? record.comment_id ?? ''),
+    userId: String(record.userId ?? record.user_id ?? record.authorId ?? record.author_id ?? ''),
+    userName: String(record.userName ?? record.user_name ?? 'Usuário'),
+    userAvatar: String(record.userAvatar ?? record.user_avatar ?? record.user_photo_url ?? record.avatar_url ?? '') || undefined,
+    userPlan: String(record.userPlan ?? record.user_plan ?? record.plan ?? 'Gratuito'),
+    userRole: String(record.userRole ?? record.user_role ?? record.role ?? ''),
+    userHasPendingReport: Boolean(record.userHasPendingReport ?? record.user_has_pending_report),
+    text: String(record.text ?? record.content ?? ''),
+    date: String(record.date ?? record.created_at ?? ''),
+    likes: Number(record.likes ?? record.likes_count ?? 0) || 0,
+    isLiked: Boolean(record.isLiked ?? record.is_liked),
+    parentId: String(record.parentId ?? record.parent_id ?? '') || undefined,
+    replies,
+  };
+};
+
 export const commentsService = {
   async getComments(
     targetId: string,
@@ -29,21 +50,20 @@ export const commentsService = {
         params: {
           target_id: targetId,
           target_type: targetType,
-          user_id: userId || '',
         },
       });
 
       const payload = readApiData<any>(response, []);
       if (Array.isArray(payload)) {
-        return payload as QuestionComment[];
+        return payload.map(normalizeComment);
       }
 
       if (Array.isArray(payload?.items)) {
-        return payload.items as QuestionComment[];
+        return payload.items.map(normalizeComment);
       }
 
       if (Array.isArray(payload?.comments)) {
-        return payload.comments as QuestionComment[];
+        return payload.comments.map(normalizeComment);
       }
 
       return [];
@@ -57,10 +77,6 @@ export const commentsService = {
       const response: any = await apiClient.post<any>(ENDPOINTS.comments.create, {
         action: 'add',
         question_id: input.questionId,
-        user_id: input.userId,
-        user_name: input.userName,
-        user_avatar: input.userAvatar,
-        user_plan: input.userPlan,
         content: input.content,
         parent_id: input.parentId,
         targetType: input.targetType || 'question',
@@ -93,7 +109,6 @@ export const commentsService = {
       const response: any = await apiClient.post<any>(ENDPOINTS.comments.handle, {
         action: 'like',
         commentId,
-        userId,
       });
 
       assertApiSuccess(response, 'Nao foi possivel curtir o comentario.');
@@ -102,6 +117,33 @@ export const commentsService = {
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel curtir o comentario.'));
     }
+  },
+
+  async deleteComment(commentId: string): Promise<void> {
+    try {
+      const response: any = await apiClient.post<any>(ENDPOINTS.comments.handle, {
+        action: 'delete',
+        commentId,
+      });
+      assertApiSuccess(response, 'Não foi possível excluir o comentário.');
+    } catch (error) {
+      throw new Error(readApiErrorMessage(error, 'Não foi possível excluir o comentário.'));
+    }
+  },
+
+  findCommentOwner(comments: QuestionComment[], commentId: string): string | undefined {
+    for (const comment of comments) {
+      if (String(comment.id) === String(commentId)) return comment.userId;
+      const owner = this.findCommentOwner(comment.replies || [], commentId);
+      if (owner !== undefined) return owner;
+    }
+    return undefined;
+  },
+
+  deleteCommentFromTree(comments: QuestionComment[], commentId: string): QuestionComment[] {
+    return comments
+      .filter((comment) => String(comment.id) !== String(commentId))
+      .map((comment) => ({ ...comment, replies: this.deleteCommentFromTree(comment.replies || [], commentId) }));
   },
 
   addReplyToComments(

@@ -4,7 +4,6 @@ import {
   Alert,
   Image,
   Linking,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -14,10 +13,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
+import { MotionPressable } from "@/components/ui/Primitives";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import { radius, spacing, typography } from "@/theme/tokens";
 import { getAssetUrl } from "@/services/api/client";
 import notificationService from "@/services/notifications/notificationService";
+import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
 import type { MobileNotification } from "@/types/notifications";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -78,24 +79,54 @@ const resolveCategory = (
   return "system";
 };
 
-const formatDateTime = (timestamp?: string | number) => {
-  if (!timestamp) return "";
+const getDayOffset = (timestamp?: string | number) => {
+  if (!timestamp) return null;
   const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("pt-BR", {
+  if (Number.isNaN(date.getTime())) return null;
+  const today = new Date();
+  const startOfDay = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  return Math.round((startOfDay(today) - startOfDay(date)) / 86400000);
+};
+
+const getDayGroupLabel = (timestamp?: string | number) => {
+  const date = timestamp ? new Date(timestamp) : null;
+  if (!date || Number.isNaN(date.getTime())) return "SEM DATA";
+  const dayOffset = getDayOffset(timestamp);
+  if (dayOffset === 0) return "HOJE";
+  if (dayOffset === 1) return "ONTEM";
+  return date.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  }).toUpperCase();
+};
+
+const formatNotificationTime = (timestamp?: string | number) => {
+  if (!timestamp) return "—";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "—";
+  const dayOffset = getDayOffset(timestamp);
+  if (dayOffset === 0) {
+    return date.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  if (dayOffset === 1) return "Ontem";
+  return date.toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 };
 
-const iconForType = (type: string): keyof typeof Ionicons.glyphMap => {
-  if (type === "success") return "checkmark-circle-outline";
-  if (type === "warning") return "warning-outline";
-  if (type === "error") return "close-circle-outline";
-  return "information-circle-outline";
+const iconForCategory = (
+  category: Exclude<TabType, "all" | "trash">,
+): keyof typeof Ionicons.glyphMap => {
+  if (category === "social") return "chatbubble-ellipses-outline";
+  if (category === "marketplace") return "bag-handle-outline";
+  if (category === "report") return "shield-checkmark-outline";
+  return "notifications-outline";
 };
 
 const colorsForType = (theme: ResolvedAppTheme, type: string) => {
@@ -168,6 +199,19 @@ export function NotificationsScreen() {
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE,
   );
+  const pageGroups = React.useMemo(() => {
+    const groups: Array<{ label: string; items: MobileNotification[] }> = [];
+    pageItems.forEach((item) => {
+      const label = getDayGroupLabel(item.timestamp);
+      const currentGroup = groups[groups.length - 1];
+      if (currentGroup?.label === label) {
+        currentGroup.items.push(item);
+      } else {
+        groups.push({ label, items: [item] });
+      }
+    });
+    return groups;
+  }, [pageItems]);
 
   const selectTab = (tab: TabType) => {
     setActiveTab(tab);
@@ -300,11 +344,48 @@ export function NotificationsScreen() {
     );
   };
 
+  const showItemActions = (item: MobileNotification) => {
+    const inTrash = Boolean(item.deletedAt);
+    const actions = inTrash
+      ? [
+          {
+            text: "Restaurar",
+            onPress: () => void restore(item),
+          },
+          {
+            text: "Excluir permanentemente",
+            style: "destructive" as const,
+            onPress: () => permanentDelete(item),
+          },
+        ]
+      : [
+          ...(!item.isRead
+            ? [
+                {
+                  text: "Marcar como lida",
+                  onPress: () => void markAsRead(item),
+                },
+              ]
+            : []),
+          {
+            text: "Mover para a lixeira",
+            style: "destructive" as const,
+            onPress: () => moveToTrash(item),
+          },
+        ];
+
+    Alert.alert(item.title, "Escolha uma ação", [
+      ...actions,
+      { text: "Cancelar", style: "cancel" },
+    ]);
+  };
+
   const openNotification = async (item: MobileNotification) => {
     await markAsRead(item);
     if (!item.link) return;
     if (/^https?:\/\//i.test(item.link)) {
-      await Linking.openURL(item.link);
+      const safeUrl = assertAllowedExternalUrl(item.link);
+      await Linking.openURL(safeUrl);
       return;
     }
     router.push(normalizeLink(item.link).split("#")[0] as never);
@@ -330,9 +411,16 @@ export function NotificationsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerActions}>
-          <Pressable
+        <View style={styles.toolbar}>
+          <Text style={[styles.unreadSummary, { color: theme.textMuted }]}>
+            {unread > 0
+              ? `${unread} ${unread === 1 ? "não lida" : "não lidas"}`
+              : "Tudo em dia"}
+          </Text>
+          <View style={styles.headerActions}>
+          <MotionPressable
             accessibilityRole="button"
+            accessibilityLabel="Marcar todas como lidas"
             disabled={unread === 0}
             onPress={() => void markAllAsRead()}
             style={[
@@ -348,10 +436,11 @@ export function NotificationsScreen() {
             <Text style={[styles.outlineButtonText, { color: theme.primary }]}>
               Ler todas
             </Text>
-          </Pressable>
+          </MotionPressable>
           {activeTab !== "trash" && (
-            <Pressable
+            <MotionPressable
               accessibilityRole="button"
+              accessibilityLabel="Mover todas para a lixeira"
               disabled={!items.some((item) => !item.deletedAt)}
               onPress={clearAll}
               style={[
@@ -364,8 +453,9 @@ export function NotificationsScreen() {
               <Text style={[styles.outlineButtonText, { color: theme.danger }]}>
                 Limpar
               </Text>
-            </Pressable>
+            </MotionPressable>
           )}
+          </View>
         </View>
 
         <ScrollView
@@ -375,28 +465,24 @@ export function NotificationsScreen() {
         >
           {(
             [
-              ["all", "Geral", "file-tray-full-outline"],
-              ["system", "Sistema", "information-circle-outline"],
-              ["social", "Interações", "chatbubble-ellipses-outline"],
-              ["marketplace", "Loja", "bag-handle-outline"],
-              ["report", "Suporte", "shield-checkmark-outline"],
-              ["trash", "Lixeira", "trash-outline"],
+              ["all", "Geral"],
+              ["system", "Sistema"],
+              ["social", "Interações"],
+              ["marketplace", "Loja"],
+              ["report", "Suporte"],
+              ["trash", "Lixeira"],
             ] as const
-          ).map(([id, label, icon]) => (
-            <Pressable
+          ).map(([id, label]) => (
+            <MotionPressable
               key={id}
               accessibilityRole="button"
+              accessibilityState={{ selected: activeTab === id }}
               onPress={() => selectTab(id)}
               style={[
                 styles.tab,
                 activeTab === id ? styles.activeTab : styles.inactiveTab,
               ]}
             >
-              <Ionicons
-                name={icon}
-                size={14}
-                color={activeTab === id ? theme.onPrimary : theme.textMuted}
-              />
               <Text
                 style={[
                   styles.tabText,
@@ -407,7 +493,7 @@ export function NotificationsScreen() {
               >
                 {label}
               </Text>
-            </Pressable>
+            </MotionPressable>
           ))}
         </ScrollView>
 
@@ -425,7 +511,7 @@ export function NotificationsScreen() {
             <Text style={[styles.stateText, { color: theme.textMuted }]}>
               {error}
             </Text>
-            <Pressable
+            <MotionPressable
               onPress={() => void loadNotifications()}
               style={[styles.retryButton, { backgroundColor: theme.primary }]}
             >
@@ -437,7 +523,7 @@ export function NotificationsScreen() {
               >
                 Tentar novamente
               </Text>
-            </Pressable>
+            </MotionPressable>
           </View>
         ) : pageItems.length === 0 ? (
           <View style={styles.stateCard}>
@@ -458,209 +544,182 @@ export function NotificationsScreen() {
             </Text>
           </View>
         ) : (
-          <View style={styles.list}>
-            {pageItems.map((item) => {
-              const typeColors = colorsForType(theme, item.type);
-              const inTrash = Boolean(item.deletedAt);
-              const category = resolveCategory(item);
-              return (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="button"
-                  onPress={() => void openNotification(item)}
-                  style={[
-                    styles.notificationCard,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: item.isRead
-                        ? theme.border
-                        : theme.primarySubtle,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.notificationIcon,
-                      { backgroundColor: typeColors.background },
-                    ]}
-                  >
-                    <Ionicons
-                      name={iconForType(item.type)}
-                      size={24}
-                      color={typeColors.foreground}
-                    />
-                  </View>
-                  <View style={styles.notificationBody}>
-                    <View style={styles.titleRow}>
-                      <Text
+          <View style={styles.groupList}>
+            {pageGroups.map((group) => (
+              <View key={group.label} style={styles.dayGroup}>
+                <Text style={[styles.dayLabel, { color: theme.textMuted }]}>
+                  {group.label}
+                </Text>
+                <View style={[styles.list, { backgroundColor: theme.surface }]}>
+                  {group.items.map((item, index) => {
+                    const typeColors = colorsForType(theme, item.type);
+                    const inTrash = Boolean(item.deletedAt);
+                    const category = resolveCategory(item);
+                    return (
+                      <View
+                        key={item.id}
                         style={[
-                          styles.notificationTitle,
-                          {
-                            color: item.isRead
-                              ? theme.textMuted
-                              : theme.primary,
+                          styles.notificationRow,
+                          index < group.items.length - 1 && {
+                            borderBottomColor: theme.border,
+                            borderBottomWidth: StyleSheet.hairlineWidth,
                           },
                         ]}
                       >
-                        {item.title}
-                      </Text>
-                      {!item.isRead && (
-                        <View
-                          style={[
-                            styles.unreadDot,
-                            { backgroundColor: theme.primary },
-                          ]}
-                        />
-                      )}
-                    </View>
-                    <Text
-                      style={[
-                        styles.notificationMessage,
-                        { color: theme.textMuted },
-                      ]}
-                    >
-                      {item.message}
-                    </Text>
-                    {item.evidenceUrl ? (
-                      <Image
-                        source={{ uri: getAssetUrl(item.evidenceUrl) }}
-                        style={styles.evidence}
-                        resizeMode="contain"
-                      />
-                    ) : null}
-                    <View style={styles.metaRow}>
-                      <Text
-                        style={[styles.metaText, { color: theme.textMuted }]}
-                      >
-                        {formatDateTime(item.timestamp)}
-                      </Text>
-                      {item.link ? (
-                        <Text
-                          style={[
-                            styles.tag,
-                            {
-                              backgroundColor: theme.primarySubtle,
-                              color: theme.primary,
-                            },
-                          ]}
+                        <MotionPressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`${item.title}. ${item.message}`}
+                          onPress={() => void openNotification(item)}
+                          style={styles.notificationPressable}
                         >
-                          Ver conteúdo ›
-                        </Text>
-                      ) : null}
-                      <Text
-                        style={[
-                          styles.tag,
-                          {
-                            backgroundColor: theme.surfaceSubtle,
-                            color: theme.textMuted,
-                          },
-                        ]}
-                      >
-                        {CATEGORY_LABELS[category]}
-                      </Text>
-                      {inTrash ? (
-                        <Text
-                          style={[
-                            styles.tag,
-                            {
-                              backgroundColor: theme.warningSubtle,
-                              color: theme.warning,
-                            },
-                          ]}
-                        >
-                          {getTrashDaysLeft(item.deletedAt || undefined)} dias
-                          p/ excluir
-                        </Text>
-                      ) : null}
-                    </View>
-                    <View style={styles.actionRow}>
-                      {inTrash ? (
-                        <>
-                          <Pressable
-                            accessibilityLabel="Restaurar"
-                            onPress={() => void restore(item)}
-                            style={styles.actionButton}
+                          <View
+                            style={[
+                              styles.notificationIcon,
+                              { backgroundColor: typeColors.background },
+                            ]}
                           >
                             <Ionicons
-                              name="refresh-outline"
+                              name={inTrash ? "trash-outline" : iconForCategory(category)}
                               size={19}
-                              color={theme.success}
+                              color={typeColors.foreground}
                             />
-                          </Pressable>
-                          <Pressable
-                            accessibilityLabel="Excluir permanentemente"
-                            onPress={() => permanentDelete(item)}
-                            style={styles.actionButton}
-                          >
-                            <Ionicons
-                              name="trash-outline"
-                              size={19}
-                              color={theme.danger}
-                            />
-                          </Pressable>
-                        </>
-                      ) : (
-                        <>
-                          {!item.isRead && (
-                            <Pressable
-                              accessibilityLabel="Marcar como lida"
-                              onPress={() => void markAsRead(item)}
-                              style={styles.actionButton}
+                          </View>
+                          <View style={styles.notificationBody}>
+                            <View style={styles.titleRow}>
+                              <Text
+                                numberOfLines={1}
+                                style={[
+                                  styles.notificationTitle,
+                                  {
+                                    color: item.isRead
+                                      ? theme.textMuted
+                                      : theme.text,
+                                    fontWeight: item.isRead
+                                      ? typography.weight.medium
+                                      : typography.weight.bold,
+                                  },
+                                ]}
+                              >
+                                {item.title}
+                              </Text>
+                              <Text
+                                style={[styles.timeText, { color: theme.textMuted }]}
+                              >
+                                {formatNotificationTime(item.timestamp)}
+                              </Text>
+                            </View>
+                            <Text
+                              numberOfLines={2}
+                              style={[
+                                styles.notificationMessage,
+                                { color: theme.textMuted },
+                              ]}
                             >
-                              <Ionicons
-                                name="checkmark"
-                                size={19}
-                                color={theme.primary}
+                              {item.message}
+                            </Text>
+                            {item.evidenceUrl ? (
+                              <Image
+                                source={{ uri: getAssetUrl(item.evidenceUrl) }}
+                                style={styles.evidence}
+                                resizeMode="contain"
                               />
-                            </Pressable>
-                          )}
-                          <Pressable
-                            accessibilityLabel="Mover para a lixeira"
-                            onPress={() => moveToTrash(item)}
-                            style={styles.actionButton}
-                          >
-                            <Ionicons
-                              name="trash-outline"
-                              size={19}
-                              color={theme.textMuted}
-                            />
-                          </Pressable>
-                        </>
-                      )}
-                    </View>
-                  </View>
-                </Pressable>
-              );
-            })}
+                            ) : null}
+                            <View style={styles.metaRow}>
+                              <Text
+                                style={[
+                                  styles.categoryTag,
+                                  {
+                                    backgroundColor: theme.surfaceSubtle,
+                                    color: theme.textMuted,
+                                  },
+                                ]}
+                              >
+                                {CATEGORY_LABELS[category]}
+                              </Text>
+                              {!item.isRead && (
+                                <View
+                                  accessibilityLabel="Não lida"
+                                  style={[
+                                    styles.unreadDot,
+                                    { backgroundColor: theme.primary },
+                                  ]}
+                                />
+                              )}
+                              {inTrash && (
+                                <Text
+                                  style={[
+                                    styles.categoryTag,
+                                    {
+                                      backgroundColor: theme.warningSubtle,
+                                      color: theme.warning,
+                                    },
+                                  ]}
+                                >
+                                  {getTrashDaysLeft(item.deletedAt || undefined)} dias restantes
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                        </MotionPressable>
+                        <MotionPressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Mais ações: ${item.title}`}
+                          hitSlop={6}
+                          onPress={() => showItemActions(item)}
+                          style={styles.itemMenuButton}
+                        >
+                          <Ionicons
+                            name="ellipsis-horizontal"
+                            size={19}
+                            color={theme.textMuted}
+                          />
+                        </MotionPressable>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
           </View>
         )}
 
         {totalPages > 1 && (
           <View style={styles.pagination}>
-            {Array.from({ length: totalPages }, (_, index) => index + 1).map(
-              (page) => (
-                <Pressable
-                  key={page}
-                  onPress={() => setCurrentPage(page)}
-                  style={[
-                    styles.pageButton,
-                    page === currentPage && { backgroundColor: theme.primary },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color:
-                        page === currentPage
-                          ? theme.onPrimary
-                          : theme.textMuted,
-                      fontWeight: typography.weight.bold,
-                    }}
-                  >
-                    {page}
-                  </Text>
-                </Pressable>
-              ),
-            )}
+            <Text style={[styles.pageSummary, { color: theme.textMuted }]}>
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+              {Math.min(currentPage * ITEMS_PER_PAGE, filteredItems.length)} de{" "}
+              {filteredItems.length} notificações
+            </Text>
+            <View style={styles.pageControls}>
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityLabel="Página anterior"
+                accessibilityState={{ disabled: currentPage === 1 }}
+                disabled={currentPage === 1}
+                onPress={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                style={[
+                  styles.pageButton,
+                  { borderColor: theme.border },
+                  currentPage === 1 && styles.disabledButton,
+                ]}
+              >
+                <Ionicons name="chevron-back" size={17} color={theme.text} />
+              </MotionPressable>
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityLabel="Próxima página"
+                accessibilityState={{ disabled: currentPage === totalPages }}
+                disabled={currentPage === totalPages}
+                onPress={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                style={[
+                  styles.pageButton,
+                  { borderColor: theme.border },
+                  currentPage === totalPages && styles.disabledButton,
+                ]}
+              >
+                <Ionicons name="chevron-forward" size={17} color={theme.text} />
+              </MotionPressable>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -673,84 +732,99 @@ const createStyles = (theme: ResolvedAppTheme) =>
     screen: { flex: 1 },
     content: {
       gap: spacing[4],
-      padding: spacing[5],
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[4],
       paddingBottom: spacing[12],
+    },
+    toolbar: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing[2],
+      justifyContent: "space-between",
+      minHeight: 36,
+    },
+    unreadSummary: {
+      flex: 1,
+      fontSize: typography.size.xs,
+      fontWeight: typography.weight.medium,
     },
     headerActions: {
       flexDirection: "row",
       gap: spacing[2],
       justifyContent: "flex-end",
+      flexShrink: 0,
     },
     outlineButton: {
       alignItems: "center",
-      borderColor: theme.primarySubtle,
-      borderRadius: radius.md,
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderRadius: radius.sm,
       borderWidth: 1,
       flexDirection: "row",
       gap: spacing[1],
-      paddingHorizontal: spacing[3],
-      paddingVertical: spacing[2],
+      height: 34,
+      paddingHorizontal: spacing[2],
     },
     deleteButton: { borderColor: theme.border },
     disabledButton: { opacity: 0.45 },
     outlineButtonText: {
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
-      textTransform: "uppercase",
+      fontSize: typography.size.xs,
+      fontWeight: typography.weight.semibold,
     },
     tabs: { gap: spacing[2], paddingRight: spacing[5] },
     tab: {
       alignItems: "center",
-      borderRadius: radius.md,
-      flexDirection: "row",
-      gap: spacing[1],
-      paddingHorizontal: spacing[3],
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      paddingHorizontal: spacing[4],
       paddingVertical: spacing[2],
     },
-    activeTab: { backgroundColor: theme.primary, elevation: 2 },
-    inactiveTab: {
-      backgroundColor: theme.surface,
-      borderColor: theme.border,
-      borderWidth: 1,
-    },
+    activeTab: { backgroundColor: theme.primary, borderColor: theme.primary },
+    inactiveTab: { backgroundColor: theme.surface, borderColor: theme.border },
     tabText: {
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
-      textTransform: "uppercase",
+      fontSize: typography.size.xs,
+      fontWeight: typography.weight.semibold,
     },
-    list: { gap: spacing[4] },
-    notificationCard: {
+    groupList: { gap: spacing[4] },
+    dayGroup: { gap: spacing[2] },
+    dayLabel: {
+      ...typography.role.label,
+      letterSpacing: 0.6,
+    },
+    list: {
+      borderColor: theme.border,
       borderRadius: radius.md,
-      borderWidth: 1,
-      elevation: 1,
+      borderWidth: StyleSheet.hairlineWidth,
+      overflow: "hidden",
+    },
+    notificationRow: { alignItems: "stretch", flexDirection: "row" },
+    notificationPressable: {
+      alignItems: "flex-start",
+      flex: 1,
       flexDirection: "row",
       gap: spacing[3],
-      padding: spacing[4],
-      shadowColor: theme.text,
-      shadowOpacity: 0.04,
-      shadowRadius: 5,
+      minWidth: 0,
+      paddingHorizontal: spacing[3],
+      paddingVertical: spacing[3],
     },
     notificationIcon: {
       alignItems: "center",
-      borderRadius: radius.md,
+      borderRadius: radius.pill,
       flexShrink: 0,
-      height: 48,
+      height: 38,
       justifyContent: "center",
-      width: 48,
+      width: 38,
     },
-    notificationBody: { flex: 1, gap: spacing[2], minWidth: 0 },
+    notificationBody: { flex: 1, gap: spacing[1], minWidth: 0 },
     titleRow: { alignItems: "center", flexDirection: "row", gap: spacing[2] },
-    notificationTitle: {
-      flex: 1,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.bold,
-    },
-    notificationMessage: { fontSize: typography.size.xs, lineHeight: 18 },
-    unreadDot: { borderRadius: radius.pill, height: 8, width: 8 },
+    notificationTitle: { flex: 1, fontSize: typography.size.sm },
+    timeText: { ...typography.role.caption, flexShrink: 0 },
+    notificationMessage: { fontSize: typography.role.body.fontSize, lineHeight: typography.role.body.lineHeight },
+    unreadDot: { borderRadius: radius.pill, height: 7, width: 7 },
     evidence: {
       backgroundColor: theme.surfaceSubtle,
       borderRadius: radius.sm,
-      height: 140,
+      height: 110,
       width: "100%",
     },
     metaRow: {
@@ -759,33 +833,14 @@ const createStyles = (theme: ResolvedAppTheme) =>
       flexWrap: "wrap",
       gap: spacing[2],
     },
-    metaText: {
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
-      textTransform: "uppercase",
-    },
-    tag: {
-      borderRadius: radius.sm,
-      fontSize: 9,
-      fontWeight: typography.weight.bold,
+    categoryTag: {
+      borderRadius: radius.pill,
+      fontSize: typography.role.caption.fontSize,
       overflow: "hidden",
       paddingHorizontal: spacing[2],
-      paddingVertical: 3,
-      textTransform: "uppercase",
+      paddingVertical: 2,
     },
-    actionRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: spacing[1],
-      justifyContent: "flex-end",
-    },
-    actionButton: {
-      alignItems: "center",
-      borderRadius: radius.sm,
-      height: 32,
-      justifyContent: "center",
-      width: 32,
-    },
+    itemMenuButton: { alignItems: "center", justifyContent: "center", width: 38 },
     stateCard: {
       alignItems: "center",
       borderColor: theme.border,
@@ -817,16 +872,18 @@ const createStyles = (theme: ResolvedAppTheme) =>
       alignItems: "center",
       flexDirection: "row",
       gap: spacing[2],
-      justifyContent: "center",
+      justifyContent: "space-between",
       paddingTop: spacing[2],
     },
+    pageSummary: { flex: 1, fontSize: typography.size.xs },
+    pageControls: { flexDirection: "row", gap: spacing[2] },
     pageButton: {
       alignItems: "center",
       borderColor: theme.border,
-      borderRadius: radius.md,
+      borderRadius: radius.sm,
       borderWidth: 1,
-      height: 40,
+      height: 36,
       justifyContent: "center",
-      width: 40,
+      width: 36,
     },
   });

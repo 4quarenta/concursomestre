@@ -9,9 +9,11 @@ import {
   type MobileGlobalTaxonomies,
   type MobileTaxonomyItem,
   type MobilePlanDetailsMap,
+  type MobilePlanEntitlements,
   type MobilePlanName,
   type MobilePlanPricing,
   type MobilePlanPricingMap,
+  type MobilePlanUsageLimits,
   type MobileSystemSettings,
 } from '@/types/system';
 
@@ -177,6 +179,82 @@ const normalizePlanPricing = (payload: Record<string, unknown>): MobilePlanPrici
   }, {});
 };
 
+const readPlansSettings = (payload: Record<string, unknown>) =>
+  payload.plans && typeof payload.plans === 'object'
+    ? payload.plans as Record<string, unknown>
+    : {};
+
+const isMobilePlanName = (value: string): value is MobilePlanName =>
+  ['Gratuito', 'Essencial', 'Pro', 'Elite'].includes(value);
+
+const normalizePlanEntitlements = (
+  payload: Record<string, unknown>,
+): MobilePlanEntitlements => {
+  const plans = readPlansSettings(payload);
+  const rawEntitlements = payload.planEntitlements ?? plans.planEntitlements;
+  if (!rawEntitlements || typeof rawEntitlements !== 'object') return {};
+
+  return Object.entries(rawEntitlements as Record<string, unknown>).reduce<MobilePlanEntitlements>(
+    (result, [planName, rawPlan]) => {
+      if (!isMobilePlanName(planName) || !rawPlan || typeof rawPlan !== 'object') {
+        return result;
+      }
+
+      const entitlements = Object.entries(rawPlan as Record<string, unknown>).reduce<
+        Record<string, boolean | { enabled?: boolean }>
+      >((normalized, [key, rawValue]) => {
+        const enabled = rawValue && typeof rawValue === 'object'
+          ? normalizeBooleanLike((rawValue as Record<string, unknown>).enabled)
+          : normalizeBooleanLike(rawValue);
+        if (enabled !== null) normalized[key] = { enabled };
+        return normalized;
+      }, {});
+
+      result[planName] = entitlements;
+      return result;
+    },
+    {},
+  );
+};
+
+const normalizePlanUsageLimits = (
+  payload: Record<string, unknown>,
+): MobilePlanUsageLimits => {
+  const plans = readPlansSettings(payload);
+  const rawLimits = payload.planUsageLimits ?? plans.planUsageLimits;
+  if (!rawLimits || typeof rawLimits !== 'object') return {};
+
+  return Object.entries(rawLimits as Record<string, unknown>).reduce<MobilePlanUsageLimits>(
+    (result, [planName, rawPlan]) => {
+      if (!isMobilePlanName(planName) || !rawPlan || typeof rawPlan !== 'object') {
+        return result;
+      }
+
+      const limits = Object.entries(rawPlan as Record<string, unknown>).reduce<
+        Record<string, { mode: 'limited' | 'unlimited'; value: number | null }>
+      >((normalized, [key, rawValue]) => {
+        if (!rawValue || typeof rawValue !== 'object') return normalized;
+        const row = rawValue as Record<string, unknown>;
+        const isUnlimited = String(row.mode || '').toLowerCase() === 'unlimited';
+        const rawNumber = Number(row.value);
+        normalized[key] = {
+          mode: isUnlimited ? 'unlimited' : 'limited',
+          value: isUnlimited
+            ? null
+            : Number.isFinite(rawNumber)
+              ? Math.max(0, rawNumber)
+              : 0,
+        };
+        return normalized;
+      }, {});
+
+      result[planName] = limits;
+      return result;
+    },
+    {},
+  );
+};
+
 const resolveBooleanSetting = (
   payload: Record<string, unknown>,
   key: string,
@@ -200,15 +278,19 @@ const resolveBooleanSetting = (
 };
 
 const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
+  const rawUpdatePolicy = payload.mobileAppUpdatePolicy && typeof payload.mobileAppUpdatePolicy === 'object'
+    ? payload.mobileAppUpdatePolicy as Record<string, unknown>
+    : {};
   const authentication = payload.authentication && typeof payload.authentication === 'object'
     ? payload.authentication as Record<string, unknown>
     : {};
   const recaptcha = authentication.recaptcha && typeof authentication.recaptcha === 'object'
     ? authentication.recaptcha as Record<string, unknown>
     : {};
-  const rawUpdatePolicy = payload.mobileAppUpdatePolicy && typeof payload.mobileAppUpdatePolicy === 'object'
-    ? payload.mobileAppUpdatePolicy as Record<string, unknown>
-    : {};
+  const recaptchaEnabled = normalizeBooleanLike(recaptcha.enabled ?? payload.recaptchaEnabled);
+  const recaptchaAndroidSiteKey = String(
+    recaptcha.androidSiteKey ?? payload.recaptchaAndroidSiteKey ?? '',
+  ).trim();
   const normalizePixKey = () => {
     const rawValue = typeof payload.pixKey === 'string'
       ? payload.pixKey
@@ -264,9 +346,6 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
   };
 
   return {
-    recaptchaEnabled: normalizeBooleanLike(recaptcha.enabled ?? payload.recaptchaEnabled)
-      ?? DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaEnabled,
-    recaptchaAndroidSiteKey: String(recaptcha.androidSiteKey ?? payload.recaptchaAndroidSiteKey ?? '').trim() || undefined,
     mobileAppUpdatePolicy: {
       enabled: normalizeBooleanLike(rawUpdatePolicy.enabled) ?? false,
       latestVersion: String(rawUpdatePolicy.latestVersion || '').trim(),
@@ -276,9 +355,13 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
       iosStoreUrl: String(rawUpdatePolicy.iosStoreUrl || '').trim(),
     },
     features,
+    recaptchaEnabled: recaptchaEnabled ?? false,
+    recaptchaAndroidSiteKey: recaptchaAndroidSiteKey || undefined,
     sameTierCycleChangeEnabled: resolveBooleanSetting(payload, 'sameTierCycleChangeEnabled', false),
     planDetails: normalizePlanDetails(payload),
     pricing: normalizePlanPricing(payload),
+    planEntitlements: normalizePlanEntitlements(payload),
+    planUsageLimits: normalizePlanUsageLimits(payload),
     pixKey: normalizePixKey(),
     taxonomies: normalizeTaxonomies(payload),
   };
@@ -310,13 +393,15 @@ export const systemSettingsService = {
 
   createDefaultSystemSettings(): MobileSystemSettings {
     return {
-      recaptchaEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaEnabled,
-      recaptchaAndroidSiteKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaAndroidSiteKey,
       mobileAppUpdatePolicy: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.mobileAppUpdatePolicy },
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
+      recaptchaEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaEnabled,
+      recaptchaAndroidSiteKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaAndroidSiteKey,
       sameTierCycleChangeEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.sameTierCycleChangeEnabled,
       planDetails: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.planDetails },
       pricing: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.pricing },
+      planEntitlements: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.planEntitlements },
+      planUsageLimits: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.planUsageLimits },
       pixKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.pixKey,
       taxonomies: {
         agencies: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.agencies],

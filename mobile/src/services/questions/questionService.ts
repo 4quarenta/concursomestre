@@ -10,7 +10,6 @@ import type {
   QuestionStats,
   UserAnswerInput,
 } from '@/types/questions';
-import { findQuestionFixture, questionFixtures, QUESTION_FIXTURE_MODE } from '@/features/questions/data/questionFixtures';
 
 type QuestionPageRequest = QuestionListFilters & {
   page?: number;
@@ -38,32 +37,6 @@ const normalizeListParams = (filters: QuestionPageRequest = {}): Record<string, 
  */
 export const questionService = {
   async getQuestionPage(filters: QuestionPageRequest = {}): Promise<QuestionPageResult> {
-    if (QUESTION_FIXTURE_MODE) {
-      const values = (value: unknown): string[] => (Array.isArray(value) ? value : value === undefined ? [] : [value]).map(String).map((item) => item.toLowerCase());
-      const keyword = String(filters.keyword || '').trim().toLowerCase();
-      const subjects = values(filters.subject);
-      const agencies = values(filters.agency);
-      const years = values(filters.year);
-      const difficulties = values(filters.difficulty);
-      const questionIds = values(filters.questionIds);
-      const filtered = questionFixtures.filter((question) => {
-        const text = `${question.enunciado_clean || question.enunciado || ''} ${(question.assuntos || []).map((item) => item.nome).join(' ')}`.toLowerCase();
-        const subjectNames = (question.assuntos || []).filter((item) => item.materia).map((item) => String(item.nome || '').toLowerCase());
-        const agencyNames = (question.bancas || []).flatMap((item) => [item.nome, item.sigla]).filter(Boolean).map((item) => String(item).toLowerCase());
-        const questionYears = (question.anos || []).map(String);
-        const difficulty = Number(question.dificuldade || 0) >= 3 ? 'dificil' : Number(question.dificuldade || 0) === 2 ? 'medio' : 'facil';
-        return (!questionIds.length || questionIds.includes(String(question.id).toLowerCase()))
-          && (!keyword || text.includes(keyword))
-          && (!subjects.length || subjects.some((item) => subjectNames.includes(item) || text.includes(item)))
-          && (!agencies.length || agencies.some((item) => agencyNames.includes(item)))
-          && (!years.length || years.some((item) => questionYears.includes(item)))
-          && (!difficulties.length || difficulties.some((item) => item.includes(difficulty) || (item === 'muito facil' && difficulty === 'facil') || (item === 'muito dificil' && difficulty === 'dificil')));
-      });
-      const page = Math.max(1, Number(filters.page || 1));
-      const perPage = Math.max(1, Number(filters.limit || 20));
-      const start = (page - 1) * perPage;
-      return { rows: filtered.slice(start, start + perPage), total: filtered.length, page, perPage, pages: Math.ceil(filtered.length / perPage) };
-    }
     const response: any = await apiClient.get<any>(ENDPOINTS.questions.list, {
       params: normalizeListParams(filters),
     });
@@ -83,7 +56,7 @@ export const questionService = {
     return { rows, total, page, perPage, pages };
   },
 
-  /** Compatibilidade temporaria da tela legada; novas features nao devem usar. */
+  /** Compatibilidade do contrato legado; novas telas devem usar getQuestionPage. */
   async getAllQuestions(pageSize = 200): Promise<Question[]> {
     const boundedPageSize = Math.max(1, Math.min(50, pageSize));
     const result = await this.getQuestionPage({ page: 1, limit: boundedPageSize });
@@ -91,12 +64,6 @@ export const questionService = {
   },
 
   async submitUserAnswer(userId: string, answer: UserAnswerInput): Promise<QuestionAnswerResult> {
-    if (QUESTION_FIXTURE_MODE) {
-      const question = findQuestionFixture(answer.questionId);
-      return question
-        ? { success: true, isCorrect: question.correctOptionIndex === answer.selectedOptionIndex, correctOptionIndex: question.correctOptionIndex }
-        : { success: false, message: 'Questao de teste nao encontrada.' };
-    }
     try {
       const selectedAlternativeId = answer.selectedAlternativeId;
       if (selectedAlternativeId === undefined || selectedAlternativeId === null || selectedAlternativeId === '') {
@@ -142,11 +109,11 @@ export const questionService = {
     }
   },
 
-  async toggleSavedQuestion(userId: string, questionId: string | number): Promise<{ success: boolean; isSaved?: boolean; message?: string }> {
-    if (QUESTION_FIXTURE_MODE) return { success: true, isSaved: true };
+  async toggleSavedQuestion(_userId: string, questionId: string | number): Promise<{ success: boolean; isSaved?: boolean; message?: string }> {
     try {
       const response: any = await apiClient.post<any>(ENDPOINTS.questions.toggleSave, {
-        user_id: userId,
+        // O backend resolve o escopo pelo bearer token. O argumento legado é
+        // mantido apenas para compatibilidade com os chamadores atuais.
         question_id: questionId,
       });
 
@@ -164,10 +131,6 @@ export const questionService = {
   },
 
   async getQuestionStats(questionId: string | number): Promise<QuestionStats> {
-    if (QUESTION_FIXTURE_MODE) {
-      const question = findQuestionFixture(questionId);
-      return question?.stats || { totalAttempts: 0, correctCount: 0, wrongCount: 0, optionDistribution: {} };
-    }
     const response: any = await apiClient.get<any>(ENDPOINTS.questions.stats, {
       params: { question_id: String(questionId) },
     });
@@ -180,10 +143,12 @@ export const questionService = {
     });
   },
 
-  async getQuestionHistory(questionId: string | number, userId?: string): Promise<QuestionHistoryEntry[]> {
-    if (QUESTION_FIXTURE_MODE) return [];
+  async getQuestionHistory(questionId: string | number): Promise<QuestionHistoryEntry[]> {
     const response: any = await apiClient.get<any>(ENDPOINTS.questions.history, {
-      params: { question_id: String(questionId), user_id: userId || '' },
+      // O backend resolve o usuario pelo bearer token. Nao envie user_id do
+      // cliente: isso evita divergencia de identidade e o erro legado
+      // "User ID is required" quando o perfil ainda esta sendo hidratado.
+      params: { question_id: String(questionId) },
     });
 
     const payload = readApiData<any>(response, []);

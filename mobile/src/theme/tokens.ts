@@ -6,6 +6,7 @@ export const palette = {
     lavenderSubtle: '#F0F1FF',
     lavenderBorder: '#C7CBF3',
     navySubtle: '#2A2A59',
+    onNavyMuted: '#D9D9F3',
   },
   slate: {
     50: '#F8FAFC',
@@ -36,6 +37,7 @@ export const palette = {
   red: {
     50: '#FEF2F2',
     200: '#FECACA',
+    300: '#FCA5A5',
     600: '#DC2626',
     700: '#B91C1C',
     800: '#991B1B',
@@ -61,7 +63,7 @@ export const lightTheme = {
   success: palette.emerald[600],
   successSubtle: palette.emerald[50],
   successBorder: palette.emerald[200],
-  warning: palette.amber[500],
+  warning: palette.amber[600],
   warningSubtle: palette.amber[50],
   warningBorder: palette.amber[200],
   danger: palette.red[600],
@@ -72,12 +74,12 @@ export const lightTheme = {
 
 export const darkTheme = {
   background: palette.slate[900],
-  surface: palette.slate[900],
+  surface: '#111B30',
   surfaceSubtle: palette.slate[800],
   text: palette.slate[100],
-  textMuted: palette.slate[400],
+  textMuted: '#B6C0D0',
   textSubtle: palette.slate[500],
-  border: palette.slate[800],
+  border: palette.slate[700],
   borderStrong: palette.slate[700],
   primary: '#AEB2EE',
   primaryPressed: '#C7CBF3',
@@ -87,7 +89,7 @@ export const darkTheme = {
   success: palette.emerald[600],
   successSubtle: '#052E24',
   successBorder: palette.emerald[800],
-  warning: palette.amber[500],
+  warning: palette.amber[600],
   warningSubtle: '#451A03',
   warningBorder: palette.amber[600],
   danger: palette.red[600],
@@ -115,6 +117,11 @@ export const radius = {
   lg: 16,
   xl: 20,
   pill: 999,
+  // Raios semânticos: controles interativos não herdam o raio dos cards.
+  button: 8,
+  field: 12,
+  card: 16,
+  dialog: 18,
 } as const;
 
 export const typography = {
@@ -135,12 +142,74 @@ export const typography = {
     extrabold: '800',
     black: '900',
   },
+  role: {
+    screenTitle: { fontSize: 21, lineHeight: 27, fontWeight: '700' },
+    screenDescription: { fontSize: 13, lineHeight: 20, fontWeight: '400' },
+    sectionTitle: { fontSize: 16, lineHeight: 21, fontWeight: '700' },
+    body: { fontSize: 13, lineHeight: 20, fontWeight: '400' },
+    bodyStrong: { fontSize: 13, lineHeight: 19, fontWeight: '600' },
+    caption: { fontSize: 11, lineHeight: 15, fontWeight: '400' },
+    label: { fontSize: 11, lineHeight: 15, fontWeight: '600' },
+    link: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
+    button: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  },
+} as const;
+
+export const borders = {
+  hairline: 0.5,
+  subtle: 1,
+} as const;
+
+export const shadows = {
+  card: {
+    shadowColor: palette.brand.navy,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  cardDark: {
+    shadowColor: palette.black,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.23,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  floating: {
+    shadowColor: palette.brand.navy,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  modal: {
+    shadowColor: '#0A0A23',
+    shadowOffset: { width: 0, height: 22 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
+    elevation: 14,
+  },
+  modalDark: {
+    shadowColor: palette.black,
+    shadowOffset: { width: 0, height: 22 },
+    shadowOpacity: 0.48,
+    shadowRadius: 30,
+    elevation: 14,
+  },
+} as const;
+
+export const motion = {
+  pressInDuration: 90,
+  pressOutDuration: 150,
+  pressScale: 0.98,
+  routeAnimation: 'slide_from_right' as const,
+  sheetAnimation: 'slide' as const,
+  dialogAnimation: 'fade' as const,
 } as const;
 
 export const layout = {
   controlHeight: 48,
+  buttonHeight: 46,
   screenHorizontalPadding: spacing[4],
   cardPadding: spacing[4],
 } as const;
-
-export type AppTheme = typeof lightTheme;

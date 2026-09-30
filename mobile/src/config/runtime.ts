@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+export type DistributionChannel = 'direct' | 'store';
+
 const LOCAL_HOST_PATTERN = /(^|\/)\/?(localhost|127\.0\.0\.1|10\.0\.2\.2)(:|\/|$)/i;
 
 const normalizeBaseUrl = (value: string): string => {
@@ -36,6 +38,13 @@ const readConfiguredApiBaseUrl = (): string => {
   return normalized;
 };
 
+const readDistributionChannel = (): DistributionChannel =>
+  process.env.EXPO_PUBLIC_DISTRIBUTION_CHANNEL === 'store' ? 'store' : 'direct';
+
 export const runtimeConfig = {
   apiBaseUrl: readConfiguredApiBaseUrl(),
+  distributionChannel: readDistributionChannel(),
 } as const;
+
+export const isStoreDistributionChannel =
+  runtimeConfig.distributionChannel === 'store';

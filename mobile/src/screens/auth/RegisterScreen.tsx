@@ -5,169 +5,194 @@ import {
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { router } from "expo-router";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
-import { TextField } from "@/components/ui/TextField";
-import { PUBLIC_LINKS } from "@/config/publicLinks";
-import { useAuth } from "@/providers/AuthProvider";
-import { colors } from "@/theme/colors";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AuthField, AuthHero, AuthSubmitButton } from "@/screens/auth/AuthVisualPrimitives";
+import { PUBLIC_LINKS } from "@/config/publicLinks";
+import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
+import { useAuth } from "@/providers/AuthProvider";
+import { palette, radius, spacing, typography } from "@/theme/tokens";
+import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 
 const openPublicLink = (url: string) => {
-  void Linking.openURL(url).catch(() => {
-    Alert.alert(
-      "Link indisponivel",
-      "Nao foi possivel abrir esta pagina agora.",
-    );
+  let safeUrl: string;
+  try {
+    safeUrl = assertAllowedExternalUrl(url);
+  } catch {
+    Alert.alert("Link indisponível", "Não foi possível abrir esta página agora.");
+    return;
+  }
+
+  void Linking.openURL(safeUrl).catch(() => {
+    Alert.alert("Link indisponível", "Não foi possível abrir esta página agora.");
   });
 };
 
 export const RegisterScreen: React.FC = () => {
-  const { register, isLoading } = useAuth();
+  const theme = useAppTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
+  const { register, isLoading } = useAuth();
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
 
   const handleRegister = async () => {
-    if (!name || !email || !password) {
-      Alert.alert("Campos obrigatorios", "Preencha nome, e-mail e senha.");
+    if (!name.trim() || !email.trim() || !password) {
+      Alert.alert("Campos obrigatórios", "Preencha nome, e-mail e senha.");
       return;
     }
 
     try {
-      await register({ name, email, password });
-      // O Stack.Protected troca automaticamente para o grupo privado.
+      await register({ name: name.trim(), email: email.trim(), password });
     } catch (error: any) {
-      Alert.alert(
-        "Falha no cadastro",
-        error?.message || "Nao foi possivel criar a conta.",
-      );
+      Alert.alert("Falha no cadastro", error?.message || "Não foi possível criar a conta.");
+    } finally {
     }
   };
 
   return (
     <KeyboardAvoidingView
-      style={[
-        styles.screen,
-        { paddingTop: 20, paddingBottom: insets.bottom + 20 },
-      ]}
+      style={[styles.screen, { backgroundColor: theme.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.card}>
-        <Text style={styles.brand}>ConcursoMestre</Text>
-        <Text style={styles.title}>Criar conta</Text>
-        <Text style={styles.subtitle}>
-          Comece gratis e acompanhe sua evolucao.
-        </Text>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing[6] }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <AuthHero
+          title="Sua preparação começa com você."
+          subtitle="Crie sua conta e organize sua jornada."
+        />
 
-        <View style={styles.form}>
-          <TextField
-            label="Nome"
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-            placeholder="Seu nome completo"
-          />
-          <TextField
-            label="E-mail"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            placeholder="voce@exemplo.com"
-          />
-          <TextField
-            label="Senha"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="Crie uma senha"
-          />
-          <Text style={styles.legalNotice}>
-            Ao criar a conta, voce declara que leu e concorda com os Termos de
-            Uso e a Politica de Privacidade publicados pelo ConcursoMestre.
-          </Text>
-          <View style={styles.legalLinks}>
-            <Pressable
-              accessibilityRole="link"
-              onPress={() => openPublicLink(PUBLIC_LINKS.terms)}
-            >
-              <Text style={styles.legalLink}>Ler Termos de Uso</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="link"
-              onPress={() => openPublicLink(PUBLIC_LINKS.privacy)}
-            >
-              <Text style={styles.legalLink}>Ler Politica de Privacidade</Text>
-            </Pressable>
+        <View style={styles.formCard}>
+          <Text style={styles.cardTitle}>Crie seu acesso</Text>
+          <View style={styles.fields}>
+            <AuthField
+              label="Nome completo"
+              icon="person-outline"
+              autoCapitalize="words"
+              onChangeText={setName}
+              placeholder="Seu nome"
+              textContentType="name"
+              value={name}
+            />
+            <AuthField
+              label="E-mail"
+              icon="mail-outline"
+              keyboardType="email-address"
+              onChangeText={setEmail}
+              placeholder="seu@email.com"
+              textContentType="emailAddress"
+              value={email}
+            />
+            <AuthField
+              label="Senha"
+              icon="lock-closed-outline"
+              onChangeText={setPassword}
+              placeholder="Crie uma senha"
+              secureTextEntry={!showPassword}
+              textContentType="newPassword"
+              value={password}
+              accessory={
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  hitSlop={10}
+                  onPress={() => setShowPassword((current) => !current)}
+                >
+                  <Ionicons
+                    color={theme.textMuted}
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={18}
+                  />
+                </Pressable>
+              }
+            />
+            <Text style={styles.legalNotice}>
+              Ao criar sua conta, você concorda com os{" "}
+              <Text
+                accessibilityRole="link"
+                onPress={() => openPublicLink(PUBLIC_LINKS.terms)}
+                style={styles.legalLink}
+              >
+                Termos de Uso
+              </Text>{" "}
+              e a{" "}
+              <Text
+                accessibilityRole="link"
+                onPress={() => openPublicLink(PUBLIC_LINKS.privacy)}
+                style={styles.legalLink}
+              >
+                Política de Privacidade
+              </Text>
+              .
+            </Text>
+            <AuthSubmitButton
+              label="Criar conta"
+              busyLabel="Criando..."
+              loading={isLoading}
+              onPress={() => void handleRegister()}
+            />
           </View>
-          <PrimaryButton
-            label="Criar conta"
-            onPress={handleRegister}
-            loading={isLoading}
-          />
         </View>
 
-        <PrimaryButton
-          label="Ja tenho conta"
-          onPress={() => router.back()}
-          disabled={isLoading}
-        />
-      </View>
+        <Text style={styles.footer}>
+          Já tem uma conta?{" "}
+          <Text onPress={() => router.replace("/login")} style={styles.linkText}>
+            Entrar
+          </Text>
+        </Text>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 };
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    justifyContent: "center",
-    padding: 20,
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    gap: 12,
-  },
-  brand: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: colors.primary,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: colors.text,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.muted,
-    lineHeight: 20,
-  },
-  form: {
-    gap: 12,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  legalNotice: {
-    color: colors.muted,
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  legalLinks: {
-    gap: 6,
-  },
-  legalLink: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-});
+const createStyles = (theme: ResolvedAppTheme) =>
+  StyleSheet.create({
+    screen: { flex: 1 },
+    content: { flexGrow: 1 },
+    formCard: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderRadius: 22,
+      borderWidth: StyleSheet.hairlineWidth,
+      elevation: 5,
+      marginHorizontal: spacing[5],
+      marginTop: -26,
+      padding: spacing[4],
+      shadowColor: palette.brand.navy,
+      shadowOffset: { width: 0, height: 5 },
+      shadowOpacity: 0.1,
+      shadowRadius: 15,
+    },
+    cardTitle: {
+      color: theme.text,
+      fontSize: typography.size.lg,
+      fontWeight: typography.weight.bold,
+      marginBottom: spacing[3],
+    },
+    fields: { gap: spacing[2] },
+    legalNotice: {
+      color: theme.textMuted,
+      fontSize: typography.size.xs,
+      lineHeight: 17,
+    },
+    legalLink: { color: theme.primary, fontWeight: typography.weight.bold },
+    footer: {
+      color: theme.textMuted,
+      fontSize: typography.size.sm,
+      marginBottom: spacing[2],
+      marginTop: spacing[2],
+      textAlign: "center",
+    },
+    linkText: { color: theme.primary, fontWeight: typography.weight.bold },
+  });

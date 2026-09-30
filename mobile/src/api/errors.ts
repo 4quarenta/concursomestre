@@ -96,5 +96,3 @@ export const normalizeApiFailure = (error: any, fallbackMessage = 'Nao foi possi
     retryable: false,
   };
 };
-
-export const isRetryableApiFailure = (error: unknown): boolean => normalizeApiFailure(error).retryable;

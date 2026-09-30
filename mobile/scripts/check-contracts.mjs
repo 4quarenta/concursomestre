@@ -18,6 +18,52 @@ const requireText = (source, expected, message) => {
 };
 
 const endpoints = read('mobile/src/api/endpoints.ts');
+const authFlowService = read('mobile/src/services/auth/authFlowService.ts');
+const externalUrlService = read('mobile/src/services/navigation/externalUrlService.ts');
+const appErrorBoundary = read('mobile/src/components/AppErrorBoundary.tsx');
+requireText(
+  appErrorBoundary,
+  'if (__DEV__)',
+  'Error Boundary mobile nao deve emitir detalhes de erro em builds de producao.',
+);
+requireText(
+  externalUrlService,
+  'TRUSTED_EXTERNAL_HOSTS',
+  'Links externos mobile devem possuir allowlist de hosts confiáveis.',
+);
+requireText(
+  externalUrlService,
+  'parsed.protocol !== "https:"',
+  'Links externos mobile devem exigir HTTPS.',
+);
+for (const mobileFile of [
+  'mobile/src/features/content/screens/LearningHubScreens.tsx',
+  'mobile/src/features/content/screens/NotificationsScreen.tsx',
+  'mobile/src/features/content/screens/LawDetailScreen.tsx',
+  'mobile/src/features/account/screens/AccountScreen.tsx',
+  'mobile/src/features/account/screens/StoreAccountScreen.tsx',
+  'mobile/src/screens/auth/LoginScreen.tsx',
+  'mobile/src/screens/auth/RegisterScreen.tsx',
+]) {
+  const source = read(mobileFile);
+  if (!source.includes('assertAllowedExternalUrl')) {
+    failures.push(`Abertura externa sem allowlist: ${mobileFile}`);
+  }
+}
+for (const [endpoint, message] of [
+  ['forgotPassword: "auth/forgot-password.php"', 'Recuperacao de senha mobile deve usar o endpoint oficial.'],
+  ['resetPassword: "auth/reset-password.php"', 'Redefinicao de senha mobile deve usar o endpoint oficial.'],
+  ['confirmEmail: "auth/confirm-email.php"', 'Confirmacao de e-mail mobile deve usar o endpoint oficial.'],
+]) {
+  requireText(endpoints, endpoint, message);
+}
+for (const [method, message] of [
+  ['async forgotPassword(', 'Servico mobile deve expor recuperacao de senha.'],
+  ['async resetPassword(', 'Servico mobile deve expor redefinicao de senha.'],
+  ['async confirmEmail(', 'Servico mobile deve expor confirmacao de e-mail.'],
+]) {
+  requireText(authFlowService, method, message);
+}
 if (!/list:\s*["']questions\/list\.php["']/.test(endpoints)) {
   failures.push('Questoes mobile devem usar o endpoint oficial questions/list.php.');
 }

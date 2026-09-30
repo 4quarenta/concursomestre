@@ -1,15 +1,28 @@
 import React from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MotionPressable } from "@/components/ui/Primitives";
 import { useQuestionTaxonomiesQuery } from "@/features/questions/api/useQuestionTaxonomiesQuery";
 import type { QuestionTaxonomyOption } from "@/features/questions/api/taxonomyService";
-import { radius, spacing, typography } from "@/theme/tokens";
-import { useAppTheme } from "@/theme/useAppTheme";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { QuestionFilterKind } from "@/features/questions/screens/QuestionFiltersScreen";
+import { palette, radius, spacing, typography } from "@/theme/tokens";
+import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 
-const configs: Record<QuestionFilterKind, { label: string; icon: keyof typeof Ionicons.glyphMap; key?: "materias" | "assuntos" | "bancas" | "orgaos" | "cargos" | "carreiras" | "anos" }> = {
+const configs: Record<QuestionFilterKind, {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  key?: "materias" | "assuntos" | "bancas" | "orgaos" | "cargos" | "carreiras" | "anos";
+}> = {
   disciplina: { label: "Disciplina", icon: "book-outline", key: "materias" },
   assunto: { label: "Assunto", icon: "list-outline", key: "assuntos" },
   banca: { label: "Banca", icon: "business-outline", key: "bancas" },
@@ -20,111 +33,217 @@ const configs: Record<QuestionFilterKind, { label: string; icon: keyof typeof Io
   ano: { label: "Ano", icon: "calendar-outline", key: "anos" },
 };
 
-const fallback: Record<QuestionFilterKind, string[]> = {
-  disciplina: ["Português", "Matemática", "Direito Const.", "Informática", "Administração", "Direito Admin.", "Raciocínio Lógico", "Atualidades"],
-  assunto: ["Interpretação de texto", "Constituição Federal", "Atos administrativos", "Regência verbal"],
-  banca: ["CESPE", "FCC", "FGV", "VUNESP", "IBFC"],
-  orgao: ["Tribunal de Justiça", "Ministério Público", "Prefeitura Municipal", "Administração Pública Federal"],
-  cargo: ["Analista", "Técnico", "Auditor", "Professor"],
-  foco: ["Carreira fiscal", "Tribunais", "Controle", "Segurança pública"],
-  modalidade: ["Múltipla escolha", "Certo/Errado"],
-  ano: ["2024", "2023", "2022", "2021", "2020"],
-};
+const splitParam = (value?: string | string[]) =>
+  (Array.isArray(value) ? value.join(",") : value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => Boolean(item) && item !== "__none__");
 
-const splitParam = (value?: string | string[]) => {
-  const raw = Array.isArray(value) ? value.join(",") : value || "";
-  return raw.split(",").map((item) => item.trim()).filter((item) => Boolean(item) && item !== "__none__");
-};
+const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
+  screen: { backgroundColor: theme.background, flex: 1 },
+  header: {
+    alignItems: "center",
+    backgroundColor: theme.surface,
+    borderBottomColor: theme.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: spacing[3],
+    minHeight: 72,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+  },
+  backButton: { alignItems: "center", height: 44, justifyContent: "center", width: 32 },
+  headerCopy: { flex: 1, gap: spacing[1] },
+  headerTitle: { color: theme.text, fontSize: typography.size.lg, fontWeight: typography.weight.bold },
+  headerSubtitle: { color: theme.textMuted, fontSize: typography.size.sm },
+  headerIcon: { marginRight: spacing[1] },
+  body: { flex: 1, paddingHorizontal: spacing[5], paddingTop: spacing[4] },
+  search: {
+    alignItems: "center",
+    backgroundColor: theme.surface,
+    borderColor: theme.borderStrong,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing[2],
+    minHeight: 54,
+    paddingHorizontal: spacing[3],
+  },
+  searchInput: { color: theme.text, flex: 1, fontSize: typography.size.sm, minHeight: 52, paddingVertical: 0 },
+  selectionBar: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", minHeight: 54 },
+  selectionText: { color: theme.text, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
+  selectionAction: { color: theme.primary, fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
+  optionsList: { flex: 1 },
+  optionsCardContent: {
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  option: { alignItems: "center", flexDirection: "row", minHeight: 61, paddingHorizontal: spacing[4] },
+  optionDivider: { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+  optionText: { color: theme.text, flex: 1, fontSize: typography.size.sm },
+  optionCheck: {
+    alignItems: "center",
+    borderColor: theme.textMuted,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    height: 26,
+    justifyContent: "center",
+    width: 26,
+  },
+  optionCheckActive: { backgroundColor: theme.primary, borderColor: theme.primary },
+  empty: { color: theme.textMuted, padding: spacing[6], textAlign: "center" },
+  loading: { padding: spacing[5] },
+  errorBox: { alignItems: "center", gap: spacing[2], padding: spacing[5] },
+  error: { color: theme.danger, fontSize: typography.size.sm, textAlign: "center" },
+  retry: { color: theme.primary, fontSize: typography.size.sm, fontWeight: typography.weight.bold, padding: spacing[2] },
+  footer: {
+    backgroundColor: theme.surface,
+    borderTopColor: theme.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+  },
+  applyButton: { alignItems: "center", backgroundColor: theme.primary, borderRadius: radius.button, justifyContent: "center", minHeight: 52 },
+  applyText: { color: theme.onPrimary, fontSize: typography.size.md, fontWeight: typography.weight.bold },
+  pressed: { opacity: 0.94 },
+});
 
 export default function QuestionFilterPickerScreen() {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ type?: string; values?: string; returnTo?: string }>();
-  const type = (params.type as QuestionFilterKind) in configs ? params.type as QuestionFilterKind : "disciplina";
+  const type = params.type && params.type in configs ? params.type as QuestionFilterKind : "disciplina";
   const config = configs[type];
   const taxonomiesQuery = useQuestionTaxonomiesQuery();
   const [search, setSearch] = React.useState("");
   const [selected, setSelected] = React.useState<string[]>(() => splitParam(params.values));
-
+  const remote = config.key ? taxonomiesQuery.data?.[config.key] : undefined;
   const options = React.useMemo(() => {
-    const remote = config.key ? taxonomiesQuery.data?.[config.key] as QuestionTaxonomyOption[] | string[] | undefined : undefined;
-    if (remote?.length) return remote.map((item) => typeof item === "string" ? item : item.nome).filter(Boolean);
-    return fallback[type];
-  }, [config.key, taxonomiesQuery.data, type]);
-
+    if (type === "modalidade") return ["Múltipla escolha", "Certo/Errado"];
+    if (!remote) return [];
+    const names = (remote as QuestionTaxonomyOption[] | string[])
+      .map((item) => typeof item === "string" ? item : item.nome)
+      .filter(Boolean);
+    return [...new Set(names)];
+  }, [remote, type]);
   const filteredOptions = React.useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("pt-BR");
     return needle ? options.filter((item) => item.toLocaleLowerCase("pt-BR").includes(needle)) : options;
   }, [options, search]);
+  const bottomInset = Math.max(insets.bottom, spacing[2]);
 
   const toggle = (value: string) => {
-    setSelected((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+    setSelected((current) => current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value]);
   };
-
   const apply = () => {
     const destination = params.returnTo || "/questoes";
-    router.replace({ pathname: destination as "/questoes", params: { filterType: type, values: selected.join(",") || "__none__" } });
+    router.replace({
+      pathname: destination as "/questoes",
+      params: { filterType: type, values: selected.join(",") || "__none__" },
+    });
   };
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { backgroundColor: theme.primary }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={23} color={theme.onPrimary} />
-        </Pressable>
+      <StatusBar backgroundColor={palette.brand.navy} barStyle="light-content" />
+      <View style={styles.header}>
+        <MotionPressable
+          accessibilityRole="button"
+          accessibilityLabel="Voltar"
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="arrow-back" size={25} color={theme.textMuted} />
+        </MotionPressable>
         <View style={styles.headerCopy}>
-          <View style={styles.headerTitleRow}><Ionicons name={config.icon} size={18} color={theme.onPrimary} /><Text style={[styles.headerTitle, { color: theme.onPrimary }]}>Escolher {config.label.toLowerCase()}</Text></View>
-          <Text style={[styles.headerSubtitle, { color: theme.onPrimary }]}>Selecione uma ou mais opções</Text>
+          <Text style={styles.headerTitle}>Escolher {config.label.toLowerCase()}</Text>
+          <Text style={styles.headerSubtitle}>Selecione uma ou mais opções</Text>
         </View>
+        <Ionicons name={config.icon} size={27} color={theme.primary} style={styles.headerIcon} />
       </View>
 
       <View style={styles.body}>
-        <TextInput autoCapitalize="none" autoCorrect={false} onChangeText={setSearch} placeholder={`Buscar ${config.label.toLowerCase()}`} placeholderTextColor={theme.textSubtle} style={[styles.search, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]} value={search} />
-        <View style={styles.selectionHeader}><Text style={[styles.resultLabel, { color: theme.textMuted }]}>{selected.length ? `${selected.length} selecionado(s)` : "Nenhum selecionado"}</Text><Pressable onPress={() => setSelected([])}><Text style={[styles.clearText, { color: theme.primary }]}>Limpar</Text></Pressable></View>
-        {taxonomiesQuery.isLoading ? <ActivityIndicator color={theme.primary} style={styles.loader} /> : null}
-        <FlatList
-          data={filteredOptions}
-          keyExtractor={(item) => item}
-          contentContainerStyle={styles.list}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={<Text style={[styles.empty, { color: theme.textMuted }]}>Nenhuma opção encontrada.</Text>}
-          renderItem={({ item }) => {
-            const active = selected.includes(item);
-            return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: active }} onPress={() => toggle(item)} style={({ pressed }) => [styles.option, { backgroundColor: theme.surface, borderColor: active ? theme.primary : theme.border }, active && { backgroundColor: theme.primarySubtle }, pressed && styles.pressed]}><View style={styles.optionCopy}><Text style={[styles.optionText, { color: theme.text }]}>{item}</Text></View><View style={[styles.checkbox, { borderColor: active ? theme.primary : theme.border, backgroundColor: active ? theme.primary : theme.surface }]}>{active ? <Ionicons name="checkmark" size={16} color={theme.onPrimary} /> : null}</View></Pressable>;
-          }}
-        />
+        <View style={styles.search}>
+          <Ionicons name="search-outline" size={23} color={theme.textMuted} />
+          <TextInput
+            accessibilityLabel={`Buscar ${config.label.toLowerCase()}`}
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setSearch}
+            placeholder={`Buscar ${config.label.toLowerCase()}`}
+            placeholderTextColor={theme.textSubtle}
+            returnKeyType="search"
+            style={styles.searchInput}
+            value={search}
+          />
+        </View>
+
+        <View style={styles.selectionBar}>
+          <Text style={styles.selectionText}>
+            {selected.length ? `${selected.length} selecionada${selected.length === 1 ? "" : "s"}` : "Nenhuma selecionada"}
+          </Text>
+          <MotionPressable
+            accessibilityRole="button"
+            accessibilityLabel="Limpar seleção"
+            disabled={selected.length === 0}
+            onPress={() => setSelected([])}
+            style={({ pressed }) => pressed && styles.pressed}
+          >
+            <Text style={styles.selectionAction}>Limpar</Text>
+          </MotionPressable>
+        </View>
+
+        {config.key && taxonomiesQuery.isLoading ? <ActivityIndicator color={theme.primary} style={styles.loading} /> : null}
+        {config.key && taxonomiesQuery.isError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.error}>Não foi possível carregar esta lista.</Text>
+            <MotionPressable accessibilityRole="button" onPress={() => void taxonomiesQuery.refetch()}>
+              <Text style={styles.retry}>Tentar novamente</Text>
+            </MotionPressable>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredOptions}
+            contentContainerStyle={styles.optionsCardContent}
+            keyExtractor={(item) => item}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={!taxonomiesQuery.isLoading ? <Text style={styles.empty}>Nenhuma opção encontrada.</Text> : null}
+            renderItem={({ item, index }) => {
+              const active = selected.includes(item);
+              return (
+                <MotionPressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: active }}
+                  onPress={() => toggle(item)}
+                  style={({ pressed }) => [
+                    styles.option,
+                    index < filteredOptions.length - 1 && styles.optionDivider,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.optionText}>{item}</Text>
+                  <View style={[styles.optionCheck, active && styles.optionCheckActive]}>
+                    {active ? <Ionicons name="checkmark" size={17} color={theme.onPrimary} /> : null}
+                  </View>
+                </MotionPressable>
+              );
+            }}
+            style={styles.optionsList}
+          />
+        )}
       </View>
 
-      <View style={[styles.footer, { backgroundColor: theme.surface, borderTopColor: theme.border, paddingBottom: Math.max(spacing[2], insets.bottom) }]}>
-        <Pressable accessibilityRole="button" onPress={apply} style={[styles.applyButton, { backgroundColor: theme.primary }]}><Text style={[styles.applyText, { color: theme.onPrimary }]}>Aplicar{selected.length ? ` (${selected.length})` : ""}</Text></Pressable>
+      <View style={[styles.footer, { paddingBottom: bottomInset }]}>
+        <MotionPressable accessibilityRole="button" onPress={apply} style={({ pressed }) => [styles.applyButton, pressed && styles.pressed]}>
+          <Text style={styles.applyText}>Aplicar{selected.length ? ` (${selected.length})` : ""}</Text>
+        </MotionPressable>
       </View>
     </View>
   );
 }
-
-const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.create({
-  screen: { backgroundColor: theme.background, flex: 1 },
-  header: { alignItems: "center", flexDirection: "row", gap: spacing[3], paddingHorizontal: spacing[4], paddingVertical: spacing[4] },
-  backButton: { alignItems: "center", height: 40, justifyContent: "center", width: 40 },
-  headerCopy: { flex: 1, gap: 2 },
-  headerTitleRow: { alignItems: "center", flexDirection: "row", gap: spacing[2] },
-  headerTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold },
-  headerSubtitle: { fontSize: typography.size.xs, opacity: 0.82 },
-  body: { flex: 1, padding: spacing[4] },
-  search: { borderRadius: radius.md, borderWidth: 1, minHeight: 48, paddingHorizontal: spacing[3] },
-  selectionHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", paddingVertical: spacing[3] },
-  resultLabel: { fontSize: typography.size.xs },
-  clearText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
-  loader: { marginVertical: spacing[4] },
-  list: { gap: spacing[2], paddingBottom: spacing[4] },
-  option: { alignItems: "center", borderRadius: radius.md, borderWidth: 1, flexDirection: "row", minHeight: 56, paddingHorizontal: spacing[4], paddingVertical: spacing[3] },
-  optionCopy: { flex: 1 },
-  optionText: { fontSize: typography.size.sm, fontWeight: typography.weight.medium },
-  checkbox: { alignItems: "center", borderRadius: radius.sm, borderWidth: 1, height: 24, justifyContent: "center", width: 24 },
-  empty: { paddingVertical: spacing[8], textAlign: "center" },
-  footer: { borderTopWidth: 1, paddingHorizontal: spacing[4], paddingTop: spacing[2] },
-  applyButton: { alignItems: "center", borderRadius: radius.md, justifyContent: "center", minHeight: 48 },
-  applyText: { fontSize: typography.size.sm, fontWeight: typography.weight.bold },
-  pressed: { opacity: 0.74 },
-});

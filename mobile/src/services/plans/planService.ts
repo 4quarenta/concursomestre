@@ -1,6 +1,7 @@
 import { apiClient } from "@/services/api/client";
 import { ENDPOINTS } from "@/services/api/endpoints";
 import { assertApiSuccess, readApiData } from "@/services/api/response";
+import { isStoreDistributionChannel } from "@/config/runtime";
 import type { CouponValidationResult, Plan } from "@/types/plans";
 
 type StripeBillingMode = "single_installment" | "term_recurring";
@@ -43,6 +44,14 @@ type StripeFinalizePayload = {
   saved_card_id?: string;
   save_card?: boolean;
   billing_mode?: StripeBillingMode;
+};
+
+const assertDirectBillingChannel = (): void => {
+  if (isStoreDistributionChannel) {
+    throw new Error(
+      "Assinaturas pelo app da loja são gerenciadas pela loja e não abrem checkout externo.",
+    );
+  }
 };
 
 /**
@@ -131,6 +140,7 @@ export const planService = {
   async createStripeCheckoutSession(
     payload: StripeCheckoutPayload,
   ): Promise<StripeCheckoutSessionResult> {
+    assertDirectBillingChannel();
     const response: any = await apiClient.post<any>(
       ENDPOINTS.subscriptions.createStripeCheckout,
       payload,
@@ -161,6 +171,7 @@ export const planService = {
   async createStripeSubscription(
     payload: StripeInlineSubscriptionPayload,
   ): Promise<any> {
+    assertDirectBillingChannel();
     const response: any = await apiClient.post<any>(
       ENDPOINTS.subscriptions.createStripeSubscription,
       payload,
@@ -172,6 +183,7 @@ export const planService = {
   async finalizeStripeSubscription(
     payload: StripeFinalizePayload,
   ): Promise<any> {
+    assertDirectBillingChannel();
     const response: any = await apiClient.post<any>(
       ENDPOINTS.subscriptions.finalizeStripeSubscription,
       payload,

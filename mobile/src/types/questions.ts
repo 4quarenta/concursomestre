@@ -6,6 +6,38 @@ export interface QuestionItem {
   rotulo?: string;
   corpo?: string;
   corpo_clean?: string;
+  assets?: QuestionAsset[];
+}
+
+export interface QuestionAsset {
+  id?: string;
+  tempId?: string;
+  type?: "image" | string;
+  usage?: "statement" | "support" | "alternative" | "context" | "reference" | string;
+  url?: string;
+  base64?: string;
+  alt?: string;
+  caption?: string;
+  order?: number;
+}
+
+export interface QuestionAlternative extends QuestionItem {
+  canonicalId?: string | number;
+  tempId?: string;
+  order?: number;
+  label?: string;
+  text?: string;
+  textClean?: string;
+}
+
+export interface QuestionContext {
+  id?: number;
+  tempId?: string;
+  type?: string;
+  body?: string;
+  bodyClean?: string;
+  reference?: string;
+  assets?: QuestionAsset[];
 }
 
 export interface QuestionSubject {
@@ -58,7 +90,12 @@ export interface Question {
   id?: number;
   enunciado?: string;
   enunciado_clean?: string;
+  imageUrl?: string;
+  assets?: QuestionAsset[];
+  introText?: string;
+  contexts?: QuestionContext[];
   itens?: QuestionItem[];
+  alternatives?: QuestionAlternative[];
   /** Campos de gabarito existem somente quando o servidor liberou revisao. */
   resposta?: number;
   correctOptionIndex?: number;

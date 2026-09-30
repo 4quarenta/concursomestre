@@ -19,6 +19,7 @@ import { subscriptionsService } from "@/services/subscriptions/subscriptionsServ
 import { radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import type { MobileTransaction } from "@/types/transactions";
+import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
 
 const formatDate = (raw?: string | number) => {
   if (raw === undefined || raw === null || raw === "") return "--";
@@ -185,12 +186,13 @@ export const AccountScreen: React.FC = () => {
     setOpeningPortal(true);
     try {
       const result = await subscriptionsService.createStripePortalSession();
-      const supported = await Linking.canOpenURL(result.url);
+      const safeUrl = assertAllowedExternalUrl(result.url, "portal de cobranca");
+      const supported = await Linking.canOpenURL(safeUrl);
       if (!supported)
         throw new Error(
           "Nao foi possivel abrir o gerenciamento de cobranca neste aparelho.",
         );
-      await Linking.openURL(result.url);
+      await Linking.openURL(safeUrl);
     } catch (error: any) {
       Alert.alert(
         "Cobranca",

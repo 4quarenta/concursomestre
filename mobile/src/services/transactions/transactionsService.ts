@@ -11,7 +11,8 @@ export const transactionsService = {
   async list(params: TransactionListParams = {}): Promise<MobileTransaction[]> {
     const queryParams: Record<string, string | number> = {};
 
-    if (params.userId) queryParams.user_id = params.userId;
+    // A rota oficial força o escopo para o usuário autenticado (exceto
+    // operações administrativas, que não pertencem ao app mobile).
     if (params.scope) queryParams.scope = params.scope;
     if (params.page) queryParams.page = params.page;
     if (params.limit) queryParams.limit = params.limit;

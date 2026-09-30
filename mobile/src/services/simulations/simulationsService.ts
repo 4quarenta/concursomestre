@@ -97,9 +97,10 @@ const cacheDetail = async (detail: SimulationDetail): Promise<void> => {
   await saveLocalDetails([cached, ...rows.filter((item) => String(item.id) !== String(detail.id))]);
 };
 
-const readRemoteDetails = async (userId?: string): Promise<SimulationDetail[]> => {
+const readRemoteDetails = async (_userId?: string): Promise<SimulationDetail[]> => {
   const response: any = await apiClient.get<any>(ENDPOINTS.simulations.list, {
-    params: userId ? { user_id: userId } : undefined,
+    // A API escopa simulados pelo bearer token; não envie user_id do cliente.
+    params: undefined,
   });
   return sortDetails(normalizeSimulationDetails(readApiData<any>(response, []), 'remote').map((item) => ({ ...item, source: 'remote' as const })));
 };

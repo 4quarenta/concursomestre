@@ -14,10 +14,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { simulationQueryKeys } from "@/features/simulations/api/queryKeys";
 import { simulationsService } from "@/services/simulations/simulationsService";
+import { statisticsService } from "@/services/statistics/statisticsService";
 import { useSimulationRunStore } from "@/state/simulationRunStore";
-import { radius, spacing, typography } from "@/theme/tokens";
+import { useAuth } from "@/providers/AuthProvider";
+import { SimulationResultsScreen } from "@/features/simulations/components/SimulationResultsScreen";
+import { SimulationSubpageHeader } from "@/features/simulations/components/SimulationSubpageHeader";
+import { darkTheme, motion, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GuestAccessSheet } from "@/components/GuestAccessSheet";
 import type { Question } from "@/types/questions";
 import type { MobileSimulationResult } from "@/types/simulation";
 import type { SimulationAnswerResult } from "@/types/simulations";
@@ -49,6 +54,8 @@ export const SimulationRunScreenV2: React.FC = () => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
+  const { user, isGuest } = useAuth();
+  const isVisitor = isGuest || !user?.id;
   const queryClient = useQueryClient();
   const seed = useSimulationRunStore((state) => state.seed);
   const answers = useSimulationRunStore((state) => state.answers);
@@ -67,6 +74,7 @@ export const SimulationRunScreenV2: React.FC = () => {
   const [result, setResult] = React.useState<MobileSimulationResult | null>(
     null,
   );
+  const [completedDifficulty, setCompletedDifficulty] = React.useState("Todas");
   const [finishing, setFinishing] = React.useState(false);
   const [savingAnswer, setSavingAnswer] = React.useState(false);
   const [showPalette, setShowPalette] = React.useState(false);
@@ -162,6 +170,21 @@ export const SimulationRunScreenV2: React.FC = () => {
     setFinishing(true);
     try {
       const saved = await persistSnapshot("completed");
+      const endedAt = Date.now();
+      const elapsedSeconds = Math.max(0, Math.round((endedAt - seed.startedAt) / 1000));
+      if (elapsedSeconds > 0) {
+        try {
+          await statisticsService.recordStudySession({
+            practiceSeconds: 0,
+            simulationSeconds: elapsedSeconds,
+            startedAt: new Date(seed.startedAt).toISOString(),
+            endedAt: new Date(endedAt).toISOString(),
+            sourceContext: { source: "mobile_simulation", simulation_id: simulationId },
+          });
+        } catch {
+          // A falha ao registrar a métrica não invalida o resultado já salvo do simulado.
+        }
+      }
       const authoritative = saved.results;
       setServerResults(authoritative);
 
@@ -195,12 +218,14 @@ export const SimulationRunScreenV2: React.FC = () => {
       setResult({
         score: saved.score,
         total: seed.questions.length,
-        elapsedSeconds: Math.max(
-          0,
-          Math.round((Date.now() - seed.startedAt) / 1000),
-        ),
+        elapsedSeconds,
         questionResults,
       });
+      setCompletedDifficulty(
+        seed.config.difficulty && seed.config.difficulty !== "all"
+          ? ({ easy: "Fácil", medium: "Média", hard: "Difícil" } as const)[seed.config.difficulty]
+          : "Todas",
+      );
       clearSeed();
       await queryClient.invalidateQueries({
         queryKey: simulationQueryKeys.all,
@@ -283,6 +308,18 @@ export const SimulationRunScreenV2: React.FC = () => {
     );
   }
 
+  if (isVisitor) {
+    return (
+      <View style={styles.center}>
+        <GuestAccessSheet
+          visible
+          description="Entre ou crie sua conta para iniciar o simulado e salvar seu resultado."
+          onDismiss={() => router.replace("/simulados")}
+        />
+      </View>
+    );
+  }
+
   const resultCorrect =
     result?.questionResults.filter((entry) => entry.isCorrect).length || 0;
   const resultWrong =
@@ -293,84 +330,52 @@ export const SimulationRunScreenV2: React.FC = () => {
     result?.questionResults.filter((entry) => !entry.answered).length || 0;
 
   if (result) {
+    const percentage = result.total > 0
+      ? Math.round((resultCorrect / result.total) * 100)
+      : 0;
+    const reviewRows = result.questionResults.map((entry, index) => {
+      const subject = metadataLabel(
+        entry.question.assuntos?.find((item) => item.materia),
+      );
+      const bank = metadataLabel(entry.question.bancas?.[0]);
+      const year = entry.question.anos?.[0]
+        ? String(entry.question.anos[0])
+        : "";
+      return {
+        id: questionKey(entry.question, index),
+        questionNumber: index + 1,
+        status: !entry.answered
+          ? "blank" as const
+          : entry.isCorrect
+            ? "correct" as const
+            : "wrong" as const,
+        statement: stripHtml(
+          entry.question.enunciado_clean || entry.question.enunciado,
+        ),
+        metadata: [bank, subject, year].filter(Boolean),
+        selectedAnswer: entry.selectedIndex === undefined
+          ? undefined
+          : String.fromCharCode(65 + entry.selectedIndex),
+        correctAnswer: entry.correctIndex < 0
+          ? undefined
+          : String.fromCharCode(65 + entry.correctIndex),
+      };
+    });
+
     return (
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: spacing[4],
-            paddingBottom: spacing[10] + insets.bottom,
-          },
-        ]}
-      >
-        <View style={styles.resultHero}>
-          <Text style={styles.resultEyebrow}>RESULTADO DO SIMULADO</Text>
-          <Text style={styles.resultTitle}>Seu desempenho</Text>
-          <Text style={styles.resultScore}>
-            {result.score} / {result.total}
-          </Text>
-          <Text style={styles.resultHint}>
-            Pontuação calculada pelo servidor
-          </Text>
-        </View>
-
-        <View style={styles.resultStats}>
-          <View style={styles.resultStat}>
-            <Text style={styles.resultStatValue}>{resultCorrect}</Text>
-            <Text style={styles.resultStatLabel}>Acertos</Text>
-          </View>
-          <View style={styles.resultStat}>
-            <Text style={[styles.resultStatValue, styles.resultWrongValue]}>
-              {resultWrong}
-            </Text>
-            <Text style={styles.resultStatLabel}>Erros</Text>
-          </View>
-          <View style={styles.resultStat}>
-            <Text style={styles.resultStatValue}>{resultBlank}</Text>
-            <Text style={styles.resultStatLabel}>Em branco</Text>
-          </View>
-        </View>
-
-        {result.questionResults.map((entry, index) => (
-          <View
-            key={questionKey(entry.question, index)}
-            style={styles.reviewCard}
-          >
-            <Text
-              style={entry.isCorrect ? styles.correctText : styles.wrongText}
-            >
-              {entry.answered
-                ? entry.isCorrect
-                  ? "Acerto"
-                  : "Erro"
-                : "Em branco"}
-            </Text>
-            <Text style={styles.statement}>
-              {stripHtml(
-                entry.question.enunciado_clean || entry.question.enunciado,
-              )}
-            </Text>
-            <Text style={styles.muted}>
-              Sua resposta:{" "}
-              {entry.selectedIndex === undefined
-                ? "--"
-                : String.fromCharCode(65 + entry.selectedIndex)}{" "}
-              · Gabarito:{" "}
-              {entry.correctIndex < 0
-                ? "--"
-                : String.fromCharCode(65 + entry.correctIndex)}
-            </Text>
-          </View>
-        ))}
-
-        <Pressable
-          onPress={() => router.replace("/simulados")}
-          style={styles.primaryButton}
-        >
-          <Text style={styles.primaryButtonText}>Voltar aos simulados</Text>
-        </Pressable>
-      </ScrollView>
+      <SimulationResultsScreen
+        title="Simulado personalizado"
+        percentage={percentage}
+        correct={resultCorrect}
+        total={result.total}
+        wrong={resultWrong}
+        blank={resultBlank}
+        elapsedSeconds={result.elapsedSeconds}
+        secondsPerQuestion={result.total > 0 ? result.elapsedSeconds / result.total : undefined}
+        difficulty={completedDifficulty}
+        rows={reviewRows}
+        onBack={() => router.replace("/simulados")}
+      />
     );
   }
 
@@ -391,10 +396,10 @@ export const SimulationRunScreenV2: React.FC = () => {
 
   const metadata = [
     ["Banca", metadataLabel(currentQuestion.bancas?.[0])],
+    ["Matéria", metadataLabel(currentQuestion.assuntos?.find((item) => item.materia))],
     ["Ano", currentQuestion.anos?.[0] ? String(currentQuestion.anos[0]) : ""],
     ["Órgão", metadataLabel(currentQuestion.orgaos?.[0])],
     ["Cargo", metadataLabel(currentQuestion.cargos?.[0])],
-    ["Matéria", metadataLabel(currentQuestion.assuntos?.find((item) => item.materia))],
     ["Assunto", metadataLabel(currentQuestion.assuntos?.find((item) => !item.materia))],
   ].filter((item): item is [string, string] => Boolean(item[1]));
 
@@ -410,43 +415,42 @@ export const SimulationRunScreenV2: React.FC = () => {
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.topBar, { paddingTop: spacing[2] }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Sair do simulado"
-          onPress={() => setShowExitModal(true)}
-          style={styles.iconButton}
-        >
-          <Ionicons name="close" size={22} color={theme.text} />
-        </Pressable>
-        <View style={styles.timerPill}>
-          <Ionicons name="time-outline" size={16} color={theme.primary} />
-          <Text style={styles.timer}>
-            {seed.config.timerEnabled ? formatRemainingTime(remainingSeconds) : "Sem limite"}
-          </Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={paused ? "Continuar simulado" : "Pausar simulado"}
-          onPress={() => setPaused((value) => !value)}
-          style={styles.iconButton}
-        >
-          <Ionicons name={paused ? "play" : "pause"} size={20} color={theme.textMuted} />
-        </Pressable>
-      </View>
+      <SimulationSubpageHeader
+        title="Simulado em andamento"
+        onBack={() => setShowExitModal(true)}
+        actionLabel="Sair"
+        onAction={() => setShowExitModal(true)}
+      />
       <View style={styles.runMetaRow}>
         <Text style={styles.topEyebrow}>
           Questão {currentIndex + 1} de {seed.questions.length}
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Navegar pelas questões"
-          onPress={() => setShowPalette((value) => !value)}
-          style={styles.paletteButton}
-        >
-          <Ionicons name={showPalette ? "close" : "grid-outline"} size={17} color={theme.textMuted} />
-          <Text style={styles.paletteButtonText}>Questões</Text>
-        </Pressable>
+        <View style={styles.progressActions}>
+          <View style={styles.timerPill}>
+            <Ionicons name="time-outline" size={15} color={theme.primary} />
+            <Text style={styles.timer}>
+              {seed.config.timerEnabled ? formatRemainingTime(remainingSeconds) : "Sem limite"}
+            </Text>
+          </View>
+          {seed.config.timerEnabled ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={paused ? "Continuar simulado" : "Pausar simulado"}
+              onPress={() => setPaused((value) => !value)}
+              style={styles.iconButton}
+            >
+              <Ionicons name={paused ? "play" : "pause"} size={17} color={theme.textMuted} />
+            </Pressable>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Navegar pelas questões"
+            onPress={() => setShowPalette((value) => !value)}
+            style={styles.paletteButton}
+          >
+            <Ionicons name={showPalette ? "close" : "grid-outline"} size={17} color={theme.textMuted} />
+          </Pressable>
+        </View>
       </View>
       <View style={styles.progressTrack}>
         <View
@@ -497,22 +501,17 @@ export const SimulationRunScreenV2: React.FC = () => {
           </View>
         ) : null}
 
-        <View style={styles.infoCard}>
-          <View style={styles.infoHeader}>
-            <Text style={styles.infoEyebrow}>INFORMAÇÕES DA QUESTÃO</Text>
-            <Text style={styles.infoId}>#{currentQuestion.id ?? currentIndex + 1}</Text>
-          </View>
-          <View style={styles.chips}>
-            {metadata.map(([name, value]) => (
+        <View style={styles.chips}>
+          {metadata
+            .filter(([name]) => ["Banca", "Matéria", "Ano"].includes(name))
+            .map(([name, value]) => (
               <View
                 key={`${name}-${value}`}
-                style={[styles.chip, (name === "Matéria" || name === "Assunto") && styles.primaryChip]}
+                style={[styles.chip, name === "Matéria" && styles.primaryChip]}
               >
-                <Text style={styles.chipLabel}>{name}: </Text>
                 <Text style={styles.chipValue}>{value}</Text>
               </View>
             ))}
-          </View>
         </View>
 
         <Text style={styles.statement}>
@@ -594,17 +593,20 @@ export const SimulationRunScreenV2: React.FC = () => {
           style={[styles.arrowButton, currentIndex === 0 && styles.disabled]}
         >
           <Ionicons name="arrow-back" size={21} color={theme.text} />
+          <Text style={styles.previousButtonText}>Questão anterior</Text>
         </Pressable>
         <Pressable
           onPress={goNext}
           style={[styles.primaryButton, styles.bottomPrimaryButton]}
         >
           <Text style={styles.primaryButtonText}>
-            {currentIndex < seed.questions.length - 1
-              ? "Próxima questão"
-              : finishing
+            {currentIndex >= seed.questions.length - 1
+              ? (finishing
                 ? "Finalizando..."
-                : "Finalizar simulado"}
+                : "Finalizar simulado")
+              : currentSelected !== undefined && !instantFeedback
+                ? "Confirmar resposta"
+                : "Próxima questão"}
           </Text>
           {currentIndex < seed.questions.length - 1 ? (
             <Ionicons name="arrow-forward" size={17} color={theme.onPrimary} />
@@ -662,7 +664,7 @@ const SimulationConfirmModal = ({
   const styles = React.useMemo(() => createStyles(theme), [theme]);
 
   return (
-    <Modal animationType="fade" transparent visible={visible} onRequestClose={onCancel}>
+    <Modal animationType={motion.dialogAnimation} transparent visible={visible} onRequestClose={onCancel}>
       <View style={styles.modalBackdrop}>
         <View style={styles.modalSheet}>
           <Text style={styles.modalTitle}>{title}</Text>
@@ -689,40 +691,30 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       padding: spacing[4],
       paddingBottom: spacing[10],
     },
-    topBar: {
-      alignItems: "center",
-      backgroundColor: theme.surface,
-      flexDirection: "row",
-      gap: spacing[2],
-      paddingHorizontal: spacing[4],
-      paddingBottom: spacing[2],
-    },
-    topEyebrow: { color: theme.textMuted, fontSize: 10 },
-    topMeta: {
+    topEyebrow: {
       color: theme.text,
-      fontSize: typography.size.xs,
+      fontSize: typography.size.sm,
       fontWeight: typography.weight.semibold,
-      marginTop: 2,
     },
     runMetaRow: {
       alignItems: "center",
       backgroundColor: theme.surface,
       flexDirection: "row",
       justifyContent: "space-between",
-      paddingBottom: spacing[2],
+      minHeight: 58,
       paddingHorizontal: spacing[4],
     },
-    paletteButton: {
+    progressActions: {
       alignItems: "center",
       flexDirection: "row",
       gap: spacing[1],
-      paddingHorizontal: spacing[2],
-      paddingVertical: spacing[1],
     },
-    paletteButtonText: {
-      color: theme.textMuted,
-      fontSize: typography.size.xs,
-      fontWeight: typography.weight.semibold,
+    paletteButton: {
+      alignItems: "center",
+      borderRadius: radius.pill,
+      height: 38,
+      justifyContent: "center",
+      width: 38,
     },
     iconButton: {
       alignItems: "center",
@@ -733,7 +725,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     timerPill: {
       alignItems: "center",
-      backgroundColor: theme.primarySubtle,
+      backgroundColor: theme.surfaceSubtle,
       borderRadius: radius.pill,
       flexDirection: "row",
       gap: spacing[1],
@@ -754,9 +746,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       justifyContent: "space-between",
     },
     timer: {
-      color: theme.primary,
-      fontSize: typography.size.xl,
-      fontWeight: typography.weight.black,
+      color: theme.text,
+      fontSize: typography.size.xs,
+      fontWeight: typography.weight.bold,
     },
     progressTrack: {
       backgroundColor: theme.surfaceSubtle,
@@ -790,39 +782,22 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontWeight: typography.weight.bold,
     },
     paletteTextActive: { color: theme.onPrimary },
-    infoCard: {
-      backgroundColor: theme.surface,
-      borderColor: theme.border,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      padding: spacing[3],
-    },
-    infoHeader: {
-      alignItems: "center",
+    chips: {
       flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: spacing[2],
+      flexWrap: "wrap",
+      gap: spacing[2],
+      paddingBottom: spacing[1],
     },
-    infoEyebrow: {
-      color: theme.textMuted,
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
-      letterSpacing: 0.6,
-    },
-    infoId: { color: theme.textMuted, fontSize: 10 },
-    chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
     chip: {
       backgroundColor: theme.surfaceSubtle,
-      borderRadius: radius.sm,
-      flexDirection: "row",
-      paddingHorizontal: spacing[2],
-      paddingVertical: spacing[1],
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing[3],
+      paddingVertical: spacing[2],
     },
     primaryChip: { backgroundColor: theme.primarySubtle },
-    chipLabel: { color: theme.textMuted, fontSize: 10 },
     chipValue: {
       color: theme.text,
-      fontSize: 10,
+      fontSize: typography.size.xs,
       fontWeight: typography.weight.semibold,
     },
     statement: {
@@ -880,15 +855,16 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     primaryButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       justifyContent: "center",
       minHeight: 46,
       paddingHorizontal: spacing[4],
     },
     primaryButtonText: {
       color: theme.onPrimary,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.bold,
+      fontSize: typography.role.button.fontSize,
+      lineHeight: typography.role.button.lineHeight,
+      fontWeight: typography.role.button.fontWeight,
     },
     bottomBar: {
       alignItems: "center",
@@ -909,11 +885,18 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       alignItems: "center",
       backgroundColor: theme.surface,
       borderColor: theme.border,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderWidth: 1,
+      flexDirection: "row",
+      gap: spacing[1],
       height: 46,
       justifyContent: "center",
-      width: 46,
+      paddingHorizontal: spacing[2],
+    },
+    previousButtonText: {
+      color: theme.text,
+      fontSize: 10,
+      fontWeight: typography.weight.semibold,
     },
     disabled: { opacity: 0.4 },
     finishLink: { alignItems: "center", paddingVertical: spacing[2] },
@@ -942,57 +925,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: typography.size.sm,
       fontWeight: typography.weight.bold,
     },
-    resultHero: {
-      alignItems: "center",
-      backgroundColor: theme.primary,
-      borderRadius: radius.lg,
-      gap: spacing[2],
-      padding: spacing[6],
-    },
-    resultEyebrow: {
-      color: "rgba(255,255,255,0.72)",
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
-      letterSpacing: 1,
-    },
-    resultTitle: {
-      color: theme.onPrimary,
-      fontSize: typography.size.xl,
-      fontWeight: typography.weight.bold,
-    },
-    resultScore: {
-      color: theme.onPrimary,
-      fontSize: typography.size["3xl"],
-      fontWeight: typography.weight.black,
-    },
-    resultHint: {
-      color: "rgba(255,255,255,0.78)",
-      fontSize: typography.size.xs,
-    },
-    resultStats: { flexDirection: "row", gap: spacing[2] },
-    resultStat: {
-      alignItems: "center",
-      backgroundColor: theme.surface,
-      borderRadius: radius.md,
-      flex: 1,
-      gap: 2,
-      padding: spacing[3],
-    },
-    resultStatValue: {
-      color: theme.success,
-      fontSize: typography.size.xl,
-      fontWeight: typography.weight.bold,
-    },
-    resultWrongValue: { color: theme.danger },
-    resultStatLabel: { color: theme.textMuted, fontSize: 10 },
-    reviewCard: {
-      backgroundColor: theme.surface,
-      borderColor: theme.border,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      gap: spacing[2],
-      padding: spacing[4],
-    },
     muted: {
       color: theme.textMuted,
       fontSize: typography.size.sm,
@@ -1005,14 +937,15 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     modalBackdrop: {
       alignItems: "center",
-      backgroundColor: "rgba(15,23,42,0.45)",
+      backgroundColor: "rgba(10,10,35,0.56)",
       flex: 1,
       justifyContent: "flex-end",
     },
     modalSheet: {
+      ...(theme === darkTheme ? shadows.modalDark : shadows.modal),
       backgroundColor: theme.surface,
-      borderTopLeftRadius: radius.xl,
-      borderTopRightRadius: radius.xl,
+      borderTopLeftRadius: radius.dialog,
+      borderTopRightRadius: radius.dialog,
       gap: spacing[2],
       padding: spacing[6],
       width: "100%",
@@ -1035,7 +968,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     modalCancelButton: {
       alignItems: "center",
       borderColor: theme.border,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       borderWidth: 1,
       flex: 1,
       justifyContent: "center",
@@ -1044,13 +977,14 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     modalCancelText: {
       color: theme.text,
-      fontSize: typography.size.sm,
+      fontSize: typography.role.button.fontSize,
+      lineHeight: typography.role.button.lineHeight,
       fontWeight: typography.weight.semibold,
     },
     modalConfirmButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       flex: 1,
       justifyContent: "center",
       minHeight: 46,
@@ -1058,8 +992,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     modalConfirmText: {
       color: theme.onPrimary,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.bold,
+      fontSize: typography.role.button.fontSize,
+      lineHeight: typography.role.button.lineHeight,
+      fontWeight: typography.role.button.fontWeight,
     },
   });
 

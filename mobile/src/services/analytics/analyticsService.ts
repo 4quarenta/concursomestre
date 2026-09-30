@@ -1,4 +1,5 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type AnalyticsParam = string | number | boolean;
 
@@ -11,6 +12,49 @@ type FirebaseAnalyticsInstance = {
 };
 
 let analyticsInstance: FirebaseAnalyticsInstance | null | undefined;
+let collectionEnabled = false;
+let initializationPromise: Promise<boolean> | null = null;
+let consentOverride: boolean | null = null;
+
+const PRIVACY_STORAGE_KEY = 'concursomestre.privacy';
+
+const readUsageDataConsent = async (): Promise<boolean> => {
+  try {
+    const rawValue = await AsyncStorage.getItem(PRIVACY_STORAGE_KEY);
+    if (!rawValue) return false;
+
+    const parsed = JSON.parse(rawValue) as { usageData?: unknown };
+    return parsed.usageData === true;
+  } catch {
+    return false;
+  }
+};
+
+const writeUsageDataConsent = async (enabled: boolean): Promise<void> => {
+  try {
+    const rawValue = await AsyncStorage.getItem(PRIVACY_STORAGE_KEY);
+    let preferences: Record<string, unknown> = {};
+
+    if (rawValue) {
+      try {
+        const parsed = JSON.parse(rawValue);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          preferences = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // Recria somente o objeto de preferências quando o valor local estiver
+        // corrompido; as demais preferências não podem bloquear o consentimento.
+      }
+    }
+
+    await AsyncStorage.setItem(
+      PRIVACY_STORAGE_KEY,
+      JSON.stringify({ ...preferences, usageData: enabled }),
+    );
+  } catch {
+    // A coleta continua fail-closed se a preferência não puder ser persistida.
+  }
+};
 
 const getAnalytics = (): FirebaseAnalyticsInstance | null => {
   if (analyticsInstance !== undefined) return analyticsInstance;
@@ -60,20 +104,47 @@ const hashIdentifier = (value: string): string => {
 
 export const analyticsService = {
   async initialize(): Promise<boolean> {
+    if (!initializationPromise) {
+      initializationPromise = (async () => {
+        const analytics = getAnalytics();
+        if (!analytics) return false;
+
+        const consent = consentOverride ?? await readUsageDataConsent();
+        try {
+          await analytics.setAnalyticsCollectionEnabled(consent);
+          collectionEnabled = consent;
+          return consent;
+        } catch {
+          collectionEnabled = false;
+          return false;
+        }
+      })();
+    }
+
+    return initializationPromise;
+  },
+
+  async setUsageDataConsent(enabled: boolean): Promise<boolean> {
+    consentOverride = enabled;
+    await writeUsageDataConsent(enabled);
+
     const analytics = getAnalytics();
+    collectionEnabled = false;
     if (!analytics) return false;
 
     try {
-      await analytics.setAnalyticsCollectionEnabled(true);
-      return true;
+      await analytics.setAnalyticsCollectionEnabled(enabled);
+      return enabled;
     } catch {
+      collectionEnabled = false;
       return false;
     }
   },
 
   async logScreenView(pathname: string): Promise<void> {
+    await this.initialize();
     const analytics = getAnalytics();
-    if (!analytics) return;
+    if (!analytics || !collectionEnabled) return;
 
     try {
       await analytics.logScreenView({
@@ -86,8 +157,9 @@ export const analyticsService = {
   },
 
   async logEvent(name: string, params?: Record<string, AnalyticsParam>): Promise<void> {
+    await this.initialize();
     const analytics = getAnalytics();
-    if (!analytics) return;
+    if (!analytics || !collectionEnabled) return;
 
     try {
       await analytics.logEvent(name.slice(0, 40), params);
@@ -97,8 +169,9 @@ export const analyticsService = {
   },
 
   async setUserId(userId?: string | null): Promise<void> {
+    await this.initialize();
     const analytics = getAnalytics();
-    if (!analytics) return;
+    if (!analytics || !collectionEnabled) return;
 
     try {
       await analytics.setUserId(userId ? hashIdentifier(String(userId)) : null);
@@ -108,8 +181,9 @@ export const analyticsService = {
   },
 
   async setUserProperty(name: string, value?: string | null): Promise<void> {
+    await this.initialize();
     const analytics = getAnalytics();
-    if (!analytics) return;
+    if (!analytics || !collectionEnabled) return;
 
     try {
       await analytics.setUserProperty(name.slice(0, 24), value ?? null);

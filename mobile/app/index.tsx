@@ -3,7 +3,8 @@ import { Redirect } from 'expo-router';
 import { useAuth } from '@/providers/AuthProvider';
 
 export default function IndexRoute() {
-  const { user } = useAuth();
+  const { user, isGuest, isBootstrapped } = useAuth();
 
-  return <Redirect href={user ? '/inicio' : '/login'} />;
+  if (!isBootstrapped) return null;
+  return <Redirect href={user || isGuest ? '/inicio' : '/bem-vindo'} />;
 }

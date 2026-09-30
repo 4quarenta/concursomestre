@@ -130,6 +130,21 @@ if (hasMobile('src/features/account/screens/StoreAccountScreen.tsx')) {
   }
 }
 
+if (hasMobile('src/services/plans/planService.ts')) {
+  const planService = readMobile('src/services/plans/planService.ts');
+  for (const required of [
+    'isStoreDistributionChannel',
+    'assertDirectBillingChannel',
+    'createStripeCheckoutSession',
+    'createStripeSubscription',
+    'finalizeStripeSubscription',
+  ]) {
+    if (!planService.includes(required)) {
+      fail(`Servico de planos perdeu a barreira de billing por canal: ${required}`);
+    }
+  }
+}
+
 if (hasMobile('DATA_SAFETY_DRAFT.md')) {
   const dataSafety = readMobile('DATA_SAFETY_DRAFT.md');
   for (const required of ['Google', 'Apple', 'dados']) {

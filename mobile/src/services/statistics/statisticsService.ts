@@ -14,6 +14,62 @@ import { ENDPOINTS } from '@/services/api/endpoints';
 import { readApiData } from '@/services/api/response';
 import type { UserStatistics } from '@/types/statistics';
 
+export type StatisticsPeriod = 'semanal' | 'mensal';
+
+export interface StudySessionInput {
+  practiceSeconds: number;
+  simulationSeconds?: number;
+  readingSeconds?: number;
+  startedAt: string;
+  endedAt: string;
+  sourceContext?: Record<string, unknown>;
+}
+
+const ANSWER_PAGE_SIZE = 50;
+
+const normalizeAnswerTimestamp = (value: unknown): number => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value < 10_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value !== 'string' || !value.trim()) return 0;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+  }
+  const normalized = /^\d{4}-\d{2}-\d{2}\s+\d{2}:/.test(value)
+    ? value.replace(' ', 'T')
+    : value;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const isCorrectAnswer = (value: unknown): boolean =>
+  value === true || value === 1 || ['1', 'true', 'sim', 'yes'].includes(String(value).toLowerCase());
+
+const localDateKey = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const buildTimelinePoint = (date: Date, period: StatisticsPeriod) => ({
+  label: period === 'semanal'
+    ? date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+    : String(date.getDate()),
+  questions: 0,
+  correct: 0,
+  wrong: 0,
+  timestamp: new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(),
+});
+
+const resolveAnswerSubject = (answer: any): string => {
+  const directName = answer?.subjectName || answer?.subject_name || answer?.subject || answer?.materia;
+  if (typeof directName === 'string' && directName.trim()) return directName.trim();
+
+  const topics = Array.isArray(answer?.assuntos) ? answer.assuntos : [];
+  const subject = topics.find((topic: any) => topic?.meta_materia || topic?.materia)
+    || topics.find((topic: any) => topic?.name || topic?.nome);
+  const name = subject?.name || subject?.nome || subject?.subject;
+  return typeof name === 'string' && name.trim() ? name.trim() : 'Geral';
+};
+
 const toNumber = (value: unknown, fallback = 0): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -24,6 +80,153 @@ const toNumber = (value: unknown, fallback = 0): number => {
  * @since v1.0.0
  */
 export const statisticsService = {
+  async recordStudySession(input: StudySessionInput): Promise<UserStatistics> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.statistics.studySession, {
+      practice_seconds: Math.max(0, Math.floor(input.practiceSeconds)),
+      simulation_seconds: Math.max(0, Math.floor(input.simulationSeconds || 0)),
+      reading_seconds: Math.max(0, Math.floor(input.readingSeconds || 0)),
+      started_at: input.startedAt,
+      ended_at: input.endedAt,
+      source_context: input.sourceContext || {},
+    });
+    const payload = readApiData<any>(response, {});
+    const statistics = payload?.statistics || payload;
+    return {
+      userId: String(statistics?.userId || statistics?.user_id || ''),
+      totalQuestionsAnswered: toNumber(statistics?.totalQuestionsAnswered ?? statistics?.total_questions_answered, 0),
+      correctAnswers: toNumber(statistics?.correctAnswers ?? statistics?.correct_answers, 0),
+      wrongAnswers: toNumber(statistics?.wrongAnswers ?? statistics?.wrong_answers, 0),
+      accuracyRate: toNumber(statistics?.accuracyRate ?? statistics?.accuracy_rate, 0),
+      currentStreak: toNumber(statistics?.currentStreak ?? statistics?.current_streak, 0),
+      bestStreak: toNumber(statistics?.bestStreak ?? statistics?.best_streak, 0),
+      questionStudyTime: toNumber(statistics?.questionStudyTime ?? statistics?.question_study_time, 0),
+      readingStudyTime: toNumber(statistics?.readingStudyTime ?? statistics?.reading_study_time, 0),
+      totalStudyTime: toNumber(statistics?.totalStudyTime ?? statistics?.total_study_time, 0),
+      lastActivity: String(statistics?.lastActivity || statistics?.last_activity || ''),
+      subjectBreakdown: [],
+      timeline: [],
+    };
+  },
+
+  /**
+   * Usa o resumo autoritativo do historico de respostas e calcula materias
+   * a partir das respostas recentes, como o dashboard web.
+   */
+  async getCurrentUserAnswerSnapshot() {
+    const response: any = await apiClient.get<any>(ENDPOINTS.users.currentAnswers, {
+      params: { limit: ANSWER_PAGE_SIZE, range: 'all' },
+    });
+    const payload = readApiData<any>(response, {});
+    const summary = payload?.summary || {};
+    const items = Array.isArray(payload?.items)
+      ? payload.items
+      : Array.isArray(payload?.answers)
+        ? payload.answers
+        : [];
+    const subjects = new Map<string, { totalQuestions: number; correctAnswers: number; wrongAnswers: number; accuracyRate: number }>();
+
+    for (const answer of items) {
+      const subject = resolveAnswerSubject(answer);
+      const metric = subjects.get(subject) || {
+        totalQuestions: 0,
+        correctAnswers: 0,
+        wrongAnswers: 0,
+        accuracyRate: 0,
+      };
+      metric.totalQuestions += 1;
+      if (isCorrectAnswer(answer?.isCorrect ?? answer?.is_correct ?? answer?.correct)) {
+        metric.correctAnswers += 1;
+      } else {
+        metric.wrongAnswers += 1;
+      }
+      metric.accuracyRate = Math.round((metric.correctAnswers / metric.totalQuestions) * 100);
+      subjects.set(subject, metric);
+    }
+
+    const total = toNumber(summary.totalAttempts ?? summary.total_attempts, 0);
+    const correct = toNumber(summary.correct ?? summary.correct_count, 0);
+    const wrong = toNumber(summary.wrong ?? summary.wrong_count, Math.max(0, total - correct));
+    return {
+      summary: {
+        totalQuestionsAnswered: total,
+        correctAnswers: correct,
+        wrongAnswers: wrong,
+        accuracyRate: toNumber(summary.accuracy, total > 0 ? (correct / total) * 100 : 0),
+      },
+      subjectBreakdown: Array.from(subjects, ([subject, metric]) => ({ subject, ...metric }))
+        .sort((left, right) => right.totalQuestions - left.totalQuestions),
+    };
+  },
+
+  /**
+   * Monta a serie do grafico com respostas reais do endpoint autenticado do usuario.
+   * A API entrega historico paginado; todos os cursores do periodo sao consumidos.
+   */
+  async getCurrentUserQuestionTimeline(period: StatisticsPeriod) {
+    const dayCount = period === 'semanal' ? 7 : 30;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const points = Array.from({ length: dayCount }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (dayCount - index - 1));
+      return buildTimelinePoint(date, period);
+    });
+    const pointByDate = new Map(
+      points.map((point) => [localDateKey(new Date(point.timestamp || 0)), point]),
+    );
+
+    let cursor: string | null = null;
+    const seenCursors = new Set<string>();
+    do {
+      const response: any = await apiClient.get<any>(ENDPOINTS.users.currentAnswers, {
+        params: {
+          limit: ANSWER_PAGE_SIZE,
+          range: period === 'semanal' ? 'week' : 'month',
+          ...(cursor ? { cursor } : {}),
+        },
+      });
+      const payload = readApiData<any>(response, {});
+      const items = Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload?.answers)
+          ? payload.answers
+          : [];
+
+      for (const answer of items) {
+        const timestamp = normalizeAnswerTimestamp(
+          answer?.timestamp ?? answer?.answeredAt ?? answer?.answered_at ?? answer?.createdAt ?? answer?.created_at,
+        );
+        if (!timestamp) continue;
+        const point = pointByDate.get(localDateKey(new Date(timestamp)));
+        if (!point) continue;
+        point.questions += 1;
+        if (isCorrectAnswer(answer?.isCorrect ?? answer?.is_correct ?? answer?.correct)) {
+          point.correct += 1;
+        } else {
+          point.wrong += 1;
+        }
+      }
+
+      const nextCursor = typeof payload?.nextCursor === 'string' && payload.nextCursor.trim()
+        ? payload.nextCursor
+        : null;
+      if (payload?.hasMore === true) {
+        if (!nextCursor) {
+          throw new Error('O historico informou mais respostas, mas nao retornou o cursor da proxima pagina.');
+        }
+        if (seenCursors.has(nextCursor)) {
+          throw new Error('O historico de respostas retornou uma pagina repetida. Tente novamente.');
+        }
+        seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      } else {
+        cursor = null;
+      }
+    } while (cursor);
+
+    return points;
+  },
+
   async getUserStatistics(userId: string): Promise<UserStatistics> {
     const normalizedUserId = String(userId || '').trim();
     if (!normalizedUserId) {

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 import { ModulePlaceholderScreen } from '@/screens/ModulePlaceholderScreen';
 import { QuestionFiltersScreen } from '@/features/questions/screens/QuestionFiltersScreen';

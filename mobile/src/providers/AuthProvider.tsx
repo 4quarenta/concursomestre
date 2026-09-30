@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authFlowService } from '@/services/auth/authFlowService';
 import { accountService } from '@/services/auth/accountService';
 import { sessionStorage } from '@/storage/sessionStorage';
@@ -19,7 +20,6 @@ import type { UserProfile } from '@/types/auth';
 import { systemSettingsService } from '@/services/system/systemSettingsService';
 import type { MobileFeatureKey, MobileSystemSettings } from '@/types/system';
 import { normalizeApiFailure } from '@/api/errors';
-import { mobileRecaptchaService, type MobileRecaptchaAction } from '@/services/security/mobileRecaptchaService';
 
 type LoginInput = { email: string; password: string };
 type RegisterInput = { name: string; email: string; password: string };
@@ -27,6 +27,8 @@ type UpdateUserInput = Partial<UserProfile>;
 
 type AuthContextValue = {
   user: UserProfile | null;
+  isGuest: boolean;
+  authPromptVisible: boolean;
   systemSettings: MobileSystemSettings;
   isLoading: boolean;
   isBootstrapped: boolean;
@@ -34,6 +36,10 @@ type AuthContextValue = {
   verifyTwoFactor: (email: string, code: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  continueAsGuest: () => Promise<void>;
+  startAuthentication: () => Promise<void>;
+  requestAuthentication: () => void;
+  closeAuthPrompt: () => void;
   updateUser: (input: UpdateUserInput) => Promise<void>;
   refreshProfile: () => Promise<void>;
   refreshSystemSettings: () => Promise<void>;
@@ -43,6 +49,7 @@ type AuthContextValue = {
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
 const SCREENSHOT_MODE = process.env.EXPO_PUBLIC_SCREENSHOT_MODE === '1';
+const GUEST_MODE_STORAGE_KEY = '@concursomestre/mobile-guest-mode';
 
 const SCREENSHOT_USER: UserProfile = {
   id: 'visual-preview-user',
@@ -64,7 +71,7 @@ const SCREENSHOT_USER: UserProfile = {
 const isScreenshotPublicRoute = () => {
   if (!SCREENSHOT_MODE || typeof window === 'undefined') return false;
   const pathname = String(window.location?.pathname || '').toLowerCase();
-  return pathname.includes('/login') || pathname.includes('/cadastro');
+  return pathname.includes('/bem-vindo') || pathname.includes('/welcome') || pathname.includes('/login') || pathname.includes('/cadastro');
 };
 
 const firstNonEmptyString = (...values: unknown[]): string => {
@@ -171,11 +178,33 @@ const normalizeUserProfile = (user: UserProfile | null | undefined): UserProfile
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const screenshotUser = SCREENSHOT_MODE && !isScreenshotPublicRoute() ? SCREENSHOT_USER : null;
   const [user, setUser] = React.useState<UserProfile | null>(() => screenshotUser);
+  const [isGuest, setIsGuest] = React.useState(false);
+  const [authPromptVisible, setAuthPromptVisible] = React.useState(false);
   const [systemSettings, setSystemSettings] = React.useState<MobileSystemSettings>(
     () => systemSettingsService.createDefaultSystemSettings(),
   );
   const [isLoading, setIsLoading] = React.useState(false);
   const [isBootstrapped, setIsBootstrapped] = React.useState(SCREENSHOT_MODE);
+
+  const continueAsGuest = React.useCallback(async () => {
+    await AsyncStorage.setItem(GUEST_MODE_STORAGE_KEY, '1');
+    setUser(null);
+    setIsGuest(true);
+  }, []);
+
+  const startAuthentication = React.useCallback(async () => {
+    await AsyncStorage.removeItem(GUEST_MODE_STORAGE_KEY);
+    setIsGuest(false);
+    setAuthPromptVisible(false);
+  }, []);
+
+  const requestAuthentication = React.useCallback(() => {
+    setAuthPromptVisible(true);
+  }, []);
+
+  const closeAuthPrompt = React.useCallback(() => {
+    setAuthPromptVisible(false);
+  }, []);
 
   const applySessionFromResponse = React.useCallback(async (response: any) => {
     // A API de producao ja teve duas formas validas de transportar a sessao:
@@ -239,6 +268,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Sessao invalida retornada pelo backend.');
     }
     setUser(normalizedUser);
+    setIsGuest(false);
+    await AsyncStorage.removeItem(GUEST_MODE_STORAGE_KEY);
     await sessionStorage.setSession(
       token,
       normalizedUser,
@@ -252,25 +283,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const settings = await systemSettingsService.getSystemSettings();
       setSystemSettings(settings);
-      if (settings.recaptchaEnabled) {
-        void mobileRecaptchaService.prepare(settings.recaptchaAndroidSiteKey);
-      }
     } catch {
       // Nao bloqueia auth se settings estiver indisponivel.
     }
-  }, []);
-
-  const createAuthCaptchaToken = React.useCallback(async (action: MobileRecaptchaAction): Promise<string | undefined> => {
-    if (SCREENSHOT_MODE) return undefined;
-    let settings: MobileSystemSettings;
-    try {
-      settings = await systemSettingsService.getSystemSettings();
-      setSystemSettings(settings);
-    } catch {
-      throw new Error('Nao foi possivel carregar a verificacao de seguranca. Verifique sua conexao e tente novamente.');
-    }
-    if (!settings.recaptchaEnabled) return undefined;
-    return mobileRecaptchaService.execute(settings.recaptchaAndroidSiteKey, action);
   }, []);
 
   const refreshProfile = React.useCallback(async () => {
@@ -294,8 +309,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = React.useCallback(async (input: LoginInput) => {
     setIsLoading(true);
     try {
-      const captchaToken = await createAuthCaptchaToken('login');
-      const response = await authFlowService.login({ ...input, captchaToken });
+      const response = await authFlowService.login(input);
       const payload = response?.data || response;
       if (payload?.require2FA || response?.require2FA) {
         return {
@@ -310,7 +324,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel realizar o login.'));
     } finally { setIsLoading(false); }
-  }, [applySessionFromResponse, createAuthCaptchaToken, refreshProfile, refreshSystemSettings]);
+  }, [applySessionFromResponse, refreshProfile, refreshSystemSettings]);
 
   const verifyTwoFactor = React.useCallback(async (email: string, code: string) => {
     setIsLoading(true);
@@ -327,15 +341,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = React.useCallback(async (input: RegisterInput) => {
     setIsLoading(true);
     try {
-      const captchaToken = await createAuthCaptchaToken('register');
-      const response = await authFlowService.register({ ...input, captchaToken });
+      const response = await authFlowService.register(input);
       await applySessionFromResponse(response);
       try { await refreshProfile(); } catch { /* cadastro ja foi concluido */ }
       await refreshSystemSettings();
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel criar a conta.'));
     } finally { setIsLoading(false); }
-  }, [applySessionFromResponse, createAuthCaptchaToken, refreshProfile, refreshSystemSettings]);
+  }, [applySessionFromResponse, refreshProfile, refreshSystemSettings]);
 
   const logout = React.useCallback(async () => {
     if (SCREENSHOT_MODE) return;
@@ -343,6 +356,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try { await authFlowService.logout(); } catch { /* logout local continua */ }
     finally {
       setUser(null);
+      setIsGuest(false);
+      try { await AsyncStorage.removeItem(GUEST_MODE_STORAGE_KEY); } catch { /* a sessao local ainda sera limpa */ }
       // As configuracoes do sistema sao globais da plataforma, nao pertencem
       // a conta que acabou de sair. O listener da sessao recarrega a projecao
       // publica sem autenticar, preservando o estado oficial do servidor.
@@ -425,6 +440,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const bootstrap = async () => {
       try {
         const snapshot = await sessionStorage.hydrate();
+        const guestModeEnabled = await AsyncStorage.getItem(GUEST_MODE_STORAGE_KEY) === '1';
         if (snapshot.user) setUser(normalizeUserProfile(snapshot.user));
 
         // settings.php e uma projecao publica das configuracoes globais da
@@ -445,6 +461,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...profile,
             } as UserProfile);
             setUser(normalizedProfile);
+            setIsGuest(false);
+            await AsyncStorage.removeItem(GUEST_MODE_STORAGE_KEY);
             await sessionStorage.setSession(snapshot.accessToken, normalizedProfile);
             await publicSettingsPromise;
           } catch (error) {
@@ -454,6 +472,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (failure.status === 401) {
               await sessionStorage.clearSession();
               setUser(null);
+              setIsGuest(false);
               await publicSettingsPromise;
             } else {
               // Falhas de rede/servidor durante reload ou update nao invalidam
@@ -466,6 +485,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Evita abrir a Home com um usuario de preview/estado antigo e falhar
           // depois nas chamadas que exigem user_id.
           setUser(null);
+          setIsGuest(guestModeEnabled);
           // A configuracao global e atualizada em background. Uma indisponibilidade
           // temporaria do servidor nao pode transformar a abertura anonima do app
           // em uma espera de ate o timeout HTTP.
@@ -482,9 +502,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [systemSettings.features, user?.isAdmin, user?.role]);
 
   const value = React.useMemo<AuthContextValue>(() => ({
-    user, systemSettings, isLoading, isBootstrapped, login, verifyTwoFactor, register, logout, updateUser,
+    user, isGuest, authPromptVisible, systemSettings, isLoading, isBootstrapped, login, verifyTwoFactor, register, logout,
+    continueAsGuest, startAuthentication, requestAuthentication, closeAuthPrompt, updateUser,
     refreshProfile, refreshSystemSettings, isFeatureEnabled, toggleSavedQuestion,
-  }), [user, systemSettings, isLoading, isBootstrapped, login, verifyTwoFactor, register, logout, updateUser,
+  }), [user, isGuest, authPromptVisible, systemSettings, isLoading, isBootstrapped, login, verifyTwoFactor, register, logout,
+    continueAsGuest, startAuthentication, requestAuthentication, closeAuthPrompt, updateUser,
     refreshProfile, refreshSystemSettings, isFeatureEnabled, toggleSavedQuestion]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

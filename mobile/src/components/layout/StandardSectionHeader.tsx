@@ -1,8 +1,8 @@
 import React from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { AppText } from "@/components/ui/Primitives";
 import { palette, radius, spacing, typography } from "@/theme/tokens";
-import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 
 export type StandardSectionHeaderStat = {
   label: string;
@@ -21,20 +21,19 @@ export const StandardSectionHeader: React.FC<StandardSectionHeaderProps> = ({
   subtitle,
   stats,
 }) => {
-  const theme = useAppTheme();
-  const styles = React.useMemo(() => createStyles(theme), [theme]);
+  const styles = React.useMemo(() => createStyles(), []);
 
   return (
     <View style={styles.header}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      <AppText variant="screenTitle" style={styles.title}>{title}</AppText>
+      <AppText variant="screenDescription" tone="onPrimary" style={styles.subtitle}>{subtitle}</AppText>
       {stats?.length ? (
         <View style={styles.statsGrid}>
           {stats.map((stat) => (
             <View key={stat.label} style={styles.statCard}>
               <Ionicons name={stat.icon} size={16} color="rgba(255,255,255,0.75)" />
-              <Text style={styles.statValue}>{stat.value}</Text>
-              <Text style={styles.statLabel}>{stat.label}</Text>
+              <AppText variant="bodyStrong" style={styles.statValue}>{stat.value}</AppText>
+              <AppText variant="label" style={styles.statLabel}>{stat.label}</AppText>
             </View>
           ))}
         </View>
@@ -43,24 +42,16 @@ export const StandardSectionHeader: React.FC<StandardSectionHeaderProps> = ({
   );
 };
 
-const createStyles = (theme: ResolvedAppTheme) =>
+const createStyles = () =>
   StyleSheet.create({
     header: {
-      backgroundColor: palette.brand.lavender,
+      backgroundColor: palette.brand.navy,
       paddingBottom: spacing[8],
       paddingHorizontal: spacing[5],
-      paddingTop: spacing[5],
+      paddingTop: spacing[3],
     },
-    title: {
-      color: theme.onPrimary,
-      fontSize: typography.size.xl,
-      fontWeight: typography.weight.bold,
-    },
-    subtitle: {
-      color: "rgba(255,255,255,0.8)",
-      fontSize: typography.size.sm,
-      marginTop: 2,
-    },
+    title: { color: palette.white },
+    subtitle: { color: palette.brand.onNavyMuted, marginTop: spacing[1] },
     statsGrid: {
       flexDirection: "row",
       gap: spacing[2],
@@ -75,11 +66,15 @@ const createStyles = (theme: ResolvedAppTheme) =>
       padding: spacing[2],
     },
     statValue: {
-      color: theme.onPrimary,
+      color: palette.white,
       fontSize: typography.size.md,
       fontWeight: typography.weight.bold,
     },
-    statLabel: { color: "rgba(255,255,255,0.7)", fontSize: 10 },
+    statLabel: {
+      color: "rgba(255,255,255,0.7)",
+      fontSize: typography.role.label.fontSize,
+      lineHeight: typography.role.label.lineHeight,
+    },
   });
 
 export default StandardSectionHeader;

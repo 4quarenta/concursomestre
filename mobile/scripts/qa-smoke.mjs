@@ -131,8 +131,8 @@ if (!fs.existsSync(easJsonPath)) {
 
 requireText(
   'mobile/app/_layout.tsx',
-  '<Stack.Protected guard={Boolean(user)}>',
-  'O grupo autenticado deve permanecer protegido por sessao.',
+  '<Stack.Protected guard={Boolean(user) || isGuest}>',
+  'O grupo principal deve exigir sessao autenticada ou modo visitante.',
 );
 requireText(
   'mobile/app/_layout.tsx',

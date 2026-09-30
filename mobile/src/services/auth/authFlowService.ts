@@ -8,14 +8,30 @@ type RegisterPayload = {
   name: string;
   email: string;
   password: string;
+  captchaToken?: string | null;
   referralCode?: string | null;
-  captchaToken?: string;
 };
 
 type LoginPayload = {
   email: string;
   password: string;
-  captchaToken?: string;
+  captchaToken?: string | null;
+};
+
+export type ForgotPasswordPayload = {
+  email: string;
+  captchaToken?: string | null;
+};
+
+export type ResetPasswordPayload = {
+  token: string;
+  password: string;
+  captchaToken?: string | null;
+};
+
+export type ConfirmEmailResult = {
+  message: string;
+  newXp: number;
 };
 
 /**
@@ -35,6 +51,28 @@ export const authFlowService = {
     assertApiSuccess(response, 'Nao foi possivel criar a conta.');
     const data = readApiData<AuthFlowResponse>(response, { success: true });
     return data;
+  },
+
+  async forgotPassword(payload: ForgotPasswordPayload): Promise<string> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.auth.forgotPassword, payload);
+    const envelope = assertApiSuccess(response, 'Nao foi possivel enviar as instrucoes de recuperacao.');
+    return envelope.message || 'Enviamos as instrucoes para redefinir sua senha.';
+  },
+
+  async resetPassword(payload: ResetPasswordPayload): Promise<string> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.auth.resetPassword, payload);
+    const envelope = assertApiSuccess(response, 'Nao foi possivel redefinir a senha.');
+    return envelope.message || 'Senha alterada com sucesso.';
+  },
+
+  async confirmEmail(token: string): Promise<ConfirmEmailResult> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.auth.confirmEmail, { token });
+    const envelope = assertApiSuccess(response, 'Nao foi possivel confirmar o e-mail.');
+    const data = readApiData<{ newXp?: number }>(response, {});
+    return {
+      message: envelope.message || 'E-mail verificado com sucesso.',
+      newXp: Number(data.newXp ?? 0),
+    };
   },
 
   async me(): Promise<UserProfile> {

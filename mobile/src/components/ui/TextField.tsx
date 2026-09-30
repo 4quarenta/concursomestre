@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { layout, radius, spacing, typography } from '@/theme/tokens';
+import { borders, layout, radius, spacing, typography } from '@/theme/tokens';
 import { useAppTheme, type ResolvedAppTheme } from '@/theme/useAppTheme';
 
 interface TextFieldProps {
@@ -11,6 +11,8 @@ interface TextFieldProps {
   keyboardType?: 'default' | 'email-address';
   secureTextEntry?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  error?: string;
+  helperText?: string;
 }
 
 /**
@@ -24,7 +26,10 @@ export const TextField: React.FC<TextFieldProps> = ({
   keyboardType = 'default',
   secureTextEntry = false,
   autoCapitalize = 'none',
+  error,
+  helperText,
 }) => {
+  const [focused, setFocused] = React.useState(false);
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
 
@@ -36,34 +41,49 @@ export const TextField: React.FC<TextFieldProps> = ({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={theme.textMuted}
+        placeholderTextColor={theme.textSubtle}
         keyboardType={keyboardType}
         secureTextEntry={secureTextEntry}
         autoCapitalize={autoCapitalize}
-        style={styles.input}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={[
+          styles.input,
+          focused && !error && styles.inputFocused,
+          error && styles.inputError,
+        ]}
       />
+      {error || helperText ? (
+        <Text style={[styles.helper, error && styles.errorText]} accessibilityLiveRegion="polite">
+          {error || helperText}
+        </Text>
+      ) : null}
     </View>
   );
 };
 
 const createStyles = (theme: ResolvedAppTheme) => StyleSheet.create({
   wrapper: {
-    gap: spacing[2],
+    gap: spacing[1],
   },
   label: {
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.bold,
-    color: theme.textMuted,
+    fontSize: typography.role.label.fontSize,
+    lineHeight: typography.role.label.lineHeight,
+    fontWeight: typography.role.label.fontWeight,
+    color: theme.text,
   },
   input: {
     minHeight: layout.controlHeight,
-    borderRadius: radius.lg,
-    borderWidth: 1,
+    borderRadius: radius.field,
+    borderWidth: borders.subtle,
     borderColor: theme.border,
     backgroundColor: theme.surface,
     color: theme.text,
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.medium,
-    paddingHorizontal: spacing[4],
+    fontSize: 13,
+    paddingHorizontal: spacing[3],
   },
+  inputFocused: { borderColor: theme.primary, borderWidth: 1.5 },
+  inputError: { borderColor: theme.danger, borderWidth: 1.5 },
+  helper: { color: theme.textMuted, fontSize: 10, lineHeight: 14 },
+  errorText: { color: theme.danger },
 });

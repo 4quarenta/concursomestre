@@ -1,9 +1,8 @@
 import "react-native-gesture-handler";
 import React from "react";
-import { Alert, BackHandler, Image, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, BackHandler, Image, Linking, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { router, Stack, usePathname } from "expo-router";
 import Constants from "expo-constants";
-import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
 import { AppProviders } from "@/providers/AppProviders";
 import { useAuth } from "@/providers/AuthProvider";
@@ -11,13 +10,25 @@ import { useAppTheme } from "@/theme/useAppTheme";
 import { darkTheme, palette } from "@/theme/tokens";
 import { analyticsService } from "@/services/analytics/analyticsService";
 import { isAppVersionBelow } from "@/services/system/appVersionPolicy";
+import { GuestAccessSheet } from "@/components/GuestAccessSheet";
 
 function RootNavigator() {
-  const { user, isBootstrapped, systemSettings } = useAuth();
+  const {
+    user,
+    isGuest,
+    isBootstrapped,
+    systemSettings,
+    authPromptVisible,
+    closeAuthPrompt,
+    startAuthentication,
+  } = useAuth();
   const theme = useAppTheme();
   const pathname = usePathname();
+  const isWelcomeRoute = pathname === "/bem-vindo";
   const statusBarStyle =
-    user || theme.background === darkTheme.background ? "light" : "dark";
+    user || isWelcomeRoute || theme.background === darkTheme.background
+      ? "light"
+      : "dark";
   const updatePolicy = systemSettings.mobileAppUpdatePolicy;
   const installedVersion = String(Constants.nativeAppVersion || Constants.expoConfig?.version || "");
   const minimumUpdateRequired = updatePolicy.enabled
@@ -77,7 +88,7 @@ function RootNavigator() {
   if (!isBootstrapped) {
     return (
       <>
-        <StatusBar style="light" />
+        <StatusBar barStyle="light-content" backgroundColor={palette.brand.navy} />
         <SplashView />
       </>
     );
@@ -86,7 +97,7 @@ function RootNavigator() {
   if (minimumUpdateRequired) {
     return (
       <>
-        <StatusBar style="dark" />
+        <StatusBar barStyle="dark-content" backgroundColor={theme.background} />
         <View style={styles.updateGate}>
           <View style={styles.updatePanel}>
             <Text style={styles.updateEyebrow}>ATUALIZAÇÃO OBRIGATÓRIA</Text>
@@ -110,14 +121,17 @@ function RootNavigator() {
 
   return (
     <>
-      <StatusBar style={statusBarStyle} />
+      <StatusBar
+        barStyle={statusBarStyle === "light" ? "light-content" : "dark-content"}
+        backgroundColor={isWelcomeRoute ? palette.brand.navy : theme.background}
+      />
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.background },
         }}
       >
-        <Stack.Protected guard={Boolean(user)}>
+        <Stack.Protected guard={Boolean(user) || isGuest}>
           <Stack.Screen name="(app)" />
         </Stack.Protected>
 
@@ -125,6 +139,11 @@ function RootNavigator() {
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
       </Stack>
+      <GuestAccessSheet
+        visible={authPromptVisible}
+        description="Entre ou crie sua conta para responder questões, iniciar simulados e salvar seu progresso."
+        onDismiss={closeAuthPrompt}
+      />
     </>
   );
 }

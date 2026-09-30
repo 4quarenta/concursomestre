@@ -8,26 +8,18 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { PUBLIC_LINKS } from "@/config/publicLinks";
+import { AuthField, AuthHero, AuthSubmitButton } from "@/screens/auth/AuthVisualPrimitives";
+import { AppLink, MotionPressable } from "@/components/ui/Primitives";
 import { useAuth } from "@/providers/AuthProvider";
+import { PUBLIC_LINKS } from "@/config/publicLinks";
+import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
 import { palette, radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
-
-const openPublicLink = (url: string) => {
-  void Linking.openURL(url).catch(() => {
-    Alert.alert(
-      "Link indisponivel",
-      "Nao foi possivel abrir esta pagina agora.",
-    );
-  });
-};
 
 export const LoginScreen: React.FC = () => {
   const theme = useAppTheme();
@@ -41,257 +33,191 @@ export const LoginScreen: React.FC = () => {
   const [twoFactorCode, setTwoFactorCode] = React.useState("");
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Campos obrigatorios", "Preencha e-mail e senha.");
+    if (!email.trim() || !password) {
+      Alert.alert("Campos obrigatórios", "Preencha e-mail e senha.");
       return;
     }
 
     try {
-      const result = await login({ email, password });
-      if (result.requiresTwoFactor) {
-        setTwoFactorEmail(result.email || email);
-      }
-      // O Stack.Protected troca automaticamente o grupo de auth pelo grupo privado.
+      const result = await login({ email: email.trim(), password });
+      if (result.requiresTwoFactor) setTwoFactorEmail(result.email || email.trim());
     } catch (error: any) {
-      Alert.alert(
-        "Falha no login",
-        error?.message || "Nao foi possivel realizar o login.",
-      );
+      Alert.alert("Falha no login", error?.message || "Não foi possível realizar o login.");
+    } finally {
     }
   };
 
   const handleTwoFactor = async () => {
     if (!twoFactorEmail || !twoFactorCode.trim()) {
-      Alert.alert("Codigo obrigatorio", "Informe o codigo de seguranca.");
+      Alert.alert("Código obrigatório", "Informe o código de segurança.");
       return;
     }
 
     try {
       await verifyTwoFactor(twoFactorEmail, twoFactorCode.trim());
     } catch (error: any) {
-      Alert.alert("Falha na verificacao", error?.message || "Nao foi possivel validar o codigo.");
+      Alert.alert("Falha na verificação", error?.message || "Não foi possível validar o código.");
+    }
+  };
+
+  const handleSocialLogin = (provider: "Google" | "Facebook") => {
+    Alert.alert(
+      `Entrar com ${provider}`,
+      `O acesso com ${provider} está disponível na plataforma web, mas o fluxo nativo ainda não foi conectado neste app.`,
+    );
+  };
+
+  const openPublicLink = async (url: string) => {
+    try {
+      const safeUrl = assertAllowedExternalUrl(url);
+      await Linking.openURL(safeUrl);
+    } catch {
+      Alert.alert("Link indisponível", "Não foi possível abrir esta página agora.");
     }
   };
 
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={[styles.screen, { backgroundColor: theme.background }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: spacing[3], paddingBottom: spacing[8] + insets.bottom },
-        ]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing[6] }]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Voltar"
-          onPress={() => (router.canGoBack() ? router.back() : undefined)}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={21} color={theme.text} />
-        </Pressable>
+        <AuthHero
+          title="Seu próximo passo começa nos estudos."
+          subtitle="Acesse e continue de onde parou."
+        />
 
-        <View style={styles.hero}>
-          <LinearGradient
-            colors={[palette.brand.lavender, palette.brand.navy]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.logo}
-          >
-            <Ionicons name="sparkles" size={31} color={theme.onPrimary} />
-          </LinearGradient>
-          <Text style={styles.title}>Bem-vindo de volta</Text>
-          <Text style={styles.subtitle}>Continue de onde parou</Text>
-        </View>
+        <View style={styles.formCard}>
+          <Text style={styles.cardTitle}>
+            {twoFactorEmail ? "Confirme sua identidade" : "Acesse sua conta"}
+          </Text>
 
-        <View style={styles.form}>
           {twoFactorEmail ? (
-            <>
-              <Text style={styles.twoFactorHint}>Informe o codigo enviado para {twoFactorEmail}.</Text>
-              <View style={styles.field}>
-                <Ionicons name="shield-checkmark-outline" size={17} color={theme.textMuted} style={styles.fieldIcon} />
-                <TextInput
-                  accessibilityLabel="Codigo de seguranca"
-                  autoCapitalize="none"
-                  keyboardType="number-pad"
-                  maxLength={8}
-                  onChangeText={setTwoFactorCode}
-                  placeholder="Codigo de seguranca"
-                  placeholderTextColor={theme.textMuted}
-                  style={styles.input}
-                  value={twoFactorCode}
-                />
-              </View>
+            <View style={styles.fields}>
+              <Text style={styles.twoFactorHint}>
+                Informe o código enviado para {twoFactorEmail}.
+              </Text>
+              <AuthField
+                label="Código de segurança"
+                icon="shield-checkmark-outline"
+                keyboardType="number-pad"
+                onChangeText={setTwoFactorCode}
+                placeholder="Digite o código"
+                value={twoFactorCode}
+              />
+              <AuthSubmitButton
+                label="Validar código"
+                busyLabel="Validando..."
+                loading={isLoading}
+                onPress={() => void handleTwoFactor()}
+              />
               <Pressable
                 accessibilityRole="button"
-                disabled={isLoading}
-                onPress={() => void handleTwoFactor()}
-                style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed, isLoading && styles.disabled]}
+                onPress={() => {
+                  setTwoFactorEmail(null);
+                  setTwoFactorCode("");
+                }}
+                style={styles.textAction}
               >
-                <Text style={styles.primaryButtonText}>{isLoading ? "Validando..." : "Validar codigo"}</Text>
+                <Text style={styles.textActionLabel}>Voltar ao login</Text>
               </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => { setTwoFactorEmail(null); setTwoFactorCode(""); }}>
-                <Text style={styles.forgotText}>Voltar ao login</Text>
-              </Pressable>
-            </>
+            </View>
           ) : (
-            <>
-          <View style={styles.field}>
-            <Ionicons
-              name="mail-outline"
-              size={17}
-              color={theme.textMuted}
-              style={styles.fieldIcon}
-            />
-            <TextInput
-              accessibilityLabel="E-mail"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              onChangeText={setEmail}
-              placeholder="seu@email.com"
-              placeholderTextColor={theme.textMuted}
-              style={styles.input}
-              value={email}
-            />
-          </View>
-          <View style={styles.field}>
-            <Ionicons
-              name="lock-closed-outline"
-              size={17}
-              color={theme.textMuted}
-              style={styles.fieldIcon}
-            />
-            <TextInput
-              accessibilityLabel="Senha"
-              autoCapitalize="none"
-              onChangeText={setPassword}
-              placeholder="Sua senha"
-              placeholderTextColor={theme.textMuted}
-              secureTextEntry={!showPassword}
-              style={[styles.input, styles.passwordInput]}
-              value={password}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                showPassword ? "Ocultar senha" : "Mostrar senha"
-              }
-              onPress={() => setShowPassword((value) => !value)}
-              style={styles.eyeButton}
-            >
-              <Ionicons
-                name={showPassword ? "eye-off-outline" : "eye-outline"}
-                size={18}
-                color={theme.textMuted}
+            <View style={styles.fields}>
+              <AuthField
+                label="E-mail"
+                icon="mail-outline"
+                keyboardType="email-address"
+                onChangeText={setEmail}
+                placeholder="seu@email.com"
+                textContentType="emailAddress"
+                value={email}
               />
-            </Pressable>
-          </View>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() =>
-              Alert.alert(
-                "Recuperar senha",
-                "O fluxo de recuperação será conectado ao serviço de autenticação nesta próxima etapa.",
-              )
-            }
-            style={styles.forgotButton}
-          >
-            <Text style={styles.forgotText}>Esqueci minha senha</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ busy: isLoading, disabled: isLoading }}
-            disabled={isLoading}
-            onPress={() => void handleLogin()}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.primaryButtonPressed,
-              isLoading && styles.disabled,
-            ]}
-          >
-            {isLoading ? (
-              <Text style={styles.primaryButtonText}>Entrando...</Text>
-            ) : (
-              <Text style={styles.primaryButtonText}>Entrar</Text>
-            )}
-          </Pressable>
-            </>
+              <AuthField
+                label="Senha"
+                icon="lock-closed-outline"
+                onChangeText={setPassword}
+                placeholder="Sua senha"
+                secureTextEntry={!showPassword}
+                textContentType="password"
+                value={password}
+                accessory={
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    hitSlop={10}
+                    onPress={() => setShowPassword((current) => !current)}
+                  >
+                    <Ionicons
+                      color={theme.textMuted}
+                      name={showPassword ? "eye-off-outline" : "eye-outline"}
+                      size={18}
+                    />
+                  </Pressable>
+                }
+              />
+              <AppLink label="Esqueci minha senha" onPress={() => router.push("/esqueci-senha")} style={styles.forgotButton} />
+              <AuthSubmitButton
+                label="Entrar"
+                busyLabel="Entrando..."
+                loading={isLoading}
+                onPress={() => void handleLogin()}
+              />
+            </View>
           )}
         </View>
 
-        <View style={styles.dividerRow}>
-          <View style={styles.divider} />
-          <Text style={styles.dividerText}>ou continue com</Text>
-          <View style={styles.divider} />
-        </View>
-        <View style={styles.socialRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() =>
-              Alert.alert(
-                "Google",
-                "O login com Google ainda não está conectado ao backend mobile.",
-              )
-            }
-            style={({ pressed }) => [
-              styles.socialButton,
-              pressed && styles.socialButtonPressed,
-            ]}
-          >
-            <Text style={styles.socialText}>Google</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() =>
-              Alert.alert(
-                "Apple",
-                "O login com Apple ainda não está conectado ao backend mobile.",
-              )
-            }
-            style={({ pressed }) => [
-              styles.socialButton,
-              pressed && styles.socialButtonPressed,
-            ]}
-          >
-            <Text style={styles.socialText}>Apple</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.signupText}>
-          Novo por aqui?{" "}
-          <Text
-            onPress={() => router.push("/cadastro")}
-            style={styles.signupLink}
-          >
-            Crie sua conta
-          </Text>
-        </Text>
+        {!twoFactorEmail && (
+          <View style={styles.socialSection}>
+            <View style={styles.dividerRow}>
+              <View style={styles.divider} />
+              <Text style={styles.dividerText}>ou entre com</Text>
+              <View style={styles.divider} />
+            </View>
+            <MotionPressable
+              accessibilityRole="button"
+              accessibilityLabel="Entrar com Google"
+              onPress={() => handleSocialLogin("Google")}
+              style={({ pressed }) => [styles.socialButton, pressed && styles.socialButtonPressed]}
+            >
+              <FontAwesome name="google" size={16} color="#4285F4" />
+              <Text style={styles.socialText}>Continuar com Google</Text>
+            </MotionPressable>
+            <MotionPressable
+              accessibilityRole="button"
+              accessibilityLabel="Entrar com Facebook"
+              onPress={() => handleSocialLogin("Facebook")}
+              style={({ pressed }) => [styles.socialButton, pressed && styles.socialButtonPressed]}
+            >
+              <FontAwesome name="facebook" size={16} color="#1877F2" />
+              <Text style={styles.socialText}>Continuar com Facebook</Text>
+            </MotionPressable>
+          </View>
+        )}
 
-        <View style={styles.legalLinks} accessibilityRole="text">
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => openPublicLink(PUBLIC_LINKS.privacy)}
-          >
-            <Text style={styles.legalLink}>Privacidade</Text>
-          </Pressable>
-          <Text style={styles.legalSeparator}>•</Text>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => openPublicLink(PUBLIC_LINKS.terms)}
-          >
-            <Text style={styles.legalLink}>Termos</Text>
-          </Pressable>
-          <Text style={styles.legalSeparator}>•</Text>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => openPublicLink(PUBLIC_LINKS.support)}
-          >
-            <Text style={styles.legalLink}>Suporte</Text>
-          </Pressable>
-        </View>
+        {!twoFactorEmail && (
+          <>
+            <Text style={styles.signupText}>
+              Primeira vez por aqui?{" "}
+              <Text onPress={() => router.push("/cadastro")} style={styles.linkText}>
+                Criar conta
+              </Text>
+            </Text>
+            <View style={styles.legalLinks}>
+              <Text onPress={() => void openPublicLink(PUBLIC_LINKS.privacy)} style={styles.legalLink}>
+                Privacidade
+              </Text>
+              <Text style={styles.legalSeparator}>·</Text>
+              <Text onPress={() => void openPublicLink(PUBLIC_LINKS.support)} style={styles.legalLink}>
+                Suporte
+              </Text>
+            </View>
+          </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -299,113 +225,63 @@ export const LoginScreen: React.FC = () => {
 
 const createStyles = (theme: ResolvedAppTheme) =>
   StyleSheet.create({
-    screen: { backgroundColor: theme.background, flex: 1 },
-    content: {
-      flexGrow: 1,
-      paddingBottom: spacing[8],
-      paddingHorizontal: spacing[5],
-      paddingTop: spacing[6],
-    },
-    backButton: {
-      alignItems: "center",
-      height: 40,
-      justifyContent: "center",
-      width: 40,
-    },
-    hero: {
-      alignItems: "center",
-      marginBottom: spacing[8],
-      marginTop: spacing[4],
-    },
-    logo: {
-      alignItems: "center",
-      borderRadius: radius.lg,
-      elevation: 5,
-      height: 64,
-      justifyContent: "center",
-      marginBottom: spacing[4],
-      shadowColor: theme.primary,
-      shadowOpacity: 0.25,
-      shadowRadius: 12,
-      width: 64,
-    },
-    title: {
-      color: theme.text,
-      fontSize: typography.size["2xl"],
-      fontWeight: typography.weight.bold,
-      textAlign: "center",
-    },
-    subtitle: {
-      color: theme.textMuted,
-      fontSize: typography.size.sm,
-      marginTop: spacing[1],
-      textAlign: "center",
-    },
-    form: { gap: spacing[3] },
-    twoFactorHint: { color: theme.textMuted, fontSize: typography.size.sm, lineHeight: 20 },
-    field: {
-      alignItems: "center",
+    screen: { flex: 1 },
+    content: { flexGrow: 1 },
+    formCard: {
       backgroundColor: theme.surface,
       borderColor: theme.border,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      flexDirection: "row",
-      minHeight: 54,
+      borderRadius: 22,
+      borderWidth: StyleSheet.hairlineWidth,
+      elevation: 5,
+      marginHorizontal: spacing[5],
+      marginTop: -26,
+      padding: spacing[4],
+      shadowColor: palette.brand.navy,
+      shadowOffset: { width: 0, height: 5 },
+      shadowOpacity: 0.1,
+      shadowRadius: 15,
     },
-    fieldIcon: { marginLeft: spacing[3] },
-    input: {
+    cardTitle: {
       color: theme.text,
-      flex: 1,
-      fontSize: typography.size.sm,
-      minHeight: 52,
-      paddingHorizontal: spacing[3],
+      fontSize: typography.size.lg,
+      fontWeight: typography.weight.bold,
+      marginBottom: spacing[3],
     },
-    passwordInput: { paddingRight: 0 },
-    eyeButton: {
-      alignItems: "center",
-      height: 52,
-      justifyContent: "center",
-      width: 44,
-    },
+    fields: { gap: spacing[2] },
+    twoFactorHint: { color: theme.textMuted, fontSize: typography.size.sm, lineHeight: 20 },
     forgotButton: { alignSelf: "flex-end", paddingVertical: spacing[1] },
-    forgotText: {
+    forgotLabel: {
       color: theme.primary,
       fontSize: typography.size.xs,
       fontWeight: typography.weight.semibold,
     },
-    primaryButton: {
-      alignItems: "center",
-      backgroundColor: theme.primary,
-      borderRadius: radius.lg,
-      justifyContent: "center",
-      minHeight: 52,
-      marginTop: spacing[1],
-    },
-    primaryButtonPressed: { backgroundColor: theme.primaryPressed },
-    primaryButtonText: {
-      color: theme.onPrimary,
+    textAction: { alignItems: "center", paddingVertical: spacing[1] },
+    textActionLabel: {
+      color: theme.primary,
       fontSize: typography.size.sm,
-      fontWeight: typography.weight.bold,
+      fontWeight: typography.weight.semibold,
     },
-    disabled: { opacity: 0.6 },
+    socialSection: { marginHorizontal: spacing[5], marginTop: spacing[1] },
     dividerRow: {
       alignItems: "center",
       flexDirection: "row",
       gap: spacing[3],
-      marginVertical: spacing[6],
+      marginBottom: spacing[2],
+      marginTop: spacing[1],
     },
     divider: { backgroundColor: theme.border, flex: 1, height: 1 },
     dividerText: { color: theme.textMuted, fontSize: typography.size.xs },
-    socialRow: { flexDirection: "row", gap: spacing[2] },
     socialButton: {
       alignItems: "center",
       backgroundColor: theme.surface,
       borderColor: theme.border,
-      borderRadius: radius.lg,
+      borderRadius: radius.button,
       borderWidth: 1,
-      flex: 1,
+      flexDirection: "row",
+      gap: spacing[3],
       justifyContent: "center",
-      minHeight: 48,
+      marginBottom: spacing[1],
+      minHeight: 44,
     },
     socialButtonPressed: { backgroundColor: theme.surfaceSubtle },
     socialText: {
@@ -416,22 +292,11 @@ const createStyles = (theme: ResolvedAppTheme) =>
     signupText: {
       color: theme.textMuted,
       fontSize: typography.size.sm,
-      marginTop: spacing[8],
+      marginTop: spacing[2],
       textAlign: "center",
     },
-    signupLink: { color: theme.primary, fontWeight: typography.weight.bold },
-    legalLinks: {
-      alignItems: "center",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: spacing[2],
-      justifyContent: "center",
-      marginTop: spacing[8],
-    },
-    legalLink: {
-      color: theme.primary,
-      fontSize: typography.size.xs,
-      fontWeight: typography.weight.bold,
-    },
-    legalSeparator: { color: theme.textMuted, fontSize: typography.size.xs },
+    linkText: { color: theme.primary, fontWeight: typography.weight.bold },
+    legalLinks: { alignItems: "center", flexDirection: "row", gap: spacing[2], justifyContent: "center", marginTop: spacing[2], paddingVertical: spacing[2] },
+    legalLink: { color: theme.textMuted, fontSize: typography.size.xs, textDecorationLine: "underline" },
+    legalSeparator: { color: theme.textSubtle, fontSize: typography.size.xs },
   });

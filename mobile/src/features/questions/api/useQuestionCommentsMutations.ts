@@ -69,3 +69,29 @@ export const useLikeQuestionCommentMutation = (
     },
   });
 };
+
+export const useDeleteQuestionCommentMutation = (
+  questionId: string | number | undefined,
+  userId?: string,
+) => {
+  const queryClient = useQueryClient();
+  const commentsKey = questionQueryKeys.comments(questionId || 'unknown', userId);
+
+  return useMutation({
+    mutationFn: async (commentId: string) => {
+      if (!userId) throw new Error('Entre na sua conta para excluir comentários.');
+      const comments = queryClient.getQueryData<QuestionComment[]>(commentsKey) || [];
+      const ownerId = commentsService.findCommentOwner(comments, commentId);
+      if (!ownerId || String(ownerId) !== String(userId)) {
+        throw new Error('Você só pode excluir seus próprios comentários.');
+      }
+      await commentsService.deleteComment(commentId);
+      return commentId;
+    },
+    onSuccess: (commentId) => {
+      queryClient.setQueryData<QuestionComment[]>(commentsKey, (current = []) => (
+        commentsService.deleteCommentFromTree(current, commentId)
+      ));
+    },
+  });
+};

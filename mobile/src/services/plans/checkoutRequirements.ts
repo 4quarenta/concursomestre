@@ -77,7 +77,6 @@ export const isValidCheckoutProfileField = (
 export const getMissingCheckoutProfileFields = (
   user: Pick<UserProfile, 'name' | 'cpf' | 'address' | 'emailVerified'> | null | undefined,
 ): CheckoutProfileField[] => {
-  const address = user?.address;
   const missing: CheckoutProfileField[] = [];
 
   (['name', 'cpf', 'zipCode', 'street', 'number', 'neighborhood', 'city', 'state', 'emailVerified'] as CheckoutProfileField[])

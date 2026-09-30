@@ -16,7 +16,7 @@ export const useQuestionHistoryQuery = (
   enabled: boolean,
 ) => useQuery({
   queryKey: questionQueryKeys.history(questionId || 'unknown', userId),
-  queryFn: () => questionService.getQuestionHistory(questionId as string | number, userId),
+  queryFn: () => questionService.getQuestionHistory(questionId as string | number),
   enabled: enabled && questionId !== undefined && Boolean(userId),
   staleTime: 30_000,
 });

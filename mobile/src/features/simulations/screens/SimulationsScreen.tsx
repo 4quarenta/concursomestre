@@ -1,9 +1,7 @@
 import React from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -12,26 +10,14 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StandardSectionHeader } from "@/components/layout/StandardSectionHeader";
-import { buildSimulationSeed } from "@/features/simulations/api/simulationQuestionPool";
 import { useActiveSimulationQuery } from "@/features/simulations/api/useActiveSimulationQuery";
 import { useSimulationsQuery } from "@/features/simulations/api/useSimulationsQuery";
 import { useSimulationRunStore } from "@/state/simulationRunStore";
 import { useAuth } from "@/providers/AuthProvider";
-import { radius, spacing, typography } from "@/theme/tokens";
+import { StandardSectionHeader } from "@/components/layout/StandardSectionHeader";
+import { MotionPressable } from "@/components/ui/Primitives";
+import { darkTheme, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
-import type { MobileSimulationConfig } from "@/types/simulation";
-
-type ReadySimulation = {
-  id: string;
-  title: string;
-  questions: number;
-  time: string;
-  timerMinutes: number;
-  enrolled: number;
-  avgScore: number;
-  difficulty: "Fácil" | "Médio" | "Difícil";
-};
 type ResultItem = {
   id: string;
   title: string;
@@ -40,92 +26,6 @@ type ResultItem = {
   date: string;
   questions: number;
   time: string;
-};
-const readySimulados: ReadySimulation[] = [
-  {
-    id: "inss-2024-tecnico",
-    title: "INSS 2024 – Técnico",
-    questions: 40,
-    time: "3h",
-    timerMinutes: 180,
-    enrolled: 1248,
-    avgScore: 72,
-    difficulty: "Médio",
-  },
-  {
-    id: "pf-agente",
-    title: "Polícia Federal – Agente",
-    questions: 50,
-    time: "4h",
-    timerMinutes: 240,
-    enrolled: 892,
-    avgScore: 65,
-    difficulty: "Difícil",
-  },
-  {
-    id: "trt-analista",
-    title: "TRT – Analista Judiciário",
-    questions: 35,
-    time: "2h30",
-    timerMinutes: 150,
-    enrolled: 567,
-    avgScore: 68,
-    difficulty: "Médio",
-  },
-  {
-    id: "receita-auditor",
-    title: "Receita Federal – Auditor",
-    questions: 60,
-    time: "5h",
-    timerMinutes: 300,
-    enrolled: 2340,
-    avgScore: 58,
-    difficulty: "Difícil",
-  },
-  {
-    id: "ibge-agente",
-    title: "IBGE – Agente Censitário",
-    questions: 25,
-    time: "1h30",
-    timerMinutes: 90,
-    enrolled: 3120,
-    avgScore: 78,
-    difficulty: "Fácil",
-  },
-];
-const previewResults: ResultItem[] = [
-  {
-    id: "preview-1",
-    title: "INSS – Técnico (Simulado 1)",
-    score: 82,
-    avg: 72,
-    date: "10/04/2026",
-    questions: 40,
-    time: "2h15",
-  },
-  {
-    id: "preview-2",
-    title: "PF – Agente (Mini)",
-    score: 64,
-    avg: 65,
-    date: "08/04/2026",
-    questions: 20,
-    time: "1h05",
-  },
-  {
-    id: "preview-3",
-    title: "TRT – Analista",
-    score: 71,
-    avg: 68,
-    date: "05/04/2026",
-    questions: 35,
-    time: "2h42",
-  },
-];
-const difficultyValue: Record<ReadySimulation["difficulty"], MobileSimulationConfig["difficulty"]> = {
-  Fácil: "easy",
-  Médio: "medium",
-  Difícil: "hard",
 };
 const formatDate = (rawValue: number | string | undefined): string => {
   if (rawValue === undefined || rawValue === null) return "--";
@@ -141,10 +41,9 @@ export const SimulationsScreen: React.FC = () => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const isPreview = user?.id === "visual-preview-user";
+  const { user, isGuest } = useAuth();
+  const isVisitor = isGuest || !user;
   const [tab, setTab] = React.useState<"prontos" | "resultados">("prontos");
-  const [startingId, setStartingId] = React.useState<string | null>(null);
   const simulationsQuery = useSimulationsQuery();
   const activeRemoteQuery = useActiveSimulationQuery();
   const activeSeed = useSimulationRunStore((state) => state.seed);
@@ -204,36 +103,9 @@ export const SimulationsScreen: React.FC = () => {
     router.push("/simulados/executar");
   }, [remoteActive, replaceAnswers, setCurrentIndex, setSeed]);
 
-  const startPreset = React.useCallback(
-    async (preset: ReadySimulation) => {
-      setStartingId(preset.id);
-      try {
-        const seed = await buildSimulationSeed({
-          questionCount: preset.questions,
-          timerEnabled: true,
-          timerMinutes: preset.timerMinutes,
-          feedbackMode: "after_all",
-          difficulty: difficultyValue[preset.difficulty],
-          subjects: [],
-          agencies: [],
-          years: [],
-          organizations: [],
-          roles: [],
-          topics: [],
-        });
-        setSeed({ ...seed, id: `sim-${preset.id}-${Date.now()}` });
-        router.push("/simulados/executar");
-      } catch (error: any) {
-        Alert.alert(
-          "Simulado",
-          error?.message || "Não foi possível iniciar este simulado.",
-        );
-      } finally {
-        setStartingId(null);
-      }
-    },
-    [setSeed],
-  );
+  React.useEffect(() => {
+    if (isVisitor && tab === "resultados") setTab("prontos");
+  }, [isVisitor, tab]);
 
   if (simulationsQuery.isPending)
     return (
@@ -252,15 +124,12 @@ export const SimulationsScreen: React.FC = () => {
           questions: item.questionCount || 0,
           time: "--",
         }))
-      : isPreview
-        ? previewResults
-        : [];
-  const listData: Array<ReadySimulation | ResultItem> =
-    tab === "prontos" ? readySimulados : results;
+      : [];
+  const listData: ResultItem[] = tab === "resultados" ? results : [];
 
   return (
     <View style={styles.screen}>
-      <FlatList<ReadySimulation | ResultItem>
+      <FlatList<ResultItem>
         data={listData}
         keyExtractor={(item) => item.id}
         refreshControl={
@@ -287,44 +156,34 @@ export const SimulationsScreen: React.FC = () => {
               title="Simulados"
               subtitle="Teste seus conhecimentos em provas reais"
               stats={[
-                {
-                  label: "Realizados",
-                  value: isPreview ? "12" : String(completedItems.length),
-                  icon: "checkmark-circle-outline",
-                },
-                {
-                  label: "Média geral",
-                  value: isPreview ? "72%" : averageScore,
-                  icon: "bar-chart-outline",
-                },
-                {
-                  label: "Tempo médio",
-                  value: isPreview ? "2h10" : "--",
-                  icon: "time-outline",
-                },
+                { label: "Realizados", value: String(completedItems.length), icon: "checkmark-circle-outline" },
+                { label: "Média geral", value: averageScore, icon: "bar-chart-outline" },
+                { label: "Tempo médio", value: "--", icon: "time-outline" },
               ]}
             />
-            <Pressable
+            <MotionPressable
               accessibilityRole="button"
               onPress={() => router.push("/simulados/novo")}
+              accessibilityLabel="Monte seu simulado personalizado"
               style={styles.customCard}
             >
               <View style={styles.customIcon}>
-                <Ionicons name="add" size={27} color={theme.primary} />
+                <Ionicons name="options-outline" size={20} color={theme.primary} />
               </View>
               <View style={styles.customCopy}>
-                <Text style={styles.customTitle}>Simulado personalizado</Text>
+                <Text style={styles.customTitle}>Monte seu simulado</Text>
                 <Text style={styles.customDescription}>
-                  Escolha matérias, banca e quantidade
+                  Escolha matérias, banca e número de questões
                 </Text>
               </View>
-              <View style={styles.createButton}>
-                <Ionicons name="play-outline" size={16} color={theme.onPrimary} />
-                <Text style={styles.createButtonText}>Criar</Text>
+              <View style={styles.customAction}>
+                <Ionicons name="arrow-forward" size={16} color={theme.primary} />
               </View>
-            </Pressable>
+            </MotionPressable>
             <View style={styles.tabs}>
-              <Pressable
+              <MotionPressable
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === "prontos" }}
                 onPress={() => setTab("prontos")}
                 style={[styles.tab, tab === "prontos" && styles.tabActive]}
               >
@@ -336,10 +195,13 @@ export const SimulationsScreen: React.FC = () => {
                   >
                   Simulados prontos
                 </Text>
-              </Pressable>
-              <Pressable
+              </MotionPressable>
+              <MotionPressable
+                accessibilityRole="tab"
+                accessibilityState={{ disabled: isVisitor, selected: tab === "resultados" }}
+                disabled={isVisitor}
                 onPress={() => setTab("resultados")}
-                style={[styles.tab, tab === "resultados" && styles.tabActive]}
+                style={[styles.tab, tab === "resultados" && styles.tabActive, isVisitor && styles.tabDisabled]}
               >
                 <Text
                   style={[
@@ -349,7 +211,7 @@ export const SimulationsScreen: React.FC = () => {
                 >
                   Meus resultados
                 </Text>
-              </Pressable>
+              </MotionPressable>
             </View>
           </View>
         }
@@ -361,28 +223,57 @@ export const SimulationsScreen: React.FC = () => {
                 size={48}
                 color={theme.textSubtle}
               />
-              <Text style={styles.emptyTitle}>
-                {user ? "Nenhum resultado ainda" : "Entre para ver seus resultados"}
-              </Text>
-              <Text style={styles.emptyText}>
-                {user
-                  ? "Comece por um simulado pronto ou crie um próprio para gerar sua primeira análise."
-                  : "Seu histórico de simulados, médias e insights ficam salvos na conta."}
-              </Text>
-              <Pressable
+              <View style={styles.emptyCopy}>
+                <Text style={styles.emptyTitle}>
+                  {user ? "Nenhum resultado por enquanto" : "Entre para ver seus resultados"}
+                </Text>
+                <Text style={styles.emptyText}>
+                  {user
+                    ? "Conclua um simulado para acompanhar seu desempenho e evolução."
+                    : "Seu histórico de simulados, médias e insights ficam salvos na conta."}
+                </Text>
+              </View>
+              <MotionPressable
+                accessibilityRole="button"
                 onPress={() => setTab("prontos")}
                 style={styles.emptyButton}
               >
                 <Text style={styles.emptyButtonText}>Ver simulados</Text>
                 <Ionicons name="arrow-forward" size={15} color={theme.onPrimary} />
-              </Pressable>
+              </MotionPressable>
             </View>
-          ) : null
+          ) : (
+            <View style={styles.empty}>
+              <Ionicons
+                name="document-text-outline"
+                size={48}
+                color={theme.textSubtle}
+              />
+              <View style={styles.emptyCopy}>
+                <Text style={styles.emptyTitle}>
+                  Nenhum simulado pronto disponível
+                </Text>
+                <Text style={styles.emptyText}>
+                  Novos simulados aparecerão aqui quando forem publicados. Enquanto isso,
+                  crie um simulado personalizado.
+                </Text>
+              </View>
+              <MotionPressable
+                accessibilityRole="button"
+                onPress={() => router.push("/simulados/novo")}
+                style={styles.emptyButton}
+              >
+                <Text style={styles.emptyButtonText}>Criar simulado</Text>
+                <Ionicons name="arrow-forward" size={15} color={theme.onPrimary} />
+              </MotionPressable>
+            </View>
+          )
         }
         ListFooterComponent={
           <View style={styles.footerBlock}>
             {activeSeed ? (
-              <Pressable
+              <MotionPressable
+                accessibilityRole="button"
                 onPress={() => router.push("/simulados/executar")}
                 style={styles.resumeCard}
               >
@@ -397,9 +288,9 @@ export const SimulationsScreen: React.FC = () => {
                   </Text>
                 </View>
                 <Text style={styles.resumeAction}>Continuar</Text>
-              </Pressable>
+              </MotionPressable>
             ) : remoteActive ? (
-              <Pressable onPress={resumeRemote} style={styles.resumeCard}>
+              <MotionPressable accessibilityRole="button" onPress={resumeRemote} style={styles.resumeCard}>
                 <View style={styles.resumeCopy}>
                   <Text style={styles.resumeEyebrow}>Sincronizado</Text>
                   <Text style={styles.resumeTitle}>
@@ -411,7 +302,7 @@ export const SimulationsScreen: React.FC = () => {
                   </Text>
                 </View>
                 <Text style={styles.resumeAction}>Retomar</Text>
-              </Pressable>
+              </MotionPressable>
             ) : null}
             {tab === "resultados" && results.length > 0 ? (
               <View style={styles.insightsCard}>
@@ -434,128 +325,64 @@ export const SimulationsScreen: React.FC = () => {
             ) : null}
           </View>
         }
-        renderItem={({ item }) =>
-          tab === "prontos" ? (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>{(item as ReadySimulation).title}</Text>
-              <View style={styles.metaRow}>
-                <Text style={styles.meta}>
-                  <Ionicons name="book-outline" size={13} color={theme.textMuted} />{" "}
-                  {(item as ReadySimulation).questions} questões
-                </Text>
-                <Text style={styles.meta}>
-                  <Ionicons name="time-outline" size={13} color={theme.textMuted} />{" "}
-                  {(item as ReadySimulation).time}
-                </Text>
-                <Text
-                  style={[
-                    styles.difficulty,
-                    (item as ReadySimulation).difficulty === "Fácil"
-                      ? styles.easy
-                      : (item as ReadySimulation).difficulty === "Médio"
-                        ? styles.medium
-                        : styles.hard,
-                  ]}
-                >
-                  {(item as ReadySimulation).difficulty}
-                </Text>
-              </View>
-              <View style={styles.cardFooter}>
-                <View style={styles.statsInline}>
-                  <Text style={styles.meta}>
-                    <Ionicons name="people-outline" size={13} color={theme.textMuted} />{" "}
-                    {(item as ReadySimulation).enrolled.toLocaleString("pt-BR")}
-                  </Text>
-                  <Text style={styles.meta}>
-                    <Ionicons name="trophy-outline" size={13} color={theme.textMuted} />{" "}
-                    Média: {(item as ReadySimulation).avgScore}%
+        renderItem={({ item }) => (
+          <MotionPressable
+            accessibilityRole="button"
+            onPress={() =>
+              router.push({
+                pathname: "/simulados/historico/[simulationId]",
+                params: { simulationId: item.id },
+              })
+            }
+            style={styles.card}
+          >
+            <Text style={styles.cardTitle}>{item.title}</Text>
+            <Text style={styles.resultMeta}>
+              {item.date} · {item.questions} questões · {item.time}
+            </Text>
+            <View style={styles.resultRow}>
+              <View style={styles.resultProgressCopy}>
+                <View style={styles.resultScoreRow}>
+                  <Text style={styles.resultLabel}>Sua nota</Text>
+                  <Text
+                    style={[
+                      styles.resultScore,
+                      item.score >= item.avg
+                        ? styles.resultPositive
+                        : styles.resultNegative,
+                    ]}
+                  >
+                    {item.score}%
                   </Text>
                 </View>
-                <Pressable
-                  disabled={startingId !== null}
-                  onPress={() => void startPreset(item as ReadySimulation)}
-                  style={[
-                    styles.startButton,
-                    startingId === (item as ReadySimulation).id &&
-                      styles.disabled,
-                  ]}
-                >
-                  {startingId === (item as ReadySimulation).id ? (
-                    <ActivityIndicator size="small" color={theme.onPrimary} />
-                    ) : (
-                      <>
-                      <Text style={styles.startButtonText}>Iniciar</Text>
-                      <Ionicons
-                        name="chevron-forward"
-                        size={15}
-                        color={theme.onPrimary}
-                      />
-                    </>
-                  )}
-                </Pressable>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.max(0, Math.min(100, item.score))}%` },
+                    ]}
+                  />
+                </View>
+              </View>
+              <View style={styles.average}>
+                <Text style={styles.averageLabel}>Média</Text>
+                <Text style={styles.averageValue}>
+                  {item.avg ? `${item.avg}%` : "--"}
+                </Text>
               </View>
             </View>
-          ) : (
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/simulados/historico/[simulationId]",
-                  params: { simulationId: String((item as any).id) },
-                })
-              }
-              style={styles.card}
-            >
-              <Text style={styles.cardTitle}>{(item as any).title}</Text>
-              <Text style={styles.resultMeta}>
-                {(item as any).date} · {(item as any).questions} questões ·{" "}
-                {(item as any).time}
+            {item.avg && item.score >= item.avg ? (
+              <Text style={styles.aboveAverage}>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={13}
+                  color={theme.success}
+                />{" "}
+                Acima da média!
               </Text>
-              <View style={styles.resultRow}>
-                <View style={styles.resultProgressCopy}>
-                  <View style={styles.resultScoreRow}>
-                    <Text style={styles.resultLabel}>Sua nota</Text>
-                    <Text
-                      style={[
-                        styles.resultScore,
-                        (item as any).score >= (item as any).avg
-                          ? styles.resultPositive
-                          : styles.resultNegative,
-                      ]}
-                    >
-                      {(item as any).score}%
-                    </Text>
-                  </View>
-                  <View style={styles.progressTrack}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        {
-                          width: `${Math.max(0, Math.min(100, (item as any).score))}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                </View>
-                <View style={styles.average}>
-                  <Text style={styles.averageLabel}>Média</Text>
-                  <Text style={styles.averageValue}>
-                    {(item as any).avg ? `${(item as any).avg}%` : "--"}
-                  </Text>
-                </View>
-              </View>
-              {(item as any).avg && (item as any).score >= (item as any).avg ? (
-                <Text style={styles.aboveAverage}>
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={13}
-                    color={theme.success}
-                  />{" "}
-                  Acima da média!
-                </Text>
-              ) : null}
-            </Pressable>
-          )
-        }
+            ) : null}
+          </MotionPressable>
+        )}
       />
     </View>
   );
@@ -577,7 +404,7 @@ const createStyles = (theme: ResolvedAppTheme) =>
       alignItems: "center",
       backgroundColor: theme.primarySubtle,
       borderColor: theme.primaryBorder,
-      borderRadius: radius.lg,
+      borderRadius: radius.card,
       borderWidth: 1,
       flexDirection: "row",
       gap: spacing[3],
@@ -588,8 +415,9 @@ const createStyles = (theme: ResolvedAppTheme) =>
     resumeCopy: { flex: 1, gap: spacing[1] },
     resumeEyebrow: {
       color: theme.primary,
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
+      fontSize: typography.role.label.fontSize,
+      lineHeight: typography.role.label.lineHeight,
+      fontWeight: typography.role.label.fontWeight,
       textTransform: "uppercase",
     },
     resumeTitle: {
@@ -606,50 +434,47 @@ const createStyles = (theme: ResolvedAppTheme) =>
     customCard: {
       alignItems: "center",
       backgroundColor: theme.surface,
-      borderRadius: radius.lg,
-      elevation: 3,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.card,
       flexDirection: "row",
       gap: spacing[3],
-      marginTop: -spacing[2],
       marginHorizontal: spacing[5],
-      paddingHorizontal: spacing[3],
-      paddingVertical: spacing[2],
-      shadowColor: theme.text,
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
+      marginTop: -spacing[4],
+      minHeight: 96,
+      paddingHorizontal: spacing[4],
+      paddingVertical: spacing[3],
+      ...(theme === darkTheme ? shadows.cardDark : {}),
       zIndex: 2,
     },
     customIcon: {
       alignItems: "center",
       backgroundColor: theme.primarySubtle,
       borderRadius: radius.lg,
-      height: 32,
+      height: 44,
       justifyContent: "center",
-      width: 32,
+      width: 44,
     },
-    customCopy: { flex: 1, gap: 2 },
+    customCopy: { flex: 1, gap: 2, minWidth: 0 },
     customTitle: {
       color: theme.text,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.black,
+      fontSize: typography.role.sectionTitle.fontSize,
+      lineHeight: typography.role.sectionTitle.lineHeight,
+      fontWeight: typography.role.sectionTitle.fontWeight,
     },
     customDescription: {
       color: theme.textMuted,
-      fontSize: 10,
+      fontSize: typography.role.body.fontSize,
+      lineHeight: typography.role.body.lineHeight,
     },
-    createButton: {
+    customAction: {
       alignItems: "center",
-      backgroundColor: theme.primary,
-      borderRadius: radius.md,
-      flexDirection: "row",
-      gap: 4,
-      minHeight: 32,
-      paddingHorizontal: spacing[1],
-    },
-    createButtonText: {
-      color: theme.onPrimary,
-      fontSize: typography.size.xs,
-      fontWeight: typography.weight.bold,
+      backgroundColor: theme.primarySubtle,
+      borderRadius: radius.pill,
+      flexShrink: 0,
+      height: 34,
+      justifyContent: "center",
+      width: 34,
     },
     tabs: {
       backgroundColor: theme.surfaceSubtle,
@@ -657,78 +482,38 @@ const createStyles = (theme: ResolvedAppTheme) =>
       flexDirection: "row",
       marginHorizontal: spacing[5],
       marginTop: spacing[3],
-      padding: 2,
+      padding: 4,
     },
     tab: {
       alignItems: "center",
       borderRadius: radius.md,
       flex: 1,
       justifyContent: "center",
-      minHeight: 28,
+      minHeight: 48,
     },
-    tabActive: { backgroundColor: theme.surface, elevation: 1 },
+    tabActive: { backgroundColor: theme.primary },
+    tabDisabled: { opacity: 0.45 },
     tabText: {
       color: theme.textMuted,
       fontSize: typography.size.sm,
       fontWeight: typography.weight.medium,
     },
-    tabTextActive: { color: theme.text },
+    tabTextActive: { color: theme.onPrimary },
     card: {
       backgroundColor: theme.surface,
-      borderRadius: radius.lg,
-      elevation: 2,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.card,
       gap: spacing[3],
       marginHorizontal: spacing[5],
       padding: spacing[4],
-      shadowColor: theme.text,
-      shadowOpacity: 0.06,
-      shadowRadius: 6,
+      ...(theme === darkTheme ? shadows.cardDark : {}),
     },
     cardTitle: {
       color: theme.text,
       fontSize: typography.size.md,
       fontWeight: typography.weight.semibold,
     },
-    metaRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: spacing[3],
-    },
-    meta: { color: theme.textMuted, fontSize: typography.size.xs },
-    difficulty: {
-      borderRadius: radius.pill,
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
-      overflow: "hidden",
-      paddingHorizontal: spacing[2],
-      paddingVertical: 3,
-    },
-    easy: { backgroundColor: theme.successSubtle, color: theme.success },
-    medium: { backgroundColor: theme.warningSubtle, color: theme.warning },
-    hard: { backgroundColor: theme.dangerSubtle, color: theme.danger },
-    cardFooter: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-    },
-    statsInline: { flexDirection: "row", flex: 1, gap: spacing[3] },
-    startButton: {
-      alignItems: "center",
-      backgroundColor: theme.primary,
-      borderRadius: radius.md,
-      flexDirection: "row",
-      gap: 3,
-      justifyContent: "center",
-      minHeight: 40,
-      paddingHorizontal: spacing[3],
-    },
-    startButtonText: {
-      color: theme.onPrimary,
-      fontSize: typography.size.xs,
-      fontWeight: typography.weight.bold,
-    },
-    disabled: { opacity: 0.6 },
     resultMeta: { color: theme.textMuted, fontSize: typography.size.xs },
     resultRow: { alignItems: "center", flexDirection: "row", gap: spacing[4] },
     resultProgressCopy: { flex: 1 },
@@ -764,7 +549,8 @@ const createStyles = (theme: ResolvedAppTheme) =>
     },
     averageLabel: {
       color: theme.textMuted,
-      fontSize: 10,
+      fontSize: typography.role.label.fontSize,
+      lineHeight: typography.role.label.lineHeight,
       textTransform: "uppercase",
     },
     averageValue: {
@@ -779,31 +565,49 @@ const createStyles = (theme: ResolvedAppTheme) =>
     },
     empty: {
       alignItems: "center",
+      alignSelf: "stretch",
       gap: spacing[2],
+      paddingHorizontal: spacing[5],
       paddingVertical: spacing[10],
+    },
+    emptyCopy: {
+      alignItems: "center",
+      alignSelf: "center",
+      gap: spacing[2],
+      maxWidth: 300,
+      width: "100%",
     },
     emptyTitle: {
       color: theme.text,
       fontSize: typography.size.md,
       fontWeight: typography.weight.semibold,
+      textAlign: "center",
+      maxWidth: "100%",
     },
-    emptyText: { color: theme.textMuted, fontSize: typography.size.sm },
+    emptyText: {
+      color: theme.textMuted,
+      fontSize: typography.size.sm,
+      lineHeight: 21,
+      textAlign: "center",
+      maxWidth: "100%",
+    },
     emptyButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
       flexDirection: "row",
       gap: spacing[2],
       justifyContent: "center",
+      alignSelf: "center",
       marginTop: spacing[3],
       minHeight: 44,
       paddingHorizontal: spacing[4],
     },
     emptyButtonText: {
       color: theme.onPrimary,
-      fontSize: typography.size.xs,
-      fontWeight: typography.weight.black,
-      textTransform: "uppercase",
+      fontSize: typography.role.button.fontSize,
+      lineHeight: typography.role.button.lineHeight,
+      fontWeight: typography.role.button.fontWeight,
     },
     insightsCard: {
       backgroundColor: theme.primarySubtle,
@@ -827,8 +631,9 @@ const createStyles = (theme: ResolvedAppTheme) =>
     insightsCopy: { flex: 1, gap: 2 },
     insightsEyebrow: {
       color: theme.primary,
-      fontSize: 10,
-      fontWeight: typography.weight.black,
+      fontSize: typography.role.label.fontSize,
+      lineHeight: typography.role.label.lineHeight,
+      fontWeight: typography.role.label.fontWeight,
       textTransform: "uppercase",
     },
     insightsTitle: {

@@ -30,6 +30,7 @@ import { subscriptionsService } from "@/services/subscriptions/subscriptionsServ
 import { readApiErrorMessage } from "@/services/api/response";
 import { radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
+import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
 
 const formatDate = (raw?: string | number) => {
   if (raw === undefined || raw === null || raw === "") return "--";
@@ -77,9 +78,10 @@ export const StoreAccountScreen: React.FC = () => {
 
   const openPublicLink = async (url: string) => {
     try {
-      const supported = await Linking.canOpenURL(url);
+      const safeUrl = assertAllowedExternalUrl(url);
+      const supported = await Linking.canOpenURL(safeUrl);
       if (!supported) throw new Error("URL indisponivel");
-      await Linking.openURL(url);
+      await Linking.openURL(safeUrl);
     } catch {
       Alert.alert("Navegacao", "Nao foi possivel abrir este link agora.");
     }

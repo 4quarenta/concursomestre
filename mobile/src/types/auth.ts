@@ -3,6 +3,8 @@ export type UserRole = 'admin' | 'user' | string;
 export interface UserPlan {
   id?: number;
   name?: string;
+  displayName?: string;
+  code?: string;
   price?: number;
   interval_unit?: string;
   interval_count?: number;

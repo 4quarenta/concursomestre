@@ -3,10 +3,11 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
+  Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -15,10 +16,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
+import { AppButton, AppSurface, AppText, MotionPressable } from "@/components/ui/Primitives";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
-import { radius, spacing, typography } from "@/theme/tokens";
+import { borders, darkTheme, layout, motion, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
+import { readApiErrorMessage } from "@/services/api/response";
+import { supportService } from "@/services/support/supportService";
 import { getAssetUrl } from "@/services/api/client";
 import { accountService } from "@/services/auth/accountService";
 import { authFlowService } from "@/services/auth/authFlowService";
@@ -68,19 +73,71 @@ const formatCep = (value: string): string => {
 
 export function HelpScreen() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const helpStyles = React.useMemo(() => createHelpStyles(theme), [theme]);
+  const { user, isLoading: authLoading } = useAuth();
   const [search, setSearch] = React.useState("");
   const [open, setOpen] = React.useState<number | null>(null);
+  const [supportModalVisible, setSupportModalVisible] = React.useState(false);
+  const [supportSubject, setSupportSubject] = React.useState("");
+  const [supportDetails, setSupportDetails] = React.useState("");
+  const [supportSubmitting, setSupportSubmitting] = React.useState(false);
+  const [supportError, setSupportError] = React.useState("");
+  const [supportSuccess, setSupportSuccess] = React.useState("");
   const filtered = faqs.filter(([question, answer]) =>
     `${question} ${answer}`.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const closeSupportModal = () => {
+    if (supportSubmitting) return;
+    setSupportModalVisible(false);
+    setSupportSubject("");
+    setSupportDetails("");
+    setSupportError("");
+    setSupportSuccess("");
+  };
+
+  const submitSupportRequest = async () => {
+    setSupportError("");
+    if (!user) {
+      setSupportError("Entre na sua conta para enviar uma solicitação ao suporte.");
+      return;
+    }
+    if (!supportSubject.trim()) {
+      setSupportError("Preencha um resumo curto para o chamado.");
+      return;
+    }
+    if (!supportDetails.trim()) {
+      setSupportError("Descreva o contexto da sua solicitação.");
+      return;
+    }
+
+    setSupportSubmitting(true);
+    try {
+      const result = await supportService.createSupportRequest({
+        subject: supportSubject.trim(),
+        details: supportDetails.trim(),
+      });
+      setSupportSuccess(result.message);
+    } catch (error) {
+      setSupportError(readApiErrorMessage(error, "Não foi possível enviar sua solicitação."));
+    } finally {
+      setSupportSubmitting(false);
+    }
+  };
+
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+    <View style={helpStyles.screen}>
       <ContentHeader
         title="Ajuda e suporte"
         subtitle="Encontre respostas e fale com a equipe"
       />
-      <ScrollView contentContainerStyle={styles.content}>
-        <Pressable
+      <ScrollView
+        contentContainerStyle={[helpStyles.content, { paddingBottom: spacing[8] + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <MotionPressable
           accessibilityRole="button"
           onPress={() =>
             Alert.alert(
@@ -88,45 +145,31 @@ export function HelpScreen() {
               "O tutorial guiado será exibido novamente na próxima abertura.",
             )
           }
-          style={[
-            styles.tutorialCard,
-            { backgroundColor: theme.primarySubtle },
-          ]}
         >
-          <View style={[styles.iconBox, { backgroundColor: theme.primary }]}>
-            <Ionicons
-              name="sparkles-outline"
-              size={20}
-              color={theme.onPrimary}
-            />
-          </View>
-          <View style={styles.flex}>
-            <Text style={[styles.itemTitle, { color: theme.text }]}>
-              Ver tutorial novamente
-            </Text>
-            <Text style={[styles.caption, { color: theme.textMuted }]}>
-              Aprenda como usar o app em 30s
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
-        </Pressable>
-        <View
-          style={[
-            styles.searchBox,
-            { backgroundColor: theme.surface, borderColor: theme.border },
-          ]}
-        >
+          <AppSurface variant="outlined" style={helpStyles.tutorialCard}>
+            <View style={helpStyles.tutorialIcon}>
+              <Ionicons name="sparkles-outline" size={19} color={theme.primary} />
+            </View>
+            <View style={helpStyles.flex}>
+              <AppText variant="bodyStrong">Ver tutorial novamente</AppText>
+              <AppText variant="caption" tone="muted">Aprenda como usar o app em 30s</AppText>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+          </AppSurface>
+        </MotionPressable>
+        <View style={helpStyles.searchBox}>
           <Ionicons name="search-outline" size={18} color={theme.textMuted} />
           <TextInput
             value={search}
             onChangeText={setSearch}
             placeholder="Buscar ajuda..."
             placeholderTextColor={theme.textSubtle}
-            style={[styles.searchInput, { color: theme.text }]}
+            style={helpStyles.searchInput}
+            returnKeyType="search"
           />
         </View>
         {!search && (
-          <View style={styles.categoryGrid}>
+          <View style={helpStyles.categoryGrid}>
             {[
               ["book-outline", "Como usar o app", "12 artigos"],
               [
@@ -137,565 +180,240 @@ export function HelpScreen() {
               ["card-outline", "Pagamentos", "6 artigos"],
               ["mail-outline", "Suporte técnico", "9 artigos"],
             ].map(([icon, label, count]) => (
-              <Pressable
+              <AppSurface
                 key={label}
-                accessibilityRole="button"
-                style={[styles.category, { backgroundColor: theme.surface }]}
+                variant="outlined"
+                style={helpStyles.category}
               >
-                <View
-                  style={[
-                    styles.smallIcon,
-                    { backgroundColor: theme.primarySubtle },
-                  ]}
-                >
+                <View style={helpStyles.categoryIcon}>
                   <Ionicons
                     name={icon as keyof typeof Ionicons.glyphMap}
                     size={19}
                     color={theme.primary}
                   />
                 </View>
-                <Text style={[styles.itemTitle, { color: theme.text }]}>
-                  {label}
-                </Text>
-                <Text style={[styles.caption, { color: theme.textMuted }]}>
-                  {count}
-                </Text>
-              </Pressable>
+                <AppText variant="bodyStrong">{label}</AppText>
+                <AppText variant="caption" tone="muted">{count}</AppText>
+              </AppSurface>
             ))}
           </View>
         )}
-        <Text style={[styles.overline, { color: theme.textMuted }]}>
-          PERGUNTAS FREQUENTES
-        </Text>
-        <View style={styles.list}>
+        <AppText variant="sectionTitle">Perguntas frequentes</AppText>
+        <View style={helpStyles.list}>
           {filtered.map(([question, answer], index) => (
-            <Pressable
+            <AppSurface
               key={question}
-              accessibilityRole="button"
-              onPress={() => setOpen(open === index ? null : index)}
-              style={[styles.faq, { backgroundColor: theme.surface }]}
+              variant="outlined"
+              style={helpStyles.faq}
             >
-              <View style={styles.rowBetween}>
-                <Text
-                  style={[styles.itemTitle, { color: theme.text, flex: 1 }]}
-                >
-                  {question}
-                </Text>
-                <Ionicons
-                  name="chevron-forward"
-                  size={17}
-                  color={theme.textMuted}
-                  style={
-                    open === index
-                      ? { transform: [{ rotate: "90deg" }] }
-                      : undefined
-                  }
-                />
-              </View>
-              {open === index && (
-                <Text style={[styles.caption, { color: theme.textMuted }]}>
-                  {answer}
-                </Text>
-              )}
-            </Pressable>
-          ))}
-          {filtered.length === 0 && (
-            <Text style={[styles.empty, { color: theme.textMuted }]}>
-              Nenhum resultado encontrado
-            </Text>
-          )}
-        </View>
-        <View
-          style={[styles.contact, { backgroundColor: theme.primarySubtle }]}
-        >
-          <Text style={[styles.itemTitle, { color: theme.text }]}>
-            Não encontrou o que procurava?
-          </Text>
-          <Text style={[styles.caption, { color: theme.textMuted }]}>
-            Nossa equipe responde em até 24h
-          </Text>
-          <View style={styles.contactActions}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                Alert.alert(
-                  "Email",
-                  "Envie sua dúvida para suporte@concursomestre.com",
-                )
-              }
-              style={[
-                styles.outlineButton,
-                { borderColor: theme.border, backgroundColor: theme.surface },
-              ]}
-            >
-              <Ionicons name="mail-outline" size={16} color={theme.text} />
-              <Text style={[styles.buttonText, { color: theme.text }]}>
-                Email
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                Alert.alert("Chat", "O atendimento será iniciado em breve.")
-              }
-              style={[styles.primaryButton, { backgroundColor: theme.primary }]}
-            >
-              <Ionicons
-                name="chatbubble-ellipses-outline"
-                size={16}
-                color={theme.onPrimary}
-              />
-              <Text style={[styles.buttonText, { color: theme.onPrimary }]}>
-                Chat
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
-
-export function InviteScreen() {
-  const theme = useAppTheme();
-  const [copied, setCopied] = React.useState(false);
-  const code = "MARIA2024";
-  const share = async () => {
-    await Share.share({
-      message: `Use meu código ${code} no ConcursoMestre e ganhe 30 dias Premium: https://concursomestre.com/r/${code}`,
-    });
-  };
-  return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <ContentHeader
-        title="Indicar amigos"
-        subtitle="Compartilhe e ganhe Premium"
-      />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={[styles.inviteHero, { backgroundColor: theme.primary }]}>
-          <View style={styles.giftIcon}>
-            <Ionicons name="gift-outline" size={31} color={theme.warning} />
-          </View>
-          <Text style={[styles.heroTitle, { color: theme.onPrimary }]}>
-            Ganhe 30 dias Premium
-          </Text>
-          <Text
-            style={[styles.heroSubtitle, { color: "rgba(255,255,255,0.82)" }]}
-          >
-            A cada amigo que se cadastrar com seu código, vocês dois ganham 30
-            dias grátis!
-          </Text>
-        </View>
-        <View style={[styles.codeCard, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.overline, { color: theme.textMuted }]}>
-            SEU CÓDIGO
-          </Text>
-          <View style={styles.codeRow}>
-            <View
-              style={[
-                styles.codeBox,
-                {
-                  backgroundColor: theme.primarySubtle,
-                  borderColor: theme.primaryBorder,
-                },
-              ]}
-            >
-              <Text style={[styles.code, { color: theme.primary }]}>
-                {code}
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              style={[styles.copyButton, { borderColor: theme.border }]}
-            >
-              <Ionicons
-                name={copied ? "checkmark" : "copy-outline"}
-                size={18}
-                color={copied ? theme.success : theme.text}
-              />
-            </Pressable>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void share()}
-            style={[styles.primaryButton, { backgroundColor: theme.primary }]}
-          >
-            <Ionicons
-              name="share-social-outline"
-              size={17}
-              color={theme.onPrimary}
-            />
-            <Text style={[styles.buttonText, { color: theme.onPrimary }]}>
-              Compartilhar convite
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.statsGrid}>
-          {[
-            ["people-outline", "3", "Convidados"],
-            ["checkmark", "2", "Cadastrados"],
-            ["gift-outline", "30 dias", "Premium ganho"],
-          ].map(([icon, value, label]) => (
-            <View
-              key={label}
-              style={[styles.statCard, { backgroundColor: theme.surface }]}
-            >
-              <Ionicons
-                name={icon as keyof typeof Ionicons.glyphMap}
-                size={17}
-                color={theme.primary}
-              />
-              <Text style={[styles.statValue, { color: theme.text }]}>
-                {value}
-              </Text>
-              <Text style={[styles.caption, { color: theme.textMuted }]}>
-                {label}
-              </Text>
-            </View>
-          ))}
-        </View>
-        <Text style={[styles.overline, { color: theme.textMuted }]}>
-          COMO FUNCIONA
-        </Text>
-        <View style={[styles.steps, { backgroundColor: theme.surface }]}>
-          {[
-            "Compartilhe seu código com amigos",
-            "Eles se cadastram usando seu código",
-            "Vocês dois ganham 30 dias Premium grátis",
-          ].map((step, index) => (
-            <View
-              key={step}
-              style={[
-                styles.step,
-                index > 0 && {
-                  borderTopColor: theme.border,
-                  borderTopWidth: 1,
-                },
-              ]}
-            >
-              <View
-                style={[styles.stepNumber, { backgroundColor: theme.primary }]}
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: open === index }}
+                onPress={() => setOpen(open === index ? null : index)}
+                style={helpStyles.faqPressable}
               >
-                <Text
-                  style={{
-                    color: theme.onPrimary,
-                    fontWeight: typography.weight.bold,
-                  }}
-                >
-                  {index + 1}
-                </Text>
-              </View>
-              <Text style={[styles.itemTitle, { color: theme.text }]}>
-                {step}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
-
-export function ProfileScreen() {
-  const theme = useAppTheme();
-  const { user, logout } = useAuth();
-  const sections = [
-    {
-      title: "ESTUDO",
-      items: [["star", "Meu plano", user?.plan || "Gratuito", "/planos", true]],
-    },
-    {
-      title: "CONFIGURAÇÕES",
-      items: [
-        [
-          "notifications-outline",
-          "Notificações",
-          "Lembretes e alertas",
-          "/configuracoes/notificacoes",
-          false,
-        ],
-        [
-          "moon-outline",
-          "Aparência",
-          "Tema e fonte",
-          "/configuracoes/aparencia",
-          false,
-        ],
-        [
-          "shield-outline",
-          "Privacidade",
-          "Dados e segurança",
-          "/configuracoes/privacidade",
-          false,
-        ],
-        ["settings-outline", "Conta", "Email e senha", "/conta", false],
-      ],
-    },
-    {
-      title: "OUTROS",
-      items: [
-        ["star-outline", "Avaliar o app", "Sua opinião importa", "", false],
-        [
-          "share-social-outline",
-          "Indicar para amigos",
-          "Ganhe 30 dias Premium",
-          "/indicar",
-          false,
-        ],
-        [
-          "help-circle-outline",
-          "Ajuda e suporte",
-          "FAQ e contato",
-          "/ajuda",
-          false,
-        ],
-      ],
-    },
-  ] as const;
-  return (
-    <View style={[profileStyles.screen, { backgroundColor: theme.background }]}>
-      <ScrollView contentContainerStyle={profileStyles.content}>
-        <View
-          style={[
-            profileStyles.profileHeader,
-            { backgroundColor: theme.surface, borderBottomColor: theme.border },
-          ]}
-        >
-          <View
-            style={[profileStyles.avatar, { backgroundColor: theme.primary }]}
-          >
-            <Ionicons name="person" size={28} color={theme.onPrimary} />
-          </View>
-          <View style={profileStyles.flex}>
-            <Text style={[profileStyles.name, { color: theme.text }]}>
-              {user?.name || "Aluno ConcursoMestre"}
-            </Text>
-            <Text style={[profileStyles.email, { color: theme.textMuted }]}>
-              {user?.email || "--"}
-            </Text>
-            <View
-              style={[
-                profileStyles.streak,
-                { backgroundColor: theme.warningSubtle },
-              ]}
-            >
-              <Ionicons name="flame" size={13} color={theme.warning} />
-              <Text
-                style={[profileStyles.streakText, { color: theme.warning }]}
-              >
-                Sequência de estudos
-              </Text>
-            </View>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push("/perfil/editar")}
-            style={[profileStyles.editButton, { borderColor: theme.border }]}
-          >
-            <Text style={[profileStyles.editText, { color: theme.text }]}>
-              Editar
-            </Text>
-          </Pressable>
-        </View>
-        <View style={profileStyles.stats}>
-          {[
-            ["book-outline", user?.xp ? `${user.xp}` : "--", "XP"],
-            ["locate-outline", `Nível ${user?.level || 1}`, "progresso"],
-            [
-              "time-outline",
-              user?.subscription?.plan?.name || "Gratuito",
-              "plano",
-            ],
-          ].map(([icon, value, label]) => (
-            <View
-              key={label}
-              style={[profileStyles.stat, { backgroundColor: theme.surface }]}
-            >
-              <Ionicons
-                name={icon as keyof typeof Ionicons.glyphMap}
-                size={17}
-                color={theme.primary}
-              />
-              <Text style={[profileStyles.statValue, { color: theme.text }]}>
-                {value}
-              </Text>
-              <Text
-                style={[profileStyles.statLabel, { color: theme.textMuted }]}
-              >
-                {label}
-              </Text>
-            </View>
-          ))}
-        </View>
-        {sections.map((section) => (
-          <View key={section.title} style={profileStyles.section}>
-            <Text style={[profileStyles.overline, { color: theme.textMuted }]}>
-              {section.title}
-            </Text>
-            <View
-              style={[profileStyles.menu, { backgroundColor: theme.surface }]}
-            >
-              {section.items.map(([icon, label, description, path, accent]) => (
-                <Pressable
-                  key={label}
-                  accessibilityRole="button"
-                  onPress={() =>
-                    path
-                      ? router.push(path as never)
-                      : Alert.alert(
-                          label,
-                          "Obrigado por avaliar o ConcursoMestre.",
-                        )
-                  }
-                  style={[
-                    profileStyles.menuItem,
-                    { borderBottomColor: theme.border },
-                  ]}
-                >
-                  <View
-                    style={[
-                      profileStyles.menuIcon,
-                      {
-                        backgroundColor: accent
-                          ? theme.primary
-                          : theme.surfaceSubtle,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={icon as keyof typeof Ionicons.glyphMap}
-                      size={17}
-                      color={accent ? theme.onPrimary : theme.text}
-                    />
-                  </View>
-                  <View style={profileStyles.flex}>
-                    <Text
-                      style={[profileStyles.itemTitle, { color: theme.text }]}
-                    >
-                      {label}
-                    </Text>
-                    <Text
-                      style={[profileStyles.email, { color: theme.textMuted }]}
-                    >
-                      {description}
-                    </Text>
-                  </View>
+                <View style={helpStyles.faqQuestion}>
+                  <AppText variant="bodyStrong" style={helpStyles.flex}>
+                    {question}
+                  </AppText>
                   <Ionicons
-                    name="chevron-forward"
-                    size={17}
+                    name={open === index ? "chevron-up" : "chevron-down"}
+                    size={18}
                     color={theme.textMuted}
                   />
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ))}
-        <Pressable
-          accessibilityRole="button"
-          onPress={() =>
-            Alert.alert(
-              "Sair da conta?",
-              "Sua sessão neste aparelho será encerrada.",
-              [
-                { text: "Cancelar", style: "cancel" },
-                {
-                  text: "Sair",
-                  style: "destructive",
-                  onPress: () => void logout(),
-                },
-              ],
-            )
-          }
-          style={profileStyles.logout}
-        >
-          <Ionicons name="log-out-outline" size={20} color={theme.danger} />
-          <Text style={[profileStyles.logoutText, { color: theme.danger }]}>
-            Sair da conta
-          </Text>
-        </Pressable>
-        <Text style={[profileStyles.version, { color: theme.textMuted }]}>
-          Versão 1.0.0
-        </Text>
-      </ScrollView>
-    </View>
-  );
-}
-
-type SettingsSection =
-  "estudo" | "metas" | "notificacoes";
-const settingsContent: Record<
-  SettingsSection,
-  { title: string; subtitle: string; options: string[] }
-> = {
-  estudo: {
-    title: "Preferências de estudo",
-    subtitle: "Matérias e nível",
-    options: ["Concurso alvo", "Matérias favoritas", "Nível de dificuldade"],
-  },
-  metas: {
-    title: "Metas diárias",
-    subtitle: "30 questões por dia",
-    options: ["Questões por dia", "Dias de estudo", "Horário preferido"],
-  },
-  notificacoes: {
-    title: "Notificações",
-    subtitle: "Lembretes e alertas",
-    options: ["Lembrete de estudo", "Novos conteúdos"],
-  },
-};
-
-export function SettingsScreen({ section }: { section: SettingsSection }) {
-  const theme = useAppTheme();
-  const content = settingsContent[section];
-  const [values, setValues] = React.useState<Record<string, boolean>>({});
-  return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <ContentHeader title={content.title} subtitle={content.subtitle} />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={[styles.settingsCard, { backgroundColor: theme.surface }]}>
-          {content.options.map((option, index) => (
-            <Pressable
-              key={option}
-              accessibilityRole="button"
-              onPress={() =>
-                setValues({ ...values, [option]: !values[option] })
-              }
-              style={[
-                styles.settingRow,
-                index > 0 && {
-                  borderTopColor: theme.border,
-                  borderTopWidth: 1,
-                },
-              ]}
-            >
-              <View style={styles.flex}>
-                <Text style={[styles.itemTitle, { color: theme.text }]}>
-                  {option}
-                </Text>
-                <Text style={[styles.caption, { color: theme.textMuted }]}>
-                  {values[option] ? "Ativado" : "Toque para configurar"}
-                </Text>
-              </View>
-              <Ionicons
-                name={values[option] ? "checkmark-circle" : "chevron-forward"}
-                size={21}
-                color={values[option] ? theme.success : theme.textMuted}
-              />
-            </Pressable>
+                </View>
+                {open === index ? (
+                  <AppText variant="body" tone="muted" style={helpStyles.answer}>
+                    {answer}
+                  </AppText>
+                ) : null}
+              </MotionPressable>
+            </AppSurface>
           ))}
+          {filtered.length === 0 && (
+            <AppSurface variant="outlined" style={helpStyles.empty}>
+              <AppText variant="body" tone="muted">Nenhum resultado encontrado</AppText>
+            </AppSurface>
+          )}
         </View>
-        <Text style={[styles.helper, { color: theme.textMuted }]}>
-          As preferências são salvas neste aparelho e sincronizadas quando sua
-          conta estiver conectada.
-        </Text>
+        <AppSurface variant="outlined" style={helpStyles.contact}>
+          <AppText variant="sectionTitle">Não encontrou o que procurava?</AppText>
+          <AppText variant="body" tone="muted">Nossa equipe responde em até 24h</AppText>
+          <View style={helpStyles.contactActions}>
+            <AppButton
+              label="Email"
+              variant="secondary"
+              leading={<Ionicons name="mail-outline" size={16} color={theme.text} />}
+              onPress={() => Alert.alert("Email", "Envie sua dúvida para suporte@concursomestre.com")}
+              style={helpStyles.contactButton}
+            />
+            <AppButton
+              label="Suporte"
+              leading={<Ionicons name="chatbubble-ellipses-outline" size={16} color={theme.onPrimary} />}
+              onPress={() => {
+                setSupportError("");
+                setSupportSuccess("");
+                setSupportModalVisible(true);
+              }}
+              style={helpStyles.contactButton}
+            />
+          </View>
+        </AppSurface>
       </ScrollView>
+
+      <Modal
+        animationType={motion.sheetAnimation}
+        onRequestClose={closeSupportModal}
+        transparent
+        visible={supportModalVisible}
+      >
+        <View style={helpStyles.modalBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fechar formulário de suporte"
+            disabled={supportSubmitting}
+            onPress={closeSupportModal}
+            style={helpStyles.modalBackdropDismiss}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={helpStyles.modalKeyboard}
+          >
+            <View style={[helpStyles.modalSheet, { paddingBottom: Math.max(insets.bottom, spacing[4]) + spacing[2] }]}>
+              <View style={helpStyles.modalHandle} />
+              <AppText variant="sectionTitle">Fale com o suporte</AppText>
+              <AppText variant="body" tone="muted">
+                Envie sua dúvida sobre conta, assinatura, cobrança ou uso da plataforma.
+              </AppText>
+
+              {!user ? (
+                <View style={helpStyles.guestSupport}>
+                  <Ionicons name="lock-closed-outline" size={24} color={theme.primary} />
+                  <AppText variant="body" tone="muted">
+                    {authLoading ? "Verificando sua sessão…" : "Faça login para enviar e acompanhar sua solicitação."}
+                  </AppText>
+                </View>
+              ) : supportSuccess ? (
+                <View style={helpStyles.supportSuccess}>
+                  <Ionicons name="checkmark-circle-outline" size={34} color={theme.success} />
+                  <AppText variant="bodyStrong">Solicitação enviada</AppText>
+                  <AppText variant="body" tone="muted">{supportSuccess}</AppText>
+                </View>
+              ) : (
+                <ScrollView
+                  contentContainerStyle={helpStyles.modalForm}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  style={{ flex: 1 }}
+                >
+                  <View style={helpStyles.supportGuidance}>
+                    <AppText variant="label" tone="muted">ANTES DE ENVIAR</AppText>
+                    <AppText variant="caption" tone="muted">
+                      Informe o assunto e descreva o que aconteceu. Quanto mais contexto, melhor poderemos ajudar.
+                    </AppText>
+                  </View>
+                  <AppText variant="label">Assunto <AppText variant="label" tone="danger">*</AppText></AppText>
+                  <TextInput
+                    accessibilityLabel="Assunto da solicitação"
+                    autoCapitalize="sentences"
+                    editable={!supportSubmitting}
+                    maxLength={255}
+                    onChangeText={setSupportSubject}
+                    placeholder="Ex.: dúvida sobre renovação"
+                    placeholderTextColor={theme.textSubtle}
+                    returnKeyType="next"
+                    style={helpStyles.supportSubjectInput}
+                    value={supportSubject}
+                  />
+                  <AppText variant="label">Descrição <AppText variant="label" tone="danger">*</AppText></AppText>
+                  <TextInput
+                    accessibilityLabel="Descrição da solicitação"
+                    autoCapitalize="sentences"
+                    editable={!supportSubmitting}
+                    maxLength={5000}
+                    multiline
+                    onChangeText={setSupportDetails}
+                    placeholder="Explique sua dúvida ou o problema com o máximo de contexto."
+                    placeholderTextColor={theme.textSubtle}
+                    style={helpStyles.supportDetailsInput}
+                    textAlignVertical="top"
+                    value={supportDetails}
+                  />
+                  {supportError ? <AppText variant="caption" tone="danger" accessibilityLiveRegion="polite">{supportError}</AppText> : null}
+                </ScrollView>
+              )}
+
+              <View style={helpStyles.modalFooter}>
+                {user && supportSuccess ? (
+                  <AppButton label="Fechar" variant="secondary" onPress={closeSupportModal} style={helpStyles.modalButton} />
+                ) : user ? (
+                  <>
+                    <AppButton label="Cancelar" variant="secondary" disabled={supportSubmitting} onPress={closeSupportModal} style={helpStyles.modalButton} />
+                    <AppButton
+                      label="Enviar solicitação"
+                      loading={supportSubmitting}
+                      disabled={!supportSubject.trim() || !supportDetails.trim()}
+                      onPress={() => void submitSupportRequest()}
+                      style={helpStyles.modalButton}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <AppButton label="Cancelar" variant="secondary" onPress={closeSupportModal} style={helpStyles.modalButton} />
+                    <AppButton
+                      label={authLoading ? "Aguarde" : "Fazer login"}
+                      disabled={authLoading}
+                      onPress={() => {
+                        closeSupportModal();
+                        router.push("/login" as never);
+                      }}
+                      style={helpStyles.modalButton}
+                    />
+                  </>
+                )}
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 }
+
+const createHelpStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.create({
+  screen: { backgroundColor: theme.background, flex: 1 },
+  content: { gap: spacing[4], paddingHorizontal: spacing[5], paddingTop: spacing[5] },
+  flex: { flex: 1 },
+  tutorialCard: { alignItems: "center", borderWidth: borders.subtle, flexDirection: "row", gap: spacing[3], minHeight: 76 },
+  tutorialIcon: { alignItems: "center", backgroundColor: theme.primarySubtle, borderRadius: radius.button, height: 40, justifyContent: "center", width: 40 },
+  searchBox: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: radius.field, borderWidth: borders.subtle, flexDirection: "row", gap: spacing[2], minHeight: layout.controlHeight, paddingHorizontal: spacing[3] },
+  searchInput: { color: theme.text, flex: 1, fontSize: typography.role.body.fontSize, minHeight: layout.controlHeight },
+  categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing[3] },
+  category: { borderWidth: borders.subtle, flexBasis: "47%", flexGrow: 1, gap: spacing[2], minHeight: 132 },
+  categoryIcon: { alignItems: "center", backgroundColor: theme.primarySubtle, borderRadius: radius.button, height: 40, justifyContent: "center", marginBottom: spacing[1], width: 40 },
+  list: { gap: spacing[2] },
+  faq: { borderWidth: borders.subtle, padding: 0 },
+  faqPressable: { gap: spacing[3], padding: spacing[4] },
+  faqQuestion: { alignItems: "center", flexDirection: "row", gap: spacing[3] },
+  answer: { borderTopColor: theme.border, borderTopWidth: borders.hairline, paddingTop: spacing[3] },
+  empty: { alignItems: "center", borderWidth: borders.subtle, padding: spacing[4] },
+  contact: { borderWidth: borders.subtle, gap: spacing[2] },
+  contactActions: { flexDirection: "row", gap: spacing[2], marginTop: spacing[2] },
+  contactButton: { flex: 1 },
+  modalBackdrop: { backgroundColor: "rgba(10,10,35,0.56)", flex: 1, justifyContent: "flex-end" },
+  modalBackdropDismiss: { ...StyleSheet.absoluteFill },
+  modalKeyboard: { flex: 1, justifyContent: "flex-end", width: "100%" },
+  modalSheet: { ...(theme === darkTheme ? shadows.modalDark : shadows.modal), backgroundColor: theme.surface, borderTopLeftRadius: radius.dialog, borderTopRightRadius: radius.dialog, gap: spacing[3], height: "88%", paddingHorizontal: spacing[5], paddingTop: spacing[3], width: "100%" },
+  modalHandle: { alignSelf: "center", backgroundColor: theme.borderStrong, borderRadius: radius.pill, height: 4, marginBottom: spacing[1], width: 40 },
+  guestSupport: { alignItems: "flex-start", borderColor: theme.border, borderRadius: radius.card, borderWidth: borders.subtle, gap: spacing[3], padding: spacing[4] },
+  supportSuccess: { alignItems: "center", flex: 1, gap: spacing[3], justifyContent: "center", padding: spacing[5] },
+  modalForm: { gap: spacing[2], paddingBottom: spacing[3] },
+  supportGuidance: { backgroundColor: theme.surfaceSubtle, borderColor: theme.border, borderRadius: radius.field, borderWidth: borders.subtle, gap: spacing[2], marginBottom: spacing[2], padding: spacing[3] },
+  supportSubjectInput: { backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.field, borderWidth: borders.subtle, color: theme.text, fontSize: typography.role.body.fontSize, minHeight: layout.controlHeight, paddingHorizontal: spacing[3] },
+  supportDetailsInput: { backgroundColor: theme.background, borderColor: theme.border, borderRadius: radius.field, borderWidth: borders.subtle, color: theme.text, fontSize: typography.role.body.fontSize, lineHeight: typography.role.body.lineHeight, minHeight: 136, padding: spacing[3] },
+  modalFooter: { borderTopColor: theme.border, borderTopWidth: borders.hairline, flexDirection: "row", gap: spacing[3], paddingTop: spacing[3] },
+  modalButton: { flex: 1 },
+});
 
 function FocusPickerModal({
   visible,
@@ -1634,85 +1352,6 @@ const styles = StyleSheet.create({
     fontSize: typography.size.sm,
     fontWeight: typography.weight.bold,
   },
-  inviteHero: {
-    alignItems: "center",
-    borderRadius: radius.lg,
-    gap: spacing[2],
-    padding: spacing[6],
-  },
-  giftIcon: {
-    alignItems: "center",
-    backgroundColor: "#FFFFFF2E",
-    borderRadius: radius.lg,
-    height: 64,
-    justifyContent: "center",
-    width: 64,
-  },
-  heroTitle: {
-    fontSize: typography.size.xl,
-    fontWeight: typography.weight.bold,
-  },
-  heroSubtitle: {
-    fontSize: typography.size.sm,
-    lineHeight: 20,
-    textAlign: "center",
-  },
-  codeCard: { borderRadius: radius.md, gap: spacing[3], padding: spacing[5] },
-  codeRow: { alignItems: "center", flexDirection: "row", gap: spacing[2] },
-  codeBox: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flex: 1,
-    paddingVertical: spacing[3],
-  },
-  code: {
-    fontSize: typography.size.xl,
-    fontWeight: typography.weight.bold,
-    letterSpacing: 3,
-  },
-  copyButton: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    borderWidth: 1,
-    height: 48,
-    justifyContent: "center",
-    width: 48,
-  },
-  statsGrid: { flexDirection: "row", gap: spacing[2] },
-  statCard: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    flex: 1,
-    gap: 3,
-    padding: spacing[3],
-  },
-  statValue: {
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.bold,
-  },
-  steps: { borderRadius: radius.md, overflow: "hidden" },
-  step: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing[3],
-    padding: spacing[4],
-  },
-  stepNumber: {
-    alignItems: "center",
-    borderRadius: 20,
-    height: 32,
-    justifyContent: "center",
-    width: 32,
-  },
-  settingsCard: { borderRadius: radius.md, overflow: "hidden" },
-  settingRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing[3],
-    padding: spacing[4],
-  },
-  helper: { fontSize: typography.size.xs, lineHeight: 18 },
   editCard: {
     alignItems: "stretch",
     borderRadius: radius.md,
@@ -1876,103 +1515,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   focusFieldText: { flex: 1, fontSize: typography.size.sm },
-});
-
-const profileStyles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { paddingBottom: spacing[12] },
-  flex: { flex: 1 },
-  profileHeader: {
-    alignItems: "center",
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    gap: spacing[3],
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[6],
-    paddingBottom: spacing[5],
-  },
-  avatar: {
-    alignItems: "center",
-    borderRadius: radius.lg,
-    height: 64,
-    justifyContent: "center",
-    width: 64,
-  },
-  name: { fontSize: typography.size.lg, fontWeight: typography.weight.bold },
-  email: { fontSize: typography.size.xs, marginTop: 2 },
-  streak: {
-    alignSelf: "flex-start",
-    borderRadius: radius.pill,
-    flexDirection: "row",
-    gap: 4,
-    marginTop: spacing[2],
-    paddingHorizontal: spacing[2],
-    paddingVertical: 4,
-  },
-  streakText: { fontSize: 10, fontWeight: typography.weight.medium },
-  editButton: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-  },
-  editText: {
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.semibold,
-  },
-  stats: { flexDirection: "row", gap: spacing[2], padding: spacing[5] },
-  stat: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    flex: 1,
-    gap: 3,
-    padding: spacing[3],
-  },
-  statValue: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.bold,
-    textAlign: "center",
-  },
-  statLabel: { fontSize: 10, textAlign: "center" },
-  section: {
-    gap: spacing[2],
-    paddingHorizontal: spacing[5],
-    marginBottom: spacing[4],
-  },
-  overline: {
-    fontSize: 11,
-    fontWeight: typography.weight.bold,
-    letterSpacing: 1,
-  },
-  menu: { borderRadius: radius.md, overflow: "hidden" },
-  menuItem: {
-    alignItems: "center",
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    gap: spacing[3],
-    padding: spacing[4],
-  },
-  menuIcon: {
-    alignItems: "center",
-    borderRadius: radius.sm,
-    height: 36,
-    justifyContent: "center",
-    width: 36,
-  },
-  itemTitle: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.medium,
-  },
-  logout: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing[3],
-    marginHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-  },
-  logoutText: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.bold,
-  },
-  version: { fontSize: 10, paddingTop: spacing[2], textAlign: "center" },
 });

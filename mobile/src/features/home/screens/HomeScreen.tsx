@@ -1,25 +1,32 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
+  BackHandler,
   PanResponder,
   Pressable,
   RefreshControl,
   ScrollView,
+  StatusBar as NativeStatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { StatusBar } from "expo-status-bar";
+import { AppButton, AppText, MotionPressable } from "@/components/ui/Primitives";
+import { router, useFocusEffect } from "expo-router";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { useActiveSimulationQuery } from "@/features/simulations/api/useActiveSimulationQuery";
 import { useAuth } from "@/providers/AuthProvider";
+import { useHomeDrawerVisibility } from "@/features/home/HomeDrawerVisibilityContext";
 import { statisticsService } from "@/services/statistics/statisticsService";
-import { palette, radius, spacing, typography } from "@/theme/tokens";
+import { touchStudyStreak } from "@/services/statistics/studyStreakService";
+import { getLastQuestionFilter, toQuestionListFilters, toQuestionRouteParams } from "@/services/questions/lastQuestionFilterService";
+import { questionService } from "@/services/questions/questionService";
+import { darkTheme, palette, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import type { UserStatistics } from "@/types/statistics";
-import type { MobileFeatureKey } from "@/types/system";
 
 const EMPTY_STATS: UserStatistics = {
   userId: "",
@@ -42,71 +49,39 @@ const quickActions: Array<{
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
   route: string;
-  feature?: MobileFeatureKey;
 }> = [
   {
-    label: "Flashcards",
-    description: "Memorize com revisão espaçada",
-    icon: "layers-outline",
-    route: "/flashcards",
-    feature: "flashcardsEnabled",
+    label: "Questões",
+    description: "Resolva questões por disciplina",
+    icon: "help-circle-outline",
+    route: "/questoes",
   },
   {
-    label: "Notícias",
-    description: "Editais e dicas de estudo",
-    icon: "newspaper-outline",
-    route: "/noticias",
+    label: "Simulados",
+    description: "Treine com simulados personalizados",
+    icon: "stats-chart-outline",
+    route: "/simulados",
   },
   {
-    label: "Novidades",
-    description: "Veja o que mudou na plataforma",
-    icon: "sparkles-outline",
-    route: "/novidades",
-  },
-  {
-    label: "Lei comentada",
-    description: "Legislação artigo por artigo",
-    icon: "scale-outline",
-    route: "/lei-comentada",
-    feature: "annotatedLawsEnabled",
-  },
-  {
-    label: "Trilhas de estudo",
-    description: "Aprenda passo a passo",
-    icon: "map-outline",
-    route: "/trilhas",
-    feature: "studyScheduleEnabled",
-  },
-  {
-    label: "Revisão de erros",
-    description: "Reforce pontos fracos",
+    label: "Desempenho",
+    description: "Acompanhe sua evolução",
     icon: "trending-up-outline",
-    route: "/revisao",
-    feature: "practiceEnabled",
-  },
-  {
-    label: "Ranking",
-    description: "Compita com outros",
-    icon: "trophy-outline",
-    route: "/ranking",
-    feature: "rankingsEnabled",
+    route: "/desempenho",
   },
 ];
-
-const formatRecentResult = (
-  questions: number,
-  correct: number,
-  wrong: number,
-) => {
-  const total = questions || correct + wrong;
-  return total ? `${correct}/${total}` : "--";
-};
 
 const getGreeting = () => {
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12) return "Bom dia";
   if (hour >= 12 && hour < 18) return "Boa tarde";
   return "Boa noite";
+};
+
+const formatStudyDuration = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  return hours > 0 ? `${hours}h${minutes > 0 ? ` ${minutes}min` : ""}` : `${minutes}min`;
 };
 
 const drawerItems = [
@@ -120,6 +95,11 @@ const drawerItems = [
     label: "Simulados",
     icon: "document-text-outline" as const,
     route: "/simulados",
+  },
+  {
+    label: "Planos",
+    icon: "diamond-outline" as const,
+    route: "/planos",
   },
   {
     label: "Desempenho",
@@ -136,27 +116,33 @@ const drawerItems = [
 ];
 
 const DRAWER_WIDTH = 304;
+const HERO_HEADER_HEIGHT = spacing[3] + spacing[10] + spacing[8];
 
 export const HomeScreen: React.FC = () => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
-  const { user, systemSettings } = useAuth();
+  const { user, isGuest } = useAuth();
+  const isVisitor = isGuest || !user;
+  const { setVisible: setDrawerVisible } = useHomeDrawerVisibility();
   const activeSimulationQuery = useActiveSimulationQuery();
   const [stats, setStats] = React.useState<UserStatistics>(EMPTY_STATS);
+  const [studyStreak, setStudyStreak] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [greeting, setGreeting] = React.useState(getGreeting);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [continuingStudy, setContinuingStudy] = React.useState(false);
   const drawerProgress = React.useRef(new Animated.Value(0)).current;
 
   const openDrawer = React.useCallback(() => {
     setDrawerOpen(true);
+    setDrawerVisible(true);
     Animated.spring(drawerProgress, {
       toValue: 1,
       useNativeDriver: true,
       bounciness: 0,
     }).start();
-  }, [drawerProgress]);
+  }, [drawerProgress, setDrawerVisible]);
 
   const closeDrawer = React.useCallback(() => {
     Animated.timing(drawerProgress, {
@@ -165,8 +151,21 @@ export const HomeScreen: React.FC = () => {
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) setDrawerOpen(false);
+      if (finished) setDrawerVisible(false);
     });
-  }, [drawerProgress]);
+  }, [drawerProgress, setDrawerVisible]);
+
+  React.useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        closeDrawer();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [closeDrawer, drawerOpen]);
 
   const panResponder = React.useMemo(
     () =>
@@ -213,7 +212,30 @@ export const HomeScreen: React.FC = () => {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       try {
-        setStats(await statisticsService.getUserStatistics(user.id));
+        const [statisticsResult, answerSnapshotResult] = await Promise.allSettled([
+          statisticsService.getUserStatistics(user.id),
+          statisticsService.getCurrentUserAnswerSnapshot(),
+        ]);
+        if (statisticsResult.status === 'fulfilled' && answerSnapshotResult.status === 'fulfilled') {
+          const nextStats = statisticsResult.value;
+          setStats({
+            ...nextStats,
+            ...answerSnapshotResult.value.summary,
+            subjectBreakdown: answerSnapshotResult.value.subjectBreakdown.length > 0
+              ? answerSnapshotResult.value.subjectBreakdown
+              : nextStats.subjectBreakdown,
+          });
+        } else if (statisticsResult.status === 'fulfilled') {
+          setStats(statisticsResult.value);
+        } else if (answerSnapshotResult.status === 'fulfilled') {
+          setStats((current) => ({
+            ...current,
+            ...answerSnapshotResult.value.summary,
+            subjectBreakdown: answerSnapshotResult.value.subjectBreakdown.length > 0
+              ? answerSnapshotResult.value.subjectBreakdown
+              : current.subjectBreakdown,
+          }));
+        }
       } catch (loadError: any) {
         // A Home continua utilizável mesmo quando o resumo estatístico está
         // temporariamente indisponível. Os cartões exibem os valores seguros
@@ -227,9 +249,21 @@ export const HomeScreen: React.FC = () => {
     [user?.id],
   );
 
-  React.useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     void loadStats();
-  }, [loadStats]);
+    return undefined;
+  }, [loadStats]));
+  React.useEffect(() => {
+    let active = true;
+    if (user?.id) {
+      void touchStudyStreak(user.id).then((snapshot) => {
+        if (active) setStudyStreak(snapshot.current);
+      });
+    } else {
+      setStudyStreak(0);
+    }
+    return () => { active = false; };
+  }, [user?.id]);
   React.useEffect(() => {
     const timer = setInterval(() => setGreeting(getGreeting()), 60_000);
     return () => clearInterval(timer);
@@ -243,83 +277,74 @@ export const HomeScreen: React.FC = () => {
     );
 
   const firstSubject = stats.subjectBreakdown[0]?.subject || "Prática geral";
-  const recentTimeline = stats.timeline.slice(-3).reverse();
   const hasActiveSimulation = Boolean(
     activeSimulationQuery.data?.questions?.length,
   );
 
-  const displayName = user?.name || "Aluno ConcursoMestre";
+  const displayName = user?.name || "Visitante";
   const planName =
     user?.subscription?.plan?.name ||
     user?.billing?.plan ||
     user?.plan ||
     "Gratuito";
-  const visibleQuickActions = quickActions.filter(
-    (action) => !action.feature || systemSettings.features[action.feature],
-  );
+  const visibleQuickActions = quickActions;
+  const visibleDrawerItems = isVisitor
+    ? drawerItems.filter((item) => item.route !== "/notificacoes")
+    : drawerItems;
+
+  const continueStudying = async () => {
+    if (continuingStudy) return;
+    if (hasActiveSimulation) {
+      router.push("/simulados");
+      return;
+    }
+
+    setContinuingStudy(true);
+    try {
+      const lastFilter = await getLastQuestionFilter();
+      if (!lastFilter) {
+        router.push("/questoes");
+        return;
+      }
+
+      const result = await questionService.getQuestionPage({
+        ...toQuestionListFilters(lastFilter),
+        page: 1,
+        limit: 1,
+      });
+      const firstQuestion = result.rows.find((question) => question.id !== undefined && question.id !== null);
+      if (!firstQuestion?.id) {
+        Alert.alert(
+          "Nenhuma questão encontrada",
+          "Os últimos filtros não retornaram questões. Ajuste os filtros para continuar.",
+          [{ text: "Abrir filtros", onPress: () => router.push("/questoes") }, { text: "Agora não", style: "cancel" }],
+        );
+        return;
+      }
+
+      router.push({
+        pathname: "/questao/[id]",
+        params: toQuestionRouteParams(lastFilter, firstQuestion.id),
+      });
+    } catch (error: any) {
+      Alert.alert(
+        "Não foi possível continuar",
+        error?.message || "Verifique sua conexão e tente novamente.",
+        [{ text: "Abrir filtros", onPress: () => router.push("/questoes") }, { text: "Fechar", style: "cancel" }],
+      );
+    } finally {
+      setContinuingStudy(false);
+    }
+  };
 
   return (
     <View style={styles.screen} {...panResponder.panHandlers}>
-      <StatusBar style="light" />
-      <View
-        style={[
-          styles.hero,
-          { backgroundColor: palette.brand.lavender, paddingTop: spacing[5] },
-        ]}
-      >
-        <View style={styles.heroTopRow}>
-          <View style={styles.heroIdentity}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Abrir menu lateral"
-              style={({ pressed }) => [
-                styles.menuButton,
-                pressed && styles.pressed,
-              ]}
-              onPress={openDrawer}
-            >
-              <Ionicons name="menu" size={24} color={theme.onPrimary} />
-            </Pressable>
-            <View style={styles.identityCopy}>
-              <Text
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                numberOfLines={1}
-                style={styles.heroGreeting}
-              >
-                {greeting} 👋
-              </Text>
-              <Text
-                adjustsFontSizeToFit
-                minimumFontScale={0.72}
-                numberOfLines={1}
-                style={styles.heroName}
-              >
-                {displayName}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.heroActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Notificações"
-              style={styles.heroIconButton}
-              onPress={() => router.push("/notificacoes")}
-            >
-              <Ionicons
-                name="notifications-outline"
-                size={18}
-                color={theme.onPrimary}
-              />
-              <View style={styles.notificationDot} />
-            </Pressable>
-            <View style={styles.streakBadge}>
-              <Ionicons name="flame" size={16} color="#FBBF24" />
-              <Text style={styles.streakText}>{stats.currentStreak} dias</Text>
-            </View>
-          </View>
-        </View>
-      </View>
+      <ExpoStatusBar style="light" />
+      <NativeStatusBar
+        barStyle="light-content"
+        backgroundColor={palette.brand.navy}
+      />
+      <View pointerEvents="none" style={styles.heroBackground} />
 
       <ScrollView
         removeClippedSubviews={false}
@@ -339,35 +364,19 @@ export const HomeScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.continueSection}>
-          <View
-            style={[
-              styles.continueBlueBox,
-              { backgroundColor: palette.brand.lavender },
-            ]}
-          />
           <View style={styles.continueCard}>
             <View style={styles.continueHeader}>
               <View style={styles.continueCopy}>
-                <Text style={styles.cardTitle}>Continuar estudando</Text>
-                <Text style={styles.cardSubtitle}>{firstSubject}</Text>
+                <AppText variant="sectionTitle" style={styles.cardTitle}>Continuar estudando</AppText>
+                <AppText variant="body" tone="muted" style={styles.cardSubtitle}>{firstSubject}</AppText>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.continueButton,
-                  pressed && styles.pressed,
-                ]}
-                onPress={() =>
-                  router.push(hasActiveSimulation ? "/simulados" : "/questoes")
-                }
-              >
-                <Ionicons
-                  name="flash-outline"
-                  size={16}
-                  color={theme.onPrimary}
-                />
-                <Text style={styles.continueButtonText}>Continuar</Text>
-              </Pressable>
+              <AppButton
+                label="Continuar"
+                leading={<Ionicons name="play" size={16} color={theme.onPrimary} />}
+                loading={continuingStudy}
+                onPress={() => void continueStudying()}
+                style={styles.continueButton}
+              />
             </View>
           </View>
         </View>
@@ -386,6 +395,7 @@ export const HomeScreen: React.FC = () => {
             value={`${Math.round(stats.accuracyRate)}%`}
             color={theme.success}
             styles={styles}
+            divider
           />
           <StatCard
             icon="close-circle-outline"
@@ -393,20 +403,22 @@ export const HomeScreen: React.FC = () => {
             value={String(stats.wrongAnswers)}
             color={theme.danger}
             styles={styles}
+            divider
           />
           <StatCard
             icon="time-outline"
-            label="Tempo médio"
-            value="--"
+            label="Tempo de estudo"
+            value={formatStudyDuration(stats.totalStudyTime || 0)}
             color={theme.warning}
             styles={styles}
+            divider
           />
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Acesso rápido</Text>
+          <AppText variant="sectionTitle" style={styles.sectionTitle}>Acesso rápido</AppText>
           {visibleQuickActions.map((action) => (
-            <Pressable
+            <MotionPressable
               key={action.label}
               accessibilityRole="button"
               style={({ pressed }) => [
@@ -419,85 +431,74 @@ export const HomeScreen: React.FC = () => {
                 <Ionicons name={action.icon} size={20} color={theme.primary} />
               </View>
               <View style={styles.quickCopy}>
-                <Text style={styles.quickTitle}>{action.label}</Text>
-                <Text style={styles.quickDescription}>
+                <AppText variant="bodyStrong" style={styles.quickTitle}>{action.label}</AppText>
+                <AppText variant="caption" tone="muted" style={styles.quickDescription}>
                   {action.description}
-                </Text>
+                </AppText>
               </View>
               <Ionicons
                 name="chevron-forward"
                 size={18}
                 color={theme.textMuted}
               />
-            </Pressable>
+            </MotionPressable>
           ))}
         </View>
 
-        <View style={styles.adSlot}>
-          <Text style={styles.adLabel}>PUBLICIDADE</Text>
-          <Text style={styles.adText}>Espaço de anúncio</Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Atividade recente</Text>
-          <View style={styles.activityCard}>
-            {recentTimeline.length ? (
-              recentTimeline.map((item, index) => (
-                <View
-                  key={`${item.label}-${index}`}
-                  style={[
-                    styles.activityRow,
-                    index > 0 && styles.activityDivider,
-                  ]}
-                >
-                  <View>
-                    <Text style={styles.activityTitle}>{item.label}</Text>
-                    <Text style={styles.activityTime}>atividade recente</Text>
-                  </View>
-                  <Text style={styles.activityResult}>
-                    {formatRecentResult(
-                      item.questions,
-                      item.correct,
-                      item.wrong,
-                    )}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <View style={styles.emptyActivity}>
-                <Text style={styles.cardSubtitle}>
-                  Ainda não há atividades sincronizadas.
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.premiumCard,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => router.push("/planos")}
-        >
-          <View style={styles.premiumIcon}>
-            <Ionicons name="trophy-outline" size={20} color={theme.onPrimary} />
-          </View>
-          <View style={styles.quickCopy}>
-            <Text style={styles.premiumTitle}>Desbloqueie tudo</Text>
-            <Text style={styles.premiumDescription}>
-              Questões ilimitadas, simulados e mais
-            </Text>
-          </View>
-          <Ionicons
-            name="chevron-forward"
-            size={20}
-            color="rgba(255,255,255,0.65)"
-          />
-        </Pressable>
-
       </ScrollView>
+
+      <View pointerEvents="box-none" style={styles.heroFixedContent}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroIdentity}>
+            <MotionPressable
+              accessibilityRole="button"
+              accessibilityLabel="Abrir menu lateral"
+              hitSlop={2}
+              style={({ pressed }) => [
+                styles.menuButton,
+                pressed && styles.pressed,
+              ]}
+              onPress={openDrawer}
+            >
+              <Ionicons name="menu" size={24} color={palette.white} />
+            </MotionPressable>
+            <View style={styles.identityCopy}>
+              <Text numberOfLines={1} style={styles.heroGreeting}>
+                {greeting},
+              </Text>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={styles.heroName}
+              >
+                {displayName}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.heroActions}>
+            {!isVisitor ? (
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityLabel="Notificações"
+                hitSlop={4}
+                style={styles.heroIconButton}
+                onPress={() => router.push("/notificacoes")}
+              >
+                <Ionicons
+                  name="notifications-outline"
+                  size={18}
+                  color={palette.white}
+                />
+                <View style={styles.notificationDot} />
+              </MotionPressable>
+            ) : null}
+            <View style={styles.streakBadge}>
+              <Ionicons name="flame" size={16} color={palette.amber[500]} />
+              <Text style={styles.streakText}>{studyStreak} dias</Text>
+            </View>
+          </View>
+        </View>
+      </View>
 
       {drawerOpen ? (
         <View style={styles.drawerLayer} pointerEvents="box-none">
@@ -544,19 +545,21 @@ export const HomeScreen: React.FC = () => {
                   {displayName}
                 </Text>
                 <Text style={styles.drawerSubtitle}>Área do aluno</Text>
-                <View style={styles.drawerPlanBadge}>
-                  <Ionicons name="sparkles-outline" size={12} color={theme.primary} />
-                  <Text style={styles.drawerPlanText}>Plano {planName}</Text>
-                </View>
+                {!isVisitor ? (
+                  <View style={styles.drawerPlanBadge}>
+                    <Ionicons name="sparkles-outline" size={12} color={theme.primary} />
+                    <Text style={styles.drawerPlanText}>Plano {planName}</Text>
+                  </View>
+                ) : null}
               </View>
-              <Pressable
+              <MotionPressable
                 accessibilityRole="button"
                 accessibilityLabel="Fechar menu lateral"
                 onPress={closeDrawer}
                 style={styles.drawerClose}
               >
                 <Ionicons name="close" size={22} color={theme.textMuted} />
-              </Pressable>
+              </MotionPressable>
             </View>
             <View style={styles.drawerDivider} />
             <ScrollView
@@ -566,8 +569,8 @@ export const HomeScreen: React.FC = () => {
               ]}
               showsVerticalScrollIndicator={false}
             >
-              {drawerItems.map((item) => (
-                <Pressable
+              {visibleDrawerItems.map((item) => (
+                <MotionPressable
                   key={item.label}
                   accessibilityRole="button"
                   style={({ pressed }) => [
@@ -585,8 +588,29 @@ export const HomeScreen: React.FC = () => {
                     color={theme.textMuted}
                   />
                   <Text style={styles.drawerItemText}>{item.label}</Text>
-                </Pressable>
+                </MotionPressable>
               ))}
+              {isVisitor ? (
+                <View style={styles.drawerAuthActions}>
+                  <AppButton
+                    label="Entrar"
+                    onPress={() => {
+                      closeDrawer();
+                      router.push("/login");
+                    }}
+                    style={styles.drawerAuthButton}
+                  />
+                  <AppButton
+                    label="Criar conta"
+                    variant="secondary"
+                    onPress={() => {
+                      closeDrawer();
+                      router.push("/cadastro");
+                    }}
+                    style={styles.drawerAuthButton}
+                  />
+                </View>
+              ) : null}
             </ScrollView>
           </Animated.View>
         </View>
@@ -601,22 +625,26 @@ const StatCard = ({
   value,
   color,
   styles,
+  divider = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: string;
   color: string;
   styles: ReturnType<typeof createStyles>;
+  divider?: boolean;
 }) => (
-  <View style={styles.statCard}>
+  <View style={[styles.statCard, divider && styles.statCardDivider]}>
     <Ionicons name={icon} size={20} color={color} />
     <Text style={styles.statValue}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
   </View>
 );
 
-const createStyles = (theme: ResolvedAppTheme) =>
-  StyleSheet.create({
+const createStyles = (theme: ResolvedAppTheme) => {
+  const cardShadow = theme === darkTheme ? shadows.cardDark : {};
+  const drawerShadow = theme === darkTheme ? shadows.cardDark : {};
+  return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.background },
     loaderContainer: {
       alignItems: "center",
@@ -624,8 +652,30 @@ const createStyles = (theme: ResolvedAppTheme) =>
       flex: 1,
       justifyContent: "center",
     },
-    bodyScroll: { flex: 1 },
-    hero: { paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
+    bodyScroll: {
+      flex: 1,
+      marginTop: HERO_HEADER_HEIGHT - spacing[6],
+      zIndex: 1,
+    },
+    heroBackground: {
+      backgroundColor: palette.brand.navy,
+      borderBottomLeftRadius: radius.xl,
+      borderBottomRightRadius: radius.xl,
+      height: HERO_HEADER_HEIGHT,
+      left: 0,
+      position: "absolute",
+      right: 0,
+      top: 0,
+    },
+    heroFixedContent: {
+      height: spacing[10] + spacing[1],
+      left: spacing[5],
+      overflow: "visible",
+      position: "absolute",
+      right: spacing[5],
+      top: spacing[3],
+      zIndex: 3,
+    },
     heroTopRow: {
       alignItems: "center",
       flexDirection: "row",
@@ -647,11 +697,16 @@ const createStyles = (theme: ResolvedAppTheme) =>
       justifyContent: "center",
       width: 40,
     },
-    heroGreeting: { color: "rgba(255,255,255,0.82)", fontSize: 11 },
+    heroGreeting: {
+      color: palette.brand.onNavyMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
     heroName: {
-      color: theme.onPrimary,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.medium,
+      color: palette.white,
+      fontSize: 18,
+      fontWeight: typography.weight.bold,
+      lineHeight: 23,
     },
     heroActions: {
       alignItems: "center",
@@ -661,15 +716,15 @@ const createStyles = (theme: ResolvedAppTheme) =>
     },
     heroIconButton: {
       alignItems: "center",
-      backgroundColor: "rgba(255,255,255,0.18)",
-      borderRadius: radius.pill,
-      height: 36,
+      backgroundColor: "rgba(255,255,255,0.12)",
+      borderRadius: 10,
+      height: 38,
       justifyContent: "center",
-      width: 36,
+      width: 38,
     },
     notificationDot: {
-      backgroundColor: "#FBBF24",
-      borderColor: palette.brand.lavender,
+      backgroundColor: palette.red[300],
+      borderColor: palette.brand.navy,
       borderRadius: radius.pill,
       borderWidth: 2,
       height: 8,
@@ -680,7 +735,7 @@ const createStyles = (theme: ResolvedAppTheme) =>
     },
     streakBadge: {
       alignItems: "center",
-      backgroundColor: "rgba(255,255,255,0.18)",
+      backgroundColor: "rgba(255,255,255,0.12)",
       borderRadius: radius.pill,
       flexDirection: "row",
       gap: spacing[1],
@@ -688,8 +743,8 @@ const createStyles = (theme: ResolvedAppTheme) =>
       paddingVertical: spacing[2],
     },
     streakText: {
-      color: theme.onPrimary,
-      fontSize: typography.size.sm,
+      color: palette.white,
+      fontSize: 11,
       fontWeight: typography.weight.semibold,
     },
     drawerLayer: {
@@ -711,14 +766,11 @@ const createStyles = (theme: ResolvedAppTheme) =>
     drawer: {
       backgroundColor: theme.surface,
       bottom: 0,
-      elevation: 12,
       left: 0,
       position: "absolute",
-      shadowColor: "#000",
-      shadowOpacity: 0.22,
-      shadowRadius: 16,
       top: 0,
       width: DRAWER_WIDTH,
+      ...drawerShadow,
     },
     drawerHeader: {
       alignItems: "center",
@@ -743,14 +795,15 @@ const createStyles = (theme: ResolvedAppTheme) =>
     },
     drawerSubtitle: {
       color: theme.textMuted,
-      fontSize: typography.size.xs,
+      fontSize: typography.role.caption.fontSize,
+      lineHeight: typography.role.caption.lineHeight,
       marginTop: 2,
     },
     drawerClose: {
       alignItems: "center",
-      height: 36,
+      height: 44,
       justifyContent: "center",
-      width: 36,
+      width: 44,
     },
     drawerDivider: {
       backgroundColor: theme.border,
@@ -758,6 +811,14 @@ const createStyles = (theme: ResolvedAppTheme) =>
       marginHorizontal: spacing[5],
     },
     drawerMenu: { gap: spacing[1], padding: spacing[4] },
+    drawerAuthActions: {
+      borderTopColor: theme.border,
+      borderTopWidth: 1,
+      gap: spacing[2],
+      marginTop: spacing[3],
+      paddingTop: spacing[4],
+    },
+    drawerAuthButton: { alignSelf: "stretch" },
     drawerItem: {
       alignItems: "center",
       borderRadius: radius.sm,
@@ -771,19 +832,18 @@ const createStyles = (theme: ResolvedAppTheme) =>
       fontSize: typography.size.sm,
       fontWeight: typography.weight.medium,
     },
-    body: { gap: spacing[5], paddingHorizontal: spacing[5] },
-    continueSection: { marginHorizontal: -spacing[5] },
-    continueBlueBox: { height: 56 },
+    body: {
+      gap: spacing[5],
+      paddingHorizontal: spacing[5],
+    },
+    continueSection: { zIndex: 2 },
     continueCard: {
       backgroundColor: theme.surface,
-      borderRadius: radius.md,
-      elevation: 3,
-      marginTop: -spacing[6],
-      marginHorizontal: spacing[5],
-      padding: spacing[5],
-      shadowColor: theme.text,
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.card,
+      padding: spacing[4],
+      ...cardShadow,
       zIndex: 1,
     },
     continueHeader: {
@@ -792,45 +852,52 @@ const createStyles = (theme: ResolvedAppTheme) =>
       justifyContent: "space-between",
     },
     continueCopy: { flex: 1, gap: 2 },
-    cardTitle: {
-      color: theme.text,
-      fontSize: typography.size.md,
-      fontWeight: typography.weight.semibold,
-    },
-    cardSubtitle: { color: theme.textMuted, fontSize: typography.size.xs },
+    cardTitle: {},
+    cardSubtitle: {},
     continueButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
-      borderRadius: radius.md,
+      borderRadius: radius.button,
+      elevation: 0,
       flexDirection: "row",
       gap: spacing[1],
-      paddingHorizontal: spacing[3],
-      paddingVertical: spacing[2],
+      paddingHorizontal: spacing[4],
+      minHeight: 46,
+      paddingVertical: 0,
+      shadowOpacity: 0,
+      shadowRadius: 0,
     },
-    continueButtonText: {
-      color: theme.onPrimary,
-      fontSize: typography.size.xs,
-      fontWeight: typography.weight.bold,
+    statsGrid: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.card,
+      flexDirection: "row",
+      overflow: "hidden",
+      paddingVertical: spacing[4],
+      ...cardShadow,
     },
-    statsGrid: { flexDirection: "row", gap: spacing[2] },
     statCard: {
       alignItems: "center",
-      backgroundColor: theme.surface,
-      borderRadius: radius.md,
       flex: 1,
       gap: 2,
       paddingHorizontal: spacing[2],
-      paddingVertical: spacing[3],
-      shadowColor: theme.text,
-      shadowOpacity: 0.04,
-      shadowRadius: 4,
+    },
+    statCardDivider: {
+      borderLeftColor: theme.border,
+      borderLeftWidth: 1,
     },
     statValue: {
       color: theme.text,
       fontSize: typography.size.md,
       fontWeight: typography.weight.bold,
     },
-    statLabel: { color: theme.textMuted, fontSize: 10, textAlign: "center" },
+    statLabel: {
+      color: theme.textMuted,
+      fontSize: typography.role.label.fontSize,
+      lineHeight: typography.role.label.lineHeight,
+      textAlign: "center",
+    },
     section: { gap: spacing[2] },
     sectionTitle: {
       color: theme.text,
@@ -840,13 +907,13 @@ const createStyles = (theme: ResolvedAppTheme) =>
     quickAction: {
       alignItems: "center",
       backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
       borderRadius: radius.md,
       flexDirection: "row",
       gap: spacing[4],
       padding: spacing[4],
-      shadowColor: theme.text,
-      shadowOpacity: 0.04,
-      shadowRadius: 4,
+      ...cardShadow,
     },
     quickIcon: {
       alignItems: "center",
@@ -857,81 +924,9 @@ const createStyles = (theme: ResolvedAppTheme) =>
       width: 40,
     },
     quickCopy: { flex: 1, gap: 2 },
-    quickTitle: {
-      color: theme.text,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.medium,
-    },
-    quickDescription: { color: theme.textMuted, fontSize: typography.size.xs },
-    adSlot: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceSubtle,
-      borderRadius: radius.md,
-      gap: 2,
-      padding: spacing[4],
-    },
-    adLabel: {
-      color: theme.textMuted,
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
-      letterSpacing: 1,
-    },
-    adText: { color: theme.textMuted, fontSize: typography.size.xs },
-    activityCard: {
-      backgroundColor: theme.surface,
-      borderRadius: radius.md,
-      overflow: "hidden",
-    },
-    activityRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      padding: spacing[4],
-    },
-    activityDivider: { borderTopColor: theme.border, borderTopWidth: 1 },
-    activityTitle: {
-      color: theme.text,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.medium,
-    },
-    activityTime: {
-      color: theme.textMuted,
-      fontSize: typography.size.xs,
-      marginTop: 2,
-    },
-    activityResult: {
-      color: theme.primary,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.bold,
-    },
-    emptyActivity: { padding: spacing[4] },
-    premiumCard: {
-      alignItems: "center",
-      backgroundColor: theme.primary,
-      borderRadius: radius.md,
-      flexDirection: "row",
-      gap: spacing[3],
-      padding: spacing[5],
-    },
-    premiumIcon: {
-      alignItems: "center",
-      backgroundColor: "rgba(255,255,255,0.18)",
-      borderRadius: radius.sm,
-      height: 40,
-      justifyContent: "center",
-      width: 40,
-    },
-    premiumTitle: {
-      color: theme.onPrimary,
-      fontSize: typography.size.md,
-      fontWeight: typography.weight.semibold,
-    },
-    premiumDescription: {
-      color: "rgba(255,255,255,0.8)",
-      fontSize: typography.size.xs,
-      marginTop: 2,
-    },
-    pressed: { opacity: 0.76 },
+    quickTitle: {},
+    quickDescription: {},
+    pressed: { opacity: 0.94 },
     drawerPlanBadge: {
       alignItems: "center",
       alignSelf: "flex-start",
@@ -945,9 +940,11 @@ const createStyles = (theme: ResolvedAppTheme) =>
     },
     drawerPlanText: {
       color: theme.primary,
-      fontSize: 10,
-      fontWeight: typography.weight.bold,
+      fontSize: typography.role.label.fontSize,
+      lineHeight: typography.role.label.lineHeight,
+      fontWeight: typography.weight.semibold,
     },
   });
+};
 
 export default HomeScreen;

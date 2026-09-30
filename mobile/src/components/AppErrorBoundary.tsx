@@ -15,7 +15,9 @@ class ErrorBoundaryCore extends React.Component<React.PropsWithChildren<{ onRese
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[ConcursoMestre] uncaught render error', error, info.componentStack);
+    if (__DEV__) {
+      console.error('[ConcursoMestre] uncaught render error', error, info.componentStack);
+    }
   }
 
   private reset = () => {
@@ -39,7 +41,7 @@ const CrashFallback: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
     card: { width: '100%', maxWidth: 520, gap: spacing[3], backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1, borderRadius: radius.lg, padding: spacing[5] },
     title: { color: theme.text, fontSize: typography.size.xl, fontWeight: typography.weight.extrabold },
     text: { color: theme.textMuted, fontSize: typography.size.sm, lineHeight: 20 },
-    button: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: theme.primary, paddingHorizontal: spacing[4] },
+    button: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.button, backgroundColor: theme.primary, paddingHorizontal: spacing[4] },
     buttonText: { color: theme.onPrimary, fontSize: typography.size.sm, fontWeight: typography.weight.bold },
   }), [theme]);
 

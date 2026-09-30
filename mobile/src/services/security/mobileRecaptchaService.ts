@@ -1,64 +1,70 @@
 import { Platform } from 'react-native';
 
-type RecaptchaAction = { action: string };
-type RecaptchaClient = { execute(action: RecaptchaAction, timeout?: number): Promise<string> };
+export type MobileRecaptchaAction = 'login' | 'register' | 'forgot_password' | 'reset_password';
+
 type RecaptchaSdk = {
-  Recaptcha: { fetchClient(siteKey: string): Promise<RecaptchaClient> };
-  RecaptchaAction: { custom(action: string): RecaptchaAction };
+  Recaptcha: {
+    fetchClient: (siteKey: string) => Promise<{ execute: (action: unknown) => Promise<string> }>;
+  };
+  RecaptchaAction: {
+    LOGIN: () => unknown;
+    custom: (name: string) => unknown;
+  };
 };
 
-export type MobileRecaptchaAction = 'login' | 'register';
+declare const require: (moduleName: string) => unknown;
 
 let cachedSiteKey: string | null = null;
-let cachedClient: RecaptchaClient | null = null;
-let clientPromise: Promise<RecaptchaClient> | null = null;
+let cachedClient: Promise<{ execute: (action: unknown) => Promise<string> }> | null = null;
 
-const loadSdk = (): RecaptchaSdk => require('@google-cloud/recaptcha-enterprise-react-native') as RecaptchaSdk;
+const getSdk = (): RecaptchaSdk =>
+  require('@google-cloud/recaptcha-enterprise-react-native') as RecaptchaSdk;
 
-const getClient = async (siteKey: string): Promise<RecaptchaClient> => {
-  if (cachedClient && cachedSiteKey === siteKey) return cachedClient;
-  if (clientPromise && cachedSiteKey === siteKey) return clientPromise;
-
-  cachedSiteKey = siteKey;
-  clientPromise = loadSdk().Recaptcha.fetchClient(siteKey)
-    .then((client) => {
-      cachedClient = client;
-      return client;
-    })
-    .finally(() => {
-      clientPromise = null;
+const getClient = (siteKey: string) => {
+  if (cachedSiteKey !== siteKey || !cachedClient) {
+    cachedSiteKey = siteKey;
+    cachedClient = getSdk().Recaptcha.fetchClient(siteKey).catch((error) => {
+      cachedSiteKey = null;
+      cachedClient = null;
+      throw error;
     });
-  return clientPromise;
+  }
+  return cachedClient;
 };
 
+const normalizeSiteKey = (siteKey?: string | null): string => String(siteKey || '').trim();
+
 export const mobileRecaptchaService = {
-  async prepare(siteKey?: string): Promise<void> {
-    if (Platform.OS !== 'android' || !siteKey?.trim()) return;
-    try {
-      await getClient(siteKey.trim());
-    } catch {
-      // A inicializacao antecipada melhora a latencia; a acao protegida
-      // continua reportando falhas de forma controlada ao usuario.
-    }
+  /** Warm up the native SDK during public settings bootstrap without blocking startup. */
+  prepare(siteKey?: string | null): void {
+    const normalizedSiteKey = normalizeSiteKey(siteKey);
+    if (Platform.OS !== 'android' || !normalizedSiteKey) return;
+    void getClient(normalizedSiteKey).catch(() => undefined);
   },
 
   async execute(siteKey: string | undefined, action: MobileRecaptchaAction): Promise<string> {
     if (Platform.OS !== 'android') {
-      throw new Error('A verificacao segura ainda nao esta configurada para esta plataforma.');
+      throw new Error('A verificação segura do login ainda não está disponível para este sistema.');
     }
-    const normalizedSiteKey = siteKey?.trim();
+
+    const normalizedSiteKey = normalizeSiteKey(siteKey);
     if (!normalizedSiteKey) {
-      throw new Error('A verificacao segura do app nao esta configurada. Tente novamente mais tarde.');
+      throw new Error('A proteção de login mobile ainda não foi configurada. Tente novamente mais tarde.');
     }
 
     try {
-      const sdk = loadSdk();
+      const sdk = getSdk();
       const client = await getClient(normalizedSiteKey);
-      const token = await client.execute(sdk.RecaptchaAction.custom(action), 10000);
-      if (!token?.trim()) throw new Error('Token vazio');
+      const sdkAction = action === 'login'
+        ? sdk.RecaptchaAction.LOGIN()
+        : sdk.RecaptchaAction.custom(action);
+      const token = await client.execute(sdkAction);
+      if (!token || typeof token !== 'string') {
+        throw new Error('empty reCAPTCHA token');
+      }
       return token;
     } catch {
-      throw new Error('Nao foi possivel validar sua solicitacao agora. Verifique sua conexao e tente novamente.');
+      throw new Error('Não foi possível concluir a verificação de segurança. Confira sua conexão e tente novamente.');
     }
   },
 };

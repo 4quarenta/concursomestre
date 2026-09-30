@@ -12,20 +12,22 @@
 import React from "react";
 import {
   ActivityIndicator,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useFocusEffect } from "expo-router";
+import { AppButton, AppLink, AppSurface, AppText, MotionPressable } from "@/components/ui/Primitives";
 import { StandardSectionHeader } from "@/components/layout/StandardSectionHeader";
 import { useAuth } from "@/providers/AuthProvider";
 import { statisticsService } from "@/services/statistics/statisticsService";
+import { touchStudyStreak } from "@/services/statistics/studyStreakService";
 import { readApiErrorMessage } from "@/services/api/response";
-import { radius, spacing, typography } from "@/theme/tokens";
+import { borders, darkTheme, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import type { UserStatistics } from "@/types/statistics";
 
@@ -53,11 +55,15 @@ const clamp = (value: number) =>
 export const PerformanceScreen: React.FC = () => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
+  const isVisitor = isGuest || !user;
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const [stats, setStats] = React.useState<UserStatistics>(EMPTY_STATS);
+  const [studyStreak, setStudyStreak] = React.useState(0);
   const [period, setPeriod] = React.useState<Period>("semanal");
-  const [loading, setLoading] = React.useState(true);
+  const [chartLoading, setChartLoading] = React.useState(true);
+  const [chartError, setChartError] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState("");
 
@@ -65,13 +71,44 @@ export const PerformanceScreen: React.FC = () => {
     async (refresh = false) => {
       if (!user?.id) {
         setStats(EMPTY_STATS);
-        setLoading(false);
+        setChartLoading(false);
         return;
       }
-      refresh ? setRefreshing(true) : setLoading(true);
+      if (refresh) setRefreshing(true);
+      setChartLoading(true);
       setErrorMessage("");
+      setChartError('');
       try {
-        setStats(await statisticsService.getUserStatistics(user.id));
+        const [statisticsResult, timelineResult, answerSnapshotResult] = await Promise.allSettled([
+          statisticsService.getUserStatistics(user.id),
+          statisticsService.getCurrentUserQuestionTimeline(period),
+          statisticsService.getCurrentUserAnswerSnapshot(),
+        ]);
+        if (statisticsResult.status === 'fulfilled') {
+          setStats(statisticsResult.value);
+        } else {
+          setErrorMessage(readApiErrorMessage(
+            statisticsResult.reason,
+            "Não foi possível carregar seu desempenho agora.",
+          ));
+        }
+        if (timelineResult.status === 'fulfilled') {
+          setStats((current) => ({ ...current, timeline: timelineResult.value }));
+        } else {
+          setChartError(readApiErrorMessage(
+            timelineResult.reason,
+            'Não foi possível carregar sua atividade agora.',
+          ));
+        }
+        if (answerSnapshotResult.status === 'fulfilled') {
+          setStats((current) => ({
+            ...current,
+            ...answerSnapshotResult.value.summary,
+            subjectBreakdown: answerSnapshotResult.value.subjectBreakdown.length > 0
+              ? answerSnapshotResult.value.subjectBreakdown
+              : current.subjectBreakdown,
+          }));
+        }
       } catch (error) {
         // A indisponibilidade das estatisticas nao pode derrubar toda a arvore
         // de navegacao. Mantemos o ultimo resumo seguro e oferecemos retry.
@@ -82,31 +119,44 @@ export const PerformanceScreen: React.FC = () => {
           ),
         );
       } finally {
-        refresh ? setRefreshing(false) : setLoading(false);
+        if (refresh) setRefreshing(false);
+        setChartLoading(false);
       }
     },
-    [user?.id],
+    [period, user?.id],
   );
 
-  React.useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     void load();
-  }, [load]);
+    return undefined;
+  }, [load]));
 
-  const chartData = React.useMemo(() => {
-    const points =
-      period === "semanal"
-        ? stats.timeline.slice(-7)
-        : stats.timeline.slice(-30);
-    return points.length > 0
-      ? points
-      : [{ label: "--", questions: 0, correct: 0, wrong: 0 }];
-  }, [period, stats.timeline]);
+  React.useEffect(() => {
+    let active = true;
+    if (user?.id) {
+      void touchStudyStreak(user.id).then((snapshot) => {
+        if (active) setStudyStreak(snapshot.current);
+      });
+    } else {
+      setStudyStreak(0);
+    }
+    return () => { active = false; };
+  }, [user?.id]);
+
+  const chartData = stats.timeline;
   const chartMax = Math.max(1, ...chartData.map((point) => point.questions));
+  const chartViewportWidth = Math.max(180, screenWidth - spacing[5] * 4);
+  const chartWidth = period === 'mensal'
+    ? Math.max(chartViewportWidth, chartData.length * 36)
+    : chartViewportWidth;
   const displayedSubjects = stats.subjectBreakdown
     .slice()
     .sort((a, b) => b.totalQuestions - a.totalQuestions)
     .slice(0, 8);
-  const hours = Math.round((stats.totalStudyTime || 0) / 3600);
+  const totalStudyMinutes = Math.floor(Math.max(0, stats.totalStudyTime || 0) / 60);
+  const formattedStudyTime = totalStudyMinutes >= 60
+    ? `${Math.floor(totalStudyMinutes / 60)}h${totalStudyMinutes % 60 > 0 ? ` ${totalStudyMinutes % 60}min` : ""}`
+    : `${totalStudyMinutes}min`;
   const summary = [
     {
       label: "Questões",
@@ -120,11 +170,48 @@ export const PerformanceScreen: React.FC = () => {
     },
     {
       label: "Streak",
-      value: `${stats.currentStreak}d`,
+      value: `${studyStreak}d`,
       icon: "flame-outline" as const,
     },
-    { label: "Horas", value: `${hours}h`, icon: "calendar-outline" as const },
+    { label: "Tempo de estudo", value: formattedStudyTime, icon: "calendar-outline" as const },
   ];
+
+  if (isVisitor) {
+    return (
+      <View style={styles.screen}>
+        <ScrollView contentContainerStyle={[styles.content, { flexGrow: 1 }]}>
+          <StandardSectionHeader
+            title="Desempenho"
+            subtitle="Acompanhe sua evolução"
+          />
+          <View style={styles.visitorGate}>
+            <AppSurface variant="outlined" style={styles.visitorGateCard}>
+              <View style={styles.visitorIcon}>
+                <Ionicons name="analytics-outline" size={25} color={theme.primary} />
+              </View>
+              <AppText variant="sectionTitle" style={styles.visitorTitle}>
+                Entre para acompanhar seu desempenho
+              </AppText>
+              <AppText variant="body" tone="muted" style={styles.visitorDescription}>
+                Crie uma conta ou entre para salvar seu progresso, consultar suas estatísticas e acompanhar sua evolução.
+              </AppText>
+              <AppButton
+                label="Entrar"
+                onPress={() => router.push("/login")}
+                style={styles.visitorButton}
+              />
+              <AppButton
+                label="Criar conta"
+                variant="secondary"
+                onPress={() => router.push("/cadastro")}
+                style={styles.visitorButton}
+              />
+            </AppSurface>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -156,41 +243,42 @@ export const PerformanceScreen: React.FC = () => {
                 color={theme.danger}
               />
               <View style={styles.errorCopy}>
-                <Text style={styles.errorTitle}>Desempenho indisponível</Text>
-                <Text style={styles.errorText}>{errorMessage}</Text>
+                <AppText variant="sectionTitle" style={styles.errorTitle}>Desempenho indisponível</AppText>
+                <AppText variant="body" tone="muted">{errorMessage}</AppText>
               </View>
-              <Pressable
-                accessibilityRole="button"
+              <AppButton
+                label="Tentar novamente"
                 onPress={() => void load()}
                 style={styles.retryButton}
-              >
-                <Text style={styles.retryText}>Tentar novamente</Text>
-              </Pressable>
+              />
             </View>
           ) : null}
 
-          <View style={styles.card}>
+          <AppSurface variant="outlined" style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Atividade</Text>
+              <AppText variant="sectionTitle">Atividade</AppText>
               <View style={styles.periodPicker}>
                 {(["semanal", "mensal"] as Period[]).map((option) => (
-                  <Pressable
+                  <MotionPressable
                     key={option}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: period === option }}
                     onPress={() => setPeriod(option)}
                     style={[
                       styles.periodButton,
                       period === option && styles.periodButtonActive,
                     ]}
                   >
-                    <Text
+                    <AppText
+                      variant="caption"
                       style={[
                         styles.periodText,
                         period === option && styles.periodTextActive,
                       ]}
                     >
                       {option === "semanal" ? "Semanal" : "Mensal"}
-                    </Text>
-                  </Pressable>
+                    </AppText>
+                  </MotionPressable>
                 ))}
               </View>
             </View>
@@ -200,47 +288,62 @@ export const PerformanceScreen: React.FC = () => {
                 size={13}
                 color={theme.textMuted}
               />
-              <Text style={styles.muted}>
+              <AppText variant="caption" tone="muted">
                 {chartData.reduce((sum, item) => sum + item.questions, 0)}{" "}
                 questões
-              </Text>
+              </AppText>
             </View>
-            {loading ? (
+            {chartLoading ? (
               <ActivityIndicator color={theme.primary} />
-            ) : (
-              <View style={styles.chart}>
-                {chartData.map((point, index) => (
-                  <View
-                    key={`${point.label}-${index}`}
-                    style={styles.barColumn}
-                  >
-                    <Text style={styles.barValue}>{point.questions}</Text>
-                    <View style={styles.barTrack}>
-                      <View
-                        style={[
-                          styles.bar,
-                          {
-                            backgroundColor: theme.primary,
-                            height: `${(point.questions / chartMax) * 100}%`,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text numberOfLines={1} style={styles.barLabel}>
-                      {point.label}
-                    </Text>
-                  </View>
-                ))}
+            ) : chartError ? (
+              <View style={styles.chartError}>
+                <AppText variant="body" tone="muted">{chartError}</AppText>
+                <AppLink label="Tentar novamente" onPress={() => void load()} />
               </View>
+            ) : chartData.every((point) => point.questions === 0) ? (
+              <AppText variant="body" tone="muted">Responda questões para acompanhar sua atividade aqui.</AppText>
+            ) : (
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={period === 'mensal'}
+              >
+                <View style={[styles.chart, { width: chartWidth }]}>
+                  {chartData.map((point, index) => (
+                    <View
+                      key={`${point.timestamp ?? point.label}-${index}`}
+                      style={[styles.barColumn, period === 'mensal' && styles.monthlyBarColumn]}
+                    >
+                      <AppText variant="label" style={styles.barValue}>{point.questions}</AppText>
+                      <View style={styles.barTrack}>
+                        <View
+                          style={[
+                            styles.bar,
+                            {
+                              backgroundColor: theme.primary,
+                              height: point.questions > 0
+                                ? `${Math.max(3, (point.questions / chartMax) * 100)}%`
+                                : 0,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <AppText variant="caption" tone="muted" numberOfLines={1} style={styles.barLabel}>
+                        {point.label}
+                      </AppText>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
             )}
-          </View>
+          </AppSurface>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Acertos por matéria</Text>
+          <AppSurface variant="outlined" style={styles.card}>
+            <AppText variant="sectionTitle">Acertos por matéria</AppText>
             {displayedSubjects.length === 0 ? (
-              <Text style={styles.empty}>
+              <AppText variant="body" tone="muted">
                 Ainda não há desempenho sincronizado.
-              </Text>
+              </AppText>
             ) : (
               displayedSubjects.map((subject) => {
                 const percentage = clamp(subject.accuracyRate);
@@ -253,10 +356,10 @@ export const PerformanceScreen: React.FC = () => {
                 return (
                   <View key={subject.subject} style={styles.subjectRow}>
                     <View style={styles.subjectHeader}>
-                      <Text style={styles.subjectName}>{subject.subject}</Text>
-                      <Text style={[styles.subjectPercent, { color }]}>
+                      <AppText variant="bodyStrong" style={styles.subjectName}>{subject.subject}</AppText>
+                      <AppText variant="bodyStrong" style={{ color }}>
                         {Math.round(percentage)}%
-                      </Text>
+                      </AppText>
                     </View>
                     <View style={styles.progressTrack}>
                       <View
@@ -266,14 +369,14 @@ export const PerformanceScreen: React.FC = () => {
                         ]}
                       />
                     </View>
-                    <Text style={styles.subjectMeta}>
+                    <AppText variant="caption" tone="muted">
                       {subject.correctAnswers}/{subject.totalQuestions} questões
-                    </Text>
+                    </AppText>
                   </View>
                 );
               })
             )}
-          </View>
+          </AppSurface>
         </View>
       </ScrollView>
     </View>
@@ -289,53 +392,60 @@ const createStyles = (theme: ResolvedAppTheme) =>
       marginTop: -spacing[4],
       paddingHorizontal: spacing[5],
     },
-    card: {
-      backgroundColor: theme.surface,
-      borderRadius: radius.lg,
-      elevation: 3,
+    visitorGate: {
+      flex: 1,
+      justifyContent: "center",
+      paddingHorizontal: spacing[5],
+      paddingVertical: spacing[8],
+    },
+    visitorGateCard: {
+      alignItems: "center",
       gap: spacing[3],
       padding: spacing[5],
-      shadowColor: theme.text,
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
+    },
+    visitorIcon: {
+      alignItems: "center",
+      backgroundColor: theme.primarySubtle,
+      borderRadius: radius.pill,
+      height: 56,
+      justifyContent: "center",
+      width: 56,
+    },
+    visitorTitle: { color: theme.text, textAlign: "center" },
+    visitorDescription: { textAlign: "center" },
+    visitorButton: { alignSelf: "stretch" },
+    card: {
+      borderColor: theme.border,
+      borderRadius: radius.card,
+      borderWidth: borders.subtle,
+      gap: spacing[3],
+      padding: spacing[4],
+      ...(theme === darkTheme
+        ? shadows.cardDark
+        : {
+            shadowColor: "transparent",
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            elevation: 0,
+          }),
     },
     errorCard: {
       alignItems: "flex-start",
       backgroundColor: theme.surface,
       borderColor: theme.danger,
-      borderRadius: radius.lg,
+      borderRadius: radius.card,
       borderWidth: 1,
       gap: spacing[3],
       padding: spacing[4],
     },
     errorCopy: { gap: spacing[1] },
-    errorTitle: {
-      color: theme.text,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.bold,
-    },
-    errorText: { color: theme.textMuted, fontSize: typography.size.sm },
-    retryButton: {
-      alignSelf: "flex-start",
-      backgroundColor: theme.primary,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing[3],
-      paddingVertical: spacing[2],
-    },
-    retryText: {
-      color: theme.onPrimary,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.bold,
-    },
+    errorTitle: { color: theme.text },
+    retryButton: { alignSelf: "flex-start" },
     cardHeader: {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
-    },
-    cardTitle: {
-      color: theme.text,
-      fontSize: typography.size.md,
-      fontWeight: typography.weight.bold,
     },
     periodPicker: {
       backgroundColor: theme.surfaceSubtle,
@@ -344,18 +454,22 @@ const createStyles = (theme: ResolvedAppTheme) =>
       padding: 2,
     },
     periodButton: {
+      alignItems: "center",
+      borderColor: "transparent",
+      borderWidth: borders.subtle,
       borderRadius: radius.sm,
+      justifyContent: "center",
+      minHeight: 32,
       paddingHorizontal: spacing[2],
-      paddingVertical: 5,
     },
-    periodButtonActive: { backgroundColor: theme.surface, elevation: 1 },
-    periodText: { color: theme.textMuted, fontSize: 11 },
+    periodButtonActive: { backgroundColor: theme.surface, borderColor: theme.border },
+    periodText: { color: theme.textMuted },
     periodTextActive: {
       color: theme.text,
       fontWeight: typography.weight.semibold,
     },
     chartLabel: { alignItems: "center", flexDirection: "row", gap: 4 },
-    muted: { color: theme.textMuted, fontSize: typography.size.xs },
+    chartError: { alignItems: 'flex-start', gap: spacing[2] },
     chart: {
       alignItems: "flex-end",
       flexDirection: "row",
@@ -369,11 +483,8 @@ const createStyles = (theme: ResolvedAppTheme) =>
       height: "100%",
       justifyContent: "flex-end",
     },
-    barValue: {
-      color: theme.text,
-      fontSize: 10,
-      fontWeight: typography.weight.semibold,
-    },
+    monthlyBarColumn: { flex: 0, width: 28 },
+    barValue: { color: theme.text, fontWeight: typography.weight.semibold },
     barTrack: {
       backgroundColor: theme.surfaceSubtle,
       borderRadius: radius.sm,
@@ -383,22 +494,14 @@ const createStyles = (theme: ResolvedAppTheme) =>
       width: "100%",
     },
     bar: { borderRadius: radius.sm, minHeight: 2, width: "100%" },
-    barLabel: { color: theme.textMuted, fontSize: 10, maxWidth: 42 },
+    barLabel: { maxWidth: 42 },
     subjectRow: { gap: 4 },
     subjectHeader: {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
     },
-    subjectName: {
-      color: theme.text,
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.medium,
-    },
-    subjectPercent: {
-      fontSize: typography.size.sm,
-      fontWeight: typography.weight.bold,
-    },
+    subjectName: { color: theme.text },
     progressTrack: {
       backgroundColor: theme.surfaceSubtle,
       borderRadius: radius.pill,
@@ -406,8 +509,6 @@ const createStyles = (theme: ResolvedAppTheme) =>
       overflow: "hidden",
     },
     progress: { borderRadius: radius.pill, height: "100%" },
-    subjectMeta: { color: theme.textMuted, fontSize: 10 },
-    empty: { color: theme.textMuted, fontSize: typography.size.sm },
   });
 
 export default PerformanceScreen;

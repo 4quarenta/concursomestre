@@ -3,8 +3,9 @@ import {
   ActivityIndicator,
   AppState,
   Alert,
-  Image,
   Linking,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,12 +15,16 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
-import { palette, radius, spacing, typography } from "@/theme/tokens";
+import { MotionPressable } from "@/components/ui/Primitives";
+import { borders, palette, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import { useAuth } from "@/providers/AuthProvider";
 import { CHECKOUT_ADHESION_TERMS_VERSION } from "@/services/legal/legalDocumentVersion";
 import { planService } from "@/services/plans/planService";
+import { getPublicPlanBenefits } from "@/services/plans/publicPlanBenefits";
+import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
 import {
   getMissingCheckoutProfileFields,
 } from "@/services/plans/checkoutRequirements";
@@ -29,12 +34,6 @@ import {
   resolveConfiguredPlanCycleAmount,
   resolveConfiguredPlanDisplayName,
 } from "@/services/plans/planDetails";
-import {
-  homeTestimonialsService,
-  resolveHomeTestimonials,
-  resolveTestimonialPhotoUrl,
-  type HomeTestimonial,
-} from "@/services/marketing/homeTestimonials";
 import type { Plan } from "@/types/plans";
 
 const modules = [
@@ -73,100 +72,6 @@ const tracks = [
   },
 ];
 
-const errorsBySubject = [
-  { subject: "Direito Const.", count: 18, lastError: "há 2 dias" },
-  { subject: "Matemática", count: 12, lastError: "ontem" },
-  { subject: "Português", count: 8, lastError: "há 4 dias" },
-  { subject: "Direito Admin.", count: 6, lastError: "há 1 semana" },
-];
-
-const recentErrors = [
-  {
-    id: 1,
-    subject: "Direito Const.",
-    topic: "Direitos Fundamentais",
-    banca: "CESPE",
-    year: 2023,
-    attempts: 2,
-    daysAgo: 2,
-  },
-  {
-    id: 2,
-    subject: "Matemática",
-    topic: "Probabilidade",
-    banca: "FCC",
-    year: 2023,
-    attempts: 1,
-    daysAgo: 1,
-  },
-  {
-    id: 3,
-    subject: "Português",
-    topic: "Concordância Verbal",
-    banca: "FGV",
-    year: 2024,
-    attempts: 3,
-    daysAgo: 4,
-  },
-  {
-    id: 4,
-    subject: "Direito Const.",
-    topic: "Organização do Estado",
-    banca: "CESPE",
-    year: 2022,
-    attempts: 1,
-    daysAgo: 5,
-  },
-];
-
-const topUsers = [
-  { rank: 1, name: "João Pedro", score: 4820, streak: 45, avatar: "J" },
-  { rank: 2, name: "Mariana C.", score: 4650, streak: 38, avatar: "M" },
-  { rank: 3, name: "Lucas Souza", score: 4420, streak: 30, avatar: "L" },
-];
-const otherUsers = [
-  { rank: 4, name: "Ana Beatriz", score: 4180, streak: 28, avatar: "A" },
-  { rank: 5, name: "Roberto S.", score: 3950, streak: 22, avatar: "R" },
-  { rank: 6, name: "Carla M.", score: 3820, streak: 19, avatar: "C" },
-  { rank: 7, name: "Felipe Lima", score: 3640, streak: 17, avatar: "F" },
-  { rank: 8, name: "Beatriz N.", score: 3420, streak: 15, avatar: "B" },
-  { rank: 9, name: "Diego A.", score: 3210, streak: 12, avatar: "D" },
-  { rank: 10, name: "Sofia P.", score: 3050, streak: 10, avatar: "S" },
-];
-
-const premiumFeatures = [
-  ["infinite", "Questões ilimitadas"],
-  ["chatbubble", "Comentários completos do professor"],
-  ["bar-chart", "Análise avançada por IA"],
-  ["book", "Trilhas de estudo personalizadas"],
-  ["flash", "Simulados ilimitados"],
-  ["gift", "Sem anúncios"],
-] as const;
-const iconFor = (name: string): keyof typeof Ionicons.glyphMap =>
-  (({
-    flame: "flame",
-    book: "book-outline",
-    target: "locate-outline",
-    trophy: "trophy-outline",
-    flash: "flash-outline",
-    ribbon: "ribbon-outline",
-    star: "star",
-    medal: "medal-outline",
-    "trending-up": "trending-up-outline",
-    time: "time-outline",
-    infinite: "infinite-outline",
-    chatbubble: "chatbubble-ellipses-outline",
-    "bar-chart": "bar-chart-outline",
-    gift: "gift-outline",
-  })[name] as keyof typeof Ionicons.glyphMap) || "ellipse-outline";
-
-const getPlanCycleCount = (plan: Plan) =>
-  plan.interval_unit === "year"
-    ? 12
-    : plan.interval_unit === "month"
-      ? Math.max(1, Number(plan.interval_count || 1))
-      : 1;
-
 const getPlanCycleLabel = (plan: Plan) => {
   if (plan.interval_unit === "year") return "ano";
   if (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 3)
@@ -183,29 +88,6 @@ const getPlanCycleLabel = (plan: Plan) => {
 
 const formatPlanAmount = (amount: number) =>
   `R$ ${Math.max(0, amount).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-type PlanBillingCycle = "monthly" | "quarterly" | "annual";
-
-const PLAN_BILLING_CYCLES: Array<{ key: PlanBillingCycle; label: string }> = [
-  { key: "monthly", label: "Mensal" },
-  { key: "quarterly", label: "Trimestral" },
-  { key: "annual", label: "Anual" },
-];
-
-const matchesPlanBillingCycle = (plan: Plan, cycle: PlanBillingCycle) => {
-  if (plan.interval_unit === "day" || plan.interval_unit === "week") {
-    return false;
-  }
-  if (cycle === "annual") return plan.interval_unit === "year";
-  if (cycle === "quarterly") {
-    return (
-      plan.interval_unit === "month" && Number(plan.interval_count || 1) === 3
-    );
-  }
-  return (
-    plan.interval_unit === "month" && Number(plan.interval_count || 1) === 1
-  );
-};
 
 const BackGradientHeader = ({
   title,
@@ -441,397 +323,51 @@ export function TracksScreen() {
   );
 }
 
-export function ReviewErrorsScreen() {
-  const theme = useAppTheme();
-  const [tab, setTab] = React.useState<"subject" | "recent">("subject");
-  const total = errorsBySubject.reduce((sum, item) => sum + item.count, 0);
-  return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <ContentHeader
-        title="Revisão de erros"
-        subtitle="Reforce seus pontos fracos"
-      />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View
-          style={[
-            styles.alertCard,
-            {
-              backgroundColor: theme.dangerSubtle,
-              borderColor: theme.dangerBorder,
-            },
-          ]}
-        >
-          <View
-            style={[styles.alertIcon, { backgroundColor: theme.dangerSubtle }]}
-          >
-            <Ionicons name="warning-outline" size={20} color={theme.danger} />
-          </View>
-          <View style={styles.flex}>
-            <Text style={[styles.moduleTitle, { color: theme.text }]}>
-              {total} questões para revisar
-            </Text>
-            <Text style={[styles.caption, { color: theme.textMuted }]}>
-              Revisar erros aumenta sua taxa de acerto em até 30%
-            </Text>
-          </View>
-        </View>
-        <View
-          style={[styles.segment, { backgroundColor: theme.surfaceSubtle }]}
-        >
-          {[
-            ["subject", "Por matéria"],
-            ["recent", "Mais recentes"],
-          ].map(([key, label]) => (
-            <Pressable
-              key={key}
-              accessibilityRole="button"
-              onPress={() => setTab(key as "subject" | "recent")}
-              style={[
-                styles.segmentButton,
-                tab === key && { backgroundColor: theme.surface },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segmentText,
-                  { color: tab === key ? theme.text : theme.textMuted },
-                ]}
-              >
-                {label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        {tab === "subject" ? (
-          <View style={styles.list}>
-            {errorsBySubject.map((item) => (
-              <Pressable
-                key={item.subject}
-                accessibilityRole="button"
-                style={[styles.errorRow, { backgroundColor: theme.surface }]}
-              >
-                <View
-                  style={[
-                    styles.errorIcon,
-                    { backgroundColor: theme.dangerSubtle },
-                  ]}
-                >
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={21}
-                    color={theme.danger}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <Text style={[styles.moduleTitle, { color: theme.text }]}>
-                    {item.subject}
-                  </Text>
-                  <Text style={[styles.caption, { color: theme.textMuted }]}>
-                    {item.count} erros · último {item.lastError}
-                  </Text>
-                </View>
-                <Text style={[styles.errorCount, { color: theme.danger }]}>
-                  {item.count}
-                </Text>
-                <Ionicons
-                  name="chevron-forward"
-                  size={17}
-                  color={theme.textMuted}
-                />
-              </Pressable>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.list}>
-            {recentErrors.map((item) => (
-              <Pressable
-                key={item.id}
-                accessibilityRole="button"
-                onPress={() => router.push(`/questao/${item.id}`)}
-                style={[
-                  styles.errorQuestion,
-                  { backgroundColor: theme.surface },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.errorIcon,
-                    { backgroundColor: theme.dangerSubtle },
-                  ]}
-                >
-                  <Ionicons
-                    name="trending-down-outline"
-                    size={18}
-                    color={theme.danger}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <Text style={[styles.moduleTitle, { color: theme.text }]}>
-                    {item.topic}
-                  </Text>
-                  <Text style={[styles.caption, { color: theme.textMuted }]}>
-                    {item.subject} · {item.banca} · {item.year}
-                  </Text>
-                  <Text style={[styles.tiny, { color: theme.danger }]}>
-                    {item.attempts}x errada · há {item.daysAgo} dias
-                  </Text>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={17}
-                  color={theme.textMuted}
-                />
-              </Pressable>
-            ))}
-          </View>
-        )}
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push("/questao/1")}
-          style={[styles.primaryButton, { backgroundColor: theme.primary }]}
-        >
-          <Ionicons name="refresh" size={17} color={theme.onPrimary} />
-          <Text style={[styles.primaryButtonText, { color: theme.onPrimary }]}>
-            Revisar todas ({total})
-          </Text>
-        </Pressable>
-      </ScrollView>
-    </View>
-  );
-}
-
-export function RankingScreen() {
-  const theme = useAppTheme();
-  const [period, setPeriod] = React.useState("Semanal");
-  return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <BackGradientHeader
-        title="Ranking"
-        subtitle="Compita com outros candidatos"
-        icon="trophy"
-      />
-      <View style={styles.periods}>
-        {["Semanal", "Mensal", "Geral"].map((item) => (
-          <Pressable
-            key={item}
-            accessibilityRole="button"
-            onPress={() => setPeriod(item)}
-            style={[
-              styles.period,
-              period === item && { backgroundColor: theme.onPrimary },
-            ]}
-          >
-            <Text
-              style={{
-                color:
-                  period === item ? theme.primary : "rgba(255,255,255,0.8)",
-                fontSize: typography.size.sm,
-                fontWeight: typography.weight.medium,
-              }}
-            >
-              {item}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: spacing[3] }]}
-      >
-        <View style={[styles.podium, { backgroundColor: theme.surface }]}>
-          {[topUsers[1], topUsers[0], topUsers[2]].map((user, index) => (
-            <View
-              key={user.rank}
-              style={[styles.podiumPerson, index === 1 && { marginTop: -12 }]}
-            >
-              {index === 1 && (
-                <Ionicons name="trophy" size={22} color={theme.warning} />
-              )}
-              <View
-                style={[
-                  styles.avatar,
-                  {
-                    backgroundColor:
-                      index === 1
-                        ? theme.primary
-                        : index === 2
-                          ? theme.warningSubtle
-                          : theme.surfaceSubtle,
-                    borderColor: index === 1 ? theme.warning : theme.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: index === 1 ? theme.onPrimary : theme.text,
-                    fontWeight: typography.weight.bold,
-                    fontSize: typography.size.lg,
-                  }}
-                >
-                  {user.avatar}
-                </Text>
-              </View>
-              <Text style={[styles.podiumName, { color: theme.text }]}>
-                {user.name}
-              </Text>
-              <Text style={[styles.tiny, { color: theme.textMuted }]}>
-                {user.score} XP
-              </Text>
-              <View
-                style={[
-                  styles.podiumBase,
-                  {
-                    backgroundColor:
-                      index === 1
-                        ? theme.primary
-                        : index === 2
-                          ? theme.warningSubtle
-                          : theme.surfaceSubtle,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={index === 1 ? "trophy" : "medal-outline"}
-                  size={index === 1 ? 22 : 18}
-                  color={index === 1 ? theme.warning : theme.textMuted}
-                />
-                <Text
-                  style={{
-                    color: index === 1 ? theme.onPrimary : theme.text,
-                    fontWeight: typography.weight.bold,
-                  }}
-                >
-                  {user.rank}º
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-        <View style={[styles.userList, { backgroundColor: theme.surface }]}>
-          {otherUsers.map((user) => (
-            <View
-              key={user.rank}
-              style={[styles.userRow, { borderBottomColor: theme.border }]}
-            >
-              <Text style={[styles.rankNumber, { color: theme.textMuted }]}>
-                {user.rank}
-              </Text>
-              <View
-                style={[
-                  styles.smallAvatar,
-                  { backgroundColor: theme.surfaceSubtle },
-                ]}
-              >
-                <Text style={[styles.smallAvatarText, { color: theme.text }]}>
-                  {user.avatar}
-                </Text>
-              </View>
-              <View style={styles.flex}>
-                <Text style={[styles.moduleTitle, { color: theme.text }]}>
-                  {user.name}
-                </Text>
-                <Text style={[styles.tiny, { color: theme.textMuted }]}>
-                  <Ionicons name="flame" size={11} color={theme.warning} />{" "}
-                  {user.streak}d
-                </Text>
-              </View>
-              <Text style={[styles.score, { color: theme.primary }]}>
-                {user.score.toLocaleString()}
-                <Text style={[styles.tiny, { color: theme.textMuted }]}>
-                  {" "}
-                  XP
-                </Text>
-              </Text>
-            </View>
-          ))}
-        </View>
-        <View
-          style={[styles.myPosition, { backgroundColor: theme.primarySubtle }]}
-        >
-          <Text style={[styles.rankNumber, { color: theme.primary }]}>
-            #142
-          </Text>
-          <View
-            style={[styles.smallAvatar, { backgroundColor: theme.primary }]}
-          >
-            <Text style={[styles.smallAvatarText, { color: theme.onPrimary }]}>
-              M
-            </Text>
-          </View>
-          <View style={styles.flex}>
-            <Text style={[styles.moduleTitle, { color: theme.text }]}>
-              Sua posição
-            </Text>
-            <Text style={[styles.tiny, { color: theme.textMuted }]}>
-              <Ionicons name="trending-up" size={11} color={theme.success} />{" "}
-              +24 posições essa semana
-            </Text>
-          </View>
-          <Text style={[styles.score, { color: theme.primary }]}>1.248</Text>
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
 
 export function PlansScreen() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const isDarkTheme = theme.background === palette.slate[900];
   const { user, systemSettings, refreshProfile } = useAuth();
-  const [openFaq, setOpenFaq] = React.useState<number | null>(null);
   const [plansData, setPlansData] = React.useState<Plan[]>([]);
-  const [testimonials, setTestimonials] = React.useState<HomeTestimonial[]>([]);
-  const [billingCycle, setBillingCycle] =
-    React.useState<PlanBillingCycle>("monthly");
   const [isLoading, setIsLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState("");
   const [openingCheckoutPlanId, setOpeningCheckoutPlanId] =
     React.useState<number | null>(null);
+  const [termsPlan, setTermsPlan] = React.useState<Plan | null>(null);
+  const [termsAccepted, setTermsAccepted] = React.useState(false);
+  const [showAdhesionTerms, setShowAdhesionTerms] = React.useState(false);
   const checkoutOpenedRef = React.useRef(false);
-  const faqs = [
-    "Posso cancelar a qualquer momento?",
-    "Como funciona a garantia de 7 dias?",
-    "Posso usar em mais de um dispositivo?",
-  ];
-
   React.useEffect(() => {
     let isMounted = true;
-    Promise.allSettled([
-      planService.getPlans(),
-      homeTestimonialsService.getApproved(),
-    ]).then(([plansResult, testimonialsResult]) => {
+    planService.getPlans().then((plans) => {
       if (!isMounted) return;
-      if (plansResult.status === "fulfilled") {
-        setPlansData(
-          plansResult.value.filter(
-            (plan) =>
-              plan.is_active !== false &&
-              isPlanEnabledByName(plan.name, systemSettings.planDetails),
-          ),
-        );
-      } else {
-        setLoadError("Não foi possível carregar os planos agora.");
-      }
-      if (testimonialsResult.status === "fulfilled")
-        setTestimonials(testimonialsResult.value);
-      setIsLoading(false);
+      setPlansData(
+        plans.filter(
+          (plan) =>
+            plan.is_active !== false &&
+            isPlanEnabledByName(plan.name, systemSettings.planDetails),
+        ),
+      );
+    }).catch(() => {
+      if (isMounted) setLoadError("Não foi possível carregar os planos agora.");
+    }).finally(() => {
+      if (isMounted) setIsLoading(false);
     });
     return () => {
       isMounted = false;
     };
   }, [systemSettings.planDetails]);
-
-  const visibleTestimonials = resolveHomeTestimonials(testimonials);
   const visiblePlans = React.useMemo(() => {
-    const plansByTier = new Map<string, Plan>();
+    const plansByTier = new Map<string, Plan[]>();
 
     plansData
       .filter((plan) => plan.is_test_plan !== true)
       .forEach((plan) => {
         const canonicalName = resolveCanonicalPlanKey(plan.name) || plan.name;
-        const isFreePlan =
-          canonicalName === "Gratuito" && Number(plan.price || 0) <= 0;
-        if (!isFreePlan && !matchesPlanBillingCycle(plan, billingCycle)) return;
-        if (!plansByTier.has(canonicalName))
-          plansByTier.set(canonicalName, plan);
+        const variants = plansByTier.get(canonicalName) || [];
+        variants.push(plan);
+        plansByTier.set(canonicalName, variants);
       });
 
     return Array.from(plansByTier.entries())
@@ -842,22 +378,131 @@ export function PlansScreen() {
           (order[right as keyof typeof order] ?? 99)
         );
       })
-      .map(([, plan]) => plan);
-  }, [billingCycle, plansData]);
+      .map(([, variants]) => {
+        const cycleRank = (plan: Plan) => {
+          if (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 1) return 0;
+          if (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 3) return 1;
+          if (plan.interval_unit === "year") return 2;
+          if (plan.interval_unit === "week") return 3;
+          return 4;
+        };
+        return [...variants].sort(
+          (left, right) => cycleRank(left) - cycleRank(right),
+        )[0];
+      });
+  }, [plansData]);
+
+  const currentPlanId = React.useMemo(() => {
+    if (!user) return undefined;
+
+    const subscription = user.subscription;
+    const subscriptionStatus = String(subscription?.status || "")
+      .trim()
+      .toLowerCase();
+    const hasCurrentSubscription = ["active", "trialing", "past_due"].includes(
+      subscriptionStatus,
+    );
+
+    if (hasCurrentSubscription) {
+      const subscribedPlanId = subscription?.plan_id ?? subscription?.plan?.id;
+      if (subscribedPlanId !== undefined && subscribedPlanId !== null) {
+        return visiblePlans.find(
+          (plan) => String(plan.id) === String(subscribedPlanId),
+        )?.id;
+      }
+
+      const subscribedPlanName =
+        subscription?.plan?.displayName ||
+        subscription?.plan?.name ||
+        user.plan;
+      const subscribedPlanKey = subscribedPlanName
+        ? resolveCanonicalPlanKey(subscribedPlanName)
+        : null;
+      if (!subscribedPlanKey) return undefined;
+      return visiblePlans.find(
+        (plan) => resolveCanonicalPlanKey(plan.name) === subscribedPlanKey,
+      )?.id;
+    }
+
+    // Sem assinatura com acesso vigente, o plano gratuito é a oferta atual
+    // para uma conta autenticada; não reaproveitamos nome de plano antigo.
+    return visiblePlans.find(
+      (plan) =>
+        resolveCanonicalPlanKey(plan.name) === "Gratuito" &&
+        Number(plan.price || 0) <= 0,
+    )?.id;
+  }, [user, visiblePlans]);
 
   // O destaque comercial "Mais escolhido" deve existir em apenas um card.
-  // O plano Pro tem prioridade; se ele não estiver publicado, usamos o
-  // primeiro plano pago disponível como fallback.
+  // Reservamos o selo ao plano Pro, sem atribuir essa alegação a outro plano.
   const mostChosenPlanId = React.useMemo(() => {
     const pro = visiblePlans.find(
       (plan) => resolveCanonicalPlanKey(plan.name) === "Pro",
     );
-    if (pro) return pro.id;
-
-    return visiblePlans.find((plan) => Number(plan.price || 0) > 0)?.id;
+    return pro?.id;
   }, [visiblePlans]);
 
-  const openCheckout = async (plan: Plan) => {
+  const startCheckout = async (plan: Plan) => {
+    setOpeningCheckoutPlanId(plan.id);
+    try {
+      // Garante que o access token ainda esteja valido antes de criar a
+      // sessao Stripe. O cliente HTTP tenta rotacionar o refresh token se
+      // o access token tiver expirado.
+      await refreshProfile();
+
+      const checkout = await planService.createStripeCheckoutSession({
+        plan_id: plan.id,
+        auto_renew: true,
+        checkout_attempt_id: `mobile_${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2, 10)}`,
+        checkout_adhesion_terms_accepted: true,
+        checkout_adhesion_terms_version: CHECKOUT_ADHESION_TERMS_VERSION,
+      });
+
+      if (checkout.mode === "local_credit") {
+        await refreshProfile();
+        Alert.alert(
+          "Assinatura ativada",
+          "Seu plano foi ativado usando o crédito disponível na conta.",
+        );
+        return;
+      }
+
+      const checkoutUrl = String(checkout.url || checkout.redirect_url || "").trim();
+      if (!/^https:\/\//i.test(checkoutUrl)) {
+        throw new Error("A Stripe retornou uma URL de checkout inválida.");
+      }
+
+      const safeCheckoutUrl = assertAllowedExternalUrl(checkoutUrl, "checkout");
+      if (!(await Linking.canOpenURL(safeCheckoutUrl))) {
+        throw new Error("Não foi possível abrir o checkout no aparelho.");
+      }
+
+      checkoutOpenedRef.current = true;
+      await Linking.openURL(safeCheckoutUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/complete seu perfil|confirme o e-mail/i.test(message)) {
+        router.push({
+          pathname: "/perfil/editar",
+          params: { checkout: "1" },
+        });
+        return;
+      }
+      const isExpiredSession = /sess[aã]o.*(inv[aá]lida|expirada)/i.test(message);
+      Alert.alert(
+        isExpiredSession ? "Sessão expirada" : "Assinatura",
+        isExpiredSession
+          ? "Faça login novamente para iniciar o checkout da Stripe."
+          : message || "Não foi possível iniciar o checkout.",
+      );
+    } finally {
+      setOpeningCheckoutPlanId(null);
+    }
+  };
+
+  const openCheckout = (plan: Plan) => {
     if (openingCheckoutPlanId !== null) return;
     if (!user) {
       Alert.alert("Assinatura", "Entre na sua conta para escolher um plano.");
@@ -868,8 +513,7 @@ export function PlansScreen() {
       return;
     }
 
-    const missingProfileFields = getMissingCheckoutProfileFields(user);
-    if (missingProfileFields.length > 0) {
+    if (getMissingCheckoutProfileFields(user).length > 0) {
       router.push({
         pathname: "/perfil/editar",
         params: { checkout: "1" },
@@ -877,75 +521,40 @@ export function PlansScreen() {
       return;
     }
 
-    const startCheckout = async () => {
-      setOpeningCheckoutPlanId(plan.id);
-      try {
-        // Garante que o access token ainda esteja valido antes de criar a
-        // sessao Stripe. O cliente HTTP tenta rotacionar o refresh token se
-        // o access token tiver expirado.
-        await refreshProfile();
+    setTermsPlan(plan);
+    setTermsAccepted(false);
+    setShowAdhesionTerms(true);
+  };
 
-        const checkout = await planService.createStripeCheckoutSession({
-          plan_id: plan.id,
-          auto_renew: true,
-          checkout_attempt_id: `mobile_${Date.now()}_${Math.random()
-            .toString(36)
-            .slice(2, 10)}`,
-          checkout_adhesion_terms_accepted: true,
-          checkout_adhesion_terms_version: CHECKOUT_ADHESION_TERMS_VERSION,
-        });
+  const closeAdhesionTerms = () => {
+    if (openingCheckoutPlanId !== null) return;
+    setShowAdhesionTerms(false);
+    setTermsPlan(null);
+    setTermsAccepted(false);
+  };
 
-        if (checkout.mode === "local_credit") {
-          await refreshProfile();
-          Alert.alert(
-            "Assinatura ativada",
-            "Seu plano foi ativado usando o crédito disponível na conta.",
-          );
-          return;
-        }
+  const confirmAdhesionTerms = () => {
+    if (!termsAccepted || !termsPlan || openingCheckoutPlanId !== null) return;
+    const selectedPlan = termsPlan;
+    setShowAdhesionTerms(false);
+    setTermsPlan(null);
+    setTermsAccepted(false);
+    void startCheckout(selectedPlan);
+  };
 
-        const checkoutUrl = String(checkout.url || checkout.redirect_url || "").trim();
-        if (!/^https:\/\//i.test(checkoutUrl)) {
-          throw new Error("A Stripe retornou uma URL de checkout inválida.");
-        }
-
-        if (!(await Linking.canOpenURL(checkoutUrl))) {
-          throw new Error("Não foi possível abrir o checkout no aparelho.");
-        }
-
-        checkoutOpenedRef.current = true;
-        await Linking.openURL(checkoutUrl);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        if (/complete seu perfil|confirme o e-mail/i.test(message)) {
-          router.push({
-            pathname: "/perfil/editar",
-            params: { checkout: "1" },
-          });
-          return;
-        }
-        const isExpiredSession = /sess[aã]o.*(inv[aá]lida|expirada)/i.test(
-          message,
-        );
-        Alert.alert(
-          isExpiredSession ? "Sessão expirada" : "Assinatura",
-          isExpiredSession
-            ? "Faça login novamente para iniciar o checkout da Stripe."
-            : message || "Não foi possível iniciar o checkout.",
-        );
-      } finally {
-        setOpeningCheckoutPlanId(null);
-      }
-    };
-
-    Alert.alert(
-      "Continuar para o checkout",
-      "Ao continuar, você confirma que leu e aceita os termos de adesão da assinatura.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Continuar", onPress: () => void startCheckout() },
-      ],
+  const openFullAdhesionTerms = async () => {
+    const termsUrl = assertAllowedExternalUrl(
+      "https://concursomestre.com/checkout/termos-de-adesao",
+      "termo de adesão",
     );
+    try {
+      await Linking.openURL(termsUrl);
+    } catch {
+      Alert.alert(
+        "Termo de adesão",
+        "Não foi possível abrir o documento agora. Tente novamente.",
+      );
+    }
   };
 
   React.useEffect(() => {
@@ -963,74 +572,25 @@ export function PlansScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <BackGradientHeader
-        title="Estude sem limites"
-        subtitle="Junte-se a mais de 50.000 aprovados"
-        icon="sparkles"
+      <ContentHeader
+        title="Planos"
+        subtitle="Escolha o nível de acesso ideal para você"
       />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={[styles.featuresCard, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>
-            O que você ganha
-          </Text>
-          <View style={styles.featureGrid}>
-            {premiumFeatures.map(([icon, text]) => (
-              <View key={text} style={styles.feature}>
-                <View
-                  style={[
-                    styles.featureIcon,
-                    { backgroundColor: theme.primarySubtle },
-                  ]}
-                >
-                  <Ionicons
-                    name={iconFor(icon)}
-                    size={16}
-                    color={theme.primary}
-                  />
-                </View>
-                <Text style={[styles.featureText, { color: theme.text }]}>
-                  {text}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <SectionTitle title="Planos disponíveis" theme={theme} />
-        <View
-          style={[
-            styles.billingCycleRow,
-            { backgroundColor: theme.surfaceSubtle },
-          ]}
-        >
-          {PLAN_BILLING_CYCLES.map((cycle) => {
-            const isSelected = billingCycle === cycle.key;
-            return (
-              <Pressable
-                key={cycle.key}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected }}
-                onPress={() => setBillingCycle(cycle.key)}
-                style={[
-                  styles.billingCycleButton,
-                  isSelected && {
-                    backgroundColor: theme.surface,
-                    borderColor: theme.primary,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.billingCycleLabel,
-                    { color: isSelected ? theme.primary : theme.textMuted },
-                  ]}
-                >
-                  {cycle.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+      <ScrollView
+        contentContainerStyle={[
+          styles.plansContent,
+          {
+            paddingBottom:
+              spacing[8] +
+              (Platform.OS === "android"
+                ? Math.max(insets.bottom, spacing[12])
+                : insets.bottom),
+          },
+        ]}
+      >
+        <Text style={[styles.plansIntro, { color: theme.textMuted }]}>
+          Continue estudando com os recursos que fazem sentido para sua preparação.
+        </Text>
         {isLoading ? (
           <View
             style={[styles.loadingCard, { backgroundColor: theme.surface }]}
@@ -1058,7 +618,7 @@ export function PlansScreen() {
             </Text>
           </View>
         ) : null}
-        {!isLoading && !loadError && plansData.length === 0 ? (
+        {!isLoading && !loadError && visiblePlans.length === 0 ? (
           <View
             style={[styles.emptyPlanCard, { backgroundColor: theme.surface }]}
           >
@@ -1076,11 +636,10 @@ export function PlansScreen() {
             </Text>
           </View>
         ) : null}
-        <View style={styles.list}>
+        <View style={styles.plansList}>
           {visiblePlans.map((plan) => {
             const canonicalName =
               resolveCanonicalPlanKey(plan.name) || plan.name;
-            const cycleCount = getPlanCycleCount(plan);
             const cycleAmount =
               plan.interval_unit === "day" || plan.interval_unit === "week"
                 ? Number(plan.price || 0)
@@ -1088,290 +647,362 @@ export function PlansScreen() {
                     plan,
                     systemSettings.pricing,
                   );
-            const monthlyAmount = cycleAmount / cycleCount;
-            const usesMonthlyEquivalent =
-              plan.interval_unit === "month" || plan.interval_unit === "year";
-            const displayedAmount = usesMonthlyEquivalent
-              ? monthlyAmount
-              : cycleAmount;
-            const displayedUnit = usesMonthlyEquivalent
-              ? "/mês"
-              : `/${getPlanCycleLabel(plan)}`;
             const isElite = canonicalName === "Elite";
             const isMostChosen = plan.id === mostChosenPlanId;
-            const isHighlighted = isMostChosen || isElite;
-            const isCurrent =
-              String(user?.subscription?.plan_id || "") === String(plan.id);
-            const features = Array.isArray(plan.features)
-              ? plan.features.filter((feature) => feature.included).slice(0, 3)
-              : [];
+            const isCurrent = currentPlanId === plan.id;
+            const features = getPublicPlanBenefits(
+              plan,
+              systemSettings.planEntitlements,
+              systemSettings.planUsageLimits,
+            );
+            const eliteAccent = isDarkTheme ? "#EFC766" : "#BD861B";
+            const eliteBorder = isDarkTheme ? "#9B782C" : "#D5AA4D";
+            const eliteSurface = isDarkTheme ? "#282316" : "#FFFAF0";
+            const badges = [
+              isCurrent
+                ? {
+                    label: "Plano atual",
+                    backgroundColor: theme.primarySubtle,
+                    color: theme.primary,
+                  }
+                : null,
+              isMostChosen
+                ? {
+                    label: "Mais escolhido",
+                    backgroundColor: theme.primary,
+                    color: theme.onPrimary,
+                  }
+                : null,
+              isElite
+                ? {
+                    label: "Acesso máximo",
+                    backgroundColor: isDarkTheme ? "#443819" : "#F3E1B7",
+                    color: isDarkTheme ? "#F4D991" : "#60430C",
+                  }
+                : null,
+            ].filter(Boolean) as Array<{
+              label: string;
+              backgroundColor: string;
+              color: string;
+            }>;
             return (
-              <Pressable
+              <View
                 key={plan.id}
-                accessibilityRole="button"
-                disabled={openingCheckoutPlanId !== null}
-                onPress={() => void openCheckout(plan)}
                 style={[
-                  styles.planCard,
+                  styles.planOption,
+                  isDarkTheme ? shadows.cardDark : shadows.card,
                   {
-                    backgroundColor: theme.surface,
-                    borderColor:
-                      isElite
-                        ? palette.amber[600]
-                        : isCurrent || isMostChosen
-                          ? theme.primary
-                          : theme.border,
-                    borderWidth: isHighlighted || isCurrent ? 2 : 1,
+                    backgroundColor: isElite ? eliteSurface : theme.surface,
+                    borderColor: isElite
+                      ? eliteBorder
+                      : isMostChosen || isCurrent
+                        ? theme.primary
+                        : theme.border,
+                    borderWidth: isElite || isMostChosen || isCurrent ? 2 : 1,
                   },
                 ]}
               >
-                <View style={styles.flex}>
-                  {isCurrent ? (
-                    <Text
-                      style={[
-                        styles.badge,
-                        { backgroundColor: theme.success, color: "#FFFFFF" },
-                      ]}
-                    >
-                      Plano atual
+                <View style={styles.planOptionHeader}>
+                  <View style={styles.planOptionCopy}>
+                    <Text style={[styles.planName, { color: theme.text }]}>
+                      {resolveConfiguredPlanDisplayName(
+                        plan.name,
+                        systemSettings.planDetails,
+                      )}
                     </Text>
-                  ) : isElite ? (
-                    <Text
-                      style={[
-                        styles.badge,
-                        {
-                          backgroundColor: palette.amber[600],
-                          color: palette.white,
-                        },
-                      ]}
-                    >
-                      Máximo acesso
-                    </Text>
-                  ) : isMostChosen ? (
-                    <Text
-                      style={[
-                        styles.badge,
-                        {
-                          backgroundColor: theme.primary,
-                          color: theme.onPrimary,
-                        },
-                      ]}
-                    >
-                      Mais escolhido
-                    </Text>
-                  ) : null}
-                  <Text style={[styles.planName, { color: theme.text }]}>
-                    {resolveConfiguredPlanDisplayName(
-                      plan.name,
-                      systemSettings.planDetails,
-                    )}
+                    {plan.description ? (
+                      <Text style={[styles.planDescription, { color: theme.textMuted }]}>
+                        {plan.description}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.planBadges}>
+                    {badges.map((badge) => (
+                      <Text
+                        key={badge.label}
+                        style={[
+                          styles.planBadge,
+                          { backgroundColor: badge.backgroundColor, color: badge.color },
+                        ]}
+                      >
+                        {isElite && badge.label === "Acesso máximo" ? (
+                          <Ionicons name="sparkles" size={11} color={badge.color} />
+                        ) : null}{" "}
+                        {badge.label}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.planPriceRow}>
+                  <Text style={[styles.planPrice, { color: theme.text }]}>
+                    {formatPlanAmount(cycleAmount)}
                   </Text>
-                  <Text style={[styles.caption, { color: theme.textMuted }]}>
-                    {plan.description ||
-                      `${canonicalName} para sua rotina de estudos`}
+                  <Text style={[styles.planPeriod, { color: theme.textMuted }]}>
+                    {Number(plan.price || 0) <= 0
+                      ? "sem custo"
+                      : `por ${getPlanCycleLabel(plan)}`}
                   </Text>
-                  <Text style={[styles.tiny, { color: theme.textMuted }]}>
-                    {formatPlanAmount(cycleAmount)} por{" "}
-                    {getPlanCycleLabel(plan)}
-                  </Text>
+                </View>
+                <View style={styles.planOptionFeatures}>
                   {features.map((feature) => (
-                    <Text
-                      key={feature.text}
-                      style={[styles.planFeature, { color: theme.textMuted }]}
-                    >
+                    <View key={feature.text} style={styles.planFeatureRow}>
                       <Ionicons
-                        name="checkmark-circle"
-                        size={13}
-                        color={theme.success}
-                      />{" "}
-                      {feature.text}
-                    </Text>
+                        name="checkmark"
+                        size={15}
+                        color={isElite ? eliteAccent : theme.primary}
+                      />
+                      <Text style={[styles.planFeatureText, { color: theme.text }]}>
+                        {feature.text}
+                      </Text>
+                    </View>
                   ))}
                 </View>
-                <View style={styles.alignRight}>
+                <MotionPressable
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    disabled: isCurrent || openingCheckoutPlanId !== null,
+                  }}
+                  disabled={isCurrent || openingCheckoutPlanId !== null}
+                  onPress={() => {
+                    if (Number(plan.price || 0) <= 0) {
+                      Alert.alert(
+                        "Plano gratuito",
+                        "O acesso gratuito não exige checkout nem cobrança.",
+                      );
+                      return;
+                    }
+                    void openCheckout(plan);
+                  }}
+                  style={[
+                    styles.planCta,
+                    {
+                      backgroundColor: isElite
+                        ? isDarkTheme
+                          ? "#E0BB68"
+                          : "#E4BD68"
+                        : isMostChosen
+                          ? theme.primary
+                          : isCurrent
+                            ? theme.surfaceSubtle
+                            : theme.surface,
+                      borderColor: isElite
+                        ? eliteBorder
+                        : isMostChosen || isCurrent
+                          ? theme.primary
+                          : theme.border,
+                    },
+                  ]}
+                >
                   {openingCheckoutPlanId === plan.id ? (
-                    <ActivityIndicator color={theme.primary} />
+                    <ActivityIndicator
+                      size="small"
+                      color={isElite || isMostChosen ? palette.brand.navy : theme.primary}
+                    />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.planCtaText,
+                        {
+                          color: isElite
+                            ? "#2B210D"
+                            : isMostChosen
+                              ? theme.onPrimary
+                              : isCurrent
+                                ? theme.textMuted
+                                : theme.text,
+                        },
+                      ]}
+                    >
+                      {isCurrent
+                        ? "Seu plano atual"
+                        : isElite
+                          ? "Explorar Elite"
+                          : isMostChosen
+                            ? "Conhecer Pro"
+                            : canonicalName === "Gratuito"
+                              ? "Começar grátis"
+                              : "Conhecer " + canonicalName}
+                    </Text>
+                  )}
+                  {!isCurrent && openingCheckoutPlanId !== plan.id ? (
+                    <Ionicons
+                      name={isElite ? "open-outline" : "arrow-forward"}
+                      size={15}
+                      color={
+                        isElite
+                          ? "#2B210D"
+                          : isMostChosen
+                            ? theme.onPrimary
+                            : theme.text
+                      }
+                    />
                   ) : null}
-                  <Text style={[styles.planPrice, { color: theme.text }]}>
-                    {formatPlanAmount(displayedAmount)}
-                  </Text>
-                  <Text style={[styles.caption, { color: theme.textMuted }]}>
-                    {displayedUnit}
-                  </Text>
-                  <Text style={[styles.caption, { color: theme.success }]}>
-                    {Number(plan.price || 0) === 0
-                      ? "Acesso gratuito"
-                      : "Assinar agora"}
-                  </Text>
-                </View>
-              </Pressable>
+                </MotionPressable>
+              </View>
             );
           })}
         </View>
 
-        <View
-          style={[styles.guarantee, { backgroundColor: theme.primarySubtle }]}
-        >
-          <Ionicons
-            name="shield-checkmark-outline"
-            size={34}
-            color={theme.primary}
+        <Text style={[styles.plansValueNote, { color: theme.textMuted }]}>
+          Os valores e recursos acima são os publicados no catálogo da plataforma.
+        </Text>
+        <Text style={[styles.plansTerms, { color: theme.textMuted }]}>
+          Confira as condições, o ciclo de cobrança e a renovação antes de confirmar a assinatura.
+        </Text>
+      </ScrollView>
+      <Modal
+        animationType="fade"
+        onRequestClose={closeAdhesionTerms}
+        transparent
+        visible={showAdhesionTerms}
+      >
+        <View style={styles.adhesionBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fechar termo de adesão"
+            onPress={closeAdhesionTerms}
+            style={StyleSheet.absoluteFill}
           />
-          <View style={styles.flex}>
-            <Text style={[styles.moduleTitle, { color: theme.text }]}>
-              Garantia de 7 dias
-            </Text>
-            <Text style={[styles.caption, { color: theme.textMuted }]}>
-              Cancele nos primeiros 7 dias e receba reembolso total. Sem
-              perguntas.
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={[
-            styles.testimonialsCard,
-            { backgroundColor: theme.primarySubtle },
-          ]}
-        >
-          <View style={styles.testimonialsHeader}>
-            <View style={styles.flex}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                Quem usa, aprova
-              </Text>
-              <Text style={[styles.caption, { color: theme.textMuted }]}>
-                Relatos de alunos que estudam com mais direção.
-              </Text>
-            </View>
-            <Ionicons
-              name="chatbubbles-outline"
-              size={25}
-              color={theme.primary}
-            />
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.testimonialsRow}
+          <View
+            style={[
+              styles.adhesionDialog,
+              isDarkTheme ? shadows.modalDark : shadows.modal,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
           >
-            {visibleTestimonials.map((testimonial) => {
-              const photoUri = resolveTestimonialPhotoUrl(testimonial.photoUrl);
-              return (
+            <View style={styles.adhesionHeading}>
+              <View style={styles.adhesionHeadingCopy}>
+                <Text style={[styles.adhesionTitle, { color: theme.text }]}>
+                  Termo de adesão da assinatura
+                </Text>
+                <Text style={[styles.adhesionVersion, { color: theme.textMuted }]}>
+                  Versão {CHECKOUT_ADHESION_TERMS_VERSION}
+                </Text>
+              </View>
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityLabel="Fechar"
+                onPress={closeAdhesionTerms}
+                style={styles.adhesionClose}
+              >
+                <Ionicons name="close" size={22} color={theme.textMuted} />
+              </MotionPressable>
+            </View>
+            <ScrollView
+              style={styles.adhesionBody}
+              contentContainerStyle={styles.adhesionBodyContent}
+              showsVerticalScrollIndicator
+            >
+              {termsPlan ? (
                 <View
-                  key={testimonial.id}
                   style={[
-                    styles.testimonialCard,
+                    styles.adhesionSelectedPlan,
+                    { backgroundColor: theme.primarySubtle },
+                  ]}
+                >
+                  <Text style={[styles.adhesionOverline, { color: theme.primary }]}>
+                    Plano selecionado
+                  </Text>
+                  <Text style={[styles.adhesionSelectedPlanName, { color: theme.text }]}>
+                    {resolveConfiguredPlanDisplayName(
+                      termsPlan.name,
+                      systemSettings.planDetails,
+                    )}
+                  </Text>
+                </View>
+              ) : null}
+              <Text style={[styles.adhesionSectionTitle, { color: theme.text }]}>
+                Antes de continuar
+              </Text>
+              <Text style={[styles.adhesionCopy, { color: theme.textMuted }]}>
+                Estes termos regulam a contratação de planos pagos do ConcursoMestre. Ao concluir o checkout, você declara que leu, compreendeu e aceitou as condições da assinatura.
+              </Text>
+              <Text style={[styles.adhesionCopy, { color: theme.textMuted }]}>
+                O plano contratado, o valor, a periodicidade, os benefícios ativos e eventuais descontos serão exibidos antes da confirmação da compra. A contratação depende da aprovação do pagamento.
+              </Text>
+              <MotionPressable
+                accessibilityRole="link"
+                onPress={() => void openFullAdhesionTerms()}
+                style={styles.adhesionLink}
+              >
+                <Ionicons name="document-text-outline" size={17} color={theme.primary} />
+                <Text style={[styles.adhesionLinkText, { color: theme.primary }]}>
+                  Ler termo de adesão completo
+                </Text>
+                <Ionicons name="open-outline" size={15} color={theme.primary} />
+              </MotionPressable>
+              <Text style={[styles.adhesionHint, { color: theme.textMuted }]}>
+                O documento completo será aberto no navegador. Depois, volte aqui para aceitar e seguir.
+              </Text>
+              <MotionPressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: termsAccepted }}
+                onPress={() => setTermsAccepted((accepted) => !accepted)}
+                style={styles.adhesionConsent}
+              >
+                <View
+                  style={[
+                    styles.adhesionCheckbox,
                     {
-                      backgroundColor: theme.surface,
-                      borderColor: theme.border,
+                      borderColor: termsAccepted ? theme.primary : theme.borderStrong,
+                      backgroundColor: termsAccepted ? theme.primary : theme.surface,
                     },
                   ]}
                 >
-                  <View style={styles.testimonialPerson}>
-                    {photoUri ? (
-                      <Image
-                        source={{ uri: photoUri }}
-                        style={styles.testimonialAvatar}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.testimonialAvatarFallback,
-                          { backgroundColor: theme.primarySubtle },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.testimonialInitials,
-                            { color: theme.primary },
-                          ]}
-                        >
-                          {testimonial.name.slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={styles.flex}>
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.testimonialName, { color: theme.text }]}
-                      >
-                        {testimonial.name}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.tiny, { color: theme.textMuted }]}
-                      >
-                        {testimonial.role}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.stars}>
-                    {Array.from({ length: testimonial.rating }).map(
-                      (_, index) => (
-                        <Ionicons
-                          key={index}
-                          name="star"
-                          size={13}
-                          color={theme.warning}
-                        />
-                      ),
-                    )}
-                  </View>
-                  <Text style={[styles.testimonialText, { color: theme.text }]}>
-                    {testimonial.text}
-                  </Text>
-                  {testimonial.verified && testimonial.source === "approved" ? (
-                    <Text
-                      style={[styles.verifiedText, { color: theme.success }]}
-                    >
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={12}
-                        color={theme.success}
-                      />{" "}
-                      Verificado
-                    </Text>
+                  {termsAccepted ? (
+                    <Ionicons name="checkmark" size={15} color={theme.onPrimary} />
                   ) : null}
                 </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <SectionTitle title="Perguntas frequentes" theme={theme} />
-        {faqs.map((question, index) => (
-          <Pressable
-            key={question}
-            accessibilityRole="button"
-            onPress={() => setOpenFaq(openFaq === index ? null : index)}
-            style={[styles.faq, { backgroundColor: theme.surface }]}
-          >
-            <View style={styles.rowBetween}>
-              <Text
-                style={[styles.moduleTitle, { color: theme.text, flex: 1 }]}
+                <Text style={[styles.adhesionConsentText, { color: theme.text }]}>
+                  Li o termo de adesão e aceito as condições da assinatura.
+                </Text>
+              </MotionPressable>
+            </ScrollView>
+            <View style={styles.adhesionActions}>
+              <MotionPressable
+                accessibilityRole="button"
+                onPress={closeAdhesionTerms}
+                style={[
+                  styles.adhesionCancel,
+                  { borderColor: theme.border, backgroundColor: theme.surface },
+                ]}
               >
-                {question}
-              </Text>
-              <Ionicons
-                name="chevron-forward"
-                size={17}
-                color={theme.textMuted}
-                style={
-                  openFaq === index
-                    ? { transform: [{ rotate: "90deg" }] }
-                    : undefined
-                }
-              />
+                <Text style={[styles.adhesionCancelText, { color: theme.text }]}>
+                  Cancelar
+                </Text>
+              </MotionPressable>
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityState={{
+                  disabled: !termsAccepted || openingCheckoutPlanId !== null,
+                }}
+                disabled={!termsAccepted || openingCheckoutPlanId !== null}
+                onPress={confirmAdhesionTerms}
+                style={[
+                  styles.adhesionConfirm,
+                  {
+                    backgroundColor: termsAccepted ? theme.primary : theme.surfaceSubtle,
+                    opacity: termsAccepted ? 1 : 0.65,
+                  },
+                ]}
+              >
+                {openingCheckoutPlanId !== null ? (
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
+                ) : (
+                  <Text
+                    style={[
+                      styles.adhesionConfirmText,
+                      { color: termsAccepted ? theme.onPrimary : theme.textMuted },
+                    ]}
+                  >
+                    Aceitar e continuar para o checkout
+                  </Text>
+                )}
+              </MotionPressable>
             </View>
-            {openFaq === index && (
-              <Text style={[styles.caption, { color: theme.textMuted }]}>
-                Sim! Você pode cancelar quando quiser. Consulte os termos da sua
-                assinatura para detalhes.
-              </Text>
-            )}
-          </Pressable>
-        ))}
-      </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1413,6 +1044,135 @@ function ProgressBar({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { gap: spacing[4], padding: spacing[5], paddingBottom: spacing[12] },
+  plansContent: {
+    gap: spacing[3],
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[8],
+  },
+  plansIntro: {
+    fontSize: typography.role.screenDescription.fontSize,
+    lineHeight: typography.role.screenDescription.lineHeight,
+    marginBottom: spacing[1],
+    marginHorizontal: 2,
+  },
+  plansList: { gap: spacing[3] },
+  planOption: {
+    borderRadius: radius.card,
+    borderWidth: 1,
+    gap: spacing[3],
+    padding: spacing[4],
+  },
+  planOptionHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing[2],
+    justifyContent: "space-between",
+  },
+  planOptionCopy: { flex: 1, gap: spacing[1] },
+  planName: {
+    ...typography.role.sectionTitle,
+  },
+  planDescription: { ...typography.role.caption },
+  planBadges: { alignItems: "flex-end", gap: spacing[1], maxWidth: "52%" },
+  planBadge: {
+    borderRadius: radius.pill,
+    ...typography.role.label,
+    letterSpacing: 0.3,
+    overflow: "hidden",
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    textTransform: "uppercase",
+  },
+  planPriceRow: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    gap: spacing[2],
+    marginTop: spacing[1],
+  },
+  planPrice: {
+    fontSize: typography.size["2xl"],
+    fontWeight: typography.weight.extrabold,
+    lineHeight: 29,
+  },
+  planPeriod: { fontSize: typography.size.xs },
+  planOptionFeatures: { gap: spacing[2] },
+  planFeatureRow: { alignItems: "flex-start", flexDirection: "row", gap: spacing[2] },
+  planFeatureText: { flex: 1, fontSize: typography.role.body.fontSize, lineHeight: typography.role.body.lineHeight },
+  planCta: {
+    alignItems: "center",
+    borderRadius: radius.button,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing[2],
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: spacing[3],
+  },
+  planCtaText: { ...typography.role.button },
+  plansValueNote: { ...typography.role.caption, marginHorizontal: 2 },
+  plansTerms: { ...typography.role.caption, marginHorizontal: 3, marginTop: spacing[1], textAlign: "center" },
+  adhesionBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(10, 12, 24, 0.62)",
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[6],
+  },
+  adhesionDialog: {
+    borderRadius: radius.dialog,
+    borderWidth: 1,
+    maxHeight: "90%",
+    overflow: "hidden",
+    width: "100%",
+  },
+  adhesionHeading: {
+    alignItems: "center",
+    borderBottomColor: palette.slate[200],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: spacing[2],
+    justifyContent: "space-between",
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[4],
+  },
+  adhesionHeadingCopy: { flex: 1, gap: spacing[1] },
+  adhesionTitle: { ...typography.role.sectionTitle },
+  adhesionVersion: { ...typography.role.caption, fontWeight: typography.weight.medium },
+  adhesionClose: { alignItems: "center", borderRadius: radius.button, height: 44, justifyContent: "center", width: 44 },
+  adhesionBody: { flexGrow: 0, flexShrink: 1 },
+  adhesionBodyContent: { gap: spacing[3], padding: spacing[5] },
+  adhesionSelectedPlan: { borderRadius: radius.md, gap: 2, padding: spacing[3] },
+  adhesionOverline: { ...typography.role.label, letterSpacing: 0.6, textTransform: "uppercase" },
+  adhesionSelectedPlanName: { fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  adhesionSectionTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  adhesionCopy: { fontSize: typography.role.body.fontSize, lineHeight: typography.role.body.lineHeight },
+  adhesionLink: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    gap: spacing[2],
+    minHeight: 44,
+  },
+  adhesionLinkText: { ...typography.role.link },
+  adhesionHint: { ...typography.role.caption },
+  adhesionConsent: { alignItems: "flex-start", flexDirection: "row", gap: spacing[3], minHeight: 44, paddingVertical: spacing[2] },
+  adhesionCheckbox: {
+    alignItems: "center",
+    borderRadius: 5,
+    borderWidth: 1.5,
+    height: 22,
+    justifyContent: "center",
+    marginTop: 1,
+    width: 22,
+  },
+  adhesionConsentText: { flex: 1, fontSize: typography.role.bodyStrong.fontSize, fontWeight: typography.weight.medium, lineHeight: typography.role.bodyStrong.lineHeight },
+  adhesionActions: { borderTopColor: palette.slate[200], borderTopWidth: StyleSheet.hairlineWidth, gap: spacing[2], padding: spacing[4] },
+  adhesionCancel: { alignItems: "center", borderRadius: radius.button, borderWidth: borders.subtle, justifyContent: "center", minHeight: 46 },
+  adhesionCancelText: { ...typography.role.button },
+  adhesionConfirm: { alignItems: "center", borderRadius: radius.button, justifyContent: "center", minHeight: 46, paddingHorizontal: spacing[3] },
+  adhesionConfirmText: { ...typography.role.button, textAlign: "center" },
   gradientHeader: {
     paddingHorizontal: spacing[5],
     paddingBottom: spacing[8],
@@ -1741,14 +1501,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[2],
     paddingVertical: 4,
   },
-  planName: {
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.semibold,
-  },
-  planPrice: {
-    fontSize: typography.size.xl,
-    fontWeight: typography.weight.bold,
-  },
   guarantee: {
     alignItems: "center",
     borderRadius: radius.md,
@@ -1771,46 +1523,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   planFeature: { fontSize: 10, lineHeight: 15, marginTop: spacing[1] },
-  testimonialsCard: {
-    borderRadius: radius.md,
-    gap: spacing[3],
-    padding: spacing[5],
-  },
-  testimonialsHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing[3],
-  },
-  testimonialsRow: { gap: spacing[3], paddingRight: spacing[4] },
-  testimonialCard: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing[2],
-    padding: spacing[4],
-    width: 270,
-  },
-  testimonialPerson: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing[2],
-  },
-  testimonialAvatar: { borderRadius: 24, height: 44, width: 44 },
-  testimonialAvatarFallback: {
-    alignItems: "center",
-    borderRadius: 24,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  testimonialInitials: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.bold,
-  },
-  testimonialName: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.bold,
-  },
-  stars: { flexDirection: "row", gap: 2 },
-  testimonialText: { fontSize: typography.size.xs, lineHeight: 19 },
-  verifiedText: { fontSize: 10, fontWeight: typography.weight.semibold },
 });

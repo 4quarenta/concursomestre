@@ -6,6 +6,9 @@ export const ENDPOINTS = {
   auth: {
     login: "auth/login.php",
     register: "auth/register.php",
+    forgotPassword: "auth/forgot-password.php",
+    resetPassword: "auth/reset-password.php",
+    confirmEmail: "auth/confirm-email.php",
     user: "auth/me.php",
     refresh: "auth/refresh.php",
     logout: "auth/logout.php",
@@ -36,6 +39,9 @@ export const ENDPOINTS = {
     create: "commentsHandle",
     handle: "commentsHandle",
     like: "commentsLike",
+  },
+  reports: {
+    create: "reportsCreate",
   },
   simulations: {
     list: "simulationsList",
@@ -68,6 +74,7 @@ export const ENDPOINTS = {
   },
   users: {
     notes: "users/notes.php",
+    currentAnswers: "users/me/answers.php",
     deleteNote: "users/delete_note.php",
     uploadPhoto: "users/upload_photo.php",
     removePhoto: "users/remove_photo.php",
@@ -97,6 +104,7 @@ export const ENDPOINTS = {
   statistics: {
     user: "statistics/user.php",
     xray: "statistics/xray.php",
+    studySession: "statistics/study-session.php",
   },
   settings: {
     get: "settings.php",
