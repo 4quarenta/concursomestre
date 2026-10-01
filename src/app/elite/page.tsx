@@ -1,8 +1,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { ArrowRight, Check, LockKeyhole, ShieldCheck, Zap } from 'lucide-react';
+import { ArrowRight, Check, CreditCard, LockKeyhole, ShieldCheck, Zap } from 'lucide-react';
 import type { Plan } from '@types';
+import { resolvePlanOffer } from '@services/plans';
+import { fetchPublicMarketingSettings } from '../publicMarketingSettings';
 import { fetchPublicPlanCatalogForServer } from '../planos/plansServerData';
 
 export const revalidate = 300;
@@ -58,21 +60,22 @@ const benefits = [
 ];
 
 export default async function EliteLandingPage({ searchParams }: EliteLandingProps) {
-  const [plans, query] = await Promise.all([
+  const [plans, query, marketingSettings] = await Promise.all([
     fetchPublicPlanCatalogForServer(),
     searchParams ? searchParams : Promise.resolve({}),
+    fetchPublicMarketingSettings(),
   ]);
   const annualPlan = findElitePlan(plans, 'year');
   const monthlyPlan = findElitePlan(plans, 'month');
-  const annualPrice = annualPlan ? Number(annualPlan.price) : null;
-  const monthlyPrice = monthlyPlan ? Number(monthlyPlan.price) : null;
-  // Round the actual annual charge to its nearest cent when showing the monthly equivalent.
-  // Keep the full annual charge visible below as the authoritative amount.
-  const monthlyEquivalent = annualPrice !== null ? Math.round((annualPrice * 100) / 12) / 100 : null;
-  const regularAnnualPrice = monthlyPrice !== null ? monthlyPrice * 12 : null;
-  const discountPercent = annualPrice !== null && regularAnnualPrice !== null && regularAnnualPrice > annualPrice
-    ? Math.round((1 - annualPrice / regularAnnualPrice) * 100)
-    : null;
+  const pricing = marketingSettings.settings?.pricing;
+  const planDetails = marketingSettings.settings?.planDetails;
+  const annualOffer = annualPlan ? resolvePlanOffer({ plan: annualPlan, pricing, planDetails }) : null;
+  const monthlyOffer = monthlyPlan ? resolvePlanOffer({ plan: monthlyPlan, pricing, planDetails }) : null;
+  const annualPrice = annualOffer?.discountedCycleAmount ?? null;
+  const monthlyPrice = monthlyOffer?.discountedMonthlyAmount ?? (monthlyPlan ? Number(monthlyPlan.price) : null);
+  const monthlyEquivalent = annualOffer?.discountedMonthlyAmount ?? null;
+  const regularAnnualPrice = annualOffer?.originalCycleAmount ?? null;
+  const discountPercent = annualOffer?.effectiveDiscountPercent ?? null;
   const annualCheckoutHref = annualPlan ? makeCheckoutHref(annualPlan.id, query) : '/plans';
   const savings = regularAnnualPrice !== null && annualPrice !== null && regularAnnualPrice > annualPrice
     ? regularAnnualPrice - annualPrice
@@ -149,7 +152,8 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
                 <span className="text-sm text-slate-300">/mês</span>
               </div>
               <p className="mt-1.5 text-[13px] text-slate-300">No plano anual do Elite</p>
-              <p className="mt-1 text-[11px] text-slate-400">Total de <strong className="font-bold text-slate-200">{formatCurrency(annualPrice)} por ano</strong> · cobrança anual</p>
+              <p className="mt-1 text-[11px] text-slate-400">Equivalente a <strong className="font-bold text-slate-200">{formatCurrency(monthlyEquivalent)}/mês</strong> em até 12 cobranças · total de {formatCurrency(annualPrice)} no período anual</p>
+              <p className="mt-2 flex items-start gap-2 text-[11px] leading-4 text-slate-300"><CreditCard aria-hidden="true" size={14} className="mt-0.5 shrink-0 text-emerald-400" />No cartão, o pagamento acontece mês a mês: apenas a parcela do mês é lançada, sem cobrar o total anual de uma vez.</p>
               {savings !== null ? <p className="mt-4 rounded-lg border border-emerald-300/20 bg-emerald-400/[.07] px-3 py-2.5 text-center text-[11px] font-bold leading-4 text-emerald-300">Economize {formatCurrency(savings)} em relação a 12 mensalidades</p> : null}
               <Link href={annualCheckoutHref} className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-500 px-4 py-3 text-center text-[13px] font-extrabold text-white shadow-[0_8px_28px_rgba(53,117,221,.22)] transition hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-200">
                 Assinar o Elite anual <ArrowRight aria-hidden="true" size={17} />
