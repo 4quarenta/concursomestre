@@ -364,7 +364,7 @@ final class PrivateQuestionIngestionService
             throw new InvalidArgumentException('Chave de idempotencia invalida.');
         }
 
-        $batch = $this->findOrCreateBatch(
+        $batchReservation = $this->findOrCreateBatchWithConflictRecovery(
             $actorUserId,
             $idempotencyKey,
             $payloadHash,
@@ -373,6 +373,8 @@ final class PrivateQuestionIngestionService
             $collectionPages,
             $collectionYears
         );
+        $batch = $batchReservation['batch'];
+        $idempotencyKey = $batchReservation['idempotencyKey'];
         $chunks = $this->splitCanonicalPayloads($normalizedPayloads);
         foreach ($chunks as $index => $chunk) {
             $childKey = $idempotencyKey . '-job-' . ($index + 1);
@@ -1167,6 +1169,74 @@ final class PrivateQuestionIngestionService
                 'canonical_payload_json', 'status', 'attempt_count', 'last_failed_at',
             ],
         ]);
+    }
+
+    /**
+     * Preserva a semantica estrita da chave original, mas recupera colisões
+     * de payload do crawler com uma chave determinística para aquela submissão.
+     * Repetições do mesmo payload reutilizam a chave recuperada e continuam
+     * idempotentes; payloads diferentes nunca sobrescrevem lotes anteriores.
+     *
+     * @return array{batch:array<string,mixed>,idempotencyKey:string}
+     */
+    private function findOrCreateBatchWithConflictRecovery(
+        string $actorUserId,
+        string $idempotencyKey,
+        string $payloadHash,
+        int $questionCount,
+        array $questionKeys,
+        array $collectionPages,
+        array $collectionYears
+    ): array {
+        try {
+            return [
+                'batch' => $this->findOrCreateBatch(
+                    $actorUserId,
+                    $idempotencyKey,
+                    $payloadHash,
+                    $questionCount,
+                    $questionKeys,
+                    $collectionPages,
+                    $collectionYears
+                ),
+                'idempotencyKey' => $idempotencyKey,
+            ];
+        } catch (DomainException $exception) {
+            if ($exception->getMessage() !== 'A chave de idempotencia ja foi usada para outra submissao.') {
+                throw $exception;
+            }
+        }
+
+        // O sufixo mantem espaço para as chaves dos jobs filhos (-job-N)
+        // dentro do limite de 120 caracteres validado pela fila.
+        for ($attempt = 0; $attempt < 8; $attempt++) {
+            $recoveryKey = 'gran-recovery-' . hash(
+                'sha256',
+                $actorUserId . ':' . $idempotencyKey . ':' . $payloadHash . ':' . $attempt
+            );
+            try {
+                return [
+                    'batch' => $this->findOrCreateBatch(
+                        $actorUserId,
+                        $recoveryKey,
+                        $payloadHash,
+                        $questionCount,
+                        $questionKeys,
+                        $collectionPages,
+                        $collectionYears
+                    ),
+                    'idempotencyKey' => $recoveryKey,
+                ];
+            } catch (DomainException $exception) {
+                if ($exception->getMessage() !== 'A chave de idempotencia ja foi usada para outra submissao.') {
+                    throw $exception;
+                }
+            }
+        }
+
+        throw new DomainException(
+            'Nao foi possivel recuperar automaticamente a chave de idempotencia do lote.'
+        );
     }
 
     /** @return array<string,mixed> */
