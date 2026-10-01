@@ -194,8 +194,8 @@ final class AdminGranCrawlerService
                 'page' => $fallbackPage,
                 'marcarResolvidas' => 1,
                 'resolucao' => 'TODAS',
-                'anulada' => 0,
-                'desatualizada' => 0,
+                'anulada' => 1,
+                'desatualizada' => 1,
                 'tiposProva' => 1,
                 'sort' => '[{"anos":"desc"},{"_score":"desc"}]',
             ];
@@ -274,6 +274,8 @@ final class AdminGranCrawlerService
         );
         $query['page'] = $page;
         $query['perPage'] = $perPage;
+        $query['anulada'] = 1;
+        $query['desatualizada'] = 1;
 
         if (isset($query['sort'])) {
             if (!is_string($query['sort']) || strlen($query['sort']) > 2_000) {
@@ -1408,6 +1410,8 @@ final class AdminGranCrawlerService
                 'filters' => $this->hydrateGranTaxonomyIds($this->mapFilters($row, $examMetadata)),
                 'type' => $questionType,
                 'difficulty' => $this->resolveDifficulty($row['dificuldade'] ?? null),
+                'anulada' => $this->isTruthyFlag($row['anulada'] ?? false),
+                'desatualizada' => $this->isTruthyFlag($row['desatualizada'] ?? false),
                 'alternatives' => $alternatives['items'],
                 'answer' => [
                     'mode' => count($correctIds) > 1 ? 'multiple' : 'single',
@@ -3089,7 +3093,10 @@ final class AdminGranCrawlerService
 
     private function readPositiveInt(mixed $value): int
     {
-        return max(0, (int) $value);
+        if (!is_int($value) && !is_float($value) && !is_string($value)) {
+            return 0;
+        }
+        return is_numeric($value) ? max(0, (int) $value) : 0;
     }
 
     /** @return array{pages:int,total:int} */
@@ -3146,7 +3153,7 @@ final class AdminGranCrawlerService
             if ($total > 0) break;
         }
 
-        if ($pages === 0 && $total > 0) {
+        if ($total > 0) {
             $pages = (int) ceil($total / max(1, $perPage));
         }
 

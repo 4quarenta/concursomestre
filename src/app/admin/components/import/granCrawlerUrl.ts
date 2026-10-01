@@ -53,11 +53,11 @@ export const buildGranQuestionQueryUrl = (
   if (!urlValue.trim()) {
     parsed.searchParams.set('marcarResolvidas', '1');
     parsed.searchParams.set('resolucao', 'TODAS');
-    parsed.searchParams.set('anulada', '0');
-    parsed.searchParams.set('desatualizada', '0');
     parsed.searchParams.set('tiposProva', '1');
     parsed.searchParams.set('sort', '[{"anos":"desc"},{"_score":"desc"}]');
   }
+  parsed.searchParams.set('anulada', '1');
+  parsed.searchParams.set('desatualizada', '1');
   parsed.searchParams.set('page', String(page));
   parsed.searchParams.set('perPage', String(perPage));
   parsed.searchParams.delete('anos');

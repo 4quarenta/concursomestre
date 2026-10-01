@@ -24,6 +24,8 @@ $remotePayload = [
         'pages' => 1,
         'rows' => [[
             'id_questao' => 991,
+            'anulada' => true,
+            'desatualizada' => '1',
             'numero_questao' => 12,
             'enunciado' => '<p>Assinale a opcao correta. <img src="/media/enunciado.png"></p><script>alert(1)</script>',
             'enunciado_clean' => 'Assinale a opcao correta.',
@@ -70,6 +72,8 @@ $remotePayload = [
             ],
         ], [
             'id_questao' => 992,
+            'anulada' => false,
+            'desatualizada' => '0',
             'numero_questao' => 4,
             'enunciado' => '<p>Calcule o valor solicitado.</p>',
             'enunciado_clean' => 'Calcule o valor solicitado.',
@@ -149,6 +153,13 @@ granCrawlerAssert(count($payloads[0]['contexts']) === 1, 'Contexto compartilhado
 granCrawlerAssert(
     $payloads[0]['questions'][0]['answer']['raw'] === 'B',
     'Gabarito remoto nao foi associado a alternativa canonica.'
+);
+granCrawlerAssert(
+    $payloads[0]['questions'][0]['anulada'] === true
+    && $payloads[0]['questions'][0]['desatualizada'] === true
+    && $payloads[1]['questions'][0]['anulada'] === false
+    && $payloads[1]['questions'][0]['desatualizada'] === false,
+    'O estado anulada/desatualizada da Gran deve ser preservado no payload canonico.'
 );
 granCrawlerAssert(
     !str_contains($payloads[0]['questions'][0]['content']['statement'], '<script'),
@@ -422,16 +433,27 @@ granCrawlerAssert(
 );
 
 $paginationPayload = $remotePayload;
-unset($paginationPayload['data']['total'], $paginationPayload['data']['pages']);
-$paginationPayload['pagination'] = ['total' => 241, 'lastPage' => 13];
+$paginationPayload['data']['total'] = 1803;
+$paginationPayload['data']['pages'] = 2222;
+$paginationPayload['pagination'] = ['total' => 1803, 'lastPage' => 2222];
 $paginationResult = $service->mapBrowserResponse([
     'granResponse' => $paginationPayload,
+    'page' => 1,
+    'perPage' => 1000,
+]);
+granCrawlerAssert(
+    $paginationResult['total'] === 1803 && $paginationResult['pages'] === 2,
+    'O numero de paginas deve ser derivado do total filtrado e do limite por pagina, nao do campo pages inconsistente.'
+);
+
+$fallbackPaginationResult = $service->mapBrowserResponse([
+    'granResponse' => ['data' => ['rows' => []], 'pagination' => ['lastPage' => 13]],
     'page' => 1,
     'perPage' => 20,
 ]);
 granCrawlerAssert(
-    $paginationResult['total'] === 241 && $paginationResult['pages'] === 13,
-    'A quantidade de paginas deve vir do contrato pagination retornado pela Gran.'
+    $fallbackPaginationResult['pages'] === 13,
+    'A paginação explicita deve continuar como fallback quando a resposta nao fornece total.'
 );
 
 $emptyBrowserResult = $service->mapBrowserResponse([
@@ -456,8 +478,10 @@ granCrawlerAssert($directResult['perPage'] === 10, 'O limite deve ser lido da UR
 granCrawlerAssert(
     str_contains($observedUrl, 'bancas%5B0%5D=IBFC')
     && str_contains($observedUrl, 'page=3')
-    && str_contains($observedUrl, 'perPage=10'),
-    'A URL direta deve preservar filtros e paginacao da Gran.'
+    && str_contains($observedUrl, 'perPage=10')
+    && str_contains($observedUrl, 'anulada=1')
+    && str_contains($observedUrl, 'desatualizada=1'),
+    'A URL direta deve preservar filtros/paginacao e incluir anuladas/desatualizadas.'
 );
 
 $unsafeUrlRejected = false;

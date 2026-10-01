@@ -150,9 +150,11 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('if (inFlightBatches.length >= MAX_AUTOMATIC_IN_FLIGHT_BATCHES)');
     expect(source).toContain('await waitForOldestPublication();');
     expect(source).toContain('const processedBatch = await waitForPublicationBatch(flight.batch, controller.signal);');
-    expect(source).toContain('const nextPage = exhaustedYear ? 1 : cursorPage + 1;');
-    expect(source.indexOf('const nextPage = exhaustedYear ? 1 : cursorPage + 1;'))
-      .toBeLessThan(source.indexOf('if (inFlightBatches.length >= MAX_AUTOMATIC_IN_FLIGHT_BATCHES)'));
+    expect(source).toContain('while (!controller.signal.aborted && cursorYear === startYear)');
+    expect(source).toContain('if (exhaustedYear) break;');
+    expect(source).toContain('Coleta automatica do ano ${startYear} concluida.');
+    expect(source).not.toContain('cursorYear + 1');
+    expect(source).not.toContain('continua na pagina 1 do ano seguinte');
     expect(source).toContain('collectGranQuestions(requestUrl, signal)');
     expect(bridgeSource).toContain("signal?.addEventListener('abort', handleAbort, { once: true });");
   });

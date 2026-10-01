@@ -1206,9 +1206,15 @@ const AdminGranCrawlerSection = ({
 
   const startAutomaticMode = React.useCallback(async () => {
     if (automaticAbortRef.current) return;
-    const startYear = automaticCheckpoint?.year ?? Number(year);
+    const startYear = Number(year);
     if (!Number.isInteger(startYear) || startYear < 1900 || startYear > new Date().getFullYear()) {
       setError('Informe um ano entre 1900 e o ano atual para iniciar o modo automatico.');
+      return;
+    }
+    if (automaticCheckpoint && automaticCheckpoint.year !== startYear) {
+      setError(
+        `O progresso salvo pertence ao ano ${automaticCheckpoint.year}. Descarte esse progresso antes de iniciar o ano ${startYear}.`,
+      );
       return;
     }
     const ready = collectorState === 'ready' || await checkCollector(true, true);
@@ -1219,11 +1225,10 @@ const AdminGranCrawlerSection = ({
     setAutomaticMode(true);
     setError('');
     let checkpoint: GranAutomaticCheckpoint | null = automaticCheckpoint;
-    let cursorYear = checkpoint?.year || startYear;
+    const cursorYear = checkpoint?.year || startYear;
     let cursorPage = checkpoint?.page || Math.max(1, page);
     const inFlightBatches: AutomaticPublicationFlight[] = [];
     let failedFlight: AutomaticPublicationFlight | null = null;
-    const finalYear = new Date().getFullYear();
 
     try {
       checkpoint = checkpoint || await saveAutomaticCheckpoint({
@@ -1258,7 +1263,7 @@ const AdminGranCrawlerSection = ({
         }
         await loadFailureHistory();
       };
-      while (!controller.signal.aborted && cursorYear <= finalYear) {
+      while (!controller.signal.aborted && cursorYear === startYear) {
         const displayedTotal = checkpoint.totalPages || null;
         setAutomaticProgress({
           phase: 'collecting',
@@ -1328,37 +1333,31 @@ const AdminGranCrawlerSection = ({
           }));
         }
 
-        const nextYear = exhaustedYear ? cursorYear + 1 : cursorYear;
-        const nextPage = exhaustedYear ? 1 : cursorPage + 1;
+        const nextPage = cursorPage + 1;
         checkpoint = await saveAutomaticCheckpoint({
           requestUrl: buildGranQuestionQueryUrl(checkpoint.requestUrl, {
             page: nextPage,
             perPage: checkpoint.perPage,
-            year: String(nextYear),
+            year: String(cursorYear),
           }),
           runKey: checkpoint.runKey,
           perPage: checkpoint.perPage,
-          year: nextYear,
+          year: cursorYear,
           page: nextPage,
-          totalPages: exhaustedYear ? null : knownPageCount || null,
+          totalPages: knownPageCount || null,
           status: 'running',
           lastBatchId: data.batch.batchId,
           lastError: null,
         }, controller.signal);
-        cursorYear = nextYear;
         cursorPage = nextPage;
-        if (exhaustedYear) {
-          setYear(String(cursorYear));
-        }
-        if (cursorYear <= finalYear) {
-          setYear(String(cursorYear));
+        if (!exhaustedYear) {
           setPage(cursorPage);
-          window.localStorage.setItem(GRAN_LAST_YEAR_STORAGE_KEY, String(cursorYear));
           if (inFlightBatches.length >= MAX_AUTOMATIC_IN_FLIGHT_BATCHES) {
             await waitForOldestPublication();
           }
           await delayWithSignal(400, controller.signal);
         }
+        if (exhaustedYear) break;
       }
 
       if (!controller.signal.aborted) {
@@ -1369,11 +1368,11 @@ const AdminGranCrawlerSection = ({
         setAutomaticMode(false);
         setAutomaticProgress({
           phase: 'completed',
-          year: Math.min(cursorYear, finalYear),
+          year: startYear,
           page: cursorPage,
-          totalPages: null,
+          totalPages: checkpoint?.totalPages || null,
           questionsCollected: 0,
-          message: `Coleta automatica concluida ate ${finalYear}.`,
+          message: `Coleta automatica do ano ${startYear} concluida.`,
         });
       }
     } catch (requestError) {
@@ -2048,7 +2047,7 @@ const AdminGranCrawlerSection = ({
               </div>
               <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">
                 Publica enquanto coleta a pagina seguinte, mantendo no maximo duas paginas em processamento.
-                Ao terminar um ano, continua na pagina 1 do ano seguinte; o proximo ponto fica salvo no servidor.
+                A coleta fica restrita ao ano selecionado; o progresso da pagina fica salvo no servidor para retomada.
               </p>
               <p className="mt-2 text-xs font-semibold text-sky-800 dark:text-sky-300">
                 {automaticProgress.message}
