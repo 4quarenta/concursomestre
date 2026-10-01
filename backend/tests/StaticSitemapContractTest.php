@@ -89,6 +89,7 @@ sitemapContractAssert(str_contains($invalidator, "'publicationState' => 'DIRTY'"
 sitemapContractAssert(!str_contains($nginx, 'alias '), 'Nginx example bypasses application launch/freshness guards with a static alias.');
 sitemapContractAssert(str_contains($validator, "'legacy_url'"), 'Validator must reject aliases.');
 sitemapContractAssert(str_contains($validator, "'canonical_mismatch'"), 'Validator must verify self canonical over HTTP.');
+sitemapContractAssert(str_contains($validator, 'CURLOPT_RESOLVE') && str_contains($validator, 'SITEMAP_VALIDATION_ADDRESS'), 'Production sitemap validation must pin canonical HTTPS requests to the local origin when configured.');
 sitemapContractAssert(str_contains($generator, 'validateForPromotion'), 'Public promotion does not require semantic HTTP validation.');
 
 sitemapContractAssert(!is_file($root . '/src/app/sitemap.ts'), 'Dynamic Next sitemap authority still exists.');

@@ -16,6 +16,7 @@ final class StaticSitemapValidator
     ];
 
     private string $canonicalOrigin;
+    private ?string $validationAddress;
 
     public function __construct(string $canonicalBaseUrl)
     {
@@ -24,6 +25,16 @@ final class StaticSitemapValidator
             throw new InvalidArgumentException('Host canonico HTTPS invalido para sitemap.');
         }
         $this->canonicalOrigin = 'https://' . strtolower((string) $parts['host']);
+
+        $validationAddress = trim((string) (getenv('SITEMAP_VALIDATION_ADDRESS') ?: ''));
+        if ($validationAddress === ''
+            && strtoupper(trim((string) getenv('SEO_DEPLOYMENT_ENVIRONMENT'))) === 'PRODUCTION') {
+            $validationAddress = '127.0.0.1';
+        }
+        if ($validationAddress !== '' && filter_var($validationAddress, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+            throw new InvalidArgumentException('Endereco de validacao local do sitemap invalido.');
+        }
+        $this->validationAddress = $validationAddress !== '' ? $validationAddress : null;
     }
 
     /** @return array<string, mixed> */
@@ -275,7 +286,7 @@ final class StaticSitemapValidator
                 $requestUrl = $httpOrigin . (string) ($parts['path'] ?? '/');
                 $handle = curl_init($requestUrl);
                 $responseHeaders = [];
-                curl_setopt_array($handle, [
+                $options = [
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_FOLLOWLOCATION => false,
                     CURLOPT_CONNECTTIMEOUT => 10,
@@ -290,7 +301,19 @@ final class StaticSitemapValidator
                         }
                         return $length;
                     },
-                ]);
+                ];
+                $originParts = parse_url($httpOrigin);
+                $canonicalHost = (string) parse_url($this->canonicalOrigin, PHP_URL_HOST);
+                $originHost = is_array($originParts) ? strtolower((string) ($originParts['host'] ?? '')) : '';
+                $originScheme = is_array($originParts) ? strtolower((string) ($originParts['scheme'] ?? '')) : '';
+                $originPort = is_array($originParts) ? (int) ($originParts['port'] ?? 443) : 0;
+                if ($this->validationAddress !== null
+                    && $originHost === $canonicalHost
+                    && $originScheme === 'https'
+                    && $originPort === 443) {
+                    $options[CURLOPT_RESOLVE] = [$canonicalHost . ':443:' . $this->validationAddress];
+                }
+                curl_setopt_array($handle, $options);
                 curl_multi_add_handle($multi, $handle);
                 $handles[$index] = [$handle, $entry, &$responseHeaders];
             }
