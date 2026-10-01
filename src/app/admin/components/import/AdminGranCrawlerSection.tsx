@@ -1252,6 +1252,27 @@ const AdminGranCrawlerSection = ({
         lastBatchId: null,
         lastError: null,
       }, controller.signal);
+      if (
+        checkpoint.status === 'error'
+        && /chave de idempot[eê]ncia/i.test(checkpoint.lastError || '')
+      ) {
+        // A mesma página pode ser remapeada depois que parte das questões foi
+        // publicada. O mapeamento então inclui IDs/status locais diferentes,
+        // embora seja a retomada da mesma coleta. Uma nova identidade de run
+        // evita reutilizar a chave antiga; a unicidade da questão de origem
+        // continua impedindo publicações duplicadas.
+        checkpoint = await saveAutomaticCheckpoint({
+          requestUrl: checkpoint.requestUrl,
+          runKey: crypto.randomUUID(),
+          perPage: checkpoint.perPage,
+          year: checkpoint.year,
+          page: checkpoint.page,
+          totalPages: checkpoint.totalPages || null,
+          status: 'running',
+          lastBatchId: checkpoint.lastBatchId || null,
+          lastError: null,
+        }, controller.signal);
+      }
       const waitForOldestPublication = async () => {
         const flight = inFlightBatches.shift();
         if (!flight) return;

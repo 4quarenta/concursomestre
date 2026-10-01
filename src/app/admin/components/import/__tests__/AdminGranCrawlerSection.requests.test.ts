@@ -166,6 +166,14 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(bridgeSource).toContain("signal?.addEventListener('abort', handleAbort, { once: true });");
   });
 
+  it('rotates the run identity when resuming a checkpoint blocked by an idempotency conflict', () => {
+    expect(source).toContain("checkpoint.status === 'error'");
+    expect(source).toContain('/chave de idempot[eê]ncia/i.test(checkpoint.lastError || \'\')');
+    expect(source).toContain('runKey: crypto.randomUUID()');
+    expect(source).toContain('page: checkpoint.page');
+    expect(source).toContain('year: checkpoint.year');
+  });
+
   it('loads only active durable failures and removes resolved items from the operational list', () => {
     expect(source).toContain('failureHistory?: GranFailureHistoryPage');
     expect(source).toContain("action: 'list_publication_failures'");
