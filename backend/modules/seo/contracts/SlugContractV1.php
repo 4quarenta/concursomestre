@@ -9,7 +9,8 @@ final class SlugContractV1
 
     public static function generate(string $input, string $resourceType, string|int $resourceId): string
     {
-        $decoded = html_entity_decode(strip_tags($input), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $decoded = self::decodeSupportedEntities($input);
+        $decoded = strip_tags($decoded);
         $decoded = str_replace(['º', 'ª', '&'], ['o', 'a', ' e '], $decoded);
         $ascii = self::transliterate($decoded);
         $slug = strtolower($ascii);
@@ -23,6 +24,30 @@ final class SlugContractV1
         }
 
         return self::truncate($slug);
+    }
+
+    private static function decodeSupportedEntities(string $value): string
+    {
+        return preg_replace_callback(
+            '/&(#x[0-9a-f]+|#\d+|amp|apos|gt|lt|nbsp|quot);/i',
+            static function (array $matches): string {
+                $token = strtolower($matches[1]);
+                if (str_starts_with($token, '#')) {
+                    return html_entity_decode($matches[0], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+
+                return match ($token) {
+                    'amp' => '&',
+                    'apos' => "'",
+                    'gt' => '>',
+                    'lt' => '<',
+                    'nbsp' => ' ',
+                    'quot' => '"',
+                    default => $matches[0],
+                };
+            },
+            $value
+        ) ?? $value;
     }
 
     private static function transliterate(string $value): string

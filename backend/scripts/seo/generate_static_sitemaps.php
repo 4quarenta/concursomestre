@@ -209,7 +209,6 @@ try {
     $counts = ['institutional' => 0, 'questions' => 0, 'laws' => 0, 'lawArticles' => 0, 'exams' => 0, 'contests' => 0, 'simulations' => 0, 'materials' => 0, 'boards' => 0, 'organizations' => 0, 'disciplines' => 0, 'topics' => 0, 'subjects' => 0, 'professional' => 0];
     $institutionalSources = [
         '/' => ['source' => 'src/app/page.tsx', 'familyId' => 'home'],
-        '/planos' => ['source' => 'src/app/planos/page.tsx', 'familyId' => 'plans'],
         $routes->questionsIndex() => ['source' => 'src/app/questoes/page.tsx', 'familyId' => 'questions_hub'],
         '/faq' => ['source' => 'src/app/faq/page.tsx', 'familyId' => 'faq'],
         '/lei-comentada' => ['source' => 'src/app/lei-comentada/page.tsx', 'familyId' => 'law_hub'],

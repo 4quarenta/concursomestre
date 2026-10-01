@@ -12,6 +12,7 @@ function sitemapContractAssert(bool $condition, string $message): void
 $backend = dirname(__DIR__);
 $root = dirname($backend);
 $generator = (string) file_get_contents($backend . '/scripts/seo/generate_static_sitemaps.php');
+$productionPageMap = json_decode((string) file_get_contents($root . '/config/seo/seo-production-page-map.v1.json'), true, 512, JSON_THROW_ON_ERROR);
 $blogWrapper = (string) file_get_contents($backend . '/scripts/seo/generate_static_blog_sitemaps.php');
 $blogGenerator = (string) file_get_contents($backend . '/modules/seo/sitemaps/StaticBlogSitemapGenerator.php');
 $publisher = (string) file_get_contents($backend . '/modules/seo/sitemaps/StaticSitemapPublisher.php');
@@ -33,6 +34,9 @@ sitemapContractAssert(str_contains($generator, "invalidate('PUBLICATION_NOT_ALLO
 sitemapContractAssert(str_contains($generator, 'eligibleDatasetFingerprint'), 'Generator does not bind artifacts to the eligible DB-derived dataset.');
 sitemapContractAssert(str_contains($generator, 'StaticSitemapReleaseManifest::create'), 'Generator does not fingerprint the complete release set.');
 sitemapContractAssert(str_contains($generator, "'familyId' => 'support'"), 'Production support target is missing from sitemap candidates.');
+sitemapContractAssert(!str_contains($generator, "'/planos' =>"), 'Missing legacy plans route is still emitted as a sitemap candidate.');
+$plansFamily = array_values(array_filter($productionPageMap['families'] ?? [], static fn (array $family): bool => ($family['familyId'] ?? null) === 'plans'))[0] ?? null;
+sitemapContractAssert(is_array($plansFamily) && ($plansFamily['sitemapTarget'] ?? null) === 'EXCLUDE', 'Legacy plans route is not permanently excluded from sitemap policy.');
 sitemapContractAssert(str_contains($generator, "['launchStatus'] ?? null) !== 'ACTIVE'"), 'Non-active families are not excluded from sitemap publication.');
 sitemapContractAssert(!str_contains($generator, "'/practice'"), 'Generator still emits /practice.');
 sitemapContractAssert(!str_contains($generator, "'/question/'"), 'Generator still emits /question.');

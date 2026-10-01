@@ -49,6 +49,11 @@
       "expected": "direito-e-processo"
     },
     {
+      "id": "unsupported-html-entity-remains-text",
+      "input": "A idade &omega; de uma tábua",
+      "expected": "a-idade-e-omega-de-uma-tabua"
+    },
+    {
       "id": "html-tags",
       "input": "<strong>Direito</strong> Constitucional",
       "expected": "direito-constitucional"
