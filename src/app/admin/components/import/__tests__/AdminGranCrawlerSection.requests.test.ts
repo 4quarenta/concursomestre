@@ -140,7 +140,9 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('const collectAndEnqueueAutomaticPage = React.useCallback');
     expect(source).toContain('O total sera recalculado ao retomar.');
     expect(source).not.toContain('Progresso salvo: pagina ${checkpoint.page}${checkpoint.totalPages');
-    expect(source).toContain('setAutomaticFilteredQuestionCount(Number.isFinite(data.total) && data.total >= 0 ? data.total : null)');
+    expect(source).toContain('if (Number.isFinite(data.total) && data.total > 0)');
+    expect(source).toContain('const sourceQuestionCount = Math.max(0, Number(data.sourceQuestionCount) || 0)');
+    expect(source).toContain('const exhaustedYear = sourceQuestionCount === 0');
     expect(source).toContain('data-testid="gran-automatic-filter-count"');
     expect(source).toContain('questões encontradas para o ano');
     expect(source).toContain('fingerprintAutomaticInput({');

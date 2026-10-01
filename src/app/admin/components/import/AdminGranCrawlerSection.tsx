@@ -235,9 +235,10 @@ type GranAutomaticEnqueueResult = {
   total: number;
   pages: number;
   requestUrl: string;
+  sourceQuestionCount: number;
   questionCount: number;
   fileCount: number;
-  batch: GranPublicationBatch;
+  batch: GranPublicationBatch | null;
 };
 
 type GranPublicationProgress = Pick<GranPublicationBatch,
@@ -1313,9 +1314,10 @@ const AdminGranCrawlerSection = ({
           : data.total > 0
             ? Math.ceil(data.total / Math.max(1, data.perPage || checkpoint.perPage))
             : 0;
-        const exhaustedYear = pageQuestionCount === 0
+        const sourceQuestionCount = Math.max(0, Number(data.sourceQuestionCount) || 0);
+        const exhaustedYear = sourceQuestionCount === 0
           || (knownPageCount > 0 && cursorPage >= knownPageCount)
-          || (knownPageCount === 0 && pageQuestionCount < checkpoint.perPage);
+          || (knownPageCount === 0 && sourceQuestionCount < checkpoint.perPage);
 
         if (pageQuestionCount > 0) {
           setAutomaticProgress({
@@ -1327,6 +1329,9 @@ const AdminGranCrawlerSection = ({
             message: `Publicando pagina ${cursorPage} de ${knownPageCount || '?'} (ano ${cursorYear}): ${pageQuestionCount} questoes.`,
           });
           const batch = data.batch;
+          if (!batch) {
+            throw new Error(`A pagina ${cursorPage} retornou questoes publicaveis, mas nao criou um lote.`);
+          }
           setCurrentBatch(batch);
           inFlightBatches.push({
             batch,

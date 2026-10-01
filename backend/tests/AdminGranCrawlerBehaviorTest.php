@@ -504,6 +504,21 @@ granCrawlerAssert(
     'Questao marcada como inedita deve ser removida antes da fila/importacao.'
 );
 
+$onlyIneditaPayload = $remotePayload;
+$onlyIneditaPayload['data']['rows'] = [$remotePayload['data']['rows'][0] + ['inedita' => true]];
+$onlyIneditaPayload['data']['total'] = 1;
+$emptyPublishablePage = $service->mapAndEnqueuePublication([
+    'granResponse' => $onlyIneditaPayload,
+    'page' => 1,
+    'perPage' => 20,
+], 'admin-test');
+granCrawlerAssert(
+    $emptyPublishablePage['sourceQuestionCount'] === 1
+    && $emptyPublishablePage['questionCount'] === 0
+    && $emptyPublishablePage['batch'] === null,
+    'Uma pagina composta somente por questoes ineditas deve ser ignorada sem tentar enfileirar lote vazio.'
+);
+
 $unsafeUrlRejected = false;
 try {
     $service->fetchPage([

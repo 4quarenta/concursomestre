@@ -95,6 +95,7 @@ final class AdminGranCrawlerService
             'total' => $pagination['total'],
             'pages' => $pagination['pages'],
             'requestUrl' => $request['url'],
+            'sourceQuestionCount' => count($rows),
             'tokenExpiresAt' => null,
             'questionCount' => $this->countPayloadQuestions($payloads),
             'fileCount' => array_sum(array_map(
@@ -379,8 +380,22 @@ final class AdminGranCrawlerService
     public function mapAndEnqueuePublication(array $input, string $actorUserId): array
     {
         $mapped = $this->mapBrowserResponse($input);
+        $payloads = is_array($mapped['payloads'] ?? null) ? $mapped['payloads'] : [];
+        if ($payloads === []) {
+            return [
+                'page' => (int) ($mapped['page'] ?? 1),
+                'perPage' => (int) ($mapped['perPage'] ?? 0),
+                'total' => (int) ($mapped['total'] ?? 0),
+                'pages' => (int) ($mapped['pages'] ?? 0),
+                'requestUrl' => (string) ($mapped['requestUrl'] ?? ''),
+                'sourceQuestionCount' => (int) ($mapped['sourceQuestionCount'] ?? 0),
+                'questionCount' => 0,
+                'fileCount' => 0,
+                'batch' => null,
+            ];
+        }
         $batch = $this->enqueuePublication([
-            'payloads' => $mapped['payloads'] ?? [],
+            'payloads' => $payloads,
             'focus' => $input['focus'] ?? null,
             'idempotencyKey' => $input['idempotencyKey'] ?? '',
         ], $actorUserId);
@@ -391,6 +406,7 @@ final class AdminGranCrawlerService
             'total' => (int) ($mapped['total'] ?? 0),
             'pages' => (int) ($mapped['pages'] ?? 0),
             'requestUrl' => (string) ($mapped['requestUrl'] ?? ''),
+            'sourceQuestionCount' => (int) ($mapped['sourceQuestionCount'] ?? 0),
             'questionCount' => (int) ($mapped['questionCount'] ?? 0),
             'fileCount' => (int) ($mapped['fileCount'] ?? 0),
             'batch' => $batch,
