@@ -27,7 +27,7 @@ for (const relativePath of requiredFiles) {
   if (!fs.existsSync(path.join(root, relativePath))) failures.push(`Arquivo obrigatorio ausente: ${relativePath}`);
 }
 
-const forbiddenDirectories = new Set(['.git', '.next', '.tmp', '.turbo', 'coverage', 'node_modules']);
+const forbiddenDirectories = new Set(['.codex', '.git', '.next', '.tmp', '.turbo', 'coverage', 'node_modules']);
 const forbiddenEnvironmentFiles = new Set(['.env', '.env.local', '.env.production', '.env.staging']);
 const forbiddenExtensions = new Set(['.bak', '.dump', '.key', '.log', '.p12', '.pem', '.pfx']);
 const forbiddenRuntimePaths = [
