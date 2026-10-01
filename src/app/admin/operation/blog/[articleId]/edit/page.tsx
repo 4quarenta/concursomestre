@@ -409,7 +409,7 @@ const AdminBlogEditPage = () => {
                     allowLinks
                     allowHtmlPaste
                     onImageUpload={uploadInlineImage}
-                    contentClassName="min-h-[680px] max-h-none"
+                    contentClassName="blog-rich-content overflow-x-auto min-h-[680px] max-h-none"
                   />
                 </div>
               </section>

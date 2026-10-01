@@ -185,10 +185,12 @@ export default async function BlogArticlePage({ params }: PageProps) {
               <BlogConversionCta tone="light" compact />
             </div>
 
-            <div
-              className="prose prose-slate mt-9 max-w-none text-base leading-8 dark:prose-invert prose-headings:scroll-mt-24 prose-headings:font-black prose-a:text-indigo-600 prose-img:max-h-[720px] prose-img:object-contain prose-table:block prose-table:max-w-full prose-table:overflow-x-auto"
-              dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(article.bodyHtml || '') }}
-            />
+            <div className="blog-rich-content mt-9 overflow-x-auto">
+              <div
+                className="prose prose-slate max-w-none text-base leading-8 dark:prose-invert prose-headings:scroll-mt-24 prose-headings:font-black prose-a:text-indigo-600 prose-img:max-h-[720px] prose-img:object-contain"
+                dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(article.bodyHtml || '') }}
+              />
+            </div>
 
             {(article.sources?.length || article.sourceName || article.sourceUrl) ? (
               <p className="mt-8 border-l-2 border-slate-300 pl-4 text-xs text-slate-500">

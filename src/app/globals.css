@@ -66,6 +66,38 @@
 }
 
 @layer components {
+  .blog-rich-content table {
+    display: table;
+    width: max-content;
+    min-width: 100%;
+    margin-block: 1.25rem;
+    border-collapse: collapse;
+    line-height: 1.5;
+  }
+
+  .blog-rich-content th,
+  .blog-rich-content td {
+    min-width: 3rem;
+    border: 1px solid rgb(203 213 225);
+    padding: 0.625rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .blog-rich-content th {
+    background: rgb(241 245 249);
+    font-weight: 700;
+  }
+
+  .dark .blog-rich-content th,
+  .dark .blog-rich-content td {
+    border-color: rgb(71 85 105);
+  }
+
+  .dark .blog-rich-content th {
+    background: rgb(30 41 59);
+  }
+
   .cm-landing-theme {
     --cm-theme-page: #ffffff;
     --cm-theme-header: rgba(255, 255, 255, 0.94);
