@@ -93,6 +93,7 @@ final class AdminGranCrawlerService
             'page' => $request['page'],
             'perPage' => $request['perPage'],
             'total' => $pagination['total'],
+            'totalKnown' => $pagination['totalKnown'],
             'pages' => $pagination['pages'],
             'requestUrl' => $request['url'],
             'sourceQuestionCount' => count($rows),
@@ -168,6 +169,7 @@ final class AdminGranCrawlerService
             'page' => $page,
             'perPage' => $perPage,
             'total' => $pagination['total'],
+            'totalKnown' => $pagination['totalKnown'],
             'pages' => $pagination['pages'],
             'requestUrl' => $url,
             'tokenExpiresAt' => $expiration !== null ? gmdate('c', $expiration) : null,
@@ -844,13 +846,24 @@ final class AdminGranCrawlerService
         foreach ([
             $payload['data']['rows'] ?? null,
             $payload['data']['items'] ?? null,
+            $payload['data']['results'] ?? null,
+            $payload['data']['hits']['hits'] ?? null,
             $payload['rows'] ?? null,
             $payload['itens'] ?? null,
             $payload['items'] ?? null,
             $payload['results'] ?? null,
+            $payload['hits']['hits'] ?? null,
+            is_array($payload['data'] ?? null) && array_is_list($payload['data']) ? $payload['data'] : null,
         ] as $candidate) {
             if (is_array($candidate)) {
-                return array_values(array_filter($candidate, 'is_array'));
+                return array_map(static function (array $row): array {
+                    if (!is_array($row['_source'] ?? null)) return $row;
+                    $source = $row['_source'];
+                    if (!isset($source['id']) && !isset($source['id_questao']) && isset($row['_id'])) {
+                        $source['id'] = $row['_id'];
+                    }
+                    return $source;
+                }, array_values(array_filter($candidate, 'is_array')));
             }
         }
         return [];
@@ -3131,7 +3144,7 @@ final class AdminGranCrawlerService
         return is_numeric($value) ? max(0, (int) $value) : 0;
     }
 
-    /** @return array{pages:int,total:int} */
+    /** @return array{pages:int,total:int,totalKnown:bool} */
     private function readPagination(array $payload, int $perPage): array
     {
         $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
@@ -3169,6 +3182,7 @@ final class AdminGranCrawlerService
         }
 
         $total = 0;
+        $totalKnown = false;
         foreach ([
             $pagination['total'] ?? null,
             $pagination['totalItems'] ?? null,
@@ -3177,19 +3191,23 @@ final class AdminGranCrawlerService
             $data['total'] ?? null,
             $data['totalItems'] ?? null,
             $data['total_itens'] ?? null,
+            $data['hits']['total']['value'] ?? $data['hits']['total'] ?? null,
             $meta['total'] ?? null,
             $meta['totalItems'] ?? null,
             $payload['total'] ?? null,
+            $payload['hits']['total']['value'] ?? $payload['hits']['total'] ?? null,
         ] as $candidate) {
+            if (!is_numeric($candidate) || (float) $candidate < 0) continue;
             $total = $this->readPositiveInt($candidate);
-            if ($total > 0) break;
+            $totalKnown = true;
+            break;
         }
 
         if ($total > 0) {
             $pages = (int) ceil($total / max(1, $perPage));
         }
 
-        return ['pages' => $pages, 'total' => $total];
+        return ['pages' => $pages, 'total' => $total, 'totalKnown' => $totalKnown];
     }
 
     private function resolveDifficulty(mixed $value): string

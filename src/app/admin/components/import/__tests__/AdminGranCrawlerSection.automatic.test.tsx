@@ -87,12 +87,16 @@ describe('Gran automatic collection with filtered-out pages', () => {
     vi.useRealTimers();
   });
 
-  const startCollection = async () => {
+  const mountCrawler = async () => {
     const { default: AdminGranCrawlerSection } = await import('../AdminGranCrawlerSection');
     await act(async () => {
       root.render(<AdminGranCrawlerSection renderReviewQueue={() => null} />);
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  };
+
+  const startCollection = async () => {
+    await mountCrawler();
     const toggle = container.querySelector<HTMLInputElement>(
       '[aria-label="Ativar ou desativar modo automatico"]',
     );
@@ -131,4 +135,46 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(container.textContent).toContain('Coleta automatica do ano 2000 concluida.');
     expect(mocks.post.mock.calls.some(([, input]) => input.status === 'error')).toBe(false);
   });
+
+  it.each(['year', 'direct-url'])(
+    'loads a manual filtered query (%s) and displays its total separately from the page size',
+    async (filterMode) => {
+      mocks.get.mockResolvedValue({ data: { data: { taxonomyStatus: {}, automaticCheckpoint: null } } });
+      mocks.post.mockImplementation(async (_endpoint: string, input: Record<string, unknown>) => {
+        expect(input.action).toBe('map');
+        return { data: { data: {
+          page: 1, perPage: 20, total: 1803, totalKnown: true, pages: 91,
+          questionCount: 20, fileCount: 0, requestUrl: input.granRequestUrl,
+          payloads: [{ schemaVersion: 'question-import.v2', exam: {}, questions: Array.from(
+            { length: 20 }, (_, index) => ({ tempId: `question-${index}` }),
+          ) }],
+        } } };
+      });
+      await mountCrawler();
+      const input = container.querySelector<HTMLInputElement>(
+        filterMode === 'year' ? 'input[placeholder="2026"]' : 'input[type="url"]',
+      )!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+          input,
+          filterMode === 'year' ? '2000'
+            : 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?anos[]=2000&perPage=20&page=1&bancas[]=10',
+        );
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      const load = Array.from(container.querySelectorAll('button'))
+        .find((button) => button.textContent?.trim() === 'Carregar questões')!;
+      await act(async () => { load.click(); });
+
+      expect(mocks.collect).toHaveBeenCalledTimes(1);
+      const request = new URL(mocks.collect.mock.calls[0][0]);
+      expect(request.searchParams.get('anos[]')).toBe('2000');
+      expect(request.searchParams.get('perPage')).toBe('20');
+      expect(request.searchParams.get('inedita')).toBe('0');
+      if (filterMode === 'direct-url') expect(request.searchParams.get('bancas[]')).toBe('10');
+      expect(container.querySelector('[data-testid="gran-review-filter-count"]')?.textContent)
+        .toBe('1.803 questões encontradas para o filtro aplicado.');
+      expect(container.textContent).toContain('20 questão(ões) carregada(s) nesta página.');
+    },
+  );
 });

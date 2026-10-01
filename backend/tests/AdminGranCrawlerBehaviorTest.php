@@ -466,6 +466,31 @@ granCrawlerAssert(
     'Pagina sem questoes deve sinalizar o fim do ano para o modo automatico.'
 );
 
+foreach ([
+    ['data' => $remotePayload['data']['rows'], 'pagination' => ['total' => 1803]],
+    ['data' => ['results' => $remotePayload['data']['rows'], 'total' => 1803]],
+    ['data' => ['hits' => ['hits' => array_map(
+        static fn (array $row): array => ['_source' => $row],
+        $remotePayload['data']['rows']
+    ), 'total' => ['value' => 1803, 'relation' => 'eq']]]],
+] as $filteredResponse) {
+    $filteredResult = $service->mapBrowserResponse([
+        'granResponse' => $filteredResponse,
+        'granRequestUrl' => 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?anos[]=2024&perPage=20&page=1',
+        'year' => '2024',
+    ]);
+    granCrawlerAssert(
+        $filteredResult['questionCount'] === 2
+        && (string) $filteredResult['payloads'][0]['questions'][0]['source']['externalId'] === '991'
+        && $filteredResult['total'] === 1803 && $filteredResult['pages'] === 91,
+        'Busca filtrada deve reconhecer listas, results e hits sem perder questoes, identidades ou total.'
+    );
+}
+granCrawlerAssert(
+    $emptyBrowserResult['totalKnown'] === true && $fallbackPaginationResult['totalKnown'] === false,
+    'Total zero informado e total desconhecido devem permanecer distintos.'
+);
+
 $directUrl = 'https://rota-api.grancursosonline.com.br/v1/elastic/questao'
     . '?perPage=10&page=3&bancas%5B%5D=IBFC'
     . '&sort=%5B%7B%22anos%22%3A%22asc%22%7D%5D';

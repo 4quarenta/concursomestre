@@ -116,6 +116,7 @@ type GranFetchResult = {
   total: number;
   pages: number;
   requestUrl?: string;
+  totalKnown?: boolean;
   tokenExpiresAt?: string | null;
   questionCount: number;
   fileCount?: number;
@@ -2162,6 +2163,14 @@ const AdminGranCrawlerSection = ({
                   ? ` · ${reviewQueues.publishedQuestionCount} já publicada(s)`
                   : ''}
               </h3>
+              <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200" data-testid="gran-review-filter-count">
+                {result.totalKnown === true || (result.totalKnown !== false && result.total > 0)
+                  ? `${result.total.toLocaleString('pt-BR')} questões encontradas para o filtro aplicado.`
+                  : 'Total do filtro não informado pela Gran.'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {result.questionCount.toLocaleString('pt-BR')} questão(ões) carregada(s) nesta página. Inéditas não entram na fila.
+              </p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 {result.fileCount || 0} arquivo(s) oficial(is). As paginas carregadas permanecem nesta fila ate voce limpa-la.
               </p>
