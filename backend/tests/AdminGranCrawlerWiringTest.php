@@ -104,6 +104,12 @@ adminGranCrawlerWiringAssert(
     'Modo automatico deve mapear e enfileirar uma pagina na mesma requisicao, sem devolver e reenviar o payload canonico.'
 );
 adminGranCrawlerWiringAssert(
+    !str_contains($service, "if ((\$ingestionPreview['metrics']['rejected'] ?? 0) > 0)")
+    && str_contains($queue, 'syncGranFailureHistory')
+    && str_contains($worker, "'itemFailures'"),
+    'Uma rejeicao de item deve ser registrada por questao pelo worker, sem cancelar os demais itens da pagina.'
+);
+adminGranCrawlerWiringAssert(
     str_contains($service, 'getPublicationBatchProgress')
     && str_contains($service, 'getBatchProgressByPublicId')
     && str_contains($queue, 'public function getBatchProgressByPublicId')

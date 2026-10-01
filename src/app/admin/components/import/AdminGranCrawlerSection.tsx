@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { apiClient } from '@services/api';
+import { readApiErrorMessage } from '@services/api/response';
 import {
   ADMIN_PAGE_PANEL_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
@@ -1229,6 +1230,7 @@ const AdminGranCrawlerSection = ({
     automaticAbortRef.current = controller;
     setAutomaticMode(true);
     setError('');
+    setAutomaticFilteredQuestionCount(null);
     let checkpoint: GranAutomaticCheckpoint | null = automaticCheckpoint;
     const cursorYear = checkpoint?.year || startYear;
     let cursorPage = checkpoint?.page || Math.max(1, page);
@@ -1269,7 +1271,7 @@ const AdminGranCrawlerSection = ({
         await loadFailureHistory();
       };
       while (!controller.signal.aborted && cursorYear === startYear) {
-        const displayedTotal = null;
+        const displayedTotal = checkpoint?.totalPages || null;
         setAutomaticProgress({
           phase: 'collecting',
           year: cursorYear,
@@ -1391,7 +1393,7 @@ const AdminGranCrawlerSection = ({
       }
     } catch (requestError) {
       if (!controller.signal.aborted) {
-        const message = requestError instanceof Error ? requestError.message : 'O modo automatico foi interrompido.';
+        const message = readApiErrorMessage(requestError, 'O modo automatico foi interrompido.');
         const failedFlightSnapshot = failedFlight as AutomaticPublicationFlight | null;
         const checkpointYear = failedFlightSnapshot?.year || cursorYear;
         const checkpointPage = failedFlightSnapshot?.page || cursorPage;

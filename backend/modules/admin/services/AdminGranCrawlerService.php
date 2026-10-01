@@ -552,9 +552,9 @@ final class AdminGranCrawlerService
             null,
             $previewProvider,
         );
-        if (($ingestionPreview['metrics']['rejected'] ?? 0) > 0) {
-            throw new InvalidArgumentException('A pre-validacao do pipeline de ingestao rejeitou um ou mais itens.');
-        }
+        // A pre-validacao e diagnostica: a fila canonica processa e registra
+        // falhas por questao. Um item rejeitado nao deve cancelar as questoes
+        // validas da mesma pagina.
         return (new PrivateQuestionIngestionService($this->db))->enqueueBatchFromAdminSession(
             $preparedPayloads,
             $actorUserId,

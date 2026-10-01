@@ -124,16 +124,43 @@ describe('Gran automatic collection with filtered-out pages', () => {
 
   it('advances past a filtered-out page and finishes when the source is exhausted', async () => {
     pageCount = 2;
+    let releaseSecondPage: (() => void) | null = null;
+    mocks.collect.mockImplementation(async (requestUrl: string) => {
+      if (new URL(requestUrl).searchParams.get('page') === '2') {
+        await new Promise<void>((resolve) => { releaseSecondPage = resolve; });
+      }
+      return { requestUrl, json: { data: { rows: [] } }, examFiles: {}, assetData: {} };
+    });
     await startCollection();
     await act(async () => { await vi.advanceTimersByTimeAsync(400); });
 
     expect(mocks.collect).toHaveBeenCalledTimes(2);
     expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('page')))
       .toEqual(['1', '2']);
+    expect(container.textContent).toContain('Coletando pagina 2 de 2 (ano 2000).');
+    await act(async () => { releaseSecondPage?.(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(mocks.post.mock.calls.filter(([, input]) => input.action === 'save_automatic_checkpoint')
       .map(([, input]) => input.page)).toEqual([2, 3]);
     expect(container.textContent).toContain('Coleta automatica do ano 2000 concluida.');
     expect(mocks.post.mock.calls.some(([, input]) => input.status === 'error')).toBe(false);
+  });
+
+  it('shows the backend validation message instead of a generic HTTP 400', async () => {
+    mocks.post.mockImplementation(async (_endpoint: string, input: Record<string, unknown>) => {
+      if (input.action === 'map_and_enqueue_publication') {
+        throw Object.assign(new Error('Request failed with status code 400'), {
+          response: { data: { message: 'A taxonomia precisa ser sincronizada.' } },
+        });
+      }
+      if (input.action === 'save_automatic_checkpoint') return { data: { data: input } };
+      throw new Error(`Unexpected request: ${String(input.action)}`);
+    });
+
+    await startCollection();
+
+    expect(container.textContent).toContain('A taxonomia precisa ser sincronizada.');
+    expect(container.textContent).not.toContain('Request failed with status code 400');
   });
 
   it.each(['year', 'direct-url'])(
