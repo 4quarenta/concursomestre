@@ -27,7 +27,7 @@ import { buildBreadcrumbList, buildStructuredDataGraph } from '@services/seo/str
 import { publicRoutes } from '@services/routes/publicRoutes';
 import { buildNoIndexMetadata } from '@/app/seoMetadata';
 
-export const revalidate = 300;
+export const revalidate = 0;
 
 type PageProps = { params: Promise<{ slug: string }> };
 

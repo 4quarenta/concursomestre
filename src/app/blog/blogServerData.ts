@@ -108,7 +108,11 @@ const unwrap = (value: unknown): unknown => {
     : value;
 };
 
-const fetchPublic = async <T>(endpoint: string, params: Record<string, string> = {}): Promise<T | null> => {
+const fetchPublic = async <T>(
+  endpoint: string,
+  params: Record<string, string> = {},
+  options: { fresh?: boolean } = {},
+): Promise<T | null> => {
   try {
     const url = new URL(endpoint, apiBaseUrl());
     Object.entries(params).forEach(([key, value]) => {
@@ -116,10 +120,9 @@ const fetchPublic = async <T>(endpoint: string, params: Record<string, string> =
     });
     const response = await fetch(url, {
       headers: { Accept: 'application/json' },
-      next: {
-        revalidate: 300,
-        tags: ['public-blog'],
-      },
+      ...(options.fresh
+        ? { cache: 'no-store' as const }
+        : { next: { revalidate: 300, tags: ['public-blog'] } }),
     });
     if (!response.ok) return null;
     return unwrap(await response.json()) as T;
@@ -145,23 +148,23 @@ export const fetchBlogPageForServer = async (params: {
     ...(params.cursor ? { cursor: params.cursor } : {}),
     ...(params.search ? { search: params.search } : {}),
     limit: String(Math.max(1, Math.min(24, params.limit || 24))),
-  })
-) || {
-  items: [],
-  pageInfo: { limit: 24, hasMore: false, nextCursor: null },
-};
+  }, { fresh: true }) || {
+    items: [],
+    pageInfo: { limit: 24, hasMore: false, nextCursor: null },
+  }
+);
 
 export const fetchBlogArticleForServer = cache(async (slug: string): Promise<BlogArticle | null> => (
-  fetchPublic<BlogArticle>(ENDPOINTS.blog.detail, { slug })
+  fetchPublic<BlogArticle>(ENDPOINTS.blog.detail, { slug }, { fresh: true })
 ));
 
 export const fetchBlogCategoriesForServer = cache(async (): Promise<BlogCategory[]> => {
-  const payload = await fetchPublic<{ items?: BlogCategory[] }>(ENDPOINTS.blog.categories);
+  const payload = await fetchPublic<{ items?: BlogCategory[] }>(ENDPOINTS.blog.categories, {}, { fresh: true });
   return Array.isArray(payload?.items) ? payload.items : [];
 });
 
 export const fetchBlogTagsForServer = cache(async (): Promise<BlogTag[]> => {
-  const payload = await fetchPublic<{ items?: BlogTag[] }>(ENDPOINTS.blog.tags);
+  const payload = await fetchPublic<{ items?: BlogTag[] }>(ENDPOINTS.blog.tags, {}, { fresh: true });
   return Array.isArray(payload?.items) ? payload.items : [];
 });
 
@@ -175,7 +178,7 @@ export const fetchBlogTaxonomyArchiveForServer = cache(async (
     slug,
     ...(cursor ? { cursor } : {}),
     limit: '24',
-  })
+  }, { fresh: true })
 ));
 
 export const fetchPublicExamDirectoryPageForServer = cache(async (params: {

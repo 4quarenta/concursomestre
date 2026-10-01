@@ -66,6 +66,25 @@
 }
 
 @layer components {
+  .blog-rich-content a {
+    color: #4f46e5;
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+
+  .blog-rich-content a:hover {
+    color: #3730a3;
+  }
+
+  .dark .blog-rich-content a {
+    color: #a5b4fc;
+  }
+
+  .dark .blog-rich-content a:hover {
+    color: #c7d2fe;
+  }
+
   .blog-rich-content table {
     display: table;
     width: max-content;
@@ -77,11 +96,13 @@
 
   .blog-rich-content th,
   .blog-rich-content td {
-    min-width: 3rem;
+    min-width: 4rem;
+    max-width: 26rem;
     border: 1px solid rgb(203 213 225);
     padding: 0.625rem 0.75rem;
     text-align: left;
     vertical-align: top;
+    overflow-wrap: anywhere;
   }
 
   .blog-rich-content th {

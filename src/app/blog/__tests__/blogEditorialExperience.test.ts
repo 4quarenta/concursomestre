@@ -36,6 +36,14 @@ describe('blog editorial experience', () => {
     expect(tagPage).toContain("fetchBlogTaxonomyArchiveForServer('tag', slug");
   });
 
+  it('renders blog edits from fresh public data instead of the five-minute API cache', () => {
+    const serverData = readSource('src/app/blog/blogServerData.ts');
+    const articlePage = readSource('src/app/blog/[slug]/page.tsx');
+    expect(serverData).toContain("cache: 'no-store'");
+    expect(serverData).toContain('fetchPublic<BlogArticle>(ENDPOINTS.blog.detail, { slug }, { fresh: true })');
+    expect(articlePage).toContain('export const revalidate = 0;');
+  });
+
   it('uses the shared taxonomy selector for categories and tags in the editor', () => {
     const editor = readSource('src/app/admin/operation/blog/[articleId]/edit/page.tsx');
     expect(editor).toContain('label="Categoria"');

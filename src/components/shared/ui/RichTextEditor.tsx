@@ -29,6 +29,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import { applyRichTextLink, normalizeRichTextLinkUrl } from './richTextEditorLinks';
 
 const FLOATING_TOOLBAR_TOP_OFFSET = 10;
 
@@ -246,18 +247,24 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   };
 
   const applyLink = () => {
-    const normalizedUrl = linkUrl.trim();
+    const normalizedUrl = normalizeRichTextLinkUrl(linkUrl);
     const savedRange = selectionRangeRef.current;
-    if (!savedRange || savedRange.collapsed) {
+    const editor = contentRef.current;
+    if (!savedRange || savedRange.collapsed || !editor) {
       setLinkError('Selecione primeiro o texto que receberá o link.');
       return;
     }
-    if (!/^(https?:\/\/|mailto:|\/)/i.test(normalizedUrl)) {
+    if (!normalizedUrl) {
       setLinkError('Use um endereço https://, http://, mailto: ou um caminho do site.');
       return;
     }
-    restoreSavedSelection();
-    document.execCommand('createLink', false, normalizedUrl);
+    if (!applyRichTextLink(editor, savedRange, normalizedUrl)) {
+      selectionRangeRef.current = null;
+      setLinkError('A seleção mudou. Selecione o texto novamente e tente inserir o link.');
+      return;
+    }
+    editor.focus();
+    selectionRangeRef.current = null;
     emitSanitizedChange();
     setLinkUrl('');
     setLinkError('');
