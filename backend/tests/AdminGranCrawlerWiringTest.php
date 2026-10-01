@@ -19,6 +19,7 @@ $questionsService = (string) file_get_contents($backend . '/modules/questions/se
 $questionsRepository = (string) file_get_contents($backend . '/modules/questions/repositories/QuestionsRepository.php');
 $worker = (string) file_get_contents($backend . '/scripts/workers/process_question_ingestion_jobs.php');
 $component = (string) file_get_contents($root . '/src/app/admin/components/import/AdminGranCrawlerSection.tsx');
+$publicationPolling = (string) file_get_contents($root . '/src/app/admin/components/import/useGranPublicationPolling.ts');
 $reviewBatch = (string) file_get_contents($root . '/src/app/admin/components/import/AdminGranCrawlerReviewBatch.tsx');
 $sections = (string) file_get_contents($root . '/src/app/admin/components/database/AdminDatabaseSections.tsx');
 $bridge = (string) file_get_contents($root . '/src/app/admin/components/import/granExtensionBridge.ts');
@@ -97,7 +98,7 @@ adminGranCrawlerWiringAssert(
     && str_contains($component, "action: 'publication_batch_progress'")
     && str_contains($component, 'AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000')
     && str_contains($component, 'ACTIVE_BATCH_STATUS_REFRESH_MS = 15_000')
-    && str_contains($component, "document.visibilityState !== 'visible'")
+    && str_contains($publicationPolling, "document.visibilityState !== 'visible'")
     && str_contains($service, 'mapAndEnqueuePublication')
     && str_contains($route, "\$action === 'map_and_enqueue_publication'")
     && str_contains($bridge, 'collectGranQuestionById'),
