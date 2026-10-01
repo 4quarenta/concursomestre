@@ -185,7 +185,7 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
           </ul>
         </aside>
       </main>
-      <EliteLandingSections />
+      <EliteLandingSections checkoutHref={annualCheckoutHref} monthlyPrice={monthlyEquivalent} annualPrice={annualPrice} />
     </div>
   );
 }

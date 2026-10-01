@@ -1,8 +1,15 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, ArrowUpRight, Check, CirclePlay, FileQuestion, FlaskConical, LineChart, Sparkles, Target } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, CirclePlay, CreditCard, FileQuestion, FlaskConical, LineChart, LockKeyhole, ShieldCheck, Sparkles, Target } from 'lucide-react';
+
+interface EliteOfferProps {
+  checkoutHref: string;
+  monthlyPrice: number | null;
+  annualPrice: number | null;
+}
 
 const organizations = [
   { name: 'Polícia Federal', category: 'Segurança pública', logo: '/assets/organizations/policia-federal.png', width: 'basis-[245px]' },
@@ -18,13 +25,13 @@ const organizations = [
 const features = [
   {
     id: 'questions', tab: 'Pratique questões', kicker: 'Aprenda resolvendo', title: 'Mais de 3 milhões de questões reais',
-    description: 'Pratique com questões que já caíram em provas, filtre por banca e assunto e revise os comentários para entender cada resposta.',
-    points: ['Questões de concursos e bancas diferentes', 'Comentários para revisar seu raciocínio', 'Acompanhe seu desempenho por assunto'], icon: FileQuestion,
+    description: 'Cada questão explica as alternativas uma a uma e traz um resumo para você entender o conteúdo e saber o que revisar. Você encontra macetes e identifica o que mais costuma cair nas provas.',
+    points: ['Análise detalhada de cada alternativa', 'Resumo da questão com macetes de estudo', 'Veja os assuntos mais cobrados e direcione sua revisão'], icon: FileQuestion,
   },
   {
     id: 'simulations', tab: 'Faça simulados', kicker: 'Treine em condições de prova', title: 'Faça simulados do seu jeito',
-    description: 'Monte simulados para testar seus conhecimentos e se acostumar com o ritmo de uma prova.',
-    points: ['Escolha banca, matérias e quantidade', 'Resolva em uma experiência focada', 'Revise o resultado ao terminar'], icon: CirclePlay,
+    description: 'Monte simulados para testar seus conhecimentos, treinar no ritmo de uma prova e comparar seu desempenho com o de seus concorrentes.',
+    points: ['Escolha banca, matérias e quantidade', 'Compare seu resultado com o dos concorrentes', 'Revise o resultado e acompanhe sua evolução'], icon: CirclePlay,
   },
   {
     id: 'xray', tab: 'Raio-X da banca', kicker: 'Entenda o perfil da cobrança', title: 'Analise a banca com um Raio-X aprofundado',
@@ -87,6 +94,10 @@ function QuestionsDemo() {
         <p className="mt-3 text-[11px] font-bold leading-[1.55] text-slate-800 sm:text-xs">São Poderes da União, independentes e harmônicos entre si, o Legislativo, o Executivo e o Judiciário.</p>
         <div className="mt-3 grid gap-1.5 text-[10px]"><div className="rounded-lg border border-slate-200 px-2.5 py-2">Certo</div><div className="rounded-lg border border-slate-200 px-2.5 py-2">Errado</div></div>
         <div className="mt-3 flex items-center justify-between text-[9px] text-slate-500"><span>Questão 12 de 20</span><span className="rounded-md bg-blue-600 px-3 py-2 font-bold text-white">Responder</span></div>
+        <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/80 p-2.5">
+          <p className="text-[9px] font-extrabold text-indigo-800">Depois de responder, entenda o porquê</p>
+          <p className="mt-1 text-[9px] leading-4 text-slate-600">Análise alternativa por alternativa, resumo do conteúdo, macetes e assuntos mais cobrados para orientar sua revisão.</p>
+        </div>
       </div>
     </DemoFrame>
   );
@@ -118,7 +129,7 @@ function ComparisonDemo() {
   return (
     <DemoFrame>
       <p className="text-[9px] font-extrabold uppercase tracking-[.1em] text-slate-500">Desempenho · prova selecionada</p>
-      <div className="mt-2.5 grid grid-cols-2 gap-2"><div className="rounded-xl border border-slate-200 bg-white p-3.5"><p className="text-[9px] font-bold text-slate-500">Seu aproveitamento</p><p className="mt-1 text-2xl font-black tracking-tight text-slate-800">72%</p><p className="mt-1 text-[9px] font-semibold text-emerald-600">Seu resultado</p></div><div className="rounded-xl border border-slate-200 bg-white p-3.5"><p className="text-[9px] font-bold text-slate-500">Média da prova</p><p className="mt-1 text-2xl font-black tracking-tight text-slate-800">64%</p><p className="mt-1 text-[9px] font-semibold text-slate-500">Outros participantes</p></div></div>
+      <div className="mt-2.5 grid grid-cols-2 gap-2"><div className="rounded-xl border border-slate-200 bg-white p-3.5"><p className="text-[9px] font-bold text-slate-500">Seu aproveitamento</p><p className="mt-1 text-2xl font-black tracking-tight text-slate-800">72%</p><p className="mt-1 text-[9px] font-semibold text-emerald-600">Seu resultado</p></div><div className="rounded-xl border border-slate-200 bg-white p-3.5"><p className="text-[9px] font-bold text-slate-500">Concorrentes</p><p className="mt-1 text-2xl font-black tracking-tight text-slate-800">64%</p><p className="mt-1 text-[9px] font-semibold text-slate-500">Média dos participantes</p></div></div>
       <div className="mt-2.5 rounded-xl border border-slate-200 bg-white p-3.5"><div className="flex items-center justify-between text-[9px] font-bold text-slate-600"><span>Comparativo por matéria</span><span className="text-blue-700">Ver análise <ArrowUpRight className="inline" size={12} /></span></div><div className="mt-3 space-y-2"><div className="flex items-center gap-2 text-[9px]"><span className="w-20 text-slate-500">Português</span><div className="h-1.5 flex-1 rounded-full bg-slate-100"><div className="h-full w-[72%] rounded-full bg-blue-600" /></div><span className="font-bold text-slate-600">72%</span></div><div className="flex items-center gap-2 text-[9px]"><span className="w-20 text-slate-500">Média</span><div className="h-1.5 flex-1 rounded-full bg-slate-100"><div className="h-full w-[64%] rounded-full bg-slate-400" /></div><span className="font-bold text-slate-600">64%</span></div></div></div>
     </DemoFrame>
   );
@@ -153,7 +164,7 @@ function FeatureDemo({ id }: { id: (typeof features)[number]['id'] }) {
   return <UpdatesDemo />;
 }
 
-export default function EliteLandingSections() {
+export default function EliteLandingSections({ checkoutHref, monthlyPrice, annualPrice }: EliteOfferProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<(typeof features)[number]['id']>('questions');
   const [carouselPage, setCarouselPage] = useState(0);
@@ -226,9 +237,9 @@ export default function EliteLandingSections() {
           </div>
 
           <div className="overflow-hidden rounded-[20px] border border-blue-100/10 bg-gradient-to-br from-[#101e32] to-[#0a1321] shadow-[0_25px_80px_rgba(0,0,0,.24)] sm:rounded-[23px]">
-            <div role="tablist" aria-label="Recursos do plano Elite" onKeyDown={handleTabKeyDown} className="flex gap-1 overflow-x-auto border-b border-blue-100/10 p-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:p-3">
+            <div role="tablist" aria-label="Recursos do plano Elite" onKeyDown={handleTabKeyDown} className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-800 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {features.map((feature) => (
-                <button key={feature.id} id={`elite-tab-${feature.id}`} type="button" role="tab" aria-selected={activeTab === feature.id} aria-controls={`elite-panel-${feature.id}`} tabIndex={activeTab === feature.id ? 0 : -1} onClick={() => setActiveTab(feature.id)} className={`min-h-10 shrink-0 rounded-xl border px-3.5 text-[11px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 sm:px-4 sm:text-xs ${activeTab === feature.id ? 'border-blue-300/30 bg-blue-400/10 text-blue-100 shadow-[inset_0_-2px_0_#5893ff]' : 'border-transparent text-slate-400 hover:bg-white/[.04] hover:text-slate-100'}`}>
+                <button key={feature.id} id={`elite-tab-${feature.id}`} type="button" role="tab" aria-selected={activeTab === feature.id} aria-controls={`elite-panel-${feature.id}`} tabIndex={activeTab === feature.id ? 0 : -1} onClick={() => setActiveTab(feature.id)} className={`min-h-10 shrink-0 rounded-lg px-3.5 text-[11px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 sm:px-4 sm:text-xs ${activeTab === feature.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
                   {feature.tab}
                 </button>
               ))}
@@ -251,6 +262,46 @@ export default function EliteLandingSections() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="elite-feature-offer-title" className="px-5 pb-16 sm:px-7 sm:pb-20 lg:px-9">
+        <div className="mx-auto grid max-w-[1180px] gap-7 rounded-[22px] border border-blue-100/10 bg-gradient-to-br from-[#14243b] via-[#101d30] to-[#0a1422] p-5 shadow-[0_24px_70px_rgba(0,0,0,.28)] sm:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,.72fr)] lg:items-center lg:gap-10 lg:p-10">
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-blue-300">Sua preparação merece mais direção</p>
+            <h2 id="elite-feature-offer-title" className="mt-3 max-w-[680px] text-[clamp(1.65rem,3.6vw,2.45rem)] font-black leading-[1.12] tracking-[-.045em]">
+              Sabemos que a vida do concurseiro é complicada. Por isso, oferecemos acesso a tudo isso pelo preço de uma lata de Coca-Cola.
+            </h2>
+            <p className="mt-4 max-w-[620px] text-sm leading-6 text-slate-300">
+              Tenha o plano Elite anual com cobrança mensal no cartão. Você paga a parcela do mês, sem comprometer de uma vez o limite do valor anual.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-[#080f1b]/70 p-5 sm:p-6">
+            {monthlyPrice !== null && annualPrice !== null ? (
+              <>
+                <p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-slate-400">Elite anual</p>
+                <p className="mt-2 flex items-baseline gap-1.5">
+                  <span className="text-sm font-bold text-slate-100">R$</span>
+                  <span className="text-4xl font-black tracking-tight text-white">{monthlyPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-sm text-slate-300">/mês</span>
+                </p>
+                <p className="mt-1 text-[11px] text-slate-400">Em até 12 cobranças · total anual de R$ {annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </>
+            ) : (
+              <p className="text-sm font-bold text-slate-100">Conheça as condições do plano Elite anual.</p>
+            )}
+
+            <Link href={checkoutHref} className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-center text-xs font-black uppercase tracking-[.12em] text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-300">
+              Assinar o Elite anual <ArrowRight aria-hidden="true" size={16} />
+            </Link>
+
+            <ul className="mt-4 grid gap-2.5 text-[11px] font-semibold text-slate-300 sm:grid-cols-2">
+              <li className="flex items-center gap-2"><LockKeyhole aria-hidden="true" size={15} className="shrink-0 text-emerald-400" /> Compra segura</li>
+              <li className="flex items-center gap-2"><ShieldCheck aria-hidden="true" size={15} className="shrink-0 text-emerald-400" /> Garantia de 7 dias</li>
+              <li className="flex items-center gap-2 sm:col-span-2"><CreditCard aria-hidden="true" size={15} className="shrink-0 text-emerald-400" /> Cartão: somente a parcela mensal ocupa o limite</li>
+            </ul>
           </div>
         </div>
       </section>
