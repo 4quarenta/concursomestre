@@ -58,6 +58,7 @@ export const buildGranQuestionQueryUrl = (
   }
   parsed.searchParams.set('anulada', '1');
   parsed.searchParams.set('desatualizada', '1');
+  parsed.searchParams.set('inedita', '0');
   parsed.searchParams.set('page', String(page));
   parsed.searchParams.set('perPage', String(perPage));
   parsed.searchParams.delete('anos');

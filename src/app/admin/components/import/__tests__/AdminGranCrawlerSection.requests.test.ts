@@ -138,6 +138,11 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('function fingerprintAutomaticInput(input: unknown): string');
     expect(source).toContain("action: 'map_and_enqueue_publication'");
     expect(source).toContain('const collectAndEnqueueAutomaticPage = React.useCallback');
+    expect(source).toContain('O total sera recalculado ao retomar.');
+    expect(source).not.toContain('Progresso salvo: pagina ${checkpoint.page}${checkpoint.totalPages');
+    expect(source).toContain('setAutomaticFilteredQuestionCount(Number.isFinite(data.total) && data.total >= 0 ? data.total : null)');
+    expect(source).toContain('data-testid="gran-automatic-filter-count"');
+    expect(source).toContain('questões encontradas para o ano');
     expect(source).toContain('fingerprintAutomaticInput({');
     expect(source).not.toContain('payloads: pagePayloads');
     expect(source).toContain("action: 'publication_batch_progress'");

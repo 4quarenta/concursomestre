@@ -483,6 +483,26 @@ granCrawlerAssert(
     && str_contains($observedUrl, 'desatualizada=1'),
     'A URL direta deve preservar filtros/paginacao e incluir anuladas/desatualizadas.'
 );
+parse_str((string) parse_url($observedUrl, PHP_URL_QUERY), $observedQuery);
+granCrawlerAssert(
+    (string) ($observedQuery['inedita'] ?? '') === '0',
+    'A consulta da Gran deve excluir questoes ineditas.'
+);
+
+$ineditaPayload = $remotePayload;
+$ineditaPayload['data']['rows'][0]['inedita'] = true;
+$ineditaPayload['data']['total'] = 1;
+$ineditaResult = $service->mapBrowserResponse([
+    'granResponse' => $ineditaPayload,
+    'page' => 1,
+    'perPage' => 20,
+]);
+granCrawlerAssert(
+    $ineditaResult['questionCount'] === 1
+    && count($ineditaResult['payloads']) === 1
+    && (string) ($ineditaResult['payloads'][0]['questions'][0]['source']['externalId'] ?? '') === '992',
+    'Questao marcada como inedita deve ser removida antes da fila/importacao.'
+);
 
 $unsafeUrlRejected = false;
 try {

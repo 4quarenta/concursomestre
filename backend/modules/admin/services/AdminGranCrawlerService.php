@@ -196,6 +196,7 @@ final class AdminGranCrawlerService
                 'resolucao' => 'TODAS',
                 'anulada' => 1,
                 'desatualizada' => 1,
+                'inedita' => 0,
                 'tiposProva' => 1,
                 'sort' => '[{"anos":"desc"},{"_score":"desc"}]',
             ];
@@ -276,6 +277,7 @@ final class AdminGranCrawlerService
         $query['perPage'] = $perPage;
         $query['anulada'] = 1;
         $query['desatualizada'] = 1;
+        $query['inedita'] = 0;
 
         if (isset($query['sort'])) {
             if (!is_string($query['sort']) || strlen($query['sort']) > 2_000) {
@@ -846,6 +848,10 @@ final class AdminGranCrawlerService
      */
     private function mapQuestionImportPayloads(array $rows, array $metadata): array
     {
+        $rows = array_values(array_filter(
+            $rows,
+            fn (array $row): bool => !$this->isIneditaQuestion($row)
+        ));
         $this->granTaxonomyIdentityCache = [];
         $this->granQuestionIdentityCache = [];
         $this->granExamIdentityCache = [];
@@ -883,6 +889,16 @@ final class AdminGranCrawlerService
         }
 
         return $payloads;
+    }
+
+    private function isIneditaQuestion(array $row): bool
+    {
+        foreach (['inedita', 'isInedita', 'is_inedita', 'questaoInedita', 'questao_inedita'] as $field) {
+            if (array_key_exists($field, $row) && $this->isTruthyFlag($row[$field])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function countPayloadQuestions(array $payloads): int

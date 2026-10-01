@@ -524,6 +524,7 @@ const AdminGranCrawlerSection = ({
     message: 'Modo automatico desativado.',
   });
   const [automaticCheckpoint, setAutomaticCheckpoint] = React.useState<GranAutomaticCheckpoint | null>(null);
+  const [automaticFilteredQuestionCount, setAutomaticFilteredQuestionCount] = React.useState<number | null>(null);
   const [result, setResult] = React.useState<GranFetchResult | null>(null);
   const [currentBatch, setCurrentBatch] = React.useState<GranPublicationBatch | null>(null);
   const [failureHistory, setFailureHistory] = React.useState<GranFailureHistoryPage>({
@@ -639,12 +640,13 @@ const AdminGranCrawlerSection = ({
           phase: checkpoint.status === 'error' ? 'error' : 'idle',
           year: checkpoint.year,
           page: checkpoint.page,
-          totalPages: checkpoint.totalPages || null,
+          totalPages: null,
           questionsCollected: 0,
           message: checkpoint.status === 'error' && checkpoint.lastError
-            ? `Interrompido na pagina ${checkpoint.page}${checkpoint.totalPages ? ` de ${checkpoint.totalPages}` : ''} de ${checkpoint.year}: ${checkpoint.lastError}`
-            : `Progresso salvo: pagina ${checkpoint.page}${checkpoint.totalPages ? ` de ${checkpoint.totalPages}` : ''} de ${checkpoint.year}. Ative para continuar.`,
+            ? `Interrompido na pagina ${checkpoint.page} de ${checkpoint.year}: ${checkpoint.lastError}`
+            : `Progresso salvo: pagina ${checkpoint.page} do ano ${checkpoint.year}. O total sera recalculado ao retomar.`,
         });
+        setAutomaticFilteredQuestionCount(null);
       }
       if (data?.failureHistory && Array.isArray(data.failureHistory.items)) {
         const activeItems = data.failureHistory.items.filter((failure) => (
@@ -813,6 +815,7 @@ const AdminGranCrawlerSection = ({
     await apiClient.post(ENDPOINT, { action: 'clear_automatic_checkpoint' });
     setAutomaticCheckpoint(null);
     automaticCheckpointRef.current = null;
+    setAutomaticFilteredQuestionCount(null);
     bootstrapCache = null;
   }, []);
 
@@ -1264,7 +1267,7 @@ const AdminGranCrawlerSection = ({
         await loadFailureHistory();
       };
       while (!controller.signal.aborted && cursorYear === startYear) {
-        const displayedTotal = checkpoint.totalPages || null;
+        const displayedTotal = null;
         setAutomaticProgress({
           phase: 'collecting',
           year: cursorYear,
@@ -1300,6 +1303,11 @@ const AdminGranCrawlerSection = ({
         }
         if (!data) break;
         const pageQuestionCount = data.questionCount;
+        if (Number.isFinite(data.total) && data.total > 0) {
+          setAutomaticFilteredQuestionCount(data.total);
+        } else if (data.total === 0 && cursorPage === 1 && pageQuestionCount === 0) {
+          setAutomaticFilteredQuestionCount(0);
+        }
         const knownPageCount = data.pages > 0
           ? data.pages
           : data.total > 0
@@ -2052,6 +2060,11 @@ const AdminGranCrawlerSection = ({
               <p className="mt-2 text-xs font-semibold text-sky-800 dark:text-sky-300">
                 {automaticProgress.message}
               </p>
+              {automaticFilteredQuestionCount !== null && (
+                <p className="mt-1 text-xs font-semibold text-sky-800 dark:text-sky-300" data-testid="gran-automatic-filter-count">
+                  {automaticFilteredQuestionCount.toLocaleString('pt-BR')} questões encontradas para o ano {automaticProgress.year || year}.
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <p className="max-w-xs text-xs leading-5 text-slate-500 dark:text-slate-400">

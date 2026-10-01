@@ -14,6 +14,7 @@ describe('Gran crawler URL controls', () => {
     expect(result.searchParams.get('banca')).toBe('10');
     expect(result.searchParams.get('anulada')).toBe('1');
     expect(result.searchParams.get('desatualizada')).toBe('1');
+    expect(result.searchParams.get('inedita')).toBe('0');
   });
 
   it('reads controls from a pasted URL and removes a cleared year', () => {
@@ -30,6 +31,7 @@ describe('Gran crawler URL controls', () => {
     ));
     expect(result.searchParams.get('anulada')).toBe('1');
     expect(result.searchParams.get('desatualizada')).toBe('1');
+    expect(result.searchParams.get('inedita')).toBe('0');
     expect(result.searchParams.get('perPage')).toBe('1000');
     expect(result.searchParams.get('anos[]')).toBe('2000');
   });
