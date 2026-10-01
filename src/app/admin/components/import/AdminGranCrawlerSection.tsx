@@ -1359,7 +1359,7 @@ const AdminGranCrawlerSection = ({
           page: nextPage,
           totalPages: knownPageCount || null,
           status: 'running',
-          lastBatchId: data.batch.batchId,
+          lastBatchId: data.batch?.batchId ?? checkpoint.lastBatchId ?? null,
           lastError: null,
         }, controller.signal);
         cursorPage = nextPage;
