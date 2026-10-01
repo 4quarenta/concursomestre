@@ -1,12 +1,12 @@
 import { readStaticSitemapArtifact } from '@/services/seo/staticSitemapArtifacts';
 import { getSeoLaunchMode } from '@services/seo/launchControl';
-import { isProductionSitemapPublicationAllowed } from '@services/seo/runtimeEnvironment';
+import { getTrustedRequestOrigin, isProductionSitemapPublicationAllowed } from '@services/seo/runtimeEnvironment';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
-  if (!isProductionSitemapPublicationAllowed(getSeoLaunchMode(), new URL(request.url).origin)) {
+  if (!isProductionSitemapPublicationAllowed(getSeoLaunchMode(), getTrustedRequestOrigin(request))) {
     return new Response('Sitemap unavailable before SEO production launch', {
       status: 503,
       headers: { 'Cache-Control': 'private, no-store', 'X-Robots-Tag': 'noindex, nofollow' },

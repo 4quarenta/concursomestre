@@ -5,6 +5,7 @@ import { canAccessAdminRoute } from '@services/auth/adminRouteAccess';
 import { hasAuthenticatedRouteSession } from '@services/auth/authenticatedRouteAccess';
 import { publicRoutes, sanitizePublicRouteQuery } from '@services/routes/publicRoutes';
 import { resolveXRobotsTag } from '@services/seo/launchControl';
+import { getTrustedRequestOrigin } from '@services/seo/runtimeEnvironment';
 
 const adminNotFound = () => new NextResponse(null, {
   status: 404,
@@ -20,7 +21,7 @@ const nextWithSeoLaunchHeaders = (request: NextRequest): NextResponse => {
     request.nextUrl.pathname,
     request.nextUrl.searchParams,
     undefined,
-    request.nextUrl.origin,
+    getTrustedRequestOrigin(request),
   );
   if (xRobotsTag) response.headers.set('X-Robots-Tag', xRobotsTag);
   return response;

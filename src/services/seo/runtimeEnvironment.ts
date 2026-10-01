@@ -84,6 +84,22 @@ export interface SeoRuntimeEnvironmentDecision {
 
 const readEnvironment = (key: string): string => String(process.env[key] || '').trim();
 
+export const getTrustedRequestOrigin = (request: Pick<Request, 'url' | 'headers'>): string => {
+  const fallbackOrigin = new URL(request.url).origin;
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+    ?.split(',')[0]
+    .trim()
+    .toLowerCase();
+  const host = request.headers.get('host')?.split(',')[0].trim();
+  if (!host || (forwardedProto !== 'http' && forwardedProto !== 'https')) return fallbackOrigin;
+
+  try {
+    return new URL(`${forwardedProto}://${host}`).origin;
+  } catch {
+    return fallbackOrigin;
+  }
+};
+
 export const evaluateSeoRuntimeEnvironment = ({
   launchMode,
   configuredOrigin = getConfiguredSiteUrl().origin,

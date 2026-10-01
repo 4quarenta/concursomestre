@@ -1,6 +1,7 @@
 import { SEO_ROBOT_DISALLOW_PATHS } from '@/services/seo/sitemapData';
 import { getSeoLaunchMode } from '@/services/seo/launchControl';
 import {
+  getTrustedRequestOrigin,
   isProductionSitemapPublicationAllowed,
   seoIndexPolicy,
 } from '@/services/seo/runtimeEnvironment';
@@ -22,7 +23,7 @@ const buildRobotsText = (sitemapPublished: boolean): string => {
 };
 
 export async function GET(request: Request) {
-  const requestOrigin = new URL(request.url).origin;
+  const requestOrigin = getTrustedRequestOrigin(request);
   const publicationAllowed = isProductionSitemapPublicationAllowed(getSeoLaunchMode(), requestOrigin);
   const sitemapPublished = publicationAllowed
     && await readStaticSitemapArtifact('sitemap.xml') !== null;
