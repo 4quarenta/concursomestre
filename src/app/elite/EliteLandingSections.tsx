@@ -273,40 +273,51 @@ export default function EliteLandingSections({ checkoutHref, monthlyPrice, annua
       </section>
 
       <section aria-labelledby="elite-feature-offer-title" className="px-5 pb-16 sm:px-7 sm:pb-20 lg:px-9">
-        <div className="mx-auto grid max-w-[1180px] gap-7 rounded-[22px] border border-blue-100/10 bg-gradient-to-br from-[#14243b] via-[#101d30] to-[#0a1422] p-5 shadow-[0_24px_70px_rgba(0,0,0,.28)] sm:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,.72fr)] lg:items-center lg:gap-10 lg:p-10">
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-blue-300">Sua preparação merece mais direção</p>
-            <h2 id="elite-feature-offer-title" className="mt-3 max-w-[680px] text-[clamp(1.65rem,3.6vw,2.45rem)] font-black leading-[1.12] tracking-[-.045em]">
-              Sabemos que a vida do concurseiro é complicada. Por isso, oferecemos acesso a tudo isso pelo preço de uma lata de Coca-Cola.
+        <div className="mx-auto max-w-[1180px]">
+          <header className="mx-auto mb-5 max-w-[820px] text-center sm:mb-6">
+            <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-slate-400">Tudo para avançar na preparação</p>
+            <h2 id="elite-feature-offer-title" className="mt-2 text-[clamp(1.6rem,3.2vw,2.15rem)] font-black leading-[1.1] tracking-[-.045em]">
+              Sabemos como a vida do <span className="text-[#9ecbff]">concurseiro</span> é difícil.
             </h2>
-            <p className="mt-4 max-w-[620px] text-sm leading-6 text-slate-300">
-              Tenha o plano Elite anual com cobrança mensal no cartão. Você paga a parcela do mês, sem comprometer de uma vez o limite do valor anual.
+            <p className="mx-auto mt-2 max-w-[680px] text-sm leading-6 text-slate-300">
+              O Elite reúne ferramentas para você estudar com estratégia, com cobrança mensal no cartão.
             </p>
-          </div>
+          </header>
 
-          <div className="rounded-2xl border border-white/10 bg-[#080f1b]/70 p-5 sm:p-6">
-            {monthlyPrice !== null && annualPrice !== null ? (
-              <>
-                <p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-slate-400">Elite anual</p>
-                <p className="mt-2 flex items-baseline gap-1.5">
-                  <span className="text-sm font-bold text-slate-100">R$</span>
-                  <span className="text-4xl font-black tracking-tight text-white">{monthlyPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  <span className="text-sm text-slate-300">/mês</span>
-                </p>
-                <p className="mt-1 text-[11px] text-slate-400">Em até 12 cobranças · total anual de R$ {annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </>
-            ) : (
-              <p className="text-sm font-bold text-slate-100">Conheça as condições do plano Elite anual.</p>
-            )}
+          <div className="relative overflow-hidden rounded-[19px] border border-white/[.12] bg-[linear-gradient(112deg,#141d2b_0%,#101824_58%,#111925_100%)] px-5 py-5 shadow-[0_20px_50px_rgba(0,0,0,.22)] sm:px-6">
+            <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-60 rounded-full bg-slate-300/[.06] blur-3xl" />
+            <div className="relative grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center md:gap-5">
+              <div className="min-w-0">
+                <span className="inline-flex min-h-6 items-center rounded-full border border-white/[.12] bg-white/[.05] px-2.5 py-1 text-[10px] font-extrabold tracking-[.12em] text-slate-200">ELITE ANUAL</span>
+                <h3 className="mt-2 max-w-[540px] text-[clamp(1rem,1.8vw,1.15rem)] font-extrabold leading-6 tracking-[-.025em]">
+                  <span className="text-[#9ecbff]">Acesso completo</span> pelo preço de uma lata de Coca-Cola.
+                </h3>
+              </div>
 
-            <Link href={checkoutHref} className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-center text-xs font-black uppercase tracking-[.12em] text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-300">
-              Assinar o Elite anual <ArrowRight aria-hidden="true" size={16} />
-            </Link>
+              <div className="text-left md:border-l md:border-white/[.14] md:pl-5 md:text-right">
+                {monthlyPrice !== null && annualPrice !== null ? (
+                  <>
+                    <p className="flex items-baseline gap-1.5 md:justify-end">
+                      <span className="text-sm font-bold text-slate-100">R$</span>
+                      <span className="text-[30px] font-black leading-none tracking-[-.06em] text-white">{monthlyPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="text-[13px] text-slate-300">/mês</span>
+                    </p>
+                    <p className="mt-1.5 text-[11px] whitespace-nowrap text-slate-400">Total anual de R$ {annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  </>
+                ) : (
+                  <p className="text-sm font-bold text-slate-100">Consulte o valor do Elite anual.</p>
+                )}
+              </div>
 
-            <ul className="mt-4 grid gap-2.5 text-[11px] font-semibold text-slate-300 sm:grid-cols-2">
-              <li className="flex items-center gap-2"><LockKeyhole aria-hidden="true" size={15} className="shrink-0 text-emerald-400" /> Compra segura</li>
-              <li className="flex items-center gap-2"><ShieldCheck aria-hidden="true" size={15} className="shrink-0 text-emerald-400" /> Garantia de 7 dias</li>
-              <li className="flex items-center gap-2 sm:col-span-2"><CreditCard aria-hidden="true" size={15} className="shrink-0 text-emerald-400" /> Cartão: somente a parcela mensal ocupa o limite</li>
+              <Link href={checkoutHref} className="inline-flex min-h-12 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[11px] bg-[#e8edf5] px-4 py-3 text-center text-[11px] font-extrabold uppercase tracking-[.06em] text-slate-950 transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-300 md:w-auto">
+                <span className="shrink-0 whitespace-nowrap">Quero o Elite anual</span> <ArrowRight aria-hidden="true" size={16} className="shrink-0" />
+              </Link>
+            </div>
+
+            <ul className="relative mt-4 flex flex-wrap gap-x-6 gap-y-2.5 border-t border-white/[.10] pt-3 text-[11px] font-semibold text-slate-300">
+              <li className="flex items-center gap-2"><LockKeyhole aria-hidden="true" size={14} className="shrink-0 text-[#9ecbff]" /> Compra segura</li>
+              <li className="flex items-center gap-2"><ShieldCheck aria-hidden="true" size={14} className="shrink-0 text-[#9ecbff]" /> Garantia de 7 dias</li>
+              <li className="flex items-center gap-2"><CreditCard aria-hidden="true" size={14} className="shrink-0 text-[#9ecbff]" /> Só a parcela do mês ocupa o limite do cartão</li>
             </ul>
           </div>
         </div>
