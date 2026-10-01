@@ -12,9 +12,9 @@
           "indexability": { "status": "INDEX", "reasonCodes": [] },
           "resolution": { "action": "render", "httpStatus": 200, "target": null },
           "canonical": {
-            "path": "/questoes/123/exemplo",
-            "url": "https://concursomestre.com/questoes/123/exemplo",
-            "slug": "exemplo"
+            "path": "/questoes/123/slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo",
+            "url": "https://concursomestre.com/questoes/123/slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo",
+            "slug": "slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo-slug-longo"
           },
           "robots": { "index": true, "follow": true, "archive": true, "imageIndex": true },
           "sitemap": { "eligible": true, "section": "questions", "lastModified": "2026-08-12T12:00:00Z" }

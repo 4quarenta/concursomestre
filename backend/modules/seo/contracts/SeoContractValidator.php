@@ -510,7 +510,7 @@ final class SeoContractValidator
             && str_starts_with($value['url'], 'https://')
             && is_string($value['slug'])
             && preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $value['slug']) === 1
-            && strlen($value['slug']) <= 80;
+            && strlen($value['slug']) <= 190;
     }
 
     /** @param mixed $value

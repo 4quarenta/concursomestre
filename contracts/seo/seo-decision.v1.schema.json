@@ -106,7 +106,7 @@
         "slug": {
           "type": "string",
           "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
-          "maxLength": 80
+          "maxLength": 190
         }
       }
     },

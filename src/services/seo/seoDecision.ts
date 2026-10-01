@@ -131,7 +131,7 @@ const validateShape = (value: unknown): string[] => {
       || !/^https:\/\//.test(canonical.url)
       || typeof canonical.slug !== 'string'
       || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(canonical.slug)
-      || canonical.slug.length > 80) {
+      || canonical.slug.length > 190) {
       errors.push('SeoDecision canonical is invalid.');
     }
   }
