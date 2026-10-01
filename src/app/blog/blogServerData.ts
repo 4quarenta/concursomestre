@@ -148,7 +148,7 @@ export const fetchBlogPageForServer = async (params: {
     ...(params.cursor ? { cursor: params.cursor } : {}),
     ...(params.search ? { search: params.search } : {}),
     limit: String(Math.max(1, Math.min(24, params.limit || 24))),
-  }, { fresh: true }) || {
+  }) || {
     items: [],
     pageInfo: { limit: 24, hasMore: false, nextCursor: null },
   }
@@ -159,12 +159,12 @@ export const fetchBlogArticleForServer = cache(async (slug: string): Promise<Blo
 ));
 
 export const fetchBlogCategoriesForServer = cache(async (): Promise<BlogCategory[]> => {
-  const payload = await fetchPublic<{ items?: BlogCategory[] }>(ENDPOINTS.blog.categories, {}, { fresh: true });
+  const payload = await fetchPublic<{ items?: BlogCategory[] }>(ENDPOINTS.blog.categories);
   return Array.isArray(payload?.items) ? payload.items : [];
 });
 
 export const fetchBlogTagsForServer = cache(async (): Promise<BlogTag[]> => {
-  const payload = await fetchPublic<{ items?: BlogTag[] }>(ENDPOINTS.blog.tags, {}, { fresh: true });
+  const payload = await fetchPublic<{ items?: BlogTag[] }>(ENDPOINTS.blog.tags);
   return Array.isArray(payload?.items) ? payload.items : [];
 });
 
@@ -178,7 +178,7 @@ export const fetchBlogTaxonomyArchiveForServer = cache(async (
     slug,
     ...(cursor ? { cursor } : {}),
     limit: '24',
-  }, { fresh: true })
+  })
 ));
 
 export const fetchPublicExamDirectoryPageForServer = cache(async (params: {
