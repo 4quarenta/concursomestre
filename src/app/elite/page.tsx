@@ -107,7 +107,7 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
             Mais de 3 milhões de questões reais <span className="text-blue-300">que já caíram em provas.</span>
           </h1>
           <p className="mt-4 max-w-[540px] text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-            Treine com foco, entenda seus erros e acompanhe sua evolução com as ferramentas do plano Elite.
+            Acesse todas as funcionalidades do Elite, pagando mês a mês no cartão: equivalente a R$ 9,98/mês em até 12 cobranças.
           </p>
 
           <ul className="mt-5 grid gap-2.5">
