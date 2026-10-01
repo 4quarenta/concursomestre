@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -7,6 +18,7 @@ import { resolvePlanOffer } from '@services/plans';
 import { fetchPublicMarketingSettings } from '../publicMarketingSettings';
 import { fetchPublicPlanCatalogForServer } from '../planos/plansServerData';
 import EliteLandingSections from './EliteLandingSections';
+import ElitePlanComparison from './ElitePlanComparison';
 
 export const revalidate = 300;
 
@@ -60,6 +72,7 @@ const benefits = [
   'Suporte prioritário e acesso antecipado',
 ];
 
+/** Monta no servidor a landing /elite e reúne oferta, demonstrações e comparação dos planos. */
 export default async function EliteLandingPage({ searchParams }: EliteLandingProps) {
   const [plans, query, marketingSettings] = await Promise.all([
     fetchPublicPlanCatalogForServer(),
@@ -186,6 +199,7 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
         </aside>
       </main>
       <EliteLandingSections checkoutHref={annualCheckoutHref} monthlyPrice={monthlyEquivalent} annualPrice={annualPrice} />
+      <ElitePlanComparison settings={marketingSettings.settings ?? undefined} />
     </div>
   );
 }
