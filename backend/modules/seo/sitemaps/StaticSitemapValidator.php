@@ -286,36 +286,9 @@ final class StaticSitemapValidator
                 $requestUrl = $httpOrigin . (string) ($parts['path'] ?? '/');
                 $handle = curl_init($requestUrl);
                 $responseHeaders = [];
-                $options = [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_FOLLOWLOCATION => false,
-                    CURLOPT_CONNECTTIMEOUT => 10,
-                    CURLOPT_TIMEOUT => 30,
-                    CURLOPT_USERAGENT => 'ConcursoMestre-SitemapValidator/1.0',
-                    CURLOPT_HTTPHEADER => ['Accept: text/html,application/xhtml+xml'],
-                    CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$responseHeaders): int {
-                        $length = strlen($line);
-                        $parts = explode(':', $line, 2);
-                        if (count($parts) === 2) {
-                            $responseHeaders[strtolower(trim($parts[0]))] = trim($parts[1]);
-                        }
-                        return $length;
-                    },
-                ];
-                $originParts = parse_url($httpOrigin);
-                $canonicalHost = (string) parse_url($this->canonicalOrigin, PHP_URL_HOST);
-                $originHost = is_array($originParts) ? strtolower((string) ($originParts['host'] ?? '')) : '';
-                $originScheme = is_array($originParts) ? strtolower((string) ($originParts['scheme'] ?? '')) : '';
-                $originPort = is_array($originParts) ? (int) ($originParts['port'] ?? 443) : 0;
-                if ($this->validationAddress !== null
-                    && $originHost === $canonicalHost
-                    && $originScheme === 'https'
-                    && $originPort === 443) {
-                    $options[CURLOPT_RESOLVE] = [$canonicalHost . ':443:' . $this->validationAddress];
-                }
-                curl_setopt_array($handle, $options);
+                curl_setopt_array($handle, $this->httpRequestOptions($httpOrigin, $responseHeaders));
                 curl_multi_add_handle($multi, $handle);
-                $handles[$index] = [$handle, $entry, &$responseHeaders];
+                $handles[$index] = [$handle, $entry, &$responseHeaders, $requestUrl];
             }
             do {
                 $status = curl_multi_exec($multi, $active);
@@ -324,9 +297,23 @@ final class StaticSitemapValidator
                 }
             } while ($active && $status === CURLM_OK);
 
-            foreach ($handles as [$handle, $entry, $responseHeaders]) {
+            foreach ($handles as [$handle, $entry, $responseHeaders, $requestUrl]) {
                 $body = (string) curl_multi_getcontent($handle);
                 $statusCode = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+                $curlErrno = curl_errno($handle);
+                curl_multi_remove_handle($multi, $handle);
+                curl_close($handle);
+
+                if (self::isRetryableTransportFailure($statusCode, $curlErrno)) {
+                    $responseHeaders = [];
+                    $retry = curl_init($requestUrl);
+                    curl_setopt_array($retry, $this->httpRequestOptions($httpOrigin, $responseHeaders));
+                    $retryBody = curl_exec($retry);
+                    $body = is_string($retryBody) ? $retryBody : '';
+                    $statusCode = (int) curl_getinfo($retry, CURLINFO_RESPONSE_CODE);
+                    curl_close($retry);
+                }
+
                 if ($statusCode === 200) {
                     $report['status200']++;
                     [$canonical, $robots] = $this->readHtmlSeo($body);
@@ -361,12 +348,54 @@ final class StaticSitemapValidator
                     $report['status5xx']++;
                     $report['issues'][] = ['type' => 'http_5xx', 'url' => $entry['url'], 'status' => $statusCode];
                 }
-                curl_multi_remove_handle($multi, $handle);
-                curl_close($handle);
             }
             curl_multi_close($multi);
         }
         return $report;
+    }
+
+    /** @param array<string,string> $responseHeaders @return array<int,mixed> */
+    private function httpRequestOptions(string $httpOrigin, array &$responseHeaders): array
+    {
+        $options = [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_USERAGENT => 'ConcursoMestre-SitemapValidator/1.0',
+            CURLOPT_HTTPHEADER => ['Accept: text/html,application/xhtml+xml'],
+            CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$responseHeaders): int {
+                $length = strlen($line);
+                $parts = explode(':', $line, 2);
+                if (count($parts) === 2) {
+                    $responseHeaders[strtolower(trim($parts[0]))] = trim($parts[1]);
+                }
+                return $length;
+            },
+        ];
+        $originParts = parse_url($httpOrigin);
+        $canonicalHost = (string) parse_url($this->canonicalOrigin, PHP_URL_HOST);
+        $originHost = is_array($originParts) ? strtolower((string) ($originParts['host'] ?? '')) : '';
+        $originScheme = is_array($originParts) ? strtolower((string) ($originParts['scheme'] ?? '')) : '';
+        $originPort = is_array($originParts) ? (int) ($originParts['port'] ?? 443) : 0;
+        if ($this->validationAddress !== null
+            && $originHost === $canonicalHost
+            && $originScheme === 'https'
+            && $originPort === 443) {
+            $options[CURLOPT_RESOLVE] = [$canonicalHost . ':443:' . $this->validationAddress];
+        }
+        return $options;
+    }
+
+    private static function isRetryableTransportFailure(int $statusCode, int $curlErrno): bool
+    {
+        return $statusCode === 0 && in_array($curlErrno, [
+            CURLE_OPERATION_TIMEDOUT,
+            CURLE_COULDNT_CONNECT,
+            CURLE_RECV_ERROR,
+            CURLE_SEND_ERROR,
+            CURLE_GOT_NOTHING,
+        ], true);
     }
 
     /** @return array{0:?string,1:?string} */

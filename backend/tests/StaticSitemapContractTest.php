@@ -11,6 +11,7 @@ function sitemapContractAssert(bool $condition, string $message): void
 
 $backend = dirname(__DIR__);
 $root = dirname($backend);
+require_once $backend . '/modules/seo/sitemaps/StaticSitemapValidator.php';
 $generator = (string) file_get_contents($backend . '/scripts/seo/generate_static_sitemaps.php');
 $productionPageMap = json_decode((string) file_get_contents($root . '/config/seo/seo-production-page-map.v1.json'), true, 512, JSON_THROW_ON_ERROR);
 $blogWrapper = (string) file_get_contents($backend . '/scripts/seo/generate_static_blog_sitemaps.php');
@@ -90,6 +91,12 @@ sitemapContractAssert(!str_contains($nginx, 'alias '), 'Nginx example bypasses a
 sitemapContractAssert(str_contains($validator, "'legacy_url'"), 'Validator must reject aliases.');
 sitemapContractAssert(str_contains($validator, "'canonical_mismatch'"), 'Validator must verify self canonical over HTTP.');
 sitemapContractAssert(str_contains($validator, 'CURLOPT_RESOLVE') && str_contains($validator, 'SITEMAP_VALIDATION_ADDRESS'), 'Production sitemap validation must pin canonical HTTPS requests to the local origin when configured.');
+sitemapContractAssert(str_contains($validator, 'isRetryableTransportFailure') && str_contains($validator, 'CURLE_OPERATION_TIMEDOUT'), 'Sitemap validation must retry a single transient transport failure.');
+$retryPredicate = new ReflectionMethod(StaticSitemapValidator::class, 'isRetryableTransportFailure');
+sitemapContractAssert($retryPredicate->invoke(null, 0, CURLE_OPERATION_TIMEDOUT) === true, 'Timed out requests are not classified as retryable transport failures.');
+sitemapContractAssert($retryPredicate->invoke(null, 0, CURLE_COULDNT_CONNECT) === true, 'Connection failures are not classified as retryable transport failures.');
+sitemapContractAssert($retryPredicate->invoke(null, 500, CURLE_OPERATION_TIMEDOUT) === false, 'HTTP failures must not be retried as transport failures.');
+sitemapContractAssert($retryPredicate->invoke(null, 200, 0) === false, 'Successful responses must not be retried.');
 sitemapContractAssert(str_contains($generator, 'validateForPromotion'), 'Public promotion does not require semantic HTTP validation.');
 
 sitemapContractAssert(!is_file($root . '/src/app/sitemap.ts'), 'Dynamic Next sitemap authority still exists.');
