@@ -109,7 +109,13 @@ function SimulationsDemo() {
       <p className="text-[9px] font-extrabold uppercase tracking-[.1em] text-slate-500">Simulados · personalize sua prática</p>
       <div className="mt-2.5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-blue-700"><CirclePlay size={19} /></span><div><p className="text-xs font-extrabold">Simulado personalizado</p><p className="mt-1 text-[10px] text-slate-500">Escolha matérias, banca e quantidade</p></div><span className="ml-auto rounded-lg bg-blue-600 px-3 py-2 text-[9px] font-extrabold text-white">Criar</span></div>
-        <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-lg border border-slate-200 p-3"><p className="text-[9px] font-bold text-slate-500">Provas recentes</p><p className="mt-1 text-[11px] font-bold">INSS · Técnico</p><p className="mt-1 text-[9px] text-slate-500">Questões por matéria</p></div><div className="rounded-lg border border-slate-200 p-3"><p className="text-[9px] font-bold text-slate-500">Seu histórico</p><p className="mt-1 text-[11px] font-bold">Acompanhe seus resultados</p><p className="mt-1 text-[9px] text-slate-500">Veja sua evolução</p></div></div>
+        <div className="mt-4 rounded-lg border border-slate-200 p-3">
+          <p className="text-[9px] font-bold text-slate-500">Resultado · comparação com concorrentes</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-indigo-50 px-3 py-2"><p className="text-[8px] font-bold text-slate-500">Seu resultado</p><p className="mt-0.5 text-sm font-black text-indigo-800">72%</p></div>
+            <div className="rounded-lg bg-slate-50 px-3 py-2"><p className="text-[8px] font-bold text-slate-500">Média dos concorrentes</p><p className="mt-0.5 text-sm font-black text-slate-700">64%</p></div>
+          </div>
+        </div>
       </div>
     </DemoFrame>
   );
