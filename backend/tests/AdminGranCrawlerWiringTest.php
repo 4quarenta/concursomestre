@@ -90,7 +90,7 @@ adminGranCrawlerWiringAssert(
     && str_contains($component, 'MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2')
     && str_contains($component, 'waitForOldestPublication')
     && str_contains($component, 'inFlightBatches.push({')
-    && str_contains($component, 'const nextYear = exhaustedYear ? cursorYear + 1 : cursorYear;')
+    && str_contains($component, 'const displayedTotal = checkpoint?.totalPages || null;')
     && str_contains($component, "action: 'map_and_enqueue_publication'")
     && str_contains($component, 'fingerprintAutomaticInput({')
     && !str_contains($component, 'payloads: pagePayloads')
