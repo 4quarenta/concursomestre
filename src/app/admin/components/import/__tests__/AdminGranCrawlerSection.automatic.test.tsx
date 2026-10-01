@@ -170,7 +170,7 @@ describe('Gran automatic collection with filtered-out pages', () => {
       const request = new URL(mocks.collect.mock.calls[0][0]);
       expect(request.searchParams.get('anos[]')).toBe('2000');
       expect(request.searchParams.get('perPage')).toBe('20');
-      expect(request.searchParams.get('inedita')).toBe('0');
+      expect(request.searchParams.has('inedita')).toBe(false);
       if (filterMode === 'direct-url') expect(request.searchParams.get('bancas[]')).toBe('10');
       expect(container.querySelector('[data-testid="gran-review-filter-count"]')?.textContent)
         .toBe('1.803 questões encontradas para o filtro aplicado.');

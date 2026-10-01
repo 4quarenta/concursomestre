@@ -142,6 +142,15 @@ granCrawlerAssert(
     str_starts_with($observedUrl, 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?'),
     'A consulta deve usar somente o endpoint conhecido da Gran.'
 );
+granCrawlerAssert(
+    str_contains($observedUrl, 'anos%5B0%5D=2024')
+    && str_contains($observedUrl, 'marcarResolvidas=1')
+    && str_contains($observedUrl, 'tiposProva=1')
+    && !str_contains($observedUrl, 'anulada=')
+    && !str_contains($observedUrl, 'desatualizada=')
+    && !str_contains($observedUrl, 'inedita='),
+    'A busca por ano deve usar os filtros da consulta oficial sem restringir status.'
+);
 granCrawlerAssert($observedToken === $testToken, 'O prefixo Bearer duplicado deve ser removido.');
 granCrawlerAssert($observedClientId === 'gran-client-test', 'O x-client-id deve vir do JWT da Gran.');
 $payloads = $result['payloads'] ?? [];
@@ -504,14 +513,15 @@ granCrawlerAssert(
     str_contains($observedUrl, 'bancas%5B0%5D=IBFC')
     && str_contains($observedUrl, 'page=3')
     && str_contains($observedUrl, 'perPage=10')
-    && str_contains($observedUrl, 'anulada=1')
-    && str_contains($observedUrl, 'desatualizada=1'),
-    'A URL direta deve preservar filtros/paginacao e incluir anuladas/desatualizadas.'
+    && !str_contains($observedUrl, 'anulada=')
+    && !str_contains($observedUrl, 'desatualizada=')
+    && !str_contains($observedUrl, 'inedita='),
+    'A URL direta deve preservar filtros/paginacao sem restringir o status das questoes.'
 );
 parse_str((string) parse_url($observedUrl, PHP_URL_QUERY), $observedQuery);
 granCrawlerAssert(
-    (string) ($observedQuery['inedita'] ?? '') === '0',
-    'A consulta da Gran deve excluir questoes ineditas.'
+    !isset($observedQuery['inedita']),
+    'A URL da Gran nao deve restringir status; a exclusao de ineditas ocorre no mapeamento canonico.'
 );
 
 $ineditaPayload = $remotePayload;

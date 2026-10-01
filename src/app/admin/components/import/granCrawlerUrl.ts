@@ -56,9 +56,9 @@ export const buildGranQuestionQueryUrl = (
     parsed.searchParams.set('tiposProva', '1');
     parsed.searchParams.set('sort', '[{"anos":"desc"},{"_score":"desc"}]');
   }
-  parsed.searchParams.set('anulada', '1');
-  parsed.searchParams.set('desatualizada', '1');
-  parsed.searchParams.set('inedita', '0');
+  parsed.searchParams.delete('anulada');
+  parsed.searchParams.delete('desatualizada');
+  parsed.searchParams.delete('inedita');
   parsed.searchParams.set('page', String(page));
   parsed.searchParams.set('perPage', String(perPage));
   parsed.searchParams.delete('anos');

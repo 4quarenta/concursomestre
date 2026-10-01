@@ -197,9 +197,6 @@ final class AdminGranCrawlerService
                 'page' => $fallbackPage,
                 'marcarResolvidas' => 1,
                 'resolucao' => 'TODAS',
-                'anulada' => 1,
-                'desatualizada' => 1,
-                'inedita' => 0,
                 'tiposProva' => 1,
                 'sort' => '[{"anos":"desc"},{"_score":"desc"}]',
             ];
@@ -278,9 +275,7 @@ final class AdminGranCrawlerService
         );
         $query['page'] = $page;
         $query['perPage'] = $perPage;
-        $query['anulada'] = 1;
-        $query['desatualizada'] = 1;
-        $query['inedita'] = 0;
+        unset($query['anulada'], $query['desatualizada'], $query['inedita']);
 
         if (isset($query['sort'])) {
             if (!is_string($query['sort']) || strlen($query['sort']) > 2_000) {

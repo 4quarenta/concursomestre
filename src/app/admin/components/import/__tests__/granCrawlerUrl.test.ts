@@ -12,9 +12,9 @@ describe('Gran crawler URL controls', () => {
     expect(result.searchParams.getAll('anos')).toEqual([]);
     expect(result.searchParams.getAll('anos[]')).toEqual(['2026']);
     expect(result.searchParams.get('banca')).toBe('10');
-    expect(result.searchParams.get('anulada')).toBe('1');
-    expect(result.searchParams.get('desatualizada')).toBe('1');
-    expect(result.searchParams.get('inedita')).toBe('0');
+    expect(result.searchParams.has('anulada')).toBe(false);
+    expect(result.searchParams.has('desatualizada')).toBe(false);
+    expect(result.searchParams.has('inedita')).toBe(false);
   });
 
   it('reads controls from a pasted URL and removes a cleared year', () => {
@@ -24,14 +24,14 @@ describe('Gran crawler URL controls', () => {
       .searchParams.getAll('anos[]')).toEqual([]);
   });
 
-  it('includes annulled and outdated questions even when the pasted URL excludes them', () => {
+  it('removes status filters so the source returns every status for the selected year', () => {
     const result = new URL(buildGranQuestionQueryUrl(
       'https://rota-api.grancursosonline.com.br/v1/elastic/questao?anulada=0&desatualizada=0',
       { page: 16, perPage: 1000, year: '2000' },
     ));
-    expect(result.searchParams.get('anulada')).toBe('1');
-    expect(result.searchParams.get('desatualizada')).toBe('1');
-    expect(result.searchParams.get('inedita')).toBe('0');
+    expect(result.searchParams.has('anulada')).toBe(false);
+    expect(result.searchParams.has('desatualizada')).toBe(false);
+    expect(result.searchParams.has('inedita')).toBe(false);
     expect(result.searchParams.get('perPage')).toBe('1000');
     expect(result.searchParams.get('anos[]')).toBe('2000');
   });
