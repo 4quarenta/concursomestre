@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -6,16 +17,18 @@ import type { Plan } from '@types';
 import { resolvePlanOffer } from '@services/plans';
 import { fetchPublicMarketingSettings } from '../publicMarketingSettings';
 import { fetchPublicPlanCatalogForServer } from '../planos/plansServerData';
+import EliteLandingSections from './EliteLandingSections';
+import ElitePlanComparison from './ElitePlanComparison';
 
 export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: 'Plano Elite para concursos',
-  description: 'Mais de 3 milhões de questões reais que já caíram em provas. Estude com estratégia com o plano anual Elite.',
+  description: 'Conheça o plano anual Elite do ConcursoMestre: pratique questões, faça simulados e acompanhe sua preparação para concursos.',
   alternates: { canonical: '/elite' },
   openGraph: {
     title: 'Plano Elite para concursos | ConcursoMestre',
-    description: 'Pratique com mais de 3 milhões de questões reais, acompanhe sua evolução e prepare-se para sua próxima prova com o Elite.',
+    description: 'Pratique questões, faça simulados e acompanhe sua preparação para concursos com o plano anual Elite do ConcursoMestre.',
     url: '/elite',
     type: 'website',
   },
@@ -59,6 +72,7 @@ const benefits = [
   'Suporte prioritário e acesso antecipado',
 ];
 
+/** Monta no servidor a landing /elite e reúne oferta, demonstrações e comparação dos planos. */
 export default async function EliteLandingPage({ searchParams }: EliteLandingProps) {
   const [plans, query, marketingSettings] = await Promise.all([
     fetchPublicPlanCatalogForServer(),
@@ -103,11 +117,11 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
             <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_16px_rgba(52,211,153,.8)]" />
             Plano Elite · preparação completa
           </p>
-          <h1 id="elite-title" className="mt-4 max-w-[620px] text-[clamp(2.25rem,4.2vw,3.65rem)] font-black leading-[1.06] tracking-[-.05em]">
-            Mais de 3 milhões de questões reais <span className="text-blue-300">que já caíram em provas.</span>
+          <h1 id="elite-title" className="mt-4 max-w-[620px] text-[clamp(1.9rem,3.3vw,2.65rem)] font-black leading-[1.06] tracking-[-.05em]">
+            Acesso completo, <span className="text-blue-300">pelo preço de um lanche.</span>
           </h1>
           <p className="mt-4 max-w-[540px] text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-            Acesse todas as funcionalidades do Elite, pagando mês a mês no cartão: equivalente a R$ 9,98/mês em até 12 cobranças.
+            Tenha acesso a questões, simulados, análise de bancas e recursos para acompanhar sua preparação, com cobrança mensal no cartão.
           </p>
 
           <ul className="mt-5 grid gap-2.5">
@@ -184,6 +198,8 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
           </ul>
         </aside>
       </main>
+      <EliteLandingSections checkoutHref={annualCheckoutHref} monthlyPrice={monthlyEquivalent} annualPrice={annualPrice} />
+      <ElitePlanComparison settings={marketingSettings.settings ?? undefined} />
     </div>
   );
 }
