@@ -1,24 +1,20 @@
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
-
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { ArrowRight, Check, CreditCard, LockKeyhole, ShieldCheck, Zap } from 'lucide-react';
 import type { Plan } from '@types';
-import { resolvePlanOffer } from '@services/plans';
+import {
+  getCanonicalPlanName,
+  isPlanEnabledByName,
+  resolvePlanAutoCouponsById,
+  resolvePlanOffer,
+} from '@services/plans';
 import { fetchPublicMarketingSettings } from '../publicMarketingSettings';
 import { fetchPublicPlanCatalogForServer } from '../planos/plansServerData';
 import EliteLandingSections from './EliteLandingSections';
+import EliteSalesSections from './EliteSalesSections';
 import ElitePlanComparison from './ElitePlanComparison';
+import Footer from '@/components/shared/layout/Footer';
 
 export const revalidate = 300;
 
@@ -48,8 +44,16 @@ const getCanonicalName = (plan: Plan) => String(plan.canonical_name || plan.name
 const isElite = (plan: Plan) => getCanonicalName(plan) === 'elite' || getCanonicalName(plan).startsWith('elite ');
 const isActive = (plan: Plan) => plan.is_active !== false;
 
-const findElitePlan = (plans: Plan[], unit: Plan['interval_unit']) => plans.find((plan) => (
-  isElite(plan) && isActive(plan) && plan.interval_unit === unit && Number(plan.price) > 0
+const findElitePlan = (
+  plans: Plan[],
+  unit: Plan['interval_unit'],
+  planDetails?: Parameters<typeof isPlanEnabledByName>[1],
+) => plans.find((plan) => (
+  isElite(plan)
+  && isActive(plan)
+  && isPlanEnabledByName(plan.name, planDetails)
+  && plan.interval_unit === unit
+  && Number(plan.price) > 0
 ));
 
 const makeCheckoutHref = (planId: number, params: SearchParams) => {
@@ -72,17 +76,16 @@ const benefits = [
   'Suporte prioritário e acesso antecipado',
 ];
 
-/** Monta no servidor a landing /elite e reúne oferta, demonstrações e comparação dos planos. */
 export default async function EliteLandingPage({ searchParams }: EliteLandingProps) {
   const [plans, query, marketingSettings] = await Promise.all([
     fetchPublicPlanCatalogForServer(),
     searchParams ? searchParams : Promise.resolve({}),
     fetchPublicMarketingSettings(),
   ]);
-  const annualPlan = findElitePlan(plans, 'year');
-  const monthlyPlan = findElitePlan(plans, 'month');
   const pricing = marketingSettings.settings?.pricing;
   const planDetails = marketingSettings.settings?.planDetails;
+  const annualPlan = findElitePlan(plans, 'year', planDetails);
+  const monthlyPlan = findElitePlan(plans, 'month', planDetails);
   const annualOffer = annualPlan ? resolvePlanOffer({ plan: annualPlan, pricing, planDetails }) : null;
   const monthlyOffer = monthlyPlan ? resolvePlanOffer({ plan: monthlyPlan, pricing, planDetails }) : null;
   const annualPrice = annualOffer?.discountedCycleAmount ?? null;
@@ -94,6 +97,81 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
   const savings = regularAnnualPrice !== null && annualPrice !== null && regularAnnualPrice > annualPrice
     ? regularAnnualPrice - annualPrice
     : null;
+  const activePlans = plans
+    .filter((plan) => isActive(plan) && isPlanEnabledByName(plan.name, planDetails))
+    .sort((left, right) => {
+      const order: Record<string, number> = { Gratuito: 0, Essencial: 1, Pro: 2, Elite: 3 };
+      const leftName = getCanonicalPlanName(left.name);
+      const rightName = getCanonicalPlanName(right.name);
+      const nameOrder = (order[leftName] ?? 99) - (order[rightName] ?? 99);
+      if (nameOrder !== 0) return nameOrder;
+      const leftCycles = left.interval_unit === 'year' ? 12 : Number(left.interval_count || 1);
+      const rightCycles = right.interval_unit === 'year' ? 12 : Number(right.interval_count || 1);
+      return leftCycles - rightCycles;
+    });
+  const autoCouponsByPlanId = resolvePlanAutoCouponsById(activePlans, marketingSettings.settings?.coupons || []);
+  const offerCards = activePlans.map((plan) => {
+    const offer = resolvePlanOffer({
+      plan,
+      pricing,
+      planDetails,
+      discountAmount: autoCouponsByPlanId[plan.id]?.discountAmount || 0,
+    });
+    const isFree = Number(plan.price || 0) <= 0;
+    const cycleCount = Math.max(1, Number(offer.cycleCount || 1));
+    const intervalPeriod = {
+      day: 'dias',
+      week: 'semanas',
+      month: 'meses',
+      year: 'anos',
+    }[plan.interval_unit];
+    const cycleName = isFree
+      ? offer.displayName
+      : plan.interval_unit === 'year'
+        ? 'Anual'
+        : plan.interval_unit === 'month' && cycleCount === 3
+          ? 'Trimestral'
+          : plan.interval_unit === 'month' && cycleCount === 1
+            ? 'Mensal'
+            : `A cada ${cycleCount} ${intervalPeriod}`;
+    const cycleLabel = isFree
+      ? 'sem cobrança'
+      : plan.interval_unit === 'year'
+        ? 'no ciclo anual'
+        : plan.interval_unit === 'month' && cycleCount === 1
+          ? 'por mês'
+          : `a cada ${cycleCount} ${intervalPeriod}`;
+    const savingsAmount = Math.max(0, Math.round((offer.originalCycleAmount - offer.discountedCycleAmount) * 100) / 100);
+    const isRecommended = getCanonicalPlanName(plan.name) === 'Elite' && plan.interval_unit === 'year';
+
+    return {
+      planId: plan.id,
+      planName: offer.displayName,
+      cycleName,
+      monthlyAmount: isFree ? 0 : offer.discountedMonthlyAmount,
+      cycleAmount: offer.discountedCycleAmount,
+      cycleLabel,
+      isFree,
+      isRecommended,
+      discountPercent: offer.effectiveDiscountPercent,
+      savingsAmount,
+      checkoutHref: isFree ? '/auth?mode=signup' : makeCheckoutHref(plan.id, query),
+    };
+  });
+  const socialLinks = (marketingSettings.settings?.landingPageContent?.socialLinks || [])
+    .flatMap((link) => {
+      if (!link.enabled) return [];
+
+      const configuredUrl = String(link.url || '').trim();
+      if (/^https?:\/\//i.test(configuredUrl)) return [{ ...link, url: configuredUrl }];
+
+      const instagramHandle = String(link.handle || '').trim().replace(/^@/, '');
+      if (link.iconKey === 'instagram' && /^[A-Za-z0-9._]{1,30}$/.test(instagramHandle)) {
+        return [{ ...link, url: `https://www.instagram.com/${instagramHandle}/` }];
+      }
+
+      return [];
+    });
 
   return (
     <div className="min-h-screen overflow-hidden bg-[#070d19] text-slate-50">
@@ -200,6 +278,10 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
       </main>
       <EliteLandingSections checkoutHref={annualCheckoutHref} monthlyPrice={monthlyEquivalent} annualPrice={annualPrice} />
       <ElitePlanComparison settings={marketingSettings.settings ?? undefined} />
+      <EliteSalesSections offers={offerCards} socialLinks={socialLinks} />
+      <div className="dark bg-[#070d19] px-5">
+        <Footer />
+      </div>
     </div>
   );
 }
