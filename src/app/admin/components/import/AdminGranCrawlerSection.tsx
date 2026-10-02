@@ -251,6 +251,7 @@ const ENDPOINT = 'admin/gran_crawler.php';
 const EXTENSION_DOWNLOAD_URL = '/downloads/concursomestre-coletor-gran-v1.0.22.zip';
 const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
 const GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear';
+const GRAN_AUTO_ADVANCE_YEAR_STORAGE_KEY = 'admin.granCrawler.autoAdvanceYear';
 const BOOTSTRAP_CACHE_MS = 60_000;
 const COLLECTOR_STATUS_CACHE_MS = 30_000;
 const AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000;
@@ -518,6 +519,7 @@ const AdminGranCrawlerSection = ({
   const [perPage, setPerPage] = React.useState(20);
   const [year, setYear] = React.useState('');
   const [automaticMode, setAutomaticMode] = React.useState(false);
+  const [automaticAdvanceYear, setAutomaticAdvanceYear] = React.useState(false);
   const [automaticProgress, setAutomaticProgress] = React.useState<AutomaticCrawlerProgress>({
     phase: 'idle',
     year: 0,
@@ -559,6 +561,22 @@ const AdminGranCrawlerSection = ({
   const bootstrapAbortRef = React.useRef<AbortController | null>(null);
   const automaticAbortRef = React.useRef<AbortController | null>(null);
   const automaticCheckpointRef = React.useRef<GranAutomaticCheckpoint | null>(null);
+
+  React.useEffect(() => {
+    try {
+      setAutomaticAdvanceYear(window.localStorage.getItem(GRAN_AUTO_ADVANCE_YEAR_STORAGE_KEY) === 'true');
+    } catch {
+      // A preferencia e opcional; sem storage, o comportamento padrao continua sendo um ano.
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(GRAN_AUTO_ADVANCE_YEAR_STORAGE_KEY, String(automaticAdvanceYear));
+    } catch {
+      // A preferencia continua funcionando nesta sessao mesmo sem storage.
+    }
+  }, [automaticAdvanceYear]);
   const taxonomySyncForRetryRef = React.useRef<((targets: GranLegacyTaxonomyTarget[]) => Promise<boolean>) | null>(null);
   const isMountedRef = React.useRef(false);
   const publicationBatches = React.useMemo(() => currentBatch ? [currentBatch] : [], [currentBatch]);
@@ -1232,7 +1250,8 @@ const AdminGranCrawlerSection = ({
     setError('');
     setAutomaticFilteredQuestionCount(null);
     let checkpoint: GranAutomaticCheckpoint | null = automaticCheckpoint;
-    const cursorYear = checkpoint?.year || startYear;
+    let cursorYear = checkpoint?.year || startYear;
+    const finalYear = automaticAdvanceYear ? new Date().getFullYear() : startYear;
     let cursorPage = checkpoint?.page || Math.max(1, page);
     const inFlightBatches: AutomaticPublicationFlight[] = [];
     let failedFlight: AutomaticPublicationFlight | null = null;
@@ -1291,7 +1310,7 @@ const AdminGranCrawlerSection = ({
         }
         await loadFailureHistory();
       };
-      while (!controller.signal.aborted && cursorYear === startYear) {
+      while (!controller.signal.aborted && cursorYear <= finalYear) {
         const displayedTotal = checkpoint?.totalPages || null;
         setAutomaticProgress({
           phase: 'collecting',
@@ -1370,31 +1389,35 @@ const AdminGranCrawlerSection = ({
           }));
         }
 
-        const nextPage = cursorPage + 1;
+        const continuesNextYear = exhaustedYear && automaticAdvanceYear && cursorYear < finalYear;
+        const nextYear = continuesNextYear ? cursorYear + 1 : cursorYear;
+        const nextPage = continuesNextYear ? 1 : cursorPage + 1;
         checkpoint = await saveAutomaticCheckpoint({
           requestUrl: buildGranQuestionQueryUrl(checkpoint.requestUrl, {
             page: nextPage,
             perPage: checkpoint.perPage,
-            year: String(cursorYear),
+            year: String(nextYear),
           }),
           runKey: checkpoint.runKey,
           perPage: checkpoint.perPage,
-          year: cursorYear,
+          year: nextYear,
           page: nextPage,
-          totalPages: knownPageCount || null,
+          totalPages: continuesNextYear ? null : knownPageCount || null,
           status: 'running',
           lastBatchId: data.batch?.batchId ?? checkpoint.lastBatchId ?? null,
           lastError: null,
         }, controller.signal);
+        cursorYear = nextYear;
         cursorPage = nextPage;
-        if (!exhaustedYear) {
+        if (!exhaustedYear || continuesNextYear) {
+          if (continuesNextYear) setYear(String(cursorYear));
           setPage(cursorPage);
           if (inFlightBatches.length >= MAX_AUTOMATIC_IN_FLIGHT_BATCHES) {
             await waitForOldestPublication();
           }
           await delayWithSignal(400, controller.signal);
         }
-        if (exhaustedYear) break;
+        if (exhaustedYear && !continuesNextYear) break;
       }
 
       if (!controller.signal.aborted) {
@@ -1405,11 +1428,13 @@ const AdminGranCrawlerSection = ({
         setAutomaticMode(false);
         setAutomaticProgress({
           phase: 'completed',
-          year: startYear,
+          year: Math.min(cursorYear, finalYear),
           page: cursorPage,
           totalPages: checkpoint?.totalPages || null,
           questionsCollected: 0,
-          message: `Coleta automatica do ano ${startYear} concluida.`,
+          message: automaticAdvanceYear
+            ? `Coleta automatica concluida de ${startYear} ate ${finalYear}.`
+            : `Coleta automatica do ano ${startYear} concluida.`,
         });
       }
     } catch (requestError) {
@@ -1448,6 +1473,7 @@ const AdminGranCrawlerSection = ({
   }, [
     checkCollector,
     automaticCheckpoint,
+    automaticAdvanceYear,
     clearAutomaticCheckpoint,
     collectAndEnqueueAutomaticPage,
     collectorState,
@@ -2084,7 +2110,9 @@ const AdminGranCrawlerSection = ({
               </div>
               <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">
                 Publica enquanto coleta a pagina seguinte, mantendo no maximo duas paginas em processamento.
-                A coleta fica restrita ao ano selecionado; o progresso da pagina fica salvo no servidor para retomada.
+                {automaticAdvanceYear
+                  ? ' Ao concluir um ano, inicia o proximo pela pagina 1 e segue ate o ano atual.'
+                  : ' A coleta fica restrita ao ano selecionado; o progresso da pagina fica salvo no servidor para retomada.'}
               </p>
               <p className="mt-2 text-xs font-semibold text-sky-800 dark:text-sky-300">
                 {automaticProgress.message}
@@ -2099,6 +2127,17 @@ const AdminGranCrawlerSection = ({
               <p className="max-w-xs text-xs leading-5 text-slate-500 dark:text-slate-400">
                 A quantidade total de paginas vem da resposta da Gran. Cada pagina gera seu proprio lote, sem acumular uma fila ilimitada.
               </p>
+              <label className="inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={automaticAdvanceYear}
+                  disabled={automaticMode}
+                  onChange={(event) => setAutomaticAdvanceYear(event.target.checked)}
+                  className="h-4 w-4 accent-sky-700"
+                  aria-label="Pular para o próximo ano ao finalizar"
+                />
+                Pular para o próximo ano ao finalizar
+              </label>
               {automaticCheckpoint && !automaticMode ? (
                 <button
                   type="button"
