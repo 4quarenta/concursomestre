@@ -16,6 +16,7 @@ final class GranQuestionAssetMaterializer
     private const MAX_IMAGE_BYTES = 12_582_912;
     private const MAX_INLINE_IMAGE_BASE64_BYTES = 16_777_472;
     private const MAX_ASSETS_PER_PAYLOAD = 5_000;
+    private const MAX_DOWNLOAD_ATTEMPTS = 3;
 
     /** @var null|Closure(string,int):array{temporaryPath:string,mimeType?:string,size:int,sha256?:string} */
     private ?Closure $downloader;
@@ -98,9 +99,8 @@ final class GranQuestionAssetMaterializer
      * Materializa assets durante a ingestao em lote sem permitir que um unico
      * bloqueio remoto da Gran interrompa todas as demais questoes do job.
      *
-     * Apenas o 403 da origem Gran e convertido em falha por questao. Qualquer
-     * outro erro continua sendo propagado para que falhas de storage, contrato
-     * ou infraestrutura nao sejam mascaradas como pendencias editoriais.
+     * Falhas HTTP de download sao isoladas na questao afetada. Falhas de
+     * storage, contrato ou infraestrutura local continuam sendo propagadas.
      *
      * @return array{payload:array<string,mixed>,itemFailures:array<int,array<string,mixed>>}
      */
@@ -125,14 +125,14 @@ final class GranQuestionAssetMaterializer
                 );
                 $materializedContexts[] = $context;
             } catch (Throwable $exception) {
-                if (!$this->isGranImageForbidden($exception)) {
+                if (!$this->isGranImageTransferFailure($exception)) {
                     throw $exception;
                 }
                 if ($contextId !== '') {
-                    $failedContextIds[$contextId] = true;
+                    $failedContextIds[$contextId] = $exception->getMessage();
                 }
                 foreach ($this->normalizeQuestionNumbers($context['questionNumbers'] ?? $context['questionIds'] ?? []) as $number) {
-                    $failedContextQuestionNumbers[$number] = true;
+                    $failedContextQuestionNumbers[$number] = $exception->getMessage();
                 }
             }
         }
@@ -147,11 +147,12 @@ final class GranQuestionAssetMaterializer
             $source = is_array($question['source'] ?? null) ? $question['source'] : [];
             $contextId = trim((string) ($source['contextTempId'] ?? $question['contextTempId'] ?? ''));
             $questionNumber = trim((string) ($source['questionNumber'] ?? ''));
-            if (($contextId !== '' && isset($failedContextIds[$contextId]))
-                || ($questionNumber !== '' && isset($failedContextQuestionNumbers[$questionNumber]))) {
+            $contextFailure = ($contextId !== '' ? ($failedContextIds[$contextId] ?? null) : null)
+                ?? ($questionNumber !== '' ? ($failedContextQuestionNumbers[$questionNumber] ?? null) : null);
+            if (is_string($contextFailure)) {
                 $itemFailures[] = $this->buildQuestionFailure(
                     $question,
-                    'A imagem do contexto da Gran nao pode ser copiada (HTTP 403).'
+                    'A imagem do contexto da Gran nao pode ser copiada: ' . $contextFailure
                 );
                 continue;
             }
@@ -159,7 +160,7 @@ final class GranQuestionAssetMaterializer
             try {
                 $materializedQuestions[] = $this->materializeQuestion($question, $strictGranPayload, $assetCount);
             } catch (Throwable $exception) {
-                if (!$this->isGranImageForbidden($exception)) {
+                if (!$this->isGranImageTransferFailure($exception)) {
                     throw $exception;
                 }
                 $itemFailures[] = $this->buildQuestionFailure($question, $exception->getMessage());
@@ -213,7 +214,7 @@ final class GranQuestionAssetMaterializer
             return $this->mergeMaterializedAsset($asset, $this->materializedBySourceUrl[$sourceUrl]);
         }
 
-        $download = $this->download($sourceUrl);
+        $download = $this->downloadWithRetry($sourceUrl);
         return $this->materializeDownloadedAsset($asset, $download, 'source:' . $sourceUrl, $sourceUrl);
     }
 
@@ -310,7 +311,9 @@ final class GranQuestionAssetMaterializer
         return [
             'questionNumber' => trim((string) ($source['questionNumber'] ?? '')) ?: null,
             'tempId' => trim((string) ($question['tempId'] ?? '')) ?: null,
-            'code' => 'gran_image_forbidden',
+            'code' => str_contains($message, '(HTTP 403)')
+                ? 'gran_image_forbidden'
+                : 'gran_image_copy_failed',
             'message' => $message,
         ];
     }
@@ -331,9 +334,39 @@ final class GranQuestionAssetMaterializer
         return array_keys($normalized);
     }
 
-    private function isGranImageForbidden(Throwable $exception): bool
+    private function isGranImageTransferFailure(Throwable $exception): bool
     {
-        return str_contains($exception->getMessage(), 'Nao foi possivel copiar a imagem Gran (HTTP 403).');
+        return preg_match(
+            '/^Nao foi possivel copiar a imagem Gran \\(HTTP (?:0|[1-5][0-9]{2})\\)\\.?$/',
+            trim($exception->getMessage())
+        ) === 1;
+    }
+
+    private function isRetryableGranImageTransferFailure(Throwable $exception): bool
+    {
+        if (preg_match('/HTTP (0|[1-5][0-9]{2})/', $exception->getMessage(), $matches) !== 1) {
+            return false;
+        }
+        $status = (int) $matches[1];
+        return $status === 0
+            || in_array($status, [408, 425, 429], true)
+            || $status >= 500;
+    }
+
+    /** @return array{temporaryPath:string,mimeType:string,size:int,sha256:string,extension:string} */
+    private function downloadWithRetry(string $sourceUrl): array
+    {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return $this->download($sourceUrl);
+            } catch (Throwable $exception) {
+                if (!$this->isRetryableGranImageTransferFailure($exception)
+                    || $attempt >= self::MAX_DOWNLOAD_ATTEMPTS) {
+                    throw $exception;
+                }
+                usleep(200_000 * $attempt);
+            }
+        }
     }
 
     private function mergeMaterializedAsset(array $asset, array $materialized): array
