@@ -97,7 +97,9 @@ sitemapContractAssert($retryPredicate->invoke(null, 0, CURLE_OPERATION_TIMEDOUT)
 sitemapContractAssert($retryPredicate->invoke(null, 0, CURLE_COULDNT_CONNECT) === true, 'Connection failures are not classified as retryable transport failures.');
 sitemapContractAssert($retryPredicate->invoke(null, 500, CURLE_OPERATION_TIMEDOUT) === false, 'HTTP failures must not be retried as transport failures.');
 sitemapContractAssert($retryPredicate->invoke(null, 200, 0) === false, 'Successful responses must not be retried.');
-sitemapContractAssert(str_contains($generator, 'validateForPromotion'), 'Public promotion does not require semantic HTTP validation.');
+sitemapContractAssert(!str_contains($generator, 'validateForPromotion'), 'Sitemap publication performs a per-URL HTTP crawl.');
+sitemapContractAssert(str_contains($generator, '$validator->validateDirectory($stage)'), 'Sitemap publication does not validate the complete generated artifact structure.');
+sitemapContractAssert(str_contains($generator, 'PublicRouteBuilder') && str_contains($generator, 'AuthoritativeSitemapEligibilityService'), 'Sitemap URLs are not derived from canonical route and publication authorities.');
 
 sitemapContractAssert(!is_file($root . '/src/app/sitemap.ts'), 'Dynamic Next sitemap authority still exists.');
 sitemapContractAssert(!is_file($root . '/scripts/seo/generate-sitemap.mjs'), 'Independent Node sitemap writer still exists.');

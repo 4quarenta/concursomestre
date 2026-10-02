@@ -61,8 +61,6 @@ if ($simulation && realpath(dirname($outputDir)) === realpath(dirname($productio
     && basename($outputDir) === basename($productionOutputDir)) {
     throw new RuntimeException('Sitemap simulation cannot target the served production directory.');
 }
-$httpValidationOrigin = trim((string) (getenv('SITEMAP_VALIDATION_ORIGIN') ?: ''));
-$httpValidationRequired = !$simulation && !$fingerprintOnly;
 $batchSize = $runtimeEnvironment->maxUrlsPerChild();
 $generatedAt = gmdate('c');
 $queryCount = 0;
@@ -82,10 +80,6 @@ $artifactState = $simulation ? null : $productionState;
 $stage = $publisher->createStagingDirectory();
 
 try {
-    if ($httpValidationRequired && $httpValidationOrigin === '') {
-        throw new RuntimeException('SITEMAP_VALIDATION_ORIGIN e obrigatoria para qualquer promotion publica.');
-    }
-
     $routes = new PublicRouteBuilder();
     $productionPageMap = new SeoProductionPageMap();
     $assertSitemapFamily = static function (string $familyId) use ($productionPageMap): void {
@@ -891,10 +885,10 @@ try {
     } else {
         $write($stage . '/sitemap.xml', $buildIndex($files));
         $validator = new StaticSitemapValidator($baseUrl);
-        $validation = $httpValidationRequired
-            ? $validator->validateForPromotion($stage, $httpValidationOrigin)
-            : $validator->validateDirectory($stage);
-        if (!$httpValidationRequired) $validator->assertValid($validation);
+        // URLs come from the canonical DB-backed SEO authority above. Validate
+        // the full artifact contract here; live HTTP probes remain an audit.
+        $validation = $validator->validateDirectory($stage);
+        $validator->assertValid($validation);
         $manifest = StaticSitemapReleaseManifest::create($stage, $eligibleDatasetFingerprint);
         $manifestHash = StaticSitemapReleaseManifest::write($stage, $manifest);
         $artifactFingerprint = (string) $manifest['physicalSetFingerprint'];
