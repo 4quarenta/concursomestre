@@ -44,6 +44,7 @@ const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/novidades',
   '/planos',
   '/elite',
+  '/android',
   '/checkout',
   '/read',
   '/subscription',
