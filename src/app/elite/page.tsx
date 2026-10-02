@@ -159,7 +159,19 @@ export default async function EliteLandingPage({ searchParams }: EliteLandingPro
     };
   });
   const socialLinks = (marketingSettings.settings?.landingPageContent?.socialLinks || [])
-    .filter((link) => link.enabled && /^https?:\/\//i.test(link.url));
+    .flatMap((link) => {
+      if (!link.enabled) return [];
+
+      const configuredUrl = String(link.url || '').trim();
+      if (/^https?:\/\//i.test(configuredUrl)) return [{ ...link, url: configuredUrl }];
+
+      const instagramHandle = String(link.handle || '').trim().replace(/^@/, '');
+      if (link.iconKey === 'instagram' && /^[A-Za-z0-9._]{1,30}$/.test(instagramHandle)) {
+        return [{ ...link, url: `https://www.instagram.com/${instagramHandle}/` }];
+      }
+
+      return [];
+    });
 
   return (
     <div className="min-h-screen overflow-hidden bg-[#070d19] text-slate-50">
