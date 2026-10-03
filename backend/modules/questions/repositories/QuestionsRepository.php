@@ -2159,26 +2159,27 @@ class QuestionsRepository
         $clauses = [];
         $params = [];
 
-        $fingerprint = trim((string) $fingerprint);
-        if ($fingerprint !== '') {
-            $clauses[] = 'import_fingerprint = :import_fingerprint';
-            $params[':import_fingerprint'] = $fingerprint;
-        }
-
         $sourceProvider = trim((string) $sourceProvider);
         $sourceExternalId = trim((string) $sourceExternalId);
         if ($sourceProvider !== '' && $sourceExternalId !== '') {
+            // An authoritative external identity must not match another question by exam metadata.
             $clauses[] = '(source_provider = :source_provider AND source_external_id = :source_external_id)';
             $params[':source_provider'] = $sourceProvider;
             $params[':source_external_id'] = $sourceExternalId;
-        }
+        } else {
+            $fingerprint = trim((string) $fingerprint);
+            if ($fingerprint !== '') {
+                $clauses[] = 'import_fingerprint = :import_fingerprint';
+                $params[':import_fingerprint'] = $fingerprint;
+            }
 
-        $examKey = trim((string) $examKey);
-        $questionNumber = trim((string) $questionNumber);
-        if ($examKey !== '' && $questionNumber !== '') {
-            $clauses[] = '(source_exam_key = :source_exam_key AND source_question_number = :source_question_number)';
-            $params[':source_exam_key'] = $examKey;
-            $params[':source_question_number'] = $questionNumber;
+            $examKey = trim((string) $examKey);
+            $questionNumber = trim((string) $questionNumber);
+            if ($examKey !== '' && $questionNumber !== '') {
+                $clauses[] = '(source_exam_key = :source_exam_key AND source_question_number = :source_question_number)';
+                $params[':source_exam_key'] = $examKey;
+                $params[':source_question_number'] = $questionNumber;
+            }
         }
 
         if ($clauses === []) {
