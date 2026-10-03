@@ -160,6 +160,7 @@ granTaxonomySyncAssert(
     && str_contains($extensionWorker, 'matchingRows.length !== 1')
     && str_contains($section, 'taxonomyTargets.values()')
     && str_contains($section, "target.key === 'assunto'")
+    && str_contains($section, 'continue;')
     && str_contains($route, "'sync_taxonomy_target'")
     && str_contains($section, "action: 'finalize_cargo_taxonomy_relations'"),
     'Retry deve buscar e sincronizar uma identidade Gran por ID, recusando resposta ampla e sem reconciliar todo o catalogo.'

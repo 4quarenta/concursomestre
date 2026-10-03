@@ -1901,7 +1901,11 @@ const AdminGranCrawlerSection = ({
       };
       for (const target of targets) {
         if (target.key === 'assunto') {
-          throw new Error('A taxonomia de materia depende da arvore e dos seus ancestrais; este retry nao iniciou uma sincronizacao ampla.');
+          // A identidade externa do assunto permanece no payload canonico e o
+          // backend pode publicar a questao sem criar um filtro local falso.
+          // Assunto nao possui retry individual seguro: nao bloqueie a fila por
+          // isso, mas mantenha a sincronizacao explicita da arvore separada.
+          continue;
         }
         setTaxonomyProgress(`Consultando somente a taxonomia externa ${target.externalId}.`);
         const collected = await collectGranTaxonomyById(collectorKinds[target.key], target.externalId);
