@@ -246,6 +246,41 @@ granCrawlerAssert(
     'hasImage deve extrair a imagem presente no enunciado, criar o asset e preservar seu marcador.'
 );
 
+$duplicateLabelResult = $service->mapBrowserResponse([
+    'granResponse' => [
+        'data' => [
+            'total' => 1,
+            'rows' => [[
+                'id_questao' => 993,
+                'numero_questao' => 7,
+                'enunciado' => 'Escolha a alternativa correta.',
+                'itens' => [
+                    ['id' => 9931, 'rotulo' => 'C', 'corpo' => 'Primeira opcao'],
+                    ['id' => 9932, 'rotulo' => 'C', 'corpo' => 'Segunda opcao'],
+                    ['id' => 9933, 'rotulo' => 'D', 'corpo' => 'Terceira opcao'],
+                ],
+                'resposta' => 9932,
+                'provas' => [[
+                    'id' => 993,
+                    'nome' => 'Gran - 2024 - Prova de teste',
+                    'ano' => 2024,
+                ]],
+            ]],
+        ],
+    ],
+    'granRequestUrl' => 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?perPage=1&page=1&anos%5B%5D=2024',
+]);
+$duplicateLabelQuestion = $duplicateLabelResult['payloads'][0]['questions'][0] ?? [];
+$duplicateLabelAlternatives = $duplicateLabelQuestion['alternatives'] ?? [];
+$duplicateLabelTempIds = array_column($duplicateLabelAlternatives, 'tempId');
+granCrawlerAssert(
+    count($duplicateLabelTempIds) === count(array_unique($duplicateLabelTempIds))
+    && $duplicateLabelTempIds[0] !== $duplicateLabelTempIds[1]
+    && count($duplicateLabelQuestion['answer']['correctAlternativeTempIds'] ?? []) === 1
+    && ($duplicateLabelQuestion['answer']['correctAlternativeTempIds'][0] ?? null) === $duplicateLabelTempIds[1],
+    'Alternativas com rotulos repetidos devem manter external_key unica e gabarito por id.'
+);
+
 $imageOnlyResult = $service->mapBrowserResponse([
     'granResponse' => [
         'data' => [

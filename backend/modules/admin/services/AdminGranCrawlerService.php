@@ -1548,13 +1548,20 @@ final class AdminGranCrawlerService
         );
         $items = [];
         $correctIds = [];
+        $usedTempIds = [];
 
         foreach (array_values(array_filter($rawItems, 'is_array')) as $index => $raw) {
             $label = strtoupper($this->readText($raw['rotulo'] ?? null, $raw['label'] ?? null));
             if ($label === '') {
                 $label = chr(65 + min(25, $index));
             }
-            $tempId = $questionTempId . '_alt_' . strtolower($this->safeIdPart($label));
+            $baseTempId = $questionTempId . '_alt_' . strtolower($this->safeIdPart($label));
+            $tempId = $baseTempId;
+            $suffix = 2;
+            while (isset($usedTempIds[$tempId])) {
+                $tempId = $baseTempId . '_' . $suffix++;
+            }
+            $usedTempIds[$tempId] = true;
             $text = $this->sanitizeRichText($this->readText(
                 $raw['corpo'] ?? null,
                 $raw['texto_alternativa'] ?? null,
