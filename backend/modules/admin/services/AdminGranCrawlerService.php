@@ -198,6 +198,7 @@ final class AdminGranCrawlerService
                 'marcarResolvidas' => 1,
                 'resolucao' => 'TODAS',
                 'tiposProva' => 1,
+                'inedita' => 0,
                 'sort' => '[{"anos":"desc"},{"_score":"desc"}]',
             ];
             if ($fallbackYear !== '') {
@@ -275,7 +276,8 @@ final class AdminGranCrawlerService
         );
         $query['page'] = $page;
         $query['perPage'] = $perPage;
-        unset($query['anulada'], $query['desatualizada'], $query['inedita']);
+        unset($query['anulada'], $query['desatualizada']);
+        $query['inedita'] = 0;
 
         if (isset($query['sort'])) {
             if (!is_string($query['sort']) || strlen($query['sort']) > 2_000) {

@@ -148,8 +148,8 @@ granCrawlerAssert(
     && str_contains($observedUrl, 'tiposProva=1')
     && !str_contains($observedUrl, 'anulada=')
     && !str_contains($observedUrl, 'desatualizada=')
-    && !str_contains($observedUrl, 'inedita='),
-    'A busca por ano deve usar os filtros da consulta oficial sem restringir status.'
+    && str_contains($observedUrl, 'inedita=0'),
+    'A busca por ano deve incluir anuladas/desatualizadas e excluir somente ineditas.'
 );
 granCrawlerAssert($observedToken === $testToken, 'O prefixo Bearer duplicado deve ser removido.');
 granCrawlerAssert($observedClientId === 'gran-client-test', 'O x-client-id deve vir do JWT da Gran.');
@@ -551,13 +551,13 @@ granCrawlerAssert(
     && str_contains($observedUrl, 'perPage=10')
     && !str_contains($observedUrl, 'anulada=')
     && !str_contains($observedUrl, 'desatualizada=')
-    && !str_contains($observedUrl, 'inedita='),
-    'A URL direta deve preservar filtros/paginacao sem restringir o status das questoes.'
+    && str_contains($observedUrl, 'inedita=0'),
+    'A URL direta deve preservar filtros/paginacao, incluindo estados publicos e excluindo somente ineditas.'
 );
 parse_str((string) parse_url($observedUrl, PHP_URL_QUERY), $observedQuery);
 granCrawlerAssert(
-    !isset($observedQuery['inedita']),
-    'A URL da Gran nao deve restringir status; a exclusao de ineditas ocorre no mapeamento canonico.'
+    isset($observedQuery['inedita']) && (string) $observedQuery['inedita'] === '0',
+    'A URL da Gran deve excluir ineditas tambem no filtro remoto; o mapeamento canonico permanece como segunda barreira.'
 );
 
 $ineditaPayload = $remotePayload;

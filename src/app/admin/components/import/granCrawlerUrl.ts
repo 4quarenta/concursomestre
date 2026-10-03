@@ -57,7 +57,7 @@ export const buildGranQuestionQueryUrl = (
   }
   parsed.searchParams.delete('anulada');
   parsed.searchParams.delete('desatualizada');
-  parsed.searchParams.delete('inedita');
+  parsed.searchParams.set('inedita', '0');
   parsed.searchParams.set('page', String(page));
   parsed.searchParams.set('perPage', String(perPage));
   for (const key of [...parsed.searchParams.keys()]) {
