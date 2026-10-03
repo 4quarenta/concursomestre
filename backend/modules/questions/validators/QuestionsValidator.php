@@ -293,11 +293,11 @@ class QuestionsValidator
      * Valida o payload de criacao/edicao de questo.
       * @since 1.0.0
      */
-    public function validateSavePayload(array $payload): array
+    public function validateSavePayload(array $payload, ?array $sharedContextEvidence = null): array
     {
         $payload = $this->normalizeCanonicalQuestionPayload($payload);
         $statement = trim((string) ($payload['enunciado'] ?? ''));
-        if ($statement === '') {
+        if ($statement === '' && !$this->hasUsableSharedContextEvidence($sharedContextEvidence)) {
             throw new InvalidArgumentException('Dados invalidos.');
         }
 
@@ -423,6 +423,29 @@ class QuestionsValidator
                 ? $payload['_canonical_contract']
                 : null,
         ];
+    }
+
+    /**
+     * A questao pode usar o texto ou imagem de um grupo compartilhado como
+     * enunciado editorial, desde que a evidencia venha do mesmo lote.
+     */
+    private function hasUsableSharedContextEvidence(?array $context): bool
+    {
+        if (!is_array($context)) {
+            return false;
+        }
+
+        $text = trim((string) (
+            $context['texto']
+            ?? $context['body']
+            ?? $context['text']
+            ?? $context['richText']
+            ?? $context['rich_text']
+            ?? ''
+        ));
+        $assets = is_array($context['assets'] ?? null) ? $context['assets'] : [];
+
+        return $text !== '' || $assets !== [];
     }
 
     /**

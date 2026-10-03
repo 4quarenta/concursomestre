@@ -74,6 +74,39 @@ assertCanonicalQuestionContract(
 );
 assertCanonicalQuestionContract(count($result['taxonomies']['banca']) === 1, 'examBoards deve ser normalizado para taxonomia de banca.');
 
+$contextOnly = $validator->validateSavePayload([
+    'enunciado' => '',
+    'itens' => [
+        ['rotulo' => 'A', 'corpo' => 'Alternativa A'],
+        ['rotulo' => 'B', 'corpo' => 'Alternativa B'],
+    ],
+    'resposta' => 1,
+], [
+    'texto' => 'Texto associado compartilhado pelas questoes do grupo.',
+    'assets' => [],
+]);
+assertCanonicalQuestionContract(
+    $contextOnly['enunciado'] === '',
+    'Uma questao com texto associado valido deve preservar o enunciado individual vazio.'
+);
+
+try {
+    $validator->validateSavePayload([
+        'enunciado' => '',
+        'itens' => [
+            ['rotulo' => 'A', 'corpo' => 'Alternativa A'],
+            ['rotulo' => 'B', 'corpo' => 'Alternativa B'],
+        ],
+        'resposta' => 1,
+    ]);
+    throw new RuntimeException('Questao sem enunciado e sem contexto deveria ser rejeitada.');
+} catch (InvalidArgumentException $error) {
+    assertCanonicalQuestionContract(
+        $error->getMessage() === 'Dados invalidos.',
+        'A excecao de contexto nao pode liberar questoes sem qualquer conteudo.'
+    );
+}
+
 foreach ([
     ['carreiras', [], 'carreira'],
     ['careers', [], 'area'],

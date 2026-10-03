@@ -884,6 +884,7 @@ class QuestionsService
         $newTaxonomies = [];
         $groupIdByTempId = [];
         $canonicalContextIdByTempId = [];
+        $contextEvidenceByTempId = [];
         $contextQuestionNumbersByTempId = [];
         $createdQuestionIdBySourceNumber = [];
         $duplicateSkipped = [];
@@ -955,6 +956,7 @@ class QuestionsService
                     'assets' => $context['assets'] ?? [],
                 ]);
                 $contextData['assets'] = $this->persistQuestionContextAssets($contextData['assets']);
+                $contextEvidenceByTempId[$tempId] = $contextData;
                 $contextSource = is_array($context['source'] ?? null) ? $context['source'] : [];
                 $contextData['source_provider'] = $this->normalizeImportedSourceProvider(
                     $contextSource['provider'] ?? $context['sourceProvider'] ?? $context['source_provider'] ?? null
@@ -1075,7 +1077,10 @@ class QuestionsService
                 // uma questao efetivamente publicada em rascunho privado.
                 $question = $this->forceImportedQuestionPublication($question);
                 $question = $this->persistQuestionRichTextImages($question);
-                $validatedQuestion = $this->validator->validateSavePayload($question);
+                $validatedQuestion = $this->validator->validateSavePayload(
+                    $question,
+                    $contextEvidenceByTempId[$contextTempId] ?? null
+                );
                 $importIdentity = $this->buildImportedQuestionIdentity($validatedQuestion, $examRecord);
                 $batchDuplicateKey = $this->buildImportedQuestionBatchKey($importIdentity);
                 if (isset($seenImportKeys[$batchDuplicateKey])) {

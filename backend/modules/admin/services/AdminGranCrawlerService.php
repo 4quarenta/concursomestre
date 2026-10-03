@@ -1482,9 +1482,16 @@ final class AdminGranCrawlerService
             $contextHasAssets = $contextTempId !== null
                 && isset($contextIndexes[$contextTempId])
                 && ($contexts[$contextIndexes[$contextTempId]]['assets'] ?? []) !== [];
+            $contextHasContent = $contextTempId !== null
+                && isset($contextIndexes[$contextTempId])
+                && (
+                    trim((string) ($contexts[$contextIndexes[$contextTempId]]['body'] ?? '')) !== ''
+                    || trim((string) ($contexts[$contextIndexes[$contextTempId]]['bodyClean'] ?? '')) !== ''
+                    || $contextHasAssets
+                );
             $question['review']['reasons'] = $alreadyPublished
                 ? []
-                : $this->reviewReasons($question, $contextHasAssets);
+                : $this->reviewReasons($question, $contextHasAssets, $contextHasContent);
             $questions[] = $question;
         }
 
@@ -3268,7 +3275,11 @@ final class AdminGranCrawlerService
         return 'single_choice';
     }
 
-    private function reviewReasons(array $question, bool $contextHasAssets = false): array
+    private function reviewReasons(
+        array $question,
+        bool $contextHasAssets = false,
+        bool $contextHasContent = false
+    ): array
     {
         $reasons = ['coleta_externa_requer_revisao'];
         $hasStatementAsset = false;
@@ -3282,6 +3293,7 @@ final class AdminGranCrawlerService
             trim((string) ($question['content']['statementClean'] ?? '')) === ''
             && trim((string) ($question['content']['statement'] ?? '')) === ''
             && !$hasStatementAsset
+            && !$contextHasContent
         ) {
             $reasons[] = 'enunciado_ausente';
         }

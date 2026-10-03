@@ -298,6 +298,42 @@ granCrawlerAssert(
     'Enunciado visual valido nao pode ser classificado como enunciado ausente.'
 );
 
+$sharedContextResult = $service->mapBrowserResponse([
+    'granResponse' => [
+        'data' => [
+            'total' => 1,
+            'rows' => [[
+                'id_questao' => 98113,
+                'numero_questao' => 36,
+                'enunciado' => '',
+                'grupo_questao' => [
+                    'id' => 87032,
+                    'texto' => 'Atenção: utilize o texto associado para responder a esta questão.',
+                ],
+                'itens' => [
+                    ['id' => 981131, 'rotulo' => 'A', 'corpo' => 'Alternativa A'],
+                    ['id' => 981132, 'rotulo' => 'B', 'corpo' => 'Alternativa B'],
+                    ['id' => 981133, 'rotulo' => 'C', 'corpo' => 'Alternativa C'],
+                ],
+                'resposta' => 981133,
+                'provas' => [[
+                    'id' => 98113,
+                    'nome' => 'FCC - 2004 - CEF - Tecnico Bancario',
+                    'ano' => 2004,
+                ]],
+            ]],
+        ],
+    ],
+    'granRequestUrl' => 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?perPage=1&page=1&anos%5B%5D=2004',
+]);
+$sharedContextQuestion = $sharedContextResult['payloads'][0]['questions'][0] ?? [];
+granCrawlerAssert(
+    ($sharedContextQuestion['content']['statement'] ?? '') === ''
+    && ($sharedContextQuestion['source']['contextTempId'] ?? null) !== null
+    && !in_array('enunciado_ausente', $sharedContextQuestion['review']['reasons'] ?? [], true),
+    'Questao com texto associado valido deve usar o contexto compartilhado em vez de falhar como enunciado ausente.'
+);
+
 $hierarchyResult = $service->mapBrowserResponse([
     'granResponse' => [
         'data' => [

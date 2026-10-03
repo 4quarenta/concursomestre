@@ -84,6 +84,17 @@ test('remove apoio individual somente quando duplica o contexto compartilhado', 
   assert.equal(payload.questions[0].source.contextTempId, payload.contexts[0].tempId);
 });
 
+test('aceita questao cujo enunciado esta no contexto compartilhado', () => {
+  const payload = mapGranBatchToQuestionImport([rawQuestion({
+    enunciado: '',
+    textos_questao: [],
+  })]);
+
+  assert.equal(payload.questions[0].content.statement, '');
+  assert.equal(payload.questions[0].source.contextTempId, payload.contexts[0].tempId);
+  assert.equal(payload.questions[0].review.reasons.includes('enunciado_ausente'), false);
+});
+
 test('nao usa IDs remotos como IDs locais de taxonomia', () => {
   const payload = mapGranBatchToQuestionImport([rawQuestion({
     bancas: [{ id: 987654, sigla: 'IBFC', nome: 'Instituto Brasileiro de Formacao' }],

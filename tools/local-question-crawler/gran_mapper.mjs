@@ -322,16 +322,19 @@ const buildContext = (group, tempId, sourcePage) => {
   };
 };
 
-const createReviewReasons = (question) => {
+const createReviewReasons = (question, { hasSharedContext = false } = {}) => {
   const reasons = ['coleta_externa_requer_revisao'];
-  if (!question.content.statementClean) reasons.push('enunciado_ausente');
+  const hasStatementAsset = question.assets.some((asset) => asset.usage === 'statement');
+  if (!question.content.statementClean && !hasStatementAsset && !hasSharedContext) {
+    reasons.push('enunciado_ausente');
+  }
   if (!question.alternatives.length) reasons.push('alternativas_ausentes');
   if (!question.answer.correctAlternativeTempIds.length) reasons.push('gabarito_ausente');
   if (question.assets.some((asset) => asset.url)) reasons.push('asset_externo_requer_localizacao');
   return reasons;
 };
 
-const mapQuestion = (rawQuestion, index, contextTempId, contextBodyClean) => {
+const mapQuestion = (rawQuestion, index, contextTempId, contextEvidence = null) => {
   const externalId = readText(rawQuestion?.id_questao, rawQuestion?.id, rawQuestion?.question_id);
   const tempId = `gran_q_${safeTempPart(externalId, String(index + 1))}`;
   const questionNumber = resolveQuestionNumber(rawQuestion);
@@ -358,11 +361,11 @@ const mapQuestion = (rawQuestion, index, contextTempId, contextBodyClean) => {
   const supportTextClean = cleanPlainText(supportInline.body);
   const supportDuplicatesContext = Boolean(
     contextTempId
-    && contextBodyClean
+    && contextEvidence?.bodyClean
     && supportTextClean
     && (
-      supportTextClean === contextBodyClean
-      || (supportTextClean.length >= 20 && contextBodyClean.includes(supportTextClean))
+      supportTextClean === contextEvidence.bodyClean
+      || (supportTextClean.length >= 20 && contextEvidence.bodyClean.includes(supportTextClean))
     ),
   );
   const teacherComment = readText(rawQuestion?.comentario_professor, rawQuestion?.comentario_texto);
@@ -423,7 +426,13 @@ const mapQuestion = (rawQuestion, index, contextTempId, contextBodyClean) => {
       reasons: [],
     },
   };
-  question.review.reasons = createReviewReasons(question);
+  question.review.reasons = createReviewReasons(question, {
+    hasSharedContext: Boolean(
+      contextEvidence?.body
+      || contextEvidence?.bodyClean
+      || contextEvidence?.assets?.length
+    ),
+  });
   return question;
 };
 
@@ -496,8 +505,8 @@ export const mapGranBatchToQuestionImport = (rawQuestions, metadata = {}) => {
     index,
     questionContextKeys.get(question) || null,
     questionContextKeys.has(question)
-      ? contextsById.get(questionContextKeys.get(question))?.bodyClean || ''
-      : '',
+      ? contextsById.get(questionContextKeys.get(question)) || null
+      : null,
   ));
   const contexts = [...contextsById.values()].map((context) => ({
     ...context,
