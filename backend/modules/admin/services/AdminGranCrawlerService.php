@@ -74,6 +74,7 @@ final class AdminGranCrawlerService
             $fallbackYear
         );
         $rows = $this->extractRows($remotePayload);
+        $this->assertRowsMatchRequestedYear($rows, $request['year']);
         $granExamFiles = $this->normalizeGranExamFiles($input['granExamFiles'] ?? []);
         $granAssetData = $this->normalizeGranAssetData($input['granAssetData'] ?? []);
 
@@ -160,6 +161,7 @@ final class AdminGranCrawlerService
         }
 
         $rows = $this->extractRows($decoded);
+        $this->assertRowsMatchRequestedYear($rows, $year);
         $payloads = $this->mapQuestionImportPayloads($rows, [
             'year' => $year !== '' ? (int) $year : null,
         ]);
@@ -869,6 +871,62 @@ final class AdminGranCrawlerService
             }
         }
         return [];
+    }
+
+    /**
+     * A Gran pode ignorar o filtro de ano em respostas muito grandes. Nunca
+     * devemos enfileirar uma pagina cuja resposta contenha outra competencia.
+     */
+    private function assertRowsMatchRequestedYear(array $rows, string $requestedYear): void
+    {
+        $requestedYear = trim($requestedYear);
+        if ($requestedYear === '' || $rows === []) return;
+
+        $mismatched = 0;
+        foreach ($rows as $row) {
+            $years = [];
+            $this->collectQuestionYears($row, $years);
+            if ($years === [] || !in_array($requestedYear, $years, true)) {
+                $mismatched++;
+            }
+        }
+        if ($mismatched > 0) {
+            throw new InvalidArgumentException(sprintf(
+                'A Gran retornou %d questao(oes) fora do ano %s solicitado; nenhuma questao desta resposta foi enfileirada. Tente novamente com uma quantidade menor por pagina.',
+                $mismatched,
+                $requestedYear
+            ));
+        }
+    }
+
+    /** @param array<string, string> $years */
+    private function collectQuestionYears(mixed $value, array &$years, int $depth = 0): void
+    {
+        if ($depth > 5 || $value === null) return;
+        if (is_array($value)) {
+            if (array_is_list($value)) {
+                foreach ($value as $entry) {
+                    $this->collectQuestionYears($entry, $years, $depth + 1);
+                }
+            } else {
+                foreach ($value as $key => $entry) {
+                    $keyText = strtolower((string) $key);
+                    if (preg_match('/^(?:ano|anos|year|years|ultimoano|lastyear|prova|provas)$/', $keyText) === 1) {
+                        $this->collectQuestionYears($entry, $years, $depth + 1);
+                    }
+                }
+            }
+            return;
+        }
+        if (is_int($value) || is_float($value) || is_string($value)) {
+            $text = trim((string) $value);
+            if (preg_match('/^\d{4}$/', $text) === 1 && (int) $text >= 1900 && (int) $text <= 2200) {
+                $years[$text] = $text;
+            }
+            return;
+        }
+        if (!is_object($value)) return;
+        $this->collectQuestionYears(get_object_vars($value), $years, $depth + 1);
     }
 
     /**

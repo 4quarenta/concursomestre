@@ -89,12 +89,12 @@ $remotePayload = [
             'area' => ['nome' => 'Engenharia'],
             'provas' => [[
                 'id' => 601,
-                'nome' => 'FGV - 2023 - CBMERJ - Oficial',
+                'nome' => 'FGV - 2024 - CBMERJ - Oficial',
                 'bancas' => [['sigla' => 'FGV']],
                 'orgaos' => [['sigla' => 'CBMERJ']],
                 'cargos' => [['nome' => 'Oficial']],
                 'carreiras' => [['nome' => 'Bombeiro Militar']],
-                'ano' => 2023,
+                'ano' => 2024,
                 'escolaridade' => ['nome' => 'Superior'],
             ]],
         ]],
@@ -185,7 +185,7 @@ granCrawlerAssert(
 );
 granCrawlerAssert(
     $payloads[0]['exam']['title'] === 'IBFC - 2024 - PM-PB - Soldado'
-    && $payloads[1]['exam']['title'] === 'FGV - 2023 - CBMERJ - Oficial',
+    && $payloads[1]['exam']['title'] === 'FGV - 2024 - CBMERJ - Oficial',
     'Cada lote deve preservar a prova real informada pela Gran.'
 );
 granCrawlerAssert(
@@ -496,7 +496,7 @@ granCrawlerAssert(
 );
 granCrawlerAssert(
     $browserResult['payloads'][0]['exam']['title'] === 'IBFC - 2024 - PM-PB - Soldado'
-    && $browserResult['payloads'][1]['exam']['title'] === 'FGV - 2023 - CBMERJ - Oficial',
+    && $browserResult['payloads'][1]['exam']['title'] === 'FGV - 2024 - CBMERJ - Oficial',
     'Um titulo global do painel nao pode sobrescrever as provas reais da Gran.'
 );
 granCrawlerAssert(
@@ -608,6 +608,28 @@ granCrawlerAssert(
     && count($ineditaResult['payloads']) === 1
     && (string) ($ineditaResult['payloads'][0]['questions'][0]['source']['externalId'] ?? '') === '992',
     'Questao marcada como inedita deve ser removida antes da fila/importacao.'
+);
+
+$wrongYearRejected = false;
+try {
+    $service->mapBrowserResponse([
+        'granResponse' => [
+            'data' => [
+                'rows' => [[
+                    'id_questao' => 994,
+                    'enunciado' => 'Questao fora do ano solicitado.',
+                    'provas' => [['prova' => ['ano' => 2008]]],
+                ]],
+            ],
+        ],
+        'granRequestUrl' => 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?perPage=1&page=1&anos%5B%5D=1998',
+    ]);
+} catch (InvalidArgumentException $exception) {
+    $wrongYearRejected = str_contains($exception->getMessage(), 'fora do ano 1998');
+}
+granCrawlerAssert(
+    $wrongYearRejected,
+    'Uma resposta Gran fora do ano selecionado deve ser rejeitada antes do mapeamento.'
 );
 
 $onlyIneditaPayload = $remotePayload;

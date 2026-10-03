@@ -182,6 +182,41 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(mocks.post.mock.calls.some(([, input]) => input.action === 'clear_automatic_checkpoint')).toBe(false);
   });
 
+  it('retries a large page with a safe size when Gran ignores the year filter', async () => {
+    mocks.get.mockResolvedValue({ data: { data: {
+      automaticCheckpoint: {
+        runKey: 'large-page-run',
+        requestUrl: 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?anos[]=2000&page=1&perPage=1000',
+        perPage: 1000,
+        year: 2000,
+        page: 1,
+        status: 'paused',
+        totalPages: null,
+        lastBatchId: null,
+      },
+      taxonomyStatus: {},
+      failureHistory: { items: [], total: 0, openCount: 0, retryingCount: 0 },
+    } } });
+    mocks.collect.mockImplementation(async (requestUrl: string) => ({
+      requestUrl,
+      json: new URL(requestUrl).searchParams.get('perPage') === '1000'
+        ? { data: { rows: [{ id: 1, ano: 2012 }] } }
+        : { data: { rows: [{ id: 1, ano: 2000 }] } },
+      examFiles: {},
+      assetData: {},
+    }));
+
+    await startCollection();
+
+    expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('perPage')))
+      .toEqual(['1000', '20']);
+    expect(mocks.post).toHaveBeenCalledWith('admin/gran_crawler.php', expect.objectContaining({
+      action: 'map_and_enqueue_publication',
+      perPage: 20,
+    }), expect.anything());
+    expect(container.textContent).toContain('Coleta automatica do ano 2000 concluida.');
+  });
+
   it('allows hiding failures and shows the green confirmed-publication counter', async () => {
     await mountCrawler();
     const toggle = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Ocultar falhas')!;

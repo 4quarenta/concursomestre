@@ -60,6 +60,7 @@ import {
   safeGranRequestUrl,
   type GranPageRequestLog,
 } from './granCrawlerRequestLog';
+import { validateGranQuestionYearFilter } from './granCrawlerResponseValidation';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
 type GranQuestion = {
@@ -270,6 +271,7 @@ const ACTIVE_BATCH_STATUS_REFRESH_MS = 15_000;
 const TAXONOMY_CHECK_FRESH_MS = 6 * 60 * 60 * 1000;
 const MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2;
 const MAX_GRAN_REQUEST_LOGS = 10;
+const SAFE_GRAN_FILTER_PAGE_SIZE = 20;
 
 /**
  * A mesma pagina da Gran pode ser retomada depois de uma atualizacao do
@@ -875,12 +877,54 @@ const AdminGranCrawlerSection = ({
     });
     const logId = startRequestLog('automatico', targetPage, targetYear, perPage, requestUrl);
     try {
-      const collection = await collectGranQuestions(requestUrl, signal);
+      let effectivePerPage = perPage;
+      let effectiveRequestUrl = requestUrl;
+      let collection = await collectGranQuestions(effectiveRequestUrl, signal);
       updateRequestLog(logId, {
         httpStatus: collection.status,
         ...readGranResponseLogSummary(collection.json),
         responseJson: formatSafeGranResponse(collection.json),
       });
+
+      const initialValidation = validateGranQuestionYearFilter(collection.json, targetYear);
+      if (!initialValidation.valid && perPage > SAFE_GRAN_FILTER_PAGE_SIZE) {
+        const fallbackPerPage = SAFE_GRAN_FILTER_PAGE_SIZE;
+        updateRequestLog(logId, {
+          error: `A Gran retornou pagina fora do ano ${targetYear}; nova tentativa automatica com ${fallbackPerPage} por pagina.`,
+        });
+        effectivePerPage = fallbackPerPage;
+        effectiveRequestUrl = buildGranQuestionQueryUrl(granRequestUrl, {
+          page: targetPage,
+          perPage: effectivePerPage,
+          year: targetYear,
+        });
+        const fallbackLogId = startRequestLog(
+          'automatico', targetPage, targetYear, effectivePerPage, effectiveRequestUrl,
+        );
+        try {
+          collection = await collectGranQuestions(effectiveRequestUrl, signal);
+          updateRequestLog(fallbackLogId, {
+            httpStatus: collection.status,
+            ...readGranResponseLogSummary(collection.json),
+            responseJson: formatSafeGranResponse(collection.json),
+          });
+          const fallbackValidation = validateGranQuestionYearFilter(collection.json, targetYear);
+          if (!fallbackValidation.valid) {
+            throw new Error(
+              `A Gran retornou questoes fora do ano ${targetYear} mesmo apos a nova tentativa.`,
+            );
+          }
+        } catch (requestError) {
+          if (!signal.aborted) {
+            updateRequestLog(fallbackLogId, {
+              error: safeGranLogError(readApiErrorMessage(requestError, 'Falha sem detalhe do coletor.')),
+            });
+          }
+          throw requestError;
+        }
+      } else if (!initialValidation.valid) {
+        throw new Error(`A Gran retornou questoes fora do ano ${targetYear} solicitado.`);
+      }
       const idempotencyKey = `gran-auto-${runKey}-${targetYear}-${targetPage}-${fingerprintAutomaticInput({
         response: collection.json,
         assets: collection.assetData || {},
@@ -893,7 +937,7 @@ const AdminGranCrawlerSection = ({
         granAssetData: collection.assetData || {},
         granRequestUrl: collection.requestUrl,
         page: targetPage,
-        perPage,
+        perPage: effectivePerPage,
         year: targetYear,
         idempotencyKey,
       }, { signal });
@@ -1446,6 +1490,7 @@ const AdminGranCrawlerSection = ({
         }
         if (!data) break;
         const pageQuestionCount = data.questionCount;
+        const effectivePerPage = Math.max(1, Number(data.perPage) || checkpoint.perPage);
         if (Number.isFinite(data.total) && data.total > 0) {
           setAutomaticFilteredQuestionCount(data.total);
         } else if (data.total === 0 && cursorPage === 1 && pageQuestionCount === 0) {
@@ -1459,7 +1504,7 @@ const AdminGranCrawlerSection = ({
         const sourceQuestionCount = Math.max(0, Number(data.sourceQuestionCount) || 0);
         const exhaustedYear = sourceQuestionCount === 0
           || (knownPageCount > 0 && cursorPage >= knownPageCount)
-          || (knownPageCount === 0 && sourceQuestionCount < checkpoint.perPage);
+          || (knownPageCount === 0 && sourceQuestionCount < effectivePerPage);
 
         if (pageQuestionCount > 0) {
           setAutomaticProgress({
@@ -1494,11 +1539,11 @@ const AdminGranCrawlerSection = ({
         checkpoint = await saveAutomaticCheckpoint({
           requestUrl: buildGranQuestionQueryUrl(checkpoint.requestUrl, {
             page: nextPage,
-            perPage: checkpoint.perPage,
+            perPage: effectivePerPage,
             year: String(nextYear),
           }),
           runKey: checkpoint.runKey,
-          perPage: checkpoint.perPage,
+          perPage: effectivePerPage,
           year: nextYear,
           page: nextPage,
           totalPages: continuesNextYear ? null : knownPageCount || null,
