@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { QuestionCommentsPanel } from "@/components/questions/QuestionCommentsPanel";
 import { QuestionRichContent } from "@/components/questions/QuestionRichContent";
 import { GuestAccessSheet } from "@/components/GuestAccessSheet";
+import { AnimatedModal } from "@/components/ui/AnimatedModal";
 import { useQuestionCommentsQuery, useQuestionStatsQuery } from "@/features/questions/api/useQuestionDetailsQueries";
 import { useAddQuestionCommentMutation, useDeleteQuestionCommentMutation, useLikeQuestionCommentMutation } from "@/features/questions/api/useQuestionCommentsMutations";
 import { questionService } from "@/services/questions/questionService";
@@ -136,7 +137,7 @@ export default function QuestionSectionScreen() {
       {section === "discussion" && commentsQuery.isError ? <Pressable onPress={() => void commentsQuery.refetch()} style={styles.retry}><Text style={styles.retryText}>Tentar carregar comentários novamente</Text></Pressable> : null}
       {answered ? <View style={styles.answerSummary}><Ionicons name={selectedCorrect ? "checkmark-circle" : "close-circle"} size={19} color={selectedCorrect ? theme.success : theme.danger} /><Text style={styles.answerSummaryText}>Sua resposta nesta tentativa: {selectedCorrect ? "correta" : selectedOption >= 0 ? `alternativa ${String.fromCharCode(65 + selectedOption)}` : "incorreta"}</Text></View> : null}
     </ScrollView>
-    <Modal animationType="slide" transparent visible={Boolean(commentToDelete)} onRequestClose={closeDeleteComment}>
+    <AnimatedModal mode="sheet" transparent visible={Boolean(commentToDelete)} onRequestClose={closeDeleteComment}>
       <View style={styles.deleteBackdrop}>
         <Pressable accessibilityRole="button" accessibilityLabel="Fechar confirmação de exclusão" disabled={deleteCommentMutation.isPending} onPress={closeDeleteComment} style={styles.deleteBackdropDismiss} />
         <View style={[styles.deleteSheet, { paddingBottom: Math.max(insets.bottom, spacing[4]) }]}>
@@ -154,7 +155,7 @@ export default function QuestionSectionScreen() {
           </View>
         </View>
       </View>
-    </Modal>
+    </AnimatedModal>
   </View>;
 }
 

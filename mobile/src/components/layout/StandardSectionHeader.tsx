@@ -32,7 +32,15 @@ export const StandardSectionHeader: React.FC<StandardSectionHeaderProps> = ({
           {stats.map((stat) => (
             <View key={stat.label} style={styles.statCard}>
               <Ionicons name={stat.icon} size={16} color="rgba(255,255,255,0.75)" />
-              <AppText variant="bodyStrong" style={styles.statValue}>{stat.value}</AppText>
+              <AppText
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                numberOfLines={1}
+                variant="bodyStrong"
+                style={styles.statValue}
+              >
+                {stat.value}
+              </AppText>
               <AppText variant="label" style={styles.statLabel}>{stat.label}</AppText>
             </View>
           ))}
@@ -67,8 +75,11 @@ const createStyles = () =>
     },
     statValue: {
       color: palette.white,
+      flexShrink: 1,
       fontSize: typography.size.md,
       fontWeight: typography.weight.bold,
+      textAlign: "center",
+      width: "100%",
     },
     statLabel: {
       color: "rgba(255,255,255,0.7)",

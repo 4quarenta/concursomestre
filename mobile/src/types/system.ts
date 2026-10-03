@@ -75,9 +75,15 @@ export type MobilePlanPricingMap = Partial<Record<MobilePlanName, MobilePlanPric
 
 export interface MobileSystemSettings {
   mobileAppUpdatePolicy: MobileAppUpdatePolicy;
+  mobileAdsEnabled: boolean;
+  mobileInterstitialEveryTransitions: number;
+  mobileInterstitialMinIntervalSeconds: number;
+  /** @deprecated use mobileInterstitialEveryTransitions */
+  mobileInterstitialEveryQuestions: number;
   features: MobileFeatureFlags;
   recaptchaEnabled: boolean;
   recaptchaAndroidSiteKey?: string;
+  googleAuthClientId?: string;
   sameTierCycleChangeEnabled: boolean;
   planDetails: MobilePlanDetailsMap;
   pricing: MobilePlanPricingMap;
@@ -99,6 +105,10 @@ export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
 };
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
+  mobileAdsEnabled: true,
+  mobileInterstitialEveryTransitions: 2,
+  mobileInterstitialMinIntervalSeconds: 180,
+  mobileInterstitialEveryQuestions: 2,
   mobileAppUpdatePolicy: {
     enabled: false,
     latestVersion: '',
@@ -110,6 +120,7 @@ export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
   features: { ...DEFAULT_MOBILE_FEATURE_FLAGS },
   recaptchaEnabled: false,
   recaptchaAndroidSiteKey: undefined,
+  googleAuthClientId: undefined,
   sameTierCycleChangeEnabled: false,
   planDetails: {},
   pricing: {},

@@ -3,6 +3,7 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
+import { useAdsConsent } from "@/providers/AdsConsentProvider";
 import { radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 
@@ -59,6 +60,7 @@ function Toggle({ value, onChange, theme }: { value: boolean; onChange: () => vo
 
 export function PrivacySettingsScreen() {
   const theme = useAppTheme();
+  const { privacyOptionsRequired, showPrivacyOptions } = useAdsConsent();
   const [preferences, setPreferences] = React.useState<PrivacyState>(initialState);
   const [hydrated, setHydrated] = React.useState(false);
 
@@ -126,6 +128,31 @@ export function PrivacySettingsScreen() {
           </View>
         </View>
 
+        {privacyOptionsRequired ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>ANÚNCIOS</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+              <View style={styles.consentRow}>
+                <View style={[styles.iconBox, { backgroundColor: theme.surfaceSubtle }]}>
+                  <Ionicons name="shield-checkmark-outline" size={17} color={theme.text} />
+                </View>
+                <View style={styles.copy}>
+                  <Text style={[styles.rowTitle, { color: theme.text }]}>Preferências de anúncios</Text>
+                  <Text style={[styles.rowDescription, { color: theme.textMuted }]}>Revise ou altere suas escolhas de privacidade.</Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Gerenciar preferências de anúncios"
+                  onPress={() => void showPrivacyOptions()}
+                  style={[styles.consentButton, { backgroundColor: theme.surfaceSubtle }]}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={theme.text} />
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
         <Text style={[styles.helper, { color: theme.textMuted }]}>
           Estas preferências são salvas neste aparelho. O app não compartilha seus dados pessoais sem sua autorização.
         </Text>
@@ -168,6 +195,8 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, letterSpacing: 1, paddingHorizontal: spacing[1] },
   card: { borderRadius: radius.lg, elevation: 2, overflow: "hidden", shadowOpacity: 0.06, shadowRadius: 5 },
   preferenceRow: { alignItems: "center", flexDirection: "row", gap: spacing[3], minHeight: 76, padding: spacing[4] },
+  consentRow: { alignItems: "center", flexDirection: "row", gap: spacing[3], minHeight: 76, padding: spacing[4] },
+  consentButton: { alignItems: "center", borderRadius: radius.md, height: 36, justifyContent: "center", width: 36 },
   iconBox: { alignItems: "center", borderRadius: radius.md, height: 40, justifyContent: "center", width: 40 },
   copy: { flex: 1, gap: 2 },
   rowTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold },

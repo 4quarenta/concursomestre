@@ -6,6 +6,7 @@ export const ENDPOINTS = {
   auth: {
     login: "auth/login.php",
     register: "auth/register.php",
+    google: "auth/google.php",
     forgotPassword: "auth/forgot-password.php",
     resetPassword: "auth/reset-password.php",
     confirmEmail: "auth/confirm-email.php",
@@ -91,6 +92,7 @@ export const ENDPOINTS = {
       "subscriptions/finalize_stripe_subscription.php",
     validateCoupon: "subscriptions/validate_coupon.php",
     createStripePortal: "subscriptions/create_stripe_portal.php",
+    verifyGooglePlayPurchase: "subscriptions/verify_google_play_purchase.php",
     updateRenewal: "subscriptions/update_renewal.php",
     cancel: "subscriptions/cancel.php",
     cancelRefund: "subscriptions/cancel_refund.php",

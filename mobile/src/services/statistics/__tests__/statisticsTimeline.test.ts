@@ -53,6 +53,33 @@ describe('statistics activity timeline', () => {
     });
   });
 
+  it('aggregates today into three-hour blocks using the bounded day range', async () => {
+    mockGet.mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          { timestamp: new Date(2026, 8, 27, 1, 20).getTime(), isCorrect: true, subjectName: 'Direito Constitucional' },
+          { timestamp: new Date(2026, 8, 27, 3, 10).getTime(), isCorrect: false, subjectName: 'Direito Constitucional' },
+          { timestamp: new Date(2026, 8, 27, 10, 45).getTime(), isCorrect: true, subjectName: 'Português' },
+        ],
+        hasMore: false,
+      },
+    });
+
+    const timeline = await statisticsService.getCurrentUserQuestionTimeline('dia');
+
+    expect(timeline).toHaveLength(8);
+    expect(timeline[0]).toMatchObject({ label: '00h', questions: 1, correct: 1, wrong: 0 });
+    expect(timeline[1]).toMatchObject({ label: '03h', questions: 1, correct: 0, wrong: 1 });
+    expect(timeline[3]).toMatchObject({ label: '09h', questions: 1, correct: 1, wrong: 0 });
+    expect(timeline[0].subjectBreakdown).toEqual([
+      { subject: 'Direito Constitucional', totalQuestions: 1, correctAnswers: 1, wrongAnswers: 0, accuracyRate: 100 },
+    ]);
+    expect(mockGet).toHaveBeenCalledWith('users/me/answers.php', {
+      params: { limit: 50, range: 'today' },
+    });
+  });
+
   it('rejects a repeated cursor instead of looping indefinitely', async () => {
     mockGet.mockResolvedValue({
       success: true,

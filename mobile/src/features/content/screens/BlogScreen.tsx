@@ -1,55 +1,120 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Image,
+  type ImageStyle,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type StyleProp,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { AdPlaceholder } from "@/features/content/components/AdPlaceholder";
+import { AppBottomNavigation } from "@/components/navigation/AppBottomNavigation";
+import { MotionPressable } from "@/components/ui/Primitives";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
 import { blogService, type MobileBlogArticle } from "@/services/blog/blogService";
-import { spacing, typography } from "@/theme/tokens";
+import { getAssetUrl } from "@/api/client";
+import { borders, radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const formatDate = (value?: string | null): string => {
   if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString("pt-BR");
+    : date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(" de ", " ");
 };
+
+const getArticleMeta = (article: MobileBlogArticle): string => {
+  const date = formatDate(article.publishedAt);
+  const readingTime = article.readingMinutes > 0
+    ? `${article.readingMinutes} min de leitura`
+    : "";
+  return [date, readingTime].filter(Boolean).join(" · ");
+};
+
+function ArticleImage({
+  source,
+  alt,
+  style,
+}: {
+  source?: string | null;
+  alt?: string | null;
+  style: StyleProp<ImageStyle>;
+}) {
+  const theme = useAppTheme();
+  const uri = getAssetUrl(source);
+  const [failedSource, setFailedSource] = React.useState<string | null>(null);
+
+  if (!uri || failedSource === uri) {
+    return (
+      <View
+        style={[
+          style,
+          {
+            alignItems: "center",
+            backgroundColor: theme.primarySubtle,
+            justifyContent: "center",
+            overflow: "hidden",
+          },
+        ]}
+      >
+        <Ionicons name="newspaper-outline" size={28} color={theme.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      accessibilityLabel={alt || "Imagem da notícia"}
+      resizeMode="cover"
+      source={{ uri }}
+      style={style}
+      onError={() => setFailedSource(uri)}
+    />
+  );
+}
 
 export default function BlogScreen() {
   const theme = useAppTheme();
-  const styles = React.useMemo(() => createStyles(theme), [theme]);
+  const stylesForTheme = React.useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
   const [posts, setPosts] = React.useState<MobileBlogArticle[]>([]);
   const [query, setQuery] = React.useState("");
   const [category, setCategory] = React.useState("Todos");
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    let active = true;
-    void blogService
-      .list()
-      .then((page) => {
-        if (active) setPosts(page.items || []);
-      })
-      .catch((loadError: any) => {
-        if (active) setError(loadError?.message || "Não foi possível carregar as notícias.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+  const loadPosts = React.useCallback(async (refresh = false) => {
+    if (refresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+
+    try {
+      const page = await blogService.list();
+      setPosts(page.items || []);
+    } catch (loadError: unknown) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Não foi possível carregar as notícias.",
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  React.useEffect(() => {
+    void loadPosts();
+  }, [loadPosts]);
 
   const categories = React.useMemo(
     () => [
@@ -64,134 +129,276 @@ export default function BlogScreen() {
     ],
     [posts],
   );
+
   const filtered = React.useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = query.trim().toLocaleLowerCase("pt-BR");
     return posts.filter((post) => {
       const postCategory = post.taxonomy?.category?.label || "";
       const matchesCategory = category === "Todos" || postCategory === category;
       const matchesQuery = !normalizedQuery ||
-        `${post.title} ${post.excerpt} ${postCategory}`.toLowerCase().includes(normalizedQuery);
+        `${post.title} ${post.excerpt} ${postCategory}`.toLocaleLowerCase("pt-BR").includes(normalizedQuery);
       return matchesCategory && matchesQuery;
     });
   }, [category, posts, query]);
-  const [featured, ...rest] = filtered;
+
+  const featuredIndex = filtered.findIndex((post) => post.featured);
+  const selectedFeaturedIndex = featuredIndex >= 0 ? featuredIndex : filtered.length > 0 ? 0 : -1;
+  const featured = selectedFeaturedIndex >= 0 ? filtered[selectedFeaturedIndex] : undefined;
+  const rest = selectedFeaturedIndex >= 0
+    ? filtered.filter((_post, index) => index !== selectedFeaturedIndex)
+    : [];
+
+  const openArticle = (article: MobileBlogArticle) => {
+    router.push(`/noticias/${article.slug}` as never);
+  };
+
+  const navigateTab = (route: "inicio" | "questoes" | "simulados" | "desempenho" | "perfil") => {
+    router.push(`/${route}` as never);
+  };
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+    <View style={[stylesForTheme.screen, { backgroundColor: theme.background }]}>
       <ContentHeader title="Notícias" subtitle="Editais, dicas e novidades dos concursos" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.search, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ScrollView
+        contentContainerStyle={stylesForTheme.content}
+        refreshControl={(
+          <RefreshControl
+            colors={[theme.primary]}
+            onRefresh={() => void loadPosts(true)}
+            refreshing={refreshing}
+            tintColor={theme.primary}
+          />
+        )}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[stylesForTheme.search, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Ionicons name="search-outline" size={18} color={theme.textMuted} />
           <TextInput
+            accessibilityLabel="Buscar notícias"
             value={query}
             onChangeText={setQuery}
             placeholder="Buscar notícias"
             placeholderTextColor={theme.textMuted}
-            style={[styles.searchInput, { color: theme.text }]}
+            returnKeyType="search"
+            style={[stylesForTheme.searchInput, { color: theme.text }]}
           />
+          {query ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Limpar busca" onPress={() => setQuery("")}>
+              <Ionicons name="close-circle" size={18} color={theme.textMuted} />
+            </Pressable>
+          ) : null}
         </View>
 
         {categories.length > 1 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-            {categories.map((item) => (
-              <Pressable
-                key={item}
-                onPress={() => setCategory(item)}
-                style={[styles.filter, { backgroundColor: category === item ? theme.primary : theme.surfaceSubtle }]}
-              >
-                <Text style={{ color: category === item ? theme.onPrimary : theme.textMuted, fontSize: typography.size.xs, fontWeight: typography.weight.medium }}>
-                  {item}
-                </Text>
-              </Pressable>
-            ))}
+          <ScrollView
+            horizontal
+            contentContainerStyle={stylesForTheme.filters}
+            showsHorizontalScrollIndicator={false}
+          >
+            {categories.map((item) => {
+              const selected = category === item;
+              return (
+                <Pressable
+                  key={item}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => setCategory(item)}
+                  style={[
+                    stylesForTheme.filter,
+                    {
+                      backgroundColor: selected ? theme.primary : theme.surface,
+                      borderColor: selected ? theme.primary : theme.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: selected ? theme.onPrimary : theme.textMuted,
+                      fontSize: typography.size.sm,
+                      fontWeight: selected ? typography.weight.semibold : typography.weight.medium,
+                    }}
+                  >
+                    {item}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </ScrollView>
         ) : null}
 
         {loading ? (
-          <View style={styles.loading}>
+          <View style={stylesForTheme.loading}>
             <ActivityIndicator size="large" color={theme.primary} />
-            <Text style={[styles.empty, { color: theme.textMuted }]}>Carregando notícias...</Text>
+            <Text style={[stylesForTheme.empty, { color: theme.textMuted }]}>Carregando notícias...</Text>
           </View>
         ) : error ? (
-          <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Ionicons name="alert-circle-outline" size={32} color={theme.danger} />
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>Não foi possível carregar</Text>
-            <Text style={[styles.empty, { color: theme.textMuted }]}>{error}</Text>
+          <View style={[stylesForTheme.stateCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={[stylesForTheme.stateIcon, { backgroundColor: theme.dangerSubtle }]}>
+              <Ionicons name="cloud-offline-outline" size={24} color={theme.danger} />
+            </View>
+            <Text style={[stylesForTheme.stateTitle, { color: theme.text }]}>Não foi possível carregar</Text>
+            <Text style={[stylesForTheme.empty, { color: theme.textMuted }]}>{error}</Text>
+            <MotionPressable
+              accessibilityRole="button"
+              onPress={() => void loadPosts()}
+              style={[stylesForTheme.retryButton, { backgroundColor: theme.primary }]}
+            >
+              <Text style={[stylesForTheme.retryLabel, { color: theme.onPrimary }]}>Tentar novamente</Text>
+            </MotionPressable>
           </View>
         ) : featured ? (
           <>
-            <Pressable
-              onPress={() => router.push(`/noticias/${featured.slug}`)}
-              style={[styles.featured, { backgroundColor: theme.surface }]}
+            <MotionPressable
+              accessibilityRole="button"
+              accessibilityLabel={`Abrir notícia: ${featured.title}`}
+              onPress={() => openArticle(featured)}
+              style={[stylesForTheme.featured, { backgroundColor: theme.surface, borderColor: theme.border }]}
             >
-              <View style={[styles.featuredTop, { backgroundColor: theme.primary }]}>
-                <Text style={[styles.badge, { color: theme.onPrimary, backgroundColor: "rgba(255,255,255,0.18)" }]}>
-                  {(featured.taxonomy?.category?.label || "Notícias").toUpperCase()}
+              <ArticleImage
+                source={featured.coverImageUrl}
+                alt={featured.coverImageAlt || featured.title}
+                style={stylesForTheme.featuredImage}
+              />
+              <View style={stylesForTheme.featuredBody}>
+                <Text style={[stylesForTheme.categoryBadge, { backgroundColor: theme.primarySubtle, color: theme.primary }]}>
+                  {(featured.taxonomy?.category?.label || "Notícias").toLocaleUpperCase("pt-BR")}
                 </Text>
-                <Text style={[styles.featuredTitle, { color: theme.onPrimary }]}>{featured.title}</Text>
-              </View>
-              <View style={styles.featuredBody}>
-                <Text style={[styles.excerpt, { color: theme.textMuted }]}>{featured.excerpt}</Text>
-                <Text style={[styles.meta, { color: theme.textMuted }]}>
-                  {formatDate(featured.publishedAt)} · {featured.readingMinutes || "--"} min
+                <Text numberOfLines={3} style={[stylesForTheme.featuredTitle, { color: theme.text }]}>
+                  {featured.title}
                 </Text>
+                {featured.excerpt ? (
+                  <Text numberOfLines={3} style={[stylesForTheme.excerpt, { color: theme.textMuted }]}>
+                    {featured.excerpt}
+                  </Text>
+                ) : null}
+                <Text style={[stylesForTheme.meta, { color: theme.textMuted }]}>{getArticleMeta(featured)}</Text>
               </View>
-            </Pressable>
-            <AdPlaceholder />
-            <View style={styles.list}>
-              {rest.map((post) => (
-                <Pressable
-                  key={post.slug}
-                  onPress={() => router.push(`/noticias/${post.slug}`)}
-                  style={[styles.post, { backgroundColor: theme.surface }]}
-                >
-                  <View style={styles.postCopy}>
-                    <Text style={[styles.category, { color: theme.primary }]}>
-                      {(post.taxonomy?.category?.label || "Notícias").toUpperCase()}
-                    </Text>
-                    <Text style={[styles.postTitle, { color: theme.text }]}>{post.title}</Text>
-                    <Text style={[styles.meta, { color: theme.textMuted }]}>
-                      {formatDate(post.publishedAt)} · {post.readingMinutes || "--"} min
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
-                </Pressable>
-              ))}
-            </View>
+            </MotionPressable>
+
+            {rest.length > 0 ? (
+              <View style={stylesForTheme.moreSection}>
+                <Text style={[stylesForTheme.sectionTitle, { color: theme.text }]}>Mais notícias</Text>
+                <View style={stylesForTheme.list}>
+                  {rest.map((post) => (
+                    <MotionPressable
+                      key={post.slug}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Abrir notícia: ${post.title}`}
+                      onPress={() => openArticle(post)}
+                      style={[stylesForTheme.post, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                    >
+                      <ArticleImage
+                        source={post.coverImageUrl}
+                        alt={post.coverImageAlt || post.title}
+                        style={stylesForTheme.postImage}
+                      />
+                      <View style={stylesForTheme.postCopy}>
+                        <Text numberOfLines={1} style={[stylesForTheme.category, { color: theme.primary }]}>
+                          {(post.taxonomy?.category?.label || "Notícias").toLocaleUpperCase("pt-BR")}
+                        </Text>
+                        <Text numberOfLines={2} style={[stylesForTheme.postTitle, { color: theme.text }]}>
+                          {post.title}
+                        </Text>
+                        <Text numberOfLines={1} style={[stylesForTheme.meta, { color: theme.textMuted }]}>
+                          {getArticleMeta(post)}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                    </MotionPressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
           </>
         ) : (
-          <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Ionicons name="newspaper-outline" size={36} color={theme.textSubtle} />
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>Nenhuma notícia publicada</Text>
-            <Text style={[styles.empty, { color: theme.textMuted }]}>Novos conteúdos aparecerão aqui quando forem publicados.</Text>
+          <View style={[stylesForTheme.stateCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={[stylesForTheme.stateIcon, { backgroundColor: theme.primarySubtle }]}>
+              <Ionicons name="newspaper-outline" size={24} color={theme.primary} />
+            </View>
+            <Text style={[stylesForTheme.stateTitle, { color: theme.text }]}>
+              {posts.length === 0 ? "Nenhuma notícia publicada" : "Nenhuma notícia encontrada"}
+            </Text>
+            <Text style={[stylesForTheme.empty, { color: theme.textMuted }]}>
+              {posts.length === 0
+                ? "As notícias publicadas na plataforma aparecerão aqui."
+                : "Ajuste a busca ou escolha outra categoria."}
+            </Text>
           </View>
         )}
       </ScrollView>
+      <AppBottomNavigation
+        activeRoute={null}
+        bottomInset={insets.bottom}
+        onNavigate={navigateTab}
+      />
     </View>
   );
 }
 
 const createStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.create({
   screen: { flex: 1 },
-  content: { gap: spacing[4], padding: spacing[5], paddingBottom: spacing[12] },
-  search: { alignItems: "center", borderRadius: 12, borderWidth: 1, flexDirection: "row", gap: spacing[2], paddingHorizontal: spacing[3] },
-  searchInput: { flex: 1, minHeight: 46, fontSize: typography.size.sm },
-  filters: { gap: spacing[2] },
-  filter: { borderRadius: 999, paddingHorizontal: spacing[3], paddingVertical: spacing[2] },
-  featured: { borderRadius: 16, overflow: "hidden" },
-  featuredTop: { gap: spacing[3], padding: spacing[5] },
-  badge: { alignSelf: "flex-start", borderRadius: 999, fontSize: 10, fontWeight: typography.weight.bold, paddingHorizontal: spacing[2], paddingVertical: spacing[1] },
-  featuredTitle: { fontSize: typography.size.xl, fontWeight: typography.weight.bold, lineHeight: 26 },
-  featuredBody: { gap: spacing[2], padding: spacing[5] },
+  content: { gap: spacing[4], padding: spacing[5], paddingBottom: spacing[5] },
+  search: {
+    alignItems: "center",
+    borderRadius: radius.field,
+    borderWidth: borders.subtle,
+    flexDirection: "row",
+    gap: spacing[2],
+    paddingHorizontal: spacing[3],
+  },
+  searchInput: { flex: 1, minHeight: 48, fontSize: typography.size.md },
+  filters: { gap: spacing[2], paddingVertical: spacing[1] },
+  filter: {
+    alignItems: "center",
+    borderRadius: radius.sm,
+    borderWidth: borders.subtle,
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: spacing[4],
+  },
+  featured: { borderRadius: radius.card, borderWidth: borders.subtle, overflow: "hidden" },
+  featuredImage: { height: 196, width: "100%" },
+  featuredBody: { gap: spacing[2], padding: spacing[4] },
+  categoryBadge: {
+    alignSelf: "flex-start",
+    borderRadius: radius.sm,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.bold,
+    overflow: "hidden",
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  featuredTitle: { fontSize: typography.size.xl, fontWeight: typography.weight.bold, lineHeight: 28 },
   excerpt: { fontSize: typography.size.md, lineHeight: 23 },
-  meta: { fontSize: typography.size.xs },
-  list: { gap: spacing[3] },
-  post: { alignItems: "center", borderRadius: 16, flexDirection: "row", gap: spacing[3], padding: spacing[4] },
+  meta: { fontSize: typography.size.xs, lineHeight: 18 },
+  moreSection: { gap: spacing[3], marginTop: spacing[1] },
+  sectionTitle: { fontSize: typography.size.lg, fontWeight: typography.weight.bold },
+  list: { gap: spacing[2] },
+  post: {
+    alignItems: "center",
+    borderRadius: radius.card,
+    borderWidth: borders.subtle,
+    flexDirection: "row",
+    gap: spacing[3],
+    minHeight: 112,
+    overflow: "hidden",
+    padding: spacing[2],
+  },
+  postImage: { borderRadius: radius.sm, height: 88, width: 112 },
   postCopy: { flex: 1, gap: spacing[1] },
-  category: { fontSize: 10, fontWeight: typography.weight.bold },
-  postTitle: { fontSize: typography.size.md, fontWeight: typography.weight.semibold, lineHeight: 21 },
+  category: { fontSize: 10, fontWeight: typography.weight.bold, letterSpacing: 0.3 },
+  postTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, lineHeight: 20 },
   loading: { alignItems: "center", gap: spacing[3], paddingVertical: spacing[12] },
-  emptyCard: { alignItems: "center", borderRadius: 16, borderWidth: 1, gap: spacing[2], padding: spacing[6] },
-  emptyTitle: { fontSize: typography.size.md, fontWeight: typography.weight.bold, textAlign: "center" },
-  empty: { fontSize: typography.size.sm, textAlign: "center" },
+  stateCard: {
+    alignItems: "center",
+    borderRadius: radius.card,
+    borderWidth: borders.subtle,
+    gap: spacing[3],
+    padding: spacing[6],
+  },
+  stateIcon: { alignItems: "center", borderRadius: radius.md, height: 52, justifyContent: "center", width: 52 },
+  stateTitle: { fontSize: typography.size.md, fontWeight: typography.weight.bold, textAlign: "center" },
+  empty: { fontSize: typography.size.sm, lineHeight: 21, textAlign: "center" },
+  retryButton: { alignItems: "center", borderRadius: radius.button, minHeight: 44, justifyContent: "center", paddingHorizontal: spacing[4] },
+  retryLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold },
 });

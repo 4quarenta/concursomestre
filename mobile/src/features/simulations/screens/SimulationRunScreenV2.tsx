@@ -2,7 +2,6 @@ import React from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,13 +12,14 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { simulationQueryKeys } from "@/features/simulations/api/queryKeys";
+import { AnimatedModal } from "@/components/ui/AnimatedModal";
 import { simulationsService } from "@/services/simulations/simulationsService";
 import { statisticsService } from "@/services/statistics/statisticsService";
 import { useSimulationRunStore } from "@/state/simulationRunStore";
 import { useAuth } from "@/providers/AuthProvider";
 import { SimulationResultsScreen } from "@/features/simulations/components/SimulationResultsScreen";
 import { SimulationSubpageHeader } from "@/features/simulations/components/SimulationSubpageHeader";
-import { darkTheme, motion, radius, shadows, spacing, typography } from "@/theme/tokens";
+import { darkTheme, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GuestAccessSheet } from "@/components/GuestAccessSheet";
@@ -664,7 +664,7 @@ const SimulationConfirmModal = ({
   const styles = React.useMemo(() => createStyles(theme), [theme]);
 
   return (
-    <Modal animationType={motion.dialogAnimation} transparent visible={visible} onRequestClose={onCancel}>
+    <AnimatedModal mode="fade" transparent visible={visible} onRequestClose={onCancel}>
       <View style={styles.modalBackdrop}>
         <View style={styles.modalSheet}>
           <Text style={styles.modalTitle}>{title}</Text>
@@ -679,7 +679,7 @@ const SimulationConfirmModal = ({
           </View>
         </View>
       </View>
-    </Modal>
+    </AnimatedModal>
   );
 };
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,10 +9,12 @@ import { useAnswerQuestionMutation } from "@/features/questions/api/useAnswerQue
 import { QuestionBottomActions, QuestionHeader, QuestionMetadata, QuestionOption, type QuestionMetadataItem } from "@/components/questions/QuestionScreenPrimitives";
 import { QuestionRichContent } from "@/components/questions/QuestionRichContent";
 import { GuestAccessSheet } from "@/components/GuestAccessSheet";
+import { AnimatedModal } from "@/components/ui/AnimatedModal";
 import { questionService } from "@/services/questions/questionService";
 import { reportsService } from "@/services/reports/reportsService";
 import { useAuth } from "@/providers/AuthProvider";
-import { darkTheme, motion, palette, radius, shadows, spacing, typography } from "@/theme/tokens";
+import { useAdExperience } from "@/providers/AdExperienceProvider";
+import { darkTheme, palette, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import type { Question, QuestionAsset, QuestionListFilters } from "@/types/questions";
 
@@ -149,6 +151,7 @@ export default function QuestionViewScreen() {
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const { user, isGuest, refreshProfile, toggleSavedQuestion } = useAuth();
+  const { registerPageTransition } = useAdExperience();
   const isVisitor = isGuest || !user?.id;
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ id?: string | string[]; flow?: string | string[]; palavraChave?: string | string[]; bancas?: string | string[]; anos?: string | string[]; materias?: string | string[]; assuntos?: string | string[]; orgaos?: string | string[]; cargos?: string | string[]; focos?: string | string[]; niveis?: string | string[]; modalidades?: string | string[]; dificuldades?: string | string[]; apenasSalvas?: string | string[]; comentarioProfessor?: string | string[]; analiseDetalhada?: string | string[]; excluirAnuladas?: string | string[]; excluirDesatualizadas?: string | string[]; naoRespondidas?: string | string[] }>();
@@ -254,10 +257,12 @@ export default function QuestionViewScreen() {
     Animated.parallel([
       Animated.timing(opacity, { duration: 180, toValue: 1, useNativeDriver: true }),
       Animated.timing(translation, { duration: 220, toValue: 0, useNativeDriver: true }),
-    ]).start();
-  }, [activeQuestion?.id, opacity, translation]);
+    ]).start(({ finished }) => {
+      if (finished) registerPageTransition();
+    });
+  }, [activeQuestion?.id, opacity, registerPageTransition, translation]);
 
-  const goNext = () => {
+  const advanceToNextQuestion = () => {
     if (nextId) {
       direction.current = "next";
       setActiveQuestionId(Number(nextId));
@@ -269,6 +274,11 @@ export default function QuestionViewScreen() {
       setPageTarget("first");
       setCurrentPage((value) => value + 1);
     }
+  };
+
+  const goNext = () => {
+    if (!canNext) return;
+    advanceToNextQuestion();
   };
 
   const goPrevious = () => {
@@ -421,7 +431,7 @@ export default function QuestionViewScreen() {
         </ScrollView>
       </Animated.View>
       <View style={{ paddingBottom: bottomInset }}><QuestionBottomActions answered={answered} selected={selected !== null} loading={answerMutation.isPending || questionQuery.isFetching} canPrevious={canPrevious} canNext={canNext} onConfirm={() => void submitAnswer()} onPrevious={goPrevious} onNext={goNext} theme={theme} /></View>
-      <Modal animationType={motion.sheetAnimation} onRequestClose={closeReportModal} transparent visible={reportModalVisible}>
+      <AnimatedModal mode="sheet" onRequestClose={closeReportModal} transparent visible={reportModalVisible}>
         <View style={styles.reportBackdrop}>
           <Pressable accessibilityRole="button" accessibilityLabel="Fechar formulário de denúncia" disabled={reportSubmitting} onPress={closeReportModal} style={styles.reportBackdropDismiss} />
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, justifyContent: "flex-end", width: "100%" }}>
@@ -452,7 +462,7 @@ export default function QuestionViewScreen() {
             </View>
           </KeyboardAvoidingView>
         </View>
-      </Modal>
+      </AnimatedModal>
       <GuestAccessSheet
         visible={guestAccessVisible}
         description={guestAccessDescription}

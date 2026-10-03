@@ -19,6 +19,10 @@ const requireText = (source, expected, message) => {
 
 const endpoints = read('mobile/src/api/endpoints.ts');
 const authFlowService = read('mobile/src/services/auth/authFlowService.ts');
+const registerScreen = read('mobile/src/screens/auth/RegisterScreen.tsx');
+const registerService = read('mobile/src/services/auth/authFlowService.ts');
+const mobileLegalVersions = read('mobile/src/services/legal/legalDocumentVersion.ts');
+const canonicalLegalVersions = JSON.parse(read('contracts/legal/legal-document-versions.v1.json'));
 const externalUrlService = read('mobile/src/services/navigation/externalUrlService.ts');
 const appErrorBoundary = read('mobile/src/components/AppErrorBoundary.tsx');
 requireText(
@@ -26,6 +30,31 @@ requireText(
   'if (__DEV__)',
   'Error Boundary mobile nao deve emitir detalhes de erro em builds de producao.',
 );
+for (const [field, message] of [
+  ["cpf: string;", 'Cadastro mobile deve enviar o CPF exigido pelo contrato oficial.'],
+  ["phone: string;", 'Cadastro mobile deve enviar o telefone exigido pelo contrato oficial.'],
+  ["termsAccepted: true;", 'Cadastro mobile deve enviar aceite explícito dos termos.'],
+  ["privacyAccepted: true;", 'Cadastro mobile deve enviar aceite explícito da política de privacidade.'],
+]) {
+  requireText(registerService, field, message);
+}
+for (const [field, message] of [
+  ['label="CPF"', 'Cadastro mobile deve solicitar CPF antes de chamar a API.'],
+  ['label="Telefone com DDD"', 'Cadastro mobile deve solicitar telefone antes de chamar a API.'],
+  ['accessibilityRole="checkbox"', 'Aceite legal mobile deve ser explícito e acessível.'],
+  ['isValidCpf(normalizedCpf)', 'Cadastro mobile deve validar o CPF antes do envio.'],
+]) {
+  requireText(registerScreen, field, message);
+}
+for (const [documentKey, constantName] of [
+  ['terms_of_use', 'TERMS_OF_USE_VERSION'],
+  ['privacy_policy', 'PRIVACY_POLICY_VERSION'],
+]) {
+  const version = canonicalLegalVersions.documents[documentKey]?.version;
+  if (!version || !mobileLegalVersions.includes(`export const ${constantName} = "${version}";`)) {
+    failures.push(`Versao legal mobile divergente ou ausente: ${documentKey}.`);
+  }
+}
 requireText(
   externalUrlService,
   'TRUSTED_EXTERNAL_HOSTS',

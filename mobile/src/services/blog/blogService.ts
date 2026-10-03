@@ -12,6 +12,9 @@ export type MobileBlogArticle = {
   slug: string;
   excerpt: string;
   readingMinutes: number;
+  coverImageUrl?: string | null;
+  coverImageAlt?: string | null;
+  featured?: boolean;
   bodyHtml?: string;
   bodyText?: string;
   allowComments: boolean;

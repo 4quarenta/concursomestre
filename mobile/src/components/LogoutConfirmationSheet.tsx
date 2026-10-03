@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { darkTheme, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
 import { AppButton } from "@/components/ui/Primitives";
+import { AnimatedModal } from "@/components/ui/AnimatedModal";
 
 type LogoutConfirmationSheetProps = {
   visible: boolean;
@@ -27,8 +27,8 @@ export function LogoutConfirmationSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      animationType="slide"
+    <AnimatedModal
+      mode="sheet"
       onRequestClose={onDismiss}
       presentationStyle="overFullScreen"
       statusBarTranslucent
@@ -72,7 +72,7 @@ export function LogoutConfirmationSheet({
           <AppButton label="Sair da conta" onPress={onConfirm} variant="dangerQuiet" style={styles.logoutButton} />
         </View>
       </View>
-    </Modal>
+    </AnimatedModal>
   );
 }
 

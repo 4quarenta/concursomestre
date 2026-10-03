@@ -12,6 +12,7 @@ export interface StatisticsTimelinePoint {
   correct: number;
   wrong: number;
   timestamp?: number;
+  subjectBreakdown?: SubjectStatistics[];
 }
 
 export interface UserStatistics {

@@ -12,9 +12,9 @@
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { readApiData } from '@/services/api/response';
-import type { UserStatistics } from '@/types/statistics';
+import type { SubjectStatistics, StatisticsTimelinePoint, UserStatistics } from '@/types/statistics';
 
-export type StatisticsPeriod = 'semanal' | 'mensal';
+export type StatisticsPeriod = 'dia' | 'semanal' | 'mensal';
 
 export interface StudySessionInput {
   practiceSeconds: number;
@@ -49,15 +49,24 @@ const isCorrectAnswer = (value: unknown): boolean =>
 const localDateKey = (date: Date): string =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
-const buildTimelinePoint = (date: Date, period: StatisticsPeriod) => ({
-  label: period === 'semanal'
-    ? date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
-    : String(date.getDate()),
+const buildTimelinePoint = (date: Date, period: StatisticsPeriod): StatisticsTimelinePoint => ({
+  label: period === 'dia'
+    ? `${String(date.getHours()).padStart(2, '0')}h`
+    : period === 'semanal'
+      ? date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+      : String(date.getDate()),
   questions: 0,
   correct: 0,
   wrong: 0,
-  timestamp: new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(),
+  timestamp: date.getTime(),
+  subjectBreakdown: [],
 });
+
+const timelineDateKey = (date: Date, period: StatisticsPeriod): string => (
+  period === 'dia'
+    ? `${localDateKey(date)}-${Math.floor(date.getHours() / 3)}`
+    : localDateKey(date)
+);
 
 const resolveAnswerSubject = (answer: any): string => {
   const directName = answer?.subjectName || answer?.subject_name || answer?.subject || answer?.materia;
@@ -163,17 +172,24 @@ export const statisticsService = {
    * A API entrega historico paginado; todos os cursores do periodo sao consumidos.
    */
   async getCurrentUserQuestionTimeline(period: StatisticsPeriod) {
-    const dayCount = period === 'semanal' ? 7 : 30;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const points = Array.from({ length: dayCount }, (_, index) => {
-      const date = new Date(today);
-      date.setDate(today.getDate() - (dayCount - index - 1));
-      return buildTimelinePoint(date, period);
-    });
+    const points = period === 'dia'
+      ? Array.from({ length: 8 }, (_, index) => {
+          const date = new Date(today);
+          date.setHours(index * 3);
+          return buildTimelinePoint(date, period);
+        })
+      : Array.from({ length: period === 'semanal' ? 7 : 30 }, (_, index) => {
+          const date = new Date(today);
+          const dayCount = period === 'semanal' ? 7 : 30;
+          date.setDate(today.getDate() - (dayCount - index - 1));
+          return buildTimelinePoint(date, period);
+        });
     const pointByDate = new Map(
-      points.map((point) => [localDateKey(new Date(point.timestamp || 0)), point]),
+      points.map((point) => [timelineDateKey(new Date(point.timestamp || 0), period), point]),
     );
+    const subjectMetricsByPoint = new Map<StatisticsTimelinePoint, Map<string, SubjectStatistics>>();
 
     let cursor: string | null = null;
     const seenCursors = new Set<string>();
@@ -181,7 +197,7 @@ export const statisticsService = {
       const response: any = await apiClient.get<any>(ENDPOINTS.users.currentAnswers, {
         params: {
           limit: ANSWER_PAGE_SIZE,
-          range: period === 'semanal' ? 'week' : 'month',
+          range: period === 'dia' ? 'today' : period === 'semanal' ? 'week' : 'month',
           ...(cursor ? { cursor } : {}),
         },
       });
@@ -197,14 +213,32 @@ export const statisticsService = {
           answer?.timestamp ?? answer?.answeredAt ?? answer?.answered_at ?? answer?.createdAt ?? answer?.created_at,
         );
         if (!timestamp) continue;
-        const point = pointByDate.get(localDateKey(new Date(timestamp)));
+        const point = pointByDate.get(timelineDateKey(new Date(timestamp), period));
         if (!point) continue;
         point.questions += 1;
-        if (isCorrectAnswer(answer?.isCorrect ?? answer?.is_correct ?? answer?.correct)) {
+        const correct = isCorrectAnswer(answer?.isCorrect ?? answer?.is_correct ?? answer?.correct);
+        if (correct) {
           point.correct += 1;
         } else {
           point.wrong += 1;
         }
+        const subjectName = resolveAnswerSubject(answer);
+        const subjectMetrics = subjectMetricsByPoint.get(point) || new Map<string, SubjectStatistics>();
+        const subjectMetric = subjectMetrics.get(subjectName) || {
+          subject: subjectName,
+          totalQuestions: 0,
+          correctAnswers: 0,
+          wrongAnswers: 0,
+          accuracyRate: 0,
+        };
+        subjectMetric.totalQuestions += 1;
+        if (correct) subjectMetric.correctAnswers += 1;
+        else subjectMetric.wrongAnswers += 1;
+        subjectMetric.accuracyRate = Math.round(
+          (subjectMetric.correctAnswers / subjectMetric.totalQuestions) * 100,
+        );
+        subjectMetrics.set(subjectName, subjectMetric);
+        subjectMetricsByPoint.set(point, subjectMetrics);
       }
 
       const nextCursor = typeof payload?.nextCursor === 'string' && payload.nextCursor.trim()
@@ -223,6 +257,11 @@ export const statisticsService = {
         cursor = null;
       }
     } while (cursor);
+
+    points.forEach((point) => {
+      point.subjectBreakdown = Array.from(subjectMetricsByPoint.get(point)?.values() || [])
+        .sort((left, right) => right.totalQuestions - left.totalQuestions);
+    });
 
     return points;
   },

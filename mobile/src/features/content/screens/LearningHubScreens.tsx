@@ -4,7 +4,6 @@ import {
   AppState,
   Alert,
   Linking,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,15 +15,25 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIAP, type Purchase, type ProductSubscription } from "expo-iap";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
 import { MotionPressable } from "@/components/ui/Primitives";
+import { AnimatedModal } from "@/components/ui/AnimatedModal";
 import { borders, palette, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import { useAuth } from "@/providers/AuthProvider";
 import { CHECKOUT_ADHESION_TERMS_VERSION } from "@/services/legal/legalDocumentVersion";
 import { planService } from "@/services/plans/planService";
+import { isStoreDistributionChannel } from "@/config/runtime";
+import {
+  acknowledgeVerifiedGooglePlayPurchase,
+  resolveGooglePlayPlanSelection,
+  verifyGooglePlayPurchase,
+} from "@/services/subscriptions/googlePlayBillingService";
+import { useAccountTransactionsQuery } from "@/features/account/api/useAccountTransactionsQuery";
 import { getPublicPlanBenefits } from "@/services/plans/publicPlanBenefits";
 import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
+import { PUBLIC_LINKS } from "@/config/publicLinks";
 import {
   getMissingCheckoutProfileFields,
 } from "@/services/plans/checkoutRequirements";
@@ -35,6 +44,9 @@ import {
   resolveConfiguredPlanDisplayName,
 } from "@/services/plans/planDetails";
 import type { Plan } from "@/types/plans";
+import type { MobilePlanName } from "@/types/system";
+import type { MobileTransaction } from "@/types/transactions";
+import { formatPlanPrice, roundPlanPriceUp } from "@shared/planPricing";
 
 const modules = [
   { title: "Concordância Verbal", lessons: 8, completed: 8 },
@@ -73,7 +85,10 @@ const tracks = [
 ];
 
 const getPlanCycleLabel = (plan: Plan) => {
-  if (plan.interval_unit === "year") return "ano";
+  if (
+    plan.interval_unit === "year" ||
+    (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 12)
+  ) return "ano";
   if (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 3)
     return "trimestre";
   if (plan.interval_unit === "month") return "mês";
@@ -86,8 +101,93 @@ const getPlanCycleLabel = (plan: Plan) => {
     : `${plan.interval_count} dias`;
 };
 
-const formatPlanAmount = (amount: number) =>
-  `R$ ${Math.max(0, amount).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+type PlanBillingCycle = "monthly" | "quarterly" | "annual";
+type PlanRestriction = "tier" | "cycle" | "same-tier" | "cycle-unknown";
+
+const PLAN_BILLING_CYCLES: Array<{
+  key: PlanBillingCycle;
+  label: string;
+}> = [
+  { key: "monthly", label: "Mensal" },
+  { key: "quarterly", label: "Trimestral" },
+  { key: "annual", label: "Anual" },
+];
+
+const getPlanBillingCycle = (plan: {
+  interval_unit?: string;
+  interval_count?: number;
+}): PlanBillingCycle | null => {
+  if (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 1) {
+    return "monthly";
+  }
+  if (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 3) {
+    return "quarterly";
+  }
+  if (
+    plan.interval_unit === "year" ||
+    (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 12)
+  ) return "annual";
+  return null;
+};
+
+const getPlanTierRank = (planName: string): number => {
+  const canonicalName = resolveCanonicalPlanKey(planName);
+  if (canonicalName === "Elite") return 3;
+  if (canonicalName === "Pro") return 2;
+  if (canonicalName === "Essencial") return 1;
+  return 0;
+};
+
+const getPlanDurationRank = (plan: {
+  interval_unit?: string;
+  interval_count?: number;
+}): number => {
+  if (
+    plan.interval_unit === "year" ||
+    (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 12)
+  ) {
+    return 12 * Math.max(1, Number(plan.interval_count || 1));
+  }
+  if (plan.interval_unit === "month") {
+    return Math.max(1, Number(plan.interval_count || 1));
+  }
+  if (plan.interval_unit === "day" || plan.interval_unit === "week") return 1;
+  return 0;
+};
+
+const roundPlanCurrency = (value: number): number =>
+  Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const formatPlanAmount = formatPlanPrice;
+
+const formatGooglePlayAmount = (amount: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency,
+    }).format(roundPlanPriceUp(amount));
+  } catch {
+    return `${currency} ${roundPlanPriceUp(amount).toFixed(2)}`;
+  }
+};
+
+const parseSubscriptionDate = (raw?: string | number | null): Date | null => {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const numeric = Number(raw);
+  const date = Number.isFinite(numeric) && numeric > 0
+    ? new Date(numeric > 9999999999 ? numeric : numeric * 1000)
+    : new Date(String(raw).trim().replace(" ", "T"));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatSubscriptionDate = (raw?: string | number | null): string =>
+  parseSubscriptionDate(raw)?.toLocaleDateString("pt-BR") || "Não informada";
+
+const getDaysUntil = (raw?: string | number | null): number | null => {
+  const date = parseSubscriptionDate(raw);
+  if (!date) return null;
+  return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 86_400_000));
+};
 
 const BackGradientHeader = ({
   title,
@@ -329,7 +429,35 @@ export function PlansScreen() {
   const insets = useSafeAreaInsets();
   const isDarkTheme = theme.background === palette.slate[900];
   const { user, systemSettings, refreshProfile } = useAuth();
+  const pendingGooglePlayPlanRef = React.useRef<Plan | null>(null);
+  const purchaseCallbackRef = React.useRef<(purchase: Purchase) => Promise<void>>(
+    async () => undefined,
+  );
+  const recoveryAttemptsRef = React.useRef(new Set<string>());
+  const playBilling = useIAP({
+    onPurchaseSuccess: (purchase) => {
+      void purchaseCallbackRef.current(purchase).catch((error) => {
+        Alert.alert(
+          "Google Play",
+          error instanceof Error
+            ? error.message
+            : "Não foi possível validar a compra. O acesso não será liberado até a confirmação do servidor.",
+        );
+      });
+    },
+    onPurchaseError: (error) => {
+      const code = String(error.code || "").toLowerCase();
+      if (code.includes("cancel")) return;
+      Alert.alert(
+        "Google Play",
+        error.message || "Não foi possível concluir a compra. Tente novamente.",
+      );
+    },
+  });
+  const transactionsQuery = useAccountTransactionsQuery(Boolean(user?.id));
   const [plansData, setPlansData] = React.useState<Plan[]>([]);
+  const [selectedBillingCycle, setSelectedBillingCycle] =
+    React.useState<PlanBillingCycle | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState("");
   const [openingCheckoutPlanId, setOpeningCheckoutPlanId] =
@@ -337,6 +465,7 @@ export function PlansScreen() {
   const [termsPlan, setTermsPlan] = React.useState<Plan | null>(null);
   const [termsAccepted, setTermsAccepted] = React.useState(false);
   const [showAdhesionTerms, setShowAdhesionTerms] = React.useState(false);
+  const [showManageSubscription, setShowManageSubscription] = React.useState(false);
   const checkoutOpenedRef = React.useRef(false);
   React.useEffect(() => {
     let isMounted = true;
@@ -358,11 +487,161 @@ export function PlansScreen() {
       isMounted = false;
     };
   }, [systemSettings.planDetails]);
+  const googlePlayProductIds = React.useMemo(
+    () => Array.from(new Set(
+      plansData
+        .filter((plan) => plan.google_play_billing_enabled === true)
+        .map((plan) => String(plan.google_play_product_id || "").trim())
+        .filter(Boolean),
+    )),
+    [plansData],
+  );
+  React.useEffect(() => {
+    if (!isStoreDistributionChannel || !playBilling.connected || googlePlayProductIds.length === 0) return;
+    void playBilling.fetchProducts({ skus: googlePlayProductIds, type: "subs" });
+  }, [googlePlayProductIds, playBilling.connected]);
+  const googlePlaySubscriptions: ProductSubscription[] = playBilling.subscriptions;
+  purchaseCallbackRef.current = async (purchase) => {
+    if (purchase.purchaseState === "pending") {
+      Alert.alert(
+        "Pagamento pendente",
+        "A Google Play ainda está processando o pagamento. O plano será liberado após a confirmação.",
+      );
+      return;
+    }
+    if (purchase.purchaseState !== "purchased") return;
+
+    const selectedPlan = pendingGooglePlayPlanRef.current || plansData.find(
+      (plan) => plan.google_play_product_id === purchase.productId,
+    );
+    if (!selectedPlan) {
+      throw new Error("Não foi possível associar esta compra a um plano ConcursoMestre.");
+    }
+
+    await verifyGooglePlayPurchase(selectedPlan, purchase);
+    await acknowledgeVerifiedGooglePlayPurchase(purchase);
+    pendingGooglePlayPlanRef.current = null;
+    await refreshProfile();
+    Alert.alert("Assinatura ativada", "A Google Play confirmou seu plano.");
+  };
+  React.useEffect(() => {
+    if (!isStoreDistributionChannel || !playBilling.connected) return;
+    void playBilling.getAvailablePurchases();
+  }, [playBilling.connected]);
+  React.useEffect(() => {
+    if (!isStoreDistributionChannel) return;
+    for (const purchase of playBilling.availablePurchases) {
+      if (purchase.purchaseState !== "purchased") continue;
+      const plan = plansData.find(
+        (candidate) => candidate.google_play_product_id === purchase.productId,
+      );
+      if (!plan || recoveryAttemptsRef.current.has(purchase.id)) continue;
+      recoveryAttemptsRef.current.add(purchase.id);
+      void purchaseCallbackRef.current(purchase).catch((error) => {
+        Alert.alert(
+          "Google Play",
+          error instanceof Error
+            ? error.message
+            : "Não foi possível recuperar a confirmação desta compra.",
+        );
+      });
+    }
+  }, [plansData, playBilling.availablePurchases]);
+  const availableBillingCycles = React.useMemo(
+    () =>
+      PLAN_BILLING_CYCLES.filter(({ key }) =>
+        plansData.some(
+          (plan) =>
+            plan.is_test_plan !== true &&
+            Number(plan.price || 0) > 0 &&
+            getPlanBillingCycle(plan) === key,
+        ),
+      ),
+    [plansData],
+  );
+  React.useEffect(() => {
+    if (availableBillingCycles.length === 0) return;
+    if (
+      selectedBillingCycle &&
+      availableBillingCycles.some(({ key }) => key === selectedBillingCycle)
+    ) {
+      return;
+    }
+
+    const subscribedPlanId = user?.subscription?.plan_id ?? user?.subscription?.plan?.id;
+    const subscribedPlan = subscribedPlanId == null
+      ? undefined
+      : plansData.find((plan) => String(plan.id) === String(subscribedPlanId));
+    const subscribedCycle = subscribedPlan
+      ? getPlanBillingCycle(subscribedPlan)
+      : null;
+    const preferredCycle = availableBillingCycles.some(
+      ({ key }) => key === subscribedCycle,
+    )
+      ? subscribedCycle
+      : availableBillingCycles[0].key;
+    setSelectedBillingCycle(preferredCycle);
+  }, [availableBillingCycles, plansData, selectedBillingCycle, user]);
+  const activeBillingCycle =
+    selectedBillingCycle ?? availableBillingCycles[0]?.key ?? "monthly";
+  const adhesionPlanVariants = React.useMemo(() => {
+    if (!termsPlan) return [];
+
+    const canonicalName = resolveCanonicalPlanKey(termsPlan.name);
+    const variants = plansData
+      .filter((plan) =>
+        resolveCanonicalPlanKey(plan.name) === canonicalName &&
+        plan.is_active !== false &&
+        plan.is_test_plan !== true &&
+        Number(plan.price || 0) > 0 &&
+        isPlanEnabledByName(plan.name, systemSettings.planDetails),
+      )
+      .sort((left, right) => {
+        const leftCycle = getPlanBillingCycle(left);
+        const rightCycle = getPlanBillingCycle(right);
+        const order: Record<string, number> = { monthly: 0, quarterly: 1, annual: 2 };
+        return (order[leftCycle || ""] ?? 3) - (order[rightCycle || ""] ?? 3) ||
+          getPlanDurationRank(left) - getPlanDurationRank(right);
+      });
+
+    // Mantém uma opção por modalidade. Se houver ciclos personalizados,
+    // cada duração distinta continua visível no termo.
+    const uniqueVariants = new Map<string, Plan>();
+    for (const plan of variants) {
+      const cycle = getPlanBillingCycle(plan);
+      const key = cycle || `${plan.interval_unit}-${Number(plan.interval_count || 1)}`;
+      if (!uniqueVariants.has(key) || plan.id === termsPlan.id) {
+        uniqueVariants.set(key, plan);
+      }
+    }
+    if (!uniqueVariants.has(
+      getPlanBillingCycle(termsPlan) ||
+      `${termsPlan.interval_unit}-${Number(termsPlan.interval_count || 1)}`,
+    )) {
+      uniqueVariants.set(
+        getPlanBillingCycle(termsPlan) ||
+          `${termsPlan.interval_unit}-${Number(termsPlan.interval_count || 1)}`,
+        termsPlan,
+      );
+    }
+    return Array.from(uniqueVariants.values());
+  }, [plansData, systemSettings.planDetails, termsPlan]);
   const visiblePlans = React.useMemo(() => {
     const plansByTier = new Map<string, Plan[]>();
 
     plansData
       .filter((plan) => plan.is_test_plan !== true)
+      .filter((plan) => {
+        const isFreePlan =
+          resolveCanonicalPlanKey(plan.name) === "Gratuito" &&
+          Number(plan.price || 0) <= 0;
+        const isShortCycle = plan.interval_unit === "day" || plan.interval_unit === "week";
+        return isFreePlan || (
+          isShortCycle
+            ? activeBillingCycle === "monthly"
+            : getPlanBillingCycle(plan) === activeBillingCycle
+        );
+      })
       .forEach((plan) => {
         const canonicalName = resolveCanonicalPlanKey(plan.name) || plan.name;
         const variants = plansByTier.get(canonicalName) || [];
@@ -379,18 +658,11 @@ export function PlansScreen() {
         );
       })
       .map(([, variants]) => {
-        const cycleRank = (plan: Plan) => {
-          if (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 1) return 0;
-          if (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 3) return 1;
-          if (plan.interval_unit === "year") return 2;
-          if (plan.interval_unit === "week") return 3;
-          return 4;
-        };
         return [...variants].sort(
-          (left, right) => cycleRank(left) - cycleRank(right),
+          (left, right) => Number(left.price || 0) - Number(right.price || 0),
         )[0];
       });
-  }, [plansData]);
+  }, [activeBillingCycle, plansData]);
 
   const currentPlanId = React.useMemo(() => {
     if (!user) return undefined;
@@ -419,8 +691,20 @@ export function PlansScreen() {
         ? resolveCanonicalPlanKey(subscribedPlanName)
         : null;
       if (!subscribedPlanKey) return undefined;
+      const subscriptionCycle =
+        (subscription?.plan ? getPlanBillingCycle(subscription.plan) : null) ||
+        user.billing?.billingCycle;
+      const normalizedSubscriptionCycle =
+        subscriptionCycle === "monthly" ||
+        subscriptionCycle === "quarterly" ||
+        subscriptionCycle === "annual"
+          ? subscriptionCycle
+          : null;
       return visiblePlans.find(
-        (plan) => resolveCanonicalPlanKey(plan.name) === subscribedPlanKey,
+        (plan) =>
+          resolveCanonicalPlanKey(plan.name) === subscribedPlanKey &&
+          (!normalizedSubscriptionCycle ||
+            getPlanBillingCycle(plan) === normalizedSubscriptionCycle),
       )?.id;
     }
 
@@ -432,6 +716,100 @@ export function PlansScreen() {
         Number(plan.price || 0) <= 0,
     )?.id;
   }, [user, visiblePlans]);
+
+  const currentSubscription = user?.subscription;
+  const currentSubscriptionStatus = String(currentSubscription?.status || "")
+    .trim()
+    .toLowerCase();
+  const hasActiveSubscription = ["active", "trialing", "past_due"].includes(
+    currentSubscriptionStatus,
+  );
+  const paymentProvider = String(currentSubscription?.payment_provider || "")
+    .trim()
+    .toLowerCase();
+  const isStripeSubscription = paymentProvider === "stripe";
+  const renewalEnabled = currentSubscription?.cancel_at_period_end === true
+    ? false
+    : currentSubscription?.auto_renew !== false;
+  const periodEndDate = currentSubscription?.current_period_end ||
+    currentSubscription?.provider_current_period_end;
+  const cycleDaysRemaining = getDaysUntil(periodEndDate);
+  const planTransactions = transactionsQuery.data || [];
+  const firstPaidPlanTransactionAt = React.useMemo(() => {
+    const eligibleTransactions = (planTransactions as MobileTransaction[])
+      .filter((transaction) =>
+        String(transaction.type || "").toLowerCase() === "plan" &&
+        Number(transaction.amount || 0) > 0 &&
+        ["approved", "completed", "refund_requested", "refunded"].includes(
+          String(transaction.status || "").toLowerCase(),
+        ),
+      )
+      .map((transaction) => parseSubscriptionDate(
+        transaction.createdAt ||
+        (transaction as MobileTransaction & { created_at?: string }).created_at ||
+        transaction.dueDate,
+      ))
+      .filter((date): date is Date => Boolean(date))
+      .sort((left, right) => left.getTime() - right.getTime());
+    return eligibleTransactions[0] || null;
+  }, [planTransactions]);
+  const daysSinceFirstPaidPlan = firstPaidPlanTransactionAt
+    ? Math.max(0, Math.floor((Date.now() - firstPaidPlanTransactionAt.getTime()) / 86_400_000))
+    : null;
+  const refundWindowOpen = transactionsQuery.isSuccess &&
+    Number(currentSubscription?.paid_installments || 0) <= 1 &&
+    daysSinceFirstPaidPlan !== null &&
+    daysSinceFirstPaidPlan < 7;
+  const refundWindowDaysRemaining = refundWindowOpen && daysSinceFirstPaidPlan !== null
+    ? Math.max(1, 7 - daysSinceFirstPaidPlan)
+    : 0;
+  const hasPendingRefundRequest = (planTransactions as MobileTransaction[]).some(
+    (transaction) => String(transaction.status || "").toLowerCase() === "refund_requested",
+  );
+
+  const getPlanRestriction = (
+    targetPlan: Plan,
+  ): PlanRestriction | null => {
+    const subscription = user?.subscription;
+    const status = String(subscription?.status || "").trim().toLowerCase();
+    if (!["active", "trialing", "past_due"].includes(status)) return null;
+
+    const currentPlanIdFromSubscription = subscription?.plan_id ?? subscription?.plan?.id;
+    const currentPlan = currentPlanIdFromSubscription == null
+      ? undefined
+      : plansData.find(
+          (candidate) => String(candidate.id) === String(currentPlanIdFromSubscription),
+        );
+    const currentPlanName = subscription?.plan?.name || currentPlan?.name || user?.plan || "";
+    const currentTier = getPlanTierRank(currentPlanName);
+    const targetTier = getPlanTierRank(targetPlan.name);
+
+    const activeSubscribedPlanId = currentPlanIdFromSubscription ?? currentPlan?.id;
+
+    if (targetTier < currentTier) return "tier";
+    if (
+      targetTier !== currentTier ||
+      String(targetPlan.id) === String(activeSubscribedPlanId ?? currentPlanId ?? "")
+    ) return null;
+
+    const currentDuration = currentPlan
+      ? getPlanDurationRank(currentPlan)
+      : subscription?.plan?.interval_unit
+        ? getPlanDurationRank(subscription.plan)
+        : user?.billing?.billingCycle === "annual"
+          ? 12
+          : user?.billing?.billingCycle === "quarterly"
+            ? 3
+            : user?.billing?.billingCycle === "monthly"
+              ? 1
+              : 0;
+    if (currentDuration <= 0) return "cycle-unknown";
+    if (currentDuration > 0 && getPlanDurationRank(targetPlan) < currentDuration) {
+      return "cycle";
+    }
+    if (!systemSettings.sameTierCycleChangeEnabled) return "same-tier";
+    return null;
+  };
 
   // O destaque comercial "Mais escolhido" deve existir em apenas um card.
   // Reservamos o selo ao plano Pro, sem atribuir essa alegação a outro plano.
@@ -449,6 +827,36 @@ export function PlansScreen() {
       // sessao Stripe. O cliente HTTP tenta rotacionar o refresh token se
       // o access token tiver expirado.
       await refreshProfile();
+
+      if (isStoreDistributionChannel) {
+        const storeSelection = resolveGooglePlayPlanSelection(
+          plan,
+          googlePlaySubscriptions,
+        );
+        if (!storeSelection) {
+          throw new Error(
+            "Este ciclo ainda não está configurado na Google Play Console. Nenhuma cobrança foi iniciada.",
+          );
+        }
+        if (!playBilling.connected) {
+          const reconnected = await playBilling.reconnect();
+          if (!reconnected) throw new Error("Não foi possível conectar à Google Play.");
+        }
+        pendingGooglePlayPlanRef.current = plan;
+        await playBilling.requestPurchase({
+          request: {
+            google: {
+              skus: [storeSelection.productId],
+              subscriptionOffers: [{
+                sku: storeSelection.productId,
+                offerToken: storeSelection.offerToken,
+              }],
+            },
+          },
+          type: "subs",
+        });
+        return;
+      }
 
       const checkout = await planService.createStripeCheckoutSession({
         plan_id: plan.id,
@@ -483,6 +891,7 @@ export function PlansScreen() {
       await Linking.openURL(safeCheckoutUrl);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
+      pendingGooglePlayPlanRef.current = null;
       if (/complete seu perfil|confirme o e-mail/i.test(message)) {
         router.push({
           pathname: "/perfil/editar",
@@ -506,6 +915,27 @@ export function PlansScreen() {
     if (openingCheckoutPlanId !== null) return;
     if (!user) {
       Alert.alert("Assinatura", "Entre na sua conta para escolher um plano.");
+      return;
+    }
+    if (isStoreDistributionChannel && hasActiveSubscription) {
+      Alert.alert(
+        "Assinatura já ativa",
+        paymentProvider === "stripe"
+          ? "Sua assinatura foi contratada pela plataforma web. Para evitar cobranças duplicadas, gerencie ou encerre esse ciclo na web antes de contratar pela Google Play."
+          : "Você já possui uma assinatura ativa. Gerencie ou encerre o ciclo atual na Google Play antes de contratar outro plano.",
+      );
+      return;
+    }
+    const restriction = getPlanRestriction(plan);
+    if (restriction) {
+      const message = restriction === "tier"
+        ? "Você já possui um plano de nível superior ativo. Não é possível contratar um plano inferior enquanto essa assinatura estiver vigente."
+        : restriction === "cycle"
+          ? "Sua assinatura atual tem um ciclo maior. Não é possível mudar para um ciclo inferior enquanto ela estiver vigente."
+          : restriction === "cycle-unknown"
+            ? "Não foi possível confirmar o ciclo da sua assinatura atual. Atualize seu perfil ou fale com o suporte antes de alterar o plano."
+            : "A troca de ciclo neste mesmo plano está desativada no momento.";
+      Alert.alert("Alteração de plano indisponível", message);
       return;
     }
     if (Number(plan.price || 0) <= 0) {
@@ -540,6 +970,31 @@ export function PlansScreen() {
     setTermsPlan(null);
     setTermsAccepted(false);
     void startCheckout(selectedPlan);
+  };
+
+  const closeManageSubscription = () => {
+    setShowManageSubscription(false);
+  };
+
+  const openWebSubscriptionManagement = async () => {
+    try {
+      const safeUrl = assertAllowedExternalUrl(
+        PUBLIC_LINKS.subscriptionManagement,
+        "gerenciamento da assinatura",
+      );
+      if (!(await Linking.canOpenURL(safeUrl))) {
+        throw new Error("Não foi possível abrir a área da assinatura neste aparelho.");
+      }
+      await Linking.openURL(safeUrl);
+      setShowManageSubscription(false);
+    } catch (error) {
+      Alert.alert(
+        "Assinatura",
+        error instanceof Error
+          ? error.message
+          : "Não foi possível abrir o gerenciamento da assinatura.",
+      );
+    }
   };
 
   const openFullAdhesionTerms = async () => {
@@ -591,6 +1046,59 @@ export function PlansScreen() {
         <Text style={[styles.plansIntro, { color: theme.textMuted }]}>
           Continue estudando com os recursos que fazem sentido para sua preparação.
         </Text>
+        {!isLoading && !loadError && availableBillingCycles.length > 1 ? (
+          <View
+            style={[
+              styles.billingCycleCard,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
+          >
+            <View style={styles.billingCycleHeading}>
+              <Text style={[styles.billingCycleTitle, { color: theme.text }]}>
+                Ciclo de cobrança
+              </Text>
+              <Text style={[styles.billingCycleHint, { color: theme.textMuted }]}>
+                Selecione uma opção disponível
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.billingCycleRow,
+                { backgroundColor: theme.surfaceSubtle },
+              ]}
+            >
+              {availableBillingCycles.map((cycle) => {
+                const isSelected = activeBillingCycle === cycle.key;
+                return (
+                  <MotionPressable
+                    key={cycle.key}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ciclo de cobrança ${cycle.label.toLowerCase()}`}
+                    accessibilityState={{ selected: isSelected }}
+                    onPress={() => setSelectedBillingCycle(cycle.key)}
+                    style={[
+                      styles.billingCycleButton,
+                      isSelected && {
+                        backgroundColor: theme.primarySubtle,
+                        borderColor: theme.primary,
+                      },
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.billingCycleLabel,
+                        { color: isSelected ? theme.primary : theme.textMuted },
+                      ]}
+                    >
+                      {cycle.label}
+                    </Text>
+                  </MotionPressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
         {isLoading ? (
           <View
             style={[styles.loadingCard, { backgroundColor: theme.surface }]}
@@ -647,9 +1155,46 @@ export function PlansScreen() {
                     plan,
                     systemSettings.pricing,
                   );
+            const isShortCycle = plan.interval_unit === "day" || plan.interval_unit === "week";
+            const cycleCount = isShortCycle
+              ? 1
+              : plan.interval_unit === "year" ||
+                  (plan.interval_unit === "month" && Number(plan.interval_count || 1) === 12)
+                ? 12
+                : plan.interval_unit === "month" && Number(plan.interval_count || 1) === 3
+                  ? 3
+                  : 1;
+            const canonicalPricingKey = resolveCanonicalPlanKey(plan.name) as MobilePlanName | null;
+            const monthlyVariant = plansData.find(
+              (candidate) =>
+                resolveCanonicalPlanKey(candidate.name) === canonicalName &&
+                candidate.interval_unit === "month" &&
+                Number(candidate.interval_count || 1) === 1 &&
+                Number(candidate.price || 0) > 0,
+            );
+            const monthlyBaseAmount = canonicalPricingKey
+              ? Number(systemSettings.pricing[canonicalPricingKey]?.monthly || monthlyVariant?.price || 0)
+              : Number(monthlyVariant?.price || 0);
+            const monthlyEquivalent = cycleCount > 1
+              ? roundPlanPriceUp(cycleAmount / cycleCount)
+              : cycleAmount;
+            const undiscountedCycleAmount = monthlyBaseAmount * cycleCount;
+            const savingsAmount = cycleCount > 1
+              ? roundPlanCurrency(Math.max(0, undiscountedCycleAmount - cycleAmount))
+              : 0;
+            const discountPercent = undiscountedCycleAmount > 0
+              ? Math.round((savingsAmount / undiscountedCycleAmount) * 100)
+              : 0;
+            const hasCycleDiscount = savingsAmount >= 0.01 && discountPercent > 0;
             const isElite = canonicalName === "Elite";
             const isMostChosen = plan.id === mostChosenPlanId;
             const isCurrent = currentPlanId === plan.id;
+            const googlePlaySelection = isStoreDistributionChannel
+              ? resolveGooglePlayPlanSelection(plan, googlePlaySubscriptions)
+              : null;
+            const storeProductUnavailable = isStoreDistributionChannel &&
+              Number(plan.price || 0) > 0 && !googlePlaySelection;
+            const restriction = getPlanRestriction(plan);
             const features = getPublicPlanBenefits(
               plan,
               systemSettings.planEntitlements,
@@ -733,15 +1278,71 @@ export function PlansScreen() {
                     ))}
                   </View>
                 </View>
-                <View style={styles.planPriceRow}>
-                  <Text style={[styles.planPrice, { color: theme.text }]}>
-                    {formatPlanAmount(cycleAmount)}
-                  </Text>
-                  <Text style={[styles.planPeriod, { color: theme.textMuted }]}>
-                    {Number(plan.price || 0) <= 0
-                      ? "sem custo"
-                      : `por ${getPlanCycleLabel(plan)}`}
-                  </Text>
+                <View style={styles.planPricingBlock}>
+                  <View style={styles.planPriceRow}>
+                    <Text style={[styles.planPrice, { color: theme.text }]}>
+                      {isStoreDistributionChannel
+                        ? googlePlaySelection?.amount !== null && googlePlaySelection?.amount !== undefined && cycleCount > 1 && googlePlaySelection.currency
+                          ? formatGooglePlayAmount(googlePlaySelection.amount / cycleCount, googlePlaySelection.currency)
+                          : googlePlaySelection?.localizedPrice || "Preço indisponível"
+                        : formatPlanAmount(isShortCycle ? cycleAmount : monthlyEquivalent)}
+                    </Text>
+                    <Text style={[styles.planPeriod, { color: theme.textMuted }]}>
+                      {Number(plan.price || 0) <= 0
+                        ? "sem custo"
+                        : isStoreDistributionChannel
+                          ? googlePlaySelection?.amount !== null && googlePlaySelection?.amount !== undefined && cycleCount > 1
+                            ? "/mês"
+                            : ""
+                    : isShortCycle
+                      ? `/${getPlanCycleLabel(plan)}`
+                      : "/mês"}
+                    </Text>
+                  </View>
+                  {Number(plan.price || 0) > 0 ? (
+                    <Text style={[styles.planTotal, { color: theme.textMuted }]}>
+                      {isStoreDistributionChannel
+                        ? googlePlaySelection?.localizedPrice
+                          ? `Cobrança pela Google Play: ${googlePlaySelection.localizedPrice}`
+                          : "Preço da Google Play ainda não configurado"
+                        : cycleCount > 1
+                        ? `Total de ${formatPlanAmount(cycleAmount)} ${cycleCount === 12 ? "por ano" : "a cada 3 meses"}`
+                        : isShortCycle
+                          ? `Cobrança por ${getPlanCycleLabel(plan)} de ${formatPlanAmount(cycleAmount)}`
+                          : "Cobrado mensalmente"}
+                    </Text>
+                  ) : null}
+                  {!isStoreDistributionChannel && hasCycleDiscount ? (
+                    <View style={styles.planSavingsRow}>
+                      <Ionicons name="pricetag" size={14} color={theme.success} />
+                      <Text style={[styles.planSavingsText, { color: theme.success }]}>
+                        Economize {formatPlanAmount(savingsAmount)} no ciclo
+                      </Text>
+                      <View
+                        style={[
+                          styles.planDiscountBadge,
+                          { backgroundColor: theme.successSubtle, borderColor: theme.successBorder },
+                        ]}
+                      >
+                        <Text style={[styles.planDiscountLabel, { color: theme.success }]}>
+                          {discountPercent}% OFF
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  {Number(plan.price || 0) > 0 ? (
+                    <View
+                      style={[
+                        styles.refundGuaranteeBadge,
+                        { backgroundColor: theme.successSubtle, borderColor: theme.successBorder },
+                      ]}
+                    >
+                      <Ionicons name="shield-checkmark-outline" size={13} color={theme.success} />
+                      <Text style={[styles.refundGuaranteeText, { color: theme.success }]}>
+                        7 dias para solicitar reembolso
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={styles.planOptionFeatures}>
                   {features.map((feature) => (
@@ -760,10 +1361,16 @@ export function PlansScreen() {
                 <MotionPressable
                   accessibilityRole="button"
                   accessibilityState={{
-                    disabled: isCurrent || openingCheckoutPlanId !== null,
+                    disabled: Boolean(restriction) || storeProductUnavailable || openingCheckoutPlanId !== null || (isCurrent && !currentSubscription),
                   }}
-                  disabled={isCurrent || openingCheckoutPlanId !== null}
+                  accessibilityHint={restriction ? "Mudança de plano ou ciclo inferior não permitida." : undefined}
+                  disabled={Boolean(restriction) || storeProductUnavailable || openingCheckoutPlanId !== null || (isCurrent && !currentSubscription)}
                   onPress={() => {
+                    if (isCurrent) {
+                      if (!currentSubscription) return;
+                      setShowManageSubscription(true);
+                      return;
+                    }
                     if (Number(plan.price || 0) <= 0) {
                       Alert.alert(
                         "Plano gratuito",
@@ -776,20 +1383,24 @@ export function PlansScreen() {
                   style={[
                     styles.planCta,
                     {
-                      backgroundColor: isElite
-                        ? isDarkTheme
-                          ? "#E0BB68"
-                          : "#E4BD68"
-                        : isMostChosen
-                          ? theme.primary
-                          : isCurrent
-                            ? theme.surfaceSubtle
-                            : theme.surface,
-                      borderColor: isElite
-                        ? eliteBorder
-                        : isMostChosen || isCurrent
-                          ? theme.primary
-                          : theme.border,
+                      backgroundColor: restriction
+                        ? theme.surfaceSubtle
+                        : isElite
+                          ? isDarkTheme
+                            ? "#E0BB68"
+                            : "#E4BD68"
+                          : isMostChosen
+                            ? theme.primary
+                            : isCurrent
+                              ? theme.surfaceSubtle
+                              : theme.surface,
+                      borderColor: restriction
+                        ? theme.border
+                        : isElite
+                          ? eliteBorder
+                          : isMostChosen || isCurrent
+                            ? theme.primary
+                            : theme.border,
                     },
                   ]}
                 >
@@ -803,30 +1414,42 @@ export function PlansScreen() {
                       style={[
                         styles.planCtaText,
                         {
-                          color: isElite
-                            ? "#2B210D"
-                            : isMostChosen
-                              ? theme.onPrimary
-                              : isCurrent
-                                ? theme.textMuted
-                                : theme.text,
+                          color: restriction
+                            ? theme.textMuted
+                            : isElite
+                              ? "#2B210D"
+                              : isMostChosen
+                                ? theme.onPrimary
+                                : isCurrent
+                                  ? theme.textMuted
+                                  : theme.text,
                         },
                       ]}
                     >
-                      {isCurrent
-                        ? "Seu plano atual"
-                        : isElite
-                          ? "Explorar Elite"
-                          : isMostChosen
-                            ? "Conhecer Pro"
-                            : canonicalName === "Gratuito"
-                              ? "Começar grátis"
-                              : "Conhecer " + canonicalName}
+                      {storeProductUnavailable
+                        ? "Indisponível na Google Play"
+                        : isCurrent
+                        ? currentSubscription ? "Gerenciar assinatura" : "Plano atual"
+                        : restriction === "tier"
+                          ? "Downgrade não permitido"
+                          : restriction === "cycle"
+                            ? "Ciclo inferior não permitido"
+                          : restriction === "cycle-unknown"
+                            ? "Ciclo atual não identificado"
+                            : restriction === "same-tier"
+                              ? "Troca de ciclo indisponível"
+                              : isElite
+                                ? "Explorar Elite"
+                                : isMostChosen
+                                  ? "Conhecer Pro"
+                                  : canonicalName === "Gratuito"
+                                    ? "Começar grátis"
+                                    : "Conhecer " + canonicalName}
                     </Text>
                   )}
-                  {!isCurrent && openingCheckoutPlanId !== plan.id ? (
+                  {!restriction && openingCheckoutPlanId !== plan.id ? (
                     <Ionicons
-                      name={isElite ? "open-outline" : "arrow-forward"}
+                      name={isCurrent ? "settings-outline" : isElite ? "open-outline" : "arrow-forward"}
                       size={15}
                       color={
                         isElite
@@ -844,14 +1467,16 @@ export function PlansScreen() {
         </View>
 
         <Text style={[styles.plansValueNote, { color: theme.textMuted }]}>
-          Os valores e recursos acima são os publicados no catálogo da plataforma.
+          {isStoreDistributionChannel
+            ? "Os preços de cobrança são fornecidos pela Google Play; os benefícios vêm do catálogo administrado do ConcursoMestre."
+            : "Os valores e recursos acima são os publicados no catálogo da plataforma."}
         </Text>
         <Text style={[styles.plansTerms, { color: theme.textMuted }]}>
           Confira as condições, o ciclo de cobrança e a renovação antes de confirmar a assinatura.
         </Text>
       </ScrollView>
-      <Modal
-        animationType="fade"
+      <AnimatedModal
+        mode="fade"
         onRequestClose={closeAdhesionTerms}
         transparent
         visible={showAdhesionTerms}
@@ -909,8 +1534,160 @@ export function PlansScreen() {
                       systemSettings.planDetails,
                     )}
                   </Text>
+                  <Text style={[styles.adhesionCopy, { color: theme.textMuted }]}>
+                    Escolha uma modalidade disponível para este plano:
+                  </Text>
+                  <View style={styles.adhesionVariants}>
+                    {adhesionPlanVariants.map((variant) => {
+                      const isSelected = variant.id === termsPlan.id;
+                      const restriction = getPlanRestriction(variant);
+                      const cycle = getPlanBillingCycle(variant);
+                      const cycleCount = getPlanDurationRank(variant) || 1;
+                      const playSelection = isStoreDistributionChannel
+                        ? resolveGooglePlayPlanSelection(variant, googlePlaySubscriptions)
+                        : null;
+                      const isUnavailable = Boolean(restriction) ||
+                        (isStoreDistributionChannel && Number(variant.price || 0) > 0 && !playSelection);
+                      const cycleAmount =
+                        variant.interval_unit === "day" || variant.interval_unit === "week"
+                          ? Number(variant.price || 0)
+                          : resolveConfiguredPlanCycleAmount(
+                              variant,
+                              systemSettings.pricing,
+                            );
+                      const monthlyEquivalent = cycleCount > 1
+                        ? roundPlanPriceUp(cycleAmount / cycleCount)
+                        : cycleAmount;
+                      const canonicalKey = resolveCanonicalPlanKey(variant.name) as MobilePlanName | null;
+                      const monthlyVariant = plansData.find((candidate) =>
+                        resolveCanonicalPlanKey(candidate.name) === resolveCanonicalPlanKey(variant.name) &&
+                        candidate.interval_unit === "month" &&
+                        Number(candidate.interval_count || 1) === 1 &&
+                        Number(candidate.price || 0) > 0,
+                      );
+                      const monthlyBase = canonicalKey
+                        ? Number(systemSettings.pricing[canonicalKey]?.monthly || monthlyVariant?.price || 0)
+                        : Number(monthlyVariant?.price || 0);
+                      const referenceTotal = monthlyBase * cycleCount;
+                      const savings = cycleCount > 1
+                        ? roundPlanCurrency(Math.max(0, referenceTotal - cycleAmount))
+                        : 0;
+                      const cycleLabel = cycle
+                        ? PLAN_BILLING_CYCLES.find((item) => item.key === cycle)?.label
+                        : `A cada ${getPlanCycleLabel(variant)}`;
+                      const restrictionText = restriction === "tier"
+                        ? "Nível inferior ao plano atual"
+                        : restriction === "cycle"
+                          ? "Não é permitido reduzir o ciclo atual"
+                          : restriction === "same-tier"
+                            ? "Troca de ciclo indisponível"
+                            : restriction === "cycle-unknown"
+                              ? "Ciclo atual não confirmado"
+                              : "";
+
+                      return (
+                        <MotionPressable
+                          key={variant.id}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: isSelected, disabled: isUnavailable || openingCheckoutPlanId !== null }}
+                          disabled={isUnavailable || openingCheckoutPlanId !== null}
+                          onPress={() => {
+                            if (isSelected || isUnavailable) return;
+                            setTermsPlan(variant);
+                            setTermsAccepted(false);
+                          }}
+                          style={[
+                            styles.adhesionVariant,
+                            {
+                              backgroundColor: isSelected ? theme.primarySubtle : theme.surface,
+                              borderColor: isSelected ? theme.primary : theme.border,
+                              opacity: isUnavailable ? 0.55 : 1,
+                            },
+                          ]}
+                        >
+                          <View style={styles.adhesionVariantHeader}>
+                            <Text style={[styles.adhesionVariantLabel, { color: theme.text }]}>
+                              {cycleLabel}
+                            </Text>
+                            <Ionicons
+                              name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+                              size={19}
+                              color={isSelected ? theme.primary : theme.textMuted}
+                            />
+                          </View>
+                          <Text style={[styles.adhesionVariantPrice, { color: theme.text }]}>
+                            {isStoreDistributionChannel
+                              ? playSelection?.amount !== null && playSelection?.amount !== undefined && cycleCount > 1 && playSelection.currency
+                                ? formatGooglePlayAmount(playSelection.amount / cycleCount, playSelection.currency)
+                                : playSelection?.localizedPrice || "Preço indisponível"
+                              : formatPlanAmount(cycleCount > 1 ? monthlyEquivalent : cycleAmount)}
+                            <Text style={[styles.adhesionVariantPeriod, { color: theme.textMuted }]}>
+                              {isStoreDistributionChannel
+                                ? playSelection?.amount !== null && playSelection?.amount !== undefined && cycleCount > 1
+                                  ? "/mês"
+                                  : ""
+                                : cycleCount > 1 ? "/mês" : `/${getPlanCycleLabel(variant)}`}
+                            </Text>
+                          </Text>
+                          <Text style={[styles.adhesionVariantTotal, { color: theme.textMuted }]}>
+                            {isStoreDistributionChannel
+                              ? playSelection?.localizedPrice
+                                ? `Cobrança pela Google Play: ${playSelection.localizedPrice}`
+                                : "Preço da Google Play ainda não configurado"
+                              : cycleCount > 1
+                              ? `Total ${formatPlanAmount(cycleAmount)} ${cycleCount === 12 ? "por ano" : "por trimestre"}`
+                              : `Cobrança por ${getPlanCycleLabel(variant)}`}
+                          </Text>
+                          {!isStoreDistributionChannel && savings >= 0.01 ? (
+                            <Text style={[styles.adhesionVariantSavings, { color: theme.success }]}>
+                              Economia de {formatPlanAmount(savings)} no ciclo
+                            </Text>
+                          ) : null}
+                          {restrictionText ? (
+                            <Text style={[styles.adhesionVariantUnavailable, { color: theme.textMuted }]}>
+                              {restrictionText}
+                            </Text>
+                          ) : null}
+                        </MotionPressable>
+                      );
+                    })}
+                  </View>
                 </View>
               ) : null}
+              <View
+                style={[
+                  styles.adhesionTrustInfo,
+                  { backgroundColor: theme.successSubtle, borderColor: theme.successBorder },
+                ]}
+              >
+                <View style={styles.adhesionTrustRow}>
+                  <Ionicons name="shield-checkmark-outline" size={18} color={theme.success} />
+                  <Text style={[styles.adhesionTrustTitle, { color: theme.success }]}>
+                    7 dias para solicitar reembolso
+                  </Text>
+                </View>
+                <Text style={[styles.adhesionTrustCopy, { color: theme.textMuted }]}>
+                  Você pode solicitar o reembolso em até 7 dias após a compra, conforme as condições dos termos de adesão.
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.adhesionTrustInfo,
+                  { backgroundColor: theme.surfaceSubtle, borderColor: theme.border },
+                ]}
+              >
+                <View style={styles.adhesionTrustRow}>
+                  <Ionicons name="lock-closed-outline" size={17} color={theme.primary} />
+                  <Text style={[styles.adhesionTrustTitle, { color: theme.text }]}>
+                    {isStoreDistributionChannel ? "Compra segura via Google Play" : "Compra segura via Stripe"}
+                  </Text>
+                </View>
+                <Text style={[styles.adhesionTrustCopy, { color: theme.textMuted }]}>
+                  {isStoreDistributionChannel
+                    ? "O pagamento será confirmado pela Google Play. Os dados do cartão não são armazenados pelo aplicativo."
+                    : "O pagamento será concluído no ambiente seguro da Stripe. Os dados do cartão não são armazenados pelo aplicativo."}
+                </Text>
+              </View>
               <Text style={[styles.adhesionSectionTitle, { color: theme.text }]}>
                 Antes de continuar
               </Text>
@@ -1002,7 +1779,220 @@ export function PlansScreen() {
             </View>
           </View>
         </View>
-      </Modal>
+      </AnimatedModal>
+      <AnimatedModal
+        mode="sheet"
+        onRequestClose={closeManageSubscription}
+        transparent
+        visible={showManageSubscription}
+      >
+        <View style={styles.manageBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fechar gerenciamento da assinatura"
+            onPress={closeManageSubscription}
+            style={StyleSheet.absoluteFill}
+          />
+          <View
+            style={[
+              styles.manageDialog,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                paddingBottom: Math.max(insets.bottom, spacing[4]),
+              },
+            ]}
+          >
+            <View style={styles.manageHandle} />
+            <View style={styles.adhesionHeading}>
+              <View style={styles.adhesionHeadingCopy}>
+                <Text style={[styles.adhesionTitle, { color: theme.text }]}>
+                  Gerenciar assinatura
+                </Text>
+                <Text style={[styles.adhesionVersion, { color: theme.textMuted }]}>
+                  {currentSubscription?.plan?.displayName ||
+                    currentSubscription?.plan?.name || user?.plan || "Plano atual"}
+                </Text>
+              </View>
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityLabel="Fechar"
+                onPress={closeManageSubscription}
+                style={styles.adhesionClose}
+              >
+                <Ionicons name="close" size={22} color={theme.textMuted} />
+              </MotionPressable>
+            </View>
+            <ScrollView
+              style={styles.manageBody}
+              contentContainerStyle={styles.manageBodyContent}
+              showsVerticalScrollIndicator
+            >
+              <View style={[styles.manageSummaryCard, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}>
+                <View style={styles.manageSummaryRow}>
+                  <View style={[styles.manageIcon, { backgroundColor: hasActiveSubscription ? theme.successSubtle : theme.warningSubtle }]}>
+                    <Ionicons
+                      name={hasActiveSubscription ? "checkmark-circle-outline" : "alert-circle-outline"}
+                      size={19}
+                      color={hasActiveSubscription ? theme.success : theme.warning}
+                    />
+                  </View>
+                  <View style={styles.manageSummaryCopy}>
+                    <Text style={[styles.manageLabel, { color: theme.textMuted }]}>Status da assinatura</Text>
+                    <Text style={[styles.manageValue, { color: theme.text }]}>
+                      {currentSubscriptionStatus === "active"
+                        ? "Ativa"
+                        : currentSubscriptionStatus === "trialing"
+                          ? "Período de teste"
+                          : currentSubscriptionStatus === "past_due"
+                            ? "Pagamento em atraso"
+                            : currentSubscriptionStatus || "Não confirmada"}
+                    </Text>
+                    <Text style={[styles.manageDetail, { color: theme.textMuted }]}>
+                      Provedor: {paymentProvider === "stripe" ? "Stripe" : paymentProvider || "não informado"}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.manageDivider, { backgroundColor: theme.border }]} />
+                <View style={styles.manageSummaryRow}>
+                  <View style={[styles.manageIcon, { backgroundColor: theme.primarySubtle }]}>
+                    <Ionicons name="calendar-outline" size={19} color={theme.primary} />
+                  </View>
+                  <View style={styles.manageSummaryCopy}>
+                    <Text style={[styles.manageLabel, { color: theme.textMuted }]}>Ciclo atual</Text>
+                    <Text style={[styles.manageValue, { color: theme.text }]}>
+                      {periodEndDate
+                        ? `Termina em ${formatSubscriptionDate(periodEndDate)}`
+                        : "Vigência ainda não confirmada"}
+                    </Text>
+                    {currentSubscription?.current_period_start ? (
+                      <Text style={[styles.manageDetail, { color: theme.textMuted }]}>
+                        Início do ciclo: {formatSubscriptionDate(currentSubscription.current_period_start)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {cycleDaysRemaining !== null ? (
+                    <View style={[styles.manageDaysBadge, { backgroundColor: theme.primarySubtle }]}>
+                      <Text style={[styles.manageDaysText, { color: theme.primary }]}>
+                        {cycleDaysRemaining} {cycleDaysRemaining === 1 ? "dia" : "dias"}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={[styles.manageDivider, { backgroundColor: theme.border }]} />
+                <View style={styles.manageSummaryRow}>
+                  <View style={[styles.manageIcon, { backgroundColor: renewalEnabled ? theme.successSubtle : theme.warningSubtle }]}>
+                    <Ionicons
+                      name={renewalEnabled ? "refresh-outline" : "pause-circle-outline"}
+                      size={19}
+                      color={renewalEnabled ? theme.success : theme.warning}
+                    />
+                  </View>
+                  <View style={styles.manageSummaryCopy}>
+                    <Text style={[styles.manageLabel, { color: theme.textMuted }]}>Renovação automática</Text>
+                    <Text style={[styles.manageValue, { color: theme.text }]}>
+                      {renewalEnabled ? "Ativada" : "Desativada"}
+                    </Text>
+                  </View>
+                </View>
+                {renewalEnabled ? (
+                  <View style={styles.manageRenewalDetails}>
+                    {currentSubscription?.next_renewal_date || currentSubscription?.next_billing_at ? (
+                      <Text style={[styles.manageDetail, { color: theme.textMuted }]}>
+                        Próxima renovação: {formatSubscriptionDate(currentSubscription.next_renewal_date || currentSubscription.next_billing_at)}
+                      </Text>
+                    ) : null}
+                    {Number(currentSubscription?.next_renewal_amount || 0) > 0 ? (
+                      <Text style={[styles.manageDetail, { color: theme.textMuted }]}>
+                        Valor previsto: {formatPlanAmount(Number(currentSubscription?.next_renewal_amount))}
+                        {currentSubscription?.next_renewal_cycle_label
+                          ? ` · ${currentSubscription.next_renewal_cycle_label}`
+                          : ""}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : (
+                  <Text style={[styles.manageDetail, { color: theme.textMuted }]}>
+                    Seu acesso permanece até o fim do período contratado, salvo pendências do termo.
+                  </Text>
+                )}
+              </View>
+
+              <View style={[styles.manageInfoCard, { backgroundColor: refundWindowOpen ? theme.successSubtle : theme.surface, borderColor: refundWindowOpen ? theme.successBorder : theme.border }]}>
+                <View style={styles.manageInfoHeading}>
+                  <Ionicons
+                    name={hasPendingRefundRequest ? "time-outline" : refundWindowOpen ? "shield-checkmark-outline" : "information-circle-outline"}
+                    size={18}
+                    color={hasPendingRefundRequest ? theme.warning : refundWindowOpen ? theme.success : theme.textMuted}
+                  />
+                  <Text style={[styles.manageInfoTitle, { color: theme.text }]}>
+                    {hasPendingRefundRequest
+                      ? "Reembolso em análise"
+                      : refundWindowOpen
+                        ? `Janela inicial: ${refundWindowDaysRemaining} ${refundWindowDaysRemaining === 1 ? "dia restante" : "dias restantes"}`
+                        : firstPaidPlanTransactionAt
+                          ? "Janela inicial de 7 dias encerrada"
+                          : "Prazo de reembolso não confirmado"}
+                  </Text>
+                </View>
+                <Text style={[styles.manageDetail, { color: theme.textMuted }]}>
+                  {hasPendingRefundRequest
+                    ? "Já existe uma solicitação em análise. Consulte o andamento na plataforma web antes de enviar outra."
+                    : refundWindowOpen
+                      ? "Você está dentro do prazo inicial de reembolso. Para solicitar cancelamento ou reembolso, continue pelo gerenciamento da assinatura na plataforma web."
+                      : firstPaidPlanTransactionAt
+                        ? "Para cancelar ou alterar a renovação, use o gerenciamento da assinatura na plataforma web. As condições do ciclo contratado serão apresentadas lá antes da confirmação."
+                        : transactionsQuery.isPending
+                          ? "Consultando o histórico de compras para verificar a janela de reembolso."
+                          : "Não foi possível confirmar o prazo pelo histórico carregado. A plataforma web apresentará a elegibilidade antes de receber uma solicitação."}
+                </Text>
+              </View>
+
+              {isStripeSubscription ? (
+                <View style={[styles.manageInfoCard, { backgroundColor: theme.primarySubtle, borderColor: theme.border }]}>
+                  <View style={styles.manageInfoHeading}>
+                    <Ionicons name="globe-outline" size={18} color={theme.primary} />
+                    <Text style={[styles.manageInfoTitle, { color: theme.text }]}>Assinatura contratada na web</Text>
+                  </View>
+                  <Text style={[styles.manageDetail, { color: theme.textMuted }]}>
+                    Cancelamento, renovação e solicitações de reembolso são gerenciados na sua conta do site. O app não altera essa assinatura.
+                  </Text>
+                </View>
+              ) : null}
+
+              {!isStripeSubscription ? (
+                <View style={[styles.manageInfoCard, { backgroundColor: theme.warningSubtle, borderColor: theme.warningBorder }]}>
+                  <View style={styles.manageInfoHeading}>
+                    <Ionicons name="storefront-outline" size={18} color={theme.warning} />
+                    <Text style={[styles.manageInfoTitle, { color: theme.text }]}>Gerenciamento pelo provedor</Text>
+                  </View>
+                  <Text style={[styles.manageDetail, { color: theme.textMuted }]}>
+                    Esta assinatura não está identificada como Stripe. Até a integração de billing da loja ficar ativa, confira as opções de gerenciamento na plataforma web.
+                  </Text>
+                </View>
+              ) : null}
+
+            </ScrollView>
+            <View style={[styles.manageActions, { borderTopColor: theme.border }]}>
+              <MotionPressable
+                accessibilityRole="button"
+                onPress={() => void openWebSubscriptionManagement()}
+                style={[styles.manageWebButton, { backgroundColor: theme.primary }]}
+              >
+                <Ionicons name="open-outline" size={18} color={theme.onPrimary} />
+                <Text style={styles.manageCancelText}>Gerenciar assinatura na web</Text>
+              </MotionPressable>
+              <MotionPressable
+                accessibilityRole="button"
+                onPress={closeManageSubscription}
+                style={[styles.adhesionCancel, { borderColor: theme.border, backgroundColor: theme.surface }]}
+              >
+                <Text style={[styles.adhesionCancelText, { color: theme.text }]}>Fechar</Text>
+              </MotionPressable>
+            </View>
+          </View>
+        </View>
+      </AnimatedModal>
     </View>
   );
 }
@@ -1056,6 +2046,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing[1],
     marginHorizontal: 2,
   },
+  billingCycleCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: spacing[2],
+    padding: spacing[3],
+  },
+  billingCycleHeading: { gap: 2, paddingHorizontal: 2 },
+  billingCycleTitle: {
+    fontSize: typography.role.bodyStrong.fontSize,
+    fontWeight: typography.weight.semibold,
+    lineHeight: typography.role.bodyStrong.lineHeight,
+  },
+  billingCycleHint: { ...typography.role.caption },
   plansList: { gap: spacing[3] },
   planOption: {
     borderRadius: radius.card,
@@ -1088,7 +2091,52 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     flexDirection: "row",
     gap: spacing[2],
+  },
+  planPricingBlock: { gap: spacing[1] },
+  planTotal: {
+    fontSize: typography.role.caption.fontSize,
+    lineHeight: typography.role.caption.lineHeight,
+  },
+  planSavingsRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[1],
     marginTop: spacing[1],
+  },
+  planSavingsText: {
+    flexShrink: 1,
+    fontSize: typography.role.label.fontSize,
+    fontWeight: typography.weight.semibold,
+    lineHeight: typography.role.label.lineHeight,
+  },
+  planDiscountBadge: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    marginLeft: "auto",
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  planDiscountLabel: {
+    fontSize: 10,
+    fontWeight: typography.weight.extrabold,
+    lineHeight: 13,
+  },
+  refundGuaranteeBadge: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing[1],
+    marginTop: spacing[2],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  refundGuaranteeText: {
+    fontSize: typography.role.label.fontSize,
+    fontWeight: typography.weight.semibold,
+    lineHeight: typography.role.label.lineHeight,
   },
   planPrice: {
     fontSize: typography.size["2xl"],
@@ -1144,6 +2192,19 @@ const styles = StyleSheet.create({
   adhesionBody: { flexGrow: 0, flexShrink: 1 },
   adhesionBodyContent: { gap: spacing[3], padding: spacing[5] },
   adhesionSelectedPlan: { borderRadius: radius.md, gap: 2, padding: spacing[3] },
+  adhesionVariants: { gap: spacing[2], marginTop: spacing[2] },
+  adhesionVariant: { borderRadius: radius.md, borderWidth: 1, gap: spacing[1], padding: spacing[3] },
+  adhesionVariantHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  adhesionVariantLabel: { ...typography.role.label, fontWeight: typography.weight.semibold },
+  adhesionVariantPrice: { fontSize: typography.size.md, fontWeight: typography.weight.bold },
+  adhesionVariantPeriod: { fontSize: typography.size.xs, fontWeight: typography.weight.medium },
+  adhesionVariantTotal: { ...typography.role.caption },
+  adhesionVariantSavings: { ...typography.role.caption, fontWeight: typography.weight.semibold },
+  adhesionVariantUnavailable: { ...typography.role.caption, fontWeight: typography.weight.medium },
+  adhesionTrustInfo: { borderRadius: radius.md, borderWidth: borders.subtle, gap: spacing[2], padding: spacing[3] },
+  adhesionTrustRow: { alignItems: "center", flexDirection: "row", gap: spacing[2] },
+  adhesionTrustTitle: { ...typography.role.label, fontWeight: typography.weight.semibold },
+  adhesionTrustCopy: { ...typography.role.caption, lineHeight: typography.role.body.lineHeight },
   adhesionOverline: { ...typography.role.label, letterSpacing: 0.6, textTransform: "uppercase" },
   adhesionSelectedPlanName: { fontSize: typography.size.sm, fontWeight: typography.weight.bold },
   adhesionSectionTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.bold },
@@ -1157,6 +2218,42 @@ const styles = StyleSheet.create({
   },
   adhesionLinkText: { ...typography.role.link },
   adhesionHint: { ...typography.role.caption },
+  manageBackdrop: {
+    backgroundColor: "rgba(10, 12, 24, 0.62)",
+    flex: 1,
+    justifyContent: "flex-end",
+    paddingTop: spacing[8],
+  },
+  manageDialog: {
+    borderTopLeftRadius: radius.dialog,
+    borderTopRightRadius: radius.dialog,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    height: "90%",
+    maxHeight: "92%",
+    overflow: "hidden",
+    width: "100%",
+  },
+  manageHandle: { alignSelf: "center", backgroundColor: palette.slate[400], borderRadius: radius.pill, height: 4, marginTop: spacing[3], marginBottom: spacing[2], width: 40 },
+  manageBody: { flexGrow: 0, flexShrink: 1 },
+  manageBodyContent: { gap: spacing[3], padding: spacing[4] },
+  manageSummaryCard: { borderRadius: radius.md, borderWidth: borders.subtle, gap: spacing[3], padding: spacing[3] },
+  manageSummaryRow: { alignItems: "center", flexDirection: "row", gap: spacing[3] },
+  manageIcon: { alignItems: "center", borderRadius: radius.sm, height: 38, justifyContent: "center", width: 38 },
+  manageSummaryCopy: { flex: 1, gap: 2, minWidth: 0 },
+  manageLabel: { ...typography.role.caption, fontWeight: typography.weight.semibold },
+  manageValue: { ...typography.role.bodyStrong },
+  manageDaysBadge: { borderRadius: radius.pill, paddingHorizontal: spacing[2], paddingVertical: spacing[1] },
+  manageDaysText: { ...typography.role.label, fontWeight: typography.weight.bold },
+  manageDivider: { height: StyleSheet.hairlineWidth, marginVertical: spacing[1] },
+  manageRenewalDetails: { gap: spacing[1], paddingLeft: 38 + spacing[3] },
+  manageDetail: { ...typography.role.caption, lineHeight: typography.role.body.lineHeight },
+  manageInfoCard: { borderRadius: radius.md, borderWidth: borders.subtle, gap: spacing[2], padding: spacing[3] },
+  manageInfoHeading: { alignItems: "center", flexDirection: "row", gap: spacing[2] },
+  manageInfoTitle: { ...typography.role.label, flex: 1, fontWeight: typography.weight.semibold },
+  manageActions: { borderTopWidth: StyleSheet.hairlineWidth, gap: spacing[2], padding: spacing[4] },
+  manageWebButton: { alignItems: "center", borderRadius: radius.button, flexDirection: "row", gap: spacing[2], justifyContent: "center", minHeight: 48, paddingHorizontal: spacing[3] },
+  manageCancelText: { ...typography.role.button, color: "#FFFFFF", textAlign: "center" },
   adhesionConsent: { alignItems: "flex-start", flexDirection: "row", gap: spacing[3], minHeight: 44, paddingVertical: spacing[2] },
   adhesionCheckbox: {
     alignItems: "center",

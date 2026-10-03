@@ -34,9 +34,28 @@ export const normalizeApiFailure = (error: any, fallbackMessage = 'Nao foi possi
   }
 
   if (status === 401) {
+    const requestUrl = String(error?.config?.url || '').split('?')[0].toLowerCase();
+    const isLoginRequest = /(?:^|\/)auth\/login(?:\.php)?$/.test(requestUrl);
+    const isGoogleLoginRequest = /(?:^|\/)auth\/google(?:\.php)?$/.test(requestUrl);
+    const isRegisterRequest = /(?:^|\/)auth\/register(?:\.php)?$/.test(requestUrl);
+    const isSessionControlRequest = /(?:^|\/)auth\/(?:me|refresh)(?:\.php)?$/.test(requestUrl);
+    const authResponseMessage = typeof error?.response?.data?.message === 'string'
+      ? error.response.data.message.trim()
+      : typeof error?.response?.data?.error === 'string'
+        ? error.response.data.error.trim()
+        : '';
+
     return {
       kind: 'unauthorized',
-      message: 'Sua sessao expirou. Entre novamente para continuar.',
+      message: isLoginRequest
+        ? 'E-mail ou senha inválidos.'
+        : isGoogleLoginRequest
+          ? authResponseMessage || 'Não foi possível validar sua conta Google. Tente novamente.'
+          : isRegisterRequest
+            ? 'Não foi possível validar o cadastro. Confira os dados e tente novamente.'
+            : isSessionControlRequest
+              ? 'Sua sessao expirou. Entre novamente para continuar.'
+              : 'Não foi possível carregar estes dados com a sessão atual. Tente novamente.',
       status,
       retryable: false,
     };
@@ -61,12 +80,27 @@ export const normalizeApiFailure = (error: any, fallbackMessage = 'Nao foi possi
   // Algumas rotas antigas da produção ainda devolvem 500 para uma sessão
   // inválida. O cliente trata esse payload como autenticação para conseguir
   // renovar o token e repetir a requisição sem exigir novo login.
-  if (status === 500 && /sess[aã]o.*(inv[aá]lida|expirada)/i.test(`${responseMessage} ${responseError}`)) {
+  const requestUrl = String(error?.config?.url || '').split('?')[0].toLowerCase();
+  const isSessionControlRequest = /(?:^|\/)auth\/(?:me|refresh)(?:\.php)?$/.test(requestUrl);
+  if (
+    status === 500
+    && isSessionControlRequest
+    && /sess[aã]o.*(inv[aá]lida|expirada)/i.test(`${responseMessage} ${responseError}`)
+  ) {
     return {
       kind: 'unauthorized',
       message: 'Sua sessao expirou. Entre novamente para continuar.',
       status,
       retryable: false,
+    };
+  }
+
+  if (status === 500 && /sess[aã]o.*(inv[aá]lida|expirada)/i.test(`${responseMessage} ${responseError}`)) {
+    return {
+      kind: 'unauthorized',
+      message: 'Não foi possível carregar estes dados com a sessão atual. Tente novamente.',
+      status,
+      retryable: true,
     };
   }
 

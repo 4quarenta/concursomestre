@@ -20,6 +20,7 @@ import { radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import type { MobileTransaction } from "@/types/transactions";
 import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
+import { formatPlanPrice } from "@shared/planPricing";
 
 const formatDate = (raw?: string | number) => {
   if (raw === undefined || raw === null || raw === "") return "--";
@@ -368,7 +369,7 @@ export const AccountScreen: React.FC = () => {
           renewalEnabled ? (
             <Text style={styles.muted}>
               Valor previsto:{" "}
-              {formatCurrency(subscription?.next_renewal_amount)}
+              {formatPlanPrice(Number(subscription?.next_renewal_amount || 0))}
             </Text>
           ) : null}
         </View>

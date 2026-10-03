@@ -1,9 +1,10 @@
 import React from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppButton } from "@/components/ui/Primitives";
+import { AnimatedModal } from "@/components/ui/AnimatedModal";
 import { darkTheme, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
 import { useAuth } from "@/providers/AuthProvider";
@@ -25,8 +26,8 @@ export function GuestAccessSheet({ visible, description, onDismiss }: GuestAcces
   };
 
   return (
-    <Modal
-      animationType="slide"
+    <AnimatedModal
+      mode="sheet"
       onRequestClose={onDismiss}
       presentationStyle="overFullScreen"
       statusBarTranslucent
@@ -65,7 +66,7 @@ export function GuestAccessSheet({ visible, description, onDismiss }: GuestAcces
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </AnimatedModal>
   );
 }
 

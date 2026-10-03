@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   BackHandler,
+  Image,
   PanResponder,
   Pressable,
   RefreshControl,
@@ -19,11 +20,13 @@ import { router, useFocusEffect } from "expo-router";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { useActiveSimulationQuery } from "@/features/simulations/api/useActiveSimulationQuery";
 import { useAuth } from "@/providers/AuthProvider";
+import { getAssetUrl } from "@/services/api/client";
 import { useHomeDrawerVisibility } from "@/features/home/HomeDrawerVisibilityContext";
 import { statisticsService } from "@/services/statistics/statisticsService";
 import { touchStudyStreak } from "@/services/statistics/studyStreakService";
 import { getLastQuestionFilter, toQuestionListFilters, toQuestionRouteParams } from "@/services/questions/lastQuestionFilterService";
 import { questionService } from "@/services/questions/questionService";
+import { resolveCanonicalPlanKey } from "@/services/plans/planDetails";
 import { darkTheme, palette, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
 import type { UserStatistics } from "@/types/statistics";
@@ -67,6 +70,12 @@ const quickActions: Array<{
     description: "Acompanhe sua evolução",
     icon: "trending-up-outline",
     route: "/desempenho",
+  },
+  {
+    label: "Notícias",
+    description: "Fique por dentro do mundo dos concursos",
+    icon: "newspaper-outline",
+    route: "/noticias",
   },
 ];
 
@@ -131,23 +140,48 @@ export const HomeScreen: React.FC = () => {
   const [refreshing, setRefreshing] = React.useState(false);
   const [greeting, setGreeting] = React.useState(getGreeting);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [drawerAvatarFailed, setDrawerAvatarFailed] = React.useState(false);
   const [continuingStudy, setContinuingStudy] = React.useState(false);
   const drawerProgress = React.useRef(new Animated.Value(0)).current;
+  const drawerAvatarUri = user?.photoUrl ? getAssetUrl(user.photoUrl) : "";
+
+  React.useEffect(() => {
+    setDrawerAvatarFailed(false);
+  }, [drawerAvatarUri]);
+
+  const animateDrawerOpen = React.useCallback(() => {
+    drawerProgress.stopAnimation();
+    Animated.timing(drawerProgress, {
+      toValue: 1,
+      duration: 260,
+      useNativeDriver: true,
+    }).start();
+  }, [drawerProgress]);
 
   const openDrawer = React.useCallback(() => {
+    if (drawerOpen) {
+      animateDrawerOpen();
+      return;
+    }
+
+    // Mount the off-screen drawer first. Starting a native animation in the
+    // same event as setState can finish before its Animated.View is attached,
+    // making it flash directly into the fully-open position.
     setDrawerOpen(true);
     setDrawerVisible(true);
-    Animated.spring(drawerProgress, {
-      toValue: 1,
-      useNativeDriver: true,
-      bounciness: 0,
-    }).start();
-  }, [drawerProgress, setDrawerVisible]);
+  }, [animateDrawerOpen, drawerOpen, setDrawerVisible]);
+
+  React.useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const frame = requestAnimationFrame(animateDrawerOpen);
+    return () => cancelAnimationFrame(frame);
+  }, [animateDrawerOpen, drawerOpen]);
 
   const closeDrawer = React.useCallback(() => {
+    drawerProgress.stopAnimation();
     Animated.timing(drawerProgress, {
       toValue: 0,
-      duration: 180,
+      duration: 220,
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) setDrawerOpen(false);
@@ -287,6 +321,11 @@ export const HomeScreen: React.FC = () => {
     user?.billing?.plan ||
     user?.plan ||
     "Gratuito";
+  const isElitePlan = resolveCanonicalPlanKey(planName) === "Elite";
+  const isDarkTheme = theme === darkTheme;
+  const eliteAccent = isDarkTheme ? "#EFC766" : "#9A6A0A";
+  const eliteBorder = isDarkTheme ? "#80652B" : "#D9B45D";
+  const eliteSurface = isDarkTheme ? "#282316" : "#FFFAF0";
   const visibleQuickActions = quickActions;
   const visibleDrawerItems = isVisitor
     ? drawerItems.filter((item) => item.route !== "/notificacoes")
@@ -538,7 +577,16 @@ export const HomeScreen: React.FC = () => {
           >
             <View style={[styles.drawerHeader, { paddingTop: spacing[4] }]}>
               <View style={styles.drawerAvatar}>
-                <Ionicons name="person" size={22} color={theme.primary} />
+                {drawerAvatarUri && !drawerAvatarFailed ? (
+                  <Image
+                    accessibilityLabel="Foto do perfil"
+                    onError={() => setDrawerAvatarFailed(true)}
+                    source={{ uri: drawerAvatarUri }}
+                    style={styles.drawerAvatarImage}
+                  />
+                ) : (
+                  <Ionicons name="person" size={22} color={theme.primary} />
+                )}
               </View>
               <View style={styles.drawerIdentity}>
                 <Text numberOfLines={1} style={styles.drawerName}>
@@ -546,9 +594,28 @@ export const HomeScreen: React.FC = () => {
                 </Text>
                 <Text style={styles.drawerSubtitle}>Área do aluno</Text>
                 {!isVisitor ? (
-                  <View style={styles.drawerPlanBadge}>
-                    <Ionicons name="sparkles-outline" size={12} color={theme.primary} />
-                    <Text style={styles.drawerPlanText}>Plano {planName}</Text>
+                  <View
+                    style={[
+                      styles.drawerPlanBadge,
+                      isElitePlan && {
+                        backgroundColor: eliteSurface,
+                        borderColor: eliteBorder,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={isElitePlan ? "diamond" : "sparkles-outline"}
+                      size={12}
+                      color={isElitePlan ? eliteAccent : theme.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.drawerPlanText,
+                        isElitePlan && { color: eliteAccent },
+                      ]}
+                    >
+                      {isElitePlan ? "ELITE · ACESSO MÁXIMO" : `Plano ${planName}`}
+                    </Text>
                   </View>
                 ) : null}
               </View>
@@ -636,7 +703,9 @@ const StatCard = ({
 }) => (
   <View style={[styles.statCard, divider && styles.statCardDivider]}>
     <Ionicons name={icon} size={20} color={color} />
-    <Text style={styles.statValue}>{value}</Text>
+    <Text adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={styles.statValue}>
+      {value}
+    </Text>
     <Text style={styles.statLabel}>{label}</Text>
   </View>
 );
@@ -785,8 +854,10 @@ const createStyles = (theme: ResolvedAppTheme) => {
       borderRadius: radius.pill,
       height: 44,
       justifyContent: "center",
+      overflow: "hidden",
       width: 44,
     },
+    drawerAvatarImage: { height: "100%", width: "100%" },
     drawerIdentity: { flex: 1, minWidth: 0 },
     drawerName: {
       color: theme.text,
@@ -931,7 +1002,9 @@ const createStyles = (theme: ResolvedAppTheme) => {
       alignItems: "center",
       alignSelf: "flex-start",
       backgroundColor: theme.primarySubtle,
+      borderColor: "transparent",
       borderRadius: radius.pill,
+      borderWidth: 1,
       flexDirection: "row",
       gap: spacing[1],
       marginTop: spacing[2],

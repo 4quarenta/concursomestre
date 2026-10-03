@@ -11,6 +11,7 @@ import { darkTheme, palette } from "@/theme/tokens";
 import { analyticsService } from "@/services/analytics/analyticsService";
 import { isAppVersionBelow } from "@/services/system/appVersionPolicy";
 import { GuestAccessSheet } from "@/components/GuestAccessSheet";
+import { useAdExperience } from "@/providers/AdExperienceProvider";
 
 function RootNavigator() {
   const {
@@ -24,6 +25,9 @@ function RootNavigator() {
   } = useAuth();
   const theme = useAppTheme();
   const pathname = usePathname();
+  const { registerPageTransition } = useAdExperience();
+  const previousPathnameForAds = React.useRef<string | null>(null);
+  const wasInsideAppForAds = React.useRef<boolean | null>(null);
   const isWelcomeRoute = pathname === "/bem-vindo";
   const statusBarStyle =
     user || isWelcomeRoute || theme.background === darkTheme.background
@@ -40,6 +44,24 @@ function RootNavigator() {
     || updatePolicy.androidStoreUrl
     || updatePolicy.iosStoreUrl;
   const recommendedPromptedVersion = React.useRef("");
+
+  React.useEffect(() => {
+    if (!isBootstrapped) return;
+
+    const insideApp = Boolean(user || isGuest);
+    const previousPathname = previousPathnameForAds.current;
+    const wasInsideApp = wasInsideAppForAds.current;
+    previousPathnameForAds.current = pathname;
+    wasInsideAppForAds.current = insideApp;
+
+    // Do not count the initial route or the auth -> app handoff as an ad
+    // opportunity. Question-to-question changes are counted after their own
+    // content transition, so avoid counting those a second time here.
+    if (!insideApp || wasInsideApp !== true || !previousPathname || previousPathname === pathname) return;
+    const isQuestionItemPath = (path: string) => /^\/questao\/[^/]+\/?$/.test(path);
+    if (isQuestionItemPath(previousPathname) && isQuestionItemPath(pathname)) return;
+    registerPageTransition();
+  }, [isBootstrapped, isGuest, pathname, registerPageTransition, user]);
 
   React.useEffect(() => {
     if (!isBootstrapped || !recommendedUpdateAvailable || recommendedPromptedVersion.current === updatePolicy.latestVersion) return;

@@ -67,7 +67,10 @@ export const resolveConfiguredPlanCycleAmount = (
     return Number(plan.price || 0);
   }
 
-  if (plan.interval_unit === 'year') {
+  if (
+    plan.interval_unit === 'year'
+    || (plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 12)
+  ) {
     return Number(configuredPricing.annual || plan.price || 0);
   }
 

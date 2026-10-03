@@ -131,9 +131,13 @@ const isAuthenticationRequest = (config: RetryConfig): boolean => {
   return [
     ENDPOINTS.auth.login,
     ENDPOINTS.auth.register,
+    ENDPOINTS.auth.google,
     ENDPOINTS.auth.refresh,
   ].some((endpoint) => url.includes(endpoint));
 };
+
+const isCurrentUserSessionRequest = (config: RetryConfig): boolean =>
+  String(config.url || '').split('?')[0].endsWith(ENDPOINTS.auth.user);
 
 const isLegacySessionFailure = (error: AxiosError): boolean => {
   if (error.response?.status !== 500) return false;
@@ -199,8 +203,12 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (sessionFailure && !authRequest) {
+    if (sessionFailure && !authRequest && isCurrentUserSessionRequest(config)) {
       await sessionStorage.clearSession();
+    } else if (sessionFailure && !authRequest) {
+      // Um 401 de um recurso (estatísticas, simulados etc.) pode indicar uma
+      // regra/contrato específico daquele endpoint. Só ele não prova que a
+      // identidade do usuário expirou; preservar a sessão evita logout global.
     }
 
     const normalizedFailure = normalizeApiFailure(error);

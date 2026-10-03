@@ -45,7 +45,12 @@ const normalizeOptions = (rows: unknown): QuestionTaxonomyOption[] => (
 
 export const taxonomyService = {
   async list(): Promise<QuestionTaxonomies> {
-    const response: any = await apiClient.get<any>(ENDPOINTS.filters.list);
+    // Practice screens must never hydrate the unrestricted taxonomy table: it
+    // can contain tens of thousands of records. The backend's practice scope
+    // returns only taxonomies attached to currently published questions.
+    const response: any = await apiClient.get<any>(ENDPOINTS.filters.list, {
+      params: { scope: 'practice' },
+    });
     const payload = readApiData<any>(response, {});
     const subjectRows = normalizeOptions(payload?.assuntos);
 

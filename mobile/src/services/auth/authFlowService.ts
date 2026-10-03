@@ -6,16 +6,35 @@ import type { AuthFlowResponse, UserProfile } from '@/types/auth';
 
 type RegisterPayload = {
   name: string;
+  cpf: string;
+  phone: string;
   email: string;
   password: string;
   captchaToken?: string | null;
   referralCode?: string | null;
+  termsAccepted: true;
+  termsVersion: string;
+  privacyAccepted: true;
+  privacyVersion: string;
 };
 
 type LoginPayload = {
   email: string;
   password: string;
   captchaToken?: string | null;
+};
+
+type GoogleLoginPayload = {
+  credential: string;
+  createIfMissing: false;
+} | {
+  credential: string;
+  createIfMissing: true;
+  profile: { name?: string; cpf: string; phone: string };
+  termsAccepted: true;
+  termsVersion: string;
+  privacyAccepted: true;
+  privacyVersion: string;
 };
 
 export type ForgotPasswordPayload = {
@@ -44,6 +63,12 @@ export const authFlowService = {
     assertApiSuccess(response, 'Nao foi possivel realizar o login.');
     const data = readApiData<AuthFlowResponse>(response, { success: true });
     return data;
+  },
+
+  async loginWithGoogle(payload: GoogleLoginPayload): Promise<AuthFlowResponse> {
+    const response = await apiClient.post<any>(ENDPOINTS.auth.google, payload);
+    assertApiSuccess(response, 'Nao foi possivel realizar o login com Google.');
+    return readApiData<AuthFlowResponse>(response, { success: true });
   },
 
   async register(payload: RegisterPayload): Promise<AuthFlowResponse> {

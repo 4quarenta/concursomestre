@@ -2,33 +2,29 @@ import React from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import RenderHtml from "react-native-render-html";
+import tableRenderers, { type TableCell } from "@native-html/heuristic-table-plugin";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
 import { QuestionCommentsPanel } from "@/components/questions/QuestionCommentsPanel";
 import { blogService, type MobileBlogArticle } from "@/services/blog/blogService";
+import { toBlogArticleHtml } from "@/services/blog/blogHtml";
 import { commentsService } from "@/services/comments/commentsService";
 import { useAuth } from "@/providers/AuthProvider";
 import { spacing, typography } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
+import { PUBLIC_WEB_BASE_URL } from "@/config/publicLinks";
 import type { QuestionComment } from "@/types/comments";
-
-const stripHtml = (value?: string | null): string =>
-  String(value || "")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 
 const routeValue = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? value[0] || "" : value || "";
@@ -43,6 +39,7 @@ const formatDate = (value?: string | null): string => {
 
 export default function BlogPostScreen() {
   const theme = useAppTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const { user } = useAuth();
   const { slug: rawSlug } = useLocalSearchParams<{ slug?: string | string[] }>();
@@ -213,10 +210,56 @@ export default function BlogPostScreen() {
     );
   }
 
-  const bodyText = stripHtml(article.bodyText || article.bodyHtml);
-  const paragraphs = bodyText
-    ? bodyText.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean)
-    : [];
+  const articleHtml = toBlogArticleHtml(article.bodyHtml, article.bodyText);
+  const articleBaseUrl = `${PUBLIC_WEB_BASE_URL}/blog/${encodeURIComponent(article.slug)}`;
+  const articleTagsStyles = {
+    body: { color: theme.text, fontSize: typography.size.md, lineHeight: 27 },
+    p: { marginTop: 0, marginBottom: spacing[3] },
+    h2: { color: theme.text, fontSize: 22, fontWeight: "700" as const, lineHeight: 29, marginTop: spacing[3], marginBottom: spacing[2] },
+    h3: { color: theme.text, fontSize: 19, fontWeight: "700" as const, lineHeight: 26, marginTop: spacing[3], marginBottom: spacing[2] },
+    h4: { color: theme.text, fontSize: 17, fontWeight: "700" as const, lineHeight: 24, marginTop: spacing[2], marginBottom: spacing[1] },
+    strong: { fontWeight: "700" as const },
+    b: { fontWeight: "700" as const },
+    th: { color: theme.text, fontWeight: "700" as const },
+    em: { fontStyle: "italic" as const },
+    i: { fontStyle: "italic" as const },
+    a: { color: theme.primary, textDecorationLine: "underline" as const },
+    blockquote: { borderLeftColor: theme.primary, borderLeftWidth: 3, color: theme.textMuted, paddingLeft: spacing[3], marginVertical: spacing[3] },
+    ul: { marginBottom: spacing[3], paddingLeft: spacing[4] },
+    ol: { marginBottom: spacing[3], paddingLeft: spacing[4] },
+    li: { color: theme.text, lineHeight: 26, marginBottom: spacing[1] },
+    img: { borderRadius: 10, marginVertical: spacing[3] },
+    figcaption: { color: theme.textMuted, fontSize: typography.size.sm, fontStyle: "italic" as const, marginBottom: spacing[3], textAlign: "center" as const },
+    pre: { backgroundColor: theme.surfaceSubtle, borderRadius: 8, color: theme.text, padding: spacing[3] },
+    code: { color: theme.text, fontFamily: "monospace" },
+    hr: { backgroundColor: theme.border, height: StyleSheet.hairlineWidth, marginVertical: spacing[3] },
+  };
+  const renderersProps = {
+    img: { enableExperimentalPercentWidth: true },
+    table: {
+      contentWidth: Math.max(0, windowWidth - spacing[5] * 2),
+      getStyleForCell: (cell: TableCell) => ({
+        backgroundColor: cell.tnode.tagName === "th" ? theme.surfaceSubtle : theme.surface,
+        borderColor: theme.border,
+        borderWidth: StyleSheet.hairlineWidth,
+        paddingHorizontal: spacing[3],
+        paddingVertical: spacing[2],
+      }),
+    },
+    a: {
+      onPress: (_event: unknown, href: string) => {
+        try {
+          const url = new URL(href);
+          if (url.protocol !== "https:") throw new Error("Protocolo não permitido");
+          void Linking.openURL(url.toString()).catch(() =>
+            Alert.alert("Link indisponível", "Não foi possível abrir este link."),
+          );
+        } catch {
+          Alert.alert("Link indisponível", "Este link não é seguro ou está inválido.");
+        }
+      },
+    },
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
@@ -287,12 +330,14 @@ export default function BlogPostScreen() {
           </Pressable>
         </View>
 
-        {paragraphs.length > 0 ? (
-          paragraphs.map((paragraph, index) => (
-            <Text key={`${article.id}-${index}`} style={[styles.paragraph, { color: theme.text }]}>
-              {paragraph}
-            </Text>
-          ))
+        {articleHtml ? (
+          <RenderHtml
+            contentWidth={Math.max(0, windowWidth - spacing[5] * 2)}
+            source={{ html: articleHtml, baseUrl: articleBaseUrl }}
+            tagsStyles={articleTagsStyles}
+            renderersProps={renderersProps}
+            renderers={tableRenderers}
+          />
         ) : (
           <Text style={[styles.paragraph, { color: theme.text }]}>
             O conteúdo completo desta notícia está disponível na plataforma.

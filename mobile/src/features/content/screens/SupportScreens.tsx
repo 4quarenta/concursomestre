@@ -4,7 +4,6 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
-  Modal,
   Pressable,
   Platform,
   ScrollView,
@@ -17,8 +16,9 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { AppButton, AppSurface, AppText, MotionPressable } from "@/components/ui/Primitives";
+import { AnimatedModal } from "@/components/ui/AnimatedModal";
 import { ContentHeader } from "@/features/content/components/ContentHeader";
-import { borders, darkTheme, layout, motion, radius, shadows, spacing, typography } from "@/theme/tokens";
+import { borders, darkTheme, layout, radius, shadows, spacing, typography } from "@/theme/tokens";
 import { useAppTheme } from "@/theme/useAppTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
@@ -44,7 +44,7 @@ const faqs = [
   ],
   [
     "Como mudar meu concurso alvo?",
-    "Vá em Perfil → Editar → Foco de estudo e selecione o desejado.",
+    "Na página Perfil, toque em Foco de estudo e escolha uma das áreas disponíveis.",
   ],
   [
     "Como funciona o ranking?",
@@ -261,8 +261,8 @@ export function HelpScreen() {
         </AppSurface>
       </ScrollView>
 
-      <Modal
-        animationType={motion.sheetAnimation}
+      <AnimatedModal
+        mode="sheet"
         onRequestClose={closeSupportModal}
         transparent
         visible={supportModalVisible}
@@ -375,7 +375,7 @@ export function HelpScreen() {
             </View>
           </KeyboardAvoidingView>
         </View>
-      </Modal>
+      </AnimatedModal>
     </View>
   );
 }
@@ -415,143 +415,12 @@ const createHelpStyles = (theme: ReturnType<typeof useAppTheme>) => StyleSheet.c
   modalButton: { flex: 1 },
 });
 
-function FocusPickerModal({
-  visible,
-  value,
-  options,
-  onClose,
-  onSelect,
-}: {
-  visible: boolean;
-  value: string;
-  options: Array<{ id: string; name: string }>;
-  onClose: () => void;
-  onSelect: (value: string) => void;
-}) {
-  const theme = useAppTheme();
-  const [search, setSearch] = React.useState("");
-  const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
-  const filteredOptions = options
-    .filter(
-      (option) =>
-        !normalizedSearch ||
-        option.name.toLocaleLowerCase("pt-BR").includes(normalizedSearch),
-    )
-    .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
-
-  React.useEffect(() => {
-    if (visible) setSearch("");
-  }, [visible]);
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
-      <View style={styles.focusModalBackdrop}>
-        <View style={[styles.focusModal, { backgroundColor: theme.surface }]}>
-          <View style={styles.rowBetween}>
-            <View style={styles.flex}>
-              <Text style={[styles.focusModalTitle, { color: theme.text }]}>
-                Escolha seu foco
-              </Text>
-              <Text style={[styles.caption, { color: theme.textMuted }]}>
-                Selecione um foco cadastrado na plataforma.
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Fechar"
-              onPress={onClose}
-              style={styles.modalClose}
-            >
-              <Ionicons name="close" size={21} color={theme.textMuted} />
-            </Pressable>
-          </View>
-
-          <View
-            style={[
-              styles.focusSearch,
-              {
-                backgroundColor: theme.surfaceSubtle,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <Ionicons name="search-outline" size={17} color={theme.textMuted} />
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Buscar foco"
-              placeholderTextColor={theme.textSubtle}
-              style={[styles.focusSearchInput, { color: theme.text }]}
-              autoCapitalize="none"
-            />
-          </View>
-
-          <ScrollView
-            style={styles.focusList}
-            contentContainerStyle={styles.focusListContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            {filteredOptions.map((option) => {
-              const selected = option.name === value;
-              return (
-                <Pressable
-                  key={option.id}
-                  accessibilityRole="button"
-                  onPress={() => onSelect(option.name)}
-                  style={[
-                    styles.focusOption,
-                    {
-                      backgroundColor: selected
-                        ? theme.primarySubtle
-                        : theme.surfaceSubtle,
-                      borderColor: selected ? theme.primary : "transparent",
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.focusOptionText,
-                      { color: selected ? theme.primary : theme.text },
-                    ]}
-                  >
-                    {option.name}
-                  </Text>
-                  <Ionicons
-                    name={selected ? "checkmark-circle" : "chevron-forward"}
-                    size={19}
-                    color={selected ? theme.primary : theme.textMuted}
-                  />
-                </Pressable>
-              );
-            })}
-            {!filteredOptions.length && (
-              <Text style={[styles.empty, { color: theme.textMuted }]}>
-                Nenhum foco corresponde à busca.
-              </Text>
-            )}
-          </ScrollView>
-
-          <Text style={[styles.focusModalFooter, { color: theme.textMuted }]}>
-            O foco personaliza suas recomendações e rankings.
-          </Text>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 export function EditProfileScreen() {
   const theme = useAppTheme();
-  const { user, updateUser, refreshProfile, systemSettings } = useAuth();
+  const { user, updateUser, refreshProfile } = useAuth();
   const { checkout } = useLocalSearchParams<{ checkout?: string }>();
   const isCheckoutFlow = checkout === "1";
   const [name, setName] = React.useState(user?.name || "");
-  const [focus, setFocus] = React.useState(user?.targetExam || "");
   const [photoUrl, setPhotoUrl] = React.useState(user?.photoUrl || "");
   const [cpf, setCpf] = React.useState(user?.cpf || "");
   const [zipCode, setZipCode] = React.useState(user?.address?.zipCode || "");
@@ -567,7 +436,6 @@ export function EditProfileScreen() {
   );
   const [city, setCity] = React.useState(user?.address?.city || "");
   const [state, setState] = React.useState(user?.address?.state || "");
-  const [focusPickerVisible, setFocusPickerVisible] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [isPhotoBusy, setIsPhotoBusy] = React.useState(false);
   const [isResendingConfirmation, setIsResendingConfirmation] =
@@ -586,7 +454,6 @@ export function EditProfileScreen() {
 
   React.useEffect(() => {
     setName(user?.name || "");
-    setFocus(user?.targetExam || "");
     setPhotoUrl(user?.photoUrl || "");
     setCpf(user?.cpf || "");
     setZipCode(user?.address?.zipCode || "");
@@ -598,7 +465,6 @@ export function EditProfileScreen() {
     setState(user?.address?.state || "");
   }, [
     user?.name,
-    user?.targetExam,
     user?.photoUrl,
     user?.cpf,
     user?.address?.zipCode,
@@ -809,7 +675,6 @@ export function EditProfileScreen() {
     try {
       const payload: Parameters<typeof updateUser>[0] = {
         name: nextName,
-        targetExam: focus.trim(),
       };
       if (nextCpf) payload.cpf = nextCpf;
       if (hasAddressInput) payload.address = nextAddress;
@@ -894,7 +759,10 @@ export function EditProfileScreen() {
           onLayout={(event) => {
             editCardYRef.current = event.nativeEvent.layout.y;
           }}
-          style={[styles.editCard, { backgroundColor: theme.surface }]}
+          style={[
+            styles.editCard,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
         >
           <Pressable
             accessibilityRole="button"
@@ -903,14 +771,17 @@ export function EditProfileScreen() {
             onPress={() => void pickPhoto()}
             style={[
               styles.profileAvatar,
-              { backgroundColor: theme.primary },
+              {
+                backgroundColor: theme.primarySubtle,
+                borderColor: theme.primaryBorder,
+              },
               isPhotoBusy && { opacity: 0.7 },
             ]}
           >
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={styles.profileImage} />
             ) : (
-              <Ionicons name="person" size={30} color={theme.onPrimary} />
+              <Ionicons name="person" size={32} color={theme.primary} />
             )}
             <View style={styles.photoOverlay}>
               <Ionicons name="camera-outline" size={17} color="#FFFFFF" />
@@ -935,6 +806,22 @@ export function EditProfileScreen() {
               </Text>
             </Pressable>
           ) : null}
+          <View style={styles.formSectionHeading}>
+            <View
+              style={[
+                styles.formSectionIcon,
+                { backgroundColor: theme.primarySubtle },
+              ]}
+            >
+              <Ionicons name="person-outline" size={16} color={theme.primary} />
+            </View>
+            <View style={styles.formSectionCopy}>
+              <AppText variant="sectionTitle">Dados pessoais</AppText>
+              <AppText variant="caption" tone="muted">
+                Informações usadas na sua conta
+              </AppText>
+            </View>
+          </View>
           <Text
             onLayout={(event) =>
               rememberFieldPosition("name", event.nativeEvent.layout.y)
@@ -1019,6 +906,23 @@ export function EditProfileScreen() {
             placeholder="000.000.000-00"
             placeholderTextColor={theme.textSubtle}
           />
+          <View style={[styles.sectionDivider, { backgroundColor: theme.border }]} />
+          <View style={styles.formSectionHeading}>
+            <View
+              style={[
+                styles.formSectionIcon,
+                { backgroundColor: theme.primarySubtle },
+              ]}
+            >
+              <Ionicons name="location-outline" size={16} color={theme.primary} />
+            </View>
+            <View style={styles.formSectionCopy}>
+              <AppText variant="sectionTitle">Endereço de cobrança</AppText>
+              <AppText variant="caption" tone="muted">
+                Necessário para concluir uma assinatura
+              </AppText>
+            </View>
+          </View>
           <Text
             onLayout={(event) =>
               rememberFieldPosition("zipCode", event.nativeEvent.layout.y)
@@ -1203,60 +1107,16 @@ export function EditProfileScreen() {
             placeholder="SP"
             placeholderTextColor={theme.textSubtle}
           />
-          <Text style={[styles.label, { color: theme.textMuted }]}>Foco de estudo</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Selecionar foco de estudo"
-            onPress={() => setFocusPickerVisible(true)}
-            style={[
-              styles.focusField,
-              {
-                backgroundColor: theme.surfaceSubtle,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.focusFieldText,
-                { color: focus ? theme.text : theme.textSubtle },
-              ]}
-            >
-              {focus || "Selecione seu foco"}
-            </Text>
-            <Ionicons
-              name="chevron-forward"
-              size={18}
-              color={theme.textMuted}
-            />
-          </Pressable>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isSaving}
+        <AppButton
+          label="Salvar alterações"
           onPress={() => void save()}
-          style={[
-            styles.primaryButton,
-            { backgroundColor: theme.primary },
-            isSaving && { opacity: 0.65 },
-          ]}
-        >
-          <Text style={[styles.buttonText, { color: theme.onPrimary }]}>
-            {isSaving ? "Salvando..." : "Salvar alterações"}
-          </Text>
-        </Pressable>
+          loading={isSaving}
+          disabled={isSaving}
+          leading={!isSaving ? <Ionicons name="checkmark" size={18} color={theme.onPrimary} /> : undefined}
+          style={styles.saveButton}
+        />
       </ScrollView>
-      <FocusPickerModal
-        visible={focusPickerVisible}
-        value={focus}
-        options={systemSettings.taxonomies.careers}
-        onClose={() => setFocusPickerVisible(false)}
-        onSelect={(value) => {
-          setFocus(value);
-          setFocusPickerVisible(false);
-        }}
-      />
     </View>
   );
 }
@@ -1338,26 +1198,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 46,
   },
-  primaryButton: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    flex: 1,
-    flexDirection: "row",
-    gap: spacing[2],
-    justifyContent: "center",
-    minHeight: 48,
-    paddingHorizontal: spacing[4],
-  },
-  buttonText: {
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.bold,
-  },
   editCard: {
     alignItems: "stretch",
-    borderRadius: radius.md,
+    borderRadius: radius.card,
+    borderWidth: borders.subtle,
     gap: spacing[3],
     padding: spacing[5],
   },
+  formSectionHeading: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing[3],
+    marginTop: spacing[2],
+    marginBottom: spacing[1],
+  },
+  formSectionIcon: {
+    alignItems: "center",
+    borderRadius: radius.md,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  formSectionCopy: { flex: 1, gap: 2 },
+  sectionDivider: { height: borders.hairline, marginVertical: spacing[2] },
+  saveButton: { alignSelf: "stretch" },
   checkoutGuide: {
     borderRadius: radius.md,
     borderWidth: 1,
@@ -1398,6 +1262,8 @@ const styles = StyleSheet.create({
   profileAvatar: {
     alignItems: "center",
     alignSelf: "center",
+    borderColor: "transparent",
+    borderWidth: 2,
     borderRadius: 48,
     height: 80,
     justifyContent: "center",
@@ -1449,70 +1315,4 @@ const styles = StyleSheet.create({
     fontSize: typography.size.xs,
     marginTop: -spacing[2],
   },
-  focusModalBackdrop: {
-    alignItems: "center",
-    backgroundColor: "#00000099",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  focusModal: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    maxHeight: "88%",
-    padding: spacing[5],
-    width: "100%",
-  },
-  focusModalTitle: {
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.bold,
-  },
-  modalClose: {
-    alignItems: "center",
-    height: 40,
-    justifyContent: "center",
-    width: 40,
-  },
-  focusSearch: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing[2],
-    marginTop: spacing[4],
-    paddingHorizontal: spacing[3],
-  },
-  focusSearchInput: { flex: 1, fontSize: typography.size.sm, minHeight: 48 },
-  focusList: { marginTop: spacing[3] },
-  focusListContent: { gap: spacing[2], paddingBottom: spacing[3] },
-  focusOption: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing[3],
-    justifyContent: "space-between",
-    padding: spacing[4],
-  },
-  focusOptionText: {
-    flex: 1,
-    fontSize: typography.size.sm,
-    fontWeight: typography.weight.semibold,
-  },
-  focusModalFooter: {
-    fontSize: 10,
-    paddingTop: spacing[2],
-    textAlign: "center",
-    textTransform: "uppercase",
-  },
-  focusField: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing[2],
-    justifyContent: "space-between",
-    minHeight: 48,
-    paddingHorizontal: spacing[3],
-  },
-  focusFieldText: { flex: 1, fontSize: typography.size.sm },
 });

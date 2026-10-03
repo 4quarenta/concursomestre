@@ -5,4 +5,5 @@ export const PUBLIC_LINKS = {
   terms: `${PUBLIC_WEB_BASE_URL}/terms`,
   support: `${PUBLIC_WEB_BASE_URL}/support`,
   accountDeletion: `${PUBLIC_WEB_BASE_URL}/account-deletion`,
+  subscriptionManagement: `${PUBLIC_WEB_BASE_URL}/profile/billing`,
 } as const;

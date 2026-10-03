@@ -44,7 +44,16 @@
         }
       ],
       "@react-native-firebase/app",
-      "@react-native-firebase/analytics"
+      "@react-native-firebase/analytics",
+      "react-native-nitro-google-signin",
+      "expo-iap",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-5763659746545616~9610871441",
+          "delayAppMeasurementInit": true
+        }
+      ]
     ]
   }
 }

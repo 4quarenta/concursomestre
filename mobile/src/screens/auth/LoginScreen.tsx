@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -20,21 +19,28 @@ import { PUBLIC_LINKS } from "@/config/publicLinks";
 import { assertAllowedExternalUrl } from "@/services/navigation/externalUrlService";
 import { palette, radius, spacing, typography } from "@/theme/tokens";
 import { useAppTheme, type ResolvedAppTheme } from "@/theme/useAppTheme";
+import { requestGoogleIdentity } from "@/services/auth/googleSignInService";
+import { systemSettingsService } from "@/services/system/systemSettingsService";
+import { AuthFeedbackSheet, type AuthFeedbackAction } from "@/screens/auth/AuthFeedbackSheet";
+
+type AuthFeedback = { title: string; message: string; action?: AuthFeedbackAction };
 
 export const LoginScreen: React.FC = () => {
   const theme = useAppTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
-  const { login, verifyTwoFactor, isLoading } = useAuth();
+  const { login, loginWithGoogle, verifyTwoFactor, isLoading, systemSettings } = useAuth();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
   const [twoFactorEmail, setTwoFactorEmail] = React.useState<string | null>(null);
   const [twoFactorCode, setTwoFactorCode] = React.useState("");
+  const [googleLoading, setGoogleLoading] = React.useState(false);
+  const [feedback, setFeedback] = React.useState<AuthFeedback | null>(null);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert("Campos obrigatórios", "Preencha e-mail e senha.");
+      setFeedback({ title: "Campos obrigatórios", message: "Preencha e-mail e senha." });
       return;
     }
 
@@ -42,29 +48,54 @@ export const LoginScreen: React.FC = () => {
       const result = await login({ email: email.trim(), password });
       if (result.requiresTwoFactor) setTwoFactorEmail(result.email || email.trim());
     } catch (error: any) {
-      Alert.alert("Falha no login", error?.message || "Não foi possível realizar o login.");
-    } finally {
+      setFeedback({ title: "Falha no login", message: error?.message || "Não foi possível realizar o login." });
     }
   };
 
   const handleTwoFactor = async () => {
     if (!twoFactorEmail || !twoFactorCode.trim()) {
-      Alert.alert("Código obrigatório", "Informe o código de segurança.");
+      setFeedback({ title: "Código obrigatório", message: "Informe o código de segurança." });
       return;
     }
 
     try {
       await verifyTwoFactor(twoFactorEmail, twoFactorCode.trim());
     } catch (error: any) {
-      Alert.alert("Falha na verificação", error?.message || "Não foi possível validar o código.");
+      setFeedback({ title: "Falha na verificação", message: error?.message || "Não foi possível validar o código." });
     }
   };
 
-  const handleSocialLogin = (provider: "Google" | "Facebook") => {
-    Alert.alert(
-      `Entrar com ${provider}`,
-      `O acesso com ${provider} está disponível na plataforma web, mas o fluxo nativo ainda não foi conectado neste app.`,
-    );
+  const handleSocialLogin = async (provider: "Google" | "Facebook") => {
+    if (provider === "Facebook") {
+      setFeedback({
+        title: "Entrar com Facebook",
+        message: "O login com Facebook ainda não está integrado no aplicativo.",
+      });
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      const settings = systemSettings.googleAuthClientId
+        ? systemSettings
+        : await systemSettingsService.getSystemSettings();
+      const identity = await requestGoogleIdentity(settings.googleAuthClientId);
+      if (!identity) return;
+
+      const result = await loginWithGoogle(identity);
+      if (result.requiresRegistration) {
+        router.push("/cadastro");
+        return;
+      }
+      if (result.requiresTwoFactor) {
+        setTwoFactorEmail(result.email || identity.email || email.trim() || "sua conta Google");
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Não foi possível entrar com Google.";
+      setFeedback({ title: "Falha no login com Google", message });
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   const openPublicLink = async (url: string) => {
@@ -72,7 +103,7 @@ export const LoginScreen: React.FC = () => {
       const safeUrl = assertAllowedExternalUrl(url);
       await Linking.openURL(safeUrl);
     } catch {
-      Alert.alert("Link indisponível", "Não foi possível abrir esta página agora.");
+      setFeedback({ title: "Link indisponível", message: "Não foi possível abrir esta página agora." });
     }
   };
 
@@ -181,16 +212,19 @@ export const LoginScreen: React.FC = () => {
             <MotionPressable
               accessibilityRole="button"
               accessibilityLabel="Entrar com Google"
-              onPress={() => handleSocialLogin("Google")}
+              accessibilityState={{ busy: googleLoading || isLoading, disabled: googleLoading || isLoading }}
+              disabled={googleLoading || isLoading}
+              onPress={() => void handleSocialLogin("Google")}
               style={({ pressed }) => [styles.socialButton, pressed && styles.socialButtonPressed]}
             >
               <FontAwesome name="google" size={16} color="#4285F4" />
-              <Text style={styles.socialText}>Continuar com Google</Text>
+              <Text style={styles.socialText}>{googleLoading ? "Conectando ao Google..." : "Continuar com Google"}</Text>
             </MotionPressable>
             <MotionPressable
               accessibilityRole="button"
               accessibilityLabel="Entrar com Facebook"
-              onPress={() => handleSocialLogin("Facebook")}
+              disabled={googleLoading || isLoading}
+              onPress={() => void handleSocialLogin("Facebook")}
               style={({ pressed }) => [styles.socialButton, pressed && styles.socialButtonPressed]}
             >
               <FontAwesome name="facebook" size={16} color="#1877F2" />
@@ -219,6 +253,13 @@ export const LoginScreen: React.FC = () => {
           </>
         )}
       </ScrollView>
+      <AuthFeedbackSheet
+        action={feedback?.action}
+        message={feedback?.message || ""}
+        onDismiss={() => setFeedback(null)}
+        title={feedback?.title || ""}
+        visible={Boolean(feedback)}
+      />
     </KeyboardAvoidingView>
   );
 };

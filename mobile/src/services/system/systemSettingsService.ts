@@ -1,6 +1,12 @@
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { readApiData } from '@/services/api/response';
+import { normalizeGoogleAuthClientId } from '@/services/system/googleAuthSettings';
+import {
+  normalizeMobileInterstitialFrequency,
+  normalizeMobileInterstitialMinIntervalSeconds,
+} from '@/services/ads/interstitialFrequency';
+import { normalizeMobileAdsEnabled } from '@/services/ads/mobileAdsSettings';
 import {
   DEFAULT_MOBILE_FEATURE_FLAGS,
   DEFAULT_MOBILE_SYSTEM_SETTINGS,
@@ -277,7 +283,7 @@ const resolveBooleanSetting = (
   return fallback;
 };
 
-const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
+export const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
   const rawUpdatePolicy = payload.mobileAppUpdatePolicy && typeof payload.mobileAppUpdatePolicy === 'object'
     ? payload.mobileAppUpdatePolicy as Record<string, unknown>
     : {};
@@ -346,6 +352,10 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
   };
 
   return {
+    mobileAdsEnabled: normalizeMobileAdsEnabled(payload),
+    mobileInterstitialEveryTransitions: normalizeMobileInterstitialFrequency(payload),
+    mobileInterstitialMinIntervalSeconds: normalizeMobileInterstitialMinIntervalSeconds(payload),
+    mobileInterstitialEveryQuestions: normalizeMobileInterstitialFrequency(payload),
     mobileAppUpdatePolicy: {
       enabled: normalizeBooleanLike(rawUpdatePolicy.enabled) ?? false,
       latestVersion: String(rawUpdatePolicy.latestVersion || '').trim(),
@@ -357,6 +367,7 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
     features,
     recaptchaEnabled: recaptchaEnabled ?? false,
     recaptchaAndroidSiteKey: recaptchaAndroidSiteKey || undefined,
+    googleAuthClientId: normalizeGoogleAuthClientId(payload),
     sameTierCycleChangeEnabled: resolveBooleanSetting(payload, 'sameTierCycleChangeEnabled', false),
     planDetails: normalizePlanDetails(payload),
     pricing: normalizePlanPricing(payload),
@@ -393,10 +404,15 @@ export const systemSettingsService = {
 
   createDefaultSystemSettings(): MobileSystemSettings {
     return {
+      mobileAdsEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.mobileAdsEnabled,
+      mobileInterstitialEveryTransitions: DEFAULT_MOBILE_SYSTEM_SETTINGS.mobileInterstitialEveryTransitions,
+      mobileInterstitialMinIntervalSeconds: DEFAULT_MOBILE_SYSTEM_SETTINGS.mobileInterstitialMinIntervalSeconds,
+      mobileInterstitialEveryQuestions: DEFAULT_MOBILE_SYSTEM_SETTINGS.mobileInterstitialEveryQuestions,
       mobileAppUpdatePolicy: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.mobileAppUpdatePolicy },
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
       recaptchaEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaEnabled,
       recaptchaAndroidSiteKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.recaptchaAndroidSiteKey,
+      googleAuthClientId: DEFAULT_MOBILE_SYSTEM_SETTINGS.googleAuthClientId,
       sameTierCycleChangeEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.sameTierCycleChangeEnabled,
       planDetails: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.planDetails },
       pricing: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.pricing },

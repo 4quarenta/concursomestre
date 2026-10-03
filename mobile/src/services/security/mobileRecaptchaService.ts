@@ -1,6 +1,11 @@
 import { Platform } from 'react-native';
 
-export type MobileRecaptchaAction = 'login' | 'register' | 'forgot_password' | 'reset_password';
+export type MobileRecaptchaAction =
+  | 'login'
+  | 'register'
+  | 'forgot_password'
+  | 'reset_password'
+  | 'profile_cancel_subscription';
 
 type RecaptchaSdk = {
   Recaptcha: {

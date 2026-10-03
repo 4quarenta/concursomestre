@@ -90,6 +90,66 @@ describe('mobile transport and session contracts', () => {
     expect(shouldRetryApiFailure(0, { response: { status: 403 } })).toBe(false);
   });
 
+  it('does not describe rejected login credentials as an expired session', async () => {
+    const { normalizeApiFailure } = await import('@/api/errors');
+    const failure = normalizeApiFailure({
+      config: { url: 'auth/login.php' },
+      response: { status: 401, data: { message: 'Invalid email or password' } },
+    });
+
+    expect(failure.message).toBe('E-mail ou senha inválidos.');
+  });
+
+  it('does not describe a rejected Google credential as an expired app session', async () => {
+    const { normalizeApiFailure } = await import('@/api/errors');
+    const failure = normalizeApiFailure({
+      config: { url: 'auth/google.php' },
+      response: { status: 401, data: { message: 'Conta Google sem e-mail verificado.' } },
+    });
+
+    expect(failure.message).toBe('Conta Google sem e-mail verificado.');
+  });
+
+  it('preserves the API message when the selected Google account has no platform account', async () => {
+    const { normalizeApiFailure } = await import('@/api/errors');
+    const failure = normalizeApiFailure({
+      config: { url: 'auth/google.php' },
+      response: { status: 404, data: { message: 'Conta nao encontrada. Crie sua conta antes de entrar com Google.' } },
+    });
+
+    expect(failure.message).toBe('Conta nao encontrada. Crie sua conta antes de entrar com Google.');
+  });
+
+  it('does not describe a rejected registration as an expired session', async () => {
+    const { normalizeApiFailure } = await import('@/api/errors');
+    const failure = normalizeApiFailure({
+      config: { url: 'auth/register.php' },
+      response: { status: 401 },
+    });
+
+    expect(failure.message).toBe('Não foi possível validar o cadastro. Confira os dados e tente novamente.');
+  });
+
+  it('does not describe an endpoint-specific 401 as a globally expired session', async () => {
+    const { normalizeApiFailure } = await import('@/api/errors');
+    const failure = normalizeApiFailure({
+      config: { url: 'statistics/user.php', _retry: true },
+      response: { status: 401 },
+    });
+
+    expect(failure.message).toBe('Não foi possível carregar estes dados com a sessão atual. Tente novamente.');
+  });
+
+  it('continues to describe an unauthorized current-user session check as expired', async () => {
+    const { normalizeApiFailure } = await import('@/api/errors');
+    const failure = normalizeApiFailure({
+      config: { url: 'auth/me.php' },
+      response: { status: 401 },
+    });
+
+    expect(failure.message).toBe('Sua sessao expirou. Entre novamente para continuar.');
+  });
+
   it('shares one refresh among concurrent 401 responses and retries both requests', async () => {
     const [{ apiClient }, { sessionStorage }] = await Promise.all([
       import('@/api/client'),
@@ -149,5 +209,37 @@ describe('mobile transport and session contracts', () => {
     expect(sessionStorage.getAccessToken()).toBeNull();
     expect(sessionStorage.getRefreshToken()).toBeNull();
     expect(sessionStorage.getCsrfToken()).toBeNull();
+  });
+
+  it('preserves the authenticated session when a resource returns 401 after retry', async () => {
+    const [{ apiClient }, { sessionStorage }] = await Promise.all([
+      import('@/api/client'),
+      import('@/storage/sessionStorage'),
+    ]);
+    await sessionStorage.setSession('access-token', null, 'refresh-token', 'csrf-token');
+
+    enqueueError(apiDispatches, 401);
+    authDispatches.push(async () => ({
+      data: { success: true, data: { token: 'renewed-token', refreshToken: 'renewed-refresh', csrfToken: 'renewed-csrf' } },
+    }));
+    enqueueError(apiDispatches, 401);
+
+    await expect(apiClient.get('simulationsList')).rejects.toMatchObject({
+      response: { status: 401 },
+      message: 'Não foi possível carregar estes dados com a sessão atual. Tente novamente.',
+    });
+    expect(sessionStorage.getAccessToken()).toBe('renewed-token');
+  });
+
+  it('clears the session when the canonical current-user endpoint remains unauthorized', async () => {
+    const [{ apiClient }, { sessionStorage }] = await Promise.all([
+      import('@/api/client'),
+      import('@/storage/sessionStorage'),
+    ]);
+    await sessionStorage.setSession('access-token', null);
+
+    enqueueError(apiDispatches, 401);
+    await expect(apiClient.get('auth/me.php')).rejects.toMatchObject({ response: { status: 401 } });
+    expect(sessionStorage.getAccessToken()).toBeNull();
   });
 });

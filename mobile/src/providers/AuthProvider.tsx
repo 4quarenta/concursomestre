@@ -20,9 +20,30 @@ import type { UserProfile } from '@/types/auth';
 import { systemSettingsService } from '@/services/system/systemSettingsService';
 import type { MobileFeatureKey, MobileSystemSettings } from '@/types/system';
 import { normalizeApiFailure } from '@/api/errors';
+import type { GoogleIdentity } from '@/services/auth/googleSignInResponse';
 
 type LoginInput = { email: string; password: string };
-type RegisterInput = { name: string; email: string; password: string };
+type RegisterInput = {
+  name: string;
+  cpf: string;
+  phone: string;
+  email: string;
+  password: string;
+  termsAccepted: true;
+  termsVersion: string;
+  privacyAccepted: true;
+  privacyVersion: string;
+};
+type GoogleSignupDraft = GoogleIdentity;
+type GoogleSignupInput = {
+  name?: string;
+  cpf: string;
+  phone: string;
+  termsAccepted: true;
+  termsVersion: string;
+  privacyAccepted: true;
+  privacyVersion: string;
+};
 type UpdateUserInput = Partial<UserProfile>;
 
 type AuthContextValue = {
@@ -33,6 +54,10 @@ type AuthContextValue = {
   isLoading: boolean;
   isBootstrapped: boolean;
   login: (input: LoginInput) => Promise<{ requiresTwoFactor: boolean; email?: string }>;
+  loginWithGoogle: (identity: GoogleIdentity) => Promise<{ requiresTwoFactor: boolean; requiresRegistration?: boolean; email?: string }>;
+  googleSignupDraft: GoogleSignupDraft | null;
+  registerWithGoogle: (input: GoogleSignupInput) => Promise<void>;
+  clearGoogleSignupDraft: () => void;
   verifyTwoFactor: (email: string, code: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
@@ -185,9 +210,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
   const [isLoading, setIsLoading] = React.useState(false);
   const [isBootstrapped, setIsBootstrapped] = React.useState(SCREENSHOT_MODE);
+  const [googleSignupDraft, setGoogleSignupDraft] = React.useState<GoogleSignupDraft | null>(null);
 
   const continueAsGuest = React.useCallback(async () => {
-    await AsyncStorage.setItem(GUEST_MODE_STORAGE_KEY, '1');
     setUser(null);
     setIsGuest(true);
   }, []);
@@ -318,33 +343,102 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
       await applySessionFromResponse(response);
-      try { await refreshProfile(); } catch { /* login ja foi concluido */ }
+      // A resposta de login é a fonte da sessão. A sincronização do perfil é
+      // feita depois, já na área autenticada, para não permitir que um 401
+      // secundário apague a sessão recém-estabelecida.
       await refreshSystemSettings();
       return { requiresTwoFactor: false };
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel realizar o login.'));
     } finally { setIsLoading(false); }
-  }, [applySessionFromResponse, refreshProfile, refreshSystemSettings]);
+  }, [applySessionFromResponse, refreshSystemSettings]);
+
+  const loginWithGoogle = React.useCallback(async (identity: GoogleIdentity) => {
+    setIsLoading(true);
+    setGoogleSignupDraft(null);
+    try {
+      const response = await authFlowService.loginWithGoogle({ credential: identity.credential, createIfMissing: false });
+      const payload = response?.data || response;
+      if (payload?.require2FA || response?.require2FA) {
+        return {
+          requiresTwoFactor: true,
+          email: payload?.email || response?.email,
+        };
+      }
+      await applySessionFromResponse(response);
+      // A resposta de login é a fonte da sessão. Não consultar perfil/me aqui:
+      // um 401 secundário limparia a sessão antes da navegação para Início.
+      await refreshSystemSettings();
+      setGoogleSignupDraft(null);
+      return { requiresTwoFactor: false };
+    } catch (error) {
+      const failure = normalizeApiFailure(error);
+      if (
+        failure.status === 404
+        && /conta\s+nao\s+encontrada/i.test(failure.message)
+      ) {
+        // O backend só retorna esse 404 depois de validar assinatura, audience,
+        // validade e email_verified do ID token. Guardamos a credencial apenas
+        // em memória para concluir o cadastro sem expô-la em parâmetros/URL.
+        setGoogleSignupDraft(identity);
+        return { requiresTwoFactor: false, requiresRegistration: true, email: identity.email };
+      }
+      throw new Error(readApiErrorMessage(error, 'Nao foi possivel realizar o login com Google.'));
+    } finally { setIsLoading(false); }
+  }, [applySessionFromResponse, refreshSystemSettings]);
+
+  const registerWithGoogle = React.useCallback(async (input: GoogleSignupInput) => {
+    const draft = googleSignupDraft;
+    if (!draft?.credential) throw new Error('A sessão de cadastro Google expirou. Volte ao login e tente novamente.');
+    setIsLoading(true);
+    try {
+      const response = await authFlowService.loginWithGoogle({
+        credential: draft.credential,
+        createIfMissing: true,
+        profile: {
+          ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+          cpf: input.cpf,
+          phone: input.phone,
+        },
+        termsAccepted: true,
+        termsVersion: input.termsVersion,
+        privacyAccepted: true,
+        privacyVersion: input.privacyVersion,
+      });
+      await applySessionFromResponse(response);
+      // A resposta de autenticação já é a fonte da sessão. Não dispare /me e
+      // /users/profile neste instante: um 401 secundário pode apagar a sessão
+      // recém-criada e devolver o usuário ao fluxo de visitante.
+      await refreshSystemSettings();
+      setGoogleSignupDraft(null);
+    } catch (error) {
+      throw new Error(readApiErrorMessage(error, 'Nao foi possivel concluir o cadastro com Google.'));
+    } finally { setIsLoading(false); }
+  }, [applySessionFromResponse, googleSignupDraft, refreshProfile, refreshSystemSettings]);
+
+  const clearGoogleSignupDraft = React.useCallback(() => setGoogleSignupDraft(null), []);
 
   const verifyTwoFactor = React.useCallback(async (email: string, code: string) => {
     setIsLoading(true);
     try {
       const response = await authFlowService.verifyTwoFactor(email, code);
       await applySessionFromResponse(response);
-      try { await refreshProfile(); } catch { /* 2FA ja concluiu a sessao */ }
       await refreshSystemSettings();
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel validar o codigo de seguranca.'));
     } finally { setIsLoading(false); }
-  }, [applySessionFromResponse, refreshProfile, refreshSystemSettings]);
+  }, [applySessionFromResponse, refreshSystemSettings]);
 
   const register = React.useCallback(async (input: RegisterInput) => {
     setIsLoading(true);
     try {
       const response = await authFlowService.register(input);
       await applySessionFromResponse(response);
-      try { await refreshProfile(); } catch { /* cadastro ja foi concluido */ }
+      // A resposta de autenticação já é a fonte da sessão. Não dispare /me e
+      // /users/profile neste instante: um 401 secundário pode apagar a sessão
+      // recém-criada e devolver o usuário ao fluxo de visitante.
       await refreshSystemSettings();
+      setGoogleSignupDraft(null);
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel criar a conta.'));
     } finally { setIsLoading(false); }
@@ -357,6 +451,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     finally {
       setUser(null);
       setIsGuest(false);
+      setGoogleSignupDraft(null);
       try { await AsyncStorage.removeItem(GUEST_MODE_STORAGE_KEY); } catch { /* a sessao local ainda sera limpa */ }
       // As configuracoes do sistema sao globais da plataforma, nao pertencem
       // a conta que acabou de sair. O listener da sessao recarrega a projecao
@@ -440,7 +535,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const bootstrap = async () => {
       try {
         const snapshot = await sessionStorage.hydrate();
-        const guestModeEnabled = await AsyncStorage.getItem(GUEST_MODE_STORAGE_KEY) === '1';
+        // A escolha de visitante vale somente para a abertura atual. Remove
+        // também a preferência persistida por versões anteriores do app.
+        await AsyncStorage.removeItem(GUEST_MODE_STORAGE_KEY);
         if (snapshot.user) setUser(normalizeUserProfile(snapshot.user));
 
         // settings.php e uma projecao publica das configuracoes globais da
@@ -485,7 +582,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Evita abrir a Home com um usuario de preview/estado antigo e falhar
           // depois nas chamadas que exigem user_id.
           setUser(null);
-          setIsGuest(guestModeEnabled);
+          setIsGuest(false);
           // A configuracao global e atualizada em background. Uma indisponibilidade
           // temporaria do servidor nao pode transformar a abertura anonima do app
           // em uma espera de ate o timeout HTTP.
@@ -502,10 +599,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [systemSettings.features, user?.isAdmin, user?.role]);
 
   const value = React.useMemo<AuthContextValue>(() => ({
-    user, isGuest, authPromptVisible, systemSettings, isLoading, isBootstrapped, login, verifyTwoFactor, register, logout,
+    user, isGuest, authPromptVisible, systemSettings, isLoading, isBootstrapped, login, loginWithGoogle,
+    googleSignupDraft, registerWithGoogle, clearGoogleSignupDraft, verifyTwoFactor, register, logout,
     continueAsGuest, startAuthentication, requestAuthentication, closeAuthPrompt, updateUser,
     refreshProfile, refreshSystemSettings, isFeatureEnabled, toggleSavedQuestion,
-  }), [user, isGuest, authPromptVisible, systemSettings, isLoading, isBootstrapped, login, verifyTwoFactor, register, logout,
+  }), [user, isGuest, authPromptVisible, systemSettings, isLoading, isBootstrapped, login, loginWithGoogle,
+    googleSignupDraft, registerWithGoogle, clearGoogleSignupDraft, verifyTwoFactor, register, logout,
     continueAsGuest, startAuthentication, requestAuthentication, closeAuthPrompt, updateUser,
     refreshProfile, refreshSystemSettings, isFeatureEnabled, toggleSavedQuestion]);
 

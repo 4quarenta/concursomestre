@@ -22,6 +22,8 @@ export default function AppLayout() {
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="noticias/index" options={{ headerShown: false }} />
+        <Stack.Screen name="noticias/[slug]" options={{ headerShown: false }} />
         <Stack.Screen name="configuracoes/aparencia" options={{ headerShown: false }} />
         <Stack.Screen name="configuracoes/conta" options={{ headerShown: false }} />
         <Stack.Screen name="trilhas/index" options={{ headerShown: false }} />

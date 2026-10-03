@@ -1,6 +1,7 @@
 import React from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { AdsConsentProvider } from "@/providers/AdsConsentProvider";
 import { AuthProvider, useAuth } from "@/providers/AuthProvider";
 import { AppearanceProvider } from "@/providers/AppearanceProvider";
 import { QueryProvider, queryClient } from "@/providers/QueryProvider";
@@ -57,9 +58,11 @@ export const AppProviders: React.FC<React.PropsWithChildren> = ({
       <AppErrorBoundary onReset={() => queryClient.resetQueries()}>
         <QueryProvider>
           <AuthProvider>
-            <AnalyticsSessionBoundary>
-              <QuerySessionBoundary>{children}</QuerySessionBoundary>
-            </AnalyticsSessionBoundary>
+            <AdsConsentProvider>
+              <AnalyticsSessionBoundary>
+                <QuerySessionBoundary>{children}</QuerySessionBoundary>
+              </AnalyticsSessionBoundary>
+            </AdsConsentProvider>
           </AuthProvider>
         </QueryProvider>
       </AppErrorBoundary>

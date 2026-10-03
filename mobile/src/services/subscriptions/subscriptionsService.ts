@@ -46,15 +46,23 @@ export const subscriptionsService = {
     };
   },
 
-  async cancelSubscription(reason?: string, details?: string): Promise<{ message?: string }> {
+  async cancelSubscription(options: {
+    reason?: string;
+    details?: string;
+    captchaToken?: string | null;
+    confirmDebtCharge?: boolean;
+  } = {}): Promise<{ message?: string; debtSettled?: boolean }> {
     const response: any = await apiClient.post<any>(ENDPOINTS.subscriptions.cancel, {
-      reason,
-      details,
+      reason: options.reason,
+      details: options.details,
+      captchaToken: options.captchaToken,
+      confirmDebtCharge: options.confirmDebtCharge === true,
     });
     const envelope = assertApiSuccess(response, 'Nao foi possivel cancelar a assinatura.');
     const payload = readApiData<any>(response, {});
     return {
       message: payload?.message || envelope.message || response?.message,
+      debtSettled: payload?.debt_settled === true,
     };
   },
 
