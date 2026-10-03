@@ -42,6 +42,7 @@ for ($index = 0; $index < $maxJobs; $index++) {
         $controller = buildQuestionsController($db);
         if (is_array($payload['batches'] ?? null)) {
             $materializationFailures = [];
+            $assetWarnings = [];
             $materializedBatches = [];
             foreach (array_values($payload['batches']) as $batch) {
                 if (!is_array($batch)) continue;
@@ -51,6 +52,9 @@ for ($index = 0; $index < $maxJobs; $index++) {
                 $materialized = $granQuestionAssetMaterializer->materializeForIngestion($batchPayload);
                 foreach ($materialized['itemFailures'] as $failure) {
                     $materializationFailures[] = ($clientKey !== '' ? ['clientKey' => $clientKey] : []) + $failure;
+                }
+                foreach ($materialized['assetWarnings'] ?? [] as $warning) {
+                    $assetWarnings[] = ($clientKey !== '' ? ['clientKey' => $clientKey] : []) + $warning;
                 }
                 if (($materialized['payload']['questions'] ?? []) === []) {
                     continue;
@@ -68,6 +72,10 @@ for ($index = 0; $index < $maxJobs; $index++) {
                 $materializationFailures,
                 is_array($result['itemFailures'] ?? null) ? $result['itemFailures'] : []
             ));
+            $result['assetWarnings'] = array_values(array_merge(
+                $assetWarnings,
+                is_array($result['assetWarnings'] ?? null) ? $result['assetWarnings'] : []
+            ));
         } else {
             $payload = $granExamFileMaterializer->materialize($payload);
             $materialized = $granQuestionAssetMaterializer->materializeForIngestion($payload);
@@ -79,6 +87,10 @@ for ($index = 0; $index < $maxJobs; $index++) {
             $result['itemFailures'] = array_values(array_merge(
                 $materialized['itemFailures'],
                 is_array($result['itemFailures'] ?? null) ? $result['itemFailures'] : []
+            ));
+            $result['assetWarnings'] = array_values(array_merge(
+                $materialized['assetWarnings'] ?? [],
+                is_array($result['assetWarnings'] ?? null) ? $result['assetWarnings'] : []
             ));
         }
         $ingestion->completeJob((int) $job['id'], (int) $job['request_id'], $result, $workerId);

@@ -181,16 +181,96 @@ $forbiddenResult = $forbiddenMaterializer->materializeForIngestion([
     ],
 ]);
 granQuestionAssetAssert(
-    count($forbiddenResult['payload']['questions']) === 1
-    && ($forbiddenResult['payload']['questions'][0]['tempId'] ?? null) === 'q_without_asset',
-    'Um bloqueio 403 deve remover somente a questao afetada do job.'
+    count($forbiddenResult['payload']['questions']) === 2
+    && ($forbiddenResult['payload']['questions'][0]['tempId'] ?? null) === 'q_blocked'
+    && ($forbiddenResult['payload']['questions'][1]['tempId'] ?? null) === 'q_without_asset'
+    && ($forbiddenResult['payload']['questions'][0]['assets'] ?? []) === [],
+    'Um bloqueio 403 deve remover somente o asset afetado e preservar a questao no job.'
 );
 granQuestionAssetAssert(
-    count($forbiddenResult['itemFailures']) === 1
-    && ($forbiddenResult['itemFailures'][0]['tempId'] ?? null) === 'q_blocked'
-    && ($forbiddenResult['itemFailures'][0]['questionNumber'] ?? null) === '13'
-    && ($forbiddenResult['itemFailures'][0]['code'] ?? null) === 'gran_image_forbidden',
-    'O 403 deve permanecer rastreavel como falha individual da questao.'
+    ($forbiddenResult['itemFailures'] ?? []) === []
+    && count($forbiddenResult['assetWarnings'] ?? []) === 1
+    && ($forbiddenResult['assetWarnings'][0]['tempId'] ?? null) === 'q_blocked'
+    && ($forbiddenResult['assetWarnings'][0]['questionNumber'] ?? null) === '13'
+    && ($forbiddenResult['assetWarnings'][0]['code'] ?? null) === 'gran_image_forbidden',
+    'O 403 deve permanecer rastreavel como aviso do asset, sem criar falha da questao.'
+);
+
+$retryDownloadAttempts = 0;
+$retryRecovered = new GranQuestionAssetMaterializer(
+    static function () use (&$retryDownloadAttempts, $fixtureBytes): array {
+        $retryDownloadAttempts++;
+        if ($retryDownloadAttempts < 3) {
+            throw new RuntimeException('Nao foi possivel copiar a imagem Gran (HTTP 0).');
+        }
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'cm-gran-retry-image-');
+        if ($temporaryPath === false || file_put_contents($temporaryPath, $fixtureBytes) === false) {
+            throw new RuntimeException('Falha ao preparar fixture de imagem recuperada.');
+        }
+        return [
+            'temporaryPath' => $temporaryPath,
+            'mimeType' => 'image/gif',
+            'size' => strlen($fixtureBytes),
+            'sha256' => hash('sha256', $fixtureBytes),
+        ];
+    },
+    static fn (string $temporaryPath, string $storageKey, string $mimeType): array => [
+        'storageKey' => $storageKey,
+        'url' => '/uploads/' . $storageKey,
+        'driver' => 'local',
+        'size' => (int) filesize($temporaryPath),
+    ]
+);
+$recoveredResult = $retryRecovered->materializeForIngestion([
+    'import' => ['extractionMode' => 'gran_browser_extension'],
+    'questions' => [[
+        'tempId' => 'q_recovered',
+        'source' => ['provider' => 'gran', 'questionNumber' => 15],
+        'assets' => [['url' => $remoteUrl]],
+    ]],
+]);
+granQuestionAssetAssert(
+    $retryDownloadAttempts === 3
+    && count($recoveredResult['payload']['questions'] ?? []) === 1
+    && ($recoveredResult['payload']['questions'][0]['assets'][0]['status'] ?? null) === 'materialized'
+    && ($recoveredResult['itemFailures'] ?? []) === [],
+    'HTTP 0 transitorio deve ser repetido e a questao importada quando a imagem volta a responder.'
+);
+
+$exhaustedDownloadAttempts = 0;
+$retryExhausted = new GranQuestionAssetMaterializer(
+    static function () use (&$exhaustedDownloadAttempts): array {
+        $exhaustedDownloadAttempts++;
+        throw new RuntimeException('Nao foi possivel copiar a imagem Gran (HTTP 0).');
+    },
+    static fn (): array => throw new RuntimeException('Storage nao deve receber imagem sem download.')
+);
+$exhaustedResult = $retryExhausted->materializeForIngestion([
+    'import' => ['extractionMode' => 'gran_browser_extension'],
+    'questions' => [
+        [
+            'tempId' => 'q_still_unavailable',
+            'source' => ['provider' => 'gran', 'questionNumber' => 16],
+            'assets' => [['url' => $remoteUrl]],
+        ],
+        [
+            'tempId' => 'q_without_image',
+            'source' => ['provider' => 'gran', 'questionNumber' => 17],
+            'assets' => [],
+        ],
+    ],
+]);
+granQuestionAssetAssert(
+    $exhaustedDownloadAttempts === 3
+    && count($exhaustedResult['payload']['questions'] ?? []) === 2
+    && ($exhaustedResult['payload']['questions'][0]['tempId'] ?? null) === 'q_still_unavailable'
+    && ($exhaustedResult['payload']['questions'][1]['tempId'] ?? null) === 'q_without_image'
+    && ($exhaustedResult['itemFailures'] ?? []) === []
+    && count($exhaustedResult['assetWarnings'] ?? []) === 1
+    && ($exhaustedResult['assetWarnings'][0]['tempId'] ?? null) === 'q_still_unavailable'
+    && ($exhaustedResult['assetWarnings'][0]['code'] ?? null) === 'gran_image_copy_warning'
+    && str_contains((string) ($exhaustedResult['assetWarnings'][0]['message'] ?? ''), 'HTTP 0'),
+    'Apos esgotar retries, a questao deve ser importada sem o asset e o lote deve continuar.'
 );
 
 $retryDownloadAttempts = 0;

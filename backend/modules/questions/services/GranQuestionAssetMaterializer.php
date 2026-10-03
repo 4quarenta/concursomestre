@@ -102,75 +102,65 @@ final class GranQuestionAssetMaterializer
      * Falhas HTTP de download sao isoladas na questao afetada. Falhas de
      * storage, contrato ou infraestrutura local continuam sendo propagadas.
      *
-     * @return array{payload:array<string,mixed>,itemFailures:array<int,array<string,mixed>>}
+     * @return array{payload:array<string,mixed>,itemFailures:array<int,array<string,mixed>>,assetWarnings:array<int,array<string,mixed>>}
      */
     public function materializeForIngestion(array $payload): array
     {
         $assetCount = 0;
         $strictGranPayload = $this->isGranPayload($payload);
-        $failedContextIds = [];
-        $failedContextQuestionNumbers = [];
         $materializedContexts = [];
+        $assetWarnings = [];
 
         foreach (is_array($payload['contexts'] ?? null) ? $payload['contexts'] : [] as $context) {
             if (!is_array($context)) {
                 continue;
             }
             $contextId = trim((string) ($context['tempId'] ?? $context['id'] ?? $context['contextKey'] ?? ''));
-            try {
-                $context['assets'] = $this->materializeCollection(
-                    $context['assets'] ?? [],
-                    $strictGranPayload,
-                    $assetCount
-                );
-                $materializedContexts[] = $context;
-            } catch (Throwable $exception) {
-                if (!$this->isGranImageTransferFailure($exception)) {
-                    throw $exception;
-                }
-                if ($contextId !== '') {
-                    $failedContextIds[$contextId] = $exception->getMessage();
-                }
-                foreach ($this->normalizeQuestionNumbers($context['questionNumbers'] ?? $context['questionIds'] ?? []) as $number) {
-                    $failedContextQuestionNumbers[$number] = $exception->getMessage();
-                }
+            $failedAssets = [];
+            $context['assets'] = $this->materializeCollectionBestEffort(
+                $context['assets'] ?? [],
+                $strictGranPayload,
+                $assetCount,
+                $failedAssets
+            );
+            $failedTempIds = $this->failedAssetTempIds($failedAssets);
+            if ($failedTempIds !== []) {
+                $context = $this->replaceFailedAssetMarkers($context, $failedTempIds);
             }
+            foreach ($failedAssets as $failure) {
+                $assetWarnings[] = $this->buildAssetWarning($context, $contextId, 'context', $failure);
+            }
+            $materializedContexts[] = $context;
         }
         $payload['contexts'] = $materializedContexts;
 
-        $itemFailures = [];
         $materializedQuestions = [];
         foreach (is_array($payload['questions'] ?? null) ? $payload['questions'] : [] as $question) {
             if (!is_array($question)) {
                 continue;
             }
-            $source = is_array($question['source'] ?? null) ? $question['source'] : [];
-            $contextId = trim((string) ($source['contextTempId'] ?? $question['contextTempId'] ?? ''));
-            $questionNumber = trim((string) ($source['questionNumber'] ?? ''));
-            $contextFailure = ($contextId !== '' ? ($failedContextIds[$contextId] ?? null) : null)
-                ?? ($questionNumber !== '' ? ($failedContextQuestionNumbers[$questionNumber] ?? null) : null);
-            if (is_string($contextFailure)) {
-                $itemFailures[] = $this->buildQuestionFailure(
-                    $question,
-                    'A imagem do contexto da Gran nao pode ser copiada: ' . $contextFailure
-                );
-                continue;
+            $failedAssets = [];
+            $materializedQuestion = $this->materializeQuestionBestEffort(
+                $question,
+                $strictGranPayload,
+                $assetCount,
+                $failedAssets
+            );
+            $failedTempIds = $this->failedAssetTempIds($failedAssets);
+            if ($failedTempIds !== []) {
+                $materializedQuestion = $this->replaceFailedAssetMarkers($materializedQuestion, $failedTempIds);
             }
-
-            try {
-                $materializedQuestions[] = $this->materializeQuestion($question, $strictGranPayload, $assetCount);
-            } catch (Throwable $exception) {
-                if (!$this->isGranImageTransferFailure($exception)) {
-                    throw $exception;
-                }
-                $itemFailures[] = $this->buildQuestionFailure($question, $exception->getMessage());
+            foreach ($failedAssets as $failure) {
+                $assetWarnings[] = $this->buildAssetWarning($question, '', 'question', $failure);
             }
+            $materializedQuestions[] = $materializedQuestion;
         }
         $payload['questions'] = $materializedQuestions;
 
         return [
             'payload' => $payload,
-            'itemFailures' => $itemFailures,
+            'itemFailures' => [],
+            'assetWarnings' => $assetWarnings,
         ];
     }
 
@@ -277,6 +267,133 @@ final class GranQuestionAssetMaterializer
         return $materialized;
     }
 
+    /**
+     * Isola falhas conhecidas de transferencia/validacao de imagem como avisos
+     * do asset. Falhas de storage, limites do lote e contrato continuam sendo
+     * fatais para o job.
+     *
+     * @param array<int,array<string,mixed>> $failures
+     * @return array<int,array<string,mixed>>
+     */
+    private function materializeCollectionBestEffort(
+        mixed $assets,
+        bool $strictGranSource,
+        int &$assetCount,
+        array &$failures
+    ): array {
+        if (!is_array($assets)) {
+            return [];
+        }
+
+        $materialized = [];
+        foreach ($assets as $asset) {
+            if (!is_array($asset)) {
+                continue;
+            }
+            $assetCount++;
+            if ($assetCount > self::MAX_ASSETS_PER_PAYLOAD) {
+                throw new InvalidArgumentException('O lote excede o limite de 5.000 assets de questao.');
+            }
+            try {
+                $materialized[] = $this->materializeAsset($asset, $strictGranSource);
+            } catch (Throwable $exception) {
+                if (!$this->isGranImageTransferFailure($exception)) {
+                    throw $exception;
+                }
+                $failures[] = [
+                    'tempId' => trim((string) ($asset['tempId'] ?? '')) ?: null,
+                    'message' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        return $materialized;
+    }
+
+    /** @param array<int,array<string,mixed>> $failures */
+    private function materializeQuestionBestEffort(
+        array $question,
+        bool $strictGranPayload,
+        int &$assetCount,
+        array &$failures
+    ): array {
+        $questionIsGran = $strictGranPayload || $this->questionUsesGranSource($question);
+        $question['assets'] = $this->materializeCollectionBestEffort(
+            $question['assets'] ?? [],
+            $questionIsGran,
+            $assetCount,
+            $failures
+        );
+        foreach (['alternatives', 'options', 'itens'] as $alternativesKey) {
+            if (!isset($question[$alternativesKey]) || !is_array($question[$alternativesKey])) {
+                continue;
+            }
+            foreach ($question[$alternativesKey] as $alternativeIndex => $alternative) {
+                if (!is_array($alternative)) {
+                    continue;
+                }
+                $alternative['assets'] = $this->materializeCollectionBestEffort(
+                    $alternative['assets'] ?? [],
+                    $questionIsGran,
+                    $assetCount,
+                    $failures
+                );
+                $question[$alternativesKey][$alternativeIndex] = $alternative;
+            }
+        }
+
+        return $question;
+    }
+
+    /** @param array<int,array<string,mixed>> $failures @return list<string> */
+    private function failedAssetTempIds(array $failures): array
+    {
+        $ids = [];
+        foreach ($failures as $failure) {
+            $tempId = trim((string) ($failure['tempId'] ?? ''));
+            if ($tempId !== '') {
+                $ids[$tempId] = true;
+            }
+        }
+        return array_keys($ids);
+    }
+
+    private function replaceFailedAssetMarkers(mixed $value, array $failedTempIds): mixed
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $value[$key] = $this->replaceFailedAssetMarkers($item, $failedTempIds);
+            }
+            return $value;
+        }
+        if (!is_string($value) || $failedTempIds === []) {
+            return $value;
+        }
+
+        foreach ($failedTempIds as $tempId) {
+            $value = str_replace('[image:' . $tempId . ']', '[Imagem indisponivel na fonte]', $value);
+        }
+        return $value;
+    }
+
+    /** @param array<string,mixed> $owner @param array<string,mixed> $failure */
+    private function buildAssetWarning(array $owner, string $contextId, string $scope, array $failure): array
+    {
+        $source = is_array($owner['source'] ?? null) ? $owner['source'] : [];
+        $message = trim((string) ($failure['message'] ?? 'Imagem Gran indisponivel.'));
+        return [
+            'scope' => $scope,
+            'contextTempId' => $contextId !== '' ? $contextId : null,
+            'questionNumber' => trim((string) ($source['questionNumber'] ?? '')) ?: null,
+            'tempId' => trim((string) ($owner['tempId'] ?? '')) ?: null,
+            'assetTempId' => trim((string) ($failure['tempId'] ?? '')) ?: null,
+            'code' => str_contains($message, '(HTTP 403)')
+                ? 'gran_image_forbidden'
+                : 'gran_image_copy_warning',
+            'message' => $message,
+        ];
+    }
+
     private function materializeQuestion(array $question, bool $strictGranPayload, int &$assetCount): array
     {
         $questionIsGran = $strictGranPayload || $this->questionUsesGranSource($question);
@@ -336,10 +453,16 @@ final class GranQuestionAssetMaterializer
 
     private function isGranImageTransferFailure(Throwable $exception): bool
     {
-        return preg_match(
-            '/^Nao foi possivel copiar a imagem Gran \\(HTTP (?:0|[1-5][0-9]{2})\\)\\.?$/',
-            trim($exception->getMessage())
-        ) === 1;
+        $message = trim($exception->getMessage());
+        if (preg_match('/^Nao foi possivel copiar a imagem Gran \\(HTTP (?:0|[1-5][0-9]{2})\\)\\.?$/', $message) === 1) {
+            return true;
+        }
+
+        return str_starts_with($message, 'Imagem Gran indisponivel na extensao:')
+            || $message === 'O asset remoto da Gran nao e uma imagem valida.'
+            || $message === 'Formato de imagem Gran nao permitido.'
+            || $message === 'Imagem Gran baixada e invalida.'
+            || $message === 'Asset Gran aponta para um host externo nao autorizado.';
     }
 
     private function isRetryableGranImageTransferFailure(Throwable $exception): bool

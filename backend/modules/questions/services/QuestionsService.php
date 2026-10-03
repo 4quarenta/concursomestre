@@ -867,7 +867,10 @@ class QuestionsService
 
         $focus = $this->normalizeBulkImportFocus($payload['focus'] ?? []);
         $questionFocuses = $this->collectBulkQuestionFocuses($questions);
-        if ($focus['name'] === '' && $questionFocuses === []) {
+        // A Gran pode entregar a area/foco em uma taxonomia separada ou nao
+        // entrega-la. Isso nao impede a importacao da questao: carreira_id e
+        // opcional e a identidade externa continua preservada no agregado.
+        if ($focus['name'] === '' && $questionFocuses === [] && !$this->isGranImportPayload($payload, $questions)) {
             throw new InvalidArgumentException('Informe a area/foco de cada questao ou um foco de fallback para o lote.');
         }
         $examFocus = $focus['name'] !== ''
@@ -2510,7 +2513,11 @@ class QuestionsService
         );
 
         $this->repository->clearQuestionFilters($questionId);
-        $newTaxonomies = $this->syncQuestionFilters($questionId, $data['taxonomies']);
+        $newTaxonomies = $this->syncQuestionFilters(
+            $questionId,
+            $data['taxonomies'],
+            (string) ($data['source_provider'] ?? '')
+        );
 
         $canonical = is_array($data['canonical'] ?? null)
             ? $data['canonical']
@@ -2665,6 +2672,33 @@ class QuestionsService
             }
         }
         return array_values($unique);
+    }
+
+    /**
+     * A ingestao Gran e autorizada pelo fluxo administrativo e nao deve ser
+     * rejeitada apenas porque a origem nao trouxe uma carreira local.
+     *
+     * @param list<array<string, mixed>> $questions
+     */
+    private function isGranImportPayload(array $payload, array $questions): bool
+    {
+        $import = is_array($payload['import'] ?? null) ? $payload['import'] : [];
+        $sourceType = strtolower(trim((string) ($import['sourceType'] ?? $import['source_type'] ?? '')));
+        if (str_contains($sourceType, 'gran')) {
+            return true;
+        }
+
+        foreach ($questions as $question) {
+            if (!is_array($question)) {
+                continue;
+            }
+            $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+            if (strtolower(trim((string) ($source['provider'] ?? $source['sourceProvider'] ?? ''))) === 'gran') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function withPublicationOwnership(array $record, string $authenticatedUserId): array
@@ -3726,9 +3760,10 @@ class QuestionsService
         return (new ObjectStorage())->storeBytes($bytes, 'question-assets/' . $filename, $mimeType)['url'];
     }
 
-    private function syncQuestionFilters(string|int $questionId, array $taxonomies): array
+    private function syncQuestionFilters(string|int $questionId, array $taxonomies, string $sourceProvider = ''): array
     {
         $created = [];
+        $isGranSource = strtolower(trim($sourceProvider)) === 'gran';
         foreach ($taxonomies as $type => $items) {
             foreach ($items as $item) {
                 $name = $this->extractTaxonomyName($item, (string) $type);
@@ -3751,6 +3786,12 @@ class QuestionsService
                         $sourceIdentity['externalId']
                     );
                     if ($id === null) {
+                        // A taxonomia externa e opcional para a persistencia da
+                        // questao. Nao criamos um filtro local falso e nao
+                        // descartamos a questao inteira por falta de sync.
+                        if ($isGranSource) {
+                            continue;
+                        }
                         throw new GranTaxonomyNotSynchronizedException($filterType, $name);
                     }
                 }
