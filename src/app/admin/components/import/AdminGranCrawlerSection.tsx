@@ -46,6 +46,10 @@ import {
   type GranTaxonomySyncKey,
 } from './granCrawlerFailureUtils';
 import { splitGranTaxonomyResponses } from './granTaxonomySyncUtils';
+import {
+  GRAN_LAST_YEAR_STORAGE_KEY,
+  persistGranCrawlerYearPreference,
+} from './granCrawlerYearPreference';
 import { useGranPublicationPolling } from './useGranPublicationPolling';
 import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from './granCrawlerUrl';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
@@ -250,7 +254,6 @@ type GranPublicationProgress = Pick<GranPublicationBatch,
 const ENDPOINT = 'admin/gran_crawler.php';
 const EXTENSION_DOWNLOAD_URL = '/downloads/concursomestre-coletor-gran-v1.0.22.zip';
 const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
-const GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear';
 const GRAN_AUTO_ADVANCE_YEAR_STORAGE_KEY = 'admin.granCrawler.autoAdvanceYear';
 const BOOTSTRAP_CACHE_MS = 60_000;
 const COLLECTOR_STATUS_CACHE_MS = 30_000;
@@ -1410,7 +1413,10 @@ const AdminGranCrawlerSection = ({
         cursorYear = nextYear;
         cursorPage = nextPage;
         if (!exhaustedYear || continuesNextYear) {
-          if (continuesNextYear) setYear(String(cursorYear));
+          if (continuesNextYear) {
+            setYear(String(cursorYear));
+            persistGranCrawlerYearPreference(cursorYear);
+          }
           setPage(cursorPage);
           if (inFlightBatches.length >= MAX_AUTOMATIC_IN_FLIGHT_BATCHES) {
             await waitForOldestPublication();
@@ -1425,10 +1431,13 @@ const AdminGranCrawlerSection = ({
           await waitForOldestPublication();
         }
         await clearAutomaticCheckpoint();
+        const completedYear = Math.min(cursorYear, finalYear);
+        setYear(String(completedYear));
+        persistGranCrawlerYearPreference(completedYear);
         setAutomaticMode(false);
         setAutomaticProgress({
           phase: 'completed',
-          year: Math.min(cursorYear, finalYear),
+          year: completedYear,
           page: cursorPage,
           totalPages: checkpoint?.totalPages || null,
           questionsCollected: 0,
