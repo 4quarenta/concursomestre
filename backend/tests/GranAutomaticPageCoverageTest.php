@@ -26,7 +26,7 @@ foreach ($cases as [$name, $page, $requested, $effective, $received, $total, $mu
             'page' => $page, 'perPage' => $effective, 'total' => $total,
             'rows' => array_fill(0, $received, ['id' => 1]),
         ]], $page, $requested);
-    } catch (DomainException $error) {
+    } catch (InvalidArgumentException $error) {
         $failed = true;
         if (!str_contains($error->getMessage(), 'enfileirada')) throw $error;
     }

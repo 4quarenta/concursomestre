@@ -3220,7 +3220,7 @@ final class AdminGranCrawlerService
         $received = count($this->extractRows($payload));
         if (($effectivePerPage > 0 && $effectivePerPage !== $perPage)
             || ($effectivePage > 0 && $effectivePage !== $page)) {
-            throw new DomainException(sprintf(
+            throw new InvalidArgumentException(sprintf(
                 'Coleta incompleta: a pagina %d solicitou %d questoes, mas a Gran respondeu pagina %d com perPage %d e %d questoes. Nenhuma questao desta resposta foi enfileirada. O progresso foi preservado; reduza o filtro da Gran antes de continuar para nao saltar questoes.',
                 $page, $perPage, $effectivePage ?: $page, $effectivePerPage ?: $perPage, $received
             ));
@@ -3229,7 +3229,7 @@ final class AdminGranCrawlerService
         if ($metadata['totalKnown']) {
             $expected = min($perPage, max(0, $metadata['total'] - ($page - 1) * $perPage));
             if ($received !== $expected) {
-                throw new DomainException(sprintf(
+                throw new InvalidArgumentException(sprintf(
                     'Coleta incompleta na pagina %d: eram esperadas %d questoes e a Gran retornou %d. Nenhuma questao desta resposta foi enfileirada; tente novamente ou reduza o filtro.',
                     $page, $expected, $received
                 ));
