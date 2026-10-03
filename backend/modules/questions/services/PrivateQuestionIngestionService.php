@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../../shared/database/SchemaReadiness.php';
+require_once __DIR__ . '/CompletedIngestionRecord.php';
 require_once __DIR__ . '/../../ingestion/domain/BrowserFixturePublicationPolicy.php';
 
 /**
@@ -998,14 +999,19 @@ final class PrivateQuestionIngestionService
 
     public function completeJob(int $jobId, int $requestId, array $result, ?string $workerId = null): void
     {
-        $json = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $json = json_encode(CompletedIngestionRecord::result($result), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         $this->db->beginTransaction();
         try {
+            $payloadStmt = $this->db->prepare('SELECT payload_json FROM private_ingestion_jobs WHERE id = :id FOR UPDATE');
+            $payloadStmt->execute([':id' => $jobId]);
+            $payload = json_decode((string) $payloadStmt->fetchColumn(), true, 512, JSON_THROW_ON_ERROR);
+            $compactPayload = json_encode(CompletedIngestionRecord::payload($payload, $result), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             $sql = "UPDATE private_ingestion_jobs
-                    SET status = 'done', result_json = :result_json, completed_at = UTC_TIMESTAMP(),
+                    SET status = 'done', payload_json = :payload_json, result_json = :result_json, completed_at = UTC_TIMESTAMP(),
                         locked_at = NULL, locked_by = NULL
                     WHERE id = :id AND request_id = :request_id AND status = 'processing'";
             $params = [
+                ':payload_json' => $compactPayload,
                 ':result_json' => $json,
                 ':id' => $jobId,
                 ':request_id' => $requestId,
