@@ -30,8 +30,12 @@ while (true) {
             $stmt = $db->prepare("SELECT response_json FROM private_ingestion_requests WHERE id=:id AND status='done' FOR UPDATE");
             $stmt->execute([':id' => $row['request_id']]);
             $response = $stmt->fetchColumn();
-            $compactResponse = $response === false || $response === null ? $response : json_encode(CompletedIngestionRecord::result(json_decode($response, true, 512, JSON_THROW_ON_ERROR)), $flags);
-            $saved = max(0, strlen($row['payload_json']) - strlen($compactPayload)) + max(0, strlen($row['result_json'] ?? '') - strlen($compactResult)) + max(0, strlen((string) $response) - strlen((string) $compactResponse));
+            $responseArray = $response === false || $response === null ? null : json_decode($response, true, 512, JSON_THROW_ON_ERROR);
+            $compactResponse = $responseArray === null ? $response : json_encode(CompletedIngestionRecord::result($responseArray), $flags);
+            // MySQL normalizes JSON whitespace; compare canonical encodings to avoid repeat writes.
+            $saved = max(0, strlen(json_encode($payload, $flags)) - strlen($compactPayload))
+                + max(0, strlen(json_encode($result, $flags)) - strlen($compactResult))
+                + ($responseArray === null ? 0 : max(0, strlen(json_encode($responseArray, $flags)) - strlen((string) $compactResponse)));
             if ($saved > 0) {
                 $report['changed']++;
                 $report['bytes_removed'] += $saved;
