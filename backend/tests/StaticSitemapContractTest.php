@@ -89,7 +89,7 @@ sitemapContractAssert(!str_contains($generator, 'SITEMAP_VALIDATE_HTTP'), 'HTTP 
 sitemapContractAssert(str_contains($mutationInvalidator, "['state'] ?? null) === 'DIRTY'"), 'Mutation invalidation is not idempotent while DIRTY.');
 sitemapContractAssert(str_contains($invalidator, "'publicationState' => 'DIRTY'"), 'Operational invalidator does not fail closed.');
 sitemapContractAssert(!str_contains($nginx, 'alias '), 'Nginx example bypasses application launch/freshness guards with a static alias.');
-sitemapContractAssert(str_contains($sitemapTimer, 'OnUnitInactiveSec=15min'), 'Canonical sitemap generation must retry after each completed run.');
+sitemapContractAssert(str_contains($sitemapTimer, 'OnUnitActiveSec=15min'), 'Canonical sitemap generation must retry every 15 minutes, including after failed runs.');
 sitemapContractAssert(!is_file($backend . '/ops/systemd/concursomestre-blog-sitemap.timer'), 'Duplicate blog sitemap timer remains installed in source.');
 sitemapContractAssert(!is_file($backend . '/ops/systemd/concursomestre-blog-sitemap.service'), 'Duplicate blog sitemap service remains installed in source.');
 sitemapContractAssert(str_contains($validator, "'legacy_url'"), 'Validator must reject aliases.');

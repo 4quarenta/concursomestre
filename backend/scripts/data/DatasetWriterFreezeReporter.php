@@ -96,7 +96,7 @@ final class DatasetWriterFreezeReporter
             self::writer('python-extractor', 'concursomestre-python-extractor.service', 'Python/uvicorn', 'HTTP from admin', 'continuous',
                 [], 'document extraction', 'MAINTENANCE', 'stop only when an approved extraction freeze requires it', 'start before extraction producers',
                 'unit and extractor health endpoint', 'exam ingestion owner', 'python-extractor/app'),
-            self::writer('sitemap-generators', 'concursomestre-sitemap.timer', 'PHP CLI/systemd timer', 'timer', 'every 15 minutes after completion',
+            self::writer('sitemap-generators', 'concursomestre-sitemap.timer', 'PHP CLI/systemd timer', 'timer', 'every 15 minutes',
                 [], 'derived filesystem SEO', 'NOT_A_WRITER', 'stop the timer to avoid release-side file churn', 'start the timer after application health',
                 'timer waiting and sitemap status valid', 'SEO owner', 'backend/ops/systemd/concursomestre-sitemap.*'),
             self::writer('mysql-backup', 'backup_mysql.php', 'PHP CLI/cron', 'cron', '20 2 * * *',
