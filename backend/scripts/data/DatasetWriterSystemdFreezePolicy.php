@@ -44,7 +44,6 @@ final class DatasetWriterSystemdFreezePolicy
     {
         return [
             self::unit('concursomestre-sitemap.timer', 'timer', ['/etc/systemd/system/concursomestre-sitemap.timer'], ['concursomestre-sitemap.service'], []),
-            self::unit('concursomestre-blog-sitemap.timer', 'timer', ['/etc/systemd/system/concursomestre-blog-sitemap.timer'], ['concursomestre-blog-sitemap.service'], []),
             self::unit('concursomestre-answer-archive.timer', 'timer', ['/etc/systemd/system/concursomestre-answer-archive.timer'], ['concursomestre-answer-archive.service'], []),
             self::unit('cron.service', 'service', ['/usr/lib/systemd/system/cron.service'], [], []),
             self::unit('concursomestre-question-ingestion@1.service', 'service', ['/etc/systemd/system/concursomestre-question-ingestion@.service'], [], []),
@@ -52,7 +51,6 @@ final class DatasetWriterSystemdFreezePolicy
             self::unit('concursomestre-platform-events@1.service', 'service', ['/etc/systemd/system/concursomestre-platform-events@.service'], [], []),
             self::unit('concursomestre-python-extractor.service', 'service', ['/etc/systemd/system/concursomestre-python-extractor.service'], [], []),
             self::unit('concursomestre-sitemap.service', 'service', ['/etc/systemd/system/concursomestre-sitemap.service'], [], ['concursomestre-sitemap.timer']),
-            self::unit('concursomestre-blog-sitemap.service', 'service', ['/etc/systemd/system/concursomestre-blog-sitemap.service'], [], ['concursomestre-blog-sitemap.timer']),
             self::unit('concursomestre-answer-archive.service', 'service', ['/etc/systemd/system/concursomestre-answer-archive.service'], [], ['concursomestre-answer-archive.timer']),
         ];
     }
@@ -78,7 +76,6 @@ final class DatasetWriterSystemdFreezePolicy
             'concursomestre-question-ingestion@2.service',
             'concursomestre-platform-events@1.service',
             'concursomestre-sitemap.timer',
-            'concursomestre-blog-sitemap.timer',
             'concursomestre-answer-archive.timer',
             'cron.service',
         ];

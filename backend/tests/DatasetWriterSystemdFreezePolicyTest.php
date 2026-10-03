@@ -11,7 +11,7 @@ function systemdPolicyAssert(bool $condition, string $message): void
 
 $units = DatasetWriterSystemdFreezePolicy::units();
 $names = DatasetWriterSystemdFreezePolicy::unitNames();
-systemdPolicyAssert(count($units) === 11 && count($names) === 11, 'The strict-writer systemd control inventory must contain 11 units.');
+systemdPolicyAssert(count($units) === 9 && count($names) === 9, 'The strict-writer systemd control inventory must contain 9 units.');
 systemdPolicyAssert(DatasetWriterSystemdFreezePolicy::availabilitySafeFreezeGuard()['valid'], 'Public serving units must remain outside the strict freeze inventory.');
 foreach (DatasetWriterSystemdFreezePolicy::publicServingLayerUnits() as $unit) {
     systemdPolicyAssert(DatasetWriterSystemdFreezePolicy::classifyUnit($unit) === DatasetWriterSystemdFreezePolicy::CLASS_SERVING_LAYER, 'Serving unit classification drifted: ' . $unit);

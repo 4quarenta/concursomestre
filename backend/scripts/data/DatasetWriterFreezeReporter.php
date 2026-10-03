@@ -96,9 +96,9 @@ final class DatasetWriterFreezeReporter
             self::writer('python-extractor', 'concursomestre-python-extractor.service', 'Python/uvicorn', 'HTTP from admin', 'continuous',
                 [], 'document extraction', 'MAINTENANCE', 'stop only when an approved extraction freeze requires it', 'start before extraction producers',
                 'unit and extractor health endpoint', 'exam ingestion owner', 'python-extractor/app'),
-            self::writer('sitemap-generators', 'sitemap and blog-sitemap timers', 'PHP CLI/systemd timer', 'timer', 'daily and every 15 minutes',
-                [], 'derived filesystem SEO', 'NOT_A_WRITER', 'stop timers to avoid release-side file churn', 'start timers after application health',
-                'timers waiting and sitemap status valid', 'SEO owner', 'backend/ops/systemd sitemap and blog-sitemap'),
+            self::writer('sitemap-generators', 'concursomestre-sitemap.timer', 'PHP CLI/systemd timer', 'timer', 'every 15 minutes after completion',
+                [], 'derived filesystem SEO', 'NOT_A_WRITER', 'stop the timer to avoid release-side file churn', 'start the timer after application health',
+                'timer waiting and sitemap status valid', 'SEO owner', 'backend/ops/systemd/concursomestre-sitemap.*'),
             self::writer('mysql-backup', 'backup_mysql.php', 'PHP CLI/cron', 'cron', '20 2 * * *',
                 [], 'database backup', 'NOT_A_WRITER', 'run approved pre-reset backup, then stop cron during reset', 'start cron after post-reset backup',
                 'backup checksum and health file', 'operations owner', 'cron concursomestre; backend/scripts/tasks/backup_mysql.php'),
@@ -460,8 +460,8 @@ final class DatasetWriterFreezeReporter
             'sitemap-generators' => self::coverage(
                 'OBSERVE_ONLY',
                 'SYSTEMD_STATE',
-                'concursomestre-sitemap.timer,concursomestre-blog-sitemap.timer',
-                'Sitemap timers remain non-writers and are observed for resumed waiting state only.',
+                'concursomestre-sitemap.timer',
+                'The canonical sitemap timer remains a non-writer and is observed for resumed waiting state only.',
                 'NONE'
             ),
             'mysql-backup' => self::coverage(
