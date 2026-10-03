@@ -586,6 +586,7 @@ final class PrivateQuestionIngestionService
     /** @param array<string,mixed> $payload @return array<string,mixed> */
     private function prepareRetryPayload(array $payload, int $attemptCount): array
     {
+        $payload = $this->normalizeGranRetryAlternativeIdentity($payload);
         $questions = is_array($payload['questions'] ?? null) ? $payload['questions'] : [];
         foreach ($questions as $question) {
             if (!is_array($question)) continue;
@@ -594,6 +595,80 @@ final class PrivateQuestionIngestionService
                 return BrowserFixturePublicationPolicy::markRetryAttempt($payload, max(2, $attemptCount + 1));
             }
         }
+        return $payload;
+    }
+
+    /**
+     * Corrige snapshots antigos do crawler Gran que usavam somente o rotulo da
+     * alternativa como external_key. A coleta nova ja grava IDs unicos, mas
+     * falhas persistidas antes dessa correcao precisam continuar recuperaveis.
+     *
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private function normalizeGranRetryAlternativeIdentity(array $payload): array
+    {
+        $questions = is_array($payload['questions'] ?? null) ? $payload['questions'] : [];
+        foreach ($questions as $questionIndex => $question) {
+            if (!is_array($question)) {
+                continue;
+            }
+            $source = is_array($question['source'] ?? null) ? $question['source'] : [];
+            if (strtolower(trim((string) ($source['provider'] ?? ''))) !== 'gran') {
+                continue;
+            }
+            $alternatives = is_array($question['alternatives'] ?? null)
+                ? array_values($question['alternatives'])
+                : [];
+            if ($alternatives === []) {
+                continue;
+            }
+
+            $used = [];
+            $identityMap = [];
+            foreach ($alternatives as $alternativeIndex => $alternative) {
+                if (!is_array($alternative)) {
+                    continue;
+                }
+                $originalId = trim((string) ($alternative['tempId'] ?? ''));
+                if ($originalId === '') {
+                    continue;
+                }
+                $newId = $originalId;
+                $suffix = 2;
+                while (isset($used[$newId])) {
+                    $newId = $originalId . '_' . $suffix++;
+                }
+                $used[$newId] = true;
+                $identityMap[$originalId][] = $newId;
+                $alternatives[$alternativeIndex]['tempId'] = $newId;
+            }
+
+            $answer = is_array($question['answer'] ?? null) ? $question['answer'] : [];
+            $answerIds = is_array($answer['correctAlternativeTempIds'] ?? null)
+                ? $answer['correctAlternativeTempIds']
+                : [];
+            $occurrences = [];
+            $normalizedAnswerIds = [];
+            foreach ($answerIds as $answerId) {
+                $answerId = trim((string) $answerId);
+                $candidates = $identityMap[$answerId] ?? [];
+                $offset = $occurrences[$answerId] ?? 0;
+                $normalizedAnswerIds[] = $candidates[$offset] ?? $candidates[0] ?? $answerId;
+                $occurrences[$answerId] = $offset + 1;
+            }
+            $answer['correctAlternativeTempIds'] = array_values(array_unique($normalizedAnswerIds));
+            $alternativeId = trim((string) ($answer['alternativeId'] ?? ''));
+            if ($alternativeId !== '' && isset($identityMap[$alternativeId])) {
+                $answer['alternativeId'] = $identityMap[$alternativeId][0];
+            }
+
+            $question['alternatives'] = $alternatives;
+            $question['answer'] = $answer;
+            $questions[$questionIndex] = $question;
+        }
+
+        $payload['questions'] = $questions;
         return $payload;
     }
 

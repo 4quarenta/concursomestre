@@ -54,6 +54,28 @@ $validateCount = new ReflectionMethod(PrivateQuestionIngestionService::class, 'a
 $validateCount->setAccessible(true);
 $sanitizeFailure = new ReflectionMethod(PrivateQuestionIngestionService::class, 'sanitizePublicFailureMessage');
 $sanitizeFailure->setAccessible(true);
+$normalizeRetry = new ReflectionMethod(PrivateQuestionIngestionService::class, 'normalizeGranRetryAlternativeIdentity');
+$normalizeRetry->setAccessible(true);
+
+$normalizedRetryPayload = $normalizeRetry->invoke($service, [
+    'schemaVersion' => 'question-import.v2',
+    'questions' => [[
+        'source' => ['provider' => 'gran'],
+        'alternatives' => [
+            ['tempId' => 'q_alt_d', 'order' => 1],
+            ['tempId' => 'q_alt_d', 'order' => 2],
+        ],
+        'answer' => ['correctAlternativeTempIds' => ['q_alt_d']],
+    ]],
+]);
+$normalizedRetryQuestion = $normalizedRetryPayload['questions'][0] ?? [];
+$normalizedRetryIds = array_column($normalizedRetryQuestion['alternatives'] ?? [], 'tempId');
+granBatchPlannerAssert(
+    count($normalizedRetryIds) === 2
+    && count(array_unique($normalizedRetryIds)) === 2
+    && ($normalizedRetryQuestion['answer']['correctAlternativeTempIds'][0] ?? null) === $normalizedRetryIds[0],
+    'Retry de payload Gran antigo deve normalizar external_key duplicada sem quebrar o gabarito.'
+);
 
 foreach ([51, 1000] as $count) {
     $jobs = $split->invoke($service, [granBatchPayload(1, $count, 'exam-single')]);
