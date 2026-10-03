@@ -331,7 +331,7 @@ final class QuestionCanonicalRepository
 
         if ($sourceProvider !== '' && $sourceExternalId !== '') {
             $find = $this->db->prepare(
-                'SELECT id, prova_id FROM question_contexts
+                'SELECT id, prova_id, source_provider, source_external_id FROM question_contexts
                  WHERE source_provider = :source_provider AND source_external_id = :source_external_id
                  LIMIT 1'
             );
@@ -339,22 +339,53 @@ final class QuestionCanonicalRepository
                 ':source_provider' => $sourceProvider,
                 ':source_external_id' => $sourceExternalId,
             ]);
+            // Contextos gravados antes da identidade externa do Gran podem
+            // ser recuperados pela chave escopada sem substituir conteúdo
+            // editorial ou criar uma segunda linha canônica.
+            $existing = $find->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($existing)) {
+                $find = $this->db->prepare(
+                    'SELECT id, prova_id, source_provider, source_external_id FROM question_contexts
+                     WHERE external_key = :external_key
+                     LIMIT 1'
+                );
+                $find->execute([':external_key' => $externalKey]);
+                $existing = $find->fetch(PDO::FETCH_ASSOC);
+            }
         } else {
-            $find = $this->db->prepare('SELECT id, prova_id FROM question_contexts WHERE external_key = :external_key LIMIT 1');
+            $find = $this->db->prepare('SELECT id, prova_id, source_provider, source_external_id FROM question_contexts WHERE external_key = :external_key LIMIT 1');
             $find->execute([':external_key' => $externalKey]);
+            $existing = $find->fetch(PDO::FETCH_ASSOC);
         }
-        $existing = $find->fetch(PDO::FETCH_ASSOC);
         $contextId = is_array($existing) ? (int) ($existing['id'] ?? 0) : 0;
         $existingProvaId = is_array($existing) ? $this->positiveIntOrNull($existing['prova_id'] ?? null) : null;
         if ($existingProvaId !== null && $existingProvaId !== $provaId) {
             throw new InvalidArgumentException('O contexto ja pertence a outra prova e nao pode ser reutilizado entre provas.');
         }
         if ($contextId > 0 && $sourceProvider !== '' && $sourceExternalId !== '') {
+            $existingSourceProvider = $this->normalizeSourceProvider($existing['source_provider'] ?? null);
+            $existingSourceExternalId = $this->normalizeSourceExternalId($existing['source_external_id'] ?? null);
+            if (($existingSourceProvider !== '' || $existingSourceExternalId !== '')
+                && ($existingSourceProvider !== $sourceProvider || $existingSourceExternalId !== $sourceExternalId)
+            ) {
+                throw new InvalidArgumentException('O contexto canonico ja possui outra identidade externa.');
+            }
             // Reviewed Gran contexts are authoritative; a repeated collection
             // only points at the same canonical record.
-            if ($existingProvaId === null) {
-                $this->db->prepare('UPDATE question_contexts SET prova_id = :prova_id WHERE id = :id')
-                    ->execute([':prova_id' => $provaId, ':id' => $contextId]);
+            if ($existingProvaId === null || ($existingSourceProvider === '' && $existingSourceExternalId === '')) {
+                $attach = $this->db->prepare(
+                    'UPDATE question_contexts
+                     SET prova_id = :prova_id,
+                         source_provider = :source_provider,
+                         source_external_id = :source_external_id
+                     WHERE id = :id'
+                );
+                $attach->execute([
+                    ':prova_id' => $provaId,
+                    ':source_provider' => $sourceProvider,
+                    ':source_external_id' => $sourceExternalId,
+                    ':id' => $contextId,
+                ]);
             }
             return $contextId;
         }
