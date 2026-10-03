@@ -110,6 +110,7 @@ final class GranQuestionAssetMaterializer
         $strictGranPayload = $this->isGranPayload($payload);
         $materializedContexts = [];
         $assetWarnings = [];
+        $failedAssetTempIds = [];
 
         foreach (is_array($payload['contexts'] ?? null) ? $payload['contexts'] : [] as $context) {
             if (!is_array($context)) {
@@ -126,6 +127,21 @@ final class GranQuestionAssetMaterializer
             $failedTempIds = $this->failedAssetTempIds($failedAssets);
             if ($failedTempIds !== []) {
                 $context = $this->replaceFailedAssetMarkers($context, $failedTempIds);
+                foreach ($failedTempIds as $failedTempId) {
+                    $failedAssetTempIds[$failedTempId] = true;
+                }
+                if (
+                    $strictGranPayload
+                    && trim((string) ($context['body'] ?? $context['texto'] ?? $context['text'] ?? '')) === ''
+                    && ($context['assets'] ?? []) === []
+                ) {
+                    // A imagem de apoio pode ser pública na origem e ainda
+                    // assim indisponível para captura nesta tentativa. Isso
+                    // não deve invalidar uma questão cujo enunciado esteja
+                    // completo; preservamos o vínculo com um aviso honesto.
+                    $context['body'] = '[Imagem indisponivel na fonte]';
+                    $context['bodyClean'] = 'Imagem indisponivel na fonte';
+                }
             }
             foreach ($failedAssets as $failure) {
                 $assetWarnings[] = $this->buildAssetWarning($context, $contextId, 'context', $failure);
@@ -149,6 +165,9 @@ final class GranQuestionAssetMaterializer
             $failedTempIds = $this->failedAssetTempIds($failedAssets);
             if ($failedTempIds !== []) {
                 $materializedQuestion = $this->replaceFailedAssetMarkers($materializedQuestion, $failedTempIds);
+                foreach ($failedTempIds as $failedTempId) {
+                    $failedAssetTempIds[$failedTempId] = true;
+                }
             }
             foreach ($failedAssets as $failure) {
                 $assetWarnings[] = $this->buildAssetWarning($question, '', 'question', $failure);
@@ -156,6 +175,10 @@ final class GranQuestionAssetMaterializer
             $materializedQuestions[] = $materializedQuestion;
         }
         $payload['questions'] = $materializedQuestions;
+
+        if ($failedAssetTempIds !== []) {
+            $payload = $this->replaceFailedAssetMarkers($payload, array_keys($failedAssetTempIds));
+        }
 
         return [
             'payload' => $payload,

@@ -272,4 +272,49 @@ granQuestionAssetAssert(
     && str_contains((string) ($exhaustedResult['assetWarnings'][0]['message'] ?? ''), 'HTTP 0'),
     'Apos esgotar retries, a questao deve ser importada sem o asset e o lote deve continuar.'
 );
+
+$contextDownloadAttempts = 0;
+$contextImageUnavailable = new GranQuestionAssetMaterializer(
+    static function () use (&$contextDownloadAttempts): array {
+        $contextDownloadAttempts++;
+        throw new RuntimeException('Nao foi possivel copiar a imagem Gran (HTTP 0).');
+    },
+    static fn (): array => throw new RuntimeException('Storage nao deve receber contexto sem imagem.')
+);
+$contextResult = $contextImageUnavailable->materializeForIngestion([
+    'schemaVersion' => 'question-import.v2',
+    'import' => ['sourceType' => 'gran'],
+    'contexts' => [[
+        'tempId' => 'ctx_without_text',
+        'body' => '',
+        'assets' => [[
+            'tempId' => 'ctx_remote_only',
+            'url' => $remoteUrl,
+            'usage' => 'context',
+        ]],
+    ]],
+    'questions' => [[
+        'tempId' => 'q_with_context_image',
+        'source' => [
+            'provider' => 'gran',
+            'questionNumber' => 18,
+            'contextTempId' => 'ctx_without_text',
+        ],
+        'content' => [
+            'statement' => 'Enunciado completo.',
+            'supportText' => '[image:ctx_remote_only]',
+        ],
+        'assets' => [],
+    ]],
+]);
+granQuestionAssetAssert(
+    $contextDownloadAttempts === 3
+    && count($contextResult['payload']['contexts'] ?? []) === 1
+    && ($contextResult['payload']['contexts'][0]['body'] ?? '') === '[Imagem indisponivel na fonte]'
+    && ($contextResult['payload']['questions'][0]['content']['supportText'] ?? '') === '[Imagem indisponivel na fonte]'
+    && ($contextResult['itemFailures'] ?? []) === []
+    && count($contextResult['assetWarnings'] ?? []) === 1
+    && ($contextResult['assetWarnings'][0]['scope'] ?? null) === 'context',
+    'Contexto Gran sem texto deve continuar o lote com aviso explicito quando a imagem remota falha.'
+);
 fwrite(STDOUT, "GranQuestionAssetMaterializerTest: PASS\n");
