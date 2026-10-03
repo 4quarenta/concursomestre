@@ -52,6 +52,13 @@ import {
 } from './granCrawlerYearPreference';
 import { useGranPublicationPolling } from './useGranPublicationPolling';
 import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from './granCrawlerUrl';
+import {
+  formatSafeGranResponse,
+  readGranResponseLogSummary,
+  safeGranLogError,
+  safeGranRequestUrl,
+  type GranPageRequestLog,
+} from './granCrawlerRequestLog';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
 type GranQuestion = {
@@ -261,6 +268,7 @@ const AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000;
 const ACTIVE_BATCH_STATUS_REFRESH_MS = 15_000;
 const TAXONOMY_CHECK_FRESH_MS = 6 * 60 * 60 * 1000;
 const MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2;
+const MAX_GRAN_REQUEST_LOGS = 10;
 
 /**
  * A mesma pagina da Gran pode ser retomada depois de uma atualizacao do
@@ -534,6 +542,7 @@ const AdminGranCrawlerSection = ({
   const [automaticCheckpoint, setAutomaticCheckpoint] = React.useState<GranAutomaticCheckpoint | null>(null);
   const [automaticFilteredQuestionCount, setAutomaticFilteredQuestionCount] = React.useState<number | null>(null);
   const [result, setResult] = React.useState<GranFetchResult | null>(null);
+  const [requestLogs, setRequestLogs] = React.useState<GranPageRequestLog[]>([]);
   const [currentBatch, setCurrentBatch] = React.useState<GranPublicationBatch | null>(null);
   const [failureHistory, setFailureHistory] = React.useState<GranFailureHistoryPage>({
     items: [],
@@ -765,6 +774,34 @@ const AdminGranCrawlerSection = ({
     });
   }, [page, perPage, year]);
 
+  const startRequestLog = React.useCallback((
+    mode: GranPageRequestLog['mode'],
+    targetPage: number,
+    targetYear: string,
+    requestedPerPage: number,
+    requestUrl: string,
+  ) => {
+    const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `gran-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setRequestLogs((current) => [{
+      id,
+      mode,
+      page: targetPage,
+      year: targetYear || '-',
+      requestedPerPage,
+      requestUrl: safeGranRequestUrl(requestUrl),
+      startedAt: new Date().toISOString(),
+    }, ...current].slice(0, MAX_GRAN_REQUEST_LOGS));
+    return id;
+  }, []);
+
+  const updateRequestLog = React.useCallback((id: string, patch: Partial<GranPageRequestLog>) => {
+    setRequestLogs((current) => current.map((entry) => (
+      entry.id === id ? { ...entry, ...patch } : entry
+    )));
+  }, []);
+
   const collectMappedPage = React.useCallback(async (
     targetPage: number,
     targetYear: string,
@@ -775,19 +812,36 @@ const AdminGranCrawlerSection = ({
       perPage,
       year: targetYear,
     });
-    const collection = await collectGranQuestions(requestUrl, signal);
-    const response = await apiClient.post(ENDPOINT, {
-      action: 'map',
-      granResponse: collection.json,
-      granExamFiles: collection.examFiles,
-      granAssetData: collection.assetData || {},
-      granRequestUrl: collection.requestUrl,
-      page: targetPage,
-      perPage,
-      year: targetYear,
-    }, { signal });
-    return readApiData<GranFetchResult>(response);
-  }, [granRequestUrl, perPage]);
+    const logId = startRequestLog('manual', targetPage, targetYear, perPage, requestUrl);
+    try {
+      const collection = await collectGranQuestions(requestUrl, signal);
+      updateRequestLog(logId, {
+        httpStatus: collection.status,
+        ...readGranResponseLogSummary(collection.json),
+        responseJson: formatSafeGranResponse(collection.json),
+      });
+      const response = await apiClient.post(ENDPOINT, {
+        action: 'map',
+        granResponse: collection.json,
+        granExamFiles: collection.examFiles,
+        granAssetData: collection.assetData || {},
+        granRequestUrl: collection.requestUrl,
+        page: targetPage,
+        perPage,
+        year: targetYear,
+      }, { signal });
+      const mapped = readApiData<GranFetchResult>(response);
+      updateRequestLog(logId, { mappedQuestionCount: mapped.questionCount });
+      return mapped;
+    } catch (requestError) {
+      if (!signal.aborted) {
+        updateRequestLog(logId, {
+          error: safeGranLogError(requestError instanceof Error ? requestError.message : 'Falha sem detalhe do coletor.'),
+        });
+      }
+      throw requestError;
+    }
+  }, [granRequestUrl, perPage, startRequestLog, updateRequestLog]);
 
   const collectAndEnqueueAutomaticPage = React.useCallback(async (
     targetPage: number,
@@ -800,25 +854,45 @@ const AdminGranCrawlerSection = ({
       perPage,
       year: targetYear,
     });
-    const collection = await collectGranQuestions(requestUrl, signal);
-    const idempotencyKey = `gran-auto-${runKey}-${targetYear}-${targetPage}-${fingerprintAutomaticInput({
-      response: collection.json,
-      assets: collection.assetData || {},
-      files: collection.examFiles || {},
-    })}`;
-    const response = await apiClient.post(ENDPOINT, {
-      action: 'map_and_enqueue_publication',
-      granResponse: collection.json,
-      granExamFiles: collection.examFiles,
-      granAssetData: collection.assetData || {},
-      granRequestUrl: collection.requestUrl,
-      page: targetPage,
-      perPage,
-      year: targetYear,
-      idempotencyKey,
-    }, { signal });
-    return readApiData<GranAutomaticEnqueueResult>(response);
-  }, [granRequestUrl, perPage]);
+    const logId = startRequestLog('automatico', targetPage, targetYear, perPage, requestUrl);
+    try {
+      const collection = await collectGranQuestions(requestUrl, signal);
+      updateRequestLog(logId, {
+        httpStatus: collection.status,
+        ...readGranResponseLogSummary(collection.json),
+        responseJson: formatSafeGranResponse(collection.json),
+      });
+      const idempotencyKey = `gran-auto-${runKey}-${targetYear}-${targetPage}-${fingerprintAutomaticInput({
+        response: collection.json,
+        assets: collection.assetData || {},
+        files: collection.examFiles || {},
+      })}`;
+      const response = await apiClient.post(ENDPOINT, {
+        action: 'map_and_enqueue_publication',
+        granResponse: collection.json,
+        granExamFiles: collection.examFiles,
+        granAssetData: collection.assetData || {},
+        granRequestUrl: collection.requestUrl,
+        page: targetPage,
+        perPage,
+        year: targetYear,
+        idempotencyKey,
+      }, { signal });
+      const mapped = readApiData<GranAutomaticEnqueueResult>(response);
+      updateRequestLog(logId, {
+        mappedQuestionCount: mapped.questionCount,
+        batchId: mapped.batch?.batchId,
+      });
+      return mapped;
+    } catch (requestError) {
+      if (!signal.aborted) {
+        updateRequestLog(logId, {
+          error: safeGranLogError(requestError instanceof Error ? requestError.message : 'Falha sem detalhe do coletor.'),
+        });
+      }
+      throw requestError;
+    }
+  }, [granRequestUrl, perPage, startRequestLog, updateRequestLog]);
 
   const saveAutomaticCheckpoint = React.useCallback(async (
     checkpoint: Omit<GranAutomaticCheckpoint, 'runKey' | 'updatedAt'> & { runKey?: string },
@@ -2209,6 +2283,80 @@ const AdminGranCrawlerSection = ({
             Host e rota fixos, sem redirects; credencial isolada na extensão
           </span>
         </div>
+      </section>
+
+      <section className={ADMIN_PAGE_PANEL_CLASS} aria-label="Log de requisicoes Gran">
+        <details>
+          <summary className="group cursor-pointer list-none text-sm font-bold text-slate-800 marker:hidden dark:text-slate-100">
+            <span className="inline-flex items-center gap-2">
+              <ChevronRight size={16} className="transition-transform group-open:rotate-90" />
+              Log de requisicoes Gran ({requestLogs.length})
+            </span>
+            <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+              URL e resposta completa por pagina
+            </span>
+          </summary>
+          <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+            {requestLogs.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Nenhuma consulta feita nesta sessao. O log começa ao carregar uma pagina ou iniciar o modo automatico.
+              </p>
+            ) : (
+              <>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setRequestLogs([])}
+                    className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-1.5 text-[11px]`}
+                  >
+                    Limpar log
+                  </button>
+                </div>
+                {requestLogs.map((entry) => (
+                  <details key={entry.id} className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/60">
+                    <summary className="cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-100">
+                      {new Date(entry.startedAt).toLocaleTimeString('pt-BR')} · {entry.mode} · página {entry.page} · ano {entry.year}
+                      {' · '}
+                      {entry.rowsCount === undefined ? 'aguardando resposta' : `${entry.rowsCount} linha(s) recebida(s)`}
+                      {` / solicitado ${entry.requestedPerPage}`}
+                      {entry.httpStatus !== undefined ? ` · HTTP ${entry.httpStatus}` : ''}
+                      {entry.error ? ' · falhou' : ''}
+                    </summary>
+                    <dl className="mt-3 grid gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
+                      <div><dt className="font-semibold text-slate-500">Solicitado</dt><dd>página {entry.page}, {entry.requestedPerPage} por página, ano {entry.year}</dd></div>
+                      <div><dt className="font-semibold text-slate-500">Resposta Gran</dt><dd>HTTP {entry.httpStatus ?? 'sem resposta'}; página {entry.returnedPage ?? 'n/d'}; perPage {entry.returnedPerPage ?? 'n/d'}; total {entry.total ?? 'n/d'}; páginas {entry.pages ?? 'n/d'}; linhas {entry.rowsCount ?? 'n/d'}</dd></div>
+                      {entry.mappedQuestionCount !== undefined ? (
+                        <div><dt className="font-semibold text-slate-500">Mapeadas no ConcursoMestre</dt><dd>{entry.mappedQuestionCount}</dd></div>
+                      ) : null}
+                      {entry.batchId ? <div><dt className="font-semibold text-slate-500">Lote criado</dt><dd>{entry.batchId}</dd></div> : null}
+                    </dl>
+                    <p className="mt-3 text-[11px] font-semibold text-slate-500">Requisição efetiva</p>
+                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-white p-2 text-[10px] leading-4 text-slate-700 dark:bg-slate-950 dark:text-slate-300">{entry.requestUrl}</pre>
+                    {entry.responseKeys?.length ? <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-400"><strong>Campos da resposta:</strong> {entry.responseKeys.join(', ')}</p> : null}
+                    {entry.rowKeys?.length ? <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400"><strong>Campos da questão:</strong> {entry.rowKeys.join(', ')}</p> : null}
+                    {entry.sampleQuestions?.length ? (
+                      <div className="mt-2 text-[11px] text-slate-600 dark:text-slate-400">
+                        <strong>Amostra das primeiras questões:</strong>
+                        <ol className="mt-1 list-inside list-decimal space-y-1">
+                          {entry.sampleQuestions.map((sample, index) => <li key={`${entry.id}-sample-${index}`}>{sample}</li>)}
+                        </ol>
+                      </div>
+                    ) : null}
+                    {entry.responseJson ? (
+                      <details className="mt-3 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+                        <summary className="cursor-pointer px-3 py-2 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                          Exibir resposta completa da pagina (JSON)
+                        </summary>
+                        <pre className="max-h-[32rem] overflow-auto border-t border-slate-200 p-3 text-[10px] leading-4 text-slate-700 dark:border-slate-700 dark:text-slate-300">{entry.responseJson}</pre>
+                      </details>
+                    ) : null}
+                    {entry.error ? <p className="mt-2 text-xs font-semibold text-rose-700 dark:text-rose-300">Erro: {entry.error}</p> : null}
+                  </details>
+                ))}
+              </>
+            )}
+          </div>
+        </details>
       </section>
 
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">

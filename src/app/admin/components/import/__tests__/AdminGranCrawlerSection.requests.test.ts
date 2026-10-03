@@ -98,6 +98,14 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(reviewQueueSource.match(/action: 'enqueue_publication'/g)).toHaveLength(2);
   });
 
+  it('records complete Gran responses for manual and automatic page requests', () => {
+    expect(source).toContain("startRequestLog('manual', targetPage, targetYear, perPage, requestUrl)");
+    expect(source).toContain("startRequestLog('automatico', targetPage, targetYear, perPage, requestUrl)");
+    expect(source).toContain('responseJson: formatSafeGranResponse(collection.json)');
+    expect(source).toContain('Exibir resposta completa da pagina (JSON)');
+    expect(source).toContain('const MAX_GRAN_REQUEST_LOGS = 10');
+  });
+
   it('maps and renders the sanitized reason for every failed question', () => {
     expect(source).toContain('questionErrors?: Record<string, { code?: string; message?: string }>');
     expect(reviewQueueSource).toContain('queueErrorByQuestionKey');
