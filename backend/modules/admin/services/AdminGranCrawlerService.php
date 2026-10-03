@@ -376,6 +376,11 @@ final class AdminGranCrawlerService
      */
     public function mapAndEnqueuePublication(array $input, string $actorUserId): array
     {
+        if (!is_array($input['granResponse'] ?? null)) {
+            throw new InvalidArgumentException('A extensao nao retornou um JSON Gran valido.');
+        }
+        $request = $this->resolveRequestUrl($input, max(1, (int) ($input['page'] ?? 1)), max(1, min(self::MAX_QUESTIONS_PER_PAGE, (int) ($input['perPage'] ?? 20))), (string) ($input['year'] ?? ''));
+        $this->assertCompleteAutomaticPage($input['granResponse'], $request['page'], $request['perPage']);
         $mapped = $this->mapBrowserResponse($input);
         $payloads = is_array($mapped['payloads'] ?? null) ? $mapped['payloads'] : [];
         if ($payloads === []) {
@@ -3198,11 +3203,38 @@ final class AdminGranCrawlerService
             break;
         }
 
+        $effectivePerPage = $this->readPositiveInt($data['perPage'] ?? $pagination['perPage'] ?? $meta['perPage'] ?? 0);
         if ($total > 0) {
-            $pages = (int) ceil($total / max(1, $perPage));
+            $pages = (int) ceil($total / max(1, $effectivePerPage ?: $perPage));
         }
 
         return ['pages' => $pages, 'total' => $total, 'totalKnown' => $totalKnown];
+    }
+
+    private function assertCompleteAutomaticPage(array $payload, int $page, int $perPage): void
+    {
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $pagination = is_array($data['pagination'] ?? null) ? $data['pagination'] : [];
+        $effectivePerPage = $this->readPositiveInt($data['perPage'] ?? $pagination['perPage'] ?? 0);
+        $effectivePage = $this->readPositiveInt($data['page'] ?? $pagination['page'] ?? 0);
+        $received = count($this->extractRows($payload));
+        if (($effectivePerPage > 0 && $effectivePerPage !== $perPage)
+            || ($effectivePage > 0 && $effectivePage !== $page)) {
+            throw new DomainException(sprintf(
+                'Coleta incompleta: a pagina %d solicitou %d questoes, mas a Gran respondeu pagina %d com perPage %d e %d questoes. Nenhuma questao desta resposta foi enfileirada. O progresso foi preservado; reduza o filtro da Gran antes de continuar para nao saltar questoes.',
+                $page, $perPage, $effectivePage ?: $page, $effectivePerPage ?: $perPage, $received
+            ));
+        }
+        $metadata = $this->readPagination($payload, $perPage);
+        if ($metadata['totalKnown']) {
+            $expected = min($perPage, max(0, $metadata['total'] - ($page - 1) * $perPage));
+            if ($received !== $expected) {
+                throw new DomainException(sprintf(
+                    'Coleta incompleta na pagina %d: eram esperadas %d questoes e a Gran retornou %d. Nenhuma questao desta resposta foi enfileirada; tente novamente ou reduza o filtro.',
+                    $page, $expected, $received
+                ));
+            }
+        }
     }
 
     private function resolveDifficulty(mixed $value): string

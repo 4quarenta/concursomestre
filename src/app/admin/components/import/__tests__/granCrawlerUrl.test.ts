@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from '../granCrawlerUrl';
 
 describe('Gran crawler URL controls', () => {
+  it('replaces indexed years returned by PHP instead of accumulating them on resume', () => {
+    const previous = 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?anos[0]=2004&anos[1]=2004&bancas[]=10';
+    expect(readGranQuestionQueryControls(previous).year).toBe('2004');
+    const result = new URL(buildGranQuestionQueryUrl(previous, { page: 202, perPage: 100, year: '2005' }));
+    expect([...result.searchParams.keys()].filter((key) => key.startsWith('anos'))).toEqual(['anos[]']);
+    expect(result.searchParams.get('anos[]')).toBe('2005');
+    expect(result.searchParams.get('bancas[]')).toBe('10');
+  });
   it('applies page, perPage and a single year while preserving filters', () => {
     const result = new URL(buildGranQuestionQueryUrl(
       'https://rota-api.grancursosonline.com.br/v1/elastic/questao?page=7&perPage=20&anos=2024&anos%5B%5D=2025&banca=10',

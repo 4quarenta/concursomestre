@@ -24,10 +24,9 @@ export const readGranQuestionQueryControls = (urlValue: string): Partial<GranQue
   }
   const page = Number(parsed.searchParams.get('page'));
   const perPage = Number(parsed.searchParams.get('perPage'));
-  const rawYears = [
-    ...parsed.searchParams.getAll('anos'),
-    ...parsed.searchParams.getAll('anos[]'),
-  ].map((entry) => entry.trim()).filter(Boolean);
+  const rawYears = [...parsed.searchParams.entries()]
+    .filter(([key]) => /^anos(?:\[\d*\])?$/.test(key))
+    .map(([, entry]) => entry.trim()).filter(Boolean);
   const years = [...new Set(rawYears)];
   return {
     page: Number.isInteger(page) && page >= 1 ? page : undefined,
@@ -61,8 +60,9 @@ export const buildGranQuestionQueryUrl = (
   parsed.searchParams.delete('inedita');
   parsed.searchParams.set('page', String(page));
   parsed.searchParams.set('perPage', String(perPage));
-  parsed.searchParams.delete('anos');
-  parsed.searchParams.delete('anos[]');
+  for (const key of [...parsed.searchParams.keys()]) {
+    if (/^anos(?:\[\d*\])?$/.test(key)) parsed.searchParams.delete(key);
+  }
   if (year) parsed.searchParams.append('anos[]', year);
   return parsed.toString();
 };

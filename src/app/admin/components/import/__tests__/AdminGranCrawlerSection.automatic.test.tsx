@@ -163,6 +163,36 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(container.textContent).not.toContain('Request failed with status code 400');
   });
 
+  it('preserves the failing page and does not declare completion after a truncated Gran response', async () => {
+    mocks.post.mockImplementation(async (_endpoint: string, input: Record<string, unknown>) => {
+      if (input.action === 'map_and_enqueue_publication') {
+        throw Object.assign(new Error('Request failed with status code 400'), {
+          response: { data: { message: 'Coleta incompleta: solicitou 100, mas a Gran respondeu perPage 5.' } },
+        });
+      }
+      if (input.action === 'save_automatic_checkpoint') return { data: { data: input } };
+      throw new Error(`Unexpected request: ${String(input.action)}`);
+    });
+    await startCollection();
+    expect(container.textContent).toContain('Coleta incompleta: solicitou 100');
+    expect(container.textContent).not.toContain('Coleta automatica do ano 2000 concluida.');
+    expect(mocks.post).toHaveBeenCalledWith('admin/gran_crawler.php', expect.objectContaining({
+      action: 'save_automatic_checkpoint', page: 1, status: 'error',
+    }), undefined);
+    expect(mocks.post.mock.calls.some(([, input]) => input.action === 'clear_automatic_checkpoint')).toBe(false);
+  });
+
+  it('allows hiding failures and shows the green confirmed-publication counter', async () => {
+    await mountCrawler();
+    const toggle = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Ocultar falhas')!;
+    await act(async () => { toggle.click(); });
+    expect(container.querySelector<HTMLElement>('#gran-failures-content')?.hidden).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('[data-testid="gran-automatic-published-count"]')?.textContent).toContain('0 questões adicionadas para o ano 2000');
+    await act(async () => { toggle.click(); });
+    expect(container.querySelector<HTMLElement>('#gran-failures-content')?.hidden).toBe(false);
+  });
+
   it.each(['year', 'direct-url'])(
     'loads a manual filtered query (%s) and displays its total separately from the page size',
     async (filterMode) => {

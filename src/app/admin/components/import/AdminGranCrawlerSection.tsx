@@ -52,6 +52,7 @@ import {
 } from './granCrawlerYearPreference';
 import { useGranPublicationPolling } from './useGranPublicationPolling';
 import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from './granCrawlerUrl';
+import { countGranPublishedYear, recordGranPublishedBatch, type GranPublishedLedger } from './granAutomaticPublished';
 import {
   formatSafeGranResponse,
   readGranResponseLogSummary,
@@ -541,6 +542,7 @@ const AdminGranCrawlerSection = ({
   });
   const [automaticCheckpoint, setAutomaticCheckpoint] = React.useState<GranAutomaticCheckpoint | null>(null);
   const [automaticFilteredQuestionCount, setAutomaticFilteredQuestionCount] = React.useState<number | null>(null);
+  const [publishedLedger, setPublishedLedger] = React.useState<GranPublishedLedger>({ runKey: '', batches: {} });
   const [result, setResult] = React.useState<GranFetchResult | null>(null);
   const [requestLogs, setRequestLogs] = React.useState<GranPageRequestLog[]>([]);
   const [currentBatch, setCurrentBatch] = React.useState<GranPublicationBatch | null>(null);
@@ -558,6 +560,16 @@ const AdminGranCrawlerSection = ({
   const [failureActionProgress, setFailureActionProgress] = React.useState('');
   const [failureActionFeedback, setFailureActionFeedback] = React.useState('');
   const [showProcessingDetails, setShowProcessingDetails] = React.useState(false);
+  const [showProcessing, setShowProcessing] = React.useState(true);
+  const [showFailures, setShowFailures] = React.useState(true);
+
+  const recordPublished = React.useCallback((runKey: string, batch: GranPublicationBatch, batchYear: number) => {
+    setPublishedLedger((current) => {
+      const next = recordGranPublishedBatch(current, runKey, batch.batchId, batchYear, batch.published);
+      try { window.localStorage.setItem('admin.granCrawler.publishedCycle', JSON.stringify(next)); } catch { /* Keep the visible count. */ }
+      return next;
+    });
+  }, []);
   const [taxonomyExpanded, setTaxonomyExpanded] = React.useState(false);
   const [isCheckingTaxonomyUpdates, setIsCheckingTaxonomyUpdates] = React.useState(false);
   const [isFetching, setIsFetching] = React.useState(false);
@@ -658,6 +670,13 @@ const AdminGranCrawlerSection = ({
     try {
       const data = await fetchGranCrawlerBootstrap(force, signal);
       if (signal?.aborted || !isMountedRef.current) return null;
+      if (!automaticAbortRef.current) try {
+        const stored = JSON.parse(window.localStorage.getItem('admin.granCrawler.publishedCycle') || 'null') as GranPublishedLedger | null;
+        if (stored && typeof stored.runKey === 'string' && stored.batches
+          && Object.values(stored.batches).every((batch) => batch && Number.isInteger(batch.year) && Number.isInteger(batch.published) && batch.published >= 0)) {
+          setPublishedLedger(stored);
+        }
+      } catch { /* Local counters are optional when storage is unavailable. */ }
       setCurrentBatch(data?.currentBatch && typeof data.currentBatch === 'object' ? data.currentBatch : null);
       const checkpoint = data?.automaticCheckpoint && typeof data.automaticCheckpoint === 'object'
         ? data.automaticCheckpoint
@@ -836,7 +855,7 @@ const AdminGranCrawlerSection = ({
     } catch (requestError) {
       if (!signal.aborted) {
         updateRequestLog(logId, {
-          error: safeGranLogError(requestError instanceof Error ? requestError.message : 'Falha sem detalhe do coletor.'),
+          error: safeGranLogError(readApiErrorMessage(requestError, 'Falha sem detalhe do coletor.')),
         });
       }
       throw requestError;
@@ -887,7 +906,7 @@ const AdminGranCrawlerSection = ({
     } catch (requestError) {
       if (!signal.aborted) {
         updateRequestLog(logId, {
-          error: safeGranLogError(requestError instanceof Error ? requestError.message : 'Falha sem detalhe do coletor.'),
+          error: safeGranLogError(readApiErrorMessage(requestError, 'Falha sem detalhe do coletor.')),
         });
       }
       throw requestError;
@@ -1369,6 +1388,8 @@ const AdminGranCrawlerSection = ({
           lastError: null,
         }, controller.signal);
       }
+      const activeRunKey = checkpoint.runKey;
+      setPublishedLedger((current) => current.runKey === activeRunKey ? current : { runKey: activeRunKey, batches: {} });
       const waitForOldestPublication = async () => {
         const flight = inFlightBatches.shift();
         if (!flight) return;
@@ -1381,6 +1402,7 @@ const AdminGranCrawlerSection = ({
           message: `Confirmando publicacao da pagina ${flight.page} de ${flight.totalPages || '?'} (ano ${flight.year}).`,
         });
         const processedBatch = await waitForPublicationBatch(flight.batch, controller.signal);
+        recordPublished(checkpoint!.runKey, processedBatch, flight.year);
         if (processedBatch.status === 'failed') {
           failedFlight = flight;
           throw new Error(processedBatch.error || `A publicacao da pagina ${flight.page} falhou.`);
@@ -1566,6 +1588,7 @@ const AdminGranCrawlerSection = ({
     perPage,
     saveAutomaticCheckpoint,
     waitForPublicationBatch,
+    recordPublished,
     year,
   ]);
 
@@ -2205,6 +2228,9 @@ const AdminGranCrawlerSection = ({
                   {automaticFilteredQuestionCount.toLocaleString('pt-BR')} questões encontradas para o ano {automaticProgress.year || year}.
                 </p>
               )}
+              <p className="mt-2 text-sm font-bold text-emerald-700 dark:text-emerald-300" data-testid="gran-automatic-published-count">
+                {countGranPublishedYear(publishedLedger, automaticProgress.year || Number(year)).toLocaleString('pt-BR')} questões adicionadas para o ano {automaticProgress.year || year}.
+              </p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <p className="max-w-xs text-xs leading-5 text-slate-500 dark:text-slate-400">
@@ -2454,6 +2480,10 @@ const AdminGranCrawlerSection = ({
                 {hasActiveJobs ? 'Processamento atual' : 'Último processamento'}
               </h3>
             </div>
+            <button type="button" onClick={() => setShowProcessing((current) => !current)} aria-expanded={showProcessing} aria-controls="gran-processing-content" className={ADMIN_SECONDARY_BUTTON_CLASS}>
+              {showProcessing ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {showProcessing ? 'Ocultar processamento' : 'Mostrar processamento'}
+            </button>
             <button
               type="button"
               onClick={() => void refreshCurrentProcessing()}
@@ -2465,7 +2495,7 @@ const AdminGranCrawlerSection = ({
             </button>
           </div>
 
-          <div className="rounded-md border border-slate-200 p-4 dark:border-slate-700">
+          <div id="gran-processing-content" hidden={!showProcessing} className="rounded-md border border-slate-200 p-4 dark:border-slate-700">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <strong className="text-slate-800 dark:text-slate-100">
                 {currentBatch.displayName || `${formatCollectionPages(currentBatch.collectionPages)} · ${currentBatch.questionCount} questões`}
@@ -2579,6 +2609,10 @@ const AdminGranCrawlerSection = ({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setShowFailures((current) => !current)} aria-expanded={showFailures} aria-controls="gran-failures-content" className={ADMIN_SECONDARY_BUTTON_CLASS}>
+              {showFailures ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {showFailures ? 'Ocultar falhas' : 'Mostrar falhas'}
+            </button>
             <button
               type="button"
               onClick={() => void handleRetryAllFailures()}
@@ -2610,6 +2644,7 @@ const AdminGranCrawlerSection = ({
           </div>
         </div>
 
+        <div id="gran-failures-content" hidden={!showFailures}>
         <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-xs dark:border-slate-700 dark:bg-slate-950/30 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="font-bold text-slate-700 dark:text-slate-200">Higiene do historico</p>
@@ -2739,6 +2774,7 @@ const AdminGranCrawlerSection = ({
               Carregar mais
             </button>
           ) : null}
+        </div>
         </div>
       </section>
 
