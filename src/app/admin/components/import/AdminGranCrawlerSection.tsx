@@ -495,6 +495,23 @@ const readRateLimitRetryDelay = (error: unknown, fallbackMilliseconds = 15_000) 
   return fallbackMilliseconds;
 };
 
+const readAutomaticRetryDelay = (error: unknown, attempt: number) => {
+  const rateLimitDelay = readRateLimitRetryDelay(error);
+  if (rateLimitDelay !== null) return rateLimitDelay;
+
+  const typedError = error as {
+    response?: { status?: number };
+    message?: unknown;
+  };
+  const status = Number(typedError.response?.status || 0);
+  const message = String(typedError.message || '').toLowerCase();
+  const transientCollectorFailure = /extensao nao respondeu dentro do tempo limite|network error|failed to fetch|network request failed/i.test(message);
+  const transientServerFailure = status >= 500 && status <= 599;
+  if (!transientCollectorFailure && !transientServerFailure) return null;
+
+  return Math.min(30_000, 3_000 * (2 ** Math.max(0, attempt - 1)));
+};
+
 const describeCollectorCaptureStatus = (status: GranCollectorStatus | null) => {
   switch (status?.captureState) {
     case 'origin_rejected':
@@ -1474,7 +1491,7 @@ const AdminGranCrawlerSection = ({
             );
             break;
           } catch (requestError) {
-            const retryDelay = readRateLimitRetryDelay(requestError);
+            const retryDelay = readAutomaticRetryDelay(requestError, attempt);
             if (retryDelay === null || attempt === 5) throw requestError;
             const retrySeconds = Math.ceil(retryDelay / 1_000);
             setAutomaticProgress({
@@ -1483,7 +1500,7 @@ const AdminGranCrawlerSection = ({
               page: cursorPage,
               totalPages: displayedTotal,
               questionsCollected: 0,
-              message: `Limite temporario recebido na pagina ${cursorPage} de ${displayedTotal || '?'} (ano ${cursorYear}). Nova tentativa em ${retrySeconds}s (${attempt}/5).`,
+              message: `Falha temporaria na pagina ${cursorPage} de ${displayedTotal || '?'} (ano ${cursorYear}). Nova tentativa em ${retrySeconds}s (${attempt}/5).`,
             });
             await delayWithSignal(retryDelay, controller.signal);
           }

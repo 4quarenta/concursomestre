@@ -182,6 +182,24 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(mocks.post.mock.calls.some(([, input]) => input.action === 'clear_automatic_checkpoint')).toBe(false);
   });
 
+  it('retries a transient extension timeout on the same page before finishing', async () => {
+    let collectionAttempts = 0;
+    mocks.collect.mockImplementation(async (requestUrl: string) => {
+      collectionAttempts += 1;
+      if (collectionAttempts < 3) {
+        throw new Error('A extensao nao respondeu dentro do tempo limite.');
+      }
+      return { requestUrl, json: { data: { rows: [] } }, examFiles: {}, assetData: {} };
+    });
+
+    await startCollection();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+
+    expect(collectionAttempts).toBe(3);
+    expect(mocks.post.mock.calls.some(([, input]) => input.status === 'error')).toBe(false);
+    expect(container.textContent).toContain('Coleta automatica do ano 2000 concluida.');
+  });
+
   it('retries a large page with a safe size when Gran ignores the year filter', async () => {
     mocks.get.mockResolvedValue({ data: { data: {
       automaticCheckpoint: {
