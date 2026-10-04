@@ -277,6 +277,7 @@ const MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2;
 const MAX_RELIABLE_GRAN_PAGES = 500;
 const MAX_GRAN_REQUEST_LOGS = 10;
 const SAFE_GRAN_FILTER_PAGE_SIZE = 20;
+const AUTOMATIC_ENQUEUE_REQUEST_TIMEOUT_MS = 180_000;
 
 /**
  * A mesma pagina da Gran pode ser retomada depois de uma atualizacao do
@@ -973,7 +974,12 @@ const AdminGranCrawlerSection = ({
         perPage: effectivePerPage,
         year: targetYear,
         idempotencyKey,
-      }, { signal });
+      }, {
+        signal,
+        // A page is mapped and queued synchronously before the worker takes
+        // over. Large, valid pages can exceed the normal 30s UI timeout.
+        timeout: AUTOMATIC_ENQUEUE_REQUEST_TIMEOUT_MS,
+      });
       const mapped = readApiData<GranAutomaticEnqueueResult>(response);
       updateRequestLog(logId, {
         mappedQuestionCount: mapped.questionCount,

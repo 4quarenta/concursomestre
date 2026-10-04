@@ -110,6 +110,11 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('const MAX_GRAN_REQUEST_LOGS = 10');
   });
 
+  it('allows the synchronous automatic enqueue to finish without changing the global API timeout', () => {
+    expect(source).toContain('const AUTOMATIC_ENQUEUE_REQUEST_TIMEOUT_MS = 180_000');
+    expect(source).toContain('timeout: AUTOMATIC_ENQUEUE_REQUEST_TIMEOUT_MS');
+  });
+
   it('maps and renders the sanitized reason for every failed question', () => {
     expect(source).toContain('questionErrors?: Record<string, { code?: string; message?: string }>');
     expect(reviewQueueSource).toContain('queueErrorByQuestionKey');
