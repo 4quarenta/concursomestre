@@ -512,6 +512,14 @@ const readAutomaticRetryDelay = (error: unknown, attempt: number) => {
   return Math.min(30_000, 3_000 * (2 ** Math.max(0, attempt - 1)));
 };
 
+const readGranEffectivePageSize = (error: unknown): number | null => {
+  const message = readApiErrorMessage(error, '');
+  const match = message.match(/Gran respondeu(?: pagina \d+)?(?: com)?\s+perPage\s+(\d+)/i);
+  if (!match) return null;
+  const pageSize = Number(match[1]);
+  return Number.isInteger(pageSize) && pageSize > 0 ? pageSize : null;
+};
+
 const describeCollectorCaptureStatus = (status: GranCollectorStatus | null) => {
   switch (status?.captureState) {
     case 'origin_rejected':
@@ -886,15 +894,18 @@ const AdminGranCrawlerSection = ({
     targetYear: string,
     runKey: string,
     signal: AbortSignal,
+    requestedPerPage = perPage,
+    requestedRequestUrl = granRequestUrl,
   ): Promise<GranAutomaticEnqueueResult> => {
-    const requestUrl = buildGranQuestionQueryUrl(granRequestUrl, {
+    const requestPageSize = Math.max(1, Number(requestedPerPage) || perPage);
+    const requestUrl = buildGranQuestionQueryUrl(requestedRequestUrl, {
       page: targetPage,
-      perPage,
+      perPage: requestPageSize,
       year: targetYear,
     });
-    const logId = startRequestLog('automatico', targetPage, targetYear, perPage, requestUrl);
+    const logId = startRequestLog('automatico', targetPage, targetYear, requestPageSize, requestUrl);
     try {
-      let effectivePerPage = perPage;
+      let effectivePerPage = requestPageSize;
       let effectiveRequestUrl = requestUrl;
       let collection = await collectGranQuestions(effectiveRequestUrl, signal);
       updateRequestLog(logId, {
@@ -904,13 +915,13 @@ const AdminGranCrawlerSection = ({
       });
 
       const initialValidation = validateGranQuestionYearFilter(collection.json, targetYear);
-      if (!initialValidation.valid && perPage > SAFE_GRAN_FILTER_PAGE_SIZE) {
+      if (!initialValidation.valid && requestPageSize > SAFE_GRAN_FILTER_PAGE_SIZE) {
         const fallbackPerPage = SAFE_GRAN_FILTER_PAGE_SIZE;
         updateRequestLog(logId, {
           error: `A Gran retornou pagina fora do ano ${targetYear}; nova tentativa automatica com ${fallbackPerPage} por pagina.`,
         });
         effectivePerPage = fallbackPerPage;
-        effectiveRequestUrl = buildGranQuestionQueryUrl(granRequestUrl, {
+        effectiveRequestUrl = buildGranQuestionQueryUrl(requestedRequestUrl, {
           page: targetPage,
           perPage: effectivePerPage,
           year: targetYear,
@@ -1481,6 +1492,7 @@ const AdminGranCrawlerSection = ({
           message: `Coletando pagina ${cursorPage} de ${displayedTotal || '?'} (ano ${cursorYear}).`,
         });
         let data: GranAutomaticEnqueueResult | null = null;
+        let restartedYearForProviderPageSize = false;
         for (let attempt = 1; !controller.signal.aborted && attempt <= 5; attempt += 1) {
           try {
             data = await collectAndEnqueueAutomaticPage(
@@ -1488,9 +1500,49 @@ const AdminGranCrawlerSection = ({
               String(cursorYear),
               checkpoint.runKey,
               controller.signal,
+              checkpoint.perPage,
+              checkpoint.requestUrl,
             );
             break;
           } catch (requestError) {
+            const effectivePageSize = readGranEffectivePageSize(requestError);
+            if (effectivePageSize !== null && effectivePageSize < checkpoint.perPage) {
+              const failedPage = cursorPage;
+              const restartRequestUrl = buildGranQuestionQueryUrl(checkpoint.requestUrl, {
+                page: 1,
+                perPage: effectivePageSize,
+                year: String(cursorYear),
+              });
+              while (inFlightBatches.length > 0) {
+                await waitForOldestPublication();
+              }
+              checkpoint = await saveAutomaticCheckpoint({
+                requestUrl: restartRequestUrl,
+                runKey: checkpoint.runKey,
+                perPage: effectivePageSize,
+                year: cursorYear,
+                page: 1,
+                totalPages: null,
+                status: 'running',
+                lastBatchId: checkpoint.lastBatchId || null,
+                lastError: null,
+              }, controller.signal);
+              cursorPage = 1;
+              setPage(1);
+              setPerPage(effectivePageSize);
+              setGranRequestUrl(restartRequestUrl);
+              setAutomaticFilteredQuestionCount(null);
+              setAutomaticProgress({
+                phase: 'waiting',
+                year: cursorYear,
+                page: 1,
+                totalPages: null,
+                questionsCollected: 0,
+                message: `A Gran respondeu com ${effectivePageSize} por pagina na pagina ${failedPage}. Reiniciando o ano ${cursorYear} desde a pagina 1 para nao pular questoes.`,
+              });
+              restartedYearForProviderPageSize = true;
+              break;
+            }
             const retryDelay = readAutomaticRetryDelay(requestError, attempt);
             if (retryDelay === null || attempt === 5) throw requestError;
             const retrySeconds = Math.ceil(retryDelay / 1_000);
@@ -1505,6 +1557,7 @@ const AdminGranCrawlerSection = ({
             await delayWithSignal(retryDelay, controller.signal);
           }
         }
+        if (restartedYearForProviderPageSize) continue;
         if (!data) break;
         const pageQuestionCount = data.questionCount;
         const effectivePerPage = Math.max(1, Number(data.perPage) || checkpoint.perPage);

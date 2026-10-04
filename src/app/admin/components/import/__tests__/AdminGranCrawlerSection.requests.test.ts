@@ -18,6 +18,10 @@ const bridgeSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/app/admin/components/import/granExtensionBridge.ts'),
   'utf8',
 );
+const yearPreferenceSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/app/admin/components/import/granCrawlerYearPreference.ts'),
+  'utf8',
+);
 const extensionWorkerSource = fs.readFileSync(
   path.resolve(process.cwd(), 'browser-extension/gran-collector/service-worker.js'),
   'utf8',
@@ -85,7 +89,7 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain('MAX_GRAN_QUESTIONS_PER_PAGE = 1000');
     expect(source).toContain('type="number"');
     expect(source).toContain('max={MAX_GRAN_QUESTIONS_PER_PAGE}');
-    expect(source).toContain("GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear'");
+    expect(yearPreferenceSource).toContain("GRAN_LAST_YEAR_STORAGE_KEY = 'admin.granCrawler.lastYear'");
     expect(source).toContain('window.localStorage.setItem(GRAN_LAST_YEAR_STORAGE_KEY, savedYear)');
     expect(source).toContain('setResult(data);');
     expect(source).not.toContain('mergeGranReviewPayloads(current.payloads');
@@ -100,7 +104,7 @@ describe('AdminGranCrawlerSection requests', () => {
 
   it('records complete Gran responses for manual and automatic page requests', () => {
     expect(source).toContain("startRequestLog('manual', targetPage, targetYear, perPage, requestUrl)");
-    expect(source).toContain("startRequestLog('automatico', targetPage, targetYear, perPage, requestUrl)");
+    expect(source).toContain("startRequestLog('automatico', targetPage, targetYear, requestPageSize, requestUrl)");
     expect(source).toContain('responseJson: formatSafeGranResponse(collection.json)');
     expect(source).toContain('Exibir resposta completa da pagina (JSON)');
     expect(source).toContain('const MAX_GRAN_REQUEST_LOGS = 10');
@@ -158,17 +162,20 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain("action: 'publication_batch_progress'");
     expect(source).toContain('const AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000;');
     expect(source).toContain('readRateLimitRetryDelay');
+    expect(source).toContain('readGranEffectivePageSize');
+    expect(source).toContain('restartedYearForProviderPageSize');
+    expect(source).toContain('Reiniciando o ano ${cursorYear} desde a pagina 1');
     expect(source).toContain('attempt <= 5');
-    expect(source).toContain('Limite temporario recebido na pagina ${cursorPage}');
+    expect(source).toContain('Falha temporaria na pagina ${cursorPage}');
     expect(source).toContain('MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2');
     expect(source).toContain('inFlightBatches.push({');
     expect(source).toContain('if (inFlightBatches.length >= MAX_AUTOMATIC_IN_FLIGHT_BATCHES)');
     expect(source).toContain('await waitForOldestPublication();');
     expect(source).toContain('const processedBatch = await waitForPublicationBatch(flight.batch, controller.signal);');
-    expect(source).toContain('while (!controller.signal.aborted && cursorYear === startYear)');
-    expect(source).toContain('if (exhaustedYear) break;');
+    expect(source).toContain('while (!controller.signal.aborted && cursorYear <= finalYear)');
+    expect(source).toContain('if (exhaustedYear && !continuesNextYear) break;');
     expect(source).toContain('Coleta automatica do ano ${startYear} concluida.');
-    expect(source).not.toContain('cursorYear + 1');
+    expect(source).toContain('cursorYear + 1');
     expect(source).not.toContain('continua na pagina 1 do ano seguinte');
     expect(source).toContain('collectGranQuestions(requestUrl, signal)');
     expect(bridgeSource).toContain("signal?.addEventListener('abort', handleAbort, { once: true });");

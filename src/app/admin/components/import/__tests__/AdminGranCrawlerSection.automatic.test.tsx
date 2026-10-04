@@ -182,6 +182,59 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(mocks.post.mock.calls.some(([, input]) => input.action === 'clear_automatic_checkpoint')).toBe(false);
   });
 
+  it('restarts the current year with the provider page size when Gran shrinks perPage', async () => {
+    let mismatch = true;
+    mocks.post.mockImplementation(async (_endpoint: string, input: Record<string, unknown>) => {
+      if (input.action === 'map_and_enqueue_publication' && mismatch) {
+        mismatch = false;
+        throw Object.assign(new Error('Request failed with status code 400'), {
+          response: { data: { message: 'Coleta incompleta: a pagina 101 solicitou 20 questoes, mas a Gran respondeu pagina 101 com perPage 10 e 10 questoes.' } },
+        });
+      }
+      if (input.action === 'map_and_enqueue_publication') {
+        return { data: { data: {
+          page: input.page,
+          perPage: input.perPage,
+          total: 10,
+          pages: 1,
+          sourceQuestionCount: 10,
+          questionCount: 0,
+          fileCount: 0,
+          batch: null,
+        } } };
+      }
+      if (input.action === 'save_automatic_checkpoint') return { data: { data: input } };
+      if (input.action === 'clear_automatic_checkpoint') return { data: {} };
+      throw new Error(`Unexpected request: ${String(input.action)}`);
+    });
+    mocks.collect.mockImplementation(async (requestUrl: string) => ({
+      requestUrl,
+      json: { data: { rows: [] } },
+      examFiles: {},
+      assetData: {},
+    }));
+
+    await startCollection();
+
+    expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('perPage')))
+      .toEqual(['20', '10']);
+    expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('page')))
+      .toEqual(['1', '1']);
+    expect(mocks.post.mock.calls.some(([, input]) => (
+      input.action === 'map_and_enqueue_publication'
+      && input.page === 1
+      && input.perPage === 10
+    ))).toBe(true);
+    expect(mocks.post.mock.calls.some(([, input]) => (
+      input.action === 'save_automatic_checkpoint'
+      && input.page === 1
+      && input.perPage === 10
+      && input.status === 'running'
+    ))).toBe(true);
+    expect(container.textContent).toContain('Coleta automatica do ano 2000 concluida.');
+    expect(mocks.post.mock.calls.some(([, input]) => input.action === 'clear_automatic_checkpoint')).toBe(true);
+  });
+
   it('retries a transient extension timeout on the same page before finishing', async () => {
     let collectionAttempts = 0;
     mocks.collect.mockImplementation(async (requestUrl: string) => {
