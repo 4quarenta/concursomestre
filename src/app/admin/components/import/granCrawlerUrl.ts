@@ -1,6 +1,27 @@
 const GRAN_API_ENDPOINT = 'https://rota-api.grancursosonline.com.br/v1/elastic/questao';
 const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
 
+/**
+ * A API da Gran pode reduzir o tamanho efetivo quando a pagina numerica fica
+ * muito profunda. Trocar o perPage no meio de um ciclo faria a mesma pagina
+ * apontar para outra faixa de itens. Recalcule um tamanho fixo desde a pagina
+ * 1 para manter o ciclo dentro do limite observado de paginas.
+ */
+export const calculateGranSafePageSize = (
+  totalPages: number,
+  perPage: number,
+  maxPages = 500,
+): number => {
+  const currentPageSize = Math.max(1, Math.min(MAX_GRAN_QUESTIONS_PER_PAGE, Math.trunc(perPage)));
+  const observedPages = Math.max(0, Math.trunc(totalPages));
+  const pageLimit = Math.max(1, Math.trunc(maxPages));
+  if (observedPages <= pageLimit) return currentPageSize;
+  return Math.max(
+    currentPageSize,
+    Math.min(MAX_GRAN_QUESTIONS_PER_PAGE, Math.ceil((observedPages * currentPageSize) / pageLimit)),
+  );
+};
+
 export type GranQuestionQueryControls = {
   page: number;
   perPage: number;

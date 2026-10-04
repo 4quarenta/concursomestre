@@ -51,7 +51,11 @@ import {
   persistGranCrawlerYearPreference,
 } from './granCrawlerYearPreference';
 import { useGranPublicationPolling } from './useGranPublicationPolling';
-import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from './granCrawlerUrl';
+import {
+  buildGranQuestionQueryUrl,
+  calculateGranSafePageSize,
+  readGranQuestionQueryControls,
+} from './granCrawlerUrl';
 import { countGranPublishedYear, recordGranPublishedBatch, type GranPublishedLedger } from './granAutomaticPublished';
 import {
   formatSafeGranResponse,
@@ -270,6 +274,7 @@ const AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000;
 const ACTIVE_BATCH_STATUS_REFRESH_MS = 15_000;
 const TAXONOMY_CHECK_FRESH_MS = 6 * 60 * 60 * 1000;
 const MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2;
+const MAX_RELIABLE_GRAN_PAGES = 500;
 const MAX_GRAN_REQUEST_LOGS = 10;
 const SAFE_GRAN_FILTER_PAGE_SIZE = 20;
 
@@ -1508,9 +1513,19 @@ const AdminGranCrawlerSection = ({
             const effectivePageSize = readGranEffectivePageSize(requestError);
             if (effectivePageSize !== null && effectivePageSize < checkpoint.perPage) {
               const failedPage = cursorPage;
+              const restartPageSize = checkpoint.totalPages
+                ? Math.max(
+                  effectivePageSize,
+                  calculateGranSafePageSize(
+                    checkpoint.totalPages,
+                    checkpoint.perPage,
+                    MAX_RELIABLE_GRAN_PAGES,
+                  ),
+                )
+                : effectivePageSize;
               const restartRequestUrl = buildGranQuestionQueryUrl(checkpoint.requestUrl, {
                 page: 1,
-                perPage: effectivePageSize,
+                perPage: restartPageSize,
                 year: String(cursorYear),
               });
               while (inFlightBatches.length > 0) {
@@ -1519,7 +1534,7 @@ const AdminGranCrawlerSection = ({
               checkpoint = await saveAutomaticCheckpoint({
                 requestUrl: restartRequestUrl,
                 runKey: checkpoint.runKey,
-                perPage: effectivePageSize,
+                perPage: restartPageSize,
                 year: cursorYear,
                 page: 1,
                 totalPages: null,
@@ -1529,7 +1544,7 @@ const AdminGranCrawlerSection = ({
               }, controller.signal);
               cursorPage = 1;
               setPage(1);
-              setPerPage(effectivePageSize);
+              setPerPage(restartPageSize);
               setGranRequestUrl(restartRequestUrl);
               setAutomaticFilteredQuestionCount(null);
               setAutomaticProgress({
@@ -1538,7 +1553,9 @@ const AdminGranCrawlerSection = ({
                 page: 1,
                 totalPages: null,
                 questionsCollected: 0,
-                message: `A Gran respondeu com ${effectivePageSize} por pagina na pagina ${failedPage}. Reiniciando o ano ${cursorYear} desde a pagina 1 para nao pular questoes.`,
+                message: restartPageSize > effectivePageSize
+                  ? `A Gran reduziu para ${effectivePageSize} por pagina na pagina ${failedPage}. Reiniciando o ano ${cursorYear} desde a pagina 1 com ${restartPageSize} por pagina para nao duplicar nem pular questoes.`
+                  : `A Gran respondeu com ${effectivePageSize} por pagina na pagina ${failedPage}. Reiniciando o ano ${cursorYear} desde a pagina 1 para nao pular questoes.`,
               });
               restartedYearForProviderPageSize = true;
               break;

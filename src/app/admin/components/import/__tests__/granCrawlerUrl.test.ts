@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildGranQuestionQueryUrl, readGranQuestionQueryControls } from '../granCrawlerUrl';
+import {
+  buildGranQuestionQueryUrl,
+  calculateGranSafePageSize,
+  readGranQuestionQueryControls,
+} from '../granCrawlerUrl';
 
 describe('Gran crawler URL controls', () => {
   it('replaces indexed years returned by PHP instead of accumulating them on resume', () => {
@@ -56,5 +60,11 @@ describe('Gran crawler URL controls', () => {
     expect(readGranQuestionQueryControls(
       'https://rota-api.grancursosonline.com.br/v1/elastic/questao?page=1&perPage=1000&anos%5B%5D=1999',
     )).toEqual({ page: 1, perPage: 1000, year: '1999' });
+  });
+
+  it('raises the page size before a deep-page provider fallback can overlap data', () => {
+    expect(calculateGranSafePageSize(607, 100)).toBe(122);
+    expect(calculateGranSafePageSize(1001, 5)).toBe(11);
+    expect(calculateGranSafePageSize(500, 100)).toBe(100);
   });
 });
