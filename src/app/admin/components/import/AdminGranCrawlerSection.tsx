@@ -575,6 +575,7 @@ const AdminGranCrawlerSection = ({
   });
   const [automaticCheckpoint, setAutomaticCheckpoint] = React.useState<GranAutomaticCheckpoint | null>(null);
   const [automaticFilteredQuestionCount, setAutomaticFilteredQuestionCount] = React.useState<number | null>(null);
+  const [automaticProcessedQuestionCount, setAutomaticProcessedQuestionCount] = React.useState(0);
   const [publishedLedger, setPublishedLedger] = React.useState<GranPublishedLedger>({ runKey: '', batches: {} });
   const [result, setResult] = React.useState<GranFetchResult | null>(null);
   const [requestLogs, setRequestLogs] = React.useState<GranPageRequestLog[]>([]);
@@ -655,6 +656,14 @@ const AdminGranCrawlerSection = ({
     [result?.payloads],
   );
   const isFixtureResult = result?.provider === 'm20f05-fixture';
+  const automaticProgressPercentage = automaticFilteredQuestionCount !== null
+    ? automaticFilteredQuestionCount === 0
+      ? 100
+      : Math.min(100, Math.round((automaticProcessedQuestionCount / automaticFilteredQuestionCount) * 100))
+    : null;
+  const automaticRemainingQuestionCount = automaticFilteredQuestionCount !== null
+    ? Math.max(0, automaticFilteredQuestionCount - automaticProcessedQuestionCount)
+    : null;
 
   const checkCollector = React.useCallback(async (showFailure = false, force = false) => {
     if (!force && collectorStatusCache && Date.now() - collectorStatusCache.checkedAt < COLLECTOR_STATUS_CACHE_MS) {
@@ -731,7 +740,10 @@ const AdminGranCrawlerSection = ({
             ? `Interrompido na pagina ${checkpoint.page} de ${checkpoint.year}: ${checkpoint.lastError}`
             : `Progresso salvo: pagina ${checkpoint.page} do ano ${checkpoint.year}. O total sera recalculado ao retomar.`,
         });
+        setAutomaticProcessedQuestionCount(Math.max(0, (checkpoint.page - 1) * checkpoint.perPage));
         setAutomaticFilteredQuestionCount(null);
+      } else if (!automaticAbortRef.current) {
+        setAutomaticProcessedQuestionCount(0);
       }
       if (data?.failureHistory && Array.isArray(data.failureHistory.items)) {
         const activeItems = data.failureHistory.items.filter((failure) => (
@@ -1034,7 +1046,6 @@ const AdminGranCrawlerSection = ({
     await apiClient.post(ENDPOINT, { action: 'clear_automatic_checkpoint' });
     setAutomaticCheckpoint(null);
     automaticCheckpointRef.current = null;
-    setAutomaticFilteredQuestionCount(null);
     bootstrapCache = null;
   }, []);
 
@@ -1451,6 +1462,10 @@ const AdminGranCrawlerSection = ({
     let cursorYear = checkpoint?.year || startYear;
     const finalYear = automaticAdvanceYear ? new Date().getFullYear() : startYear;
     let cursorPage = checkpoint?.page || Math.max(1, page);
+    let processedQuestionCount = checkpoint
+      ? Math.max(0, (cursorPage - 1) * checkpoint.perPage)
+      : Math.max(0, (cursorPage - 1) * perPage);
+    setAutomaticProcessedQuestionCount(processedQuestionCount);
     const inFlightBatches: AutomaticPublicationFlight[] = [];
     let failedFlight: AutomaticPublicationFlight | null = null;
 
@@ -1572,6 +1587,8 @@ const AdminGranCrawlerSection = ({
               setPerPage(restartPageSize);
               setGranRequestUrl(restartRequestUrl);
               setAutomaticFilteredQuestionCount(null);
+              processedQuestionCount = 0;
+              setAutomaticProcessedQuestionCount(0);
               setAutomaticProgress({
                 phase: 'waiting',
                 year: cursorYear,
@@ -1611,12 +1628,15 @@ const AdminGranCrawlerSection = ({
         } else if (data.total === 0 && cursorPage === 1 && pageQuestionCount === 0) {
           setAutomaticFilteredQuestionCount(0);
         }
+        const sourceQuestionCount = Math.max(0, Number(data.sourceQuestionCount) || 0);
+        processedQuestionCount += sourceQuestionCount;
+        if (data.total > 0) processedQuestionCount = Math.min(processedQuestionCount, data.total);
+        setAutomaticProcessedQuestionCount(processedQuestionCount);
         const knownPageCount = data.pages > 0
           ? data.pages
           : data.total > 0
             ? Math.ceil(data.total / Math.max(1, data.perPage || checkpoint.perPage))
             : 0;
-        const sourceQuestionCount = Math.max(0, Number(data.sourceQuestionCount) || 0);
         const exhaustedYear = sourceQuestionCount === 0
           || (knownPageCount > 0 && cursorPage >= knownPageCount)
           || (knownPageCount === 0 && sourceQuestionCount < effectivePerPage);
@@ -1672,6 +1692,9 @@ const AdminGranCrawlerSection = ({
           if (continuesNextYear) {
             setYear(String(cursorYear));
             persistGranCrawlerYearPreference(cursorYear);
+            processedQuestionCount = 0;
+            setAutomaticProcessedQuestionCount(0);
+            setAutomaticFilteredQuestionCount(null);
           }
           setPage(cursorPage);
           if (inFlightBatches.length >= MAX_AUTOMATIC_IN_FLIGHT_BATCHES) {
@@ -2388,9 +2411,20 @@ const AdminGranCrawlerSection = ({
                 {automaticProgress.message}
               </p>
               {automaticFilteredQuestionCount !== null && (
-                <p className="mt-1 text-xs font-semibold text-sky-800 dark:text-sky-300" data-testid="gran-automatic-filter-count">
-                  {automaticFilteredQuestionCount.toLocaleString('pt-BR')} questões encontradas para o ano {automaticProgress.year || year}.
-                </p>
+                <>
+                  <p className="mt-1 text-xs font-semibold text-sky-800 dark:text-sky-300" data-testid="gran-automatic-filter-count">
+                    {automaticFilteredQuestionCount.toLocaleString('pt-BR')} questões encontradas para o ano {automaticProgress.year || year}.
+                  </p>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={automaticProgressPercentage ?? 0} aria-label="Progresso da coleta automatica">
+                    <div
+                      className="h-full rounded-full bg-sky-600 transition-[width] duration-300"
+                      style={{ width: `${automaticProgressPercentage ?? 0}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-sky-800 dark:text-sky-300" data-testid="gran-automatic-progress">
+                    Progresso: {automaticProgressPercentage}% ({automaticProcessedQuestionCount.toLocaleString('pt-BR')} processadas de {automaticFilteredQuestionCount.toLocaleString('pt-BR')}). Restantes: {automaticRemainingQuestionCount?.toLocaleString('pt-BR')}.
+                  </p>
+                </>
               )}
               <p className="mt-2 text-sm font-bold text-emerald-700 dark:text-emerald-300" data-testid="gran-automatic-published-count">
                 {countGranPublishedYear(publishedLedger, automaticProgress.year || Number(year)).toLocaleString('pt-BR')} questões adicionadas para o ano {automaticProgress.year || year}.
@@ -2416,6 +2450,8 @@ const AdminGranCrawlerSection = ({
                   type="button"
                   className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-11 px-4 text-xs`}
                   onClick={() => void clearAutomaticCheckpoint().then(() => {
+                    setAutomaticFilteredQuestionCount(null);
+                    setAutomaticProcessedQuestionCount(0);
                     setAutomaticProgress({
                       phase: 'idle',
                       year: 0,

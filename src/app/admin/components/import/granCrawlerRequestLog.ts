@@ -99,12 +99,42 @@ export const readGranResponseLogSummary = (response: Record<string, unknown>) =>
   const numeric = (value: unknown) => value !== undefined && value !== null && value !== '' && Number.isFinite(Number(value))
     ? Number(value)
     : null;
+  const aggregationContainers = [data.aggs, data.aggregations, response.aggs, response.aggregations];
+  const readUniqueTotal = (value: unknown, depth = 0): number | null => {
+    if (depth > 4 || value === null || value === undefined) return null;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const result = readUniqueTotal(item, depth + 1);
+        if (result !== null) return result;
+      }
+      return null;
+    }
+    const record = asRecord(value);
+    if (!record) return null;
+    for (const key of ['total_unique', 'totalUnique', 'unique_total', 'filtered_total']) {
+      const result = numeric(record[key]);
+      if (result !== null && result >= 0) return result;
+    }
+    for (const child of Object.values(record)) {
+      const result = readUniqueTotal(child, depth + 1);
+      if (result !== null) return result;
+    }
+    return null;
+  };
+  const filteredTotal = aggregationContainers
+    .map((container) => readUniqueTotal(container))
+    .find((value): value is number => value !== null) ?? null;
+  const returnedPerPage = numeric(data.perPage ?? data.per_page ?? response.perPage ?? response.per_page);
+  const reportedPages = numeric(data.pages ?? data.totalPages ?? response.pages ?? response.totalPages);
+  const total = filteredTotal ?? numeric(data.total_unique ?? data.totalUnique ?? data.total ?? response.total);
 
   return {
     returnedPage: numeric(data.page ?? response.page),
-    returnedPerPage: numeric(data.perPage ?? response.perPage),
-    total: numeric(data.total ?? data.total_unique ?? response.total),
-    pages: numeric(data.pages ?? response.pages),
+    returnedPerPage,
+    total,
+    pages: filteredTotal !== null && returnedPerPage !== null
+      ? (filteredTotal > 0 ? Math.ceil(filteredTotal / returnedPerPage) : 0)
+      : reportedPages,
     rowsCount: rows.length,
     responseKeys: Object.keys(data).slice(0, 24),
     rowKeys: firstRow ? Object.keys(firstRow).slice(0, 24) : [],

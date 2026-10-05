@@ -1,12 +1,7 @@
 const GRAN_API_ENDPOINT = 'https://rota-api.grancursosonline.com.br/v1/elastic/questao';
 const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
 
-/**
- * A API da Gran pode reduzir o tamanho efetivo quando a pagina numerica fica
- * muito profunda. Trocar o perPage no meio de um ciclo faria a mesma pagina
- * apontar para outra faixa de itens. Recalcule um tamanho fixo desde a pagina
- * 1 para manter o ciclo dentro do limite observado de paginas.
- */
+/** Keep one page size for the whole automatic cycle when deep pages are unreliable. */
 export const calculateGranSafePageSize = (
   totalPages: number,
   perPage: number,
@@ -45,9 +40,10 @@ export const readGranQuestionQueryControls = (urlValue: string): Partial<GranQue
   }
   const page = Number(parsed.searchParams.get('page'));
   const perPage = Number(parsed.searchParams.get('perPage'));
-  const rawYears = [...parsed.searchParams.entries()]
-    .filter(([key]) => /^anos(?:\[\d*\])?$/.test(key))
-    .map(([, entry]) => entry.trim()).filter(Boolean);
+  const rawYears = [
+    ...parsed.searchParams.getAll('anos'),
+    ...parsed.searchParams.getAll('anos[]'),
+  ].map((entry) => entry.trim()).filter(Boolean);
   const years = [...new Set(rawYears)];
   return {
     page: Number.isInteger(page) && page >= 1 ? page : undefined,
@@ -73,17 +69,25 @@ export const buildGranQuestionQueryUrl = (
   if (!urlValue.trim()) {
     parsed.searchParams.set('marcarResolvidas', '1');
     parsed.searchParams.set('resolucao', 'TODAS');
+    // The importer includes editorially annulled/outdated questions and
+    // preserves those flags in the canonical payload. Original Gran items
+    // remain excluded explicitly.
+    parsed.searchParams.set('anulada', '1');
+    parsed.searchParams.set('desatualizada', '1');
+    parsed.searchParams.set('inedita', '0');
     parsed.searchParams.set('tiposProva', '1');
     parsed.searchParams.set('sort', '[{"anos":"desc"},{"_score":"desc"}]');
   }
-  parsed.searchParams.delete('anulada');
-  parsed.searchParams.delete('desatualizada');
+  // A pasted URL may come from a Gran screen that omitted one of the
+  // defaults. Normalize it too, so manual and automatic collection use the
+  // same policy and never admit original/inédita items accidentally.
+  parsed.searchParams.set('anulada', '1');
+  parsed.searchParams.set('desatualizada', '1');
   parsed.searchParams.set('inedita', '0');
   parsed.searchParams.set('page', String(page));
   parsed.searchParams.set('perPage', String(perPage));
-  for (const key of [...parsed.searchParams.keys()]) {
-    if (/^anos(?:\[\d*\])?$/.test(key)) parsed.searchParams.delete(key);
-  }
+  parsed.searchParams.delete('anos');
+  parsed.searchParams.delete('anos[]');
   if (year) parsed.searchParams.append('anos[]', year);
   return parsed.toString();
 };

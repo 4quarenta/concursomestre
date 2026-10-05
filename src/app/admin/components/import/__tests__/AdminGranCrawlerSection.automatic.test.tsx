@@ -111,6 +111,10 @@ describe('Gran automatic collection with filtered-out pages', () => {
       await startCollection();
 
       expect(container.textContent).toContain('Coleta automatica do ano 2000 concluida.');
+      expect(container.querySelector('[data-testid="gran-automatic-progress"]')?.textContent)
+        .toContain('Progresso: 100%');
+      expect(container.querySelector('[data-testid="gran-automatic-progress"]')?.textContent)
+        .toContain('Restantes: 0');
       expect(mocks.post).toHaveBeenCalledWith('admin/gran_crawler.php', expect.objectContaining({
         action: 'save_automatic_checkpoint', page: 2, status: 'running', lastBatchId: previousBatch,
       }), expect.anything());
@@ -389,3 +393,4 @@ describe('Gran automatic collection with filtered-out pages', () => {
     },
   );
 });
+
