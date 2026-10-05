@@ -506,12 +506,12 @@ const readAutomaticRetryDelay = (error: unknown, attempt: number) => {
   if (rateLimitDelay !== null) return rateLimitDelay;
 
   const typedError = error as {
-    response?: { status?: number };
+    response?: { status?: number; data?: { message?: unknown } };
     message?: unknown;
   };
   const status = Number(typedError.response?.status || 0);
-  const message = String(typedError.message || '').toLowerCase();
-  const transientCollectorFailure = /extensao nao respondeu dentro do tempo limite|network error|failed to fetch|network request failed/i.test(message);
+  const message = String(typedError.response?.data?.message || typedError.message || '').toLowerCase();
+  const transientCollectorFailure = /extensao nao respondeu dentro do tempo limite|não foi possível conectar ao servidor|nao foi possivel conectar ao servidor|network error|failed to fetch|network request failed/i.test(message);
   const transientServerFailure = status >= 500 && status <= 599;
   if (!transientCollectorFailure && !transientServerFailure) return null;
 

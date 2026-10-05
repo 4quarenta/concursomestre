@@ -167,6 +167,8 @@ describe('AdminGranCrawlerSection requests', () => {
     expect(source).toContain("action: 'publication_batch_progress'");
     expect(source).toContain('const AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000;');
     expect(source).toContain('readRateLimitRetryDelay');
+    expect(source).toContain('não foi possível conectar ao servidor');
+    expect(source).toContain('response?.data?.message');
     expect(source).toContain('readGranEffectivePageSize');
     expect(source).toContain('restartedYearForProviderPageSize');
     expect(source).toContain('Reiniciando o ano ${cursorYear} desde a pagina 1');
