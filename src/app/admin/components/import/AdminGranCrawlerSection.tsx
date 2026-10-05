@@ -920,6 +920,25 @@ const AdminGranCrawlerSection = ({
         responseJson: formatSafeGranResponse(collection.json),
       });
 
+      // A extensao devolve a URL efetivamente consultada. Se o tamanho da
+      // pagina mudar aqui, nao podemos enviar a resposta nem deixar o
+      // checkpoint adotar esse valor silenciosamente: a pagina seguinte teria
+      // outra faixa de registros e poderia repetir ou pular questoes.
+      const observedRequest = readGranQuestionQueryControls(collection.requestUrl);
+      const observedResponse = readGranResponseLogSummary(collection.json);
+      const observedPage = observedRequest.page ?? observedResponse.returnedPage ?? null;
+      const observedPerPage = observedRequest.perPage ?? observedResponse.returnedPerPage ?? null;
+      if (observedPage !== null && observedPage !== targetPage) {
+        throw new Error(
+          `A Gran respondeu a pagina ${observedPage}, mas a consulta solicitou a pagina ${targetPage}.`,
+        );
+      }
+      if (observedPerPage !== null && observedPerPage !== requestPageSize) {
+        throw new Error(
+          `A Gran respondeu pagina ${targetPage} com perPage ${observedPerPage}, mas a consulta solicitou perPage ${requestPageSize}.`,
+        );
+      }
+
       const initialValidation = validateGranQuestionYearFilter(collection.json, targetYear);
       if (!initialValidation.valid && requestPageSize > SAFE_GRAN_FILTER_PAGE_SIZE) {
         const fallbackPerPage = SAFE_GRAN_FILTER_PAGE_SIZE;
@@ -1583,7 +1602,10 @@ const AdminGranCrawlerSection = ({
         if (restartedYearForProviderPageSize) continue;
         if (!data) break;
         const pageQuestionCount = data.questionCount;
-        const effectivePerPage = Math.max(1, Number(data.perPage) || checkpoint.perPage);
+        // O tamanho da pagina pertence ao ciclo salvo. Nunca substitua esse
+        // valor pelo fallback de uma resposta, pois isso muda o offset das
+        // paginas seguintes e causa repeticao silenciosa.
+        const effectivePerPage = checkpoint.perPage;
         if (Number.isFinite(data.total) && data.total > 0) {
           setAutomaticFilteredQuestionCount(data.total);
         } else if (data.total === 0 && cursorPage === 1 && pageQuestionCount === 0) {

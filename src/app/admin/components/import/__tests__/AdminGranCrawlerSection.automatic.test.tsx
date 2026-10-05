@@ -235,6 +235,54 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(mocks.post.mock.calls.some(([, input]) => input.action === 'clear_automatic_checkpoint')).toBe(true);
   });
 
+  it('does not silently persist a provider page size change from the collected URL', async () => {
+    let firstCollection = true;
+    mocks.collect.mockImplementation(async (requestUrl: string) => {
+      const observedUrl = new URL(requestUrl);
+      if (firstCollection) {
+        firstCollection = false;
+        observedUrl.searchParams.set('perPage', '10');
+      }
+      return {
+        requestUrl: observedUrl.toString(),
+        json: { data: { rows: [] } },
+        examFiles: {},
+        assetData: {},
+      };
+    });
+    mocks.post.mockImplementation(async (_endpoint: string, input: Record<string, unknown>) => {
+      if (input.action === 'map_and_enqueue_publication') {
+        return { data: { data: {
+          page: input.page,
+          perPage: input.perPage,
+          total: 0,
+          pages: 0,
+          sourceQuestionCount: 0,
+          questionCount: 0,
+          fileCount: 0,
+          batch: null,
+        } } };
+      }
+      if (input.action === 'save_automatic_checkpoint') return { data: { data: input } };
+      if (input.action === 'clear_automatic_checkpoint') return { data: {} };
+      throw new Error(`Unexpected request: ${String(input.action)}`);
+    });
+
+    await startCollection();
+
+    expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('perPage')))
+      .toEqual(['20', '10']);
+    expect(mocks.post.mock.calls.filter(([, input]) => input.action === 'map_and_enqueue_publication')
+      .map(([, input]) => input.perPage)).toEqual([10]);
+    expect(mocks.post.mock.calls.some(([, input]) => (
+      input.action === 'save_automatic_checkpoint'
+      && input.status === 'running'
+      && input.page === 1
+      && input.perPage === 10
+    ))).toBe(true);
+    expect(container.textContent).toContain('Coleta automatica do ano 2000 concluida.');
+  });
+
   it('retries a transient extension timeout on the same page before finishing', async () => {
     let collectionAttempts = 0;
     mocks.collect.mockImplementation(async (requestUrl: string) => {
