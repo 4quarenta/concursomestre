@@ -13,6 +13,7 @@ $method = new ReflectionMethod($service, 'assertCompleteAutomaticPage');
 $cases = [
     ['full page', 1, 100, 100, 100, 62169, false],
     ['short final page', 622, 100, 100, 69, 62169, false],
+    ['provider overage on final page', 51, 100, 100, 24, 5003, false],
     ['provider shrinks to five', 202, 100, 5, 5, 62169, true],
     ['false final page', 622, 100, 1, 1, 62169, true],
     ['missing rows', 200, 100, 100, 10, 62169, true],

@@ -3302,7 +3302,11 @@ final class AdminGranCrawlerService
         $metadata = $this->readPagination($payload, $perPage);
         if ($metadata['totalKnown']) {
             $expected = min($perPage, max(0, $metadata['total'] - ($page - 1) * $perPage));
-            if ($received !== $expected) {
+            $isFinalPage = $metadata['pages'] > 0 && $page >= $metadata['pages'];
+            $hasMissingRows = $received < $expected;
+            $hasUnexpectedIntermediateOverflow = $received > $expected && !$isFinalPage;
+            $exceedsRequestedPageSize = $received > $perPage;
+            if ($hasMissingRows || $hasUnexpectedIntermediateOverflow || $exceedsRequestedPageSize) {
                 throw new InvalidArgumentException(sprintf(
                     'Coleta incompleta na pagina %d: eram esperadas %d questoes e a Gran retornou %d. Nenhuma questao desta resposta foi enfileirada; tente novamente ou reduza o filtro.',
                     $page, $expected, $received
