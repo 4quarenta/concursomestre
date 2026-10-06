@@ -53,7 +53,6 @@ import {
 import { useGranPublicationPolling } from './useGranPublicationPolling';
 import {
   buildGranQuestionQueryUrl,
-  calculateGranSafePageSize,
   readGranQuestionQueryControls,
 } from './granCrawlerUrl';
 import { countGranPublishedYear, recordGranPublishedBatch, type GranPublishedLedger } from './granAutomaticPublished';
@@ -274,7 +273,6 @@ const AUTOMATIC_BATCH_STATUS_POLL_MS = 12_000;
 const ACTIVE_BATCH_STATUS_REFRESH_MS = 15_000;
 const TAXONOMY_CHECK_FRESH_MS = 6 * 60 * 60 * 1000;
 const MAX_AUTOMATIC_IN_FLIGHT_BATCHES = 2;
-const MAX_RELIABLE_GRAN_PAGES = 500;
 const MAX_GRAN_REQUEST_LOGS = 10;
 const SAFE_GRAN_FILTER_PAGE_SIZE = 20;
 const AUTOMATIC_ENQUEUE_REQUEST_TIMEOUT_MS = 180_000;
@@ -1553,14 +1551,14 @@ const AdminGranCrawlerSection = ({
             const effectivePageSize = readGranEffectivePageSize(requestError);
             if (effectivePageSize !== null && effectivePageSize < checkpoint.perPage) {
               const failedPage = cursorPage;
+              // A Gran pode responder com um limite menor em páginas profundas.
+              // Não podemos manter o tamanho antigo, pois isso repete o mesmo
+              // desvio; também não devemos cair diretamente para um limite muito
+              // pequeno se ainda houver uma tentativa intermediária segura.
               const restartPageSize = checkpoint.totalPages
                 ? Math.max(
                   effectivePageSize,
-                  calculateGranSafePageSize(
-                    checkpoint.totalPages,
-                    checkpoint.perPage,
-                    MAX_RELIABLE_GRAN_PAGES,
-                  ),
+                  Math.max(1, Math.floor(checkpoint.perPage / 2)),
                 )
                 : effectivePageSize;
               const restartRequestUrl = buildGranQuestionQueryUrl(checkpoint.requestUrl, {

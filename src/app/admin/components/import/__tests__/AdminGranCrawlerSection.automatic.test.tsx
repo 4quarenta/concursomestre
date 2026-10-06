@@ -239,6 +239,66 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(mocks.post.mock.calls.some(([, input]) => input.action === 'clear_automatic_checkpoint')).toBe(true);
   });
 
+  it('uses an intermediate page size when a known cycle is truncated at depth', async () => {
+    mocks.get.mockImplementation(async () => ({ data: { data: {
+      automaticCheckpoint: {
+        runKey: 'deep-page-run',
+        requestUrl: 'https://rota-api.grancursosonline.com.br/v1/elastic/questao?anos[]=2000&page=101&perPage=100',
+        perPage: 100,
+        year: 2000,
+        page: 101,
+        status: 'paused',
+        totalPages: 228,
+        lastBatchId: null,
+      },
+      taxonomyStatus: {},
+      failureHistory: { items: [], total: 0, openCount: 0, retryingCount: 0 },
+    } } }));
+    let mismatch = true;
+    mocks.collect.mockImplementation(async (requestUrl: string) => ({
+      requestUrl,
+      json: { data: { rows: [] } },
+      examFiles: {},
+      assetData: {},
+    }));
+    mocks.post.mockImplementation(async (_endpoint: string, input: Record<string, unknown>) => {
+      if (input.action === 'map_and_enqueue_publication' && mismatch) {
+        mismatch = false;
+        throw Object.assign(new Error('Request failed with status code 400'), {
+          response: { data: { message: 'Coleta incompleta: a pagina 101 solicitou 100 questoes, mas a Gran respondeu pagina 101 com perPage 10 e 10 questoes.' } },
+        });
+      }
+      if (input.action === 'map_and_enqueue_publication') {
+        return { data: { data: {
+          page: input.page,
+          perPage: input.perPage,
+          total: 0,
+          pages: 0,
+          sourceQuestionCount: 0,
+          questionCount: 0,
+          fileCount: 0,
+          batch: null,
+        } } };
+      }
+      if (input.action === 'save_automatic_checkpoint') return { data: { data: input } };
+      if (input.action === 'clear_automatic_checkpoint') return { data: {} };
+      throw new Error(`Unexpected request: ${String(input.action)}`);
+    });
+
+    await startCollection();
+
+    expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('perPage')))
+      .toEqual(['100', '50']);
+    expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('page')))
+      .toEqual(['101', '1']);
+    expect(mocks.post.mock.calls.some(([, input]) => (
+      input.action === 'save_automatic_checkpoint'
+      && input.page === 1
+      && input.perPage === 50
+      && input.status === 'running'
+    ))).toBe(true);
+  });
+
   it('does not silently persist a provider page size change from the collected URL', async () => {
     let firstCollection = true;
     mocks.collect.mockImplementation(async (requestUrl: string) => {
