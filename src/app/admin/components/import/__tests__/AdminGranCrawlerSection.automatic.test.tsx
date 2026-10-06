@@ -186,7 +186,7 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(mocks.post.mock.calls.some(([, input]) => input.action === 'clear_automatic_checkpoint')).toBe(false);
   });
 
-  it('restarts the current year with the provider page size when Gran shrinks perPage', async () => {
+  it('resumes the current year at the equivalent offset when Gran shrinks perPage', async () => {
     let mismatch = true;
     mocks.post.mockImplementation(async (_endpoint: string, input: Record<string, unknown>) => {
       if (input.action === 'map_and_enqueue_publication' && mismatch) {
@@ -290,10 +290,10 @@ describe('Gran automatic collection with filtered-out pages', () => {
     expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('perPage')))
       .toEqual(['100', '50']);
     expect(mocks.collect.mock.calls.map(([url]) => new URL(url).searchParams.get('page')))
-      .toEqual(['101', '1']);
+      .toEqual(['101', '201']);
     expect(mocks.post.mock.calls.some(([, input]) => (
       input.action === 'save_automatic_checkpoint'
-      && input.page === 1
+      && input.page === 201
       && input.perPage === 50
       && input.status === 'running'
     ))).toBe(true);

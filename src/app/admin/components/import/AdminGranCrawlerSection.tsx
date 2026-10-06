@@ -524,6 +524,10 @@ const readGranEffectivePageSize = (error: unknown): number | null => {
   return Number.isInteger(pageSize) && pageSize > 0 ? pageSize : null;
 };
 
+const calculateGranResumePage = (processedQuestionCount: number, perPage: number): number => (
+  Math.max(1, Math.floor(Math.max(0, processedQuestionCount) / Math.max(1, perPage)) + 1)
+);
+
 const describeCollectorCaptureStatus = (status: GranCollectorStatus | null) => {
   switch (status?.captureState) {
     case 'origin_rejected':
@@ -1463,6 +1467,7 @@ const AdminGranCrawlerSection = ({
     let processedQuestionCount = checkpoint
       ? Math.max(0, (cursorPage - 1) * checkpoint.perPage)
       : Math.max(0, (cursorPage - 1) * perPage);
+    let filteredQuestionTotal: number | null = null;
     setAutomaticProcessedQuestionCount(processedQuestionCount);
     const inFlightBatches: AutomaticPublicationFlight[] = [];
     let failedFlight: AutomaticPublicationFlight | null = null;
@@ -1535,7 +1540,7 @@ const AdminGranCrawlerSection = ({
           message: `Coletando pagina ${cursorPage} de ${displayedTotal || '?'} (ano ${cursorYear}).`,
         });
         let data: GranAutomaticEnqueueResult | null = null;
-        let restartedYearForProviderPageSize = false;
+        let adjustedPageSizeForProvider = false;
         for (let attempt = 1; !controller.signal.aborted && attempt <= 5; attempt += 1) {
           try {
             data = await collectAndEnqueueAutomaticPage(
@@ -1555,49 +1560,52 @@ const AdminGranCrawlerSection = ({
               // Não podemos manter o tamanho antigo, pois isso repete o mesmo
               // desvio; também não devemos cair diretamente para um limite muito
               // pequeno se ainda houver uma tentativa intermediária segura.
-              const restartPageSize = checkpoint.totalPages
+              const adjustedPageSize = checkpoint.totalPages
                 ? Math.max(
                   effectivePageSize,
                   Math.max(1, Math.floor(checkpoint.perPage / 2)),
                 )
                 : effectivePageSize;
-              const restartRequestUrl = buildGranQuestionQueryUrl(checkpoint.requestUrl, {
-                page: 1,
-                perPage: restartPageSize,
+              const resumePage = calculateGranResumePage(processedQuestionCount, adjustedPageSize);
+              const adjustedTotalPages = filteredQuestionTotal !== null
+                ? Math.ceil(filteredQuestionTotal / adjustedPageSize)
+                : null;
+              const resumeRequestUrl = buildGranQuestionQueryUrl(checkpoint.requestUrl, {
+                page: resumePage,
+                perPage: adjustedPageSize,
                 year: String(cursorYear),
               });
               while (inFlightBatches.length > 0) {
                 await waitForOldestPublication();
               }
               checkpoint = await saveAutomaticCheckpoint({
-                requestUrl: restartRequestUrl,
+                requestUrl: resumeRequestUrl,
                 runKey: checkpoint.runKey,
-                perPage: restartPageSize,
+                perPage: adjustedPageSize,
                 year: cursorYear,
-                page: 1,
-                totalPages: null,
+                page: resumePage,
+                totalPages: adjustedTotalPages,
                 status: 'running',
                 lastBatchId: checkpoint.lastBatchId || null,
                 lastError: null,
               }, controller.signal);
-              cursorPage = 1;
-              setPage(1);
-              setPerPage(restartPageSize);
-              setGranRequestUrl(restartRequestUrl);
-              setAutomaticFilteredQuestionCount(null);
-              processedQuestionCount = 0;
-              setAutomaticProcessedQuestionCount(0);
+              cursorPage = resumePage;
+              setPage(resumePage);
+              setPerPage(adjustedPageSize);
+              setGranRequestUrl(resumeRequestUrl);
+              setAutomaticFilteredQuestionCount(filteredQuestionTotal);
+              setAutomaticProcessedQuestionCount(processedQuestionCount);
               setAutomaticProgress({
                 phase: 'waiting',
                 year: cursorYear,
-                page: 1,
-                totalPages: null,
+                page: resumePage,
+                totalPages: adjustedTotalPages,
                 questionsCollected: 0,
-                message: restartPageSize > effectivePageSize
-                  ? `A Gran reduziu para ${effectivePageSize} por pagina na pagina ${failedPage}. Reiniciando o ano ${cursorYear} desde a pagina 1 com ${restartPageSize} por pagina para nao duplicar nem pular questoes.`
-                  : `A Gran respondeu com ${effectivePageSize} por pagina na pagina ${failedPage}. Reiniciando o ano ${cursorYear} desde a pagina 1 para nao pular questoes.`,
+                message: adjustedPageSize > effectivePageSize
+                  ? `A Gran reduziu para ${effectivePageSize} por pagina na pagina ${failedPage}. Retomando o ano ${cursorYear} na pagina equivalente ${resumePage} com ${adjustedPageSize} por pagina, sem repetir as paginas ja processadas.`
+                  : `A Gran respondeu com ${effectivePageSize} por pagina na pagina ${failedPage}. Retomando o ano ${cursorYear} na pagina equivalente ${resumePage}.`,
               });
-              restartedYearForProviderPageSize = true;
+              adjustedPageSizeForProvider = true;
               break;
             }
             const retryDelay = readAutomaticRetryDelay(requestError, attempt);
@@ -1614,7 +1622,7 @@ const AdminGranCrawlerSection = ({
             await delayWithSignal(retryDelay, controller.signal);
           }
         }
-        if (restartedYearForProviderPageSize) continue;
+        if (adjustedPageSizeForProvider) continue;
         if (!data) break;
         const pageQuestionCount = data.questionCount;
         // O tamanho da pagina pertence ao ciclo salvo. Nunca substitua esse
@@ -1622,6 +1630,7 @@ const AdminGranCrawlerSection = ({
         // paginas seguintes e causa repeticao silenciosa.
         const effectivePerPage = checkpoint.perPage;
         if (Number.isFinite(data.total) && data.total > 0) {
+          filteredQuestionTotal = data.total;
           setAutomaticFilteredQuestionCount(data.total);
         } else if (data.total === 0 && cursorPage === 1 && pageQuestionCount === 0) {
           setAutomaticFilteredQuestionCount(0);
