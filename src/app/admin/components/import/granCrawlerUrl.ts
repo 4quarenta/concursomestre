@@ -1,5 +1,8 @@
 const GRAN_API_ENDPOINT = 'https://rota-api.grancursosonline.com.br/v1/elastic/questao';
 const MAX_GRAN_QUESTIONS_PER_PAGE = 1000;
+const GRAN_YEAR_PARAMETER_PATTERN = /^anos(?:\[\])?(?:\[\d+\])?$/;
+
+const isGranYearParameter = (name: string) => GRAN_YEAR_PARAMETER_PATTERN.test(name);
 
 /** Keep one page size for the whole automatic cycle when deep pages are unreliable. */
 export const calculateGranSafePageSize = (
@@ -40,10 +43,10 @@ export const readGranQuestionQueryControls = (urlValue: string): Partial<GranQue
   }
   const page = Number(parsed.searchParams.get('page'));
   const perPage = Number(parsed.searchParams.get('perPage'));
-  const rawYears = [
-    ...parsed.searchParams.getAll('anos'),
-    ...parsed.searchParams.getAll('anos[]'),
-  ].map((entry) => entry.trim()).filter(Boolean);
+  const rawYears = [...parsed.searchParams.entries()]
+    .filter(([name]) => isGranYearParameter(name))
+    .map(([, value]) => value.trim())
+    .filter(Boolean);
   const years = [...new Set(rawYears)];
   return {
     page: Number.isInteger(page) && page >= 1 ? page : undefined,
@@ -84,8 +87,9 @@ export const buildGranQuestionQueryUrl = (
   parsed.searchParams.set('inedita', '0');
   parsed.searchParams.set('page', String(page));
   parsed.searchParams.set('perPage', String(perPage));
-  parsed.searchParams.delete('anos');
-  parsed.searchParams.delete('anos[]');
+  for (const name of new Set([...parsed.searchParams.keys()])) {
+    if (isGranYearParameter(name)) parsed.searchParams.delete(name);
+  }
   if (year) parsed.searchParams.append('anos[]', year);
   return parsed.toString();
 };
