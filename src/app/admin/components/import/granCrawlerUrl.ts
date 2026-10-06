@@ -69,20 +69,18 @@ export const buildGranQuestionQueryUrl = (
   if (!urlValue.trim()) {
     parsed.searchParams.set('marcarResolvidas', '1');
     parsed.searchParams.set('resolucao', 'TODAS');
-    // The importer includes editorially annulled/outdated questions and
-    // preserves those flags in the canonical payload. Original Gran items
-    // remain excluded explicitly.
-    parsed.searchParams.set('anulada', '1');
-    parsed.searchParams.set('desatualizada', '1');
+    // Omitting the status filters is Gran's "all statuses" mode. Setting
+    // anulada/desatualizada to 1 narrows the response to those statuses and
+    // can exclude ordinary questions from later pages.
     parsed.searchParams.set('inedita', '0');
     parsed.searchParams.set('tiposProva', '1');
     parsed.searchParams.set('sort', '[{"anos":"desc"},{"_score":"desc"}]');
   }
-  // A pasted URL may come from a Gran screen that omitted one of the
-  // defaults. Normalize it too, so manual and automatic collection use the
-  // same policy and never admit original/inédita items accidentally.
-  parsed.searchParams.set('anulada', '1');
-  parsed.searchParams.set('desatualizada', '1');
+  // A pasted URL may contain status filters from the Gran screen. Remove
+  // both so manual and automatic collection use the all-statuses policy;
+  // the explicit inedita=0 filter remains the only status restriction.
+  parsed.searchParams.delete('anulada');
+  parsed.searchParams.delete('desatualizada');
   parsed.searchParams.set('inedita', '0');
   parsed.searchParams.set('page', String(page));
   parsed.searchParams.set('perPage', String(perPage));
