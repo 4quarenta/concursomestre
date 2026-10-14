@@ -239,7 +239,9 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
     );
   }
 
-  const nextQuestion = relatedTaxonomy ? relatedQuestions[0] : undefined;
+  const nextQuestion = relatedTaxonomy && !isLoadingRelatedQuestions
+    ? relatedQuestions.find((item) => buildQuestionPath(item) !== previousQuestionPath)
+    : undefined;
   const nextQuestionPath = nextQuestion ? buildQuestionPath(nextQuestion) : null;
   const questionSubject = question.assuntos?.map((item) => item.nome || item.name).filter(Boolean)[0];
   const savedQuestionIds = currentUser?.savedQuestionIds || [];
