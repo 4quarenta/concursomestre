@@ -620,14 +620,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         prefetch={false}
         aria-current={isCurrent ? 'page' : undefined}
         title={accessLabel}
-        className={`relative inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors ${
+        className={`relative inline-flex h-12 shrink-0 items-center gap-1 border-b-2 px-2 text-xs font-semibold transition-colors md:gap-2 md:px-3 md:text-sm ${
           isAdminItem
             ? isCurrent ? 'border-rose-600 text-rose-700 dark:border-rose-400 dark:text-rose-300' : 'border-transparent text-slate-600 hover:text-rose-700 dark:text-slate-300 dark:hover:text-rose-300'
             : isCurrent ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white'
         } ${isLocked ? 'opacity-75' : ''}`}
       >
         <item.icon size={17} aria-hidden="true" />
-        <span>{item.label === 'Dashboard' ? 'Painel' : item.label}</span>
+        <span>
+          <span className="md:hidden">{item.label === 'Raio-X Banca' ? 'Raio-X' : item.label === 'Dashboard' ? 'Painel' : item.label}</span>
+          <span className="hidden md:inline">{item.label === 'Dashboard' ? 'Painel' : item.label}</span>
+        </span>
         {item.path === '/novidades' && unreadCount > 0 && <span className="h-2 w-2 rounded-full bg-red-500" />}
         {badgeCount > 0 && !isLocked && !isDisabled && (
           <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isAdminItem ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'}`}>
@@ -747,7 +750,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       )}
 
-      <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
+      <div className="relative min-h-0 flex flex-1 flex-col overflow-hidden">
         {/* Mobile Header */}
         {hasMobileTopHeader && (
           <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
@@ -795,7 +798,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {!isDashboardPage && !isSimulationFullscreenPage && (
           <>
             <div className="hidden border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900 md:block lg:px-8">
-              <div className="mx-auto flex h-[68px] max-w-[1600px] items-center gap-8">
+              <div className="mx-auto flex h-[68px] max-w-[1600px] items-center gap-8 pr-[300px]">
                 <PublicBrandLink width={205} />
                 <form onSubmit={handleGlobalSearch} role="search" className="flex h-10 min-w-0 max-w-xl flex-1 items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 text-slate-500 focus-within:border-indigo-400 focus-within:bg-white dark:border-slate-700 dark:bg-slate-800 dark:focus-within:bg-slate-950">
                   <Search size={18} aria-hidden="true" />
@@ -805,10 +808,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
             </div>
             <nav aria-label="Navegação principal" className="fixed inset-x-0 top-[68px] z-20 h-12 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:h-auto md:px-6 lg:px-8">
-              <div className="no-scrollbar mx-auto flex h-12 max-w-[1600px] items-center gap-1 overflow-x-auto px-3 md:px-0">
-                {navItems.slice(0, 6).map(renderTopNavigationItem)}
+              <div className="relative mx-auto flex h-12 max-w-[1600px] items-center gap-1 px-3 md:px-0">
+                {navItems.slice(0, 3).map((item) => (
+                  <div key={`mobile-${item.path}`} className="md:hidden">{renderTopNavigationItem(item)}</div>
+                ))}
+                {navItems.length > 3 && (
+                  <details className="group relative ml-auto shrink-0 md:hidden">
+                    <summary className="inline-flex h-12 list-none items-center gap-1 border-b-2 border-transparent px-2 text-xs font-semibold text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
+                      <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
+                    </summary>
+                    <div className="absolute right-0 top-full z-50 mt-1 min-w-52 rounded-md border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                      {navItems.slice(3).map((item) => (
+                        <div key={item.path} className="[&>a]:h-10 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:border-0 [&>a]:px-3 [&>a]:text-sm">
+                          {renderTopNavigationItem(item)}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                {navItems.slice(0, 6).map((item) => (
+                  <div key={`desktop-${item.path}`} className="hidden md:block">{renderTopNavigationItem(item)}</div>
+                ))}
                 {navItems.length > 6 && (
-                  <details className="group relative ml-auto shrink-0">
+                  <details className="group relative ml-auto hidden shrink-0 md:block">
                     <summary className="inline-flex h-12 list-none items-center gap-2 border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
                       <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
                     </summary>
@@ -990,7 +1012,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
 
           {/* Desktop Top Bar with Notifications */}
-          <div className={`${isSimulationFullscreenPage ? 'hidden' : 'hidden md:flex'} z-20 items-center justify-end bg-slate-50/80 p-4 px-6 backdrop-blur transition-colors dark:bg-slate-950/80 lg:px-8`}>
+          <div className={`${isSimulationFullscreenPage ? 'hidden' : 'absolute right-0 top-0 hidden h-[68px] md:flex'} z-30 items-center justify-end bg-white px-6 transition-colors dark:bg-slate-900 lg:px-8`}>
             <div className="flex items-center gap-4">
               <button
                 type="button"
