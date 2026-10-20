@@ -12,7 +12,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -272,6 +272,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [emailDeliveryNotice, setEmailDeliveryNotice] = useState<EmailConfirmationDeliveryNotice | null>(null);
+  const [globalSearch, setGlobalSearch] = useState('');
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {
@@ -470,6 +471,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return location.pathname === path;
   };
 
+  const handleGlobalSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = globalSearch.trim();
+    router.push(query ? `/busca?q=${encodeURIComponent(query)}` : '/busca');
+  };
+
   // Only consider the plan active if there is a valid subscription status (active or trialing)
   // Otherwise, fallback to 'Gratuito'. This mirrors the logic in Profile.tsx
   const currentCanonicalPlan = getAccessPlanName(user);
@@ -594,6 +601,45 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
   const currentPlanTheme = getPlanStatusTheme(currentTier);
 
+  const renderTopNavigationItem = (item: SidebarNavItem) => {
+    const isAdminItem = item.path.startsWith('/admin');
+    const isCurrent = isActive(item.path);
+    const isLocked = resolvePlanLocked(item.benefitKey);
+    const isDisabled = item.enabled === false || item.moduleEnabled === false;
+    const badgeCount = Number(item.badge || 0);
+    const accessLabel = isDisabled
+      ? 'Desativado no admin (visível apenas para Admin)'
+      : isLocked && item.benefitKey && !Array.isArray(item.benefitKey)
+        ? `Disponível no ${getBenefitPlanLabel(item.benefitKey, systemSettings.planEntitlements)}`
+        : item.label;
+
+    return (
+      <Link
+        key={item.path}
+        href={item.path}
+        prefetch={false}
+        aria-current={isCurrent ? 'page' : undefined}
+        title={accessLabel}
+        className={`relative inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors ${
+          isAdminItem
+            ? isCurrent ? 'border-rose-600 text-rose-700 dark:border-rose-400 dark:text-rose-300' : 'border-transparent text-slate-600 hover:text-rose-700 dark:text-slate-300 dark:hover:text-rose-300'
+            : isCurrent ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white'
+        } ${isLocked ? 'opacity-75' : ''}`}
+      >
+        <item.icon size={17} aria-hidden="true" />
+        <span>{item.label === 'Dashboard' ? 'Painel' : item.label}</span>
+        {item.path === '/novidades' && unreadCount > 0 && <span className="h-2 w-2 rounded-full bg-red-500" />}
+        {badgeCount > 0 && !isLocked && !isDisabled && (
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isAdminItem ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'}`}>
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </span>
+        )}
+        {isLocked && <Lock size={13} className="text-amber-500" aria-label="Recurso do plano" />}
+        {isDisabled && !isLocked && <span className="rounded bg-red-100 px-1 text-[9px] font-bold text-red-700 dark:bg-red-900/40 dark:text-red-300">DEV</span>}
+      </Link>
+    );
+  };
+
   const handleNotificationClick = (n: Notification) => {
     markNotificationAsRead(n.id);
     if (n.link) {
@@ -701,7 +747,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       )}
 
-      <div className="min-h-0 flex flex-1 flex-col overflow-hidden md:flex-row">
+      <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
         {/* Mobile Header */}
         {hasMobileTopHeader && (
           <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
@@ -738,23 +784,51 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   </>
                 )}
               </div>
-              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-slate-600 dark:text-slate-400" aria-label={isMobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}>
-                {isMobileMenuOpen ? <X /> : <Menu />}
+              <button onClick={() => router.push('/busca')} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" aria-label="Buscar questões">
+                <Search size={19} />
               </button>
             </div>
             </div>
           </div>
         )}
 
+        {!isDashboardPage && !isSimulationFullscreenPage && (
+          <>
+            <div className="hidden border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900 md:block lg:px-8">
+              <div className="mx-auto flex h-[68px] max-w-[1600px] items-center gap-8">
+                <PublicBrandLink width={205} />
+                <form onSubmit={handleGlobalSearch} role="search" className="flex h-10 min-w-0 max-w-xl flex-1 items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 text-slate-500 focus-within:border-indigo-400 focus-within:bg-white dark:border-slate-700 dark:bg-slate-800 dark:focus-within:bg-slate-950">
+                  <Search size={18} aria-hidden="true" />
+                  <input value={globalSearch} onChange={(event) => setGlobalSearch(event.target.value)} aria-label="Buscar questões, provas e materiais" placeholder="Buscar questões, provas e materiais" className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" />
+                  <button type="submit" aria-label="Pesquisar" className="rounded p-1 text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-900/30"><Search size={17} /></button>
+                </form>
+              </div>
+            </div>
+            <nav aria-label="Navegação principal" className="fixed inset-x-0 top-[68px] z-20 h-12 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:h-auto md:px-6 lg:px-8">
+              <div className="no-scrollbar mx-auto flex h-12 max-w-[1600px] items-center gap-1 overflow-x-auto px-3 md:px-0">
+                {navItems.slice(0, 6).map(renderTopNavigationItem)}
+                {navItems.length > 6 && (
+                  <details className="group relative ml-auto shrink-0">
+                    <summary className="inline-flex h-12 list-none items-center gap-2 border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
+                      <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
+                    </summary>
+                    <div className="absolute right-0 top-full z-50 mt-1 min-w-52 rounded-md border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                      {navItems.slice(6).map((item) => (
+                        <div key={item.path} className="[&>a]:h-10 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:border-0 [&>a]:px-3 [&>a]:text-sm">
+                          {renderTopNavigationItem(item)}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            </nav>
+          </>
+        )}
+
         {/* Sidebar Navigation */}
         {!isDashboardPage && !isSimulationFullscreenPage && (
-          <aside className={`
-            cm-layout-sidebar fixed inset-y-0 left-0 z-30 flex h-[100dvh] w-[84vw] max-w-64 flex-col overflow-hidden border-r border-slate-200 bg-white transform transition-transform duration-200 ease-in-out dark:border-slate-800 dark:bg-slate-900
-            md:w-64
-            ${isMobileMenuOpen
-              ? 'translate-x-0 opacity-100'
-              : '-translate-x-full opacity-100 md:translate-x-0'}
-          `}>
+          <aside aria-hidden="true" className="hidden">
             <div className="hidden shrink-0 px-5 pb-4 pt-5 md:flex">
               <PublicBrandLink
                 width={215}
@@ -885,7 +959,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         {!isDashboardPage && !isSimulationFullscreenPage && (
           <div
-            className="cm-layout-sidebar-spacer hidden w-64 flex-none overflow-hidden transition-[width] duration-200 md:block"
+            className="cm-layout-sidebar-spacer hidden w-64 flex-none overflow-hidden transition-[width] duration-200"
             aria-hidden
           />
         )}
@@ -1055,7 +1129,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
           </div>
 
-          <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[84px] sm:p-4 sm:pt-[88px] md:p-6 md:pt-6 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
+          <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[124px] sm:p-4 sm:pt-[128px] md:p-6 md:pt-3 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
             <div className={`${isSimulationFullscreenPage ? 'mx-auto w-full max-w-7xl pb-6' : `${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-12`}`}>
               {!isSimulationFullscreenPage && <AdBanner type="top" className="mb-8" />}
               {children}
@@ -1073,14 +1147,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         )}
 
         <style jsx global>{`
-          body[data-legal-reading-focus='true'] .cm-layout-sidebar {
-            transform: translateX(-100%);
-            opacity: 0;
-            pointer-events: none;
-          }
-
-          body[data-legal-reading-focus='true'] .cm-layout-sidebar-spacer {
-            width: 0 !important;
+          body[data-legal-reading-focus='true'] nav[aria-label='Navegação principal'] {
+            display: none;
           }
         `}</style>
       </div>
