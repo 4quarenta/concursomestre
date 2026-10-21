@@ -2,13 +2,12 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Clock, Database, Globe2, Lock, Scale, Shield, UserCheck } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Clock, Database, Globe2, Lock, Scale, Shield, UserCheck } from 'lucide-react';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { PRIVACY_POLICY_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION } from '@services/legal/legalDocumentVersion';
+import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS } from '@constants/layout';
 
 const PrivacyPolicy: React.FC = () => {
-  const router = useRouter();
   const privacyContactEmail = useAppConfigStore((state) => (
     state.systemSettings.privacyContactEmail || ''
   )).trim();
@@ -18,41 +17,31 @@ const PrivacyPolicy: React.FC = () => {
     : '/support?category=info';
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 font-sans text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="mb-8 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 transition-colors hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400"
-        >
-          <ChevronLeft size={16} />
-          Voltar
-        </button>
-
-        <header className="mb-8 overflow-hidden rounded-3xl bg-emerald-700 p-8 text-white shadow-xl md:p-12">
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div className="max-w-3xl space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest">
-                <Shield size={14} />
-                Privacidade e proteção de dados
-              </div>
-              <h1 className="text-4xl font-black tracking-tight md:text-5xl">Política de Privacidade</h1>
-              <p className="max-w-2xl text-sm font-medium leading-6 text-emerald-50 md:text-base">
+    <main className="w-full space-y-5 pb-8 font-sans text-slate-900 transition-colors dark:text-slate-100">
+      <div className="space-y-5">
+        <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">Privacidade e proteção de dados</p>
+            <h1 className={`mt-1 ${PLATFORM_PAGE_TITLE_CLASS}`}>Política de Privacidade</h1>
+            <p className={`mt-2 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>
                 Este documento explica quais dados o ConcursoMestre pode tratar, para quais finalidades,
                 com quem eles podem ser compartilhados e como você pode exercer seus direitos.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/20 bg-white/10 px-5 py-4">
-              <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-100">Última atualização</span>
-              <span className="mt-1 block text-sm font-bold">{PRIVACY_POLICY_EFFECTIVE_DATE}</span>
-              <span className="mt-1 block text-[10px] font-semibold text-emerald-100">Versão {PRIVACY_POLICY_VERSION}</span>
-            </div>
+            </p>
+          </div>
+          <div className="shrink-0 text-left text-xs text-slate-500 sm:text-right dark:text-slate-400">
+            <span className="block">Atualizado em {PRIVACY_POLICY_EFFECTIVE_DATE}</span>
+            <span className="mt-1 block font-semibold">Versão {PRIVACY_POLICY_VERSION}</span>
           </div>
         </header>
 
-        <div className="grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:sticky lg:top-24">
-            <p className="mb-3 px-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Neste documento</p>
+        <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-3 dark:border-slate-800" aria-label="Documentos legais">
+          <Link href="/terms" className="inline-flex h-9 shrink-0 items-center rounded-md px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900">Termos de Uso</Link>
+          <Link href="/privacy" aria-current="page" className="inline-flex h-9 shrink-0 items-center rounded-md bg-indigo-600 px-3 text-xs font-semibold text-white">Política de Privacidade</Link>
+        </nav>
+
+        <div className="max-w-4xl">
+          <nav className="mb-6 flex flex-wrap gap-x-4 gap-y-2" aria-label="Seções da Política de Privacidade">
+            <span className="sr-only">Neste documento</span>
             {[
               ['dados', '1. Dados tratados'],
               ['finalidades', '2. Finalidades e bases'],
@@ -66,15 +55,15 @@ const PrivacyPolicy: React.FC = () => {
               <a
                 key={id}
                 href={`#${id}`}
-                className="block rounded-xl px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-300"
+                className="text-xs font-semibold text-slate-500 underline decoration-slate-300 underline-offset-4 transition-colors hover:text-indigo-700 dark:text-slate-400 dark:decoration-slate-700 dark:hover:text-indigo-300"
               >
                 {label}
               </a>
             ))}
-          </aside>
+          </nav>
 
-          <article className="space-y-12 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:p-10">
-            <section id="dados" className="scroll-mt-24 space-y-5">
+          <article className="divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <section id="dados" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={Database} title="1. Dados que podemos tratar" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Os dados efetivamente tratados dependem dos recursos que você utiliza. O ConcursoMestre pode tratar as seguintes categorias:
@@ -112,7 +101,7 @@ const PrivacyPolicy: React.FC = () => {
               </Notice>
             </section>
 
-            <section id="finalidades" className="scroll-mt-24 space-y-5">
+            <section id="finalidades" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={Scale} title="2. Finalidades e bases legais" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Tratamos dados para prestar e manter o serviço contratado, autenticar usuários, sincronizar progresso, personalizar a experiência de estudo, processar e conciliar pagamentos, atender suporte, prevenir fraude e abuso, cumprir obrigações legais e melhorar a estabilidade do produto.
@@ -122,7 +111,7 @@ const PrivacyPolicy: React.FC = () => {
               </p>
             </section>
 
-            <section id="compartilhamento" className="scroll-mt-24 space-y-5">
+            <section id="compartilhamento" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={Globe2} title="3. Compartilhamento com terceiros" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Não vendemos dados pessoais. Podemos compartilhar apenas as informações necessárias com prestadores que participam da operação do serviço, como infraestrutura e hospedagem, processadores de pagamento, serviços de e-mail, autenticação, segurança e provedores de inteligência artificial quando o recurso correspondente for utilizado.
@@ -135,7 +124,7 @@ const PrivacyPolicy: React.FC = () => {
               </Notice>
             </section>
 
-            <section id="seguranca" className="scroll-mt-24 space-y-5">
+            <section id="seguranca" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={Lock} title="4. Segurança da informação" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Adotamos medidas técnicas e administrativas compatíveis com a natureza do serviço para reduzir riscos de acesso não autorizado, alteração, perda ou divulgação indevida. Entre as medidas observadas no produto estão autenticação, controle de acesso, armazenamento seguro de sessão no aplicativo, HTTPS nos ambientes distribuíveis e hash de senhas no backend.
@@ -145,7 +134,7 @@ const PrivacyPolicy: React.FC = () => {
               </p>
             </section>
 
-            <section id="retencao" className="scroll-mt-24 space-y-5">
+            <section id="retencao" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={Clock} title="5. Retenção e exclusão" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Mantemos dados pelo período necessário para prestar o serviço, preservar a segurança, manter registros legítimos e cumprir obrigações legais, regulatórias, fiscais, contábeis ou de prevenção à fraude. Os prazos podem variar conforme a categoria do dado e a finalidade do tratamento.
@@ -154,16 +143,16 @@ const PrivacyPolicy: React.FC = () => {
                 O usuário pode solicitar a exclusão da própria conta dentro do aplicativo ou pela página pública de exclusão. O pedido é registrado e a conta é marcada para tratamento de exclusão; a eliminação não é necessariamente instantânea. Informações que devam ser conservadas por obrigação legal, exercício regular de direitos, segurança ou prevenção à fraude podem ser mantidas pelo período aplicável e depois eliminadas ou anonimizadas quando cabível.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link href="/account-deletion" className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-opacity hover:opacity-90">
+                <Link href="/account-deletion" className="inline-flex min-h-9 items-center rounded-md bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-700">
                   Como excluir minha conta
                 </Link>
-                <Link href="/profile/security" className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 dark:border-slate-700 dark:text-slate-200">
+                <Link href="/profile/security" className="inline-flex min-h-9 items-center rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
                   Abrir segurança da conta
                 </Link>
               </div>
             </section>
 
-            <section id="direitos" className="scroll-mt-24 space-y-5">
+            <section id="direitos" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={UserCheck} title="6. Seus direitos" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Nos termos da LGPD e conforme aplicável ao caso concreto, você pode solicitar confirmação da existência de tratamento, acesso, correção de dados incompletos ou inexatos, anonimização, bloqueio ou eliminação de dados desnecessários ou tratados em desconformidade, portabilidade nos termos da regulamentação, informação sobre compartilhamentos, revogação do consentimento e revisão de decisões tomadas unicamente com base em tratamento automatizado quando cabível.
@@ -173,14 +162,14 @@ const PrivacyPolicy: React.FC = () => {
               </p>
             </section>
 
-            <section id="internacional" className="scroll-mt-24 space-y-5">
+            <section id="internacional" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={Globe2} title="7. Transferências internacionais" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Alguns prestadores de infraestrutura, pagamento, autenticação ou inteligência artificial podem processar dados em outros países. Quando isso ocorrer, o tratamento deverá observar os mecanismos e salvaguardas aplicáveis à transferência internacional de dados.
               </p>
             </section>
 
-            <section id="alteracoes" className="scroll-mt-24 space-y-5">
+            <section id="alteracoes" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={Shield} title="8. Alterações e contato" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Esta Política pode ser atualizada para refletir mudanças no produto, em fornecedores, na legislação ou nas práticas de tratamento. Alterações relevantes serão publicadas nesta página com a data de atualização correspondente.
@@ -190,7 +179,7 @@ const PrivacyPolicy: React.FC = () => {
               </p>
               <a
                 href={contactHref}
-                className="inline-flex items-center rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900"
+                className="inline-flex min-h-9 items-center rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
               >
                 {privacyContactEmail ? privacyContactEmail : 'Abrir Central de Suporte'}
               </a>
@@ -209,10 +198,10 @@ type SectionTitleProps = {
 
 const SectionTitle: React.FC<SectionTitleProps> = ({ icon: Icon, title }) => (
   <div className="flex items-center gap-3">
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-      <Icon size={20} />
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+      <Icon size={16} />
     </div>
-    <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
+    <h2 className="text-base font-bold text-slate-900 dark:text-white">{title}</h2>
   </div>
 );
 
@@ -221,10 +210,10 @@ type InfoGridProps = {
 };
 
 const InfoGrid: React.FC<InfoGridProps> = ({ items }) => (
-  <div className="grid gap-4 md:grid-cols-2">
+  <div className="grid gap-3 md:grid-cols-2">
     {items.map((item) => (
-      <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/40">
-        <h3 className="mb-2 text-sm font-black text-slate-900 dark:text-white">{item.title}</h3>
+      <div key={item.title} className="border-l-2 border-slate-300 bg-slate-50/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/40">
+        <h3 className="mb-1.5 text-sm font-semibold text-slate-900 dark:text-white">{item.title}</h3>
         <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">{item.text}</p>
       </div>
     ))}
@@ -232,7 +221,7 @@ const InfoGrid: React.FC<InfoGridProps> = ({ items }) => (
 );
 
 const Notice: React.FC<React.PropsWithChildren> = ({ children }) => (
-  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+  <div className="border-l-2 border-amber-500 bg-amber-50/70 px-4 py-3 text-sm leading-6 text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
     {children}
   </div>
 );
