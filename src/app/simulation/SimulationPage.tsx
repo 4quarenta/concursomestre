@@ -17,8 +17,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { SIMULATION_IMMERSIVE_EVENT } from '@services/simulations/simulationLayout';
 import { Subject, SimulationSession, SimulationConfig, Question, TaxonomyItem, UserProfile } from '../../types';
 import {
-   PlayCircle, Clock, ChevronRight, BrainCircuit, Filter, Target, RotateCcw, LayoutGrid,
-   ArrowRight, X, Search, ChevronDown, CheckCircle2, History, Timer, BarChart3, ChevronLeft, Zap, ArrowLeft,
+   Clock, ChevronRight, BrainCircuit, Filter, Target, RotateCcw, LayoutGrid, Plus,
+   ArrowRight, X, Search, ChevronDown, History, Timer, BarChart3, ChevronLeft, Zap, ArrowLeft,
    Calendar, Building2, Briefcase, GraduationCap, BookOpen, List, Eye, LucideIcon, Maximize2, Minimize2
 } from 'lucide-react';
 import QuestionCard from '../questions/components/QuestionCard';
@@ -74,9 +74,9 @@ const SearchableMultiSelect: React.FC<{
 
    return (
       <div className="space-y-1.5 flex-1" ref={containerRef}>
-         <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><Icon size={12} className="text-indigo-500 dark:text-indigo-400" /> {label}</label>
+         <label className="ml-0.5 flex items-center gap-1.5 text-xs font-medium text-slate-700 transition-colors dark:text-slate-300"><Icon size={14} className="text-indigo-600 dark:text-indigo-400" /> {label}</label>
          <div className="relative">
-            <div onClick={() => { if (!disabled) setIsOpen(!isOpen); }} className={`min-h-[44px] w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-1.5 flex flex-wrap gap-2 items-center transition-all shadow-sm ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500'}`}>
+            <div onClick={() => { if (!disabled) setIsOpen(!isOpen); }} className={`min-h-10 w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-1.5 flex flex-wrap gap-2 items-center transition-all ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500'}`}>
                {selected.length === 0 ? <span className="text-slate-400 dark:text-slate-500 text-xs font-medium transition-colors">{placeholder || 'Selecionar...'}</span> : selected.map(item => (
                   <span key={item} className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 border border-indigo-100 dark:border-indigo-800/30 animate-scale-in transition-colors">
                      {item} <X size={10} className="hover:text-indigo-900 dark:hover:text-indigo-200" onClick={(e) => { e.stopPropagation(); toggleOption(item); }} />
@@ -371,6 +371,10 @@ const Simulation: React.FC = () => {
 
    const [viewMode, setViewMode] = useState<'focus' | 'list'>('list');
    const [simulationTab, setSimulationTab] = useState<SimulationTab>('ready');
+   const [simulationSearch, setSimulationSearch] = useState('');
+   const [simulationAreaFilter, setSimulationAreaFilter] = useState('');
+   const [simulationAgencyFilter, setSimulationAgencyFilter] = useState('');
+   const [expandedPresetId, setExpandedPresetId] = useState<string | null>(null);
    const [storedSimulations, setStoredSimulations] = useState<StoredSimulationSession[]>([]);
    const [referenceTimeMs, setReferenceTimeMs] = useState(0);
    const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
@@ -635,6 +639,23 @@ const Simulation: React.FC = () => {
       return presets.slice(0, 4);
    }, [simulationSubjects, simulationAgencies]);
 
+   const filteredReadySimulationPresets = useMemo(() => {
+      const normalizedSearch = simulationSearch.trim().toLocaleLowerCase('pt-BR');
+
+      return readySimulationPresets.filter((preset) => {
+         const searchableText = [preset.title, preset.description, ...preset.details].join(' ').toLocaleLowerCase('pt-BR');
+         const matchesSearch = !normalizedSearch || searchableText.includes(normalizedSearch);
+         const matchesArea = !simulationAreaFilter
+            || preset.config.subjects.length === 0
+            || preset.config.subjects.includes(simulationAreaFilter as Subject);
+         const matchesAgency = !simulationAgencyFilter
+            || preset.config.filters.agencies.length === 0
+            || preset.config.filters.agencies.includes(simulationAgencyFilter);
+
+         return matchesSearch && matchesArea && matchesAgency;
+      });
+   }, [readySimulationPresets, simulationAgencyFilter, simulationAreaFilter, simulationSearch]);
+
    const historyInsights = useMemo(() => {
       if (simulationStats.completedCount === 0) {
          return [
@@ -897,16 +918,16 @@ const Simulation: React.FC = () => {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
          {[
             {
-               label: 'Simulados realizados',
+               label: 'Realizados',
                value: simulationStats.completedCount.toString(),
                icon: History,
-               helper: simulationStats.completedCount > 0 ? 'Histórico salvo' : 'Nenhum ainda',
+               helper: simulationStats.completedCount === 1 ? 'simulado concluído' : 'simulados concluídos',
             },
             {
-               label: 'Média geral',
+               label: 'Média de acertos',
                value: `${simulationStats.averageAccuracy}%`,
                icon: BarChart3,
-               helper: simulationStats.completedCount > 0 ? `Melhor: ${simulationStats.bestAccuracy}%` : 'Sem base ainda',
+               helper: simulationStats.completedCount > 0 ? `Melhor: ${simulationStats.bestAccuracy}%` : 'Sem resultados ainda',
             },
             {
                label: 'Tempo médio',
@@ -917,15 +938,17 @@ const Simulation: React.FC = () => {
          ].map((item) => {
             const Icon = item.icon;
             return (
-               <div key={item.label} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors">
-                  <div className="flex items-start justify-between gap-3">
+               <div key={item.label} className="border-b border-slate-200 py-4 transition-colors last:border-b-0 dark:border-slate-800 sm:border-b-0 sm:border-r sm:last:border-r-0 sm:px-5 sm:first:pl-0">
+                  <div className="flex items-center justify-between gap-3">
                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{item.label}</p>
-                        <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{item.value}</p>
-                        <p className="mt-1 text-[11px] font-bold text-slate-400 dark:text-slate-500">{item.helper}</p>
+                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{item.label}</p>
+                        <div className="mt-1 flex items-baseline gap-2">
+                           <p className="text-xl font-semibold text-slate-950 dark:text-white">{item.value}</p>
+                           <p className="text-xs text-slate-500 dark:text-slate-400">{item.helper}</p>
+                        </div>
                      </div>
-                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
-                        <Icon size={18} />
+                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        <Icon size={17} aria-hidden="true" />
                      </div>
                   </div>
                </div>
@@ -942,15 +965,18 @@ const Simulation: React.FC = () => {
       ];
 
       return (
-         <div className="grid grid-cols-1 gap-1 rounded-2xl bg-slate-100 p-1 dark:bg-slate-800/80 sm:grid-cols-3">
+         <div className="flex overflow-x-auto border-b border-slate-200 dark:border-slate-800" role="tablist" aria-label="Seções de simulados">
             {tabs.map((tab) => (
                <button
                   key={tab.id}
                   onClick={() => setSimulationTab(tab.id)}
-                  className={`flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl px-3 text-center text-[11px] font-black uppercase tracking-widest transition-all ${simulationTab === tab.id ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-950 dark:text-white' : 'text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300'}`}
+                  role="tab"
+                  aria-selected={simulationTab === tab.id}
+                  className={`relative flex min-h-11 shrink-0 items-center justify-center gap-2 px-4 text-sm font-medium transition-colors ${simulationTab === tab.id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
                >
                   {tab.label}
-                  {tab.badge ? <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] text-white">{tab.badge}</span> : null}
+                  {tab.badge ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">{tab.badge}</span> : null}
+                  {simulationTab === tab.id ? <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-indigo-600 dark:bg-indigo-400" /> : null}
                </button>
             ))}
          </div>
@@ -958,33 +984,130 @@ const Simulation: React.FC = () => {
    };
 
    const renderReadySimulations = () => (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-         {readySimulationPresets.map((preset) => (
-            <div key={preset.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm transition-colors">
-               <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-3">
-                     <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
-                           <PlayCircle size={22} />
+      <div className="space-y-4">
+         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.65fr)_minmax(180px,0.65fr)_minmax(180px,0.65fr)]">
+            <label className="relative block">
+               <span className="sr-only">Buscar simulado por nome, banca ou matéria</span>
+               <Search size={17} aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
+               <input
+                  type="search"
+                  value={simulationSearch}
+                  onChange={(event) => setSimulationSearch(event.target.value)}
+                  placeholder="Buscar simulado por nome, banca ou matéria..."
+                  className="h-10 w-full rounded-md border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+               />
+            </label>
+            <label>
+               <span className="sr-only">Filtrar por área</span>
+               <select value={simulationAreaFilter} onChange={(event) => setSimulationAreaFilter(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                  <option value="">Todas as áreas</option>
+                  {simulationSubjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+               </select>
+            </label>
+            <label>
+               <span className="sr-only">Filtrar por banca</span>
+               <select value={simulationAgencyFilter} onChange={(event) => setSimulationAgencyFilter(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                  <option value="">Todas as bancas</option>
+                  {simulationAgencies.map((agency) => <option key={agency} value={agency}>{agency}</option>)}
+               </select>
+            </label>
+         </div>
+
+         {filteredReadySimulationPresets.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+               {filteredReadySimulationPresets.map((preset) => {
+                  const tags = preset.config.subjects.length > 0
+                     ? preset.config.subjects
+                     : preset.config.filters.agencies.length > 0
+                        ? preset.config.filters.agencies
+                        : ['Todas as áreas'];
+                  const isDetailsExpanded = expandedPresetId === preset.id;
+
+                  return (
+                     <article key={preset.id} className="flex min-w-0 flex-col rounded-md border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+                        <div className="flex items-start gap-3">
+                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-400/10 dark:text-indigo-300">
+                              <BookOpen size={21} aria-hidden="true" />
+                           </div>
+                           <div className="min-w-0">
+                              <h3 className="text-base font-semibold text-slate-950 dark:text-white">{preset.title}</h3>
+                              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{preset.config.filters.agencies[0] || 'Todas as bancas'} <span className="mx-1.5 text-slate-400">·</span> {preset.config.filters.levels[0] || 'Todos os níveis'}</p>
+                           </div>
                         </div>
-                        <div>
-                           <h3 className="text-base font-black text-slate-900 dark:text-slate-100">{preset.title}</h3>
-                           <p className="text-xs font-bold text-slate-400 dark:text-slate-500">{preset.details.join(' · ')}</p>
+                        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-700 dark:text-slate-300">
+                           <span className="inline-flex items-center gap-2"><List size={15} className="text-slate-500" aria-hidden="true" />{preset.config.questionCount} questões</span>
+                           <span className="inline-flex items-center gap-2"><Clock size={15} className="text-slate-500" aria-hidden="true" />{preset.config.timerMinutes} min</span>
                         </div>
-                     </div>
-                     <p className="text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">{preset.description}</p>
-                  </div>
-                  <button
-                     onClick={() => handleStartReadyPreset(preset)}
-                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-slate-200 transition-all hover:bg-indigo-600 dark:bg-indigo-600 dark:shadow-none dark:hover:bg-indigo-700"
-                  >
-                     Começar <ChevronRight size={15} />
-                  </button>
-               </div>
+                        <div className="mt-3 flex min-h-6 flex-wrap gap-1.5">
+                           {tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">{tag}</span>)}
+                        </div>
+                        {isDetailsExpanded ? <p className="mt-3 border-t border-slate-200 pt-3 text-sm leading-6 text-slate-600 dark:border-slate-800 dark:text-slate-300">{preset.description}</p> : null}
+                        <div className="mt-4 flex flex-wrap items-center gap-4">
+                           <button
+                              onClick={() => handleStartReadyPreset(preset)}
+                              className="inline-flex min-h-10 items-center justify-center rounded-md bg-indigo-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:focus-visible:ring-offset-slate-950"
+                           >
+                              Iniciar simulado
+                           </button>
+                           <button type="button" onClick={() => setExpandedPresetId(isDetailsExpanded ? null : preset.id)} aria-expanded={isDetailsExpanded} className="inline-flex min-h-10 items-center gap-1 text-sm font-medium text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-white">
+                              {isDetailsExpanded ? 'Ocultar detalhes' : 'Ver detalhes'} <ArrowRight size={15} aria-hidden="true" />
+                           </button>
+                        </div>
+                     </article>
+                  );
+               })}
             </div>
-         ))}
+         ) : (
+            <div className="border-y border-slate-200 py-10 text-center dark:border-slate-800">
+               <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Nenhum simulado encontrado</p>
+               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Ajuste a busca ou os filtros para ver outras opções.</p>
+            </div>
+         )}
       </div>
    );
+
+   const renderRecentSimulationResults = (showAll = false) => {
+      const results = showAll ? completedSimulations : completedSimulations.slice(0, 3);
+
+      return (
+         <section className="space-y-3" aria-labelledby="recent-simulation-results-title">
+            <h2 id="recent-simulation-results-title" className="text-lg font-semibold text-slate-950 dark:text-white">{showAll ? 'Histórico de resultados' : 'Últimos resultados'}</h2>
+            {results.length > 0 ? (
+               <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-800">
+                  <table className="w-full min-w-[700px] border-collapse text-left text-sm">
+                     <thead className="bg-slate-50 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                        <tr>
+                           <th scope="col" className="px-4 py-3 font-medium">Simulado</th>
+                           <th scope="col" className="px-4 py-3 font-medium">Data</th>
+                           <th scope="col" className="px-4 py-3 font-medium">Acertos</th>
+                           <th scope="col" className="px-4 py-3 font-medium">Tempo</th>
+                           <th scope="col" className="px-4 py-3 font-medium">Desempenho</th>
+                           {!showAll ? <th scope="col" className="px-4 py-3 text-right font-medium">Resultado</th> : null}
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                        {results.map((session) => {
+                           const accuracy = getSimulationAccuracy(session);
+                           return (
+                              <tr key={session.id} className="bg-white dark:bg-slate-950">
+                                 <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">{session.config?.name || 'Simulado concluído'}</td>
+                                 <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{getSimulationDateLabel(session)}</td>
+                                 <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{getSimulationScore(session)} de {session.questions.length}</td>
+                                 <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatSimulationDuration(getSimulationDurationSeconds(session))}</td>
+                                 <td className="px-4 py-3 font-semibold text-emerald-700 dark:text-emerald-400">{accuracy}%</td>
+                                 {!showAll ? <td className="px-4 py-3 text-right"><button type="button" onClick={() => { setActiveSession(session); setStep('result'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="inline-flex items-center gap-1 font-medium text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-white">Ver resultado <ArrowRight size={14} aria-hidden="true" /></button></td> : null}
+                              </tr>
+                           );
+                        })}
+                     </tbody>
+                  </table>
+               </div>
+            ) : (
+               <p className="rounded-md border border-slate-200 px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">Seus resultados recentes aparecerão aqui após concluir um simulado.</p>
+            )}
+         </section>
+      );
+   };
 
    const renderSimulationResults = () => {
       if (!currentUser) {
@@ -1026,66 +1149,17 @@ const Simulation: React.FC = () => {
       }
 
       return (
-         <div className="space-y-5">
-            <div className="space-y-4">
-               {completedSimulations.map((session: SimulationSession) => {
-                  const accuracy = getSimulationAccuracy(session);
-                  const isAboveAverage = accuracy >= simulationStats.averageAccuracy;
-                  return (
-                     <div key={session.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm transition-colors">
-                        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                           <div className="flex-1 space-y-3">
-                              <div>
-                                 <h3 className="text-base font-black text-slate-900 dark:text-slate-100">{session.config?.name || 'Simulado concluído'}</h3>
-                                 <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">
-                                    {getSimulationDateLabel(session)} · {session.questions.length} questões · {formatSimulationDuration(getSimulationDurationSeconds(session))}
-                                 </p>
-                              </div>
-                              <div>
-                                 <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
-                                    <span>Sua nota</span>
-                                    <span className={isAboveAverage ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}>{accuracy}%</span>
-                                 </div>
-                                 <div className="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                                    <div
-                                       className={`h-full rounded-full ${isAboveAverage ? 'bg-gradient-to-r from-indigo-500 to-emerald-500' : 'bg-gradient-to-r from-red-500 to-amber-500'}`}
-                                       style={{ width: `${Math.min(100, Math.max(0, accuracy))}%` }}
-                                    />
-                                 </div>
-                                 <p className={`mt-2 flex items-center gap-1.5 text-xs font-bold ${isAboveAverage ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                                    <CheckCircle2 size={13} />
-                                    {isAboveAverage ? 'Acima da média geral' : 'Abaixo da média geral'}
-                                 </p>
-                              </div>
-                           </div>
-                           <div className="min-w-[110px] border-t border-slate-100 pt-4 text-left dark:border-slate-800 md:border-l md:border-t-0 md:pl-6 md:pt-0 md:text-center">
-                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Média</p>
-                              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-slate-100">{simulationStats.averageAccuracy}%</p>
-                           </div>
-                        </div>
-                     </div>
-                  );
-               })}
-            </div>
-
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 transition-colors dark:border-indigo-900/40 dark:bg-indigo-900/20">
-               <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm dark:bg-slate-900 dark:text-indigo-400">
-                     <BrainCircuit size={20} />
-                  </div>
-                  <div>
-                     <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 dark:text-indigo-300">Insights</p>
-                     <h3 className="text-sm font-black text-indigo-950 dark:text-indigo-100">Leitura dos seus resultados</h3>
-                  </div>
+         <div className="space-y-6">
+            {renderRecentSimulationResults(true)}
+            <section className="space-y-3 border-t border-slate-200 pt-5 dark:border-slate-800" aria-labelledby="simulation-history-insights-title">
+               <div className="flex items-center gap-2">
+                  <BrainCircuit size={18} className="text-indigo-700 dark:text-indigo-300" aria-hidden="true" />
+                  <h2 id="simulation-history-insights-title" className="text-lg font-semibold text-slate-950 dark:text-white">Leitura dos seus resultados</h2>
                </div>
                <div className="grid gap-3 md:grid-cols-3">
-                  {historyInsights.map((insight) => (
-                     <div key={insight} className="rounded-2xl bg-white p-4 text-xs font-bold leading-relaxed text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
-                        {insight}
-                     </div>
-                  ))}
+                  {historyInsights.map((insight) => <p key={insight} className="rounded-md border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">{insight}</p>)}
                </div>
-            </div>
+            </section>
          </div>
       );
    };
@@ -1112,22 +1186,36 @@ const Simulation: React.FC = () => {
 
    if (step === 'config') {
       return (
-         <div className="w-full space-y-6 px-2 py-4 animate-fade-in sm:px-3 md:space-y-8 md:px-0 md:py-6">
-            <header className="text-center space-y-2">
-               <div className="flex items-center justify-center gap-2 mb-2">
-                  <div className="p-2 bg-indigo-600 dark:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 dark:shadow-none transition-colors"><Timer size={20} /></div>
-                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Simulados</h1>
+         <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 animate-fade-in sm:px-6 md:space-y-7 md:px-8 md:py-6">
+            <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
+               <div>
+                  <nav aria-label="Navegação estrutural" className="mb-3 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                     <span>Início</span><ChevronRight size={14} aria-hidden="true" /><span className="text-slate-800 dark:text-slate-200">Simulados</span>
+                  </nav>
+                  <h1 className="text-2xl font-semibold text-slate-950 dark:text-white">Simulados</h1>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Treine com provas completas e simule o dia da sua prova.</p>
                </div>
-               <p className="text-slate-400 dark:text-slate-500 text-sm font-medium max-w-lg mx-auto transition-colors">Escolha um simulado pronto, crie seu próprio treino ou acompanhe seus resultados.</p>
+               <button
+                  onClick={() => setSimulationTab('custom')}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-md bg-indigo-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:focus-visible:ring-offset-slate-950 sm:self-auto"
+               >
+                  <Plus size={18} aria-hidden="true" /> Criar simulado
+               </button>
             </header>
 
-            {renderSimulationStats()}
+            <section aria-label="Seu desempenho">
+               {renderSimulationStats()}
+            </section>
             {renderSimulationTabs()}
-            {simulationTab === 'ready' ? renderReadySimulations() : null}
+            {simulationTab === 'ready' ? <>{renderReadySimulations()}{renderRecentSimulationResults()}</> : null}
             {simulationTab === 'results' ? renderSimulationResults() : null}
 
             {simulationTab === 'custom' ? (
-            <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-7 md:space-y-8 transition-colors">
+            <div className="space-y-7 border-b border-slate-200 py-5 dark:border-slate-800 md:space-y-8">
+               <div>
+                  <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Crie o seu simulado</h2>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Selecione os critérios e ajuste o formato antes de começar.</p>
+               </div>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <SearchableMultiSelect
                      label="Foco"
@@ -1162,19 +1250,19 @@ const Simulation: React.FC = () => {
                   <SearchableMultiSelect label="Assuntos (Tópicos)" icon={BookOpen} options={simulationTopics} selected={config.filters.topics} onChange={v => setConfig({ ...config, filters: { ...config.filters, topics: v } })} placeholder="Todos os tópicos..." />
                </div>
 
-               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 pt-6 border-t border-slate-50 dark:border-slate-800 transition-colors">
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 border-t border-slate-200 pt-5 dark:border-slate-800 transition-colors">
                   <div className="space-y-1.5">
-                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Questões</label>
+                     <label className="ml-0.5 text-xs font-medium text-slate-700 transition-colors dark:text-slate-300">Questões</label>
                      <select value={config.questionCount} onChange={e => setConfig({ ...config, questionCount: Number(e.target.value) })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer">
                         {[10, 20, 30, 60, 90].map(v => <option key={v} value={v}>{v} Itens</option>)}
                      </select>
                   </div>
                   <div className="space-y-1.5">
-                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Tempo (Minutos)</label>
+                     <label className="ml-0.5 text-xs font-medium text-slate-700 transition-colors dark:text-slate-300">Tempo (minutos)</label>
                      <input type="number" min="1" max="300" value={config.timerMinutes} onChange={e => setConfig({ ...config, timerMinutes: Number(e.target.value) })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all transition-colors" />
                   </div>
                   <div className="space-y-1.5">
-                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Modo de Resposta</label>
+                     <label className="ml-0.5 text-xs font-medium text-slate-700 transition-colors dark:text-slate-300">Modo de resposta</label>
                      <select value={config.feedbackMode} onChange={e => setConfig({ ...config, feedbackMode: e.target.value as SimulationConfig['feedbackMode'] })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer transition-colors">
                         <option value="after_all">Resultado no Final</option>
                         <option value="instant">Feedback Instantâneo</option>
@@ -1200,8 +1288,8 @@ const Simulation: React.FC = () => {
                   }
 
                   handleCreate();
-               }} className="w-full py-4 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all shadow-xl shadow-slate-200 dark:shadow-none flex items-center justify-center gap-3 group transition-all">
-                  Começar Agora <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+               }} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-indigo-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-indigo-800 dark:bg-indigo-500 dark:hover:bg-indigo-400">
+                  Criar simulado <ArrowRight size={16} />
                </button>
             </div>
             ) : null}
