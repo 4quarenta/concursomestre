@@ -363,6 +363,7 @@ interface QuestionCardProps {
   currentUserName?: string;
   onGuestAction?: (action: string) => void;
   isHighlighted?: boolean;
+  practiceFocusMode?: boolean;
 }
 
 type QuestionCardTaxonomyLike = {
@@ -406,7 +407,8 @@ const getQuestionCardExamText = (question: Question): string => {
 const QuestionCard: React.FC<QuestionCardProps> = ({
   question, existingAnswer, onAnswerSubmit, onReportError, onAddComment, onLikeComment, indexDisplay,
   isAlreadyReported = false, existingNote, onSaveNote, onOpenNote, onToggleSave, isSaved = false,
-  mode = 'practice', hideFeedback = false, currentUserId, currentUserName, onGuestAction, isHighlighted = false
+  mode = 'practice', hideFeedback = false, currentUserId, currentUserName, onGuestAction, isHighlighted = false,
+  practiceFocusMode = false,
 }) => {
   const router = useRouter();
   const { currentUser, isLoading: authIsLoading, updateUser } = useAuth();
@@ -1322,7 +1324,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   };
 
   const cardContent = (
-    <div id={String(question.id)} className={`question-card ${mode === 'practice' ? 'question-card--practice' : ''} bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
+    <div id={String(question.id)} data-practice-focus={practiceFocusMode || undefined} className={`question-card ${mode === 'practice' ? 'question-card--practice' : ''} bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
 
       {/* Header Compacto */}
       <div className="bg-slate-50/70 dark:bg-slate-800/50 p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800">
@@ -1382,6 +1384,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
 
         <div className="flex justify-between items-center">
+          {practiceFocusMode ? (
+            <div className="practice-focus-metadata" aria-label="Dados da prova">
+              {question.bancas?.map(getQuestionCardTaxonomyLabel).filter(Boolean).join(' / ') || null}
+              {question.anos?.length ? <span>{question.anos.join(', ')}</span> : null}
+              {question.cargos?.map(getQuestionCardTaxonomyLabel).filter(Boolean).join(' / ') || null}
+            </div>
+          ) : null}
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all ${showFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
@@ -1495,7 +1504,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               onClick={() => setIsContextExpanded(!isContextExpanded)}
               className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-all group"
             >
-              Texto associado {isContextExpanded ? <MinusCircle size={14} className="group-hover:scale-110 transition-transform" /> : <PlusCircle size={14} className="group-hover:scale-110 transition-transform" />}
+            {practiceFocusMode ? 'Texto de apoio' : 'Texto associado'} {isContextExpanded ? <MinusCircle size={14} className="group-hover:scale-110 transition-transform" /> : <PlusCircle size={14} className="group-hover:scale-110 transition-transform" />}
             </button>
           </div>
         )}
@@ -1597,7 +1606,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           )}
         </div>
 
-        <div className="space-y-2.5">
+        <div className={practiceFocusMode ? 'practice-focus-options space-y-2.5' : 'space-y-2.5'}>
           {isCanceledQuestion ? (
             <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
               <AlertTriangle className="mt-0.5 shrink-0" size={16} />
@@ -1645,7 +1654,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             }
 
             return (
-              <div key={index} className="flex gap-1.5 items-stretch group sm:gap-2">
+              <div key={index} className={practiceFocusMode ? 'practice-focus-option flex gap-1.5 items-stretch group sm:gap-2' : 'flex gap-1.5 items-stretch group sm:gap-2'}>
                 {!isCanceledQuestion && !isSubmitted && mode === 'practice' && (
                   <button
                     disabled={authIsLoading || isRecoveringAnswerSession}
@@ -1660,7 +1669,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <button
                     disabled={authIsLoading || isRecoveringAnswerSession || isCanceledQuestion || (isSubmitted && !hideFeedback)}
                     onClick={() => !isEliminated && handleOptionClick(item.id)}
-                    className={`flex flex-col gap-2 p-3 sm:p-4 rounded-xl border transition-all text-left relative overflow-hidden disabled:cursor-not-allowed ${isCanceledQuestion ? 'opacity-80' : ''} ${btnClass}`}
+                    className={`practice-focus-choice flex flex-col gap-2 p-3 sm:p-4 rounded-xl border transition-all text-left relative overflow-hidden disabled:cursor-not-allowed ${isCanceledQuestion ? 'opacity-80' : ''} ${btnClass}`}
                   >
                     <div className="flex items-center gap-2.5 sm:gap-4 z-10 relative">
                       <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-xs border transition-all flex-shrink-0 ${circleClass}`}>

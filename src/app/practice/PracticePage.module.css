@@ -3,6 +3,7 @@
 .questionHeader h1 { margin: 0; font-size: 28px; line-height: 1.25; font-weight: 700; letter-spacing: 0; }
 .questionHeader > div:first-of-type > p:last-child { margin-top: 4px; max-width: 760px; font-size: 14px; line-height: 1.5; font-weight: 400; }
 .questionHeader nav { gap: 18px; padding-top: 4px; font-size: 13px; font-weight: 500; }
+.questionHeader nav[aria-label="Explorar o acervo"] { display: none; }
 .questionHeader nav a { color: #64748b; }
 .questionHeader nav a:hover { color: #6b73d9; }
 @media(max-width: 600px) {

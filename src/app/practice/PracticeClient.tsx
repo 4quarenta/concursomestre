@@ -17,7 +17,7 @@ import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Difficulty } from '../../types';
 import type { UserAnswer } from '../../types';
-import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp, SlidersHorizontal, List, Target } from 'lucide-react';
+import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp, SlidersHorizontal, List, Target, Minus, Plus, Maximize2, Minimize2 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import AdBanner from '../../components/shared/feedback/AdBanner';
@@ -1108,10 +1108,12 @@ const Practice: React.FC<PracticeProps> = ({
   const [filters, setFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters));
   const [pendingFilters, setPendingFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
   const [isFiltering, setIsFiltering] = useState(false);
-  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [filterTimestamp, setFilterTimestamp] = useState(0); // Force reset on filter
   // List is the neutral default. An explicit server preference is applied below.
-  const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [readingScale, setReadingScale] = useState(0);
+  const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -1132,6 +1134,7 @@ const Practice: React.FC<PracticeProps> = ({
   const loadMoreRequestRef = useRef(false);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const focusQuestionRef = useRef<HTMLDivElement>(null);
+  const focusViewportRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<HTMLElement | Window | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
@@ -1564,6 +1567,21 @@ const Practice: React.FC<PracticeProps> = ({
         block: 'start',
       });
     });
+  }, []);
+
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFocusFullscreen(document.fullscreenElement === focusViewportRef.current);
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState);
+  }, []);
+
+  const toggleFocusFullscreen = useCallback(async () => {
+    if (!focusViewportRef.current) return;
+    if (document.fullscreenElement === focusViewportRef.current) {
+      await document.exitFullscreen();
+      return;
+    }
+    await focusViewportRef.current.requestFullscreen();
   }, []);
 
   const handleAnswer = useCallback((ans: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>) => {
@@ -2030,13 +2048,13 @@ const Practice: React.FC<PracticeProps> = ({
 
       {/* Painel de Filtros Principal - Hidden when viewing specific question */}
       {!highlightedQuestionId && (
-        <div className={`${styles.filterPanel} bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors duration-300`}>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="flex-1 relative">
+        <div className={`${styles.filterPanel} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800`}>
+          <div className={styles.filterToolbar}>
+            <div className={`${styles.keywordSearch} relative`}>
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
               <input
                 type="text"
-                placeholder="Pesquisar por palavra-chave no enunciado..."
+                placeholder="Buscar por palavra-chave na questão..."
                 value={pendingFilters.keyword}
                 onChange={e => handleFilterChange('keyword', e.target.value)}
                 disabled={isPracticeFilterLocked('keyword')}
@@ -2052,8 +2070,41 @@ const Practice: React.FC<PracticeProps> = ({
                 />
               ) : null}
             </div>
-
-            <div className="flex items-center justify-end gap-2">
+            <div className={styles.quickFilter}>
+              <SearchableFilterSelect
+                label="Matéria"
+                value={pendingFilters.subject}
+                onChange={(v) => handleFilterChange('subject', v)}
+                groups={subjectOptionGroups}
+                variant="taxonomy-tree"
+                disabled={isPracticeFilterLocked('subject')}
+                helperText={getLockedFilterHelperText('subject', isEnemPendingFocus ? 'No foco ENEM, a matéria usa as áreas oficiais de conhecimento.' : undefined)}
+                onDisabledClick={() => openLockedFilterUpgrade('subject')}
+              />
+            </div>
+            <div className={styles.quickFilter}>
+              <SearchableFilterSelect
+                label="Banca"
+                value={pendingFilters.agency}
+                onChange={(v) => handleFilterChange('agency', v)}
+                groups={agencyOptionGroups}
+                disabled={isEnemPendingFocus || isPracticeFilterLocked('agency')}
+                helperText={getLockedFilterHelperText('agency', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
+                onDisabledClick={() => openLockedFilterUpgrade('agency', isEnemPendingFocus ? 'No foco ENEM, a banca é fixa e este filtro fica desativado.' : undefined)}
+              />
+            </div>
+            <div className={styles.quickFilter}>
+              <SearchableFilterSelect
+                label="Ano"
+                value={pendingFilters.year}
+                onChange={(v) => handleFilterChange('year', v)}
+                groups={yearOptionGroups}
+                disabled={isPracticeFilterLocked('year')}
+                helperText={getLockedFilterHelperText('year')}
+                onDisabledClick={() => openLockedFilterUpgrade('year')}
+              />
+            </div>
+            <div className={styles.filterActions}>
               <button
                 type="button"
                 onClick={() => setFiltersExpanded((expanded) => !expanded)}
@@ -2067,21 +2118,23 @@ const Practice: React.FC<PracticeProps> = ({
                 {filtersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setFilters(DEFAULT_FILTERS);
                   setPendingFilters(DEFAULT_FILTERS);
                   setLastFetchedPage(1);
                   void ensureQuestionsLoaded(true, {});
                 }}
-                  className="h-12 px-4 text-slate-300 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  className={styles.clearFilters}
                 title="Limpar todos os filtros"
               >
-                <RotateCcw size={20} />
+                <RotateCcw size={17} />
               </button>
               <button
+                type="button"
                 onClick={applyFilters}
                 disabled={isFiltering}
-                className="h-11 sm:h-12 px-5 sm:px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2 whitespace-nowrap text-xs disabled:opacity-70 disabled:cursor-wait"
+                className={styles.submitFilters}
               >
                 {isFiltering ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 {isFiltering ? 'Filtrando...' : 'Filtrar'}
@@ -2090,43 +2143,15 @@ const Practice: React.FC<PracticeProps> = ({
           </div>
 
           <div id="practice-advanced-filters" className={styles.advancedFilters} hidden={!filtersExpanded}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className={styles.advancedGrid}>
             <SearchableFilterSelect
               label="Foco"
               value={pendingFilters.career}
               onChange={(v) => handleFilterChange('career', v)}
               groups={careerOptionGroups}
             />
-            <SearchableFilterSelect
-              label="Materia"
-              value={pendingFilters.subject}
-              onChange={(v) => handleFilterChange('subject', v)}
-              groups={subjectOptionGroups}
-              variant="taxonomy-tree"
-              disabled={isPracticeFilterLocked('subject')}
-              helperText={getLockedFilterHelperText('subject', isEnemPendingFocus ? 'No foco ENEM, a matéria usa as áreas oficiais de conhecimento.' : undefined)}
-              onDisabledClick={() => openLockedFilterUpgrade('subject')}
-            />
             <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} disabled={isPracticeFilterLocked('difficulty')} helperText={getLockedFilterHelperText('difficulty')} onDisabledClick={() => openLockedFilterUpgrade('difficulty')} />
-            <SearchableFilterSelect
-              label="Banca"
-              value={pendingFilters.agency}
-              onChange={(v) => handleFilterChange('agency', v)}
-              groups={agencyOptionGroups}
-              disabled={isEnemPendingFocus || isPracticeFilterLocked('agency')}
-              helperText={getLockedFilterHelperText('agency', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
-              onDisabledClick={() => openLockedFilterUpgrade('agency', isEnemPendingFocus ? 'No foco ENEM, a banca é fixa e este filtro fica desativado.' : undefined)}
-            />
             <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus || isPracticeFilterLocked('organization')} helperText={getLockedFilterHelperText('organization', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('organization', isEnemPendingFocus ? 'No foco ENEM, órgão não se aplica a essa seleção.' : undefined)} />
-            <SearchableFilterSelect
-              label="Ano"
-              value={pendingFilters.year}
-              onChange={(v) => handleFilterChange('year', v)}
-              groups={yearOptionGroups}
-              disabled={isPracticeFilterLocked('year')}
-              helperText={getLockedFilterHelperText('year')}
-              onDisabledClick={() => openLockedFilterUpgrade('year')}
-            />
             <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus || isPracticeFilterLocked('level')} helperText={getLockedFilterHelperText('level', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('level', isEnemPendingFocus ? 'No foco ENEM, nível não se aplica a essa seleção.' : undefined)} />
             <SearchableFilterSelect
               label="Assunto"
@@ -2275,15 +2300,15 @@ const Practice: React.FC<PracticeProps> = ({
           </div>
           </div>
 
-          {/* Visualização de Filtros Ativos e Resultados */}
-          <div className="pt-4 border-t border-slate-50 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          {/* Filtros ativos */}
+          {Object.entries(pendingFilters).some(([, value]) => isVisibleFilterValue(value)) && (
+          <div className={styles.activeFilters}>
             <div className="flex flex-wrap gap-2 items-center min-h-[32px]">
-              <span className="mr-1 text-[9px] font-black uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">Filtros:</span>
               {Object.entries(pendingFilters).filter(([, value]) => isVisibleFilterValue(value)).length > 0 ? (
                 Object.entries(pendingFilters).map(([key, value]) => {
                   if (!isVisibleFilterValue(value)) return null;
                   return (
-                    <div key={key} className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-2 animate-scale-in border ${key === 'hasTeacherComment' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' : key === 'hasDetailedComment' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
+                    <div key={key} className={`${styles.activeFilterChip} ${key === 'hasTeacherComment' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' : key === 'hasDetailedComment' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
                       <span className="opacity-60">{filterLabels[key] || key}:</span>
                       <span>{value === true ? 'Sim' : formatFilterChipValue(key, value)}</span>
                       <button onClick={() => clearFilter(key as PracticeFilterKey)} className="hover:opacity-70 rounded-full p-0.5 transition-colors">
@@ -2292,32 +2317,33 @@ const Practice: React.FC<PracticeProps> = ({
                     </div>
                   );
                 })
-              ) : (
-                <span className="text-xs font-medium italic text-slate-600 dark:text-slate-300">Nenhum filtro aplicado</span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-3">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-black text-[10px] uppercase tracking-wider">
-                <CheckCircle size={14} />
-                {formatQuestionCount(displayedQuestionTotal)}
-              </div>
-              <div className={styles.viewToggle} role="group" aria-label="Modo de visualização">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('card')}
-                  aria-pressed={viewMode === 'card'}
-                  className={viewMode === 'card' ? styles.viewActive : ''}
-                ><Target size={15} /><span>Foco</span></button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('list')}
-                  aria-pressed={viewMode === 'list'}
-                  className={viewMode === 'list' ? styles.viewActive : ''}
-                ><List size={15} /><span>Lista</span></button>
-              </div>
+              ) : null}
             </div>
           </div>
+          )}
+        </div>
+      )}
+
+      {!highlightedQuestionId && (
+        <div className={styles.resultToolbar}>
+          <div className={styles.viewToggle} role="group" aria-label="Modo de visualização">
+            <button type="button" onClick={() => setViewMode('list')} aria-pressed={viewMode === 'list'} className={viewMode === 'list' ? styles.viewActive : ''}>
+              <List size={16} /><span>Lista</span>
+            </button>
+            <button type="button" onClick={() => setViewMode('card')} aria-pressed={viewMode === 'card'} className={viewMode === 'card' ? styles.viewActive : ''}>
+              <Target size={16} /><span>Foco</span>
+            </button>
+          </div>
+          <span className={styles.resultCount}>{displayedQuestionTotal.toLocaleString('pt-BR')} resultados</span>
+          {viewMode === 'card' && (
+            <div className={styles.readingTools} aria-label="Controles de leitura">
+              <button type="button" title="Diminuir texto" aria-label="Diminuir texto" onClick={() => setReadingScale((value) => Math.max(-1, value - 1))} disabled={readingScale <= -1}><Minus size={16} /><span>A−</span></button>
+              <button type="button" title="Aumentar texto" aria-label="Aumentar texto" onClick={() => setReadingScale((value) => Math.min(2, value + 1))} disabled={readingScale >= 2}><Plus size={16} /><span>A+</span></button>
+              <button type="button" title={isFocusFullscreen ? 'Sair da tela cheia' : 'Tela cheia'} aria-label={isFocusFullscreen ? 'Sair da tela cheia' : 'Tela cheia'} onClick={() => void toggleFocusFullscreen()}>
+                {isFocusFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -2335,11 +2361,27 @@ const Practice: React.FC<PracticeProps> = ({
                   </div>
                 </div>
               )}
-                <div ref={focusQuestionRef} className="scroll-mt-4 md:scroll-mt-6">
+                <div
+                  ref={(node) => {
+                    focusQuestionRef.current = node;
+                    focusViewportRef.current = node;
+                  }}
+                  className={`${styles.focusView} scroll-mt-4 md:scroll-mt-6`}
+                  data-reading-scale={readingScale}
+                  data-fullscreen={isFocusFullscreen || undefined}
+                >
+                  {isFocusFullscreen && (
+                    <div className={styles.fullscreenTools}>
+                      <button type="button" onClick={() => void toggleFocusFullscreen()} aria-label="Sair da tela cheia" title="Sair da tela cheia">
+                        <Minimize2 size={17} />
+                      </button>
+                    </div>
+                  )}
                   <QuestionCard
                   key={`${resolvedQuestions[currentQuestionIndex].id}-${filterTimestamp}`}
                   question={resolvedQuestions[currentQuestionIndex]}
                   isHighlighted={!!highlightedQuestionId}
+                  practiceFocusMode
                   onAnswerSubmit={handleAnswer}
                   onReportError={reportError}
                   onGuestAction={(action) => {
@@ -2401,7 +2443,7 @@ const Practice: React.FC<PracticeProps> = ({
                 />
                 <nav
                   aria-label="Navegação entre questões"
-                  className="mt-4 grid grid-cols-2 items-center gap-2 px-0 sm:mt-6 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-2"
+                  className={`${styles.focusNav} mt-4 grid grid-cols-2 items-center gap-2 px-0 sm:mt-6 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-2`}
                 >
                   <button
                     type="button"
