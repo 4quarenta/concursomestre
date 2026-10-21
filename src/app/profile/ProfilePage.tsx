@@ -4089,7 +4089,6 @@ const Profile: React.FC = () => {
         { id: 'testimonial', label: 'Avaliar plataforma', icon: Star, onSelect: openTestimonialModal },
     ];
     const isMoreProfileTabActive = moreProfileTabs.some(({ id }) => activeTab === id);
-
     return (
         <div className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} px-3 pb-16 sm:px-4 md:px-6`}>
             <header className="mb-5 space-y-2">
@@ -4100,7 +4099,6 @@ const Profile: React.FC = () => {
                 </nav>
                 <h1 className={`${PLATFORM_PAGE_TITLE_CLASS} pt-1`}>Meu perfil</h1>
             </header>
-
             <nav aria-label="Seções do perfil" className="relative mb-6 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-1">
                     <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -4128,7 +4126,6 @@ const Profile: React.FC = () => {
                     </details>
                 </div>
             </nav>
-
             {shouldShowProfileCompletionBanner && (
                 <div className="mb-6 flex flex-col gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/20 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -4140,13 +4137,10 @@ const Profile: React.FC = () => {
                     </button>
                 </div>
             )}
-
             <main>
                <div ref={profileActiveTabContentRef} className="space-y-6 scroll-mt-24">
-
                {activeTab === 'evolution' && (
                   <div className="space-y-6">
-                     {/* NOVO CABEÇALHO DE ESTUDOS */}
                      <div className="bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 transition-colors">
                         <div className="flex-1 space-y-3">
                            <div className="flex items-center gap-2">
@@ -4764,7 +4758,6 @@ const Profile: React.FC = () => {
                             initialAddress={personalAddress}
                          />
                          </div>
-
                          <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5 dark:border-slate-800 md:col-span-2">
                             <button type="reset" disabled={isUpdatingProfile} className="inline-flex min-h-10 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
                                 Cancelar
@@ -4782,10 +4775,9 @@ const Profile: React.FC = () => {
                                 {isUpdatingProfile ? 'Salvando...' : 'Salvar alterações'}
                             </button>
                          </div>
-                     </form>
-                      )}
-
-                       </section>
+                      </form>
+                       )}
+                        </section>
 
                      <div id="saved-cards-personal-section" className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
