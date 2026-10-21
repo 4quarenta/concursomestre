@@ -4607,7 +4607,6 @@ const Profile: React.FC = () => {
                        )}
                    </div>
                )}
-
                {activeTab === 'personal' && (
                    <div ref={personalDetailsSectionRef} className="scroll-mt-24">
                        <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
@@ -4778,7 +4777,6 @@ const Profile: React.FC = () => {
                       </form>
                        )}
                         </section>
-
                      <div id="saved-cards-personal-section" className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div>
