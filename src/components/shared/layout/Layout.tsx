@@ -786,7 +786,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {hasMobileTopHeader && (
           <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
             <div className="flex items-center justify-between">
-            <PublicBrandLink width={190} />
+            <PublicBrandLink width={160} />
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
@@ -820,6 +820,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   )}
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => router.push(user ? '/profile/personal' : '/auth')}
+                aria-label={userName ? `Perfil de ${userName}` : 'Entrar ou acessar perfil'}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                <UserAvatar
+                  src={userPhotoUrl}
+                  name={userName}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-8 w-8 rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-indigo-600"
+                />
+              </button>
               <button onClick={() => router.push('/busca')} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" aria-label="Buscar questões">
                 <Search size={19} />
               </button>
@@ -1077,9 +1091,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <div ref={profileMenuRef} className="relative ml-1 flex items-center gap-[18px]">
                 <button
                   type="button"
-                  onClick={handleProfileMenuToggle}
-                  aria-haspopup="menu"
-                  aria-expanded={isProfileMenuOpen}
+                  onClick={() => user ? handleProfileMenuToggle() : router.push('/auth')}
+                  aria-haspopup={user ? 'menu' : undefined}
+                  aria-expanded={user ? isProfileMenuOpen : undefined}
                   className="group flex items-center gap-[18px] rounded-md p-0 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   <UserAvatar
