@@ -65,6 +65,7 @@ import type {
   BankXrayPayload,
 } from '@services/bank-analysis/bankAnalysisService';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 
 type TaxonomyOption = {
   name?: string;
@@ -1176,11 +1177,14 @@ const RecommendationPanel = ({
 
 const BankAnalysis: React.FC = () => {
   const { currentUser } = useAuth();
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const [selectedAgency, setSelectedAgency] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedYear, setSelectedYear] = useState('All');
   const [activeAnalysisTab, setActiveAnalysisTab] = useState<'overview' | 'subjects' | 'profile'>('overview');
+  const [isLoadingTaxonomies, setIsLoadingTaxonomies] = useState(true);
+  const [taxonomyLoadError, setTaxonomyLoadError] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [stats, setStats] = useState<BankXrayPayload | null>(null);
@@ -1195,6 +1199,35 @@ const BankAnalysis: React.FC = () => {
 
   const hasXRayAccess = hasPlanBenefit(currentUser, 'xray_banca', systemSettings.planEntitlements);
   const xrayRequiredPlan = getBenefitRequiredPlan('xray_banca', systemSettings.planEntitlements);
+
+  const loadTaxonomies = useCallback(async (force = false) => {
+    setIsLoadingTaxonomies(true);
+    setTaxonomyLoadError(false);
+    try {
+      await ensureTaxonomiesLoaded(force, 'practice');
+    } catch (error) {
+      clientLog.warn('Failed to load x-ray filter taxonomies', error);
+      setTaxonomyLoadError(true);
+    } finally {
+      setIsLoadingTaxonomies(false);
+    }
+  }, [ensureTaxonomiesLoaded]);
+
+  useEffect(() => {
+    let isActive = true;
+    ensureTaxonomiesLoaded(false, 'practice')
+      .catch((error) => {
+        clientLog.warn('Failed to load x-ray filter taxonomies', error);
+        if (isActive) setTaxonomyLoadError(true);
+      })
+      .finally(() => {
+        if (isActive) setIsLoadingTaxonomies(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [ensureTaxonomiesLoaded]);
 
   const agencyOptions = useMemo<TaxonomyOption[]>(
     () => (Array.isArray(systemSettings?.taxonomies?.agencies) ? systemSettings.taxonomies.agencies : []) as TaxonomyOption[],
@@ -1346,13 +1379,14 @@ const BankAnalysis: React.FC = () => {
           <SelectField
             label="Banca"
             value={selectedAgency}
+            disabled={isLoadingTaxonomies || agencies.length === 0}
             onChange={(value) => {
               setSelectedAgency(value);
               setSelectedRole('');
               setSelectedYear('All');
             }}
           >
-            <option value="">Selecione...</option>
+            <option value="">{isLoadingTaxonomies ? 'Carregando bancas...' : 'Selecione...'}</option>
             {agencies.map((agency) => <option key={agency} value={agency}>{agency}</option>)}
           </SelectField>
           <SelectField
@@ -1383,6 +1417,21 @@ const BankAnalysis: React.FC = () => {
             {isAnalyzing ? 'Analisando...' : 'Analisar banca'}
           </button>
       </section>
+
+      {taxonomyLoadError ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+          <span>Não foi possível carregar as bancas, cargos e períodos. Verifique sua conexão e tente novamente.</span>
+          <button
+            type="button"
+            onClick={() => void loadTaxonomies(true)}
+            disabled={isLoadingTaxonomies}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-rose-300 px-3 text-sm font-semibold hover:bg-rose-100 disabled:opacity-50 dark:border-rose-800 dark:hover:bg-rose-900/40"
+          >
+            {isLoadingTaxonomies ? <Loader2 size={14} className="animate-spin" /> : null}
+            Tentar novamente
+          </button>
+        </div>
+      ) : null}
 
       {!selectedAgency ? (
         <EmptyAnalysisState />
