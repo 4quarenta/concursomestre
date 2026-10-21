@@ -79,6 +79,7 @@ import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
+    PLATFORM_SECTION_TITLE_CLASS,
     PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
     PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
@@ -2541,7 +2542,7 @@ const Profile: React.FC = () => {
                 />
             )}
 
-            <section className={`overflow-hidden ${PLATFORM_SURFACE_CARD_CLASS}`}>
+            <section className="overflow-hidden border-y border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                 <div className="border-b border-slate-100 px-5 py-6 dark:border-slate-800 md:px-6 md:py-6">
                     <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
                         <div className="max-w-2xl space-y-3">
@@ -2587,7 +2588,7 @@ const Profile: React.FC = () => {
 
                 <div className="space-y-4 px-5 py-5 md:px-6 md:py-6">
                     <div className="grid gap-3 md:grid-cols-3">
-                        <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="border-b border-slate-200 px-3 py-4 dark:border-slate-800">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Status</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
                                 {hasPendingRefundRequest ? 'Reembolso em análise' : hasBlockingPaymentIssue ? 'Acesso bloqueado' : isNextRenewalOverdue ? 'Pagamento em atraso' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
@@ -2605,7 +2606,7 @@ const Profile: React.FC = () => {
                             </p>
                         </div>
 
-                        <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="border-b border-slate-200 px-3 py-4 dark:border-slate-800">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Ciclo / vigencia</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
                                 {hasActiveSubscription
@@ -2619,7 +2620,7 @@ const Profile: React.FC = () => {
                             </p>
                         </div>
 
-                        <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="border-b border-slate-200 px-3 py-4 dark:border-slate-800">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Valor</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
                                 {showFreeInactiveSubscriptionState ? '0,00' : formatTransactionAmount(subscriptionChargeAmount)}
@@ -2631,7 +2632,7 @@ const Profile: React.FC = () => {
                     </div>
 
                     {!showFreeInactiveSubscriptionState && activeSubscription && hasReliableSubscriptionTimeline && (
-                        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40 md:px-5 md:py-5">
+                        <div className="border-y border-slate-200 px-3 py-4 dark:border-slate-800 md:px-4">
                             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                                 <div className="space-y-2">
                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Progresso do ciclo</p>
@@ -2947,8 +2948,8 @@ const Profile: React.FC = () => {
                 <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                     <div className="space-y-1">
                         <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Suporte</p>
-                        <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Histórico de conversas</h2>
-                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                        <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Histórico de conversas</h2>
+                        <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
                             Acompanhe chamados, sugestões, respostas do suporte e continue conversas abertas.
                         </p>
                     </div>
@@ -2956,7 +2957,7 @@ const Profile: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => void fetchSupportHistory(true)}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                             <RotateCcw size={14} />
                             Atualizar
@@ -2964,7 +2965,7 @@ const Profile: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => router.push('/support?category=info')}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700"
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
                         >
                             <MessageSquare size={14} />
                             Novo chamado
@@ -2978,14 +2979,14 @@ const Profile: React.FC = () => {
                         { label: 'Em análise', value: supportStats.inProgress, className: 'text-sky-600 dark:text-sky-300' },
                         { label: 'Resolvidos', value: supportStats.resolved, className: 'text-emerald-600 dark:text-emerald-300' },
                     ].map((item) => (
-                        <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <div key={item.label} className="border-b border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item.label}</p>
                             <p className={`mt-2 text-2xl font-black ${item.className}`}>{item.value}</p>
                         </div>
                     ))}
                 </div>
 
-                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <section className="overflow-hidden border-y border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Conversas recentes</p>
@@ -3143,22 +3144,22 @@ const Profile: React.FC = () => {
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-1">
                     <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Histórico</p>
-                    <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Transações</h2>
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Histórico de transações</h2>
+                    <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
                         Acompanhe cobranças aprovadas, parcelas futuras pré-aprovadas e faturas emitidas pelo gateway.
                     </p>
                 </div>
                 <button
                     type="button"
                     onClick={fetchUserTransactions}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                     <RotateCcw size={14} />
                     Atualizar
                 </button>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="overflow-hidden border-y border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                 {isLoadingTransactions ? (
                     <div className="flex items-center justify-center px-6 py-20">
                         <Loader2 size={28} className="animate-spin text-indigo-500" />
@@ -3168,15 +3169,11 @@ const Profile: React.FC = () => {
                         <table className="min-w-full text-left">
                             <thead>
                                 <tr className="border-b border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">ID do gateway</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Plano</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Ciclo</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Gateway</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Método</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Data / hora</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Status</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 text-center">Fatura</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400">Data</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400">Descrição</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400">Status</th>
+                                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400">Valor</th>
+                                    <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400">Comprovante</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -3196,58 +3193,20 @@ const Profile: React.FC = () => {
 
                                     return (
                                         <tr key={tx.id} className="align-top transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                                            <td className="px-5 py-4">
-                                                <div className="space-y-2">
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{referenceLabel}</p>
-                                                    <div className="flex items-center gap-2">
-                                                        <code className="max-w-[180px] truncate text-xs font-black text-slate-900 dark:text-slate-100">{referenceId || '-'}</code>
-                                                        {referenceId && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    navigator.clipboard.writeText(String(referenceId));
-                                                                    addToast('ID copiado.', 'success');
-                                                                }}
-                                                                className="rounded-lg border border-slate-200 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                                                            >
-                                                                Copiar
-                                                            </button>
-                                                        )}
-                                                    </div>
+                                            <td className="whitespace-nowrap px-4 py-4">
+                                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{tx.dateTimeFormatted || formatDateTimeBR(tx.createdAt || tx.dueDate || tx.timestamp)}</p>
+                                                {tx.scheduleLabel && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{tx.scheduleLabel}</p>}
+                                            </td>
+                                            <td className="min-w-64 px-4 py-4">
+                                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{resolvedPlanName}</p>
+                                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{[cycleLabel, installmentLabel, gatewayLabel, methodLabel].filter(Boolean).join(' · ')}</p>
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <span className="text-[11px] text-slate-400 dark:text-slate-500">{referenceLabel}</span>
+                                                    <code className="max-w-[180px] truncate text-xs text-slate-600 dark:text-slate-300">{referenceId || '-'}</code>
+                                                    {referenceId && <button type="button" onClick={() => { navigator.clipboard.writeText(String(referenceId)); addToast('ID copiado.', 'success'); }} className="text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-300">Copiar</button>}
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <p className="text-sm font-black leading-[1.2] text-slate-900 dark:text-slate-100">
-                                                    {resolvedPlanName}
-                                                </p>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="space-y-1">
-                                                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{cycleLabel}</p>
-                                                    {installmentLabel && (
-                                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{installmentLabel}</p>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{gatewayLabel}</p>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{methodLabel}</p>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="space-y-1">
-                                                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                                                        {tx.dateTimeFormatted || formatDateTimeBR(tx.createdAt || tx.dueDate || tx.timestamp)}
-                                                    </p>
-                                                    {tx.scheduleLabel && (
-                                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                                            {tx.scheduleLabel}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-5 py-4">
+                                            <td className="px-4 py-4">
                                                 <div className="space-y-2">
                                                     <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusMeta.className}`}>
                                                         {statusMeta.label}
@@ -3259,18 +3218,18 @@ const Profile: React.FC = () => {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4 text-right">
+                                            <td className="whitespace-nowrap px-4 py-4 text-right">
                                                 <p className="text-sm font-black text-slate-900 dark:text-slate-100">
                                                     {formatTransactionAmount(tx.amount ?? 0)}
                                                 </p>
                                             </td>
-                                            <td className="px-5 py-4 text-center">
+                                            <td className="px-4 py-4 text-center">
                                                 {invoiceUrl ? (
                                                     <a
                                                         href={invoiceUrl}
                                                         target="_blank"
                                                         rel="noreferrer"
-                                                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                                                     >
                                                         <Download size={14} />
                                                         PDF
@@ -4141,6 +4100,10 @@ const Profile: React.FC = () => {
                <div ref={profileActiveTabContentRef} className="space-y-6 scroll-mt-24">
                {activeTab === 'evolution' && (
                   <div className="space-y-6">
+                     <header className="border-b border-slate-200 pb-4 dark:border-slate-800">
+                        <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Minha evolução</h2>
+                        <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Acompanhe seu desempenho e progresso nos estudos.</p>
+                     </header>
                      <div className="bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 transition-colors">
                         <div className="flex-1 space-y-3">
                            <div className="flex items-center gap-2">
@@ -4302,7 +4265,7 @@ const Profile: React.FC = () => {
                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{notebookEntries.length} notas</span>
                      </div>
                      {notebookEntries.length > 0 ? (
-                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                        <div className="overflow-hidden border-y border-slate-200 bg-white transition-colors dark:border-slate-800 dark:bg-slate-900">
                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
                               <span>Anotação</span>
                               <span>Ação</span>
@@ -4390,7 +4353,7 @@ const Profile: React.FC = () => {
                            </div>
                         </div>
                      ) : (
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                        <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                            <StickyNote size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma anotação encontrada.</p>
                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Adicione notas em questões e artigos da Lei Comentada durante seus estudos.</p>
@@ -4422,12 +4385,12 @@ const Profile: React.FC = () => {
                      </div>
 
                      {isLoadingFavoriteLaws ? (
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                        <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                            <Loader2 size={36} className="mx-auto mb-3 animate-spin text-slate-300 dark:text-slate-700" />
                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Carregando itens salvos...</p>
                         </div>
                      ) : favoriteLaws.length > 0 ? (
-                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                        <div className="overflow-hidden border-y border-slate-200 bg-white transition-colors dark:border-slate-800 dark:bg-slate-900">
                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
                               <span>Conteúdo salvo</span>
                               <span>Ação</span>
@@ -4500,7 +4463,7 @@ const Profile: React.FC = () => {
                            </div>
                         </div>
                      ) : (
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                        <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                            <BookOpen size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhum item da Lei Comentada salvo ainda.</p>
                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Use o botão de favorito em uma lei, seção ou artigo para montar sua lista.</p>
@@ -4599,7 +4562,7 @@ const Profile: React.FC = () => {
                                </table>
                            </div>
                        ) : (
-                           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                           <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                                <Package size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhum material adquirido.</p>
                                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Visite o Marketplace para encontrar materiais de estudo.</p>
@@ -5485,7 +5448,7 @@ const Profile: React.FC = () => {
                               </table>
                           </div>
                       ) : (
-                          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                          <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                               <BarChart3 size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                               <p className="text-sm text-slate-500 dark:text-slate-400 font-medium tracking-tight">Nenhuma transação registrada.</p>
                           </div>
@@ -5495,21 +5458,15 @@ const Profile: React.FC = () => {
 
                {activeTab === 'referral' && canAccessReferralTab && (
                    <div className="space-y-6">
-                       {/* Banner do Programa */}
-                       <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none">
-                            <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-                                <Gift size={160} />
-                            </div>
-                            <div className="max-w-md relative z-10 space-y-4">
-                                <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">Programa de Parceria</span>
-                                <h2 className="text-3xl font-black tracking-tight leading-tight">Indique amigos e ganhe {referralStats?.commissionPercent ?? 0}% de comissão</h2>
-                                <p className="text-sm font-medium text-indigo-100 leading-relaxed">A comissão nasce após a assinatura confirmada, passa pela carência de reembolso e entra no próximo ciclo de repasse.</p>
-                                
-                                <div className="pt-4 flex items-center gap-3">
-                                    <div className="flex-1 bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex items-center justify-between gap-4">
-                                        <code className="text-xs font-black tracking-widest text-indigo-100 truncate">
-                                            {referralStats?.referralLink || 'Link sendo preparado'}
-                                        </code>
+                       <header className="border-b border-slate-200 pb-4 dark:border-slate-800">
+                           <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Indique e ganhe</h2>
+                           <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Receba {referralStats?.commissionPercent ?? 0}% de comissão após a assinatura indicada ser confirmada e passar pelo prazo de reembolso.</p>
+                       </header>
+                       <section className="border-y border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
+                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                               <code className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                   {referralStats?.referralLink || 'Link sendo preparado'}
+                               </code>
                                         <button 
                                             onClick={() => {
                                                 if (!referralStats?.referralLink) return;
@@ -5518,18 +5475,16 @@ const Profile: React.FC = () => {
                                                 addToast('Link copiado para a área de transferência!', 'success');
                                                 setTimeout(() => setIsCopying(false), 2000);
                                             }}
-                                            className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all active:scale-95 flex items-center gap-2 shrink-0"
+                                            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
                                         >
                                             {isCopying ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                                             {isCopying ? 'Copiado' : 'Copiar'}
                                         </button>
-                                    </div>
-                                    <button className="p-4 bg-indigo-500/30 hover:bg-indigo-500/40 rounded-2xl border border-white/20 transition-all">
-                                        <Share2 size={20} />
-                                    </button>
-                                </div>
-                            </div>
-                       </div>
+                               <button type="button" aria-label="Compartilhar link de indicação" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300">
+                                   <Share2 size={17} />
+                               </button>
+                           </div>
+                       </section>
 
                        {/* Stats das Indicações */}
                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -5539,7 +5494,7 @@ const Profile: React.FC = () => {
                                { label: 'Em carência', value: `R$ ${(referralStats?.balance.pending || 0).toFixed(2)}`, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
                                { label: 'Disponível para repasse', value: `R$ ${(referralStats?.balance.available || 0).toFixed(2)}`, icon: Wallet, color: 'text-sky-600', bg: 'bg-sky-50' }
                            ].map((stat, i) => (
-                               <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                               <div key={i} className="border-b border-slate-200 bg-white px-3 py-4 dark:border-slate-800 dark:bg-slate-900">
                                    <div className="flex items-center gap-4">
                                        <div className={`w-12 h-12 rounded-xl ${stat.bg} dark:bg-slate-800 flex items-center justify-center ${stat.color} transition-colors`}>
                                            <stat.icon size={24} />
@@ -5554,7 +5509,7 @@ const Profile: React.FC = () => {
                        </div>
 
                        {/* Como funciona */}
-                       <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+                       <div className="border-y border-slate-200 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-900">
                             <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Como funciona o programa?</h3>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                                 {[
@@ -5575,11 +5530,15 @@ const Profile: React.FC = () => {
 
                {activeTab === 'security' && (
                   <div className="space-y-6">
+                      <header className="border-b border-slate-200 pb-4 dark:border-slate-800">
+                          <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Privacidade e segurança</h2>
+                          <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Gerencie sua senha, preferências e dados da conta.</p>
+                      </header>
                       {/* Alteração de Senha */}
-                      <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                          <div className="flex items-center gap-3 mb-6">
-                              <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400"><Shield size={20} /></div>
-                              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Segurança da Conta</h2>
+                      <div className="border-b border-slate-200 bg-white py-5 dark:border-slate-800 dark:bg-slate-900">
+                          <div className="mb-5 flex items-center gap-2">
+                              <Shield size={17} className="text-indigo-600 dark:text-indigo-300" />
+                              <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Senha de acesso</h3>
                           </div>
                           
                           <form 
@@ -5603,33 +5562,33 @@ const Profile: React.FC = () => {
                               className="space-y-4 max-w-md"
                           >
                               <div className="space-y-1.5 font-sans">
-                                  <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Senha Atual</label>
-                                  <input name="currentPassword" type="password" required className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                      <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Senha atual</label>
+                                      <input name="currentPassword" type="password" required className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
                               </div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="space-y-1.5 font-sans">
-                                      <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Nova Senha</label>
-                                      <input name="newPassword" type="password" required className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                      <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Nova senha</label>
+                                      <input name="newPassword" type="password" required className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
                                   </div>
                                   <div className="space-y-1.5 font-sans">
-                                      <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Confirmar Nova Senha</label>
-                                      <input name="confirmPassword" type="password" required className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                      <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Confirmar nova senha</label>
+                                      <input name="confirmPassword" type="password" required className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
                                   </div>
                               </div>
-                              <button type="submit" className="px-6 py-3 bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-md">
+                              <button type="submit" className="min-h-10 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700">
                                   Atualizar Senha
                               </button>
                           </form>
                       </div>
 
                       {/* Preferências de Privacidade */}
-                      <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                      <div className="border-y border-slate-200 bg-white py-5 dark:border-slate-800 dark:bg-slate-900">
                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-                             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Privacidade e Preferências</h2>
+                             <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Preferências de privacidade</h3>
                              <button
                                 onClick={handleSavePrivacyPreferences}
                                 disabled={isSavingPrivacyPreferences}
-                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                              >
                                 {isSavingPrivacyPreferences ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                                 Salvar Tudo
