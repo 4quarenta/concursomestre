@@ -5,6 +5,7 @@ import StructuredData from '@/components/seo/StructuredData';
 import { buildQuestionPath, summarizeSeoText } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import { buildBreadcrumbList, buildCollectionPage, buildItemList, buildStructuredDataGraph } from '@services/seo/structuredData';
+import styles from './PracticePage.module.css';
 import PracticeClient from './PracticeClient';
 import { fetchPracticeInitialQuestions } from './practiceServerData';
 
@@ -21,8 +22,8 @@ type PracticePageProps = {
 
 const DEFAULT_SEMANTIC_PAGE = {
   path: publicRoutes.questions.index(),
-  title: 'Questões de concursos para praticar',
-  description: 'Banco de questões organizado por banca, disciplina, assunto, cargo e ano.',
+  title: 'Questões',
+  description: 'Resolva questões de concursos e filtre o banco por matéria, banca, assunto, cargo, dificuldade e ano.',
   eyebrow: 'Banco de questões',
   breadcrumbLabel: 'Questões',
 };
@@ -72,7 +73,7 @@ export default async function PracticePage({ searchParams, semanticPage = DEFAUL
     <>
       <StructuredData value={jsonLd} />
       <header
-        className="space-y-4 px-3 pb-2 sm:px-4 md:px-0"
+        className={`${semanticPage.path === publicRoutes.questions.index() ? styles.questionHeader : 'space-y-4 px-3 pb-2 sm:px-4 md:px-0'}`}
         data-practice-semantic-header
         data-semantic-content
       >

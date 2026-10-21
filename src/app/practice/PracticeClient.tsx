@@ -17,7 +17,7 @@ import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Difficulty } from '../../types';
 import type { UserAnswer } from '../../types';
-import { ChevronRight, ChevronLeft, ChevronDown, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp } from 'lucide-react';
+import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp, SlidersHorizontal, List, Target } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import AdBanner from '../../components/shared/feedback/AdBanner';
@@ -58,6 +58,8 @@ import { useUserProgressStore } from '@/state/user-progress/userProgressStore';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 import type { PracticeInitialQuestionPage } from './practiceTypes';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import ui from '@/components/shared/ui/PlatformUI.module.css';
+import styles from './PracticeClient.module.css';
 
 const QuestionCard = dynamic(() => import('../questions/components/QuestionCard'), {
   loading: () => (
@@ -1106,6 +1108,7 @@ const Practice: React.FC<PracticeProps> = ({
   const [filters, setFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters));
   const [pendingFilters, setPendingFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
   const [isFiltering, setIsFiltering] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [filterTimestamp, setFilterTimestamp] = useState(0); // Force reset on filter
   // List is the neutral default. An explicit server preference is applied below.
   const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
@@ -2011,7 +2014,7 @@ const Practice: React.FC<PracticeProps> = ({
   return (
     <div
       ref={pageRootRef}
-      className="space-y-5 px-3 pb-16 animate-fade-in sm:px-4 md:px-0 md:pb-12"
+      className={`${ui.scope} ${styles.page} space-y-5 px-3 pb-16 animate-fade-in sm:px-4 md:px-0 md:pb-12`}
       data-hydration-interaction={semanticPageHeaderRendered || undefined}
     >
       {/* Back Button when viewing specific question */}
@@ -2027,7 +2030,7 @@ const Practice: React.FC<PracticeProps> = ({
 
       {/* Painel de Filtros Principal - Hidden when viewing specific question */}
       {!highlightedQuestionId && (
-        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors duration-300">
+        <div className={`${styles.filterPanel} bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors duration-300`}>
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
@@ -2052,6 +2055,18 @@ const Practice: React.FC<PracticeProps> = ({
 
             <div className="flex items-center justify-end gap-2">
               <button
+                type="button"
+                onClick={() => setFiltersExpanded((expanded) => !expanded)}
+                aria-expanded={filtersExpanded}
+                aria-controls="practice-advanced-filters"
+                className={styles.filterToggle}
+              >
+                <SlidersHorizontal size={16} />
+                <span>Todos os filtros</span>
+                <span className={styles.filterCount}>10</span>
+                {filtersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
+              <button
                 onClick={() => {
                   setFilters(DEFAULT_FILTERS);
                   setPendingFilters(DEFAULT_FILTERS);
@@ -2074,6 +2089,7 @@ const Practice: React.FC<PracticeProps> = ({
             </div>
           </div>
 
+          <div id="practice-advanced-filters" className={styles.advancedFilters} hidden={!filtersExpanded}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <SearchableFilterSelect
               label="Foco"
@@ -2257,6 +2273,7 @@ const Practice: React.FC<PracticeProps> = ({
               </div>
             </div>
           </div>
+          </div>
 
           {/* Visualização de Filtros Ativos e Resultados */}
           <div className="pt-4 border-t border-slate-50 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -2285,15 +2302,19 @@ const Practice: React.FC<PracticeProps> = ({
                 <CheckCircle size={14} />
                 {formatQuestionCount(displayedQuestionTotal)}
               </div>
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors">
+              <div className={styles.viewToggle} role="group" aria-label="Modo de visualização">
                 <button
+                  type="button"
                   onClick={() => setViewMode('card')}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all ${viewMode === 'card' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-300'}`}
-                >Foco</button>
+                  aria-pressed={viewMode === 'card'}
+                  className={viewMode === 'card' ? styles.viewActive : ''}
+                ><Target size={15} /><span>Foco</span></button>
                 <button
+                  type="button"
                   onClick={() => setViewMode('list')}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-300'}`}
-                >Lista</button>
+                  aria-pressed={viewMode === 'list'}
+                  className={viewMode === 'list' ? styles.viewActive : ''}
+                ><List size={15} /><span>Lista</span></button>
               </div>
             </div>
           </div>
