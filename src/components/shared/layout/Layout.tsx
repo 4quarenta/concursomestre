@@ -12,7 +12,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileQuestion, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -436,6 +436,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navItems: SidebarNavItem[] = ([
     { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', enabled: !!user, benefitKey: 'module.dashboard' },
     { label: 'Quest\u00F5es', icon: BookOpen, path: publicRoutes.questions.index(), enabled: practiceEnabled, benefitKey: 'module.practice' },
+    { label: 'Provas', icon: FileQuestion, path: publicRoutes.exams.index(), enabled: true },
     { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled, benefitKey: 'module.lei_comentada' },
     { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled, benefitKey: 'module.flashcards' },
     { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled, benefitKey: 'module.simulations' },
@@ -468,6 +469,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const primaryNavigationPaths = [
     '/dashboard',
     publicRoutes.questions.index(),
+    publicRoutes.exams.index(),
     '/simulation',
     '/lei-comentada',
     '/flashcards',
@@ -483,6 +485,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const isActive = (path: string) => {
     if (path.startsWith('/profile')) return location.pathname.startsWith('/profile');
     if (path.startsWith('/admin')) return location.pathname.startsWith('/admin');
+    if (path === publicRoutes.exams.index()) return location.pathname.startsWith('/provas');
     return location.pathname === path;
   };
 

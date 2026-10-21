@@ -61,7 +61,7 @@ describe('profile interaction bootstrap', () => {
 
     expect(profileSource).toContain("resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled', false)");
     expect(profileSource).toContain("tab === 'favorite-laws' && isSystemSettingsLoaded && !annotatedLawsEnabled");
-    expect(profileSource).toContain("annotatedLawsEnabled && renderSidebarItem({ id: 'favorite-laws'");
+    expect(profileSource).toContain("...(annotatedLawsEnabled ? [{ id: 'favorite-laws'");
     expect(profileSource).toContain("annotatedLawsEnabled && activeTab === 'favorite-laws'");
     expect(profileSource).toContain("activeTab === 'favorite-laws' && annotatedLawsEnabled");
   });

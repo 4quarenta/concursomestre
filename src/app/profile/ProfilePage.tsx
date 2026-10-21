@@ -15,6 +15,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,7 +28,7 @@ import {
    AlertTriangle, XCircle, ArrowRight, CheckCircle2, Gift,
    Share2, Copy, Camera, AlertCircle, RotateCcw, Send,
    Loader2, ShieldAlert, Wallet, MessageSquare, Clock,
-   BookmarkCheck, Settings2,
+   BookmarkCheck, Settings2, MoreHorizontal, ChevronDown,
    type LucideIcon,
 } from 'lucide-react';
 import UserAvatar from '@/components/shared/ui/UserAvatar';
@@ -78,6 +79,7 @@ import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
+    PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
     PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import {
@@ -472,6 +474,7 @@ type ProfileSidebarItem = {
     label: string;
     icon: LucideIcon;
     onSelect?: () => void;
+    inMenu?: boolean;
 };
 
 const isPlatformRatingThread = (thread: SupportThread) => (
@@ -4047,9 +4050,12 @@ const Profile: React.FC = () => {
       );
    }
 
-    const renderSidebarItem = ({ id, label, icon: Icon, onSelect }: ProfileSidebarItem) => (
+    const renderProfileTab = ({ id, label, icon: Icon, onSelect, inMenu = false }: ProfileSidebarItem) => (
         <button
-            onClick={() => {
+            type="button"
+            aria-current={activeTab === id ? 'page' : undefined}
+            onClick={(event) => {
+                if (inMenu) event.currentTarget.closest('details')?.removeAttribute('open');
                 if (onSelect) {
                     onSelect();
                     return;
@@ -4064,117 +4070,78 @@ const Profile: React.FC = () => {
                     });
                 }
             }}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'}`}
+            className={inMenu
+                ? `flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium transition-colors ${activeTab === id ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'}`
+                : `inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors ${activeTab === id ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white'}`}
         >
-            <div className="flex items-center gap-3"><Icon size={16} /> {label}</div>
-            {activeTab === id && <ChevronRight size={14} className="text-indigo-400 dark:text-indigo-500" />}
+            <Icon size={16} aria-hidden="true" />
+            {label}
         </button>
     );
 
+    const moreProfileTabs: ProfileSidebarItem[] = [
+        { id: 'benefits', label: 'Benefícios', icon: Gift },
+        ...(canAccessReferralTab ? [{ id: 'referral' as const, label: 'Indique e Ganhe', icon: Gift }] : []),
+        ...(annotatedLawsEnabled ? [{ id: 'favorite-laws' as const, label: 'Lei Comentada salva', icon: BookOpen }] : []),
+        ...(marketplaceEnabled ? [{ id: 'materials' as const, label: 'Meus Materiais', icon: Package }] : []),
+        { id: 'security', label: 'Privacidade e segurança', icon: ShieldCheck },
+        { id: 'evolution', label: 'Minha evolução', icon: TrendingUp },
+        { id: 'testimonial', label: 'Avaliar plataforma', icon: Star, onSelect: openTestimonialModal },
+    ];
+    const isMoreProfileTabActive = moreProfileTabs.some(({ id }) => activeTab === id);
+
     return (
-        <div className="mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6 pb-20 space-y-5 md:space-y-6">
-            <header>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
-                    <User className="text-indigo-600 dark:text-indigo-400" /> Meu Perfil
-                </h1>
-                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1 transition-colors">Gerencie seus dados, assinatura e acompanhe sua evolução.</p>
+        <div className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} px-3 pb-16 sm:px-4 md:px-6`}>
+            <header className="mb-5 space-y-2">
+                <nav aria-label="Navegação estrutural" className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                    <Link href="/" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-400">Início</Link>
+                    <ChevronRight size={14} aria-hidden="true" />
+                    <span aria-current="page" className="font-medium text-slate-700 dark:text-slate-200">Meu perfil</span>
+                </nav>
+                <h1 className={`${PLATFORM_PAGE_TITLE_CLASS} pt-1`}>Meu perfil</h1>
             </header>
 
-            {/* Banner: Conteúdo Incompleto */}
-            {shouldShowProfileCompletionBanner && (
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 sm:px-6 py-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg border border-indigo-400/30">
-                    <div className="flex items-center gap-4">
-                        <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
-                            <User size={24} className="text-white" />
-                        </div>
-                        <div>
-                            <h4 className="font-bold text-sm">Complete seu cadastro para facilitar suas compras</h4>
-                            <p className="text-xs text-indigo-100 mt-0.5">Adicione seu CPF e endereço para agilizar o checkout de materiais e planos.</p>
-                        </div>
+            <nav aria-label="Seções do perfil" className="relative mb-6 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-1">
+                    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {renderProfileTab({ id: 'personal', label: 'Dados pessoais', icon: User })}
+                        {renderProfileTab({ id: 'saved-questions', label: 'Questões salvas', icon: BookmarkCheck })}
+                        {renderProfileTab({ id: 'notebook', label: 'Anotações', icon: StickyNote })}
+                        {renderProfileTab({ id: 'billing', label: 'Assinatura', icon: CreditCard })}
+                        {renderProfileTab({ id: 'billing-history', label: 'Transações', icon: BarChart3 })}
+                        {renderProfileTab({ id: 'support-history', label: 'Suporte', icon: MessageSquare })}
                     </div>
-                    <button onClick={scrollToPersonalDetailsForm} className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-2 shrink-0 active:scale-95">
-                        Completar Agora <ArrowRight size={14} />
+                    <details className="group relative shrink-0">
+                        <summary className={`flex min-h-11 cursor-pointer list-none items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 [&::-webkit-details-marker]:hidden ${isMoreProfileTabActive ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'}`}>
+                            <MoreHorizontal size={16} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" className="transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="absolute right-0 top-full z-30 mt-1 w-60 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                            {moreProfileTabs.map((item, index) => (
+                                <React.Fragment key={`${item.id}-${index}`}>
+                                    {renderProfileTab({ ...item, inMenu: true })}
+                                </React.Fragment>
+                            ))}
+                            <button type="button" onClick={logout} className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/30">
+                                <LogOut size={16} aria-hidden="true" /> Sair da conta
+                            </button>
+                        </div>
+                    </details>
+                </div>
+            </nav>
+
+            {shouldShowProfileCompletionBanner && (
+                <div className="mb-6 flex flex-col gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/20 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Complete seu cadastro para facilitar suas compras</h2>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Adicione seu CPF e endereço para agilizar o checkout de materiais e planos.</p>
+                    </div>
+                    <button onClick={scrollToPersonalDetailsForm} className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-indigo-700 hover:underline dark:text-indigo-300">
+                        Completar cadastro <ArrowRight size={15} />
                     </button>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8">
-                {/* SIDEBAR DE NAVEGAÇÃO */}
-                <aside className="lg:col-span-3 space-y-4 lg:space-y-6">
-                    {/* Cartão do Usuário */}
-                    <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center space-y-3 transition-colors">
-                        <div 
-                            className="relative group cursor-pointer"
-                            onClick={openProfilePhotoPicker}
-                        >
-                            <UserAvatar
-                                src={profilePhotoUrl}
-                                name={currentUser.name}
-                                alt={currentUser.name || 'Foto de perfil'}
-                                className="h-20 w-20 rounded-full border border-slate-200 bg-slate-100 text-2xl font-black text-slate-400 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
-                            >
-                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {isSavingProfilePhoto ? <Loader2 size={20} className="animate-spin text-white" /> : <Camera size={20} className="text-white" />}
-                                </div>
-                            </UserAvatar>
-                            {profilePhotoUrl ? (
-                                <button
-                                    type="button"
-                                    onClick={async (event) => {
-                                        event.stopPropagation();
-                                        await handleRemoveProfilePhoto();
-                                    }}
-                                    disabled={isRemovingProfilePhoto}
-                                    className="absolute -top-1 -left-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 shadow-sm transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/40 dark:bg-slate-900 dark:text-rose-400 dark:hover:bg-rose-900/20"
-                                    title="Remover foto"
-                                    aria-label="Remover foto de perfil"
-                                >
-                                    {isRemovingProfilePhoto ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                                </button>
-                            ) : null}
-                            <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white dark:border-slate-900 shadow-sm">
-                                LVL {currentUser.level}
-                            </div>
-                        </div>
-                        <div>
-                            <h2 className="font-bold text-slate-900 dark:text-slate-100 text-sm transition-colors">{currentUser.name}</h2>
-                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate max-w-[180px] transition-colors">{currentUser.email}</p>
-                        </div>
-                        <div className="w-full pt-3 border-t border-slate-50 dark:border-slate-800 flex justify-center transition-colors">
-                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded border transition-colors ${isElitePlan ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800/30' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-700'}`}>
-                                Plano {effectivePlanDisplayName}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Menu */}
-                    <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 transition-colors">
-                        <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Menu</div>
-                        {renderSidebarItem({ id: 'notebook', label: 'Minhas Anotações', icon: StickyNote })}
-                        {renderSidebarItem({ id: 'saved-questions', label: 'Questões salvas', icon: BookmarkCheck })}
-                        {annotatedLawsEnabled && renderSidebarItem({ id: 'favorite-laws', label: 'Lei Comentada salva', icon: BookOpen })}
-                        {marketplaceEnabled && renderSidebarItem({ id: 'materials', label: 'Meus Materiais', icon: Package })}
-                        
-                        <div className="h-px bg-slate-50 dark:bg-slate-800 my-2 transition-colors" />
-                        
-                        <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Conta</div>
-                        {renderSidebarItem({ id: 'personal', label: 'Dados Pessoais', icon: User })}
-                        {renderSidebarItem({ id: 'testimonial', label: 'Avaliar plataforma', icon: Star, onSelect: openTestimonialModal })}
-                        {renderSidebarItem({ id: 'support-history', label: 'Histórico de suporte', icon: MessageSquare })}
-                        {renderSidebarItem({ id: 'billing', label: 'Assinatura', icon: CreditCard })}
-                        {renderSidebarItem({ id: 'billing-history', label: 'Transações', icon: BarChart3 })}
-                        {renderSidebarItem({ id: 'benefits', label: 'Benefícios', icon: Gift })}
-                        {canAccessReferralTab && renderSidebarItem({ id: 'referral', label: 'Indique e Ganhe', icon: Gift })}
-                        {renderSidebarItem({ id: 'security', label: 'Privacidade', icon: ShieldCheck })}
-                    </div>
-
-                    <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-2.5 sm:py-3 text-red-500 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 font-bold text-xs rounded-xl transition-all border border-red-100 dark:border-red-900/30">
-                        <LogOut size={14} /> Sair da Conta
-                    </button>
-                </aside>
-
-            {/* ÁREA DE CONTEÚDO */}
-            <main className="lg:col-span-9">
+            <main>
                <div ref={profileActiveTabContentRef} className="space-y-6 scroll-mt-24">
 
                {activeTab === 'evolution' && (
@@ -4648,8 +4615,44 @@ const Profile: React.FC = () => {
                )}
 
                {activeTab === 'personal' && (
-                  <div ref={personalDetailsSectionRef} className="scroll-mt-24 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-6 transition-colors">Dados Pessoais</h2>
+                   <div ref={personalDetailsSectionRef} className="scroll-mt-24">
+                       <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+                           <div className="flex min-w-0 items-center gap-4">
+                               <div className="relative shrink-0">
+                                   <button type="button" onClick={openProfilePhotoPicker} aria-label="Alterar foto de perfil" className="group relative block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950">
+                                       <UserAvatar
+                                           src={profilePhotoUrl}
+                                           name={currentUser.name}
+                                           alt={currentUser.name || 'Foto de perfil'}
+                                           className="h-16 w-16 rounded-full border border-slate-200 bg-slate-100 text-xl font-bold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                       >
+                                           <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                                               {isSavingProfilePhoto ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                                           </span>
+                                       </UserAvatar>
+                                   </button>
+                                   <span className="absolute -bottom-1 -right-1 rounded-full border-2 border-white bg-indigo-600 px-1.5 py-0.5 text-[9px] font-bold text-white dark:border-slate-950">N{currentUser.level}</span>
+                               </div>
+                               <div className="min-w-0">
+                                   <h2 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{currentUser.name}</h2>
+                                   <p className="truncate text-sm text-slate-500 dark:text-slate-400">{currentUser.email}</p>
+                                   <span className="mt-1 inline-flex text-xs font-medium text-indigo-700 dark:text-indigo-300">Plano {effectivePlanDisplayName}</span>
+                               </div>
+                           </div>
+                           <div className="flex items-center gap-4 pl-20 sm:pl-0">
+                               <button type="button" onClick={openProfilePhotoPicker} disabled={isSavingProfilePhoto} className="text-sm font-semibold text-indigo-700 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-indigo-300">
+                                   {isSavingProfilePhoto ? 'Enviando foto...' : 'Alterar foto'}
+                               </button>
+                               {profilePhotoUrl ? (
+                                   <button type="button" onClick={() => void handleRemoveProfilePhoto()} disabled={isRemovingProfilePhoto} className="text-sm font-medium text-slate-500 hover:text-rose-600 disabled:cursor-wait disabled:opacity-60 dark:text-slate-400 dark:hover:text-rose-400">
+                                       {isRemovingProfilePhoto ? 'Removendo...' : 'Remover'}
+                                   </button>
+                               ) : null}
+                           </div>
+                       </div>
+                       <section className="pt-6">
+                       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Dados pessoais</h2>
+                       <p className="mb-5 mt-1 text-sm text-slate-500 dark:text-slate-400">Mantenha seus dados de cadastro atualizados.</p>
                       {personalProfileQuery.isPending && (
                           <div className="flex min-h-40 items-center justify-center gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
                               <Loader2 size={18} className="animate-spin" />
@@ -4698,13 +4701,13 @@ const Profile: React.FC = () => {
                            }
                         }}
                         noValidate
-                        className="space-y-6 max-w-2xl"
+                        className="grid grid-cols-1 gap-5 md:grid-cols-2"
                      >
-                        <div className="space-y-1.5">
+                         <div className="space-y-1.5 md:col-span-1">
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Nome Completo <span className="text-rose-500">*</span></label>
                             <input name="name" type="text" defaultValue={personalProfile.displayName} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                         </div>
-                        <div className="space-y-1.5">
+                         <div className="space-y-1.5 md:col-span-1">
                             <div className="flex flex-wrap items-center gap-2">
                                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">E-mail de Acesso</label>
                                 {personalProfile.emailVerified ? (
@@ -4724,12 +4727,12 @@ const Profile: React.FC = () => {
                                     : 'Seu e-mail ainda não foi confirmado. Confirme para liberar todos os recursos e receber notificações importantes.'}
                             </p>
                         </div>
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                         <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
                            <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">CPF <span className="text-rose-500">*</span></label>
                                <input name="cpf" type="text" defaultValue={personalProfile.personal.cpf || ''} placeholder="000.000.000-00" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans" />
                            </div>
-                           <div className="space-y-1.5">
+                          <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Telefone / WhatsApp <span className="text-rose-500">*</span></label>
                                <input
                                    name="phone"
@@ -4742,7 +4745,7 @@ const Profile: React.FC = () => {
                                />
                            </div>
                         </div>
-                        <div className="space-y-1.5">
+                         <div className="space-y-1.5 md:col-span-2">
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Foco de Estudo</label>
                             <div className="relative group/exam">
                                  <input name="targetExam" type="hidden" value={personalTargetExam} />
@@ -4755,29 +4758,36 @@ const Profile: React.FC = () => {
                             </div>
                         </div>
 
+                         <div className="md:col-span-2">
                          <BrazilianBillingAddressFields
                             key={personalProfileQuery.dataUpdatedAt || 'personal-address-loading'}
                             initialAddress={personalAddress}
                          />
+                         </div>
 
-                         <div className="pt-4 flex flex-wrap items-center gap-3 sm:gap-4">
+                         <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5 dark:border-slate-800 md:col-span-2">
+                            <button type="reset" disabled={isUpdatingProfile} className="inline-flex min-h-10 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                                Cancelar
+                            </button>
                             <button 
                                 type="submit" 
                                 disabled={isUpdatingProfile}
-                                className={`px-10 py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/10 hover:shadow-indigo-500/25 transition-all flex items-center gap-2 ${isUpdatingProfile ? 'opacity-70 cursor-wait' : 'hover:-translate-y-1 active:scale-95'}`}
+                                className={`inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 ${isUpdatingProfile ? 'cursor-wait opacity-70' : ''}`}
                             >
                                {isUpdatingProfile ? (
                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                ) : (
                                    <ShieldCheck size={16} />
                                )}
-                                {isUpdatingProfile ? 'Sincronizando...' : 'Sincronizar Perfil'}
+                                {isUpdatingProfile ? 'Salvando...' : 'Salvar alterações'}
                             </button>
                          </div>
                      </form>
                       )}
 
-                     <div id="saved-cards-personal-section" className="mt-12 border-t border-slate-100 pt-8 dark:border-slate-800">
+                       </section>
+
+                     <div id="saved-cards-personal-section" className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div>
                                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Cartões Salvos</h3>
@@ -5893,7 +5903,6 @@ const Profile: React.FC = () => {
 
                </div>
             </main>
-         </div>
 
          <StudyFocusModal
             careers={systemSettings.taxonomies?.careers || []}
