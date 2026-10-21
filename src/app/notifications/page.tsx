@@ -122,21 +122,28 @@ type TabButtonProps = {
   id: TabType;
   label: string;
   icon: React.ComponentType<{ size?: number }>;
+  count: number;
   activeTab: TabType;
   onSelect: (id: TabType) => void;
 };
 
-const TabButton: React.FC<TabButtonProps> = ({ id, label, icon: Icon, activeTab, onSelect }) => (
+const TabButton: React.FC<TabButtonProps> = ({ id, label, icon: Icon, count, activeTab, onSelect }) => (
   <button
+    type="button"
     onClick={() => onSelect(id)}
-    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+    role="tab"
+    aria-selected={activeTab === id}
+    className={`inline-flex min-h-10 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors ${
       activeTab === id
-        ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-lg'
-        : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-800'
+        ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300'
+        : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-100'
     }`}
   >
-    <Icon size={14} />
+    <Icon size={16} aria-hidden="true" />
     {label}
+    <span className={`ml-1 min-w-5 rounded px-1 text-center text-xs tabular-nums ${activeTab === id ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-400/15 dark:text-indigo-200' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+      {count}
+    </span>
   </button>
 );
 
@@ -187,6 +194,8 @@ const Page: React.FC = () => {
   const filteredNotifications = getFilteredNotifications();
   const totalPages = Math.ceil(filteredNotifications.length / itemsPerPage);
   const paginatedNotifications = filteredNotifications.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const unreadCount = notifications.filter((notification) => !notification.deletedAt && !notification.isRead).length;
+  const activeCount = notifications.filter((notification) => !notification.deletedAt).length;
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -198,19 +207,6 @@ const Page: React.FC = () => {
         return <XCircle className="text-red-500 dark:text-red-400" size={24} />;
       default:
         return <Info className="text-indigo-500 dark:text-indigo-400" size={24} />;
-    }
-  };
-
-  const getBgColor = (type: string) => {
-    switch (type) {
-      case 'success':
-        return 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/30';
-      case 'warning':
-        return 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/30';
-      case 'error':
-        return 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30';
-      default:
-        return 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800/30';
     }
   };
 
@@ -239,28 +235,60 @@ const Page: React.FC = () => {
     setCurrentPage(1);
   };
 
+  const tabItems: Array<{ id: TabType; label: string; icon: TabButtonProps['icon'] }> = [
+    { id: 'all', label: 'Todas', icon: Inbox },
+    { id: 'system', label: 'Sistema', icon: Info },
+    { id: 'social', label: 'Interações', icon: MessageSquare },
+    { id: 'marketplace', label: 'Loja', icon: ShoppingBag },
+    { id: 'report', label: 'Suporte', icon: Shield },
+    { id: 'trash', label: 'Lixeira', icon: Trash2 },
+  ];
+
+  const getTabCount = (tab: TabType) => {
+    if (tab === 'trash') {
+      return notifications.filter((notification) => notification.deletedAt).length;
+    }
+    const activeNotifications = notifications.filter((notification) => !notification.deletedAt);
+    if (tab === 'all') return activeNotifications.length;
+    return activeNotifications.filter((notification) => resolveNotificationCategory(notification) === tab).length;
+  };
+
+  const iconTone = (type: string) => {
+    switch (type) {
+      case 'success': return 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-400/10';
+      case 'warning': return 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-400/10';
+      case 'error': return 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-400/10';
+      default: return 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-400/10';
+    }
+  };
+
   return (
-    <div className="max-w-4xl mx-auto animate-fade-in pb-20 space-y-6">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
-            <Bell className="text-indigo-600 dark:text-indigo-400" /> Notificações
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1 transition-colors">
-            Acompanhe suas novidades e alertas do sistema.
+    <main className="mx-auto w-full max-w-5xl animate-fade-in pb-12">
+      <header className="flex flex-col gap-5 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <Bell size={16} aria-hidden="true" /> Central de notificações
+          </div>
+          <h1 className="text-2xl font-bold text-slate-950 dark:text-white">Notificações</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            {unreadCount > 0 ? `${unreadCount} não lidas` : 'Tudo em dia'}
+            <span className="px-2 text-slate-300 dark:text-slate-700" aria-hidden="true">·</span>
+            {activeCount} {activeCount === 1 ? 'notificação' : 'notificações'}
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
+            type="button"
             onClick={() => markAllNotificationsAsRead(currentUser.id)}
-            className="px-4 py-2 bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all flex items-center gap-2 shadow-sm"
-            disabled={notifications.every((notification) => notification.isRead)}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            disabled={unreadCount === 0}
           >
-            <MailOpen size={14} /> Ler todas
+            <MailOpen size={16} aria-hidden="true" /> Marcar todas como lidas
           </button>
           {activeTab !== 'trash' && (
             <button
+              type="button"
               onClick={async () => {
                 const confirmed = await confirmDialog({
                   title: 'Mover notificações para a lixeira?',
@@ -272,165 +300,126 @@ const Page: React.FC = () => {
                 if (!confirmed) return;
                 clearNotifications(currentUser.id);
               }}
-              className="px-4 py-2 bg-white dark:bg-slate-900 text-red-500 dark:text-red-400 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-900/10 hover:border-red-100 dark:hover:border-red-900/30 transition-all flex items-center gap-2 shadow-sm"
-              disabled={notifications.filter((notification) => !notification.deletedAt).length === 0}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-rose-900 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
+              disabled={activeCount === 0}
             >
-              <Trash2 size={14} /> Limpar
+              <Trash2 size={16} aria-hidden="true" /> Limpar
             </button>
           )}
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-2 pb-2 overflow-x-auto no-scrollbar">
-        <TabButton id="all" label="Geral" icon={Inbox} activeTab={activeTab} onSelect={handleSelectTab} />
-        <TabButton id="system" label="Sistema" icon={Info} activeTab={activeTab} onSelect={handleSelectTab} />
-        <TabButton id="social" label="Interações" icon={MessageSquare} activeTab={activeTab} onSelect={handleSelectTab} />
-        <TabButton id="marketplace" label="Loja" icon={ShoppingBag} activeTab={activeTab} onSelect={handleSelectTab} />
-        <TabButton id="report" label="Suporte" icon={Shield} activeTab={activeTab} onSelect={handleSelectTab} />
-        <TabButton id="trash" label="Lixeira" icon={Trash2} activeTab={activeTab} onSelect={handleSelectTab} />
-      </div>
+      <nav className="-mx-2 mt-3 overflow-x-auto px-2" aria-label="Categorias de notificações">
+        <div className="flex min-w-max border-b border-slate-200 dark:border-slate-800" role="tablist">
+          {tabItems.map((item) => (
+            <TabButton key={item.id} id={item.id} label={item.label} icon={item.icon} count={getTabCount(item.id)} activeTab={activeTab} onSelect={handleSelectTab} />
+          ))}
+        </div>
+      </nav>
 
-      <div className="space-y-4">
+      <section className="mt-2" aria-label="Lista de notificações" role="tabpanel">
         {paginatedNotifications.length > 0 ? (
-          paginatedNotifications.map((notification) => (
-            <div
-              key={notification.id}
-              onClick={() => handleNotificationClick(notification)}
-              className={`relative p-6 rounded-2xl border shadow-sm transition-all hover:shadow-md flex flex-col md:flex-row gap-4 items-start md:items-center cursor-pointer transition-colors ${
-                notification.isRead
-                  ? 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800'
-                  : 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-900/50 ring-1 ring-indigo-50 dark:ring-indigo-900/20'
-              }`}
-            >
-              <div className={`p-3 rounded-2xl flex-shrink-0 transition-colors ${getBgColor(notification.type)}`}>
-                {getTypeIcon(notification.type)}
-              </div>
-
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-3">
-                  <h3 className={`text-sm font-black transition-colors ${notification.isRead ? 'text-slate-700 dark:text-slate-300' : 'text-indigo-900 dark:text-indigo-400'}`}>
-                    {notification.title}
-                  </h3>
-                  {!notification.isRead && <span className="bg-indigo-600 dark:bg-indigo-500 w-2 h-2 rounded-full animate-pulse" />}
+          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+            {paginatedNotifications.map((notification) => (
+              <li key={notification.id} className={`group flex gap-3 py-5 sm:gap-4 ${notification.isRead ? '' : 'bg-indigo-50/40 dark:bg-indigo-400/[0.035]'}`}>
+                <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${iconTone(notification.type)}`} aria-hidden="true">
+                  {React.cloneElement(getTypeIcon(notification.type), { size: 18 })}
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium transition-colors">{notification.message}</p>
 
-                {notification.evidenceUrl && (
-                  <div className="mt-3">
-                    <p className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1 transition-colors">
-                      <Info size={10} /> Prova anexada
-                    </p>
-                    <Image
-                      src={notification.evidenceUrl}
-                      alt="Prova"
-                      width={420}
-                      height={192}
-                      unoptimized
-                      className="rounded-xl border border-slate-200 dark:border-slate-800 max-h-48 object-contain bg-slate-50 dark:bg-slate-800 transition-colors"
-                    />
-                  </div>
-                )}
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => handleNotificationClick(notification)}
+                    className="block w-full rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
+                    aria-label={`${notification.isRead ? '' : 'Não lida: '}${notification.title}. ${notification.link ? 'Abrir notificação' : 'Marcar como lida'}`}
+                  >
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className={`text-sm font-semibold ${notification.isRead ? 'text-slate-800 dark:text-slate-100' : 'text-slate-950 dark:text-white'}`}>
+                        {notification.title}
+                      </span>
+                      {!notification.isRead && <span className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400" aria-label="Não lida" />}
+                      <span className="text-xs text-slate-500 dark:text-slate-400">{getNotificationCategoryLabel(notification)}</span>
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-slate-600 dark:text-slate-300">{notification.message}</span>
+                    <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      <span>{formatNotificationDateTime(notification.timestamp)}</span>
+                      {notification.link && <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 dark:text-indigo-300">Ver conteúdo <ArrowRight size={13} aria-hidden="true" /></span>}
+                      {activeTab === 'trash' && notification.deletedAt && (
+                        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
+                          <RefreshCcw size={13} aria-hidden="true" /> {getTrashDaysLeft(notification.deletedAt, referenceTimeMs) ?? TRASH_RETENTION_DAYS} dias para excluir
+                        </span>
+                      )}
+                    </span>
+                  </button>
 
-                <div className="flex items-center gap-3 pt-1">
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider transition-colors">
-                    {formatNotificationDateTime(notification.timestamp)}
-                  </p>
-                  {notification.link && (
-                    <span className="flex items-center gap-1 text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
-                      Ver conteúdo <ArrowRight size={10} />
-                    </span>
-                  )}
-                  <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase transition-colors">
-                    {getNotificationCategoryLabel(notification)}
-                  </span>
-                  {activeTab === 'trash' && notification.deletedAt && (
-                    <span className="flex items-center gap-1 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30 transition-colors">
-                      <RefreshCcw size={10} />
-                      {getTrashDaysLeft(notification.deletedAt, referenceTimeMs) ?? TRASH_RETENTION_DAYS} dias p/ excluir
-                    </span>
+                  {notification.evidenceUrl && (
+                    <div className="mt-3">
+                      <p className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400"><Info size={13} aria-hidden="true" /> Evidência anexada</p>
+                      <Image src={notification.evidenceUrl} alt="Evidência da notificação" width={420} height={192} unoptimized className="max-h-48 rounded-md border border-slate-200 bg-slate-50 object-contain dark:border-slate-700 dark:bg-slate-900" />
+                    </div>
                   )}
                 </div>
-              </div>
 
-              <div className="flex gap-2 self-end md:self-center" onClick={(event) => event.stopPropagation()}>
-                {activeTab === 'trash' ? (
-                  <>
-                    <button
-                      onClick={() => restoreNotification(notification.id)}
-                      className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
-                      title="Restaurar"
-                    >
-                      <RefreshCcw size={18} />
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const confirmed = await confirmDialog({
-                          title: 'Excluir permanentemente?',
-                          description: 'Essa ação remove a notificação e não pode ser desfeita.',
-                          confirmText: 'Excluir',
-                          cancelText: 'Cancelar',
-                          type: 'danger',
-                        });
-                        if (!confirmed) return;
-                        permanentDeleteNotification(notification.id);
-                      }}
-                      className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                      title="Excluir permanentemente"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {!notification.isRead && (
-                      <button
-                        onClick={() => markNotificationAsRead(notification.id)}
-                        className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
-                        title="Marcar como lida"
-                      >
-                        <Check size={18} />
+                <div className="flex shrink-0 items-start gap-1" aria-label="Ações da notificação">
+                  {activeTab === 'trash' ? (
+                    <>
+                      <button type="button" onClick={() => restoreNotification(notification.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700 dark:text-slate-400 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300" title="Restaurar" aria-label="Restaurar notificação">
+                        <RefreshCcw size={17} />
                       </button>
-                    )}
-                    <button
-                      onClick={() => deleteNotification(notification.id)}
-                      className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                      title="Mover para lixeira"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const confirmed = await confirmDialog({
+                            title: 'Excluir permanentemente?',
+                            description: 'Essa ação remove a notificação e não pode ser desfeita.',
+                            confirmText: 'Excluir',
+                            cancelText: 'Cancelar',
+                            type: 'danger',
+                          });
+                          if (confirmed) permanentDeleteNotification(notification.id);
+                        }}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-700 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+                        title="Excluir permanentemente"
+                        aria-label="Excluir notificação permanentemente"
+                      ><Trash2 size={17} /></button>
+                    </>
+                  ) : (
+                    <>
+                      {!notification.isRead && (
+                        <button type="button" onClick={() => markNotificationAsRead(notification.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-400 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300" title="Marcar como lida" aria-label="Marcar notificação como lida"><Check size={17} /></button>
+                      )}
+                      <button type="button" onClick={() => deleteNotification(notification.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-700 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300" title="Mover para lixeira" aria-label="Mover notificação para lixeira"><Trash2 size={17} /></button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed text-slate-300 dark:text-slate-700 space-y-4 transition-colors">
-            <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-full transition-colors">
-              <Inbox size={48} className="opacity-50" />
-            </div>
-            <p className="text-sm font-medium transition-colors">Nenhuma notificação nesta categoria.</p>
+          <div className="flex min-h-64 flex-col items-center justify-center border-b border-slate-200 px-4 text-center dark:border-slate-800">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-900 dark:text-slate-400"><Inbox size={23} aria-hidden="true" /></span>
+            <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">Nenhuma notificação por aqui</h2>
+            <p className="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">Quando houver novidades nesta categoria, elas aparecerão nesta lista.</p>
           </div>
         )}
-      </div>
+      </section>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-4">
+        <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-slate-200 pt-4 dark:border-slate-800" aria-label="Paginação de notificações">
+          <span className="mr-3 text-sm text-slate-500 dark:text-slate-400">Página {currentPage} de {totalPages}</span>
           {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
             <button
               key={pageNumber}
+              type="button"
               onClick={() => setCurrentPage(pageNumber)}
-              className={`w-10 h-10 rounded-xl text-xs font-black transition-all ${
-                currentPage === pageNumber
-                  ? 'bg-indigo-600 text-white shadow-lg'
-                  : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400'
-              }`}
-            >
-              {pageNumber}
-            </button>
+              aria-current={currentPage === pageNumber ? 'page' : undefined}
+              aria-label={`Página ${pageNumber}`}
+              className={`inline-flex h-9 min-w-9 items-center justify-center rounded-md px-2 text-sm font-semibold transition-colors ${currentPage === pageNumber ? 'bg-indigo-600 text-white dark:bg-indigo-500' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+            >{pageNumber}</button>
           ))}
-        </div>
+        </nav>
       )}
-    </div>
+    </main>
   );
 };
 
