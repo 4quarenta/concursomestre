@@ -465,6 +465,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     });
   }
 
+  const primaryNavigationPaths = [
+    '/dashboard',
+    publicRoutes.questions.index(),
+    '/simulation',
+    '/lei-comentada',
+    '/flashcards',
+    '/cronograma',
+    '/x-ray',
+  ];
+  const primaryNavItems = primaryNavigationPaths
+    .map((path) => navItems.find((item) => item.path === path))
+    .filter((item): item is SidebarNavItem => Boolean(item));
+  const primaryNavPaths = new Set(primaryNavItems.map((item) => item.path));
+  const moreNavItems = navItems.filter((item) => !primaryNavPaths.has(item.path));
+
   const isActive = (path: string) => {
     if (path.startsWith('/profile')) return location.pathname.startsWith('/profile');
     if (path.startsWith('/admin')) return location.pathname.startsWith('/admin');
@@ -620,7 +635,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         prefetch={false}
         aria-current={isCurrent ? 'page' : undefined}
         title={accessLabel}
-        className={`relative inline-flex h-12 shrink-0 items-center gap-1 border-b-2 px-2 text-xs font-semibold transition-colors md:gap-2 md:px-3 md:text-sm ${
+        className={`relative inline-flex h-12 shrink-0 items-center gap-[7px] border-b-2 px-0 text-[13px] font-medium transition-colors md:h-[54px] md:text-[13px] ${
           isAdminItem
             ? isCurrent ? 'border-rose-600 text-rose-700 dark:border-rose-400 dark:text-rose-300' : 'border-transparent text-slate-600 hover:text-rose-700 dark:text-slate-300 dark:hover:text-rose-300'
             : isCurrent ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white'
@@ -642,6 +657,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </Link>
     );
   };
+
+  const renderMoreMenuActions = () => (
+    <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+      <button
+        type="button"
+        onClick={(event) => {
+          router.push('/support');
+          event.currentTarget.closest('details')?.removeAttribute('open');
+        }}
+        className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+      >
+        <HelpCircle size={16} aria-hidden="true" />
+        Suporte e feedback
+      </button>
+    </div>
+  );
 
   const handleNotificationClick = (n: Notification) => {
     markNotificationAsRead(n.id);
@@ -767,26 +798,28 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <Sun size={20} className="hidden dark:block" />
                 </span>
               </button>
-              <div className="relative">
-                <button onClick={handleNotificationsToggle} className="p-1 relative" aria-label="Abrir notificações">
-                  <Bell size={20} className="text-slate-600 dark:text-slate-400" />
-                  {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />}
-                </button>
-                {isNotifOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                    <NotificationDropdownPanel
-                      notifications={notifications}
-                      unreadCount={unreadCount}
-                      onClose={() => setIsNotifOpen(false)}
-                      onNotificationClick={handleNotificationClick}
-                      onMarkAsRead={markNotificationAsRead}
-                      onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
-                      onOpenAll={() => router.push('/notifications')}
-                    />
-                  </>
-                )}
-              </div>
+              {user && (
+                <div className="relative">
+                  <button onClick={handleNotificationsToggle} className="p-1 relative" aria-label="Abrir notificações">
+                    <Bell size={20} className="text-slate-600 dark:text-slate-400" />
+                    {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />}
+                  </button>
+                  {isNotifOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
+                      <NotificationDropdownPanel
+                        notifications={notifications}
+                        unreadCount={unreadCount}
+                        onClose={() => setIsNotifOpen(false)}
+                        onNotificationClick={handleNotificationClick}
+                        onMarkAsRead={markNotificationAsRead}
+                        onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
+                        onOpenAll={() => router.push('/notifications')}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
               <button onClick={() => router.push('/busca')} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" aria-label="Buscar questões">
                 <Search size={19} />
               </button>
@@ -797,69 +830,39 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         {!isDashboardPage && !isSimulationFullscreenPage && (
           <>
-            <div className="hidden border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900 md:block lg:px-8">
-              <div className="mx-auto flex h-[68px] max-w-[1600px] items-center gap-8">
-                <PublicBrandLink width={205} />
-                <form onSubmit={handleGlobalSearch} role="search" className="flex h-10 min-w-0 max-w-xl flex-1 items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 text-slate-500 focus-within:border-indigo-400 focus-within:bg-white dark:border-slate-700 dark:bg-slate-800 dark:focus-within:bg-slate-950">
+            <div className="hidden border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-900 md:block md:px-6 lg:px-8">
+              <div className="mx-auto flex h-20 w-full max-w-7xl items-center gap-8">
+                <PublicBrandLink width={194} />
+                <form onSubmit={handleGlobalSearch} role="search" className="hidden h-10 min-w-0 max-w-[420px] flex-1 items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 text-slate-500 focus-within:border-indigo-400 focus-within:bg-white dark:border-slate-700 dark:bg-slate-800 dark:focus-within:bg-slate-950 min-[851px]:flex">
                   <Search size={18} aria-hidden="true" />
                   <input value={globalSearch} onChange={(event) => setGlobalSearch(event.target.value)} aria-label="Buscar questões, provas e materiais" placeholder="Buscar questões, provas e materiais" className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" />
                   <button type="submit" aria-label="Pesquisar" className="rounded p-1 text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-900/30"><Search size={17} /></button>
                 </form>
               </div>
             </div>
-            <nav aria-label="Navegação principal" className="fixed inset-x-0 top-[68px] z-20 h-12 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:h-auto md:px-6 lg:px-8">
-              <div className="relative mx-auto flex h-12 max-w-[1600px] items-center gap-1 px-3 md:pr-[360px] md:pl-0">
-                {navItems.slice(0, 3).map((item) => (
-                  <div key={`mobile-${item.path}`} className="md:hidden">{renderTopNavigationItem(item)}</div>
+            <nav aria-label="Navegação principal" className="fixed inset-x-0 top-[68px] z-20 h-12 overflow-x-auto border-b border-slate-200 bg-white no-scrollbar dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:h-auto md:overflow-visible md:px-6 lg:px-8">
+              <div className="relative mx-auto flex h-12 w-max min-w-full items-center gap-5 px-5 md:h-[54px] md:w-full md:min-w-0 md:max-w-7xl md:gap-6 md:border-t md:border-slate-100 md:px-0 dark:md:border-slate-800">
+                <div className="flex shrink-0 items-center gap-5 min-[851px]:hidden">
+                  {navItems.map((item) => (
+                    <div key={`mobile-${item.path}`}>{renderTopNavigationItem(item)}</div>
+                  ))}
+                </div>
+                {primaryNavItems.map((item) => (
+                  <div key={`desktop-${item.path}`} className="hidden min-[851px]:block">{renderTopNavigationItem(item)}</div>
                 ))}
-                {navItems.length > 3 && (
-                  <details className="group relative ml-auto shrink-0 md:hidden">
-                    <summary className="inline-flex h-12 list-none items-center gap-1 border-b-2 border-transparent px-2 text-xs font-semibold text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
-                      <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
-                    </summary>
-                    <div className="absolute right-0 top-full z-50 mt-1 min-w-52 rounded-md border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                      {navItems.slice(3).map((item) => (
-                        <div key={item.path} className="[&>a]:h-10 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:border-0 [&>a]:px-3 [&>a]:text-sm">
-                          {renderTopNavigationItem(item)}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-                {navItems.slice(0, 4).map((item) => (
-                  <div key={`tablet-${item.path}`} className="hidden md:block lg:hidden">{renderTopNavigationItem(item)}</div>
-                ))}
-                {navItems.length > 4 && (
-                  <details className="group relative hidden shrink-0 md:block lg:hidden">
-                    <summary className="inline-flex h-12 list-none items-center gap-2 border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
-                      <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
-                    </summary>
-                    <div className="absolute left-0 top-full z-50 mt-1 min-w-52 rounded-md border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                      {navItems.slice(4).map((item) => (
-                        <div key={item.path} className="[&>a]:h-10 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:border-0 [&>a]:px-3 [&>a]:text-sm">
-                          {renderTopNavigationItem(item)}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-                {navItems.slice(0, 6).map((item) => (
-                  <div key={`desktop-${item.path}`} className="hidden lg:block">{renderTopNavigationItem(item)}</div>
-                ))}
-                {navItems.length > 6 && (
-                  <details className="group relative hidden shrink-0 lg:block">
-                    <summary className="inline-flex h-12 list-none items-center gap-2 border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
-                      <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
-                    </summary>
-                    <div className="absolute left-0 top-full z-50 mt-1 min-w-52 rounded-md border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                      {navItems.slice(6).map((item) => (
-                        <div key={item.path} className="[&>a]:h-10 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:border-0 [&>a]:px-3 [&>a]:text-sm">
-                          {renderTopNavigationItem(item)}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
+                <details className="group relative ml-auto hidden shrink-0 min-[851px]:block">
+                  <summary className="inline-flex h-[54px] list-none items-center gap-2 border-b-2 border-transparent px-0 text-[13px] font-medium text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
+                    <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
+                  </summary>
+                  <div className="absolute right-0 top-full z-50 mt-1 min-w-48 rounded-md border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                    {moreNavItems.map((item) => (
+                      <div key={item.path} className="[&>a]:h-9 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:px-2 [&>a]:text-[13px]">
+                        {renderTopNavigationItem(item)}
+                      </div>
+                    ))}
+                    {renderMoreMenuActions()}
+                  </div>
+                </details>
               </div>
             </nav>
           </>
@@ -1029,29 +1032,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
 
           {/* Desktop Top Bar with Notifications */}
-          <div className={`${isSimulationFullscreenPage ? 'hidden' : 'pointer-events-none absolute inset-x-0 top-[68px] mx-auto hidden h-12 w-full max-w-[1600px] md:flex'} z-30 items-center justify-end bg-transparent px-3 transition-colors md:px-6 lg:px-8`}>
+          <div className={`${isSimulationFullscreenPage ? 'hidden' : 'pointer-events-none absolute inset-x-0 top-0 mx-auto hidden h-20 w-full px-3 md:flex md:px-6 lg:px-8'} z-30 items-center bg-transparent transition-colors`}>
+            <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-end">
             <div className="pointer-events-auto flex items-center gap-4">
               <button
                 type="button"
                 onClick={toggleTheme}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-white hover:text-indigo-600 hover:shadow-sm dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
-                title={theme === 'light' ? 'Ativar Modo Escuro' : 'Ativar Modo Claro'}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
                 aria-label={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
               >
-                <span className="flex h-5 w-5 items-center justify-center" aria-hidden="true">
-                  <Moon size={20} className="block shrink-0 dark:hidden" />
-                  <Sun size={20} className="hidden shrink-0 dark:block" />
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push('/support')}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-white hover:text-indigo-600 hover:shadow-sm dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
-                title="Suporte e Feedback"
-                aria-label="Abrir suporte e feedback"
-              >
-                <HelpCircle size={20} className="block shrink-0" aria-hidden="true" />
+                {theme === 'light' ? <Moon size={19} aria-hidden="true" /> : <Sun size={19} aria-hidden="true" />}
               </button>
 
               {/* Sempre mostrar notificações se o usuário estiver logado, independente da feature flag global, se o usuário pediu para restaurar */}
@@ -1083,25 +1074,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   )}
                 </div>
               )}
-              <div ref={profileMenuRef} className="relative flex items-center gap-3 border-l border-slate-200 pl-6 dark:border-slate-800">
+              <div ref={profileMenuRef} className="relative ml-1 flex items-center gap-[18px]">
                 <button
                   type="button"
                   onClick={handleProfileMenuToggle}
                   aria-haspopup="menu"
                   aria-expanded={isProfileMenuOpen}
-                  className="group flex items-center gap-3 rounded-2xl px-2 py-1.5 transition-all hover:bg-white hover:shadow-sm dark:hover:bg-slate-900"
+                  className="group flex items-center gap-[18px] rounded-md p-0 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userFirstName}</p>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
-                  </div>
                   <UserAvatar
                     src={userPhotoUrl}
                     name={userName}
                     alt={userName || 'Foto de perfil'}
-                    className="h-9 w-9 rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600"
+                    className="h-9 w-9 rounded-full bg-slate-900 text-sm font-bold text-white transition-opacity group-hover:opacity-90 dark:bg-indigo-600"
                   />
-                  <ChevronDown size={15} className={`text-slate-400 transition-transform dark:text-slate-500 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                  <span className="hidden min-w-0 max-w-[170px] text-left min-[851px]:block">
+                    <span className="block truncate text-[14px] font-semibold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userName}</span>
+                    <span className="block truncate text-[12px] text-slate-500 dark:text-slate-400">Plano {currentCanonicalPlan}</span>
+                  </span>
                 </button>
 
                 {user && isProfileMenuOpen ? (
@@ -1165,6 +1155,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   </div>
                 ) : null}
               </div>
+            </div>
             </div>
           </div>
 
