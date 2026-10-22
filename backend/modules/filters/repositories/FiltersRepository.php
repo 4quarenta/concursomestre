@@ -326,28 +326,20 @@ class FiltersRepository
             AND q.visibility_status = 'public'
             AND q.published_sort_at IS NOT NULL
             AND q.published_sort_at <= NOW()";
-        $publicExamJoin = $isSubject ? '' : "
-             LEFT JOIN prova_filters pf ON pf.filter_id = f.id
-             LEFT JOIN provas p ON p.id = pf.prova_id
-                AND p.status_editorial = 'published'
-                AND p.visibility_status = 'public'
-                AND p.archived_at IS NULL
-                AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())";
         $examCountSelect = $isSubject
             ? '0 AS exam_count'
-            : 'COUNT(DISTINCT p.id) AS exam_count';
-        $questionJoin = $isOrganization ? 'LEFT JOIN' : 'INNER JOIN';
+            : 'COALESCE(ec.exam_count, 0) AS exam_count';
 
+        $countQuestionJoins = $isOrganization ? '' : "
+             INNER JOIN question_filters qf ON qf.filter_id = f.id
+             INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}";
         $count = $this->db->prepare(
-            "SELECT COUNT(*)
-             FROM (
-                SELECT f.id
-                FROM filters f
-                {$questionJoin} question_filters qf ON qf.filter_id = f.id
-                {$questionJoin} questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
-                WHERE {$where}
-                GROUP BY f.id
-             ) public_taxonomies"
+            $isOrganization
+                ? "SELECT COUNT(*) FROM filters f WHERE {$where}"
+                : "SELECT COUNT(DISTINCT f.id)
+                   FROM filters f
+                   {$countQuestionJoins}
+                   WHERE {$where}"
         );
         $count->execute($params);
         $total = (int) $count->fetchColumn();
@@ -355,18 +347,49 @@ class FiltersRepository
         $page = min(max(1, $page), $pages);
         $offset = ($page - 1) * $perPage;
 
+        $eligibleQuestionClause = $isOrganization ? '' : "
+                 AND EXISTS (
+                    SELECT 1
+                    FROM question_filters eligible_qf
+                    INNER JOIN questions eligible_q ON eligible_q.id = eligible_qf.question_id
+                        AND {$publishedQuestionClause}
+                    WHERE eligible_qf.filter_id = f.id
+                 )";
+        $questionCountsJoin = $isOrganization ? 'LEFT JOIN' : 'INNER JOIN';
+        $examCountsCte = $isSubject ? '' : ", exam_counts AS (
+                SELECT pf.filter_id, COUNT(DISTINCT p.id) AS exam_count
+                FROM page_filters f
+                INNER JOIN prova_filters pf ON pf.filter_id = f.id
+                INNER JOIN provas p ON p.id = pf.prova_id
+                    AND p.status_editorial = 'published'
+                    AND p.visibility_status = 'public'
+                    AND p.archived_at IS NULL
+                    AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())
+                GROUP BY pf.filter_id
+             )";
+        $examCountsJoin = $isSubject ? '' : 'LEFT JOIN exam_counts ec ON ec.filter_id = f.id';
+
         $query = $this->db->prepare(
-            "SELECT f.id, f.name, f.slug, f.acronym, f.description, f.asset_url,
-                    COUNT(DISTINCT q.id) AS question_count,
+            "WITH page_filters AS (
+                SELECT f.id, f.name, f.slug, f.acronym, f.description, f.asset_url
+                FROM filters f
+                WHERE {$where}{$eligibleQuestionClause}
+                ORDER BY f.name ASC, f.id ASC
+                LIMIT :limit OFFSET :offset
+             ), question_counts AS (
+                SELECT qf.filter_id, COUNT(DISTINCT q.id) AS question_count
+                FROM page_filters f
+                INNER JOIN question_filters qf ON qf.filter_id = f.id
+                INNER JOIN questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
+                GROUP BY qf.filter_id
+             ){$examCountsCte}
+             SELECT f.id, f.name, f.slug, f.acronym, f.description, f.asset_url,
+                    COALESCE(qc.question_count, 0) AS question_count,
                     {$examCountSelect}
-             FROM filters f
-             {$questionJoin} question_filters qf ON qf.filter_id = f.id
-             {$questionJoin} questions q ON q.id = qf.question_id AND {$publishedQuestionClause}
-             {$publicExamJoin}
-             WHERE {$where}
-             GROUP BY f.id, f.name, f.slug, f.acronym, f.description, f.asset_url
-             ORDER BY f.name ASC, f.id ASC
-             LIMIT :limit OFFSET :offset"
+             FROM page_filters f
+             {$questionCountsJoin} question_counts qc ON qc.filter_id = f.id
+             {$examCountsJoin}
+             ORDER BY f.name ASC, f.id ASC"
         );
         foreach ($params as $name => $value) {
             $query->bindValue($name, $value, PDO::PARAM_STR);
