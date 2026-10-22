@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { ArrowRight, BookOpen, ChevronLeft, ChevronRight, Flame, Timer } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
 import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
@@ -72,10 +73,12 @@ export default function DashboardOverview(props: DashboardOverviewProps) {
     { title: 'Nível atual', value: level.currentLevel, detail: `${level.currentXp.toLocaleString('pt-BR')} XP acumulados` },
   ];
   return <div className={ui.scope}>
-    <header className={styles.header}>
-      <div><h1>Seu painel de estudos</h1><p className={ui.muted}>Olá{props.name ? `, ${props.name}` : ''}. Vamos continuar?</p></div>
-      <Link href="/questoes" className={ui.action}><BookOpen size={18} />Resolver questões</Link>
-    </header>
+    <PlatformPageHeader
+      breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Painel', path: '/dashboard' }]}
+      title="Seu painel de estudos"
+      description={`Olá${props.name ? `, ${props.name}` : ''}. Vamos continuar?`}
+      action={<Link href="/questoes" className={ui.action}><BookOpen size={18} />Resolver questões</Link>}
+    />
     <div className={styles.ranges}>
       <div className={styles.segments} role="group" aria-label="Período do desempenho">
         {ranges.map(range => <button key={range.id} type="button" aria-pressed={range.id === props.range} onClick={() => props.onRangeChange(range.id)}>{range.label}</button>)}

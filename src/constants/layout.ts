@@ -15,7 +15,7 @@
  *
  * @since 1.0.0
  */
-export const PLATFORM_MAIN_CONTENT_WIDTH_CLASS = 'max-w-7xl';
+export const PLATFORM_MAIN_CONTENT_WIDTH_CLASS = 'max-w-[1600px]';
 
 /**
  * Define o tamanho padrao do titulo principal das paginas internas da plataforma.
@@ -23,7 +23,7 @@ export const PLATFORM_MAIN_CONTENT_WIDTH_CLASS = 'max-w-7xl';
  *
  * @since 1.0.0
  */
-export const PLATFORM_PAGE_TITLE_CLASS = 'text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100';
+export const PLATFORM_PAGE_TITLE_CLASS = 'text-2xl font-bold leading-tight text-slate-900 dark:text-slate-100 sm:text-[28px] sm:leading-[1.25]';
 
 /**
  * Define o tamanho padrao dos subtitulos descritivos logo abaixo do titulo da pagina.
@@ -31,7 +31,7 @@ export const PLATFORM_PAGE_TITLE_CLASS = 'text-2xl font-black tracking-tight tex
  *
  * @since 1.0.0
  */
-export const PLATFORM_PAGE_DESCRIPTION_CLASS = 'max-w-2xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400';
+export const PLATFORM_PAGE_DESCRIPTION_CLASS = 'max-w-[760px] text-sm leading-[1.5] text-slate-600 dark:text-slate-300';
 
 /**
  * Define o tamanho padrao dos titulos de secoes internas e cards principais.

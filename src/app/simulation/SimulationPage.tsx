@@ -22,6 +22,7 @@ import {
    Calendar, Building2, Briefcase, GraduationCap, BookOpen, List, Eye, LucideIcon, Maximize2, Minimize2
 } from 'lucide-react';
 import QuestionCard from '../questions/components/QuestionCard';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { useAuth } from '@providers/AuthProvider';
 import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -1186,22 +1187,20 @@ const Simulation: React.FC = () => {
 
    if (step === 'config') {
       return (
-         <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 animate-fade-in sm:px-6 md:space-y-7 md:px-8 md:py-6">
-            <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
-               <div>
-                  <nav aria-label="Navegação estrutural" className="mb-3 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                     <span>Início</span><ChevronRight size={14} aria-hidden="true" /><span className="text-slate-800 dark:text-slate-200">Simulados</span>
-                  </nav>
-                  <h1 className="text-2xl font-semibold text-slate-950 dark:text-white">Simulados</h1>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Treine com provas completas e simule o dia da sua prova.</p>
-               </div>
+         <div className="w-full space-y-5 animate-fade-in md:space-y-7">
+            <PlatformPageHeader
+               breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Simulados', path: '/simulation' }]}
+               title="Simulados"
+               description="Treine com provas completas e simule o dia da sua prova."
+               action={
                <button
                   onClick={() => setSimulationTab('custom')}
                   className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-md bg-indigo-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:focus-visible:ring-offset-slate-950 sm:self-auto"
                >
                   <Plus size={18} aria-hidden="true" /> Criar simulado
                </button>
-            </header>
+               }
+            />
 
             <section aria-label="Seu desempenho">
                {renderSimulationStats()}
