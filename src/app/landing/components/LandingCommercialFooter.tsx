@@ -17,6 +17,7 @@ import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { landingSocialIconMap } from '../landingContent';
 import { isModulePathEnabled } from '@services/system/moduleFlags';
+import AppStoreLinks from '../../../components/shared/layout/AppStoreLinks';
 
 const FOOTER_COLUMNS = [
   {
@@ -62,6 +63,9 @@ const LandingCommercialFooter = ({ landingContent }: { landingContent?: LandingP
           <p className="mt-5 max-w-xs text-sm font-medium leading-6 text-slate-500">
             Estude com estratégia. Aprove com consistência.
           </p>
+          <div className="mt-5">
+            <AppStoreLinks playStoreUrl={systemSettings.mobileAppUpdatePolicy?.androidStoreUrl} surface="commercial" />
+          </div>
         </div>
 
         <div className="grid gap-8 sm:grid-cols-3">

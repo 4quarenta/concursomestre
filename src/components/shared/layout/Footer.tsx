@@ -17,6 +17,7 @@ import { useEffectiveSystemSettings } from '@/providers/AppConfigProvider';
 import { isModulePathEnabled } from '@services/system/moduleFlags';
 import PublicBrandLink from './PublicBrandLink';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import AppStoreLinks from './AppStoreLinks';
 
 const FOOTER_COLUMNS = [
   {
@@ -61,6 +62,7 @@ const Footer: React.FC = () => {
           <p className="max-w-xs text-center text-xs font-medium leading-5 text-slate-500 dark:text-slate-400 md:text-left">
             A plataforma completa para sua aprova&ccedil;&atilde;o. Estude com intelig&ecirc;ncia e conquiste sua vaga.
           </p>
+          <AppStoreLinks playStoreUrl={systemSettings.mobileAppUpdatePolicy?.androidStoreUrl} />
         </div>
 
         <nav aria-label="Links do rodape" className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3">

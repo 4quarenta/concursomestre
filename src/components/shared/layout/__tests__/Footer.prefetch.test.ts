@@ -27,4 +27,26 @@ describe('Footer navigation', () => {
     expect(footerSource).not.toContain('lucide-react');
     expect(footerSource).not.toContain('Desenvolvido com');
   });
+
+  it('offers the Android app and keeps the iOS store action unavailable for now', () => {
+    const footerSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/shared/layout/Footer.tsx'),
+      'utf8',
+    );
+    const commercialFooterSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/app/landing/components/LandingCommercialFooter.tsx'),
+      'utf8',
+    );
+    const appStoreLinksSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/shared/layout/AppStoreLinks.tsx'),
+      'utf8',
+    );
+
+    expect(footerSource).toContain('<AppStoreLinks');
+    expect(commercialFooterSource).toContain('<AppStoreLinks');
+    expect(appStoreLinksSource).toContain('Google Play');
+    expect(appStoreLinksSource).toContain('App Store');
+    expect(appStoreLinksSource).toContain('Em breve');
+    expect(appStoreLinksSource).toContain('disabled');
+  });
 });
