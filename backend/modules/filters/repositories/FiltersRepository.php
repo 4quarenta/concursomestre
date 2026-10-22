@@ -73,11 +73,10 @@ class FiltersRepository
      */
     public function fetchPracticeCatalog(): array
     {
-        $publishedQuestionConditions = "publish_status IN ('published', 'scheduled')
-            AND visibility_status = 'public'
-            AND published_sort_at IS NOT NULL
-            AND published_sort_at <= NOW()";
-        $publishedQuestionClause = "q.{$publishedQuestionConditions}";
+        $publishedQuestionClause = "q.publish_status IN ('published', 'scheduled')
+            AND q.visibility_status = 'public'
+            AND q.published_sort_at IS NOT NULL
+            AND q.published_sort_at <= NOW()";
 
         $stmt = $this->db->prepare(
             "WITH RECURSIVE practice_filters AS (
@@ -327,6 +326,10 @@ class FiltersRepository
             AND q.visibility_status = 'public'
             AND q.published_sort_at IS NOT NULL
             AND q.published_sort_at <= NOW()";
+        $eligiblePublishedQuestionClause = "eligible_q.publish_status IN ('published', 'scheduled')
+            AND eligible_q.visibility_status = 'public'
+            AND eligible_q.published_sort_at IS NOT NULL
+            AND eligible_q.published_sort_at <= NOW()";
         $examCountSelect = $isSubject
             ? '0 AS exam_count'
             : 'COALESCE(ec.exam_count, 0) AS exam_count';
@@ -353,7 +356,7 @@ class FiltersRepository
                     SELECT 1
                     FROM question_filters eligible_qf
                     INNER JOIN questions eligible_q ON eligible_q.id = eligible_qf.question_id
-                        AND eligible_q.{$publishedQuestionConditions}
+                        AND {$eligiblePublishedQuestionClause}
                     WHERE eligible_qf.filter_id = f.id
                  )";
         $questionCountsJoin = $isOrganization ? 'LEFT JOIN' : 'INNER JOIN';

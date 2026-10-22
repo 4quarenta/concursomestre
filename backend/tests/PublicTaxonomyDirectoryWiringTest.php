@@ -50,7 +50,7 @@ foreach ([
     'WITH page_filters AS',
     'question_counts AS',
     'exam_counts AS',
-    'eligible_q.{$publishedQuestionConditions}',
+    "eligible_q.publish_status IN ('published', 'scheduled')",
     'FROM page_filters f',
 ] as $needle) {
     $assertContains($directoryMethod, $needle, "Consulta do diretorio nao agrega dados por pagina: {$needle}.");
