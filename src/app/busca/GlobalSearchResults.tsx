@@ -63,7 +63,7 @@ export default function GlobalSearchResults({ query, results }: { query: string;
   return (
     <div className="space-y-4">
       <PlatformPageHeader
-        breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Busca', path: publicRoutes.search.index({ q: query }) }]}
+        breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Busca', path: publicRoutes.search.index() }]}
         title="Busca no ConcursoMestre"
         description={`Resultados de questões, provas, notícias, assuntos e outros conteúdos para “${query}”.`}
       />
