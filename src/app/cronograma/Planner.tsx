@@ -112,15 +112,23 @@ export default function Planner() {
     </div>;
   }
 
-  if (!currentUser) return <div className={s.page}><h1>Cronogramas</h1><p>Entre na sua conta para acessar seus planos de estudo.</p><Link href="/login" className={s.primary}>Entrar</Link></div>;
+  const pageTitle = wizard
+    ? templateMode ? 'Modelo da equipe' : editing ? 'Ajustar cronograma' : 'Criar cronograma'
+    : plan ? 'Meu cronograma' : 'Cronogramas';
+  const pageDescription = wizard
+    ? template?.title || 'Organize sua preparação até a prova.'
+    : plan ? plan.title : 'Escolha um modelo ou prepare seu plano de estudos.';
+
+  if (!currentUser) return <div className={s.page}>
+    <PlannerPageHeader title="Cronogramas" description="Entre na sua conta para acessar seus planos de estudo." />
+    <Link href="/login" className={s.primary}>Entrar</Link>
+  </div>;
 
   return <div className={s.page} aria-busy={busy || loading}>
-    <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/dashboard' }, { label: 'Cronograma', path: '/cronograma' }]} className="mb-5" />
+    <PlannerPageHeader title={pageTitle} description={pageDescription} />
     {error && <div role="alert" className={s.error}>{error} <button className={s.link} onClick={() => void load(plan?.id, days)}>Tentar novamente</button></div>}
     {loading && <p role="status">Carregando cronogramas...</p>}
     {wizard ? <>
-      <h1>{templateMode ? 'Modelo da equipe' : editing ? 'Ajustar cronograma' : 'Criar cronograma'}</h1>
-      <p>{template ? template.title : 'Organize sua preparação até a prova.'}</p>
       <ol className={s.stepper}>{['Concurso', 'Edital e pesos', 'Sua rotina', 'Revisar plano'].map((label, i) => <li key={label} aria-current={step === i ? 'step' : undefined}>{step === i ? <strong>{i + 1}. {label}</strong> : `${i < step ? '✓' : i + 1}. ${label}`}</li>)}</ol>
       {step === 0 && <><h2>Para qual concurso você vai estudar?</h2><div className={s.fields}>{field('Concurso e cargo', 'title')}{field('Banca', 'bank')}{field('Área', 'area')}{field('Link do edital', 'sourceUrl', 'url')}{field('Início dos estudos', 'startDate', 'date')}{field('Data da prova ou data-alvo', 'examDate', 'date')}</div><label className={s.actions}><input type="checkbox" checked={config.dateConfirmed} onChange={e => update('dateConfirmed', e.target.checked)} /> Data da prova confirmada no edital</label><p>{config.dateConfirmed ? 'Confira a data e o edital antes de continuar.' : 'O plano usará uma data-alvo estimada. Você poderá ajustá-la depois.'}</p></>}
       {step === 1 && <><h2>Confira o que será cobrado</h2>{config.subjects.map((subject, index) => <section className={s.subject} key={subject.id}>
@@ -134,7 +142,7 @@ export default function Planner() {
       {step === 3 && <><h2>Seu plano até {dateLabel(config.examDate)}</h2><div className={s.metrics}><Metric label="Atividades" value={String(preview.length)} /><Metric label="Tempo planejado" value={hours(preview.reduce((a, x) => a + x.minutes, 0))} /><Metric label="Matérias" value={String(config.subjects.length)} /><Metric label="Reserva semanal" value={`${config.reservePercent}%`} /></div><div className={s.notice}>A distribuição considera os pontos da prova e seu histórico recente. Ao ajustar o plano, atividades concluídas e em andamento são preservadas.</div><SessionTable sessions={preview.slice(0, 10)} /><p>Prévia das primeiras {Math.min(10, preview.length)} atividades. Todas serão salvas até a véspera da prova.</p></>}
       <div className={s.toolbar}><button className={s.button} onClick={() => step ? setStep(step - 1) : setWizard(false)}><ArrowLeft size={16} /> Voltar</button><div className={s.actions}>{!templateMode && button('Salvar rascunho neste dispositivo', saveDraft)}{step < 3 ? button('Continuar', () => void advance(), true) : templateMode ? <>{button('Salvar modelo em rascunho', () => void save('draft'))}{button('Publicar modelo', () => void save('published'), true)}</> : button(editing ? 'Salvar ajustes' : 'Gerar meu cronograma', () => void save(), true)}</div></div>
     </> : plan ? <>
-      <div className={s.row}><div><h1>Meu cronograma</h1><p>{plan.title}</p></div><div className={s.actions}><button className={s.button} onClick={() => begin(null, false, true)}><Pencil size={15} /> Editar plano</button>{button(plan.status === 'active' ? 'Pausar' : 'Retomar', () => void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: plan.status === 'active' ? 'paused' : 'active' }))}{plan.status !== 'archived' && button('Arquivar', () => { if (window.confirm('Arquivar este cronograma? Seu histórico será preservado.')) void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: 'archived' }); })}</div></div>
+      <div className={`${s.actions} ${s.planActions}`}><button className={s.button} onClick={() => begin(null, false, true)}><Pencil size={15} /> Editar plano</button>{button(plan.status === 'active' ? 'Pausar' : 'Retomar', () => void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: plan.status === 'active' ? 'paused' : 'active' }))}{plan.status !== 'archived' && button('Arquivar', () => { if (window.confirm('Arquivar este cronograma? Seu histórico será preservado.')) void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: 'archived' }); })}</div>
       <PlanSummary plan={plan} />
       {plan.status !== 'active' && <div className={s.notice}>Plano {statuses[plan.status]?.toLowerCase()}. Retome para iniciar atividades.</div>}
       <div className={s.tabs} role="tablist" aria-label="Visualização do cronograma">{[['today', 'Hoje'], ['week', 'Semana'], ['progress', 'Evolução']].map(([key, label]) => <button role="tab" aria-selected={tab === key} key={key} onClick={() => setTab(key)}>{label}</button>)}</div>
@@ -145,7 +153,7 @@ export default function Planner() {
       </>}
       {reschedule && <div className={s.dialog} role="dialog" aria-modal="true" aria-label="Reagendar atividade"><div className={s.dialogContent}><h2>Reagendar atividade</h2><p>{reschedule.subject} • {reschedule.minutes} min</p><label className={s.field}>Nova data<input autoFocus type="date" min={localDate()} max={shift(plan.config.examDate, -1)} value={targetDate} onChange={e => setTargetDate(e.target.value)} /></label><div className={s.toolbar}>{button('Cancelar', () => setReschedule(null))}{button('Reagendar', () => void mutate({ action: 'session', id: plan.id, revision: plan.revision, sessionId: reschedule.id, operation: 'reschedule', date: targetDate }, () => setReschedule(null)), true)}</div>{error && <p role="alert">{error}</p>}</div></div>}
     </> : <>
-      <div className={s.row}><div><h1>Cronogramas</h1><p>Escolha um modelo ou prepare seu plano de estudos.</p></div><button className={s.primary} onClick={() => begin()}><Plus size={16} /> Criar cronograma</button></div>
+      <div className={s.libraryActions}><button className={s.primary} onClick={() => begin()}><Plus size={16} /> Criar cronograma</button></div>
       <div className={s.tabs} role="tablist" aria-label="Acervo e planos pessoais">{[['library', 'Acervo de modelos'], ['mine', 'Meus cronogramas'], ...(data.canManageTemplates ? [['manage', 'Gerenciar modelos']] : [])].map(([key, label]) => <button role="tab" key={key} aria-selected={view === key} onClick={() => setView(key as typeof view)}>{label}</button>)}</div>
       {view === 'mine' ? <><div className={s.toolbar}>{button('Recuperar rascunho deste dispositivo', () => { try { const raw = localStorage.getItem(draftKey); if (!raw) { setError('Nenhum rascunho encontrado neste dispositivo.'); return; } begin(); setConfig(JSON.parse(raw)); } catch { setError('Rascunho inválido. Crie um novo plano.'); } })}</div>{data.legacy && <div className={s.notice}>Seu cronograma anterior foi preservado. <button className={s.link} onClick={() => { begin(); const old = data.legacy?.form; setConfig(c => ({ ...c, title: String(old?.objective || ''), subjects: Array.isArray(old?.subjects) ? old.subjects.map((x: Record<string, unknown>, i: number) => ({ id: `s${i}`, name: String(x.name || ''), topics: String(x.topics || '').split(/[\n,]/).filter(Boolean), questions: 10, weight: 1, minimum: 0 })) : c.subjects })); }}>Usar matérias do plano anterior</button></div>}<div className={s.grid}>{data.plans?.map(p => <article className={s.card} key={p.id}><CalendarDays size={24} /><h2>{p.title}</h2><span className={s.badge}>{statuses[p.status]}</span><div>{button('Abrir cronograma', () => void load(p.id, days), true)}</div></article>)}</div>{!loading && !data.plans?.length && <div className={s.empty}>Você ainda não criou um cronograma.</div>}</> : <>
         <div className={s.toolbar}><label className={s.field} style={{ flex: 1 }}>Concurso, cargo ou área<input value={query} placeholder="Buscar modelos" onChange={e => setQuery(e.target.value)} /></label>{view === 'manage' && button('Novo modelo', () => begin(null, true), true)}</div>
@@ -154,6 +162,17 @@ export default function Planner() {
       </>}
     </>}
   </div>;
+}
+
+function PlannerPageHeader({ title, description }: { title: string; description: string }) {
+  return <header className={s.pageHeader}>
+    <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/' }, { label: 'Cronograma', path: '/cronograma' }]} />
+    <div className={s.pageHeading}>
+      <p className={s.eyebrow}>Cronograma</p>
+      <h1>{title}</h1>
+      <p className={s.pageDescription}>{description}</p>
+    </div>
+  </header>;
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) { return <div className={s.metric}><small>{label}</small><strong>{value}</strong>{detail && <small>{detail}</small>}</div>; }
