@@ -20,9 +20,12 @@ describe('public information SSR snapshots', () => {
 
   it.each(['privacy', 'terms'])('%s exposes one structured server document without a duplicate SEO shell', (route) => {
     const layoutSource = readSource(`src/app/${route}/layout.tsx`);
+    const routeFrameSource = readSource('src/providers/NextRouteFrame.tsx');
+    const shelllessRoutes = routeFrameSource.match(/const ROUTES_WITHOUT_PLATFORM_SHELL = \[([\s\S]*?)\];/)?.[1] || '';
 
     expect(layoutSource).toContain('<StructuredData');
     expect(layoutSource).toContain('buildBreadcrumbList');
+    expect(shelllessRoutes).not.toContain(`'/${route}'`);
     expect(() => readSource(`src/app/@seo/${route}/page.tsx`)).toThrow();
   });
 
