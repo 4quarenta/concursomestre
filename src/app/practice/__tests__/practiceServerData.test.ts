@@ -74,6 +74,18 @@ describe('practice SSR data', () => {
     expect(url.searchParams.get('publication_scope')).toBe('public');
     expect(url.searchParams.get('materia')).toBe('Português');
     expect(url.searchParams.get('questionIds')).toBe('42');
+    expect(url.searchParams.get('page')).toBe('1');
+  });
+
+  it('preserves a page URL and its signed cursor when requesting a later result page', () => {
+    const url = buildPracticeServerUrl(
+      { page: '3', cursor: 'signed-cursor', materia: 'Português' },
+      'https://example.test/api/',
+    );
+
+    expect(url.searchParams.get('page')).toBe('3');
+    expect(url.searchParams.get('cursor')).toBe('signed-cursor');
+    expect(url.searchParams.get('materia')).toBe('Português');
   });
 
   it('maps the canonical search query to the backend keyword parameter', () => {

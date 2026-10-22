@@ -38,8 +38,6 @@ const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/auth',
   '/reset-password',
   '/confirm-email',
-  '/terms',
-  '/privacy',
   '/changelog',
   '/novidades',
   '/planos',

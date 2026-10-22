@@ -1,25 +1,14 @@
 'use client';
 
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
-
 import React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowRight, BookOpenCheck, Building2, Calendar, CheckCircle2, FileQuestion, GraduationCap, Loader2, ShieldCheck, Sparkles, Tag, UserPlus } from 'lucide-react';
-import type { Question } from '@types';
+import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import type { Question, UserAnswer } from '@types';
 import { useAuth } from '@providers/AuthProvider';
-import { isPlatformOriginalQuestion, isQuestionCanceled, questionService } from '@services/questions';
-import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import { questionService } from '@services/questions';
 import AuthModal from '@/components/shared/overlays/AuthModal';
+import QuestionCard from '@/app/questions/components/QuestionCard';
 import {
   PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -27,26 +16,17 @@ import {
   PLATFORM_SECTION_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import { buildBoardPath, buildQuestionPath, buildQuestionSlug } from '@services/seo';
+import { buildQuestionPath, buildQuestionSlug } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
-import {
-  buildQuestionKeywordPills,
-  buildQuestionKeywords,
-  buildQuestionPageHeading,
-} from './questionSeo';
-
-const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-const getQuestionRoleLabel = (item: unknown) => {
-  if (!item || typeof item !== 'object') {
-    return '';
-  }
-
-  const record = item as Record<string, unknown>;
-  return String(record.descricao || record['descrição'] || record.name || '').trim();
-};
+import { buildQuestionPageHeading } from './questionSeo';
 
 type PublicTaxonomyLink = { key: string; label: string; href: string };
+
+const getQuestionRoleLabel = (item: unknown) => {
+  if (!item || typeof item !== 'object') return '';
+  const record = item as Record<string, unknown>;
+  return String(record.descricao || record['descrição'] || record.name || record.nome || '').trim();
+};
 
 const readQuestionTaxonomyLinks = (question: Question): PublicTaxonomyLink[] => {
   const links = new Map<string, PublicTaxonomyLink>();
@@ -67,7 +47,7 @@ const readQuestionTaxonomyLinks = (question: Question): PublicTaxonomyLink[] => 
             ? publicRoutes.positions.detail(slug)
             : level === 'carreira'
               ? publicRoutes.careers.detail(slug)
-          : '';
+              : '';
     if (href) links.set(href, { key: `${level}:${slug}`, label, href });
   };
 
@@ -93,122 +73,151 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const routeSlug = Array.isArray(params.slug) ? params.slug.join('/') : params.slug;
   const router = useRouter();
-  const { currentUser, isLoading: isAuthLoading } = useAuth();
+  const { currentUser, toggleSavedQuestion } = useAuth();
   const [question, setQuestion] = React.useState<Question | null>(initialQuestion);
   const [isLoading, setIsLoading] = React.useState(!initialQuestion);
   const [error, setError] = React.useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = React.useState(false);
+  const [relatedQuestions, setRelatedQuestions] = React.useState<Question[]>([]);
+  const [completedRelatedRequestKey, setCompletedRelatedRequestKey] = React.useState('');
+  const [previousQuestionPath, setPreviousQuestionPath] = React.useState<string | null>(null);
+  const questionId = question?.id ? String(question.id) : '';
 
   React.useEffect(() => {
     let isMounted = true;
     const frameId = window.requestAnimationFrame(() => {
       if (!isMounted) return;
-
       if (!id) {
         setError('Questão não encontrada.');
         setIsLoading(false);
         return;
       }
-
       if (initialQuestion?.id && String(initialQuestion.id) === String(id)) {
         setQuestion(initialQuestion);
         setError(null);
         setIsLoading(false);
         return;
       }
-
       setIsLoading(true);
-
       questionService.getQuestionById(id)
         .then((payload) => {
-          if (!isMounted) {
-            return;
-          }
-
+          if (!isMounted) return;
           setQuestion(payload);
           setError(null);
         })
         .catch((requestError) => {
-          if (!isMounted) {
-            return;
-          }
-
+          if (!isMounted) return;
           setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar a questão.');
         })
-        .finally(() => {
-          if (isMounted) {
-            setIsLoading(false);
-          }
-        });
+        .finally(() => { if (isMounted) setIsLoading(false); });
     });
-
     return () => {
       isMounted = false;
       window.cancelAnimationFrame(frameId);
     };
   }, [id, initialQuestion]);
 
-  const canonicalPath = React.useMemo(() => {
-    if (!question?.id) {
-      return null;
-    }
-
-    return buildQuestionPath(question);
-  }, [question]);
+  const canonicalPath = React.useMemo(() => question?.id ? buildQuestionPath(question) : null, [question]);
 
   React.useEffect(() => {
-    if (routeFamily !== 'legacy' || !question?.id || !canonicalPath) {
-      return;
-    }
-
-    const canonicalSlug = buildQuestionSlug(question);
-    if (routeSlug !== canonicalSlug) {
-      router.replace(canonicalPath);
-    }
+    if (routeFamily !== 'legacy' || !question?.id || !canonicalPath) return;
+    if (routeSlug !== buildQuestionSlug(question)) router.replace(canonicalPath);
   }, [canonicalPath, question, routeFamily, routeSlug, router]);
 
-  const questionKeywords = React.useMemo(() => question ? buildQuestionKeywords(question) : [], [question]);
-  const keywordPills = React.useMemo(() => question ? buildQuestionKeywordPills(question) : [], [question]);
   const taxonomyLinks = React.useMemo(() => question ? readQuestionTaxonomyLinks(question) : [], [question]);
+  const relatedTaxonomy = React.useMemo(() => {
+    const item = question?.assuntos?.find((subject) => subject.materia) || question?.assuntos?.[0];
+    const label = String(item?.nome || item?.name || '').trim();
+    if (!label) return null;
+    return { key: item?.materia ? 'subject' : 'topic', label };
+  }, [question]);
+  const relatedRequestKey = relatedTaxonomy ? `${questionId}:${relatedTaxonomy.key}:${relatedTaxonomy.label}` : '';
+  const isLoadingRelatedQuestions = Boolean(relatedRequestKey && completedRelatedRequestKey !== relatedRequestKey);
 
-  const metadataItems = [
-    { label: 'Banca', value: question?.bancas?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
-    { label: 'Órgão', value: question?.orgaos?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
-    { label: 'Cargo', value: question?.cargos?.map(getQuestionRoleLabel).filter(Boolean).join(', ') },
-    { label: 'Ano', value: question?.anos?.join(', ') },
-    { label: 'Assuntos', value: question?.assuntos?.map((item) => item.nome).filter(Boolean).join(', ') },
-    { label: 'Modalidade', value: question?.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Múltipla escolha' },
-  ].filter((item) => item.value);
+  React.useEffect(() => {
+    if (!questionId || !relatedTaxonomy || !relatedRequestKey) return;
+    let isMounted = true;
+    questionService.getQuestionPage({
+      [relatedTaxonomy.key]: relatedTaxonomy.label,
+      limit: 30,
+      content_scope: 'list',
+    }).then(({ rows }) => {
+      if (!isMounted) return;
+      const seen = new Set([questionId]);
+      setRelatedQuestions(rows.filter((item) => {
+        const relatedId = String(item.id || '');
+        if (!relatedId || seen.has(relatedId)) return false;
+        seen.add(relatedId);
+        return Boolean(String(item.enunciado_clean || item.enunciado || '').trim());
+      }).slice(0, 6));
+    }).catch(() => {
+      if (isMounted) setRelatedQuestions([]);
+    }).finally(() => {
+      if (isMounted) setCompletedRelatedRequestKey(relatedRequestKey);
+    });
+    return () => { isMounted = false; };
+  }, [questionId, relatedTaxonomy, relatedRequestKey]);
 
-  const showFreeAccountCta = !isAuthLoading && !currentUser;
-  const isCanceledQuestion = question ? isQuestionCanceled(question) : false;
-  const isOriginalQuestion = question ? isPlatformOriginalQuestion(question) : false;
-  const questionId = question?.id ? String(question.id) : '';
+  React.useEffect(() => {
+    if (!questionId || typeof window === 'undefined') return;
+    const frameId = window.requestAnimationFrame(() => {
+      try {
+        const storageKey = 'cm-public-question-navigation-v1';
+        const history = JSON.parse(window.sessionStorage.getItem(storageKey) || '[]') as Array<{ id: string; path: string }>;
+        const currentPath = `${window.location.pathname}${window.location.search}`;
+        const previous = [...history].reverse().find((entry) => entry.id !== questionId && entry.path.startsWith('/questoes/'));
+        setPreviousQuestionPath(previous?.path || null);
+        const nextHistory = [...history.filter((entry) => entry.id !== questionId), { id: questionId, path: currentPath }].slice(-30);
+        window.sessionStorage.setItem(storageKey, JSON.stringify(nextHistory));
+      } catch {
+        setPreviousQuestionPath(null);
+      }
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [questionId]);
 
-  const handleOpenPractice = React.useCallback(() => {
-    if (!questionId || isAuthLoading) {
-      return;
-    }
+  const relatedExams = React.useMemo(() => (question?.provas || []).filter((exam) => (
+    Boolean(String(exam.slug || '').trim())
+    && exam.publishStatus !== 'draft'
+    && exam.visibilityStatus !== 'internal'
+  )).slice(0, 6), [question]);
 
-    if (isCanceledQuestion) {
-      return;
-    }
+  const searchableContext = React.useMemo(() => {
+    if (!question) return '';
+    const subjects = question.assuntos?.map((item) => item.nome || item.name).filter(Boolean).slice(0, 3).join(', ');
+    const boards = question.bancas?.map((item) => item.sigla || item.nome).filter(Boolean).slice(0, 2).join(', ');
+    const roles = question.cargos?.map(getQuestionRoleLabel).filter(Boolean).slice(0, 2).join(', ');
+    const years = question.anos?.filter(Boolean).join(', ');
+    const context = [
+      subjects ? `o assunto ${subjects}` : '',
+      boards ? `a banca ${boards}` : '',
+      roles ? `o cargo ${roles}` : '',
+      years ? `o ano ${years}` : '',
+    ].filter(Boolean);
+    return context.length
+      ? `Esta questão de concurso aborda ${context.join(', ')}. Consulte o enunciado e as alternativas e continue estudando por questões do mesmo assunto e provas às quais a questão está vinculada.`
+      : 'Consulte o enunciado e as alternativas desta questão de concurso e continue estudando por questões do mesmo assunto e provas vinculadas.';
+  }, [question]);
 
-    if (!currentUser) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    router.push(publicRoutes.questions.index({ questionId }));
-  }, [currentUser, isAuthLoading, isCanceledQuestion, questionId, router]);
+  const handleSubmitAnswer = React.useCallback(async (
+    answer: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>,
+  ): Promise<UserAnswer> => {
+    const result = await questionService.submitUserAnswer(answer);
+    if (!result.answer) throw new Error(result.message || 'A resposta não foi confirmada pelo servidor.');
+    return {
+      ...answer,
+      selectedOptionIndex: result.answer.selectedOptionIndex,
+      correctOptionIndex: result.answer.correctOptionIndex,
+      isCorrect: result.answer.isCorrect,
+    };
+  }, []);
 
   if (isLoading) {
     return (
       <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} px-4 py-8 sm:px-6 lg:px-8`}>
         <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex min-h-[320px] items-center justify-center p-8`}>
           <div className="flex items-center gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
-            <Loader2 size={18} className="animate-spin text-indigo-600" />
-            Carregando questão pública...
+            <Loader2 size={18} className="animate-spin text-indigo-600" /> Carregando questão pública...
           </div>
         </div>
       </section>
@@ -219,274 +228,140 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({
     return (
       <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} px-4 py-8 sm:px-6 lg:px-8`}>
         <div className={`${PLATFORM_SURFACE_CARD_CLASS} space-y-4 p-8`}>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-600">Questão indisponível</p>
+          <p className="text-xs font-black uppercase text-rose-600">Questão indisponível</p>
           <h1 className={PLATFORM_PAGE_TITLE_CLASS}>Não foi possível abrir esta questão</h1>
           <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>{error || 'A questão solicitada não está disponível no momento.'}</p>
-          <Link
-            href={publicRoutes.questions.index()}
-            className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700"
-          >
-            Ir para a prática <ArrowRight size={14} />
+          <Link href={publicRoutes.questions.index()} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700">
+            Ir para questões <ArrowRight size={15} />
           </Link>
         </div>
       </section>
     );
   }
 
+  const nextQuestion = relatedTaxonomy && !isLoadingRelatedQuestions
+    ? relatedQuestions.find((item) => buildQuestionPath(item) !== previousQuestionPath)
+    : undefined;
+  const nextQuestionPath = nextQuestion ? buildQuestionPath(nextQuestion) : null;
+  const questionSubject = question.assuntos?.map((item) => item.nome || item.name).filter(Boolean)[0];
+  const savedQuestionIds = currentUser?.savedQuestionIds || [];
+
   return (
     <>
-    <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 px-4 py-8 sm:px-6 lg:px-8`}>
-      <div className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden ${isCanceledQuestion ? 'border-red-400 ring-2 ring-red-100 dark:border-red-700 dark:ring-red-900/30' : ''}`}>
-        <div className="border-b border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Questão comentada para concurso</p>
-          <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-3">
-              <h1 className={PLATFORM_PAGE_TITLE_CLASS}>{buildQuestionPageHeading(question)}</h1>
-              <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
-                Resolva esta questão de concurso com enunciado, alternativas e filtros por banca, órgão, cargo, ano e assunto. Na prática, você também acompanha histórico, comentários e evolução dos seus acertos.
-              </p>
-              {(keywordPills.length > 0 || isOriginalQuestion || isCanceledQuestion) && (
-                <div className="flex flex-wrap gap-2">
-                  {isOriginalQuestion && (
-                    <span className="inline-flex min-h-6 items-center justify-center rounded-md border border-violet-100 bg-violet-600 px-3 py-1 text-[10px] font-black uppercase leading-none tracking-widest text-white shadow-sm dark:border-violet-500/20">
-                      Inédita
-                    </span>
-                  )}
-                  {isCanceledQuestion && (
-                    <span className="inline-flex min-h-6 items-center justify-center rounded-md border border-red-200 bg-red-600 px-3 py-1 text-[10px] font-black uppercase leading-none tracking-widest text-white shadow-sm dark:border-red-500/30">
-                      Anulada
-                    </span>
-                  )}
-                  {keywordPills.map((keyword) => (
-                    <span key={keyword} className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700 shadow-sm dark:border-indigo-500/20 dark:bg-slate-900 dark:text-indigo-300">
-                      <BookOpenCheck size={12} />
-                      {keyword}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            <Link
-              href={publicRoutes.questions.index({ questionId: question.id })}
-              onClick={(event) => {
-                event.preventDefault();
-                handleOpenPractice();
-              }}
-              aria-disabled={isCanceledQuestion}
-              className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all ${isCanceledQuestion ? 'cursor-not-allowed bg-red-500 opacity-80' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-            >
-              {isCanceledQuestion ? 'Questão anulada' : 'Resolver na prática'} {!isCanceledQuestion && <ArrowRight size={14} />}
+      <main className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-5 px-4 py-6 sm:px-6 lg:px-8`}>
+        <header className="space-y-2">
+          <h1 className={PLATFORM_PAGE_TITLE_CLASS}>{buildQuestionPageHeading(question)}</h1>
+          <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>Confira o enunciado e as alternativas desta questão, veja os dados da prova e continue o estudo por assuntos relacionados.</p>
+        </header>
+
+        {taxonomyLinks.length > 0 && (
+          <nav aria-label="Estudar por assunto" className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-500">Estudar por:</span>
+            {taxonomyLinks.map((item) => (
+              <Link key={item.key} href={item.href} prefetch={false} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-indigo-300 hover:text-[#615fff] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        )}
+
+        <QuestionCard
+          key={questionId}
+          question={question}
+          indexDisplay={1}
+          onAnswerSubmit={handleSubmitAnswer}
+          onGuestAction={() => setShowAuthModal(true)}
+          onToggleSave={() => { void toggleSavedQuestion(questionId); }}
+          isSaved={savedQuestionIds.some((savedId) => String(savedId) === questionId)}
+          currentUserId={String(currentUser?.id || '')}
+          currentUserName={currentUser?.name || 'Visitante'}
+          hideFeedback={false}
+        />
+
+        <nav aria-label="Navegação entre questões" className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[1fr_auto_1fr]">
+          <button
+            type="button"
+            onClick={() => previousQuestionPath ? router.push(previousQuestionPath) : router.push(publicRoutes.questions.index())}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:border-indigo-400 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <ArrowLeft size={15} /> {previousQuestionPath ? 'Questão anterior' : 'Voltar às questões'}
+          </button>
+          <span className="hidden text-xs text-slate-500 sm:block">Q{questionId}</span>
+          {nextQuestionPath ? (
+            <Link href={nextQuestionPath} rel="next" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white hover:bg-indigo-700">
+              Próxima questão <ArrowRight size={15} />
             </Link>
-          </div>
-        </div>
-
-        <div className="space-y-6 p-4 sm:p-5 md:p-6">
-          {metadataItems.length > 0 && (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {metadataItems.map((item) => (
-                <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item.label}</p>
-                  {item.label === 'Banca' && question.bancas?.length ? (
-                    <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {question.bancas.map((board, index) => (
-                        <React.Fragment key={`${board.id || board.slug || index}`}>
-                          {index > 0 ? ', ' : null}
-                          <Link href={buildBoardPath(board)} prefetch={false} className="hover:text-[#615fff] hover:underline">{board.sigla || board.nome}</Link>
-                        </React.Fragment>
-                      ))}
-                    </p>
-                  ) : <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{item.value}</p>}
-                </div>
-              ))}
-            </div>
+          ) : (
+            <button type="button" disabled className="inline-flex min-h-10 cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white opacity-50">
+              Próxima questão <ArrowRight size={15} />
+            </button>
           )}
+        </nav>
 
-          {taxonomyLinks.length > 0 ? (
-            <nav aria-label="Taxonomias da questão" className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-black text-slate-500 dark:text-slate-400">Estudar por:</span>
-              {taxonomyLinks.map((item) => (
-                <Link key={item.key} href={item.href} prefetch={false} className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:border-indigo-300 hover:text-[#615fff] dark:border-slate-700 dark:text-slate-200">
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          ) : null}
+        <div className="grid items-start gap-4 md:grid-cols-2">
+          <section aria-labelledby="related-questions-title" className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <header className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+              <h2 id="related-questions-title" className={PLATFORM_SECTION_TITLE_CLASS}>Questões de assuntos semelhantes</h2>
+              <p className="mt-1 text-xs text-slate-500">Questões publicadas do mesmo assunto</p>
+            </header>
+            {isLoadingRelatedQuestions ? (
+              <div className="flex min-h-24 items-center justify-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> Buscando questões</div>
+            ) : relatedTaxonomy && relatedQuestions.length ? (
+              <ul className="divide-y divide-slate-200 px-4 dark:divide-slate-800">
+                {relatedQuestions.map((item) => {
+                  const title = String(item.enunciado_clean || item.enunciado || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                  const detail = [item.assuntos?.[0]?.nome, item.bancas?.[0]?.sigla || item.bancas?.[0]?.nome, item.anos?.[0]].filter(Boolean).join(' · ');
+                  return (
+                    <li key={String(item.id)}>
+                      <Link href={buildQuestionPath(item)} className="block py-3 hover:text-indigo-600">
+                        <span className="line-clamp-3 text-sm font-bold leading-5">{title}</span>
+                        {detail && <span className="mt-1 block text-xs text-slate-500">{detail}</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="px-4 py-5 text-sm text-slate-500">Não encontramos outras questões publicadas deste assunto.</p>
+            )}
+          </section>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr),360px]">
-            <article className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-                <FileQuestion size={14} />
-                Questão #{question.id}
-              </div>
-              {question.introText && (
-                <div
-                  className="prose prose-slate max-w-none rounded-2xl border-l-2 border-indigo-200 bg-slate-50 p-4 text-sm italic leading-7 dark:prose-invert dark:border-indigo-800 dark:bg-slate-950 [&_img]:mx-auto [&_img]:my-3 [&_img]:max-h-[420px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-slate-200 [&_img]:bg-white [&_img]:p-1 dark:[&_img]:border-slate-700 dark:[&_img]:bg-slate-900"
-                  dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(question.introText) }}
-                />
-              )}
-              {(question.referenceText || question.reference_text) && (
-                <div className="rounded-2xl border-l-2 border-amber-300 bg-amber-50 p-4 text-sm leading-7 dark:border-amber-800 dark:bg-amber-950/30">
-                  <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Referência</div>
-                  <div
-                    className="prose prose-amber max-w-none text-sm font-semibold leading-7 text-amber-900 dark:prose-invert dark:text-amber-100"
-                    dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(question.referenceText || question.reference_text || '') }}
-                  />
-                </div>
-              )}
-              <div
-                className="prose prose-slate max-w-none text-sm leading-7 dark:prose-invert"
-                dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(question.enunciado || question.enunciado_clean || '') }}
-              />
-
-              {Array.isArray(question.itens) && question.itens.length > 0 ? (
-                <div className="space-y-3">
-                  <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Alternativas</h2>
-                  {isCanceledQuestion ? (
-                    <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-                      <AlertTriangle className="mt-0.5 shrink-0" size={16} />
-                      <span>Questão anulada. As alternativas ficam disponíveis apenas para consulta.</span>
-                    </div>
-                  ) : null}
-                  {question.itens.map((item, index) => (
-                    <div
-                      key={`${item.id}-${item.ordem}-${index}`}
-                      role="button"
-                      tabIndex={isAuthLoading || isCanceledQuestion ? -1 : 0}
-                      aria-disabled={isAuthLoading || isCanceledQuestion}
-                      onClick={handleOpenPractice}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          handleOpenPractice();
-                        }
-                      }}
-                      className={`w-full rounded-2xl border p-4 text-left transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 ${isCanceledQuestion ? 'cursor-not-allowed border-red-100 bg-red-50/40 opacity-80 dark:border-red-900/30 dark:bg-red-900/10' : 'border-slate-200 bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-500/10'} ${isAuthLoading ? 'cursor-wait opacity-70' : ''}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-black text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
-                          {item.rotulo || optionLetters[index] || String(index + 1)}
-                        </span>
-                        <div
-                          className="prose prose-slate max-w-none text-sm leading-7 dark:prose-invert"
-                          dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(item.corpo || item.corpo_clean || '') }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </article>
-
-            <aside className="space-y-4">
-              <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Resumo rápido</h2>
-                <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-300" />
-                    <span>{question.commentsCount || 0} comentários na comunidade</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar size={16} className="text-sky-600 dark:text-sky-300" />
-                    <span>{question.anos?.length ? question.anos.join(', ') : 'Ano não informado'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Building2 size={16} className="text-indigo-600 dark:text-indigo-300" />
-                    {question.bancas?.[0] ? (
-                      <Link href={buildBoardPath(question.bancas[0])} prefetch={false} className="hover:text-[#615fff] hover:underline">{question.bancas[0].sigla || question.bancas[0].nome}</Link>
-                    ) : <span>Banca não informada</span>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <GraduationCap size={16} className="text-amber-600 dark:text-amber-300" />
-                    <span>Dificuldade {question.dificuldade}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Tag size={16} className="text-fuchsia-600 dark:text-fuchsia-300" />
-                    <span>{question.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Múltipla escolha'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {showFreeAccountCta && (
-                <div data-hydration-interaction className="overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-500/10">
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">
-                    <Sparkles size={14} />
-                    Conta gratuita
-                  </div>
-                  <h2 className="mt-3 text-base font-black text-slate-900 dark:text-slate-100">
-                    Crie sua conta 100% gratuita
-                  </h2>
-                  <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
-                    Salve esta questão, acompanhe seu histórico de acertos, monte cadernos de revisão e continue estudando por banca, assunto e dificuldade.
-                  </p>
-                  <div className="mt-4 space-y-2">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                      <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-300" />
-                      Banco de questoes e progresso pessoal
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                      <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-300" />
-                      Comentários, anotações e estatísticas
-                    </div>
-                  </div>
-                  <Link
-                    href="/auth?mode=signup"
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700"
-                  >
-                    Criar conta gratuita <UserPlus size={14} />
-                  </Link>
-                </div>
-              )}
-
-              {questionKeywords.length > 0 && (
-                <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-                  <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Temas relacionados</h2>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {questionKeywords.slice(0, 10).map((keyword) => (
-                      <span key={keyword} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-                        {keyword}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Continuar no fluxo oficial</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  Abra a questão dentro da prática para responder, acompanhar estatísticas, ver materiais relacionados e registrar seu histórico.
-                </p>
-                <div className="mt-5 flex flex-col gap-3">
-                  <Link
-                    href={publicRoutes.questions.index({ questionId: question.id })}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      handleOpenPractice();
-                    }}
-                    aria-disabled={isCanceledQuestion}
-                    className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all ${isCanceledQuestion ? 'cursor-not-allowed bg-red-500 opacity-80' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                  >
-                    {isCanceledQuestion ? 'Questão anulada' : 'Abrir na prática'} {!isCanceledQuestion && <ArrowRight size={14} />}
-                  </Link>
-                  <Link
-                    href="/plans"
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-slate-300 hover:text-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:text-slate-100"
-                  >
-                    Ver planos
-                  </Link>
-                </div>
-              </div>
-            </aside>
-          </div>
+          <section aria-labelledby="related-exams-title" className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <header className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+              <h2 id="related-exams-title" className={PLATFORM_SECTION_TITLE_CLASS}>Provas relacionadas</h2>
+              <p className="mt-1 text-xs text-slate-500">Provas vinculadas a esta questão</p>
+            </header>
+            {relatedExams.length ? (
+              <ul className="divide-y divide-slate-200 px-4 dark:divide-slate-800">
+                {relatedExams.map((exam) => (
+                  <li key={exam.id}>
+                    <Link href={publicRoutes.exams.detail(exam.slug)} className="block py-3 hover:text-indigo-600">
+                      <span className="block text-sm font-bold leading-5">{exam.nome}</span>
+                      <span className="mt-1 block text-xs text-slate-500">{[exam.ano, exam.banca?.sigla || exam.banca?.nome, getQuestionRoleLabel(exam.cargo)].filter(Boolean).join(' · ')}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-4 py-5 text-sm text-slate-500">Esta questão ainda não tem prova pública vinculada.</p>
+            )}
+          </section>
         </div>
-      </div>
-    </section>
-    <AuthModal
-      isOpen={showAuthModal}
-      onClose={() => setShowAuthModal(false)}
-      title="Entre para responder"
-      description="Crie uma conta gratuita ou acesse sua conta para responder esta questão no fluxo oficial da prática e salvar seu progresso."
-      actionSource="questao-publica"
-    />
+
+        <section aria-labelledby="question-search-context" className="border-t border-slate-200 pt-5 dark:border-slate-800">
+          <h2 id="question-search-context" className={PLATFORM_SECTION_TITLE_CLASS}>
+            {questionSubject ? `Questão de concurso sobre ${questionSubject}` : 'Questão de concurso'}
+          </h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600 dark:text-slate-300">{searchableContext}</p>
+        </section>
+      </main>
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        title="Entre para responder"
+        description="Crie uma conta gratuita ou acesse sua conta para responder esta questão, salvar seu progresso e acompanhar seus resultados."
+        actionSource="questao-publica"
+      />
     </>
   );
 };

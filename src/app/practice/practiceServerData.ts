@@ -75,6 +75,11 @@ export const buildPracticeServerUrl = (
   url.searchParams.set('publication_scope', 'public');
   url.searchParams.set('publish_status', 'published');
   url.searchParams.set('limit', '10');
+  const requestedPage = Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page;
+  const page = Number.parseInt(String(requestedPage || '1'), 10);
+  url.searchParams.set('page', String(Number.isFinite(page) ? Math.max(1, page) : 1));
+  const cursor = Array.isArray(searchParams.cursor) ? searchParams.cursor[0] : searchParams.cursor;
+  if (cursor) url.searchParams.set('cursor', cursor);
 
   PUBLIC_PRACTICE_QUERY_KEYS.forEach((key) => {
     const value = searchParams[key];

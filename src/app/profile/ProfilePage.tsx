@@ -27,10 +27,11 @@ import {
    AlertTriangle, XCircle, ArrowRight, CheckCircle2, Gift,
    Share2, Copy, Camera, AlertCircle, RotateCcw, Send,
    Loader2, ShieldAlert, Wallet, MessageSquare, Clock,
-   BookmarkCheck, Settings2,
+   BookmarkCheck, Settings2, MoreHorizontal, ChevronDown,
    type LucideIcon,
 } from 'lucide-react';
 import UserAvatar from '@/components/shared/ui/UserAvatar';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { useAuth } from '@providers/AuthProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -78,6 +79,8 @@ import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
+    PLATFORM_SECTION_TITLE_CLASS,
+    PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
     PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import {
@@ -472,6 +475,7 @@ type ProfileSidebarItem = {
     label: string;
     icon: LucideIcon;
     onSelect?: () => void;
+    inMenu?: boolean;
 };
 
 const isPlatformRatingThread = (thread: SupportThread) => (
@@ -2538,7 +2542,7 @@ const Profile: React.FC = () => {
                 />
             )}
 
-            <section className={`overflow-hidden ${PLATFORM_SURFACE_CARD_CLASS}`}>
+            <section className="overflow-hidden border-y border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                 <div className="border-b border-slate-100 px-5 py-6 dark:border-slate-800 md:px-6 md:py-6">
                     <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
                         <div className="max-w-2xl space-y-3">
@@ -2584,7 +2588,7 @@ const Profile: React.FC = () => {
 
                 <div className="space-y-4 px-5 py-5 md:px-6 md:py-6">
                     <div className="grid gap-3 md:grid-cols-3">
-                        <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="border-b border-slate-200 px-3 py-4 dark:border-slate-800">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Status</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
                                 {hasPendingRefundRequest ? 'Reembolso em análise' : hasBlockingPaymentIssue ? 'Acesso bloqueado' : isNextRenewalOverdue ? 'Pagamento em atraso' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
@@ -2602,7 +2606,7 @@ const Profile: React.FC = () => {
                             </p>
                         </div>
 
-                        <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="border-b border-slate-200 px-3 py-4 dark:border-slate-800">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Ciclo / vigencia</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
                                 {hasActiveSubscription
@@ -2616,7 +2620,7 @@ const Profile: React.FC = () => {
                             </p>
                         </div>
 
-                        <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="border-b border-slate-200 px-3 py-4 dark:border-slate-800">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Valor</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
                                 {showFreeInactiveSubscriptionState ? '0,00' : formatTransactionAmount(subscriptionChargeAmount)}
@@ -2628,7 +2632,7 @@ const Profile: React.FC = () => {
                     </div>
 
                     {!showFreeInactiveSubscriptionState && activeSubscription && hasReliableSubscriptionTimeline && (
-                        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40 md:px-5 md:py-5">
+                        <div className="border-y border-slate-200 px-3 py-4 dark:border-slate-800 md:px-4">
                             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                                 <div className="space-y-2">
                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Progresso do ciclo</p>
@@ -2944,8 +2948,8 @@ const Profile: React.FC = () => {
                 <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                     <div className="space-y-1">
                         <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Suporte</p>
-                        <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Histórico de conversas</h2>
-                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                        <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Histórico de conversas</h2>
+                        <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
                             Acompanhe chamados, sugestões, respostas do suporte e continue conversas abertas.
                         </p>
                     </div>
@@ -2953,7 +2957,7 @@ const Profile: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => void fetchSupportHistory(true)}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                             <RotateCcw size={14} />
                             Atualizar
@@ -2961,7 +2965,7 @@ const Profile: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => router.push('/support?category=info')}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700"
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
                         >
                             <MessageSquare size={14} />
                             Novo chamado
@@ -2975,14 +2979,14 @@ const Profile: React.FC = () => {
                         { label: 'Em análise', value: supportStats.inProgress, className: 'text-sky-600 dark:text-sky-300' },
                         { label: 'Resolvidos', value: supportStats.resolved, className: 'text-emerald-600 dark:text-emerald-300' },
                     ].map((item) => (
-                        <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <div key={item.label} className="border-b border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item.label}</p>
                             <p className={`mt-2 text-2xl font-black ${item.className}`}>{item.value}</p>
                         </div>
                     ))}
                 </div>
 
-                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <section className="overflow-hidden border-y border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Conversas recentes</p>
@@ -3140,22 +3144,22 @@ const Profile: React.FC = () => {
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-1">
                     <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Histórico</p>
-                    <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Transações</h2>
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Histórico de transações</h2>
+                    <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
                         Acompanhe cobranças aprovadas, parcelas futuras pré-aprovadas e faturas emitidas pelo gateway.
                     </p>
                 </div>
                 <button
                     type="button"
                     onClick={fetchUserTransactions}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                     <RotateCcw size={14} />
                     Atualizar
                 </button>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="overflow-hidden border-y border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                 {isLoadingTransactions ? (
                     <div className="flex items-center justify-center px-6 py-20">
                         <Loader2 size={28} className="animate-spin text-indigo-500" />
@@ -3165,15 +3169,11 @@ const Profile: React.FC = () => {
                         <table className="min-w-full text-left">
                             <thead>
                                 <tr className="border-b border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">ID do gateway</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Plano</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Ciclo</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Gateway</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Método</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Data / hora</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Status</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 text-right">Valor</th>
-                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 text-center">Fatura</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400">Data</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400">Descrição</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400">Status</th>
+                                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400">Valor</th>
+                                    <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400">Comprovante</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -3193,58 +3193,20 @@ const Profile: React.FC = () => {
 
                                     return (
                                         <tr key={tx.id} className="align-top transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                                            <td className="px-5 py-4">
-                                                <div className="space-y-2">
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{referenceLabel}</p>
-                                                    <div className="flex items-center gap-2">
-                                                        <code className="max-w-[180px] truncate text-xs font-black text-slate-900 dark:text-slate-100">{referenceId || '-'}</code>
-                                                        {referenceId && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    navigator.clipboard.writeText(String(referenceId));
-                                                                    addToast('ID copiado.', 'success');
-                                                                }}
-                                                                className="rounded-lg border border-slate-200 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                                                            >
-                                                                Copiar
-                                                            </button>
-                                                        )}
-                                                    </div>
+                                            <td className="whitespace-nowrap px-4 py-4">
+                                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{tx.dateTimeFormatted || formatDateTimeBR(tx.createdAt || tx.dueDate || tx.timestamp)}</p>
+                                                {tx.scheduleLabel && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{tx.scheduleLabel}</p>}
+                                            </td>
+                                            <td className="min-w-64 px-4 py-4">
+                                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{resolvedPlanName}</p>
+                                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{[cycleLabel, installmentLabel, gatewayLabel, methodLabel].filter(Boolean).join(' · ')}</p>
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <span className="text-[11px] text-slate-400 dark:text-slate-500">{referenceLabel}</span>
+                                                    <code className="max-w-[180px] truncate text-xs text-slate-600 dark:text-slate-300">{referenceId || '-'}</code>
+                                                    {referenceId && <button type="button" onClick={() => { navigator.clipboard.writeText(String(referenceId)); addToast('ID copiado.', 'success'); }} className="text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-300">Copiar</button>}
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <p className="text-sm font-black leading-[1.2] text-slate-900 dark:text-slate-100">
-                                                    {resolvedPlanName}
-                                                </p>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="space-y-1">
-                                                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{cycleLabel}</p>
-                                                    {installmentLabel && (
-                                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{installmentLabel}</p>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{gatewayLabel}</p>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{methodLabel}</p>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="space-y-1">
-                                                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                                                        {tx.dateTimeFormatted || formatDateTimeBR(tx.createdAt || tx.dueDate || tx.timestamp)}
-                                                    </p>
-                                                    {tx.scheduleLabel && (
-                                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                                            {tx.scheduleLabel}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-5 py-4">
+                                            <td className="px-4 py-4">
                                                 <div className="space-y-2">
                                                     <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusMeta.className}`}>
                                                         {statusMeta.label}
@@ -3256,18 +3218,18 @@ const Profile: React.FC = () => {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4 text-right">
+                                            <td className="whitespace-nowrap px-4 py-4 text-right">
                                                 <p className="text-sm font-black text-slate-900 dark:text-slate-100">
                                                     {formatTransactionAmount(tx.amount ?? 0)}
                                                 </p>
                                             </td>
-                                            <td className="px-5 py-4 text-center">
+                                            <td className="px-4 py-4 text-center">
                                                 {invoiceUrl ? (
                                                     <a
                                                         href={invoiceUrl}
                                                         target="_blank"
                                                         rel="noreferrer"
-                                                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                                                     >
                                                         <Download size={14} />
                                                         PDF
@@ -4047,9 +4009,12 @@ const Profile: React.FC = () => {
       );
    }
 
-    const renderSidebarItem = ({ id, label, icon: Icon, onSelect }: ProfileSidebarItem) => (
+    const renderProfileTab = ({ id, label, icon: Icon, onSelect, inMenu = false }: ProfileSidebarItem) => (
         <button
-            onClick={() => {
+            type="button"
+            aria-current={activeTab === id ? 'page' : undefined}
+            onClick={(event) => {
+                if (inMenu) event.currentTarget.closest('details')?.removeAttribute('open');
                 if (onSelect) {
                     onSelect();
                     return;
@@ -4064,122 +4029,78 @@ const Profile: React.FC = () => {
                     });
                 }
             }}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'}`}
+            className={inMenu
+                ? `flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium transition-colors ${activeTab === id ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'}`
+                : `inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors ${activeTab === id ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white'}`}
         >
-            <div className="flex items-center gap-3"><Icon size={16} /> {label}</div>
-            {activeTab === id && <ChevronRight size={14} className="text-indigo-400 dark:text-indigo-500" />}
+            <Icon size={16} aria-hidden="true" />
+            {label}
         </button>
     );
 
+    const moreProfileTabs: ProfileSidebarItem[] = [
+        { id: 'benefits', label: 'Benefícios', icon: Gift },
+        ...(canAccessReferralTab ? [{ id: 'referral' as const, label: 'Indique e Ganhe', icon: Gift }] : []),
+        ...(annotatedLawsEnabled ? [{ id: 'favorite-laws' as const, label: 'Lei Comentada salva', icon: BookOpen }] : []),
+        ...(marketplaceEnabled ? [{ id: 'materials' as const, label: 'Meus Materiais', icon: Package }] : []),
+        { id: 'security', label: 'Privacidade e segurança', icon: ShieldCheck },
+        { id: 'evolution', label: 'Minha evolução', icon: TrendingUp },
+        { id: 'testimonial', label: 'Avaliar plataforma', icon: Star, onSelect: openTestimonialModal },
+    ];
+    const isMoreProfileTabActive = moreProfileTabs.some(({ id }) => activeTab === id);
     return (
-        <div className="mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6 pb-20 space-y-5 md:space-y-6">
-            <header>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
-                    <User className="text-indigo-600 dark:text-indigo-400" /> Meu Perfil
-                </h1>
-                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1 transition-colors">Gerencie seus dados, assinatura e acompanhe sua evolução.</p>
-            </header>
-
-            {/* Banner: Conteúdo Incompleto */}
-            {shouldShowProfileCompletionBanner && (
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 sm:px-6 py-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg border border-indigo-400/30">
-                    <div className="flex items-center gap-4">
-                        <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
-                            <User size={24} className="text-white" />
-                        </div>
-                        <div>
-                            <h4 className="font-bold text-sm">Complete seu cadastro para facilitar suas compras</h4>
-                            <p className="text-xs text-indigo-100 mt-0.5">Adicione seu CPF e endereço para agilizar o checkout de materiais e planos.</p>
-                        </div>
+        <div className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} pb-16`}>
+            <PlatformPageHeader
+                title="Meu perfil"
+                breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Meu perfil', path: '/profile/personal' }]}
+                className="mb-5"
+            />
+            <nav aria-label="Seções do perfil" className="relative mb-6 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-1">
+                    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {renderProfileTab({ id: 'personal', label: 'Dados pessoais', icon: User })}
+                        {renderProfileTab({ id: 'saved-questions', label: 'Questões salvas', icon: BookmarkCheck })}
+                        {renderProfileTab({ id: 'notebook', label: 'Anotações', icon: StickyNote })}
+                        {renderProfileTab({ id: 'billing', label: 'Assinatura', icon: CreditCard })}
+                        {renderProfileTab({ id: 'billing-history', label: 'Transações', icon: BarChart3 })}
+                        {renderProfileTab({ id: 'support-history', label: 'Suporte', icon: MessageSquare })}
                     </div>
-                    <button onClick={scrollToPersonalDetailsForm} className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-2 shrink-0 active:scale-95">
-                        Completar Agora <ArrowRight size={14} />
+                    <details className="group relative shrink-0">
+                        <summary className={`flex min-h-11 cursor-pointer list-none items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 [&::-webkit-details-marker]:hidden ${isMoreProfileTabActive ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'}`}>
+                            <MoreHorizontal size={16} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" className="transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="absolute right-0 top-full z-30 mt-1 w-60 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                            {moreProfileTabs.map((item, index) => (
+                                <React.Fragment key={`${item.id}-${index}`}>
+                                    {renderProfileTab({ ...item, inMenu: true })}
+                                </React.Fragment>
+                            ))}
+                            <button type="button" onClick={logout} className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/30">
+                                <LogOut size={16} aria-hidden="true" /> Sair da conta
+                            </button>
+                        </div>
+                    </details>
+                </div>
+            </nav>
+            {shouldShowProfileCompletionBanner && (
+                <div className="mb-6 flex flex-col gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/20 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Complete seu cadastro para facilitar suas compras</h2>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Adicione seu CPF e endereço para agilizar o checkout de materiais e planos.</p>
+                    </div>
+                    <button onClick={scrollToPersonalDetailsForm} className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-indigo-700 hover:underline dark:text-indigo-300">
+                        Completar cadastro <ArrowRight size={15} />
                     </button>
                 </div>
             )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8">
-                {/* SIDEBAR DE NAVEGAÇÃO */}
-                <aside className="lg:col-span-3 space-y-4 lg:space-y-6">
-                    {/* Cartão do Usuário */}
-                    <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center space-y-3 transition-colors">
-                        <div 
-                            className="relative group cursor-pointer"
-                            onClick={openProfilePhotoPicker}
-                        >
-                            <UserAvatar
-                                src={profilePhotoUrl}
-                                name={currentUser.name}
-                                alt={currentUser.name || 'Foto de perfil'}
-                                className="h-20 w-20 rounded-full border border-slate-200 bg-slate-100 text-2xl font-black text-slate-400 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
-                            >
-                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {isSavingProfilePhoto ? <Loader2 size={20} className="animate-spin text-white" /> : <Camera size={20} className="text-white" />}
-                                </div>
-                            </UserAvatar>
-                            {profilePhotoUrl ? (
-                                <button
-                                    type="button"
-                                    onClick={async (event) => {
-                                        event.stopPropagation();
-                                        await handleRemoveProfilePhoto();
-                                    }}
-                                    disabled={isRemovingProfilePhoto}
-                                    className="absolute -top-1 -left-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 shadow-sm transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/40 dark:bg-slate-900 dark:text-rose-400 dark:hover:bg-rose-900/20"
-                                    title="Remover foto"
-                                    aria-label="Remover foto de perfil"
-                                >
-                                    {isRemovingProfilePhoto ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                                </button>
-                            ) : null}
-                            <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white dark:border-slate-900 shadow-sm">
-                                LVL {currentUser.level}
-                            </div>
-                        </div>
-                        <div>
-                            <h2 className="font-bold text-slate-900 dark:text-slate-100 text-sm transition-colors">{currentUser.name}</h2>
-                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate max-w-[180px] transition-colors">{currentUser.email}</p>
-                        </div>
-                        <div className="w-full pt-3 border-t border-slate-50 dark:border-slate-800 flex justify-center transition-colors">
-                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded border transition-colors ${isElitePlan ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800/30' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-700'}`}>
-                                Plano {effectivePlanDisplayName}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Menu */}
-                    <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 transition-colors">
-                        <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Menu</div>
-                        {renderSidebarItem({ id: 'notebook', label: 'Minhas Anotações', icon: StickyNote })}
-                        {renderSidebarItem({ id: 'saved-questions', label: 'Questões salvas', icon: BookmarkCheck })}
-                        {annotatedLawsEnabled && renderSidebarItem({ id: 'favorite-laws', label: 'Lei Comentada salva', icon: BookOpen })}
-                        {marketplaceEnabled && renderSidebarItem({ id: 'materials', label: 'Meus Materiais', icon: Package })}
-                        
-                        <div className="h-px bg-slate-50 dark:bg-slate-800 my-2 transition-colors" />
-                        
-                        <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Conta</div>
-                        {renderSidebarItem({ id: 'personal', label: 'Dados Pessoais', icon: User })}
-                        {renderSidebarItem({ id: 'testimonial', label: 'Avaliar plataforma', icon: Star, onSelect: openTestimonialModal })}
-                        {renderSidebarItem({ id: 'support-history', label: 'Histórico de suporte', icon: MessageSquare })}
-                        {renderSidebarItem({ id: 'billing', label: 'Assinatura', icon: CreditCard })}
-                        {renderSidebarItem({ id: 'billing-history', label: 'Transações', icon: BarChart3 })}
-                        {renderSidebarItem({ id: 'benefits', label: 'Benefícios', icon: Gift })}
-                        {canAccessReferralTab && renderSidebarItem({ id: 'referral', label: 'Indique e Ganhe', icon: Gift })}
-                        {renderSidebarItem({ id: 'security', label: 'Privacidade', icon: ShieldCheck })}
-                    </div>
-
-                    <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-2.5 sm:py-3 text-red-500 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 font-bold text-xs rounded-xl transition-all border border-red-100 dark:border-red-900/30">
-                        <LogOut size={14} /> Sair da Conta
-                    </button>
-                </aside>
-
-            {/* ÁREA DE CONTEÚDO */}
-            <main className="lg:col-span-9">
+            <main>
                <div ref={profileActiveTabContentRef} className="space-y-6 scroll-mt-24">
-
                {activeTab === 'evolution' && (
                   <div className="space-y-6">
-                     {/* NOVO CABEÇALHO DE ESTUDOS */}
+                     <header className="border-b border-slate-200 pb-4 dark:border-slate-800">
+                        <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Minha evolução</h2>
+                        <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Acompanhe seu desempenho e progresso nos estudos.</p>
+                     </header>
                      <div className="bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 transition-colors">
                         <div className="flex-1 space-y-3">
                            <div className="flex items-center gap-2">
@@ -4341,7 +4262,7 @@ const Profile: React.FC = () => {
                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{notebookEntries.length} notas</span>
                      </div>
                      {notebookEntries.length > 0 ? (
-                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                        <div className="overflow-hidden border-y border-slate-200 bg-white transition-colors dark:border-slate-800 dark:bg-slate-900">
                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
                               <span>Anotação</span>
                               <span>Ação</span>
@@ -4429,7 +4350,7 @@ const Profile: React.FC = () => {
                            </div>
                         </div>
                      ) : (
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                        <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                            <StickyNote size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma anotação encontrada.</p>
                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Adicione notas em questões e artigos da Lei Comentada durante seus estudos.</p>
@@ -4461,12 +4382,12 @@ const Profile: React.FC = () => {
                      </div>
 
                      {isLoadingFavoriteLaws ? (
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                        <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                            <Loader2 size={36} className="mx-auto mb-3 animate-spin text-slate-300 dark:text-slate-700" />
                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Carregando itens salvos...</p>
                         </div>
                      ) : favoriteLaws.length > 0 ? (
-                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                        <div className="overflow-hidden border-y border-slate-200 bg-white transition-colors dark:border-slate-800 dark:bg-slate-900">
                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
                               <span>Conteúdo salvo</span>
                               <span>Ação</span>
@@ -4539,7 +4460,7 @@ const Profile: React.FC = () => {
                            </div>
                         </div>
                      ) : (
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                        <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                            <BookOpen size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhum item da Lei Comentada salvo ainda.</p>
                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Use o botão de favorito em uma lei, seção ou artigo para montar sua lista.</p>
@@ -4638,7 +4559,7 @@ const Profile: React.FC = () => {
                                </table>
                            </div>
                        ) : (
-                           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                           <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                                <Package size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhum material adquirido.</p>
                                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Visite o Marketplace para encontrar materiais de estudo.</p>
@@ -4646,10 +4567,45 @@ const Profile: React.FC = () => {
                        )}
                    </div>
                )}
-
                {activeTab === 'personal' && (
-                  <div ref={personalDetailsSectionRef} className="scroll-mt-24 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-6 transition-colors">Dados Pessoais</h2>
+                   <div ref={personalDetailsSectionRef} className="scroll-mt-24">
+                       <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+                           <div className="flex min-w-0 items-center gap-4">
+                               <div className="relative shrink-0">
+                                   <button type="button" onClick={openProfilePhotoPicker} aria-label="Alterar foto de perfil" className="group relative block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950">
+                                       <UserAvatar
+                                           src={profilePhotoUrl}
+                                           name={currentUser.name}
+                                           alt={currentUser.name || 'Foto de perfil'}
+                                           className="h-16 w-16 rounded-full border border-slate-200 bg-slate-100 text-xl font-bold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                       >
+                                           <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                                               {isSavingProfilePhoto ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                                           </span>
+                                       </UserAvatar>
+                                   </button>
+                                   <span className="absolute -bottom-1 -right-1 rounded-full border-2 border-white bg-indigo-600 px-1.5 py-0.5 text-[9px] font-bold text-white dark:border-slate-950">N{currentUser.level}</span>
+                               </div>
+                               <div className="min-w-0">
+                                   <h2 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{currentUser.name}</h2>
+                                   <p className="truncate text-sm text-slate-500 dark:text-slate-400">{currentUser.email}</p>
+                                   <span className="mt-1 inline-flex text-xs font-medium text-indigo-700 dark:text-indigo-300">Plano {effectivePlanDisplayName}</span>
+                               </div>
+                           </div>
+                           <div className="flex items-center gap-4 pl-20 sm:pl-0">
+                               <button type="button" onClick={openProfilePhotoPicker} disabled={isSavingProfilePhoto} className="text-sm font-semibold text-indigo-700 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-indigo-300">
+                                   {isSavingProfilePhoto ? 'Enviando foto...' : 'Alterar foto'}
+                               </button>
+                               {profilePhotoUrl ? (
+                                   <button type="button" onClick={() => void handleRemoveProfilePhoto()} disabled={isRemovingProfilePhoto} className="text-sm font-medium text-slate-500 hover:text-rose-600 disabled:cursor-wait disabled:opacity-60 dark:text-slate-400 dark:hover:text-rose-400">
+                                       {isRemovingProfilePhoto ? 'Removendo...' : 'Remover'}
+                                   </button>
+                               ) : null}
+                           </div>
+                       </div>
+                       <section className="pt-6">
+                       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Dados pessoais</h2>
+                       <p className="mb-5 mt-1 text-sm text-slate-500 dark:text-slate-400">Mantenha seus dados de cadastro atualizados.</p>
                       {personalProfileQuery.isPending && (
                           <div className="flex min-h-40 items-center justify-center gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
                               <Loader2 size={18} className="animate-spin" />
@@ -4698,13 +4654,13 @@ const Profile: React.FC = () => {
                            }
                         }}
                         noValidate
-                        className="space-y-6 max-w-2xl"
+                        className="grid grid-cols-1 gap-5 md:grid-cols-2"
                      >
-                        <div className="space-y-1.5">
+                         <div className="space-y-1.5 md:col-span-1">
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Nome Completo <span className="text-rose-500">*</span></label>
                             <input name="name" type="text" defaultValue={personalProfile.displayName} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                         </div>
-                        <div className="space-y-1.5">
+                         <div className="space-y-1.5 md:col-span-1">
                             <div className="flex flex-wrap items-center gap-2">
                                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">E-mail de Acesso</label>
                                 {personalProfile.emailVerified ? (
@@ -4724,12 +4680,12 @@ const Profile: React.FC = () => {
                                     : 'Seu e-mail ainda não foi confirmado. Confirme para liberar todos os recursos e receber notificações importantes.'}
                             </p>
                         </div>
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                         <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
                            <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">CPF <span className="text-rose-500">*</span></label>
                                <input name="cpf" type="text" defaultValue={personalProfile.personal.cpf || ''} placeholder="000.000.000-00" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans" />
                            </div>
-                           <div className="space-y-1.5">
+                          <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Telefone / WhatsApp <span className="text-rose-500">*</span></label>
                                <input
                                    name="phone"
@@ -4742,7 +4698,7 @@ const Profile: React.FC = () => {
                                />
                            </div>
                         </div>
-                        <div className="space-y-1.5">
+                         <div className="space-y-1.5 md:col-span-2">
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Foco de Estudo</label>
                             <div className="relative group/exam">
                                  <input name="targetExam" type="hidden" value={personalTargetExam} />
@@ -4755,29 +4711,33 @@ const Profile: React.FC = () => {
                             </div>
                         </div>
 
+                         <div className="md:col-span-2">
                          <BrazilianBillingAddressFields
                             key={personalProfileQuery.dataUpdatedAt || 'personal-address-loading'}
                             initialAddress={personalAddress}
                          />
-
-                         <div className="pt-4 flex flex-wrap items-center gap-3 sm:gap-4">
+                         </div>
+                         <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5 dark:border-slate-800 md:col-span-2">
+                            <button type="reset" disabled={isUpdatingProfile} className="inline-flex min-h-10 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                                Cancelar
+                            </button>
                             <button 
                                 type="submit" 
                                 disabled={isUpdatingProfile}
-                                className={`px-10 py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/10 hover:shadow-indigo-500/25 transition-all flex items-center gap-2 ${isUpdatingProfile ? 'opacity-70 cursor-wait' : 'hover:-translate-y-1 active:scale-95'}`}
+                                className={`inline-flex min-h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 ${isUpdatingProfile ? 'cursor-wait opacity-70' : ''}`}
                             >
                                {isUpdatingProfile ? (
                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                ) : (
                                    <ShieldCheck size={16} />
                                )}
-                                {isUpdatingProfile ? 'Sincronizando...' : 'Sincronizar Perfil'}
+                                {isUpdatingProfile ? 'Salvando...' : 'Salvar alterações'}
                             </button>
                          </div>
-                     </form>
-                      )}
-
-                     <div id="saved-cards-personal-section" className="mt-12 border-t border-slate-100 pt-8 dark:border-slate-800">
+                      </form>
+                       )}
+                        </section>
+                     <div id="saved-cards-personal-section" className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div>
                                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Cartões Salvos</h3>
@@ -5485,7 +5445,7 @@ const Profile: React.FC = () => {
                               </table>
                           </div>
                       ) : (
-                          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                          <div className="border-y border-dashed border-slate-300 bg-white p-8 text-center transition-colors dark:border-slate-700 dark:bg-slate-900">
                               <BarChart3 size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                               <p className="text-sm text-slate-500 dark:text-slate-400 font-medium tracking-tight">Nenhuma transação registrada.</p>
                           </div>
@@ -5495,21 +5455,15 @@ const Profile: React.FC = () => {
 
                {activeTab === 'referral' && canAccessReferralTab && (
                    <div className="space-y-6">
-                       {/* Banner do Programa */}
-                       <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none">
-                            <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-                                <Gift size={160} />
-                            </div>
-                            <div className="max-w-md relative z-10 space-y-4">
-                                <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">Programa de Parceria</span>
-                                <h2 className="text-3xl font-black tracking-tight leading-tight">Indique amigos e ganhe {referralStats?.commissionPercent ?? 0}% de comissão</h2>
-                                <p className="text-sm font-medium text-indigo-100 leading-relaxed">A comissão nasce após a assinatura confirmada, passa pela carência de reembolso e entra no próximo ciclo de repasse.</p>
-                                
-                                <div className="pt-4 flex items-center gap-3">
-                                    <div className="flex-1 bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex items-center justify-between gap-4">
-                                        <code className="text-xs font-black tracking-widest text-indigo-100 truncate">
-                                            {referralStats?.referralLink || 'Link sendo preparado'}
-                                        </code>
+                       <header className="border-b border-slate-200 pb-4 dark:border-slate-800">
+                           <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Indique e ganhe</h2>
+                           <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Receba {referralStats?.commissionPercent ?? 0}% de comissão após a assinatura indicada ser confirmada e passar pelo prazo de reembolso.</p>
+                       </header>
+                       <section className="border-y border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
+                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                               <code className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                   {referralStats?.referralLink || 'Link sendo preparado'}
+                               </code>
                                         <button 
                                             onClick={() => {
                                                 if (!referralStats?.referralLink) return;
@@ -5518,18 +5472,16 @@ const Profile: React.FC = () => {
                                                 addToast('Link copiado para a área de transferência!', 'success');
                                                 setTimeout(() => setIsCopying(false), 2000);
                                             }}
-                                            className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all active:scale-95 flex items-center gap-2 shrink-0"
+                                            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
                                         >
                                             {isCopying ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                                             {isCopying ? 'Copiado' : 'Copiar'}
                                         </button>
-                                    </div>
-                                    <button className="p-4 bg-indigo-500/30 hover:bg-indigo-500/40 rounded-2xl border border-white/20 transition-all">
-                                        <Share2 size={20} />
-                                    </button>
-                                </div>
-                            </div>
-                       </div>
+                               <button type="button" aria-label="Compartilhar link de indicação" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300">
+                                   <Share2 size={17} />
+                               </button>
+                           </div>
+                       </section>
 
                        {/* Stats das Indicações */}
                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -5539,7 +5491,7 @@ const Profile: React.FC = () => {
                                { label: 'Em carência', value: `R$ ${(referralStats?.balance.pending || 0).toFixed(2)}`, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
                                { label: 'Disponível para repasse', value: `R$ ${(referralStats?.balance.available || 0).toFixed(2)}`, icon: Wallet, color: 'text-sky-600', bg: 'bg-sky-50' }
                            ].map((stat, i) => (
-                               <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                               <div key={i} className="border-b border-slate-200 bg-white px-3 py-4 dark:border-slate-800 dark:bg-slate-900">
                                    <div className="flex items-center gap-4">
                                        <div className={`w-12 h-12 rounded-xl ${stat.bg} dark:bg-slate-800 flex items-center justify-center ${stat.color} transition-colors`}>
                                            <stat.icon size={24} />
@@ -5554,7 +5506,7 @@ const Profile: React.FC = () => {
                        </div>
 
                        {/* Como funciona */}
-                       <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors">
+                       <div className="border-y border-slate-200 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-900">
                             <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Como funciona o programa?</h3>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                                 {[
@@ -5575,11 +5527,15 @@ const Profile: React.FC = () => {
 
                {activeTab === 'security' && (
                   <div className="space-y-6">
+                      <header className="border-b border-slate-200 pb-4 dark:border-slate-800">
+                          <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Privacidade e segurança</h2>
+                          <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Gerencie sua senha, preferências e dados da conta.</p>
+                      </header>
                       {/* Alteração de Senha */}
-                      <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                          <div className="flex items-center gap-3 mb-6">
-                              <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400"><Shield size={20} /></div>
-                              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Segurança da Conta</h2>
+                      <div className="border-b border-slate-200 bg-white py-5 dark:border-slate-800 dark:bg-slate-900">
+                          <div className="mb-5 flex items-center gap-2">
+                              <Shield size={17} className="text-indigo-600 dark:text-indigo-300" />
+                              <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Senha de acesso</h3>
                           </div>
                           
                           <form 
@@ -5603,33 +5559,33 @@ const Profile: React.FC = () => {
                               className="space-y-4 max-w-md"
                           >
                               <div className="space-y-1.5 font-sans">
-                                  <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Senha Atual</label>
-                                  <input name="currentPassword" type="password" required className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                      <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Senha atual</label>
+                                      <input name="currentPassword" type="password" required className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
                               </div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="space-y-1.5 font-sans">
-                                      <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Nova Senha</label>
-                                      <input name="newPassword" type="password" required className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                      <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Nova senha</label>
+                                      <input name="newPassword" type="password" required className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
                                   </div>
                                   <div className="space-y-1.5 font-sans">
-                                      <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Confirmar Nova Senha</label>
-                                      <input name="confirmPassword" type="password" required className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                      <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Confirmar nova senha</label>
+                                      <input name="confirmPassword" type="password" required className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
                                   </div>
                               </div>
-                              <button type="submit" className="px-6 py-3 bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-md">
+                              <button type="submit" className="min-h-10 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700">
                                   Atualizar Senha
                               </button>
                           </form>
                       </div>
 
                       {/* Preferências de Privacidade */}
-                      <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                      <div className="border-y border-slate-200 bg-white py-5 dark:border-slate-800 dark:bg-slate-900">
                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-                             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Privacidade e Preferências</h2>
+                             <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Preferências de privacidade</h3>
                              <button
                                 onClick={handleSavePrivacyPreferences}
                                 disabled={isSavingPrivacyPreferences}
-                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                              >
                                 {isSavingPrivacyPreferences ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                                 Salvar Tudo
@@ -5893,7 +5849,6 @@ const Profile: React.FC = () => {
 
                </div>
             </main>
-         </div>
 
          <StudyFocusModal
             careers={systemSettings.taxonomies?.careers || []}

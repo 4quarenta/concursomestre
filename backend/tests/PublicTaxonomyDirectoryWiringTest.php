@@ -40,6 +40,24 @@ foreach (['handlePublicTaxonomyDirectoryRoute', 'handlePublicTaxonomyHierarchyRo
 $assertContains($endpoint, 'handlePublicTaxonomyDirectoryRoute($db)', 'Endpoint publico nao chama a rota dedicada.');
 $assertContains($endpoint, "['view'] ?? ''", 'Endpoint publico nao seleciona a visualizacao solicitada.');
 $assertContains($endpoint, 'handlePublicTaxonomyHierarchyRoute($db)', 'Endpoint publico nao chama a rota de hierarquia.');
+$directoryMethodStart = strpos($repository, 'public function fetchPublicDirectory');
+$directoryMethodEnd = strpos($repository, 'public function fetchPublicOrganizationsByFilterIds', $directoryMethodStart ?: 0);
+if ($directoryMethodStart === false || $directoryMethodEnd === false) {
+    throw new RuntimeException('Metodo de consulta do diretorio publico nao foi encontrado.');
+}
+$directoryMethod = substr($repository, $directoryMethodStart, $directoryMethodEnd - $directoryMethodStart);
+foreach ([
+    'WITH page_filters AS',
+    'question_counts AS',
+    'exam_counts AS',
+    "eligible_q.publish_status IN ('published', 'scheduled')",
+    'FROM page_filters f',
+] as $needle) {
+    $assertContains($directoryMethod, $needle, "Consulta do diretorio nao agrega dados por pagina: {$needle}.");
+}
+if (str_contains($directoryMethod, 'LEFT JOIN prova_filters pf ON pf.filter_id = f.id')) {
+    throw new RuntimeException('Consulta do diretorio voltou a cruzar contagens de provas com questoes.');
+}
 $assertContains($repository, 'fetchPublicTaxonomyChildren', 'Repositorio nao expande a arvore de forma paginada.');
 $publicMethodStart = strpos($service, 'public function listPublicDirectory');
 if ($publicMethodStart === false) {

@@ -12,7 +12,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileQuestion, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -272,6 +272,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [emailDeliveryNotice, setEmailDeliveryNotice] = useState<EmailConfirmationDeliveryNotice | null>(null);
+  const [globalSearch, setGlobalSearch] = useState('');
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {
@@ -435,6 +436,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navItems: SidebarNavItem[] = ([
     { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', enabled: !!user, benefitKey: 'module.dashboard' },
     { label: 'Quest\u00F5es', icon: BookOpen, path: publicRoutes.questions.index(), enabled: practiceEnabled, benefitKey: 'module.practice' },
+    { label: 'Provas', icon: FileQuestion, path: publicRoutes.exams.index(), enabled: true },
     { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled, benefitKey: 'module.lei_comentada' },
     { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled, benefitKey: 'module.flashcards' },
     { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled, benefitKey: 'module.simulations' },
@@ -464,10 +466,33 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     });
   }
 
+  const primaryNavigationPaths = [
+    '/dashboard',
+    publicRoutes.questions.index(),
+    publicRoutes.exams.index(),
+    '/simulation',
+    '/lei-comentada',
+    '/flashcards',
+    '/cronograma',
+    '/x-ray',
+  ];
+  const primaryNavItems = primaryNavigationPaths
+    .map((path) => navItems.find((item) => item.path === path))
+    .filter((item): item is SidebarNavItem => Boolean(item));
+  const primaryNavPaths = new Set(primaryNavItems.map((item) => item.path));
+  const moreNavItems = navItems.filter((item) => !primaryNavPaths.has(item.path));
+
   const isActive = (path: string) => {
     if (path.startsWith('/profile')) return location.pathname.startsWith('/profile');
     if (path.startsWith('/admin')) return location.pathname.startsWith('/admin');
+    if (path === publicRoutes.exams.index()) return location.pathname.startsWith('/provas');
     return location.pathname === path;
+  };
+
+  const handleGlobalSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = globalSearch.trim();
+    router.push(query ? `/busca?q=${encodeURIComponent(query)}` : '/busca');
   };
 
   // Only consider the plan active if there is a valid subscription status (active or trialing)
@@ -594,6 +619,64 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
   const currentPlanTheme = getPlanStatusTheme(currentTier);
 
+  const renderTopNavigationItem = (item: SidebarNavItem) => {
+    const isAdminItem = item.path.startsWith('/admin');
+    const isCurrent = isActive(item.path);
+    const isLocked = resolvePlanLocked(item.benefitKey);
+    const isDisabled = item.enabled === false || item.moduleEnabled === false;
+    const badgeCount = Number(item.badge || 0);
+    const accessLabel = isDisabled
+      ? 'Desativado no admin (visível apenas para Admin)'
+      : isLocked && item.benefitKey && !Array.isArray(item.benefitKey)
+        ? `Disponível no ${getBenefitPlanLabel(item.benefitKey, systemSettings.planEntitlements)}`
+        : item.label;
+
+    return (
+      <Link
+        key={item.path}
+        href={item.path}
+        prefetch={false}
+        aria-current={isCurrent ? 'page' : undefined}
+        title={accessLabel}
+        className={`relative inline-flex h-12 shrink-0 items-center gap-[7px] border-b-2 px-0 text-[13px] font-medium transition-colors md:h-[54px] md:text-[13px] ${
+          isAdminItem
+            ? isCurrent ? 'border-rose-600 text-rose-700 dark:border-rose-400 dark:text-rose-300' : 'border-transparent text-slate-600 hover:text-rose-700 dark:text-slate-300 dark:hover:text-rose-300'
+            : isCurrent ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white'
+        } ${isLocked ? 'opacity-75' : ''}`}
+      >
+        <item.icon size={17} aria-hidden="true" />
+        <span>
+          <span className="md:hidden">{item.label === 'Perfil' && user ? userFirstName : item.label === 'Raio-X Banca' ? 'Raio-X' : item.label === 'Dashboard' ? 'Painel' : item.label}</span>
+          <span className="hidden md:inline">{item.label === 'Perfil' && user ? userFirstName : item.label === 'Dashboard' ? 'Painel' : item.label}</span>
+        </span>
+        {item.path === '/novidades' && unreadCount > 0 && <span className="h-2 w-2 rounded-full bg-red-500" />}
+        {badgeCount > 0 && !isLocked && !isDisabled && (
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isAdminItem ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'}`}>
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </span>
+        )}
+        {isLocked && <Lock size={13} className="text-amber-500" aria-label="Recurso do plano" />}
+        {isDisabled && !isLocked && <span className="rounded bg-red-100 px-1 text-[9px] font-bold text-red-700 dark:bg-red-900/40 dark:text-red-300">DEV</span>}
+      </Link>
+    );
+  };
+
+  const renderMoreMenuActions = () => (
+    <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+      <button
+        type="button"
+        onClick={(event) => {
+          router.push('/support');
+          event.currentTarget.closest('details')?.removeAttribute('open');
+        }}
+        className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+      >
+        <HelpCircle size={16} aria-hidden="true" />
+        Suporte e feedback
+      </button>
+    </div>
+  );
+
   const handleNotificationClick = (n: Notification) => {
     markNotificationAsRead(n.id);
     if (n.link) {
@@ -701,12 +784,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       )}
 
-      <div className="min-h-0 flex flex-1 flex-col overflow-hidden md:flex-row">
+      <div className="relative min-h-0 flex flex-1 flex-col overflow-hidden">
         {/* Mobile Header */}
         {hasMobileTopHeader && (
           <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
             <div className="flex items-center justify-between">
-            <PublicBrandLink width={190} />
+            <PublicBrandLink width={160} />
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
@@ -718,43 +801,93 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <Sun size={20} className="hidden dark:block" />
                 </span>
               </button>
-              <div className="relative">
-                <button onClick={handleNotificationsToggle} className="p-1 relative" aria-label="Abrir notificações">
-                  <Bell size={20} className="text-slate-600 dark:text-slate-400" />
-                  {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />}
-                </button>
-                {isNotifOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                    <NotificationDropdownPanel
-                      notifications={notifications}
-                      unreadCount={unreadCount}
-                      onClose={() => setIsNotifOpen(false)}
-                      onNotificationClick={handleNotificationClick}
-                      onMarkAsRead={markNotificationAsRead}
-                      onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
-                      onOpenAll={() => router.push('/notifications')}
-                    />
-                  </>
-                )}
-              </div>
-              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-slate-600 dark:text-slate-400" aria-label={isMobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}>
-                {isMobileMenuOpen ? <X /> : <Menu />}
+              {user && (
+                <div className="relative">
+                  <button onClick={handleNotificationsToggle} className="p-1 relative" aria-label="Abrir notificações">
+                    <Bell size={20} className="text-slate-600 dark:text-slate-400" />
+                    {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />}
+                  </button>
+                  {isNotifOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
+                      <NotificationDropdownPanel
+                        notifications={notifications}
+                        unreadCount={unreadCount}
+                        onClose={() => setIsNotifOpen(false)}
+                        onNotificationClick={handleNotificationClick}
+                        onMarkAsRead={markNotificationAsRead}
+                        onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
+                        onOpenAll={() => router.push('/notifications')}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => router.push(user ? '/profile/personal' : '/auth')}
+                aria-label={userName ? `Perfil de ${userName}` : 'Entrar ou acessar perfil'}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                <UserAvatar
+                  src={userPhotoUrl}
+                  name={userName}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-8 w-8 rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-indigo-600"
+                />
+              </button>
+              <button onClick={() => router.push('/busca')} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" aria-label="Buscar questões">
+                <Search size={19} />
               </button>
             </div>
             </div>
           </div>
         )}
 
+        {!isDashboardPage && !isSimulationFullscreenPage && (
+          <>
+            <div className="hidden border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-900 md:block md:px-6 lg:px-8">
+              <div className="mx-auto flex h-20 w-full max-w-7xl items-center gap-8">
+                <PublicBrandLink width={194} />
+                <form onSubmit={handleGlobalSearch} role="search" className="hidden h-10 min-w-0 max-w-[420px] flex-1 items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 text-slate-500 focus-within:border-indigo-400 focus-within:bg-white dark:border-slate-700 dark:bg-slate-800 dark:focus-within:bg-slate-950 min-[851px]:flex">
+                  <Search size={18} aria-hidden="true" />
+                  <input value={globalSearch} onChange={(event) => setGlobalSearch(event.target.value)} aria-label="Buscar questões, provas e materiais" placeholder="Buscar questões, provas e materiais" className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" />
+                  <button type="submit" aria-label="Pesquisar" className="rounded p-1 text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-900/30"><Search size={17} /></button>
+                </form>
+              </div>
+            </div>
+            <nav aria-label="Navegação principal" className="fixed inset-x-0 top-[68px] z-20 h-12 overflow-x-auto border-b border-slate-200 bg-white no-scrollbar dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:h-auto md:overflow-visible md:px-6 lg:px-8">
+              <div className="relative mx-auto flex h-12 w-max min-w-full items-center gap-5 px-5 md:h-[54px] md:w-full md:min-w-0 md:max-w-7xl md:gap-6 md:border-t md:border-slate-100 md:px-0 dark:md:border-slate-800">
+                <div className="flex shrink-0 items-center gap-5 min-[851px]:hidden">
+                  {navItems.map((item) => (
+                    <div key={`mobile-${item.path}`}>{renderTopNavigationItem(item)}</div>
+                  ))}
+                </div>
+                {primaryNavItems.map((item) => (
+                  <div key={`desktop-${item.path}`} className="hidden min-[851px]:block">{renderTopNavigationItem(item)}</div>
+                ))}
+                <details className="group relative ml-auto hidden shrink-0 min-[851px]:block">
+                  <summary className="inline-flex h-[54px] list-none items-center gap-2 border-b-2 border-transparent px-0 text-[13px] font-medium text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
+                    <MoreHorizontal size={18} aria-hidden="true" /> Mais <ChevronDown size={14} aria-hidden="true" />
+                  </summary>
+                  <div className="absolute right-0 top-full z-50 mt-1 min-w-48 rounded-md border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                    {moreNavItems.map((item) => (
+                      <div key={item.path} className="[&>a]:h-9 [&>a]:w-full [&>a]:justify-start [&>a]:rounded [&>a]:px-2 [&>a]:text-[13px]">
+                        {renderTopNavigationItem(item)}
+                      </div>
+                    ))}
+                    {renderMoreMenuActions()}
+                  </div>
+                </details>
+              </div>
+            </nav>
+          </>
+        )}
+
         {/* Sidebar Navigation */}
         {!isDashboardPage && !isSimulationFullscreenPage && (
-          <aside className={`
-            cm-layout-sidebar fixed inset-y-0 left-0 z-30 flex h-[100dvh] w-[84vw] max-w-64 flex-col overflow-hidden border-r border-slate-200 bg-white transform transition-transform duration-200 ease-in-out dark:border-slate-800 dark:bg-slate-900
-            md:w-64
-            ${isMobileMenuOpen
-              ? 'translate-x-0 opacity-100'
-              : '-translate-x-full opacity-100 md:translate-x-0'}
-          `}>
+          <aside aria-hidden="true" className="hidden">
             <div className="hidden shrink-0 px-5 pb-4 pt-5 md:flex">
               <PublicBrandLink
                 width={215}
@@ -885,7 +1018,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         {!isDashboardPage && !isSimulationFullscreenPage && (
           <div
-            className="cm-layout-sidebar-spacer hidden w-64 flex-none overflow-hidden transition-[width] duration-200 md:block"
+            className="cm-layout-sidebar-spacer hidden w-64 flex-none overflow-hidden transition-[width] duration-200"
             aria-hidden
           />
         )}
@@ -916,29 +1049,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
 
           {/* Desktop Top Bar with Notifications */}
-          <div className={`${isSimulationFullscreenPage ? 'hidden' : 'hidden md:flex'} z-20 items-center justify-end bg-slate-50/80 p-4 px-6 backdrop-blur transition-colors dark:bg-slate-950/80 lg:px-8`}>
-            <div className="flex items-center gap-4">
+          <div className={`${isSimulationFullscreenPage ? 'hidden' : 'pointer-events-none absolute inset-x-0 top-0 mx-auto hidden h-20 w-full px-3 md:flex md:px-6 lg:px-8'} z-30 items-center bg-transparent transition-colors`}>
+            <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-end">
+            <div className="pointer-events-auto flex items-center gap-4">
               <button
                 type="button"
                 onClick={toggleTheme}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-white hover:text-indigo-600 hover:shadow-sm dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
-                title={theme === 'light' ? 'Ativar Modo Escuro' : 'Ativar Modo Claro'}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
                 aria-label={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
               >
-                <span className="flex h-5 w-5 items-center justify-center" aria-hidden="true">
-                  <Moon size={20} className="block shrink-0 dark:hidden" />
-                  <Sun size={20} className="hidden shrink-0 dark:block" />
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push('/support')}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-white hover:text-indigo-600 hover:shadow-sm dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
-                title="Suporte e Feedback"
-                aria-label="Abrir suporte e feedback"
-              >
-                <HelpCircle size={20} className="block shrink-0" aria-hidden="true" />
+                {theme === 'light' ? <Moon size={19} aria-hidden="true" /> : <Sun size={19} aria-hidden="true" />}
               </button>
 
               {/* Sempre mostrar notificações se o usuário estiver logado, independente da feature flag global, se o usuário pediu para restaurar */}
@@ -970,25 +1091,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   )}
                 </div>
               )}
-              <div ref={profileMenuRef} className="relative flex items-center gap-3 border-l border-slate-200 pl-6 dark:border-slate-800">
+              <div ref={profileMenuRef} className="relative ml-1 flex items-center gap-[18px]">
                 <button
                   type="button"
-                  onClick={handleProfileMenuToggle}
-                  aria-haspopup="menu"
-                  aria-expanded={isProfileMenuOpen}
-                  className="group flex items-center gap-3 rounded-2xl px-2 py-1.5 transition-all hover:bg-white hover:shadow-sm dark:hover:bg-slate-900"
+                  onClick={() => user ? handleProfileMenuToggle() : router.push('/auth')}
+                  aria-haspopup={user ? 'menu' : undefined}
+                  aria-expanded={user ? isProfileMenuOpen : undefined}
+                  className="group flex items-center gap-[18px] rounded-md p-0 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userFirstName}</p>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
-                  </div>
                   <UserAvatar
                     src={userPhotoUrl}
                     name={userName}
                     alt={userName || 'Foto de perfil'}
-                    className="h-9 w-9 rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600"
+                    className="h-9 w-9 rounded-full bg-slate-900 text-sm font-bold text-white transition-opacity group-hover:opacity-90 dark:bg-indigo-600"
                   />
-                  <ChevronDown size={15} className={`text-slate-400 transition-transform dark:text-slate-500 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                  <span className="hidden min-w-0 max-w-[170px] text-left min-[851px]:block">
+                    <span className="block truncate text-[14px] font-semibold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userName}</span>
+                    <span className="block truncate text-[12px] text-slate-500 dark:text-slate-400">Plano {currentCanonicalPlan}</span>
+                  </span>
                 </button>
 
                 {user && isProfileMenuOpen ? (
@@ -1053,9 +1173,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 ) : null}
               </div>
             </div>
+            </div>
           </div>
 
-          <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[84px] sm:p-4 sm:pt-[88px] md:p-6 md:pt-6 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
+          <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[124px] sm:p-4 sm:pt-[128px] md:p-6 md:pt-3 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
             <div className={`${isSimulationFullscreenPage ? 'mx-auto w-full max-w-7xl pb-6' : `${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-12`}`}>
               {!isSimulationFullscreenPage && <AdBanner type="top" className="mb-8" />}
               {children}
@@ -1073,14 +1194,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         )}
 
         <style jsx global>{`
-          body[data-legal-reading-focus='true'] .cm-layout-sidebar {
-            transform: translateX(-100%);
-            opacity: 0;
-            pointer-events: none;
-          }
-
-          body[data-legal-reading-focus='true'] .cm-layout-sidebar-spacer {
-            width: 0 !important;
+          body[data-legal-reading-focus='true'] nav[aria-label='Navegação principal'] {
+            display: none;
           }
         `}</style>
       </div>

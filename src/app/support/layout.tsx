@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import { MessageSquare } from 'lucide-react';
 import StructuredData from '@/components/seo/StructuredData';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { buildPublicPageMetadata } from '../seoMetadata';
 import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 
@@ -20,19 +21,21 @@ export default function SupportLayout({ children }: Readonly<{ children: ReactNo
   return (
     <>
       <StructuredData value={structuredData} />
-      <header className="mx-auto w-full max-w-7xl px-3 pb-6 sm:px-4 md:px-0" data-semantic-content>
-        <CanonicalBreadcrumbs items={breadcrumbs} />
-        <p className="mt-5 text-xs font-black uppercase text-indigo-600 dark:text-indigo-300">Atendimento</p>
-        <h1 className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">Como podemos ajudar?</h1>
-        <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
-          Envie uma dúvida, relate um problema ou compartilhe uma sugestão pelos canais oficiais da plataforma.
-        </p>
-        <nav aria-label="Canais de suporte" className="mt-5 flex flex-wrap gap-3 text-sm font-bold">
-          <Link href="/support?category=bug" className="text-indigo-700 hover:underline dark:text-indigo-300">Reportar problema</Link>
-          <Link href="/support?category=feedback" className="text-indigo-700 hover:underline dark:text-indigo-300">Enviar sugestão</Link>
-          <Link href="/profile/support-history" className="text-indigo-700 hover:underline dark:text-indigo-300">Meus atendimentos</Link>
-        </nav>
-      </header>
+      <PlatformPageHeader
+        title="Como podemos ajudar?"
+        description="Envie uma dúvida, relate um problema ou compartilhe uma sugestão."
+        breadcrumbs={breadcrumbs}
+        className="pb-5"
+        actions={(
+          <Link
+            href="/profile/support-history"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-indigo-200 px-4 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+          >
+            <MessageSquare size={16} aria-hidden="true" />
+            Meus atendimentos
+          </Link>
+        )}
+      />
       {children}
     </>
   );

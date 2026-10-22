@@ -17,7 +17,7 @@ import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Difficulty } from '../../types';
 import type { UserAnswer } from '../../types';
-import { ChevronRight, ChevronLeft, ChevronDown, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp } from 'lucide-react';
+import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp, SlidersHorizontal, Minimize2, Printer } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import AdBanner from '../../components/shared/feedback/AdBanner';
@@ -58,6 +58,8 @@ import { useUserProgressStore } from '@/state/user-progress/userProgressStore';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 import type { PracticeInitialQuestionPage } from './practiceTypes';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import ui from '@/components/shared/ui/PlatformUI.module.css';
+import styles from './PracticeClient.module.css';
 
 const QuestionCard = dynamic(() => import('../questions/components/QuestionCard'), {
   loading: () => (
@@ -791,18 +793,17 @@ const Practice: React.FC<PracticeProps> = ({
   const {
     questions: storedQuestions,
     totalQuestions: storedTotalQuestions,
-    hasMoreQuestions: storedHasMoreQuestions,
     isQuestionsLoaded,
     ensureQuestionsLoaded,
-    fetchMoreQuestions,
   } = useQuestionBankActions();
   const questions = isQuestionsLoaded ? storedQuestions : (initialQuestionPage?.questions || storedQuestions);
   const totalQuestions = isQuestionsLoaded
     ? storedTotalQuestions
     : (initialQuestionPage?.total || storedTotalQuestions || questions.length);
-  const hasMoreQuestions = isQuestionsLoaded
-    ? storedHasMoreQuestions
-    : Boolean(initialQuestionPage?.pageInfo.hasMore);
+  const storedNextQuestionCursor = useQuestionBankStore((store) => store.nextQuestionCursor);
+  const nextQuestionCursor = isQuestionsLoaded
+    ? storedNextQuestionCursor
+    : (initialQuestionPage?.pageInfo.nextCursor || storedNextQuestionCursor);
   const replaceQuestionBank = useQuestionBankStore((store) => store.replaceQuestionBank);
   const applyQuestionAnswer = useQuestionBankStore((store) => store.applyAnswer);
   const addQuestionComment = useQuestionBankStore((store) => store.addQuestionComment);
@@ -1106,29 +1107,29 @@ const Practice: React.FC<PracticeProps> = ({
   const [filters, setFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters));
   const [pendingFilters, setPendingFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
   const [isFiltering, setIsFiltering] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [filterTimestamp, setFilterTimestamp] = useState(0); // Force reset on filter
-  // List is the neutral default. An explicit server preference is applied below.
-  const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
+  // The practice catalogue now always uses the list presentation.
+  const [viewMode] = useState<'card' | 'list'>('list');
+  const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [readingScale, setReadingScale] = useState(0);
+  const currentPage = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+  const requestedPageSize = Number.parseInt(searchParams.get('limit') || String(PAGE_SIZE), 10);
+  const pageSize = [10, 20, 50].includes(requestedPageSize) ? requestedPageSize : PAGE_SIZE;
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '' });
   const [lockedFilterModal, setLockedFilterModal] = useState<{
     featureName: string;
     requiredPlan: CanonicalPlanName;
   } | null>(null);
-  const [lastFetchedPage, setLastFetchedPage] = useState(1);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [loadMoreError, setLoadMoreError] = useState('');
   const [savedQuestionOverrides, setSavedQuestionOverrides] = useState<Record<string, boolean>>({});
   const hasBootstrappedQuestionsRef = useRef('');
   const bootstrapRequestIdRef = useRef(0);
   const hasHydratedInitialPageRef = useRef(false);
-  const appliedPreferredViewUserIdRef = useRef<string | null>(null);
-  const loaderRef = useRef<HTMLDivElement>(null);
-  const loadMoreRequestRef = useRef(false);
-  const pageRootRef = useRef<HTMLDivElement>(null);
   const focusQuestionRef = useRef<HTMLDivElement>(null);
+  const focusViewportRef = useRef<HTMLDivElement>(null);
+  const pageRootRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<HTMLElement | Window | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
@@ -1174,22 +1175,6 @@ const Practice: React.FC<PracticeProps> = ({
     return () => window.cancelAnimationFrame(frame);
   }, [sanitizeFiltersForCurrentPlan]);
 
-  useEffect(() => {
-    if (!currentUser?.id) {
-      appliedPreferredViewUserIdRef.current = null;
-      return;
-    }
-
-    if (appliedPreferredViewUserIdRef.current === currentUser.id) return;
-    appliedPreferredViewUserIdRef.current = currentUser.id;
-
-    const preferredView = currentUser.preferences?.defaultPracticeView;
-    if (preferredView === 'list' || preferredView === 'card') {
-      const frameId = window.requestAnimationFrame(() => setViewMode(preferredView));
-      return () => window.cancelAnimationFrame(frameId);
-    }
-  }, [currentUser?.id, currentUser?.preferences?.defaultPracticeView]);
-
   const handleOpenQuestionNote = useCallback(async (questionId: string) => {
     if (!currentUser?.id) {
       setAuthModalConfig({
@@ -1225,16 +1210,15 @@ const Practice: React.FC<PracticeProps> = ({
 
   const questionQueryParams = useMemo(() => ({
     ...buildPracticeQuestionQueryParams(filters),
+    limit: pageSize,
+    ...(searchParams.get('cursor') ? { cursor: searchParams.get('cursor') as string } : {}),
     ...(scopedQuestionIds.length > 0 ? { questionIds: scopedQuestionIds.join(',') } : {}),
-  }), [filters, scopedQuestionIds]);
+  }), [filters, pageSize, scopedQuestionIds, searchParams]);
   const questionQueryKey = useMemo(() => JSON.stringify(questionQueryParams), [questionQueryParams]);
   const questionBootstrapKey = useMemo(
-    () => `${currentUser?.id || 'guest'}:${currentUser?.role || 'guest'}:${questionQueryKey}`,
-    [currentUser?.id, currentUser?.role, questionQueryKey],
+    () => `${currentUser?.id || 'guest'}:${currentUser?.role || 'guest'}:${questionQueryKey}:page-${currentPage}`,
+    [currentPage, currentUser?.id, currentUser?.role, questionQueryKey],
   );
-  useEffect(() => {
-    setLoadMoreError('');
-  }, [questionBootstrapKey]);
   const filteredQuestions = useMemo(() => {
     let filtered = questions.filter(q => {
       const enemQuestion = isEnemQuestion(q);
@@ -1332,71 +1316,22 @@ const Practice: React.FC<PracticeProps> = ({
     return resolvedQuestions.length;
   }, [highlightedQuestionId, resolvedQuestions.length, scopedQuestionIds.length, totalQuestions]);
 
-  const loadNextPage = useCallback(async () => {
-    if (loadMoreRequestRef.current || !hasMoreQuestions) return;
-
-    loadMoreRequestRef.current = true;
-    setIsLoadingMore(true);
-    setLoadMoreError('');
-    try {
-      const nextPage = lastFetchedPage + 1;
-      const loadedCount = await fetchMoreQuestions(nextPage, questionQueryParams);
-      if (loadedCount > 0) {
-        setLastFetchedPage(nextPage);
-        setVisibleCount((current) => current + PAGE_SIZE);
-      }
-    } catch (error) {
-      clientLog.warn('Failed to load the next practice page', error);
-      setLoadMoreError('Não foi possível carregar mais questões.');
-    } finally {
-      loadMoreRequestRef.current = false;
-      setIsLoadingMore(false);
-    }
-  }, [fetchMoreQuestions, hasMoreQuestions, lastFetchedPage, questionQueryParams]);
-
-  const paginatedList = useMemo(() => resolvedQuestions.slice(0, visibleCount), [resolvedQuestions, visibleCount]);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        if (viewMode === 'list') {
-            if (visibleCount < resolvedQuestions.length) {
-              setVisibleCount(prev => prev + PAGE_SIZE);
-            } else if (hasMoreQuestions && !loadMoreError) {
-              // Trigger backend fetch for more
-              void loadNextPage();
-            }
-        }
-      }
-    }, { threshold: 0.1 });
-    if (loaderRef.current) observer.observe(loaderRef.current);
-    return () => observer.disconnect();
-  }, [hasMoreQuestions, loadMoreError, loadNextPage, resolvedQuestions.length, viewMode, visibleCount]);
-
-  // Load more when reaching end of cards in focus mode
-  useEffect(() => {
-    if (viewMode !== 'card' || currentQuestionIndex < resolvedQuestions.length - 1 || !hasMoreQuestions) {
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      void loadNextPage();
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [currentQuestionIndex, hasMoreQuestions, loadNextPage, resolvedQuestions.length, viewMode]);
-
-  useEffect(() => {
-    if (currentQuestionIndex < resolvedQuestions.length) {
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      setCurrentQuestionIndex(resolvedQuestions.length > 0 ? Math.max(0, resolvedQuestions.length - 1) : 0);
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [currentQuestionIndex, resolvedQuestions.length]);
+  const paginatedList = resolvedQuestions;
+  const totalPages = Math.max(1, Math.ceil(displayedQuestionTotal / pageSize));
+  const paginationParams = new URLSearchParams(searchParams.toString());
+  paginationParams.delete('page');
+  const currentCursor = searchParams.get('cursor') || '';
+  const previousCursor = searchParams.get('previousCursor') || '';
+  const pageHref = (page: number, cursor = '', previous = '') => {
+    const params = new URLSearchParams(paginationParams);
+    params.set('page', String(page));
+    if (cursor) params.set('cursor', cursor);
+    else params.delete('cursor');
+    if (previous) params.set('previousCursor', previous);
+    else params.delete('previousCursor');
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  };
 
   useEffect(() => {
     void ensureTaxonomiesLoaded(false, 'practice');
@@ -1453,9 +1388,9 @@ const Practice: React.FC<PracticeProps> = ({
 
     if (
       !currentUser?.id
-      && !hasActiveFilters
       && initialQuestionPage
       && initialQuestionPage.questions.length > 0
+      && initialQuestionPage.pageInfo.limit === pageSize
       && !hasHydratedInitialPageRef.current
     ) {
       hasHydratedInitialPageRef.current = true;
@@ -1466,8 +1401,6 @@ const Practice: React.FC<PracticeProps> = ({
         hasMoreQuestions: initialQuestionPage.pageInfo.hasMore,
         nextQuestionCursor: initialQuestionPage.pageInfo.nextCursor,
       });
-      setLastFetchedPage(1);
-      setVisibleCount(PAGE_SIZE);
       setCurrentQuestionIndex(0);
       return;
     }
@@ -1477,20 +1410,8 @@ const Practice: React.FC<PracticeProps> = ({
     bootstrapRequestIdRef.current = requestId;
 
     const bootstrapQuestions = async () => {
-      setIsLoadingMore(true);
-
-      try {
-        await ensureQuestionsLoaded(false, questionQueryParams);
-        if (bootstrapRequestIdRef.current === requestId) {
-          setLastFetchedPage(1);
-          setVisibleCount(PAGE_SIZE);
-          setCurrentQuestionIndex(0);
-        }
-      } finally {
-        if (bootstrapRequestIdRef.current === requestId) {
-          setIsLoadingMore(false);
-        }
-      }
+      await ensureQuestionsLoaded(false, { ...questionQueryParams, page: currentPage });
+      if (bootstrapRequestIdRef.current === requestId) setCurrentQuestionIndex(0);
     };
 
     void bootstrapQuestions();
@@ -1500,8 +1421,10 @@ const Practice: React.FC<PracticeProps> = ({
     ensureQuestionsLoaded,
     hasActiveFilters,
     initialQuestionPage,
+    pageSize,
     questionBootstrapKey,
     questionQueryParams,
+    currentPage,
     replaceQuestionBank,
   ]);
 
@@ -1561,6 +1484,21 @@ const Practice: React.FC<PracticeProps> = ({
         block: 'start',
       });
     });
+  }, []);
+
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFocusFullscreen(document.fullscreenElement === focusViewportRef.current);
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState);
+  }, []);
+
+  const toggleFocusFullscreen = useCallback(async () => {
+    if (!focusViewportRef.current) return;
+    if (document.fullscreenElement === focusViewportRef.current) {
+      await document.exitFullscreen();
+      return;
+    }
+    await focusViewportRef.current.requestFullscreen();
   }, []);
 
   const handleAnswer = useCallback((ans: Omit<UserAnswer, 'isCorrect' | 'correctOptionIndex'>) => {
@@ -1644,14 +1582,27 @@ const Practice: React.FC<PracticeProps> = ({
       setFilters(nextFilters);
       setPendingFilters(nextFilters);
       setFilterTimestamp((timestamp) => timestamp + 1);
-      setVisibleCount(PAGE_SIZE);
-      setCurrentQuestionIndex(0);
-      setLastFetchedPage(1);
-      void ensureQuestionsLoaded(true, buildPracticeQuestionQueryParams(nextFilters))
+      const nextQueryParams = { ...buildPracticeQuestionQueryParams(nextFilters), limit: pageSize };
+      setSearchParams((current) => {
+        current.delete('page');
+        current.delete('q');
+        Array.from(current.keys()).forEach((key) => {
+          if (key !== 'questionId' && key !== 'limit') current.delete(key);
+        });
+        Object.entries(nextQueryParams).forEach(([key, value]) => {
+          if (Array.isArray(value)) value.forEach((item) => current.append(key, String(item)));
+          else if (value !== undefined && value !== null) {
+            const serializedValue = String(value);
+            if (serializedValue !== '' && serializedValue !== 'false') current.set(key, serializedValue);
+          }
+        });
+        return current;
+      });
+      void ensureQuestionsLoaded(true, { ...nextQueryParams, page: 1 })
         .finally(() => setIsFiltering(false));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 500);
-  }, [ensureQuestionsLoaded, pendingFilters, sanitizeFiltersForCurrentPlan, sanitizeFiltersForFocus]);
+  }, [ensureQuestionsLoaded, pageSize, pendingFilters, sanitizeFiltersForCurrentPlan, sanitizeFiltersForFocus, setSearchParams]);
 
   const clearFilter = useCallback((key: PracticeFilterKey) => {
     let defaultValue: PracticeFilterValue = isMultiFilterKey(key) ? [] : key === 'keyword' ? '' : 'All';
@@ -2011,7 +1962,7 @@ const Practice: React.FC<PracticeProps> = ({
   return (
     <div
       ref={pageRootRef}
-      className="space-y-5 px-3 pb-16 animate-fade-in sm:px-4 md:px-0 md:pb-12"
+      className={`${ui.scope} ${styles.page} space-y-5 px-3 pb-16 animate-fade-in sm:px-4 md:px-0 md:pb-12`}
       data-hydration-interaction={semanticPageHeaderRendered || undefined}
     >
       {/* Back Button when viewing specific question */}
@@ -2027,13 +1978,15 @@ const Practice: React.FC<PracticeProps> = ({
 
       {/* Painel de Filtros Principal - Hidden when viewing specific question */}
       {!highlightedQuestionId && (
-        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors duration-300">
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
+        <div className={`${styles.filterPanel} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800`}>
+          <div className={styles.filterToolbar}>
+            <div className={`${styles.keywordSearch} relative`}>
+              <label htmlFor="practice-keyword" className="mb-1.5 block text-[11px] font-semibold text-slate-600 dark:text-slate-300">Palavra-chave</label>
+              <Search className="absolute left-4 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
               <input
+                id="practice-keyword"
                 type="text"
-                placeholder="Pesquisar por palavra-chave no enunciado..."
+                placeholder="Buscar por palavra-chave na questão..."
                 value={pendingFilters.keyword}
                 onChange={e => handleFilterChange('keyword', e.target.value)}
                 disabled={isPracticeFilterLocked('keyword')}
@@ -2049,24 +2002,70 @@ const Practice: React.FC<PracticeProps> = ({
                 />
               ) : null}
             </div>
-
-            <div className="flex items-center justify-end gap-2">
+            <div className={styles.quickFilter}>
+              <SearchableFilterSelect
+                label="Matéria"
+                value={pendingFilters.subject}
+                onChange={(v) => handleFilterChange('subject', v)}
+                groups={subjectOptionGroups}
+                variant="taxonomy-tree"
+                disabled={isPracticeFilterLocked('subject')}
+                helperText={getLockedFilterHelperText('subject', isEnemPendingFocus ? 'No foco ENEM, a matéria usa as áreas oficiais de conhecimento.' : undefined)}
+                onDisabledClick={() => openLockedFilterUpgrade('subject')}
+              />
+            </div>
+            <div className={styles.quickFilter}>
+              <SearchableFilterSelect
+                label="Banca"
+                value={pendingFilters.agency}
+                onChange={(v) => handleFilterChange('agency', v)}
+                groups={agencyOptionGroups}
+                disabled={isEnemPendingFocus || isPracticeFilterLocked('agency')}
+                helperText={getLockedFilterHelperText('agency', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
+                onDisabledClick={() => openLockedFilterUpgrade('agency', isEnemPendingFocus ? 'No foco ENEM, a banca é fixa e este filtro fica desativado.' : undefined)}
+              />
+            </div>
+            <div className={styles.quickFilter}>
+              <SearchableFilterSelect
+                label="Ano"
+                value={pendingFilters.year}
+                onChange={(v) => handleFilterChange('year', v)}
+                groups={yearOptionGroups}
+                disabled={isPracticeFilterLocked('year')}
+                helperText={getLockedFilterHelperText('year')}
+                onDisabledClick={() => openLockedFilterUpgrade('year')}
+              />
+            </div>
+            <div className={styles.filterActions}>
               <button
+                type="button"
+                onClick={() => setFiltersExpanded((expanded) => !expanded)}
+                aria-expanded={filtersExpanded}
+                aria-controls="practice-advanced-filters"
+                className={styles.filterToggle}
+              >
+                <SlidersHorizontal size={16} />
+                <span>Todos os filtros</span>
+                <span className={styles.filterCount}>10</span>
+                {filtersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setFilters(DEFAULT_FILTERS);
                   setPendingFilters(DEFAULT_FILTERS);
-                  setLastFetchedPage(1);
                   void ensureQuestionsLoaded(true, {});
                 }}
-                  className="h-12 px-4 text-slate-300 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  className={styles.clearFilters}
                 title="Limpar todos os filtros"
               >
-                <RotateCcw size={20} />
+                <RotateCcw size={17} />
               </button>
               <button
+                type="button"
                 onClick={applyFilters}
                 disabled={isFiltering}
-                className="h-11 sm:h-12 px-5 sm:px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2 whitespace-nowrap text-xs disabled:opacity-70 disabled:cursor-wait"
+                className={styles.submitFilters}
               >
                 {isFiltering ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 {isFiltering ? 'Filtrando...' : 'Filtrar'}
@@ -2074,43 +2073,16 @@ const Practice: React.FC<PracticeProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div id="practice-advanced-filters" className={styles.advancedFilters} hidden={!filtersExpanded}>
+          <div className={styles.advancedGrid}>
             <SearchableFilterSelect
               label="Foco"
               value={pendingFilters.career}
               onChange={(v) => handleFilterChange('career', v)}
               groups={careerOptionGroups}
             />
-            <SearchableFilterSelect
-              label="Materia"
-              value={pendingFilters.subject}
-              onChange={(v) => handleFilterChange('subject', v)}
-              groups={subjectOptionGroups}
-              variant="taxonomy-tree"
-              disabled={isPracticeFilterLocked('subject')}
-              helperText={getLockedFilterHelperText('subject', isEnemPendingFocus ? 'No foco ENEM, a matéria usa as áreas oficiais de conhecimento.' : undefined)}
-              onDisabledClick={() => openLockedFilterUpgrade('subject')}
-            />
             <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} disabled={isPracticeFilterLocked('difficulty')} helperText={getLockedFilterHelperText('difficulty')} onDisabledClick={() => openLockedFilterUpgrade('difficulty')} />
-            <SearchableFilterSelect
-              label="Banca"
-              value={pendingFilters.agency}
-              onChange={(v) => handleFilterChange('agency', v)}
-              groups={agencyOptionGroups}
-              disabled={isEnemPendingFocus || isPracticeFilterLocked('agency')}
-              helperText={getLockedFilterHelperText('agency', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
-              onDisabledClick={() => openLockedFilterUpgrade('agency', isEnemPendingFocus ? 'No foco ENEM, a banca é fixa e este filtro fica desativado.' : undefined)}
-            />
             <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus || isPracticeFilterLocked('organization')} helperText={getLockedFilterHelperText('organization', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('organization', isEnemPendingFocus ? 'No foco ENEM, órgão não se aplica a essa seleção.' : undefined)} />
-            <SearchableFilterSelect
-              label="Ano"
-              value={pendingFilters.year}
-              onChange={(v) => handleFilterChange('year', v)}
-              groups={yearOptionGroups}
-              disabled={isPracticeFilterLocked('year')}
-              helperText={getLockedFilterHelperText('year')}
-              onDisabledClick={() => openLockedFilterUpgrade('year')}
-            />
             <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus || isPracticeFilterLocked('level')} helperText={getLockedFilterHelperText('level', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('level', isEnemPendingFocus ? 'No foco ENEM, nível não se aplica a essa seleção.' : undefined)} />
             <SearchableFilterSelect
               label="Assunto"
@@ -2257,16 +2229,17 @@ const Practice: React.FC<PracticeProps> = ({
               </div>
             </div>
           </div>
+          </div>
 
-          {/* Visualização de Filtros Ativos e Resultados */}
-          <div className="pt-4 border-t border-slate-50 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          {/* Filtros ativos */}
+          {Object.entries(pendingFilters).some(([, value]) => isVisibleFilterValue(value)) && (
+          <div className={styles.activeFilters}>
             <div className="flex flex-wrap gap-2 items-center min-h-[32px]">
-              <span className="mr-1 text-[9px] font-black uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">Filtros:</span>
               {Object.entries(pendingFilters).filter(([, value]) => isVisibleFilterValue(value)).length > 0 ? (
                 Object.entries(pendingFilters).map(([key, value]) => {
                   if (!isVisibleFilterValue(value)) return null;
                   return (
-                    <div key={key} className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-2 animate-scale-in border ${key === 'hasTeacherComment' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' : key === 'hasDetailedComment' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
+                    <div key={key} className={`${styles.activeFilterChip} ${key === 'hasTeacherComment' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' : key === 'hasDetailedComment' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
                       <span className="opacity-60">{filterLabels[key] || key}:</span>
                       <span>{value === true ? 'Sim' : formatFilterChipValue(key, value)}</span>
                       <button onClick={() => clearFilter(key as PracticeFilterKey)} className="hover:opacity-70 rounded-full p-0.5 transition-colors">
@@ -2275,27 +2248,73 @@ const Practice: React.FC<PracticeProps> = ({
                     </div>
                   );
                 })
-              ) : (
-                <span className="text-xs font-medium italic text-slate-600 dark:text-slate-300">Nenhum filtro aplicado</span>
-              )}
+              ) : null}
             </div>
+          </div>
+          )}
+        </div>
+      )}
 
-            <div className="flex flex-wrap items-center justify-end gap-3">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-black text-[10px] uppercase tracking-wider">
-                <CheckCircle size={14} />
-                {formatQuestionCount(displayedQuestionTotal)}
-              </div>
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors">
-                <button
-                  onClick={() => setViewMode('card')}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all ${viewMode === 'card' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-300'}`}
-                >Foco</button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-300'}`}
-                >Lista</button>
-              </div>
+      {!highlightedQuestionId && (
+        <div className={styles.resultsTools}>
+          <p className={styles.resultCount}>
+            <strong>{displayedQuestionTotal.toLocaleString('pt-BR')}</strong> questões encontradas
+          </p>
+          <div className={styles.resultToolbar} aria-label="Ferramentas da lista de questões">
+            <div className={styles.readingScale} aria-label="Tamanho do texto">
+              <button
+                type="button"
+                onClick={() => setReadingScale((scale) => Math.max(-2, scale - 1))}
+                disabled={readingScale <= -2}
+                aria-label="Diminuir tamanho do texto"
+              >
+                A
+              </button>
+              <span aria-live="polite">{100 + readingScale * 10}%</span>
+              <button
+                type="button"
+                onClick={() => setReadingScale((scale) => Math.min(2, scale + 1))}
+                disabled={readingScale >= 2}
+                aria-label="Aumentar tamanho do texto"
+              >
+                A
+              </button>
             </div>
+            <button
+              type="button"
+              className={styles.printButton}
+              onClick={() => window.print()}
+              aria-label="Imprimir questões"
+              title="Imprimir questões"
+            >
+              <Printer size={21} aria-hidden="true" />
+            </button>
+            <label className={styles.toolbarSelect}>
+              <span className="sr-only">Ordenar questões</span>
+              <select value="recent" disabled>
+                <option value="recent">Mais recentes</option>
+              </select>
+              <ChevronDown size={15} aria-hidden="true" />
+            </label>
+            <label className={styles.toolbarSelect}>
+              <span className="sr-only">Questões por página</span>
+              <select
+                value={pageSize}
+                onChange={(event) => {
+                  const nextParams = new URLSearchParams(searchParams.toString());
+                  nextParams.set('limit', event.target.value);
+                  nextParams.set('page', '1');
+                  nextParams.delete('cursor');
+                  nextParams.delete('previousCursor');
+                  setSearchParams(nextParams);
+                }}
+              >
+                <option value={10}>10 por página</option>
+                <option value={20}>20 por página</option>
+                <option value={50}>50 por página</option>
+              </select>
+              <ChevronDown size={15} aria-hidden="true" />
+            </label>
           </div>
         </div>
       )}
@@ -2314,11 +2333,27 @@ const Practice: React.FC<PracticeProps> = ({
                   </div>
                 </div>
               )}
-                <div ref={focusQuestionRef} className="scroll-mt-4 md:scroll-mt-6">
+                <div
+                  ref={(node) => {
+                    focusQuestionRef.current = node;
+                    focusViewportRef.current = node;
+                  }}
+                  className={`${styles.focusView} scroll-mt-4 md:scroll-mt-6`}
+                  data-reading-scale={readingScale}
+                  data-fullscreen={isFocusFullscreen || undefined}
+                >
+                  {isFocusFullscreen && (
+                    <div className={styles.fullscreenTools}>
+                      <button type="button" onClick={() => void toggleFocusFullscreen()} aria-label="Sair da tela cheia" title="Sair da tela cheia">
+                        <Minimize2 size={17} />
+                      </button>
+                    </div>
+                  )}
                   <QuestionCard
                   key={`${resolvedQuestions[currentQuestionIndex].id}-${filterTimestamp}`}
                   question={resolvedQuestions[currentQuestionIndex]}
                   isHighlighted={!!highlightedQuestionId}
+                  practiceFocusMode
                   onAnswerSubmit={handleAnswer}
                   onReportError={reportError}
                   onGuestAction={(action) => {
@@ -2380,7 +2415,7 @@ const Practice: React.FC<PracticeProps> = ({
                 />
                 <nav
                   aria-label="Navegação entre questões"
-                  className="mt-4 grid grid-cols-2 items-center gap-2 px-0 sm:mt-6 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-2"
+                  className={`${styles.focusNav} mt-4 grid grid-cols-2 items-center gap-2 px-0 sm:mt-6 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-2`}
                 >
                   <button
                     type="button"
@@ -2425,7 +2460,6 @@ const Practice: React.FC<PracticeProps> = ({
                 onClick={() => {
                   setFilters(DEFAULT_FILTERS);
                   setPendingFilters(DEFAULT_FILTERS);
-                  setLastFetchedPage(1);
                   void ensureQuestionsLoaded(true, {});
                 }}
                   className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
@@ -2444,7 +2478,6 @@ const Practice: React.FC<PracticeProps> = ({
               onClick={() => {
                 setFilters(DEFAULT_FILTERS);
                 setPendingFilters(DEFAULT_FILTERS);
-                setLastFetchedPage(1);
                 void ensureQuestionsLoaded(true, {});
               }}
               className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
@@ -2453,7 +2486,7 @@ const Practice: React.FC<PracticeProps> = ({
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className={`${styles.questionList} space-y-4`} data-reading-scale={readingScale}>
             {paginatedList.map((q, i) => (
               <QuestionCard
                 key={`${q.id}-${filterTimestamp}`}
@@ -2511,19 +2544,29 @@ const Practice: React.FC<PracticeProps> = ({
                 currentUserName={currentUser?.name || 'Visitante'}
               />
             ))}
-            <div ref={loaderRef} className="flex min-h-12 items-center justify-center py-1" aria-live="polite">
-              {isLoadingMore ? (
-                <Loader2 aria-label="Carregando mais questões" className="animate-spin text-indigo-500" size={24} />
-              ) : loadMoreError ? (
-                <button
-                  type="button"
-                  onClick={() => void loadNextPage()}
-                  className="inline-flex h-10 items-center justify-center rounded-lg border border-indigo-200 bg-white px-4 text-xs font-bold text-indigo-600 transition-colors hover:border-indigo-400 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300"
-                >
-                  Tentar carregar novamente
-                </button>
-              ) : null}
-            </div>
+            {totalPages > 1 && (
+              <nav aria-label="Paginação das questões" className={styles.pagination}>
+                {currentPage > 1 && (
+                  <a href={pageHref(currentPage - 1, previousCursor, '')} rel="prev" aria-label={`Página ${currentPage - 1}`} className={styles.pageNumber}>
+                    {currentPage - 1}
+                  </a>
+                )}
+                <a href={pageHref(currentPage, currentCursor, previousCursor)} aria-current="page" aria-label={`Página ${currentPage}`} className={`${styles.pageNumber} ${styles.currentPage}`}>
+                  {currentPage}
+                </a>
+                {currentPage < totalPages && nextQuestionCursor && (
+                  <a href={pageHref(currentPage + 1, nextQuestionCursor, currentCursor)} rel="next" aria-label={`Página ${currentPage + 1}`} className={styles.pageNumber}>
+                    {currentPage + 1}
+                  </a>
+                )}
+                {currentPage + 1 < totalPages && <span className={styles.pageEllipsis} aria-hidden="true">…</span>}
+                {currentPage < totalPages && nextQuestionCursor && (
+                  <a href={pageHref(currentPage + 1, nextQuestionCursor, currentCursor)} rel="next" aria-label="Avançar para a próxima página" className={styles.pageArrow}>
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </a>
+                )}
+              </nav>
+            )}
           </div>
         )}
       </div>

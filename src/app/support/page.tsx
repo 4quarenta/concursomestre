@@ -15,7 +15,8 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Bug,
-  ChevronRight,
+  Check,
+  ChevronDown,
   Coffee,
   CreditCard,
   Heart,
@@ -122,14 +123,6 @@ const STATUS_META: Record<SupportThread['status'], { label: string; className: s
   },
 };
 
-const mergeSupportThreads = (officialThreads: SupportThread[], localThreads: SupportThread[]) => {
-  const officialIds = new Set(officialThreads.map((thread) => thread.id));
-  return [
-    ...localThreads.filter((thread) => !officialIds.has(thread.id)),
-    ...officialThreads,
-  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-};
-
 const applyPublicSuggestionVote = (
   suggestion: PublicSuggestion,
   nextVote: PublicSuggestionVote | null,
@@ -175,11 +168,11 @@ const SupportContent: React.FC = () => {
     && resolveSystemFeatureFlag(systemSettings, 'supportDonationsEnabled', false);
   const pixKey = systemSettings?.pixKey || 'pix@concursomestre.com.br';
   const [activeTab, setActiveTab] = useState<SupportTab>('bug');
-  const [composeStep, setComposeStep] = useState<1 | 2>(2);
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
+  const [platformArea, setPlatformArea] = useState('Questões');
+  const [relatedPage, setRelatedPage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedbackHistory, setFeedbackHistory] = useState<SupportThread[]>([]);
   const [publicSuggestions, setPublicSuggestions] = useState<PublicSuggestion[]>([]);
   const [isLoadingPublicSuggestions, setIsLoadingPublicSuggestions] = useState(false);
   const [votingSuggestionId, setVotingSuggestionId] = useState<number | null>(null);
@@ -221,41 +214,6 @@ const SupportContent: React.FC = () => {
       setActiveTab('bug');
     }
   }, [activeTab, isSystemSettingsLoaded, supportDonationsEnabled]);
-
-  /**
-   * Busca o histórico oficial do usuário ao trocar de contexto.
-   *
-   * @since 1.0.0
-   */
-  const fetchHistory = React.useCallback(async (notifyOnError = true, preserveLocalThreads = false) => {
-    try {
-      const threads = await supportService.listThreads();
-      setFeedbackHistory((currentThreads) => (
-        preserveLocalThreads ? mergeSupportThreads(threads, currentThreads) : threads
-      ));
-    } catch (error) {
-      clientLog.warn('Error fetching feedback history', error);
-      if (notifyOnError) {
-        addToast(readApiErrorMessage(error, 'Não foi possível carregar seu histórico agora.'), 'error');
-      }
-    }
-  }, [addToast]);
-
-  /**
-   * Materializa localmente uma thread ja persistida no backend.
-   * Isso evita que um erro no refresh esconda um submit que ja foi salvo.
-   *
-   * @since 1.0.0
-   */
-  const appendCreatedThread = React.useCallback((thread: SupportThread) => {
-    setFeedbackHistory((currentThreads) => {
-      if (currentThreads.some((currentThread) => currentThread.id === thread.id)) {
-        return currentThreads;
-      }
-
-      return [thread, ...currentThreads];
-    });
-  }, []);
 
   const fetchPublicSuggestions = React.useCallback(async (notifyOnError = false) => {
     if (!currentUser) {
@@ -317,7 +275,11 @@ const SupportContent: React.FC = () => {
 
     try {
       const normalizedSubject = subject.trim();
-      const normalizedDetails = details.trim();
+      const normalizedDetails = [
+        details.trim(),
+        platformArea ? `Área da plataforma: ${platformArea}` : '',
+        relatedPage.trim() ? `Página relacionada: ${relatedPage.trim()}` : '',
+      ].filter(Boolean).join('\n\n');
 
       const createdThread = await supportService.createThread({
         type: activeCategory.serviceType,
@@ -331,18 +293,6 @@ const SupportContent: React.FC = () => {
         });
       }
 
-      const createdThreadId = Number(createdThread.id || 0);
-      const localThreadId = createdThreadId > 0 ? createdThreadId : -Date.now();
-      appendCreatedThread({
-        id: localThreadId,
-        type: createdThread.type || activeCategory.serviceType,
-        reason: normalizedSubject,
-        details: normalizedDetails,
-        status: 'new',
-        created_at: new Date().toISOString(),
-        reply_count: 0,
-      });
-
       addToast(
         createdThread.xpGain
           ? `Solicitacao enviada com sucesso. +${createdThread.xpGain} XP.`
@@ -351,6 +301,7 @@ const SupportContent: React.FC = () => {
       );
       setSubject('');
       setDetails('');
+      setRelatedPage('');
       if (activeCategory.serviceType === 'suggestion') {
         void fetchPublicSuggestions(false);
       }
@@ -392,13 +343,6 @@ const SupportContent: React.FC = () => {
     }
   };
 
-  const supportStats = useMemo(() => ({
-    total: feedbackHistory.length,
-    open: feedbackHistory.filter((thread) => thread.status === 'new').length,
-    inProgress: feedbackHistory.filter((thread) => thread.status === 'read').length,
-    resolved: feedbackHistory.filter((thread) => thread.status === 'resolved').length,
-  }), [feedbackHistory]);
-
   const topGuides = useMemo(() => {
     if (activeTab === 'bug') {
       return [
@@ -431,14 +375,15 @@ const SupportContent: React.FC = () => {
     ];
   }, [activeTab]);
 
-  const ActiveCategoryIcon = activeCategory.icon;
-
   return (
     <div
       className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 animate-fade-in`}
       data-hydration-interaction
     >
-      <nav aria-label="Tipo de atendimento" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <nav
+        aria-label="Tipo de atendimento"
+        className={`grid gap-2 border-b border-slate-200 dark:border-slate-800 ${visibleSupportCategories.length > 3 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}
+      >
         {visibleSupportCategories.map((category) => {
           const Icon = category.icon;
           const isSelected = category.id === activeTab;
@@ -448,13 +393,10 @@ const SupportContent: React.FC = () => {
               type="button"
               onClick={() => setActiveTab(category.id)}
               aria-pressed={isSelected}
-              className={`flex min-h-20 items-center gap-3 rounded-md border px-4 py-3 text-left transition-colors ${isSelected ? category.surfaceClassName : 'border-slate-200 bg-white hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900'}`}
+              className={`inline-flex min-h-14 flex-col items-center justify-center gap-1 border-b-2 px-1 text-center text-[11px] font-semibold leading-tight transition-colors sm:h-12 sm:min-h-0 sm:flex-row sm:gap-2 sm:text-sm ${isSelected ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white'}`}
             >
-              <Icon size={19} className={isSelected ? category.accentClassName : 'text-slate-400'} />
-              <span>
-                <span className="block text-sm font-black text-slate-900 dark:text-slate-100">{category.title}</span>
-                <span className="mt-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{category.eyebrow}</span>
-              </span>
+              <Icon size={16} aria-hidden="true" />
+              {category.title}
             </button>
           );
         })}
@@ -501,139 +443,96 @@ const SupportContent: React.FC = () => {
               </div>
             </section>
           ) : (
-            <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
-              <div className="border-b border-slate-100 px-6 py-6 dark:border-slate-800 md:px-8">
-                <div className="flex items-start gap-4">
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${activeCategory.surfaceClassName} ${activeCategory.accentClassName}`}><ActiveCategoryIcon size={20} /></div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{activeCategory.eyebrow}</p>
-                    <h2 className={PLATFORM_SECTION_TITLE_CLASS}>{activeCategory.title}</h2>
-                    <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">{activeCategory.description}</p>
+            <section aria-labelledby="support-form-title" className="border-b border-slate-200 pb-7 dark:border-slate-800">
+              <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.48fr)]">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <h2 id="support-form-title" className="text-lg font-bold text-slate-950 dark:text-white">{activeCategory.title}</h2>
+                  <div>
+                    <label htmlFor="support-subject" className="mb-1.5 block text-sm font-medium text-slate-800 dark:text-slate-200">Assunto</label>
+                    <input
+                      id="support-subject"
+                      type="text"
+                      value={subject}
+                      onChange={(event) => setSubject(event.target.value)}
+                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      placeholder={activeCategory.subjectPlaceholder}
+                      required
+                    />
                   </div>
-                </div>
-              </div>
-              <form onSubmit={handleSubmit} className="grid gap-6 px-6 py-6 md:px-8 xl:grid-cols-[minmax(0,1fr)_260px]">
-                <div className="space-y-4">
-                  <div className="hidden">
-                    <div className={`flex-1 rounded-xl px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.18em] transition-all ${composeStep === 1 ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'}`}>
-                      1. Categoria
-                    </div>
-                    <div className={`flex-1 rounded-xl px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.18em] transition-all ${composeStep === 2 ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'}`}>
-                      2. Assunto
-                    </div>
+                  <div>
+                    <label htmlFor="support-area" className="mb-1.5 block text-sm font-medium text-slate-800 dark:text-slate-200">Área da plataforma <span className="font-normal text-slate-500">(opcional)</span></label>
+                    <select
+                      id="support-area"
+                      value={platformArea}
+                      onChange={(event) => setPlatformArea(event.target.value)}
+                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    >
+                      <option>Questões</option>
+                      <option>Provas</option>
+                      <option>Simulados</option>
+                      <option>Perfil e conta</option>
+                      <option>Assinatura e pagamentos</option>
+                      <option>Outro</option>
+                    </select>
                   </div>
-
-                  {false ? (
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Escolha a categoria</p>
-                        <h3 className="mt-2 text-base font-black text-slate-900 dark:text-slate-100">Direcione o atendimento antes de abrir o chamado</h3>
-                      </div>
-                      <div className="grid gap-3">
-                        {SUPPORT_CATEGORIES.filter((category) => category.id !== 'donation').map((category) => {
-                          const Icon = category.icon;
-                          const isSelected = activeTab === category.id;
-
-                          return (
-                            <button
-                              key={category.id}
-                              type="button"
-                              onClick={() => setActiveTab(category.id)}
-                              className={`w-full rounded-[1.6rem] border p-4 text-left transition-all ${isSelected ? `${category.surfaceClassName} shadow-sm` : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900'}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex items-start gap-3">
-                                  <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${isSelected ? 'bg-white/80 dark:bg-slate-900/60' : 'bg-white dark:bg-slate-900'} ${category.accentClassName}`}>
-                                    <Icon size={18} />
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{category.eyebrow}</p>
-                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{category.title}</p>
-                                    <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">{category.description}</p>
-                                  </div>
-                                </div>
-                                <ChevronRight size={16} className={isSelected ? category.accentClassName : 'text-slate-400'} />
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="rounded-[1.6rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Categoria selecionada</p>
-                        <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{activeCategory.title}</p>
-                      </div>
-                      <div>
-                        <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Assunto</label>
-                        <input
-                          type="text"
-                          value={subject}
-                          onChange={(event) => setSubject(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 dark:focus:bg-slate-900"
-                          placeholder={activeCategory.subjectPlaceholder}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Descricao</label>
-                        <textarea
-                          value={details}
-                          onChange={(event) => setDetails(event.target.value)}
-                          className="h-44 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium leading-6 text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 dark:focus:bg-slate-900"
-                          placeholder={activeCategory.placeholder}
-                          required
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-4">
-                  <div className="rounded-[1.6rem] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Antes de enviar</p>
-                    <div className="mt-3 space-y-3">
-                      {topGuides.map((tip) => (<p key={tip} className="text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">{tip}</p>))}
-                    </div>
+                  <div>
+                    <label htmlFor="support-details" className="mb-1.5 block text-sm font-medium text-slate-800 dark:text-slate-200">Descrição</label>
+                    <textarea
+                      id="support-details"
+                      value={details}
+                      onChange={(event) => setDetails(event.target.value)}
+                      className="min-h-28 w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm leading-6 text-slate-950 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      placeholder={activeCategory.placeholder}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="support-related-page" className="mb-1.5 block text-sm font-medium text-slate-800 dark:text-slate-200">Página relacionada <span className="font-normal text-slate-500">(opcional)</span></label>
+                    <input
+                      id="support-related-page"
+                      type="url"
+                      value={relatedPage}
+                      onChange={(event) => setRelatedPage(event.target.value)}
+                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      placeholder="https://"
+                    />
                   </div>
                   {!canSubmitThread ? (
-                    <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium leading-5 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                      Aguarde a sessão carregar para enviar.
+                    <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
+                      {isLoading ? 'Carregando sessão...' : 'Entre na sua conta para enviar uma solicitação.'}
                     </p>
                   ) : null}
-                  {false ? (
+                  <div className="flex justify-end">
                     <button
-                      type="button"
-                      onClick={() => {
-                        setComposeStep(2);
-                      }}
-                      disabled={!canSubmitThread}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                      type="submit"
+                      disabled={isSubmitting || !canSubmitThread}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
                     >
-                      Continuar
-                      <ChevronRight size={16} />
+                      <Send size={15} aria-hidden="true" />
+                      {isSubmitting ? 'Enviando...' : 'Enviar solicitação'}
                     </button>
-                  ) : (
-                    <div className="space-y-3">
-                      <button
-                        type="submit"
-                        disabled={isSubmitting || !canSubmitThread}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-                      >
-                        <Send size={16} />
-                        {isSubmitting ? 'Enviando...' : 'Enviar solicitação'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setComposeStep(1)}
-                        className="hidden"
-                      >
-                        Voltar para a categoria
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </form>
+                  </div>
+                </form>
+
+                <aside className="border-t border-slate-200 pt-5 dark:border-slate-800 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
+                  <h3 className="text-lg font-bold text-slate-950 dark:text-white">Antes de enviar</h3>
+                  <ul className="mt-4 space-y-4">
+                    {topGuides.map((tip) => (
+                      <li key={tip} className="flex gap-3 text-sm leading-5 text-slate-600 dark:text-slate-300">
+                        <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><Check size={14} aria-hidden="true" /></span>
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
+                    <h3 className="text-lg font-bold text-slate-950 dark:text-white">Acompanhe sua solicitação</h3>
+                    <p className="mt-2 text-sm leading-5 text-slate-600 dark:text-slate-400">Suas conversas e respostas ficam no histórico do perfil.</p>
+                    <Link href="/profile/support-history" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 hover:underline dark:text-indigo-300">
+                      Abrir histórico <span aria-hidden="true">→</span>
+                    </Link>
+                  </div>
+                </aside>
+              </div>
             </section>
           )}
 
@@ -717,22 +616,36 @@ const SupportContent: React.FC = () => {
             </section>
           ) : null}
 
-          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 md:p-8`}>
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Histórico</p>
-                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Conversas no perfil</h2>
-                <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
-                  O acompanhamento de chamados e respostas agora fica centralizado em Meu Perfil.
+          <section aria-labelledby="support-faq-title" className="border-t border-slate-200 pt-6 dark:border-slate-800">
+            <h2 id="support-faq-title" className={PLATFORM_SECTION_TITLE_CLASS}>Dúvidas frequentes</h2>
+            <div className="mt-4 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+              <details className="group py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-slate-900 marker:hidden dark:text-slate-100">
+                  Como alterar meus dados pessoais?
+                  <ChevronDown size={16} className="shrink-0 text-slate-500 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                  Acesse <Link href="/profile/personal" className="font-semibold text-indigo-700 hover:underline dark:text-indigo-300">Meu perfil</Link> para atualizar seus dados e preferências.
                 </p>
-              </div>
-              <Link
-                href="/profile/support-history"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 text-xs font-black uppercase tracking-[0.16em] text-white transition-all hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-              >
-                <MessageSquare size={15} />
-                Abrir histórico
-              </Link>
+              </details>
+              <details className="group py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-slate-900 marker:hidden dark:text-slate-100">
+                  Onde encontro as questões que salvei?
+                  <ChevronDown size={16} className="shrink-0 text-slate-500 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                  Abra a área de <Link href="/profile/saved-questions" className="font-semibold text-indigo-700 hover:underline dark:text-indigo-300">questões salvas</Link> no seu perfil.
+                </p>
+              </details>
+              <details className="group py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-slate-900 marker:hidden dark:text-slate-100">
+                  Como consultar minha assinatura e pagamentos?
+                  <ChevronDown size={16} className="shrink-0 text-slate-500 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                  Consulte o status da assinatura e as opções de cobrança em <Link href="/profile/billing" className="font-semibold text-indigo-700 hover:underline dark:text-indigo-300">assinatura no perfil</Link>.
+                </p>
+              </details>
             </div>
           </section>
       </div>

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { BookOpen, Building2, ChevronLeft, ChevronRight, FileText, Landmark, ListChecks, Search } from 'lucide-react';
-import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import StructuredData from '@/components/seo/StructuredData';
 import {
   buildBreadcrumbList,
@@ -10,11 +10,7 @@ import {
 } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
-import {
-  PLATFORM_PAGE_DESCRIPTION_CLASS,
-  PLATFORM_PAGE_TITLE_CLASS,
-  PLATFORM_SURFACE_CARD_CLASS,
-} from '@constants/layout';
+import { PLATFORM_SURFACE_CARD_CLASS } from '@constants/layout';
 import PublicSubjectTaxonomyAccordion from './PublicSubjectTaxonomyAccordion';
 import { fetchPublicTaxonomyDirectory, type PublicTaxonomyDirectoryKind } from './taxonomyDirectoryServerData';
 
@@ -99,16 +95,13 @@ export default async function PublicTaxonomyDirectory({
   return (
     <div className="w-full animate-fade-in space-y-5">
       <StructuredData value={jsonLd} />
-      <CanonicalBreadcrumbs items={breadcrumbs} />
-
-      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700 dark:text-indigo-300">Biblioteca de questões</p>
-          <h1 className={`mt-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>{config.title}</h1>
-          <p className={`mt-2 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>{config.description}</p>
-        </div>
-
-        <nav className="flex w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:w-auto" aria-label="Diretórios de questões">
+      <PlatformPageHeader
+        title={config.title}
+        description={config.description}
+        eyebrow="Biblioteca de questões"
+        breadcrumbs={breadcrumbs}
+        actions={(
+          <nav className="flex w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:w-auto" aria-label="Diretórios de questões">
           <Link
             href={publicRoutes.disciplines.index()}
             prefetch={false}
@@ -133,8 +126,9 @@ export default async function PublicTaxonomyDirectory({
           >
             <Building2 size={15} /> Órgãos
           </Link>
-        </nav>
-      </header>
+          </nav>
+        )}
+      />
 
       <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4`} aria-label={`Filtros de ${config.title.toLowerCase()}`}>
         <form action={config.path} method="get" className="flex flex-col gap-3 sm:flex-row">

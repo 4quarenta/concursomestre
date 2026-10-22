@@ -18,10 +18,8 @@ import {
   BarChart3,
   BookOpen,
   BrainCircuit,
-  Briefcase,
   Calendar,
   Check,
-  ChevronRight,
   Crown,
   Database,
   ExternalLink,
@@ -55,6 +53,7 @@ import StableResponsiveContainer from '@/components/shared/charts/StableResponsi
 import { useAuth } from '@providers/AuthProvider';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import { CHART_COLORS } from './constants';
@@ -66,6 +65,7 @@ import type {
   BankXrayPayload,
 } from '@services/bank-analysis/bankAnalysisService';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 
 type TaxonomyOption = {
   name?: string;
@@ -112,7 +112,7 @@ type XrayDiagnosis = {
 
 const PANEL_CLASS = 'rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900';
 const INNER_PANEL_CLASS = 'rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50';
-const FIELD_CLASS = 'h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-800 outline-none transition-all focus:border-amber-300 focus:bg-white focus:ring-4 focus:ring-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-amber-500 dark:focus:bg-slate-900';
+const FIELD_CLASS = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
 
 const normalizeText = (value: unknown) => String(value || '').trim();
 
@@ -388,54 +388,39 @@ const toneClasses: Record<string, {
 };
 
 const MetricCard = ({
-  icon: Icon,
   label,
   value,
   helper,
-  tone = 'slate',
 }: {
-  icon: React.ElementType;
   label: string;
   value: string | number;
   helper: string;
-  tone?: keyof typeof toneClasses;
 }) => {
-  const classes = toneClasses[tone];
-
   return (
-    <div className={`${PANEL_CLASS} p-4`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{label}</p>
-          <p className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">{value}</p>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">{helper}</p>
-        </div>
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${classes.icon}`}>
-          <Icon size={18} />
-        </span>
-      </div>
+    <div className="min-w-0 px-4 py-1 first:pl-0 last:pr-0">
+      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{helper}</p>
     </div>
   );
 };
 
 const SelectField = ({
   label,
-  icon: Icon,
   value,
   disabled,
   children,
   onChange,
 }: {
   label: string;
-  icon: React.ElementType;
   value: string;
   disabled?: boolean;
   children: React.ReactNode;
   onChange: (value: string) => void;
 }) => (
   <div className="space-y-1.5">
-    <label className="ml-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 transition-colors dark:text-slate-500">
-      <Icon size={12} /> {label}
+    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+      {label}
     </label>
     <select
       value={value}
@@ -446,6 +431,115 @@ const SelectField = ({
       {children}
     </select>
   </div>
+);
+
+const SubjectSharePanel = ({ stats }: { stats: BankXrayPayload }) => {
+  const rankedSubjects = stats.detailedBreakdown.slice(0, 4).map((subject) => ({
+    name: subject.subject,
+    count: Number(subject.total || 0),
+    percent: Number(subject.percent || 0),
+  }));
+  const otherSubjects = stats.detailedBreakdown.slice(4);
+  const otherCount = otherSubjects.reduce((total, subject) => total + Number(subject.total || 0), 0);
+  const otherPercent = otherSubjects.reduce((total, subject) => total + Number(subject.percent || 0), 0);
+  const rows = otherSubjects.length > 0
+    ? [...rankedSubjects, { name: 'Outras', count: otherCount, percent: otherPercent }]
+    : rankedSubjects;
+
+  return (
+    <section aria-labelledby="xray-subjects-title" className="min-w-0">
+      <h2 id="xray-subjects-title" className="text-lg font-bold text-slate-950 dark:text-white">Matérias mais cobradas</h2>
+      <div className="mt-5 space-y-3.5">
+        {rows.map((subject) => (
+          <div key={subject.name} className="grid grid-cols-[minmax(108px,155px)_minmax(0,1fr)_42px] items-center gap-3 text-sm">
+            <span className="truncate text-slate-700 dark:text-slate-200" title={subject.name}>{subject.name}</span>
+            <div
+              className="h-3 overflow-hidden rounded-sm bg-slate-100 dark:bg-slate-800"
+              role="img"
+              aria-label={`${subject.name}: ${formatPercent(subject.percent)} das questões`}
+            >
+              <div
+                className="h-full rounded-sm bg-indigo-500 dark:bg-indigo-400"
+                style={{ width: `${clampPercent(subject.percent)}%` }}
+              />
+            </div>
+            <span className="text-right font-medium tabular-nums text-slate-700 dark:text-slate-200">{formatPercent(subject.percent)}</span>
+          </div>
+        ))}
+        {rows.length === 0 ? <p className="text-sm text-slate-500">Sem distribuição de matérias neste recorte.</p> : null}
+      </div>
+    </section>
+  );
+};
+
+const ChargeProfileSummary = ({
+  selectedAgency,
+  stats,
+  diagnosis,
+}: {
+  selectedAgency: string;
+  stats: BankXrayPayload;
+  diagnosis: XrayDiagnosis;
+}) => {
+  const questionModel = resolveBankQuestionModel(selectedAgency);
+  const profile = [
+    { label: 'Formato', value: questionModel.label },
+    { label: 'Dificuldade predominante', value: diagnosis.difficulty.label },
+    { label: 'Contextualização', value: diagnosis.context.label },
+    { label: 'Enunciados', value: stats.textStyle || 'Sem leitura disponível' },
+  ];
+
+  return (
+    <section aria-labelledby="xray-profile-summary-title" className="min-w-0 border-t border-slate-200 pt-5 dark:border-slate-700 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+      <h2 id="xray-profile-summary-title" className="text-lg font-bold text-slate-950 dark:text-white">Perfil de cobrança</h2>
+      <dl className="mt-4 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-700 dark:border-slate-700">
+        {profile.map((item) => (
+          <div key={item.label} className="flex min-h-11 items-center justify-between gap-4 px-2 text-sm">
+            <dt className="text-slate-600 dark:text-slate-300">{item.label}</dt>
+            <dd className="text-right font-medium text-slate-900 dark:text-white">{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">
+        {formatPercent(stats.contextUsage)} da amostra tem contexto relevante.
+      </p>
+    </section>
+  );
+};
+
+const TopicFrequencyTable = ({ topics }: { topics: FlatTopic[] }) => (
+  <section aria-labelledby="xray-topics-title" className="border-t border-slate-200 pt-5 dark:border-slate-700">
+    <h2 id="xray-topics-title" className="text-lg font-bold text-slate-950 dark:text-white">Assuntos com maior peso estimado</h2>
+    {topics.length > 0 ? (
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[580px] border-collapse text-left text-sm">
+          <thead className="text-xs text-slate-500 dark:text-slate-400">
+            <tr className="border-y border-slate-200 dark:border-slate-700">
+              <th scope="col" className="px-3 py-2.5 font-medium">Assunto</th>
+              <th scope="col" className="px-3 py-2.5 font-medium">Matéria</th>
+              <th scope="col" className="px-3 py-2.5 text-right font-medium">Questões</th>
+              <th scope="col" className="px-3 py-2.5 text-right font-medium">Frequência</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+            {topics.slice(0, 6).map((topic) => (
+              <tr key={`${topic.subject}-${topic.topic}`}>
+                <td className="max-w-[260px] truncate px-3 py-2.5 font-medium text-slate-800 dark:text-slate-100" title={topic.topic}>{topic.topic}</td>
+                <td className="max-w-[220px] truncate px-3 py-2.5 text-slate-600 dark:text-slate-300" title={topic.subject}>{topic.subject}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-200">
+                  {topic.count > 0 ? topic.count.toLocaleString('pt-BR') : '—'}
+                </td>
+                <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{formatPercent(topic.examShare)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Sem assuntos detalhados para este recorte.</p>
+    )}
+    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">A frequência é uma estimativa calculada a partir da distribuição por matéria e assunto.</p>
+  </section>
 );
 
 const InsightCard = ({
@@ -568,15 +662,12 @@ const UpgradeState = ({
   onCloseAuth: () => void;
   onCloseUpgrade: () => void;
 }) => (
-  <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 px-3 pb-20 sm:px-4 md:px-6`}>
-    <header>
-      <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900 transition-colors dark:text-slate-100">
-        <Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca
-      </h1>
-      <p className="mt-1 text-sm font-medium text-slate-500 transition-colors dark:text-slate-400">
-        Diagnóstico estatístico de cobrança, foco e recorrência por banca examinadora.
-      </p>
-    </header>
+  <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 pb-20`}>
+    <PlatformPageHeader
+      title="Raio-X da Banca"
+      description="Diagnóstico estatístico de cobrança, foco e recorrência por banca examinadora."
+      breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Raio-X da Banca', path: '/x-ray' }]}
+    />
 
     <div className={`${PANEL_CLASS} relative flex min-h-[360px] items-center justify-center overflow-hidden p-6`}>
       <div className="relative z-10 max-w-md text-center">
@@ -1083,10 +1174,14 @@ const RecommendationPanel = ({
 
 const BankAnalysis: React.FC = () => {
   const { currentUser } = useAuth();
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const [selectedAgency, setSelectedAgency] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedYear, setSelectedYear] = useState('All');
+  const [activeAnalysisTab, setActiveAnalysisTab] = useState<'overview' | 'subjects' | 'profile'>('overview');
+  const [isLoadingTaxonomies, setIsLoadingTaxonomies] = useState(true);
+  const [taxonomyLoadError, setTaxonomyLoadError] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [stats, setStats] = useState<BankXrayPayload | null>(null);
@@ -1101,6 +1196,35 @@ const BankAnalysis: React.FC = () => {
 
   const hasXRayAccess = hasPlanBenefit(currentUser, 'xray_banca', systemSettings.planEntitlements);
   const xrayRequiredPlan = getBenefitRequiredPlan('xray_banca', systemSettings.planEntitlements);
+
+  const loadTaxonomies = useCallback(async (force = false) => {
+    setIsLoadingTaxonomies(true);
+    setTaxonomyLoadError(false);
+    try {
+      await ensureTaxonomiesLoaded(force, 'practice');
+    } catch (error) {
+      clientLog.warn('Failed to load x-ray filter taxonomies', error);
+      setTaxonomyLoadError(true);
+    } finally {
+      setIsLoadingTaxonomies(false);
+    }
+  }, [ensureTaxonomiesLoaded]);
+
+  useEffect(() => {
+    let isActive = true;
+    ensureTaxonomiesLoaded(false, 'practice')
+      .catch((error) => {
+        clientLog.warn('Failed to load x-ray filter taxonomies', error);
+        if (isActive) setTaxonomyLoadError(true);
+      })
+      .finally(() => {
+        if (isActive) setIsLoadingTaxonomies(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [ensureTaxonomiesLoaded]);
 
   const agencyOptions = useMemo<TaxonomyOption[]>(
     () => (Array.isArray(systemSettings?.taxonomies?.agencies) ? systemSettings.taxonomies.agencies : []) as TaxonomyOption[],
@@ -1131,6 +1255,7 @@ const BankAnalysis: React.FC = () => {
     const frameId = window.requestAnimationFrame(() => {
       setHasRequestedAnalysis(false);
       setStats(null);
+      setActiveAnalysisTab('overview');
       setBankDetails(null);
       setBankScrapedInfo(null);
       setIsAnalyzing(false);
@@ -1225,41 +1350,34 @@ const BankAnalysis: React.FC = () => {
   }
 
   return (
-    <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 px-3 pb-20 sm:px-4 md:px-6`}>
-      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900 transition-colors dark:text-slate-100">
-              <Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca
-            </h1>
-            <span className="rounded-xl border border-amber-200 bg-amber-100 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-amber-700 transition-colors dark:border-amber-800/50 dark:bg-amber-900/40 dark:text-amber-300">
-              {xrayRequiredPlan}
-            </span>
-          </div>
-          <p className="mt-1 text-sm font-medium text-slate-500 transition-colors dark:text-slate-400">
-            Diagnóstico estatístico para entender o que cai, como cai e onde concentrar estudo.
-          </p>
-        </div>
-      </header>
+    <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 pb-20`}>
+      <PlatformPageHeader
+        title="Raio-X da banca"
+        description="Analise o perfil de cobrança da banca e foque no que mais cai."
+        breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Raio-X da Banca', path: '/x-ray' }]}
+        actions={(
+          <span className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200">
+            {xrayRequiredPlan}
+          </span>
+        )}
+      />
 
-      <section className={`${PANEL_CLASS} p-4 md:p-5`}>
-        <div className="grid gap-4 md:grid-cols-3">
+      <section aria-label="Filtros do Raio-X" className="grid items-end gap-3 border-b border-slate-200 pb-5 dark:border-slate-700 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_auto]">
           <SelectField
             label="Banca"
-            icon={Search}
             value={selectedAgency}
+            disabled={isLoadingTaxonomies || agencies.length === 0}
             onChange={(value) => {
               setSelectedAgency(value);
               setSelectedRole('');
               setSelectedYear('All');
             }}
           >
-            <option value="">Selecione...</option>
+            <option value="">{isLoadingTaxonomies ? 'Carregando bancas...' : 'Selecione...'}</option>
             {agencies.map((agency) => <option key={agency} value={agency}>{agency}</option>)}
           </SelectField>
           <SelectField
             label="Cargo"
-            icon={Briefcase}
             value={selectedRole}
             disabled={!selectedAgency}
             onChange={setSelectedRole}
@@ -1269,7 +1387,6 @@ const BankAnalysis: React.FC = () => {
           </SelectField>
           <SelectField
             label="Período"
-            icon={Calendar}
             value={selectedYear}
             disabled={!selectedAgency}
             onChange={setSelectedYear}
@@ -1277,22 +1394,31 @@ const BankAnalysis: React.FC = () => {
             <option value="All">Todo o período</option>
             {years.map((year) => <option key={year} value={year}>{year}</option>)}
           </SelectField>
-        </div>
-        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            A seleção não inicia a análise. Escolha os filtros e confirme quando quiser consultar os dados.
-          </p>
           <button
             type="button"
             onClick={handleRunAnalysis}
             disabled={!selectedAgency || isAnalyzing || hasRequestedAnalysis}
-            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-indigo-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isAnalyzing ? <Loader2 size={15} className="animate-spin" /> : <Zap size={15} />}
-            {isAnalyzing ? 'Analisando...' : 'Realizar Raio-X'}
+            {isAnalyzing ? 'Analisando...' : 'Analisar banca'}
+          </button>
+      </section>
+
+      {taxonomyLoadError ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+          <span>Não foi possível carregar as bancas, cargos e períodos. Verifique sua conexão e tente novamente.</span>
+          <button
+            type="button"
+            onClick={() => void loadTaxonomies(true)}
+            disabled={isLoadingTaxonomies}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-rose-300 px-3 text-sm font-semibold hover:bg-rose-100 disabled:opacity-50 dark:border-rose-800 dark:hover:bg-rose-900/40"
+          >
+            {isLoadingTaxonomies ? <Loader2 size={14} className="animate-spin" /> : null}
+            Tentar novamente
           </button>
         </div>
-      </section>
+      ) : null}
 
       {!selectedAgency ? (
         <EmptyAnalysisState />
@@ -1303,54 +1429,82 @@ const BankAnalysis: React.FC = () => {
       ) : isAnalyzing ? (
         <XrayLoadingState loadingText={loadingText} progress={progress} />
       ) : stats && stats.total > 0 && diagnosis ? (
-        <div className="space-y-6 animate-slide-up">
-          <ExecutiveSummary stats={stats} diagnosis={diagnosis} />
-          <BankCharacteristicsPanel selectedAgency={selectedAgency} stats={stats} diagnosis={diagnosis} />
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard icon={Database} label="Amostra" value={stats.total} helper={diagnosis.confidence.helper} tone="indigo" />
-            <MetricCard icon={Layers3} label="Concentração" value={formatPercent(diagnosis.concentration.value)} helper={diagnosis.concentration.label} tone="amber" />
-            <MetricCard icon={Gauge} label="Dificuldade" value={diagnosis.difficulty.label} helper={diagnosis.difficulty.helper} tone="rose" />
-            <MetricCard icon={History} label="Recência" value={diagnosis.latestYear} helper={`${diagnosis.yearsCovered.length || 0} ano(s) cobertos`} tone="emerald" />
-          </div>
-
-          <BankInfoPanel
-            selectedAgency={selectedAgency}
-            bankDetails={bankDetails}
-            bankScrapedInfo={bankScrapedInfo}
-            isLoadingBankInfo={isLoadingBankInfo}
-            exams={stats.examList}
-          />
-
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
-            <SubjectPriorityPanel stats={stats} />
-            <TopicRadarPanel topics={topTopics} />
-          </div>
-
-          <ChartsPanel stats={stats} />
-          <RecommendationPanel recommendation={stats.recommendation} />
-
-          <section className={`${PANEL_CLASS} p-5`}>
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  <BookOpen size={18} />
-                </div>
-                <div>
-                  <h2 className="text-sm font-black text-slate-900 dark:text-slate-100">Próximo passo recomendado</h2>
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Monte uma bateria de questões com a banca selecionada e comece pelos assuntos do radar.
-                  </p>
-                </div>
-              </div>
-              <a
-                href={publicRoutes.questions.index({ agency: selectedAgency })}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700"
-              >
-                Treinar essa banca <ChevronRight size={15} />
-              </a>
-            </div>
+        <div className="space-y-5 animate-slide-up">
+          <section aria-label="Resumo da análise" className="grid grid-cols-2 gap-y-4 border-b border-slate-200 pb-5 dark:border-slate-700 md:grid-cols-4 md:divide-x md:divide-slate-200 md:gap-y-0 dark:md:divide-slate-700">
+            <MetricCard label="Amostra" value={stats.total.toLocaleString('pt-BR')} helper="questões analisadas" />
+            <MetricCard label="Concentração" value={formatPercent(diagnosis.concentration.value)} helper="das questões nas 3 matérias principais" />
+            <MetricCard label="Dificuldade" value={diagnosis.difficulty.label} helper="nível predominante na amostra" />
+            <MetricCard label="Recência" value={diagnosis.latestYear} helper="último ano com questões" />
           </section>
+
+          <div role="tablist" aria-label="Seções da análise da banca" className="flex gap-6 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
+            {([
+              { id: 'overview', label: 'Visão geral' },
+              { id: 'subjects', label: 'Matérias e assuntos' },
+              { id: 'profile', label: 'Perfil de cobrança' },
+            ] as const).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`xray-tab-${tab.id}`}
+                aria-selected={activeAnalysisTab === tab.id}
+                aria-controls={`xray-panel-${tab.id}`}
+                onClick={() => setActiveAnalysisTab(tab.id)}
+                className={`-mb-px shrink-0 border-b-2 px-1 py-3 text-sm font-medium transition-colors ${activeAnalysisTab === tab.id ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-slate-600 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeAnalysisTab === 'overview' ? (
+            <section role="tabpanel" id="xray-panel-overview" aria-labelledby="xray-tab-overview" className="space-y-5">
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
+                <SubjectSharePanel stats={stats} />
+                <ChargeProfileSummary selectedAgency={selectedAgency} stats={stats} diagnosis={diagnosis} />
+              </div>
+              <TopicFrequencyTable topics={topTopics} />
+              <section className="flex flex-col gap-4 rounded-lg border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-900/50 dark:bg-indigo-950/30 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <BookOpen className="mt-0.5 shrink-0 text-indigo-600 dark:text-indigo-300" size={24} />
+                  <div>
+                    <h2 className="font-semibold text-slate-950 dark:text-white">Próximo passo</h2>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Pratique os assuntos mais recorrentes deste recorte.</p>
+                  </div>
+                </div>
+                <a
+                  href={publicRoutes.questions.index({ agency: selectedAgency })}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+                >
+                  Resolver questões da banca <BookOpen size={16} />
+                </a>
+              </section>
+            </section>
+          ) : null}
+
+          {activeAnalysisTab === 'subjects' ? (
+            <section role="tabpanel" id="xray-panel-subjects" aria-labelledby="xray-tab-subjects" className="space-y-6">
+              <SubjectPriorityPanel stats={stats} />
+              <TopicRadarPanel topics={topTopics} />
+              <ChartsPanel stats={stats} />
+            </section>
+          ) : null}
+
+          {activeAnalysisTab === 'profile' ? (
+            <section role="tabpanel" id="xray-panel-profile" aria-labelledby="xray-tab-profile" className="space-y-6">
+              <BankCharacteristicsPanel selectedAgency={selectedAgency} stats={stats} diagnosis={diagnosis} />
+              <ExecutiveSummary stats={stats} diagnosis={diagnosis} />
+              <BankInfoPanel
+                selectedAgency={selectedAgency}
+                bankDetails={bankDetails}
+                bankScrapedInfo={bankScrapedInfo}
+                isLoadingBankInfo={isLoadingBankInfo}
+                exams={stats.examList}
+              />
+              <RecommendationPanel recommendation={stats.recommendation} />
+            </section>
+          ) : null}
         </div>
       ) : (
         <NoDataState />

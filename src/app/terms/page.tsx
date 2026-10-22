@@ -2,13 +2,12 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { AlertCircle, BookOpen, ChevronLeft, CreditCard, FileText, Scale, ShieldCheck, UserCheck } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { AlertCircle, BookOpen, CreditCard, FileText, Scale, ShieldCheck, UserCheck } from 'lucide-react';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { LEGAL_DOCUMENT_VERSION, LEGAL_EFFECTIVE_DATE } from '@services/legal/legalDocumentVersion';
 
 const TermsOfUse: React.FC = () => {
-  const router = useRouter();
   const legalContactEmail = useAppConfigStore((state) => (
     state.systemSettings.legalContactEmail || ''
   )).trim();
@@ -18,41 +17,32 @@ const TermsOfUse: React.FC = () => {
     : '/support?category=info';
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10 font-sans text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="mb-8 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 transition-colors hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400"
-        >
-          <ChevronLeft size={16} />
-          Voltar
-        </button>
-
-        <header className="mb-8 overflow-hidden rounded-3xl bg-indigo-700 p-8 text-white shadow-xl md:p-12">
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div className="max-w-3xl space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest">
-                <ShieldCheck size={14} />
-                Regras de utilização
-              </div>
-              <h1 className="text-4xl font-black tracking-tight md:text-5xl">Termos de Uso</h1>
-              <p className="max-w-2xl text-sm font-medium leading-6 text-indigo-50 md:text-base">
-                Estes Termos estabelecem as regras para criação de conta e uso dos recursos do ConcursoMestre,
-                incluindo questões, simulados, conteúdos, recursos de IA e funcionalidades vinculadas a planos.
-              </p>
+    <main className="w-full space-y-5 pb-8 font-sans text-slate-900 transition-colors dark:text-slate-100">
+      <div className="space-y-5">
+        <PlatformPageHeader
+          title="Termos de Uso"
+          eyebrow="Regras de utilização"
+          breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Termos de Uso', path: '/terms' }]}
+          description={(
+            <>Estes Termos estabelecem as regras para criação de conta e uso dos recursos do ConcursoMestre, incluindo questões, simulados, conteúdos, recursos de IA e funcionalidades vinculadas a planos.</>
+          )}
+          className="border-b border-slate-200 pb-5 dark:border-slate-800"
+          actions={(
+            <div className="shrink-0 text-left text-xs text-slate-500 sm:text-right dark:text-slate-400">
+            <span className="block">Atualizado em {LEGAL_EFFECTIVE_DATE}</span>
+            <span className="mt-1 block font-semibold">Versão {LEGAL_DOCUMENT_VERSION}</span>
             </div>
-            <div className="rounded-2xl border border-white/20 bg-white/10 px-5 py-4">
-              <span className="block text-[10px] font-black uppercase tracking-widest text-indigo-100">Última atualização</span>
-              <span className="mt-1 block text-sm font-bold">{LEGAL_EFFECTIVE_DATE}</span>
-              <span className="mt-1 block text-[10px] font-semibold text-indigo-100">Versão {LEGAL_DOCUMENT_VERSION}</span>
-            </div>
-          </div>
-        </header>
+          )}
+        />
 
-        <div className="grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:sticky lg:top-24">
-            <p className="mb-3 px-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Neste documento</p>
+        <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-3 dark:border-slate-800" aria-label="Documentos legais">
+          <Link href="/terms" aria-current="page" className="inline-flex h-9 shrink-0 items-center rounded-md bg-indigo-600 px-3 text-xs font-semibold text-white">Termos de Uso</Link>
+          <Link href="/privacy" className="inline-flex h-9 shrink-0 items-center rounded-md px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900">Política de Privacidade</Link>
+        </nav>
+
+        <div className="max-w-4xl">
+          <nav className="mb-6 flex flex-wrap gap-x-4 gap-y-2" aria-label="Seções dos Termos de Uso">
+            <span className="sr-only">Neste documento</span>
             {[
               ['aceite', '1. Aceite e conta'],
               ['servicos', '2. Serviços'],
@@ -68,15 +58,15 @@ const TermsOfUse: React.FC = () => {
               <a
                 key={id}
                 href={`#${id}`}
-                className="block rounded-xl px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-300"
+                className="text-xs font-semibold text-slate-500 underline decoration-slate-300 underline-offset-4 transition-colors hover:text-indigo-700 dark:text-slate-400 dark:decoration-slate-700 dark:hover:text-indigo-300"
               >
                 {label}
               </a>
             ))}
-          </aside>
+          </nav>
 
-          <article className="space-y-12 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:p-10">
-            <section id="aceite" className="scroll-mt-24 space-y-5">
+          <article className="divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <section id="aceite" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={UserCheck} title="1. Aceite e responsabilidade pela conta" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Ao criar uma conta ou utilizar o ConcursoMestre, você declara ter lido estes Termos e a Política de Privacidade e concorda em observar as regras aplicáveis ao serviço. Caso não concorde, não utilize os recursos autenticados da plataforma.
@@ -86,7 +76,7 @@ const TermsOfUse: React.FC = () => {
               </p>
             </section>
 
-            <section id="servicos" className="scroll-mt-24 space-y-5">
+            <section id="servicos" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={BookOpen} title="2. Serviços do ConcursoMestre" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 A plataforma oferece recursos educacionais que podem incluir banco de questões, filtros, simulados, histórico e estatísticas de estudo, anotações, comentários, materiais, recursos de inteligência artificial, gamificação, marketplace e funcionalidades de conta e assinatura. A disponibilidade de cada recurso pode variar por versão, plano, dispositivo, região ou fase de lançamento.
@@ -96,7 +86,7 @@ const TermsOfUse: React.FC = () => {
               </Notice>
             </section>
 
-            <section id="conduta" className="scroll-mt-24 space-y-5">
+            <section id="conduta" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={ShieldCheck} title="3. Uso permitido e condutas proibidas" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Você pode utilizar o serviço para fins pessoais de estudo e demais usos expressamente disponibilizados pela plataforma. É proibido utilizar o ConcursoMestre para praticar ato ilegal, violar direitos de terceiros, explorar vulnerabilidades, tentar obter acesso não autorizado, burlar limites de plano ou controles de segurança, interferir na disponibilidade do serviço ou automatizar coleta massiva de conteúdo sem autorização.
@@ -106,7 +96,7 @@ const TermsOfUse: React.FC = () => {
               </p>
             </section>
 
-            <section id="conteudo" className="scroll-mt-24 space-y-5">
+            <section id="conteudo" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={FileText} title="4. Questões, conteúdos e inteligência artificial" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Empregamos esforços para manter o conteúdo útil e consistente, mas questões, comentários, materiais, explicações, estatísticas ou informações de terceiros podem conter erros, ficar desatualizados ou divergir de fontes oficiais. Quando houver conflito relevante, o edital, a banca, a legislação vigente e a fonte oficial aplicável devem prevalecer.
@@ -116,7 +106,7 @@ const TermsOfUse: React.FC = () => {
               </p>
             </section>
 
-            <section id="planos" className="scroll-mt-24 space-y-5">
+            <section id="planos" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={CreditCard} title="5. Planos, assinaturas e pagamentos" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 A plataforma pode oferecer recursos gratuitos e recursos vinculados a planos pagos. Preço, período, benefícios, forma de cobrança, renovação e demais condições aplicáveis devem ser apresentados antes da contratação no canal em que a compra estiver disponível.
@@ -129,7 +119,7 @@ const TermsOfUse: React.FC = () => {
               </p>
             </section>
 
-            <section id="cancelamento" className="scroll-mt-24 space-y-5">
+            <section id="cancelamento" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={Scale} title="6. Cancelamento, renovação e reembolso" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 O cancelamento de renovação, encerramento de plano e eventual reembolso dependem do tipo de contratação, do estágio da cobrança, do canal de pagamento utilizado e dos direitos assegurados pela legislação aplicável. Compras realizadas por uma loja de aplicativos também podem estar sujeitas aos procedimentos de cobrança e reembolso da própria loja.
@@ -137,12 +127,12 @@ const TermsOfUse: React.FC = () => {
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Quando o direito de arrependimento ou outro direito de reembolso for aplicável, ele será tratado conforme a legislação de consumo vigente e as características da contratação. Estes Termos não pretendem limitar direitos que não possam ser afastados por contrato.
               </p>
-              <Link href="/support?category=info" className="inline-flex rounded-xl bg-indigo-600 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition-opacity hover:opacity-90">
+              <Link href="/support?category=info" className="inline-flex min-h-9 items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700">
                 Falar sobre assinatura ou cobrança
               </Link>
             </section>
 
-            <section id="propriedade" className="scroll-mt-24 space-y-5">
+            <section id="propriedade" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={FileText} title="7. Propriedade intelectual" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 A marca, identidade visual, software, organização do produto, textos autorais, comentários editoriais e demais conteúdos próprios do ConcursoMestre são protegidos pela legislação aplicável. O acesso ao serviço não transfere ao usuário a titularidade desses elementos nem autoriza reprodução ou exploração comercial fora das permissões expressas da plataforma.
@@ -152,7 +142,7 @@ const TermsOfUse: React.FC = () => {
               </p>
             </section>
 
-            <section id="disponibilidade" className="scroll-mt-24 space-y-5">
+            <section id="disponibilidade" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={AlertCircle} title="8. Disponibilidade e alterações do serviço" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 O serviço pode passar por manutenção, atualizações, indisponibilidades temporárias, alterações de interface, correções, mudanças de fornecedores ou descontinuação de funcionalidades. Buscamos preservar a continuidade do produto, mas não prometemos disponibilidade ininterrupta ou ausência absoluta de falhas.
@@ -162,7 +152,7 @@ const TermsOfUse: React.FC = () => {
               </p>
             </section>
 
-            <section id="encerramento" className="scroll-mt-24 space-y-5">
+            <section id="encerramento" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={UserCheck} title="9. Encerramento e exclusão da conta" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Você pode solicitar a exclusão da conta pelos mecanismos disponibilizados no aplicativo e na plataforma web. O pedido é registrado para tratamento e pode exigir reautenticação. A eliminação de dados não é necessariamente instantânea e observará as hipóteses de retenção previstas na Política de Privacidade e na legislação aplicável.
@@ -171,16 +161,16 @@ const TermsOfUse: React.FC = () => {
                 O ConcursoMestre também poderá restringir ou encerrar acesso em caso de fraude, abuso, violação relevante destes Termos, risco de segurança ou obrigação legal, observados os direitos aplicáveis ao usuário.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link href="/account-deletion" className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-opacity hover:opacity-90">
+                <Link href="/account-deletion" className="inline-flex min-h-9 items-center rounded-md bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-700">
                   Exclusão de conta
                 </Link>
-                <Link href="/privacy" className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 dark:border-slate-700 dark:text-slate-200">
+                <Link href="/privacy" className="inline-flex min-h-9 items-center rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
                   Política de Privacidade
                 </Link>
               </div>
             </section>
 
-            <section id="alteracoes" className="scroll-mt-24 space-y-5">
+            <section id="alteracoes" className="scroll-mt-24 space-y-4 py-6">
               <SectionTitle icon={ShieldCheck} title="10. Alterações destes Termos e contato" />
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
                 Estes Termos podem ser atualizados para refletir mudanças no produto, nas modalidades de contratação, em fornecedores ou na legislação. A versão vigente será publicada nesta página com a data correspondente. Quando necessário, alterações relevantes serão comunicadas por meios adequados.
@@ -190,7 +180,7 @@ const TermsOfUse: React.FC = () => {
               </p>
               <a
                 href={contactHref}
-                className="inline-flex items-center rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900"
+                className="inline-flex min-h-9 items-center rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
               >
                 {legalContactEmail ? legalContactEmail : 'Abrir Central de Suporte'}
               </a>
@@ -209,15 +199,15 @@ type SectionTitleProps = {
 
 const SectionTitle: React.FC<SectionTitleProps> = ({ icon: Icon, title }) => (
   <div className="flex items-center gap-3">
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
-      <Icon size={20} />
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+      <Icon size={16} />
     </div>
-    <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
+    <h2 className="text-base font-bold text-slate-900 dark:text-white">{title}</h2>
   </div>
 );
 
 const Notice: React.FC<React.PropsWithChildren> = ({ children }) => (
-  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+  <div className="border-l-2 border-amber-500 bg-amber-50/70 px-4 py-3 text-sm leading-6 text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
     {children}
   </div>
 );

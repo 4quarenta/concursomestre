@@ -52,6 +52,10 @@ const isRiskyTrackedPath = (filePath) => {
   const isAllowedSqlSource = normalized.startsWith('database/migrations/')
     || normalized.startsWith('database/seeds/')
     || normalized === 'database/schema.sql'
+    || normalized.startsWith('backend/database/migrations/')
+    || normalized.startsWith('backend/database/rollbacks/')
+    || normalized.startsWith('backend/database/seeds/')
+    || normalized === 'backend/database/schema.sql'
     || normalized.startsWith('docs/examples/');
 
   if ((normalized.endsWith('.sql') || normalized.endsWith('.sql.gz')) && !isAllowedSqlSource) {
