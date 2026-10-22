@@ -12,7 +12,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileQuestion, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileQuestion, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, Landmark, Newspaper, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -273,6 +273,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
   const marketplaceEnabled = resolveSystemFeatureFlag(systemSettings, 'marketplaceEnabled');
   const referralEnabled = resolveSystemFeatureFlag(systemSettings, 'referralEnabled');
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const mobileProfileMenuRef = React.useRef<HTMLDivElement | null>(null);
 
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [emailDeliveryNotice, setEmailDeliveryNotice] = useState<EmailConfirmationDeliveryNotice | null>(null);
@@ -355,7 +356,8 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
     if (!isProfileMenuOpen) return undefined;
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!profileMenuRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!profileMenuRef.current?.contains(target) && !mobileProfileMenuRef.current?.contains(target)) {
         setIsProfileMenuOpen(false);
       }
     };
@@ -448,7 +450,6 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
     { label: 'Raio-X Banca', icon: Zap, path: '/x-ray', enabled: xRayEnabled, benefitKey: ['module.xray', 'xray_banca'] },
     { label: 'Rankings', icon: Trophy, path: '/ranking', enabled: rankingsEnabled },
     { label: 'Loja', icon: ShoppingBag, path: '/marketplace', enabled: marketplaceEnabled, benefitKey: 'module.marketplace' },
-    { label: 'Perfil', icon: User, path: '/profile/personal', enabled: !!user },
   ] satisfies SidebarNavItem[]).filter((item) => {
     const isGloballyDisabled = item.enabled === false;
     const isModuleDisabled = item.moduleEnabled === false;
@@ -459,16 +460,6 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
 
     return true;
   });
-
-  if (canOpenAdminPanel) {
-    navItems.push({
-      label: 'Painel Admin',
-      icon: ShieldAlert,
-      path: buildAdminPath('panel', 'dashboard'),
-      enabled: true,
-      badge: adminMenuBadgeCount > 0 ? adminMenuBadgeCount : undefined,
-    });
-  }
 
   const primaryNavigationPaths = [
     '/dashboard',
@@ -532,16 +523,22 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
   const profileQuickMenuItems = React.useMemo<ProfileQuickMenuItem[]>(() => {
     const items: ProfileQuickMenuItem[] = [
       {
+        tab: 'personal',
+        label: 'Meu perfil',
+        description: 'Foto, dados da conta e cartões salvos.',
+        icon: User,
+      },
+      ...(canOpenAdminPanel ? [{
+        href: buildAdminPath('panel', 'dashboard'),
+        label: 'Painel Admin',
+        description: 'Administração e ferramentas da plataforma.',
+        icon: ShieldAlert,
+      }] : []),
+      {
         href: '/levels',
         label: 'Níveis XP',
         description: 'Regras de XP e ranking de estudo.',
         icon: Crown,
-      },
-      {
-        tab: 'personal',
-        label: 'Dados pessoais',
-        description: 'Foto, dados da conta e cartões salvos.',
-        icon: User,
       },
       {
         tab: 'billing',
@@ -591,7 +588,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
     }
 
     return items;
-  }, [referralEnabled]);
+  }, [canOpenAdminPanel, referralEnabled]);
 
   const getPlanStatusTheme = (tier: number) => {
     switch (tier) {
@@ -666,19 +663,36 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
   };
 
   const renderMoreMenuActions = () => (
-    <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-      <button
-        type="button"
-        onClick={(event) => {
-          router.push('/support');
-          event.currentTarget.closest('details')?.removeAttribute('open');
-        }}
-        className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-      >
-        <HelpCircle size={16} aria-hidden="true" />
-        Suporte e feedback
-      </button>
-    </div>
+    <>
+      <div className="mt-1 border-t border-slate-100 pt-1 dark:border-slate-800">
+        {[
+          { label: 'Novidades', href: '/novidades', icon: Rocket },
+          { label: 'Blog', href: '/blog', icon: Newspaper },
+          { label: 'Materiais', href: '/materiais', icon: Package },
+          { label: 'Bancas', href: '/bancas', icon: Landmark },
+        ].map(({ label, href, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            onClick={(event) => event.currentTarget.closest('details')?.removeAttribute('open')}
+            className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+          >
+            <Icon size={16} aria-hidden="true" />
+            {label}
+          </Link>
+        ))}
+      </div>
+      <div className="border-t border-slate-100 pt-1 dark:border-slate-800">
+        <Link
+          href="/support"
+          onClick={(event) => event.currentTarget.closest('details')?.removeAttribute('open')}
+          className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+        >
+          <HelpCircle size={16} aria-hidden="true" />
+          Suporte e feedback
+        </Link>
+      </div>
+    </>
   );
 
   const handleNotificationClick = (n: Notification) => {
@@ -719,13 +733,74 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
       return;
     }
 
-    router.push(buildProfilePath('personal'));
+    setIsProfileMenuOpen((current) => !current);
   };
 
   const handleProfileQuickMenuNavigate = (item: ProfileQuickMenuItem) => {
     setIsProfileMenuOpen(false);
     router.push(item.href || buildProfilePath(item.tab || 'personal'));
   };
+
+  const renderProfileQuickMenu = () => user && isProfileMenuOpen ? (
+    <div className="absolute right-0 top-full z-50 mt-2 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-300/50 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/40">
+      <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+        <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{userFirstName}</p>
+        <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{user.email || 'Conta conectada'}</p>
+        <span className="mt-2 inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200">
+          Nível {userLevel}
+        </span>
+      </div>
+      <div className="max-h-[min(65vh,520px)] overflow-y-auto p-1.5">
+        {profileQuickMenuItems.map((item) => {
+          const itemPath = item.href || buildProfilePath(item.tab || 'personal');
+          const isCurrent = item.href?.startsWith('/admin')
+            ? location.pathname.startsWith('/admin')
+            : item.tab ? location.pathname === itemPath : location.pathname === itemPath;
+
+          return (
+            <button
+              key={item.href || item.tab || item.label}
+              type="button"
+              onClick={() => handleProfileQuickMenuNavigate(item)}
+              className={`flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${
+                isCurrent
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-200'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+              }`}
+            >
+              <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
+                isCurrent ? 'bg-white text-indigo-600 dark:bg-slate-900 dark:text-indigo-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+              }`}>
+                <item.icon size={16} aria-hidden="true" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{item.label}</span>
+                <span className="mt-0.5 block text-xs leading-4 text-slate-500 dark:text-slate-400">{item.description}</span>
+              </span>
+              {item.href?.startsWith('/admin') && adminMenuBadgeCount > 0 ? (
+                <span className="ml-auto rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">{adminMenuBadgeCount > 99 ? '99+' : adminMenuBadgeCount}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      <div className="border-t border-slate-100 p-1.5 dark:border-slate-800">
+        <LogoutConfirmButton>
+          {({ isLoggingOut, openConfirm }) => (
+            <button
+              type="button"
+              onClick={openConfirm}
+              disabled={isLoggingOut}
+              className="flex h-10 w-full items-center gap-2 rounded-md px-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-70 dark:text-slate-300 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+            >
+              <LogOut size={16} aria-hidden="true" />
+              {isLoggingOut ? 'Saindo...' : 'Sair da conta'}
+            </button>
+          )}
+        </LogoutConfirmButton>
+      </div>
+    </div>
+  ) : null;
 
   const isDashboardPage = location.pathname.startsWith('/admin') || location.pathname === '/partner-dashboard';
   const isSimulationFullscreenPage = isSimulationImmersivePath(location.pathname, location.search);
@@ -827,20 +902,25 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                   )}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => router.push(user ? '/profile/personal' : '/auth')}
-                aria-label={userName ? `Perfil de ${userName}` : 'Entrar ou acessar perfil'}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                <UserAvatar
-                  src={userPhotoUrl}
-                  name={userName}
-                  alt=""
-                  aria-hidden="true"
-                  className="h-8 w-8 rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-indigo-600"
-                />
-              </button>
+              <div ref={mobileProfileMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={handleProfileMenuToggle}
+                  aria-label={user ? `Abrir menu da conta de ${userName}` : 'Entrar ou acessar perfil'}
+                  aria-haspopup={user ? 'menu' : undefined}
+                  aria-expanded={user ? isProfileMenuOpen : undefined}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                >
+                  <UserAvatar
+                    src={userPhotoUrl}
+                    name={userName}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-8 w-8 rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-indigo-600"
+                  />
+                </button>
+                {renderProfileQuickMenu()}
+              </div>
               <button onClick={() => router.push('/busca')} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" aria-label="Buscar questões">
                 <Search size={19} />
               </button>
@@ -1099,6 +1179,9 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                 <button
                   type="button"
                   onClick={handleProfileMenuToggle}
+                  aria-label={user ? `Abrir menu da conta de ${userName}` : 'Entrar ou acessar perfil'}
+                  aria-haspopup={user ? 'menu' : undefined}
+                  aria-expanded={user ? isProfileMenuOpen : undefined}
                   className="group flex items-center gap-[18px] rounded-md p-0 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   <UserAvatar
@@ -1113,66 +1196,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                   </span>
                 </button>
 
-                {user && isProfileMenuOpen ? (
-                  <div className="absolute right-0 top-full z-50 mt-3 w-[360px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/30">
-                    <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{userFirstName}</p>
-                      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{user.email || 'Conta conectada'}</p>
-                      <div className="mt-3 inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200">
-                        Nível {userLevel}
-                      </div>
-                    </div>
-
-                    <div className="p-2">
-                      {profileQuickMenuItems.map((item) => {
-                        const itemPath = item.href || buildProfilePath(item.tab || 'personal');
-                        const isCurrent = location.pathname === itemPath;
-
-                        return (
-                          <button
-                            key={item.href || item.tab || item.label}
-                            type="button"
-                            onClick={() => handleProfileQuickMenuNavigate(item)}
-                            className={`flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition-colors ${
-                              isCurrent
-                                ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-200'
-                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'
-                            }`}
-                          >
-                            <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                              isCurrent
-                                ? 'bg-white text-indigo-600 dark:bg-slate-900 dark:text-indigo-300'
-                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
-                            }`}>
-                              <item.icon size={17} />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block text-sm font-black">{item.label}</span>
-                              <span className="mt-1 block text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">{item.description}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="border-t border-slate-100 p-2 dark:border-slate-800">
-                      <LogoutConfirmButton>
-                        {({ isLoggingOut, openConfirm }) => (
-                          <button
-                            type="button"
-                            onClick={openConfirm}
-                            disabled={isLoggingOut}
-                            className="flex w-full items-center justify-center gap-2 rounded-2xl px-3 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-70 dark:text-slate-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
-                          >
-                            <LogOut size={16} />
-                            {isLoggingOut ? 'Saindo...' : 'Sair'}
-                          </button>
-                        )}
-                      </LogoutConfirmButton>
-                    </div>
-
-                  </div>
-                ) : null}
+                {renderProfileQuickMenu()}
               </div>
             </div>
             </div>
