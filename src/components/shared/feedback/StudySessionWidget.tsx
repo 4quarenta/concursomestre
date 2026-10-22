@@ -58,7 +58,7 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
       <button
         type="button"
         onClick={onToggle}
-        className="fixed right-4 top-1/2 z-40 flex -translate-y-1/2 items-center gap-2 rounded-l-2xl rounded-r-xl border border-slate-200 bg-white/95 px-3 py-3 shadow-xl shadow-slate-200/50 transition-all hover:-translate-y-1/2 hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-950/95 dark:shadow-none dark:hover:border-indigo-900/50 dark:hover:text-indigo-300"
+        className="fixed right-1 top-1/2 z-40 flex -translate-y-1/2 items-center gap-2 rounded-l-2xl rounded-r-xl border border-slate-200 bg-white/95 px-3 py-3 opacity-35 shadow-xl shadow-slate-200/50 transition-all hover:-translate-y-1/2 hover:border-indigo-200 hover:text-indigo-600 hover:opacity-100 focus-visible:opacity-100 dark:border-slate-800 dark:bg-slate-950/95 dark:shadow-none dark:hover:border-indigo-900/50 dark:hover:text-indigo-300 sm:right-4"
         aria-label="Mostrar widget de estudos"
       >
         <Clock3 size={16} />

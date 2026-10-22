@@ -1324,7 +1324,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   };
 
   const cardContent = (
-    <div id={String(question.id)} data-practice-focus={practiceFocusMode || undefined} className={`question-card ${mode === 'practice' ? 'question-card--practice' : ''} bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
+    <div id={String(question.id)} data-practice-focus={practiceFocusMode || undefined} className={`question-card ${mode === 'practice' ? 'question-card--practice' : ''} bg-white dark:bg-slate-900 rounded-md border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
 
       {/* Header Compacto */}
       <div className="bg-slate-50/70 dark:bg-slate-800/50 p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800">
@@ -1669,7 +1669,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <button
                     disabled={authIsLoading || isRecoveringAnswerSession || isCanceledQuestion || (isSubmitted && !hideFeedback)}
                     onClick={() => !isEliminated && handleOptionClick(item.id)}
-                    className={`practice-focus-choice flex flex-col gap-2 p-3 sm:p-4 rounded-xl border transition-all text-left relative overflow-hidden disabled:cursor-not-allowed ${isCanceledQuestion ? 'opacity-80' : ''} ${btnClass}`}
+                    className={`practice-focus-choice flex flex-col gap-2 p-2.5 sm:p-3 rounded-lg border transition-all text-left relative overflow-hidden disabled:cursor-not-allowed ${isCanceledQuestion ? 'opacity-80' : ''} ${btnClass}`}
                   >
                     <div className="flex items-center gap-2.5 sm:gap-4 z-10 relative">
                       <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-xs border transition-all flex-shrink-0 ${circleClass}`}>

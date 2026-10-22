@@ -17,7 +17,7 @@ import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Difficulty } from '../../types';
 import type { UserAnswer } from '../../types';
-import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp, SlidersHorizontal, Minimize2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp, SlidersHorizontal, Minimize2, Minus, Plus, Printer } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import AdBanner from '../../components/shared/feedback/AdBanner';
@@ -266,8 +266,6 @@ const isVisibleFilterValue = (value: unknown) => {
 };
 
 const hasVisiblePracticeFilters = (filters: PracticeFilters) => Object.values(filters).some((value) => isVisibleFilterValue(value));
-
-const formatQuestionCount = (count: number) => `${count} ${count === 1 ? 'Questão' : 'Questões'}`;
 
 const serializePracticeQueryValue = (value: unknown) => toFilterValues(value).join(',');
 
@@ -1114,6 +1112,7 @@ const Practice: React.FC<PracticeProps> = ({
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const readingScale = 0;
+  const [questionFontScale, setQuestionFontScale] = useState(1);
   const currentPage = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '' });
@@ -1329,6 +1328,59 @@ const Practice: React.FC<PracticeProps> = ({
     const query = params.toString();
     return query ? `${pathname}?${query}` : pathname;
   };
+  const [pageCursorMap, setPageCursorMap] = useState<Record<number, { cursor: string; previous: string }>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const cursorPages: Record<number, { cursor: string; previous: string }> = {};
+    if (currentPage > 1 && currentCursor) {
+      cursorPages[currentPage] = { cursor: currentCursor, previous: previousCursor };
+    }
+    if (currentPage > 2 && previousCursor) {
+      cursorPages[currentPage - 1] = { cursor: previousCursor, previous: '' };
+    }
+
+    const preloadPageCursors = async () => {
+      let page = currentPage + 1;
+      let cursor = nextQuestionCursor || '';
+      let previous = currentCursor;
+      const targetPage = Math.min(totalPages, Math.max(5, currentPage + 2));
+
+      while (!cancelled && cursor && page <= targetPage) {
+        cursorPages[page] = { cursor, previous };
+        setPageCursorMap({ ...cursorPages });
+        try {
+          const result = await questionService.getQuestionPage({
+            ...buildPracticeQuestionQueryParams(filters),
+            content_scope: 'list',
+            limit: PAGE_SIZE,
+            cursor,
+          });
+          previous = cursor;
+          cursor = result.pageInfo?.nextCursor || '';
+          page += 1;
+        } catch (error) {
+          clientLog.warn('Failed to prepare numbered question-page links', error);
+          break;
+        }
+      }
+      if (!cancelled) setPageCursorMap({ ...cursorPages });
+    };
+
+    void preloadPageCursors();
+    return () => { cancelled = true; };
+  }, [currentCursor, currentPage, filters, nextQuestionCursor, previousCursor, totalPages]);
+
+  const visiblePageNumbers = useMemo(() => {
+    const firstVisible = currentPage <= 3 ? 1 : currentPage - 2;
+    const lastVisible = Math.min(totalPages, currentPage <= 3 ? 5 : currentPage + 2);
+    const candidates = new Set([1]);
+    for (let page = firstVisible; page <= lastVisible; page += 1) candidates.add(page);
+    return [...candidates]
+      .filter((page) => page >= 1 && page <= totalPages)
+      .filter((page) => page === 1 || page === currentPage || Boolean(pageCursorMap[page]?.cursor))
+      .sort((left, right) => left - right);
+  }, [currentPage, pageCursorMap, totalPages]);
 
   useEffect(() => {
     void ensureTaxonomiesLoaded(false, 'practice');
@@ -1954,8 +2006,9 @@ const Practice: React.FC<PracticeProps> = ({
   return (
     <div
       ref={pageRootRef}
-      className={`${ui.scope} ${styles.page} space-y-5 px-3 pb-16 animate-fade-in sm:px-4 md:px-0 md:pb-12`}
+      className={`${ui.scope} ${styles.page} -mx-3 w-[calc(100%+1.5rem)] space-y-5 pb-16 animate-fade-in sm:mx-0 sm:w-full md:pb-12`}
       data-hydration-interaction={semanticPageHeaderRendered || undefined}
+      style={{ '--question-font-scale': questionFontScale } as React.CSSProperties}
     >
       {/* Back Button when viewing specific question */}
       {highlightedQuestionId && (
@@ -2249,7 +2302,21 @@ const Practice: React.FC<PracticeProps> = ({
 
       {!highlightedQuestionId && (
         <div className={styles.resultToolbar}>
-          <span className={styles.resultCount}>{displayedQuestionTotal.toLocaleString('pt-BR')} resultados</span>
+          <span className={styles.resultCount}><strong>{displayedQuestionTotal.toLocaleString('pt-BR')}</strong> questões encontradas</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-2 dark:border-slate-700" aria-label="Tamanho do texto da questão">
+              <button type="button" className={styles.toolbarAction} aria-label="Diminuir tamanho do texto" title="Diminuir tamanho do texto" disabled={questionFontScale <= 0.9} onClick={() => setQuestionFontScale((value) => Math.max(0.9, Number((value - 0.1).toFixed(1))))}><Minus size={14} /></button>
+              <span className="min-w-10 text-center text-xs tabular-nums text-slate-600 dark:text-slate-300">{Math.round(questionFontScale * 100)}%</span>
+              <button type="button" className={styles.toolbarAction} aria-label="Aumentar tamanho do texto" title="Aumentar tamanho do texto" disabled={questionFontScale >= 1.3} onClick={() => setQuestionFontScale((value) => Math.min(1.3, Number((value + 0.1).toFixed(1))))}><Plus size={14} /></button>
+            </div>
+            <button type="button" className={styles.toolbarAction} aria-label="Imprimir questões" title="Imprimir questões" onClick={() => window.print()}><Printer size={16} /></button>
+            <select className={styles.toolbarSelect} aria-label="Ordenar questões" title="O catálogo está ordenado pelas questões mais recentes" value="recent" disabled>
+              <option value="recent">Mais recentes</option>
+            </select>
+            <select className={styles.toolbarSelect} aria-label="Questões por página" title="O catálogo exibe 10 questões por página" value="10" disabled>
+              <option value="10">10 por página</option>
+            </select>
+          </div>
         </div>
       )}
 
@@ -2480,19 +2547,21 @@ const Practice: React.FC<PracticeProps> = ({
             ))}
             {totalPages > 1 && (
               <nav aria-label="Paginação das questões" className="flex flex-wrap items-center justify-center gap-1 border-t border-slate-200 pt-4 dark:border-slate-700">
-                {currentPage > 1 && (
-                  <a href={pageHref(currentPage - 1, previousCursor, '')} rel="prev" className="inline-flex h-9 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
-                    Anterior
+                {visiblePageNumbers.map((page) => {
+                  const cursor = page === 1 ? '' : page === currentPage ? currentCursor : pageCursorMap[page]?.cursor || '';
+                  const previous = page === currentPage ? previousCursor : pageCursorMap[page]?.previous || '';
+                  return (
+                    <a key={page} href={pageHref(page, cursor, previous)} aria-current={page === currentPage ? 'page' : undefined} className={`inline-flex h-10 min-w-10 items-center justify-center rounded-md border px-3 text-sm ${page === currentPage ? 'border-sky-200 bg-sky-50 text-sky-800 dark:border-indigo-500/50 dark:bg-indigo-500/15 dark:text-indigo-200' : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'}`}>
+                      {page}
+                    </a>
+                  );
+                })}
+                {currentPage + 2 < totalPages ? <span className="px-2 text-sm text-slate-500" aria-hidden="true">...</span> : null}
+                {currentPage < totalPages && nextQuestionCursor ? (
+                  <a href={pageHref(currentPage + 1, nextQuestionCursor, currentCursor)} rel="next" aria-label="Próxima página" className="inline-flex h-10 min-w-10 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                    <ChevronRight size={16} />
                   </a>
-                )}
-                <a href={pageHref(currentPage, currentCursor, previousCursor)} aria-current="page" className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-indigo-600 bg-indigo-600 px-3 text-sm font-semibold text-white">
-                  {currentPage} / {totalPages}
-                </a>
-                {currentPage < totalPages && nextQuestionCursor && (
-                  <a href={pageHref(currentPage + 1, nextQuestionCursor, currentCursor)} rel="next" className="inline-flex h-9 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
-                    Próxima
-                  </a>
-                )}
+                ) : null}
               </nav>
             )}
           </div>
