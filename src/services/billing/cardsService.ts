@@ -40,6 +40,7 @@ export type SavedCardsListResult = {
   cards: SavedCard[];
   removed_stale_cards: number;
   success: boolean;
+  sync_status: 'stripe' | 'local_cache';
 };
 
 export type SavedCardMutationResult = {
@@ -50,6 +51,7 @@ export type SavedCardMutationResult = {
 type RawSavedCardsPayload = {
   cards?: SavedCard[];
   removed_stale_cards?: number | string | null;
+  sync_status?: 'stripe' | 'local_cache';
 };
 
 type RawSetupIntentPayload = {
@@ -78,6 +80,7 @@ export const cardsService = {
         success: response.success !== false,
         cards: Array.isArray(payload.cards) ? payload.cards : [],
         removed_stale_cards: Number(payload.removed_stale_cards ?? 0),
+        sync_status: payload.sync_status === 'local_cache' ? 'local_cache' : 'stripe',
       };
     }, 15000);
   },

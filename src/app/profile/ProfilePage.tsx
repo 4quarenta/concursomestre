@@ -1186,7 +1186,12 @@ const Profile: React.FC = () => {
         setCardsLoadError(null);
         try {
             const res = await cardsService.listSavedCards();
-            if (res.success) setUserCards(res.cards || []);
+            if (res.success) {
+                setUserCards(res.cards || []);
+                if (res.sync_status === 'local_cache') {
+                    setCardsLoadError('Exibindo os dados locais dos cartões. Não foi possível confirmar sua disponibilidade atual na Stripe.');
+                }
+            }
         } catch (err) {
             clientLog.warn('Failed to fetch cards', err);
             setCardsLoadError('Não foi possível sincronizar seus cartões salvos na Stripe agora.');

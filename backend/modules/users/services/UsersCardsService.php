@@ -51,14 +51,24 @@ class UsersCardsService
     public function listSavedCards(string $authenticatedUserId, ?string $requestedUserId, bool $isAdmin): array
     {
         $targetUserId = $this->validator->resolveRequestedUserId($authenticatedUserId, $requestedUserId, $isAdmin);
-        $customerData = getStripeCustomerForUser($this->db, $targetUserId);
-        $cards = syncStripeCardsForUser($this->db, $targetUserId, $customerData['customer_id']);
-        $this->repository->updateHasSavedCard($targetUserId, $cards !== []);
+        $customerId = getStripeCustomerIdForUserReadOnly($this->db, $targetUserId);
+        $syncStatus = 'local_cache';
+
+        if ($customerId !== null) {
+            $cards = syncStripeCardsForUser($this->db, $targetUserId, $customerId, $syncStatus);
+        } else {
+            $cards = getLocalStripeCardsForUser($this->db, $targetUserId);
+        }
+
+        if ($syncStatus === 'stripe') {
+            $this->repository->updateHasSavedCard($targetUserId, $cards !== []);
+        }
 
         return [
             'cards' => $cards,
             'removed_stale_cards' => 0,
             'provider' => 'stripe',
+            'sync_status' => $syncStatus,
         ];
     }
 

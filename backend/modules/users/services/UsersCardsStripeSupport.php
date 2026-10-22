@@ -79,6 +79,71 @@ function getLocalStripeCardsByPaymentMethod(PDO $db, string $userId): array
 }
 
 /**
+ * Retorna os metadados em cache sem consultar nem alterar a Stripe.
+ *
+ * @since 1.0.0
+ */
+function getLocalStripeCardsForUser(PDO $db, string $userId): array
+{
+    $stmt = $db->prepare("
+        SELECT id, payment_provider, stripe_payment_method_id, provider_customer_id, brand, last_four_digits,
+               exp_month, exp_year, holder_name, is_default, locked_by_recurring
+        FROM user_cards
+        WHERE user_id = :user_id
+          AND payment_provider = 'stripe'
+          AND stripe_payment_method_id IS NOT NULL
+        ORDER BY is_default DESC, created_at DESC
+    ");
+    $stmt->execute([':user_id' => $userId]);
+
+    $cards = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $card) {
+        $cards[] = [
+            'id' => (string) $card['id'],
+            'payment_provider' => 'stripe',
+            'stripe_payment_method_id' => (string) $card['stripe_payment_method_id'],
+            'provider_customer_id' => (string) ($card['provider_customer_id'] ?? ''),
+            'brand' => strtolower((string) ($card['brand'] ?? 'card')),
+            'last_four_digits' => (string) ($card['last_four_digits'] ?? '****'),
+            'exp_month' => (int) ($card['exp_month'] ?? 0),
+            'exp_year' => (int) ($card['exp_year'] ?? 0),
+            'holder_name' => (string) ($card['holder_name'] ?? ''),
+            'is_default' => (int) ($card['is_default'] ?? 0),
+            'locked_by_recurring' => (int) ($card['locked_by_recurring'] ?? 0),
+            'payment_method_id' => 'card',
+        ];
+    }
+
+    return $cards;
+}
+
+/**
+ * Resolve o customer Stripe associado sem criar ou atualizar recursos remotos.
+ *
+ * @since 1.0.0
+ */
+function getStripeCustomerIdForUserReadOnly(PDO $db, string $userId): ?string
+{
+    $user = loadStripeCustomerUserSnapshot($db, $userId);
+    if (!$user) {
+        return null;
+    }
+
+    $customerId = findStripeSubscriptionBackedCustomerId($db, $userId);
+    if ($customerId) {
+        return $customerId;
+    }
+
+    $customerId = trim((string) ($user['stripe_customer_id'] ?? ''));
+    if ($customerId !== '') {
+        return $customerId;
+    }
+
+    $customerId = findStripeCustomerIdFromLocalProviderHistory($db, $userId);
+    return $customerId ? (string) $customerId : null;
+}
+
+/**
  * Busca um espelho local pelo mesmo fingerprint operacional do cartao.
  * Reaproveita o registro para evitar duplicar o mesmo cartao quando a Stripe
  * retorna um novo PaymentMethod para a mesma bandeira/final/validade.
@@ -312,12 +377,15 @@ function fetchStripeCustomerRemoteCards($stripe, string $customerId): array
 {
     $remoteCardsById = [];
     $seenFingerprints = [];
+    $paymentMethodsFetched = false;
+    $legacySourcesFetched = false;
 
     try {
         $paymentMethods = $stripe->customers->allPaymentMethods($customerId, [
             'type' => 'card',
             'limit' => 100,
         ]);
+        $paymentMethodsFetched = true;
 
         foreach ($paymentMethods->autoPagingIterator() as $paymentMethod) {
             $normalized = normalizeStripeRemoteCard($paymentMethod);
@@ -329,7 +397,7 @@ function fetchStripeCustomerRemoteCards($stripe, string $customerId): array
             $seenFingerprints[buildStripeRemoteCardFingerprint($normalized)] = true;
         }
     } catch (Throwable $error) {
-        error_log('Stripe customer payment methods sync warning: ' . $error->getMessage());
+        error_log('Stripe customer payment methods sync warning.');
     }
 
     try {
@@ -337,6 +405,7 @@ function fetchStripeCustomerRemoteCards($stripe, string $customerId): array
             'object' => 'card',
             'limit' => 100,
         ]);
+        $legacySourcesFetched = true;
 
         foreach ($sources->autoPagingIterator() as $sourceCard) {
             $normalized = normalizeStripeRemoteCard($sourceCard);
@@ -353,7 +422,11 @@ function fetchStripeCustomerRemoteCards($stripe, string $customerId): array
             $seenFingerprints[$fingerprint] = true;
         }
     } catch (Throwable $error) {
-        error_log('Stripe customer legacy card sources sync warning: ' . $error->getMessage());
+        error_log('Stripe customer legacy card sources sync warning.');
+    }
+
+    if (!$paymentMethodsFetched || !$legacySourcesFetched) {
+        throw new RuntimeException('Stripe card sources could not be synchronized.');
     }
 
     return $remoteCardsById;
@@ -1117,13 +1190,20 @@ function upsertLocalStripeCardMirror(
  *
  * @since 1.0.0
  */
-function syncStripeCardsForUser(PDO $db, string $userId, string $customerId): array
+function syncStripeCardsForUser(PDO $db, string $userId, string $customerId, ?string &$syncStatus = null): array
 {
-    $stripe = getStripeClient();
-    $customer = $stripe->customers->retrieve($customerId, []);
-    $defaultPaymentMethodId = (string) ($customer->invoice_settings->default_payment_method ?? '');
-    $defaultSourceId = (string) ($customer->default_source ?? '');
-    $remoteCards = fetchStripeCustomerRemoteCards($stripe, $customerId);
+    $syncStatus = 'stripe';
+    try {
+        $stripe = getStripeClient();
+        $customer = $stripe->customers->retrieve($customerId, []);
+        $defaultPaymentMethodId = (string) ($customer->invoice_settings->default_payment_method ?? '');
+        $defaultSourceId = (string) ($customer->default_source ?? '');
+        $remoteCards = fetchStripeCustomerRemoteCards($stripe, $customerId);
+    } catch (Throwable $error) {
+        $syncStatus = 'local_cache';
+        error_log('Stripe saved cards sync unavailable; serving local card metadata.');
+        return getLocalStripeCardsForUser($db, $userId);
+    }
 
     $existingLocalCards = getLocalStripeCardsByPaymentMethod($db, $userId);
     $includedRemoteCards = [];

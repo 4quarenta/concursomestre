@@ -66,6 +66,7 @@ describe('cardsService', () => {
       success: true,
       cards: [{ id: 'card-1' }],
       removed_stale_cards: 2,
+      sync_status: 'local_cache',
     });
 
     const result = await cardsService.listSavedCards('user-1');
@@ -76,6 +77,7 @@ describe('cardsService', () => {
     expect(result.success).toBe(true);
     expect(result.cards).toHaveLength(1);
     expect(result.removed_stale_cards).toBe(2);
+    expect(result.sync_status).toBe('local_cache');
   });
 
   it('removes a saved card through the billing facade', async () => {
