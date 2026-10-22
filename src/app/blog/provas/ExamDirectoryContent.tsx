@@ -4,6 +4,7 @@ import { permanentRedirect } from 'next/navigation';
 import BlogConversionCta from '../BlogConversionCta';
 import BlogExamDirectory from '../BlogExamDirectory';
 import BlogHeader from '../BlogHeader';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { fetchPublicExamDirectoryPageForServer } from '../blogServerData';
 import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import StructuredData from '@/components/seo/StructuredData';
@@ -94,16 +95,26 @@ export default async function ExamDirectoryContent({ searchParams, platformShell
       <StructuredData value={jsonLd} />
       {!platformShell && <BlogHeader />}
       <main>
-        <section className={platformShell ? 'py-4' : 'border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950'}>
-          <div className={platformShell ? 'w-full px-3 sm:px-4 md:px-0' : 'mx-auto max-w-7xl px-5 py-8 lg:px-8'}>
-            <CanonicalBreadcrumbs items={breadcrumbs} className="mb-5" />
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Acervo ConcursoMestre</p>
-            <h1 className="mt-2 text-2xl font-black text-slate-950 dark:text-white sm:text-3xl">Provas de concursos</h1>
-            <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 dark:text-slate-300">
-              Consulte o acervo público por ano, região e estado, com acesso aos arquivos disponíveis e às questões já vinculadas.
-            </p>
+        {platformShell ? (
+          <div className="w-full px-3 pt-4 sm:px-4 md:px-0">
+            <PlatformPageHeader
+              breadcrumbs={breadcrumbs}
+              title="Provas de concursos"
+              description="Consulte o acervo público por ano, região e estado, com acesso aos arquivos disponíveis e às questões já vinculadas."
+            />
           </div>
-        </section>
+        ) : (
+          <section className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+            <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
+              <CanonicalBreadcrumbs items={breadcrumbs} className="mb-5" />
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Acervo ConcursoMestre</p>
+              <h1 className="mt-2 text-2xl font-black text-slate-950 dark:text-white sm:text-3xl">Provas de concursos</h1>
+              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 dark:text-slate-300">
+                Consulte o acervo público por ano, região e estado, com acesso aos arquivos disponíveis e às questões já vinculadas.
+              </p>
+            </div>
+          </section>
+        )}
         <BlogExamDirectory
           items={directory.items}
           filters={filters}
