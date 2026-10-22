@@ -7,6 +7,17 @@ export interface ExamDirectoryFilters {
   page?: number;
 }
 
+export type ExamPaginationItem = number | 'ellipsis';
+
+export const getExamPaginationItems = (currentPage: number, totalPages: number): ExamPaginationItem[] => {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+  if (currentPage <= 4) return [1, 2, 3, 4, 5, 'ellipsis', totalPages];
+  if (currentPage >= totalPages - 3) {
+    return [1, 'ellipsis', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+  return [1, 'ellipsis', currentPage - 1, currentPage, currentPage + 1, 'ellipsis', totalPages];
+};
+
 export const paginateExamDirectory = <T,>(items: T[], page: number, pageSize = 12) => {
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
   const currentPage = Math.max(1, Math.min(totalPages, Math.trunc(page) || 1));

@@ -21,7 +21,6 @@ import {
   BrainCircuit,
   Calendar,
   Check,
-  ChevronRight,
   Crown,
   Database,
   ExternalLink,
@@ -54,7 +53,6 @@ import ReactMarkdown from 'react-markdown';
 import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useAuth } from '@providers/AuthProvider';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
-import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import { CHART_COLORS } from './constants';
@@ -663,13 +661,14 @@ const UpgradeState = ({
   onCloseAuth: () => void;
   onCloseUpgrade: () => void;
 }) => (
-  <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 px-3 pb-20 sm:px-4 md:px-6`}>
+  <div className="w-full space-y-6 pb-20">
     <header>
-      <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/dashboard' }, { label: 'Raio-X Banca', path: '/x-ray' }]} className="mb-4" />
-      <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900 transition-colors dark:text-slate-100">
+      <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/' }, { label: 'Raio-X Banca', path: '/x-ray' }]} />
+      <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Raio-X Banca</p>
+      <h1 className="mt-2 flex items-center gap-2 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
         <Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca
       </h1>
-      <p className="mt-1 text-sm font-medium text-slate-500 transition-colors dark:text-slate-400">
+      <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
         Diagnóstico estatístico de cobrança, foco e recorrência por banca examinadora.
       </p>
     </header>
@@ -1355,19 +1354,20 @@ const BankAnalysis: React.FC = () => {
   }
 
   return (
-    <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 px-3 pb-20 sm:px-4 md:px-6`}>
+    <div className="w-full space-y-6 pb-20">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/dashboard' }, { label: 'Raio-X Banca', path: '/x-ray' }]} className="mb-4" />
+          <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/' }, { label: 'Raio-X Banca', path: '/x-ray' }]} />
+          <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Raio-X Banca</p>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold text-slate-950 dark:text-white">
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
               Raio-X da banca
             </h1>
             <span className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200">
               {xrayRequiredPlan}
             </span>
           </div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
             Analise o perfil de cobrança da banca e foque no que mais cai.
           </p>
         </div>

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { examDirectoryFacets, filterExamDirectory, groupExamDirectoryByYear, paginateExamDirectory } from '../examDirectory';
+import { examDirectoryFacets, filterExamDirectory, getExamPaginationItems, groupExamDirectoryByYear, paginateExamDirectory } from '../examDirectory';
 import type { PublicExamDirectoryItem } from '../blogServerData';
 
 const exam = (overrides: Partial<PublicExamDirectoryItem>): PublicExamDirectoryItem => ({
@@ -56,5 +56,12 @@ describe('blog exam directory', () => {
     const paginated = paginateExamDirectory(Array.from({ length: 25 }, (_, index) => index + 1), 2, 12);
     expect(paginated.items).toEqual([13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]);
     expect(paginated).toMatchObject({ currentPage: 2, totalPages: 3, totalItems: 25, start: 13, end: 24 });
+  });
+
+  it('shows a compact numbered pagination window around the current page', () => {
+    expect(getExamPaginationItems(1, 20)).toEqual([1, 2, 3, 4, 5, 'ellipsis', 20]);
+    expect(getExamPaginationItems(10, 20)).toEqual([1, 'ellipsis', 9, 10, 11, 'ellipsis', 20]);
+    expect(getExamPaginationItems(20, 20)).toEqual([1, 'ellipsis', 16, 17, 18, 19, 20]);
+    expect(getExamPaginationItems(3, 5)).toEqual([1, 2, 3, 4, 5]);
   });
 });

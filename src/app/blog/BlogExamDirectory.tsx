@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, MapPin } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, MapPin, MoreHorizontal } from 'lucide-react';
 import type { PublicExamDirectoryItem, PublicExamDirectoryPage } from './blogServerData';
-import { examDirectoryFacets, filterExamDirectory, groupExamDirectoryByYear, paginateExamDirectory, type ExamDirectoryFilters } from './examDirectory';
+import { examDirectoryFacets, filterExamDirectory, getExamPaginationItems, groupExamDirectoryByYear, paginateExamDirectory, type ExamDirectoryFilters } from './examDirectory';
 import { buildBoardPath } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
 
@@ -152,18 +152,33 @@ export default function BlogExamDirectory({
             <p className="text-sm text-slate-500">
               Mostrando {pagination.start}–{pagination.end} de {pagination.totalItems} provas
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex max-w-full items-center gap-1 overflow-x-auto">
               {pagination.currentPage > 1 ? (
-                <Link href={pageHref(pagination.currentPage - 1)} className="inline-flex h-10 items-center gap-1 rounded-md border border-slate-300 px-3 text-sm font-bold text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
-                  <ChevronLeft size={16} /> Anterior
+                <Link href={pageHref(pagination.currentPage - 1)} rel="prev" aria-label="Página anterior" className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
+                  <ChevronLeft size={16} />
                 </Link>
               ) : null}
-              <span className="inline-flex h-10 items-center px-3 text-sm font-black text-slate-700 dark:text-slate-200">
-                Página {pagination.currentPage} de {pagination.totalPages}
-              </span>
+              {getExamPaginationItems(pagination.currentPage, pagination.totalPages).map((item, index) => item === 'ellipsis' ? (
+                <span key={`ellipsis-${index}`} aria-hidden="true" className="inline-flex size-10 shrink-0 items-center justify-center text-slate-500 dark:text-slate-400">
+                  <MoreHorizontal size={16} />
+                </span>
+              ) : (
+                <Link
+                  key={item}
+                  href={pageHref(item)}
+                  aria-label={`Página ${item}`}
+                  aria-current={pagination.currentPage === item ? 'page' : undefined}
+                  className={`inline-flex size-10 shrink-0 items-center justify-center rounded-md border text-sm font-bold transition-colors ${pagination.currentPage === item
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/50 dark:text-indigo-200'
+                    : 'border-slate-300 text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200'
+                  }`}
+                >
+                  {item}
+                </Link>
+              ))}
               {pagination.currentPage < pagination.totalPages ? (
-                <Link href={pageHref(pagination.currentPage + 1)} className="inline-flex h-10 items-center gap-1 rounded-md border border-slate-300 px-3 text-sm font-bold text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
-                  Próxima <ChevronRight size={16} />
+                <Link href={pageHref(pagination.currentPage + 1)} rel="next" aria-label="Próxima página" className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
+                  <ChevronRight size={16} />
                 </Link>
               ) : null}
             </div>
