@@ -5,11 +5,16 @@ describe('exam public route compatibility', () => {
   it.each([
     '/blog/provas',
     '/blog/provas/prova-atual',
-    '/provas',
-    '/provas/prova-atual',
-  ])('keeps %s outside the platform shell and notification bootstrap', (pathname) => {
+  ])('keeps legacy blog route %s outside the platform shell', (pathname) => {
     expect(resolveExamPublicRouteCompatibility(pathname)).toEqual({
       withoutPlatformShell: true,
+      skipNotificationBootstrap: true,
+    });
+  });
+
+  it.each(['/provas', '/provas/prova-atual'])('uses the platform shell for %s', (pathname) => {
+    expect(resolveExamPublicRouteCompatibility(pathname)).toEqual({
+      withoutPlatformShell: false,
       skipNotificationBootstrap: true,
     });
   });

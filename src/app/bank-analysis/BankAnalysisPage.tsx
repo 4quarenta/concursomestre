@@ -12,6 +12,7 @@
 */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import {
   Activity,
   AlertTriangle,
@@ -664,6 +665,7 @@ const UpgradeState = ({
 }) => (
   <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 px-3 pb-20 sm:px-4 md:px-6`}>
     <header>
+      <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/dashboard' }, { label: 'Raio-X Banca', path: '/x-ray' }]} className="mb-4" />
       <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900 transition-colors dark:text-slate-100">
         <Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca
       </h1>
@@ -1356,11 +1358,7 @@ const BankAnalysis: React.FC = () => {
     <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 px-3 pb-20 sm:px-4 md:px-6`}>
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <nav aria-label="Trilha de navegação" className="mb-3 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <a href="/dashboard" className="hover:text-indigo-600 dark:hover:text-indigo-300">Início</a>
-            <ChevronRight size={13} aria-hidden="true" />
-            <span aria-current="page">Raio-X Banca</span>
-          </nav>
+          <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/dashboard' }, { label: 'Raio-X Banca', path: '/x-ray' }]} className="mb-4" />
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold text-slate-950 dark:text-white">
               Raio-X da banca

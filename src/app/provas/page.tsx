@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import LegacyExamDirectoryPage, { generateMetadata as generateExamDirectoryMetadata } from '../blog/provas/page';
+import ExamDirectoryContent, { generateExamDirectoryMetadata } from '../blog/provas/ExamDirectoryContent';
 
 export const revalidate = 300;
 
@@ -12,5 +12,5 @@ export async function generateMetadata(props: ExamsPageProps): Promise<Metadata>
 }
 
 export default function ExamsPage(props: ExamsPageProps) {
-  return <LegacyExamDirectoryPage {...props} />;
+  return <ExamDirectoryContent {...props} platformShell />;
 }

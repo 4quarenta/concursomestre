@@ -28,7 +28,7 @@ describe('blog exam directory', () => {
   ];
 
   it('renders related exams from the public detail contract', () => {
-    const detailPage = readFileSync(resolve(process.cwd(), 'src/app/blog/provas/[slug]/page.tsx'), 'utf8');
+    const detailPage = readFileSync(resolve(process.cwd(), 'src/app/blog/provas/PublicExamContent.tsx'), 'utf8');
     const serverContract = readFileSync(resolve(process.cwd(), 'src/app/blog/blogServerData.ts'), 'utf8');
 
     expect(detailPage).toContain('Outras provas relacionadas');

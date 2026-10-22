@@ -719,7 +719,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
       return;
     }
 
-    setIsProfileMenuOpen((current) => !current);
+    router.push(buildProfilePath('personal'));
   };
 
   const handleProfileQuickMenuNavigate = (item: ProfileQuickMenuItem) => {
@@ -1098,9 +1098,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
               <div ref={profileMenuRef} className="relative ml-1 flex items-center gap-[18px]">
                 <button
                   type="button"
-                  onClick={() => user ? handleProfileMenuToggle() : router.push('/auth')}
-                  aria-haspopup={user ? 'menu' : undefined}
-                  aria-expanded={user ? isProfileMenuOpen : undefined}
+                  onClick={handleProfileMenuToggle}
                   className="group flex items-center gap-[18px] rounded-md p-0 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   <UserAvatar

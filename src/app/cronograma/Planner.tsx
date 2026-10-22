@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Pencil, Play, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { plannerService, initialPlan, localDate, type PlanConfig, type PlanSession, type PlanTemplate, type PlannerResponse, type StudyPlan, type Performance } from '@services/study-schedule/plannerService';
@@ -114,7 +115,7 @@ export default function Planner() {
   if (!currentUser) return <div className={s.page}><h1>Cronogramas</h1><p>Entre na sua conta para acessar seus planos de estudo.</p><Link href="/login" className={s.primary}>Entrar</Link></div>;
 
   return <div className={s.page} aria-busy={busy || loading}>
-    <nav aria-label="Navegação estrutural"><small><Link href="/dashboard">Início</Link> / <button onClick={() => { setWizard(false); void load(); }}>Cronograma</button>{wizard ? ' / Criar' : plan ? ` / ${plan.title}` : ''}</small></nav>
+    <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/dashboard' }, { label: 'Cronograma', path: '/cronograma' }]} className="mb-5" />
     {error && <div role="alert" className={s.error}>{error} <button className={s.link} onClick={() => void load(plan?.id, days)}>Tentar novamente</button></div>}
     {loading && <p role="status">Carregando cronogramas...</p>}
     {wizard ? <>

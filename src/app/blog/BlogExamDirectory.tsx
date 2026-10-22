@@ -11,6 +11,7 @@ interface BlogExamDirectoryProps {
   compact?: boolean;
   pageInfo?: PublicExamDirectoryPage['pageInfo'];
   serverFacets?: PublicExamDirectoryPage['facets'];
+  platformShell?: boolean;
 }
 
 const fileLinkClass = 'inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 px-3 text-xs font-bold text-slate-700 hover:border-indigo-500 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200';
@@ -21,6 +22,7 @@ export default function BlogExamDirectory({
   compact = false,
   pageInfo,
   serverFacets,
+  platformShell = false,
 }: BlogExamDirectoryProps) {
   const facets = serverFacets || examDirectoryFacets(items);
   const filtered = pageInfo ? items : filterExamDirectory(items, filters);
@@ -44,8 +46,8 @@ export default function BlogExamDirectory({
   if (items.length === 0) return null;
 
   return (
-    <section className="border-y border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-950">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section className={platformShell ? 'py-6' : 'border-y border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-950'}>
+      <div className={platformShell ? 'w-full px-3 sm:px-4 md:px-0' : 'mx-auto max-w-7xl px-5 lg:px-8'}>
         <div className="flex flex-col justify-between gap-4 border-b border-slate-300 pb-5 sm:flex-row sm:items-end dark:border-slate-700">
           <div>
             <p className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-600">Banco de provas</p>

@@ -11,17 +11,14 @@
 import { isExamPublicPath } from '@services/routes/publicRoutes';
 
 export type ExamPublicRouteCompatibility = {
-  withoutPlatformShell: true;
+  withoutPlatformShell: boolean;
   skipNotificationBootstrap: true;
-};
-
-const EXAM_PUBLIC_ROUTE_COMPATIBILITY: ExamPublicRouteCompatibility = {
-  withoutPlatformShell: true,
-  skipNotificationBootstrap: true,
 };
 
 export const resolveExamPublicRouteCompatibility = (
   pathname: string,
 ): ExamPublicRouteCompatibility | null => (
-  isExamPublicPath(pathname) ? EXAM_PUBLIC_ROUTE_COMPATIBILITY : null
+  isExamPublicPath(pathname)
+    ? { withoutPlatformShell: pathname === '/blog/provas' || pathname.startsWith('/blog/provas/'), skipNotificationBootstrap: true }
+    : null
 );

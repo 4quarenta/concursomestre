@@ -22,8 +22,10 @@ describe('Phase 2 coordinated URL cutover', () => {
   it('delegates the new exam routes without normalizing persisted exam slugs', () => {
     const indexPage = source('src', 'app', 'provas', 'page.tsx');
     const detailPage = source('src', 'app', 'provas', '[slug]', 'page.tsx');
-    expect(indexPage).toContain("from '../blog/provas/page'");
-    expect(detailPage).toContain("from '../../blog/provas/[slug]/page'");
+    expect(indexPage).toContain("from '../blog/provas/ExamDirectoryContent'");
+    expect(indexPage).toContain('platformShell');
+    expect(detailPage).toContain("from '../../blog/provas/PublicExamContent'");
+    expect(detailPage).toContain('platformShell');
     expect(detailPage).not.toContain('slugify');
   });
 
@@ -49,8 +51,8 @@ describe('Phase 2 coordinated URL cutover', () => {
     const pageMap = source('config', 'seo', 'seo-production-page-map.v1.json');
     expect(source('src', 'app', 'practice', 'layout.tsx')).toContain("path: '/questoes'");
     expect(source('src', 'app', 'questoes', '[id]', '[[...slug]]', 'page.tsx')).toContain('buildQuestionMetadata');
-    expect(source('src', 'app', 'blog', 'provas', 'page.tsx')).toContain('publicRoutes.exams.index()');
-    expect(source('src', 'app', 'blog', 'provas', '[slug]', 'page.tsx')).toContain('publicRoutes.exams.detail(exam.slug)');
+    expect(source('src', 'app', 'blog', 'provas', 'ExamDirectoryContent.tsx')).toContain('publicRoutes.exams.index()');
+    expect(source('src', 'app', 'blog', 'provas', 'PublicExamContent.tsx')).toContain('publicRoutes.exams.detail(exam.slug)');
     expect(pageMap).toContain('"familyId": "questions_hub"');
     expect(pageMap).toContain('"routePatterns": ["/questoes"]');
     expect(pageMap).toContain('"familyId": "exam_hub"');
