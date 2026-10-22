@@ -252,6 +252,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
   const [locationHash, setLocationHash] = useState('');
   const [locationSearch, setLocationSearch] = useState('');
   const pathname = usePathname();
+  const showHomeVisitorActions = pathname === '/' && !user;
   const router = useRouter();
   const location = React.useMemo(() => {
     return {
@@ -686,6 +687,27 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
     router.push(item.href || buildProfilePath(item.tab || 'personal'));
   };
 
+  const renderHomeVisitorActions = (compact = false) => (
+    <div className={`flex shrink-0 items-center ${compact ? 'gap-1' : 'gap-2 border-l border-slate-200 pl-5 dark:border-slate-800'}`}>
+      <Link
+        href="/auth?mode=login"
+        className={compact
+          ? 'whitespace-nowrap rounded-md px-1.5 py-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200'
+          : 'whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-indigo-300'}
+      >
+        Entrar
+      </Link>
+      <Link
+        href="/auth?mode=signup"
+        className={compact
+          ? 'whitespace-nowrap rounded-md bg-indigo-600 px-2 py-2 text-[10px] font-bold text-white hover:bg-indigo-700'
+          : 'whitespace-nowrap rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700'}
+      >
+        Cadastrar grátis
+      </Link>
+    </div>
+  );
+
   const renderProfileQuickMenu = () => user && isProfileMenuOpen ? (
     <div className="absolute right-0 top-full z-50 mt-1 min-w-48 rounded-md border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
         {profileQuickMenuItems.map((item) => {
@@ -797,7 +819,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
         {hasMobileTopHeader && (
           <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
             <div className="flex items-center justify-between">
-            <PublicBrandLink width={160} />
+            <PublicBrandLink width={showHomeVisitorActions ? 96 : 160} />
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
@@ -831,25 +853,27 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                   )}
                 </div>
               )}
-              <div ref={mobileProfileMenuRef} className="relative">
-                <button
-                  type="button"
-                  onClick={handleProfileMenuToggle}
-                  aria-label={user ? `Abrir menu da conta de ${userName}` : 'Entrar ou acessar perfil'}
-                  aria-haspopup={user ? 'menu' : undefined}
-                  aria-expanded={user ? isProfileMenuOpen : undefined}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                >
-                  <UserAvatar
-                    src={userPhotoUrl}
-                    name={userName}
-                    alt=""
-                    aria-hidden="true"
-                    className="h-8 w-8 rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-indigo-600"
-                  />
-                </button>
-                {renderProfileQuickMenu()}
-              </div>
+              {showHomeVisitorActions ? renderHomeVisitorActions(true) : (
+                <div ref={mobileProfileMenuRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={handleProfileMenuToggle}
+                    aria-label={user ? `Abrir menu da conta de ${userName}` : 'Entrar ou acessar perfil'}
+                    aria-haspopup={user ? 'menu' : undefined}
+                    aria-expanded={user ? isProfileMenuOpen : undefined}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  >
+                    <UserAvatar
+                      src={userPhotoUrl}
+                      name={userName}
+                      alt=""
+                      aria-hidden="true"
+                      className="h-8 w-8 rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-indigo-600"
+                    />
+                  </button>
+                  {renderProfileQuickMenu()}
+                </div>
+              )}
               <button onClick={() => router.push('/busca')} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" aria-label="Buscar questões">
                 <Search size={19} />
               </button>
@@ -1104,29 +1128,31 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                   )}
                 </div>
               )}
-              <div ref={profileMenuRef} className="relative ml-1 flex items-center gap-[18px]">
-                <button
-                  type="button"
-                  onClick={handleProfileMenuToggle}
-                  aria-label={user ? `Abrir menu da conta de ${userName}` : 'Entrar ou acessar perfil'}
-                  aria-haspopup={user ? 'menu' : undefined}
-                  aria-expanded={user ? isProfileMenuOpen : undefined}
-                  className="group flex items-center gap-[18px] rounded-md p-0 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
-                >
-                  <UserAvatar
-                    src={userPhotoUrl}
-                    name={userName}
-                    alt={userName || 'Foto de perfil'}
-                    className="h-9 w-9 rounded-full bg-slate-900 text-sm font-bold text-white transition-opacity group-hover:opacity-90 dark:bg-indigo-600"
-                  />
-                  <span className="hidden min-w-0 max-w-[170px] text-left min-[851px]:block">
-                    <span className="block truncate text-[14px] font-semibold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userName}</span>
-                    <span className="block truncate text-[12px] text-slate-500 dark:text-slate-400">Plano {currentCanonicalPlan}</span>
-                  </span>
-                </button>
+              {showHomeVisitorActions ? renderHomeVisitorActions() : (
+                <div ref={profileMenuRef} className="relative ml-1 flex items-center gap-[18px]">
+                  <button
+                    type="button"
+                    onClick={handleProfileMenuToggle}
+                    aria-label={user ? `Abrir menu da conta de ${userName}` : 'Entrar ou acessar perfil'}
+                    aria-haspopup={user ? 'menu' : undefined}
+                    aria-expanded={user ? isProfileMenuOpen : undefined}
+                    className="group flex items-center gap-[18px] rounded-md p-0 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    <UserAvatar
+                      src={userPhotoUrl}
+                      name={userName}
+                      alt={userName || 'Foto de perfil'}
+                      className="h-9 w-9 rounded-full bg-slate-900 text-sm font-bold text-white transition-opacity group-hover:opacity-90 dark:bg-indigo-600"
+                    />
+                    <span className="hidden min-w-0 max-w-[170px] text-left min-[851px]:block">
+                      <span className="block truncate text-[14px] font-semibold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userName}</span>
+                      <span className="block truncate text-[12px] text-slate-500 dark:text-slate-400">Plano {currentCanonicalPlan}</span>
+                    </span>
+                  </button>
 
-                {renderProfileQuickMenu()}
-              </div>
+                  {renderProfileQuickMenu()}
+                </div>
+              )}
             </div>
             </div>
           </div>

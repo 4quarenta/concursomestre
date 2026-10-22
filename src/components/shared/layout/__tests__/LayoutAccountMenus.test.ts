@@ -35,4 +35,13 @@ describe('platform account menus', () => {
     expect(source).not.toContain("href: '/materiais'");
     expect(source).toContain("href=\"/support\"");
   });
+
+  it('shows login and signup actions for homepage visitors in desktop and mobile headers', () => {
+    expect(source).toContain("const showHomeVisitorActions = pathname === '/' && !user");
+    expect(source).toContain('renderHomeVisitorActions(true)');
+    expect(source).toContain('showHomeVisitorActions ? renderHomeVisitorActions()');
+    expect(source).toContain('href="/auth?mode=login"');
+    expect(source).toContain('href="/auth?mode=signup"');
+    expect(source).toContain('Cadastrar grátis');
+  });
 });
