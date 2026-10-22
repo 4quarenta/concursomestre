@@ -10,12 +10,12 @@
 */
 
 /**
- * Centraliza a largura maxima do conteudo principal compartilhado entre o shell do app, o admin e os fallbacks.
- * Isso garante que as paginas internas usem a mesma caixa visual larga da area administrativa.
+ * Centraliza a largura maxima do conteudo principal compartilhado entre as paginas da plataforma.
+ * O limite preserva as margens laterais do padrao visual adotado em Questoes.
  *
  * @since 1.0.0
  */
-export const PLATFORM_MAIN_CONTENT_WIDTH_CLASS = 'max-w-[1600px]';
+export const PLATFORM_MAIN_CONTENT_WIDTH_CLASS = 'max-w-[1460px]';
 
 /**
  * Define o tamanho padrao do titulo principal das paginas internas da plataforma.
