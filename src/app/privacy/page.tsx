@@ -3,9 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { Clock, Database, Globe2, Lock, Scale, Shield, UserCheck } from 'lucide-react';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { PRIVACY_POLICY_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION } from '@services/legal/legalDocumentVersion';
-import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS } from '@constants/layout';
 
 const PrivacyPolicy: React.FC = () => {
   const privacyContactEmail = useAppConfigStore((state) => (
@@ -19,20 +19,21 @@ const PrivacyPolicy: React.FC = () => {
   return (
     <main className="w-full space-y-5 pb-8 font-sans text-slate-900 transition-colors dark:text-slate-100">
       <div className="space-y-5">
-        <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">Privacidade e proteção de dados</p>
-            <h1 className={`mt-1 ${PLATFORM_PAGE_TITLE_CLASS}`}>Política de Privacidade</h1>
-            <p className={`mt-2 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>
-                Este documento explica quais dados o ConcursoMestre pode tratar, para quais finalidades,
-                com quem eles podem ser compartilhados e como você pode exercer seus direitos.
-            </p>
-          </div>
-          <div className="shrink-0 text-left text-xs text-slate-500 sm:text-right dark:text-slate-400">
+        <PlatformPageHeader
+          title="Política de Privacidade"
+          eyebrow="Privacidade e proteção de dados"
+          breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Política de Privacidade', path: '/privacy' }]}
+          description={(
+            <>Este documento explica quais dados o ConcursoMestre pode tratar, para quais finalidades, com quem eles podem ser compartilhados e como você pode exercer seus direitos.</>
+          )}
+          className="border-b border-slate-200 pb-5 dark:border-slate-800"
+          actions={(
+            <div className="shrink-0 text-left text-xs text-slate-500 sm:text-right dark:text-slate-400">
             <span className="block">Atualizado em {PRIVACY_POLICY_EFFECTIVE_DATE}</span>
             <span className="mt-1 block font-semibold">Versão {PRIVACY_POLICY_VERSION}</span>
-          </div>
-        </header>
+            </div>
+          )}
+        />
 
         <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-3 dark:border-slate-800" aria-label="Documentos legais">
           <Link href="/terms" className="inline-flex h-9 shrink-0 items-center rounded-md px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900">Termos de Uso</Link>

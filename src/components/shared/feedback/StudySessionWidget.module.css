@@ -1,0 +1,30 @@
+.collapsedToggle {
+  opacity: 0.3;
+  transition: opacity 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.collapsedToggle:hover,
+.collapsedToggle:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .collapsedToggle:not(:hover):not(:focus-visible) {
+    opacity: 0.22;
+  }
+}
+
+@media (max-width: 760px) {
+  .collapsedToggle {
+    top: auto !important;
+    right: 8px !important;
+    bottom: 16px !important;
+    transform: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapsedToggle {
+    transition: none;
+  }
+}

@@ -16,7 +16,6 @@ import Image from 'next/image';
 import {
   AlertTriangle,
   ArrowRight,
-  Bell,
   Check,
   CheckCircle2,
   Inbox,
@@ -35,6 +34,8 @@ import { useConfirm } from '@providers/ModalProvider';
 import type { Notification } from '@types';
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
 import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
+import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 
 type TabType = 'all' | 'system' | 'social' | 'marketplace' | 'report' | 'trash';
 
@@ -263,51 +264,52 @@ const Page: React.FC = () => {
   };
 
   return (
-    <main className="mx-auto w-full max-w-5xl animate-fade-in pb-12">
-      <header className="flex flex-col gap-5 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <div className="mb-2 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-            <Bell size={16} aria-hidden="true" /> Central de notificações
-          </div>
-          <h1 className="text-2xl font-bold text-slate-950 dark:text-white">Notificações</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+    <main className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} animate-fade-in pb-12`}>
+      <PlatformPageHeader
+        title="Notificações"
+        eyebrow="Central de notificações"
+        breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Notificações', path: '/notifications' }]}
+        description={(
+          <>
             {unreadCount > 0 ? `${unreadCount} não lidas` : 'Tudo em dia'}
             <span className="px-2 text-slate-300 dark:text-slate-700" aria-hidden="true">·</span>
             {activeCount} {activeCount === 1 ? 'notificação' : 'notificações'}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => markAllNotificationsAsRead(currentUser.id)}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-            disabled={unreadCount === 0}
-          >
-            <MailOpen size={16} aria-hidden="true" /> Marcar todas como lidas
-          </button>
-          {activeTab !== 'trash' && (
+          </>
+        )}
+        className="border-b border-slate-200 pb-5 dark:border-slate-800"
+        actions={(
+          <>
             <button
               type="button"
-              onClick={async () => {
-                const confirmed = await confirmDialog({
-                  title: 'Mover notificações para a lixeira?',
-                  description: 'Todas as notificações visíveis serão movidas para a lixeira.',
-                  confirmText: 'Mover para lixeira',
-                  cancelText: 'Cancelar',
-                  type: 'warning',
-                });
-                if (!confirmed) return;
-                clearNotifications(currentUser.id);
-              }}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-rose-900 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
-              disabled={activeCount === 0}
+              onClick={() => markAllNotificationsAsRead(currentUser.id)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              disabled={unreadCount === 0}
             >
-              <Trash2 size={16} aria-hidden="true" /> Limpar
+              <MailOpen size={16} aria-hidden="true" /> Marcar todas como lidas
             </button>
-          )}
-        </div>
-      </header>
+            {activeTab !== 'trash' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const confirmed = await confirmDialog({
+                    title: 'Mover notificações para a lixeira?',
+                    description: 'Todas as notificações visíveis serão movidas para a lixeira.',
+                    confirmText: 'Mover para lixeira',
+                    cancelText: 'Cancelar',
+                    type: 'warning',
+                  });
+                  if (!confirmed) return;
+                  clearNotifications(currentUser.id);
+                }}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-rose-900 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
+                disabled={activeCount === 0}
+              >
+                <Trash2 size={16} aria-hidden="true" /> Limpar
+              </button>
+            )}
+          </>
+        )}
+      />
 
       <nav className="-mx-2 mt-3 overflow-x-auto px-2" aria-label="Categorias de notificações">
         <div className="flex min-w-max border-b border-slate-200 dark:border-slate-800" role="tablist">

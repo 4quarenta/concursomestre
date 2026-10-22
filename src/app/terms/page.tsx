@@ -3,9 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { AlertCircle, BookOpen, CreditCard, FileText, Scale, ShieldCheck, UserCheck } from 'lucide-react';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { LEGAL_DOCUMENT_VERSION, LEGAL_EFFECTIVE_DATE } from '@services/legal/legalDocumentVersion';
-import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS } from '@constants/layout';
 
 const TermsOfUse: React.FC = () => {
   const legalContactEmail = useAppConfigStore((state) => (
@@ -19,20 +19,21 @@ const TermsOfUse: React.FC = () => {
   return (
     <main className="w-full space-y-5 pb-8 font-sans text-slate-900 transition-colors dark:text-slate-100">
       <div className="space-y-5">
-        <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">Regras de utilização</p>
-            <h1 className={`mt-1 ${PLATFORM_PAGE_TITLE_CLASS}`}>Termos de Uso</h1>
-            <p className={`mt-2 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>
-                Estes Termos estabelecem as regras para criação de conta e uso dos recursos do ConcursoMestre,
-                incluindo questões, simulados, conteúdos, recursos de IA e funcionalidades vinculadas a planos.
-            </p>
-          </div>
-          <div className="shrink-0 text-left text-xs text-slate-500 sm:text-right dark:text-slate-400">
+        <PlatformPageHeader
+          title="Termos de Uso"
+          eyebrow="Regras de utilização"
+          breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Termos de Uso', path: '/terms' }]}
+          description={(
+            <>Estes Termos estabelecem as regras para criação de conta e uso dos recursos do ConcursoMestre, incluindo questões, simulados, conteúdos, recursos de IA e funcionalidades vinculadas a planos.</>
+          )}
+          className="border-b border-slate-200 pb-5 dark:border-slate-800"
+          actions={(
+            <div className="shrink-0 text-left text-xs text-slate-500 sm:text-right dark:text-slate-400">
             <span className="block">Atualizado em {LEGAL_EFFECTIVE_DATE}</span>
             <span className="mt-1 block font-semibold">Versão {LEGAL_DOCUMENT_VERSION}</span>
-          </div>
-        </header>
+            </div>
+          )}
+        />
 
         <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-3 dark:border-slate-800" aria-label="Documentos legais">
           <Link href="/terms" aria-current="page" className="inline-flex h-9 shrink-0 items-center rounded-md bg-indigo-600 px-3 text-xs font-semibold text-white">Termos de Uso</Link>

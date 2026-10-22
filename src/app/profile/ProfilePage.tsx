@@ -15,7 +15,6 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +31,7 @@ import {
    type LucideIcon,
 } from 'lucide-react';
 import UserAvatar from '@/components/shared/ui/UserAvatar';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { useAuth } from '@providers/AuthProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -4049,15 +4049,12 @@ const Profile: React.FC = () => {
     ];
     const isMoreProfileTabActive = moreProfileTabs.some(({ id }) => activeTab === id);
     return (
-        <div className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} px-3 pb-16 sm:px-4 md:px-6`}>
-            <header className="mb-5 space-y-2">
-                <nav aria-label="Navegação estrutural" className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                    <Link href="/" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-400">Início</Link>
-                    <ChevronRight size={14} aria-hidden="true" />
-                    <span aria-current="page" className="font-medium text-slate-700 dark:text-slate-200">Meu perfil</span>
-                </nav>
-                <h1 className={`${PLATFORM_PAGE_TITLE_CLASS} pt-1`}>Meu perfil</h1>
-            </header>
+        <div className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} pb-16`}>
+            <PlatformPageHeader
+                title="Meu perfil"
+                breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Meu perfil', path: '/profile/personal' }]}
+                className="mb-5"
+            />
             <nav aria-label="Seções do perfil" className="relative mb-6 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-1">
                     <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

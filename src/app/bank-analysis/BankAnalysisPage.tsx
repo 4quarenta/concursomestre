@@ -20,7 +20,6 @@ import {
   BrainCircuit,
   Calendar,
   Check,
-  ChevronRight,
   Crown,
   Database,
   ExternalLink,
@@ -54,6 +53,7 @@ import StableResponsiveContainer from '@/components/shared/charts/StableResponsi
 import { useAuth } from '@providers/AuthProvider';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import { CHART_COLORS } from './constants';
@@ -662,15 +662,12 @@ const UpgradeState = ({
   onCloseAuth: () => void;
   onCloseUpgrade: () => void;
 }) => (
-  <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 px-3 pb-20 sm:px-4 md:px-6`}>
-    <header>
-      <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900 transition-colors dark:text-slate-100">
-        <Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca
-      </h1>
-      <p className="mt-1 text-sm font-medium text-slate-500 transition-colors dark:text-slate-400">
-        Diagnóstico estatístico de cobrança, foco e recorrência por banca examinadora.
-      </p>
-    </header>
+  <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 pb-20`}>
+    <PlatformPageHeader
+      title="Raio-X da Banca"
+      description="Diagnóstico estatístico de cobrança, foco e recorrência por banca examinadora."
+      breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Raio-X da Banca', path: '/x-ray' }]}
+    />
 
     <div className={`${PANEL_CLASS} relative flex min-h-[360px] items-center justify-center overflow-hidden p-6`}>
       <div className="relative z-10 max-w-md text-center">
@@ -1353,27 +1350,17 @@ const BankAnalysis: React.FC = () => {
   }
 
   return (
-    <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 px-3 pb-20 sm:px-4 md:px-6`}>
-      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <nav aria-label="Trilha de navegação" className="mb-3 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <a href="/dashboard" className="hover:text-indigo-600 dark:hover:text-indigo-300">Início</a>
-            <ChevronRight size={13} aria-hidden="true" />
-            <span aria-current="page">Raio-X Banca</span>
-          </nav>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold text-slate-950 dark:text-white">
-              Raio-X da banca
-            </h1>
-            <span className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200">
-              {xrayRequiredPlan}
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            Analise o perfil de cobrança da banca e foque no que mais cai.
-          </p>
-        </div>
-      </header>
+    <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 pb-20`}>
+      <PlatformPageHeader
+        title="Raio-X da banca"
+        description="Analise o perfil de cobrança da banca e foque no que mais cai."
+        breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Raio-X da Banca', path: '/x-ray' }]}
+        actions={(
+          <span className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200">
+            {xrayRequiredPlan}
+          </span>
+        )}
+      />
 
       <section aria-label="Filtros do Raio-X" className="grid items-end gap-3 border-b border-slate-200 pb-5 dark:border-slate-700 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_auto]">
           <SelectField

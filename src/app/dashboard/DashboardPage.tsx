@@ -14,6 +14,7 @@
 import React, { useMemo, useState } from 'react';
 import { Crown, Lock } from 'lucide-react';
 import DashboardOverview from './DashboardOverview';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useAuth } from '@providers/AuthProvider';
 import { useStudyTracker } from '@providers/StudyTrackerProvider';
@@ -357,7 +358,7 @@ const Dashboard: React.FC = () => {
     return (
       <>
         <div className={ui.scope}>
-          <h1 className="text-2xl font-semibold">Seu painel de estudos</h1>
+          <PlatformPageHeader title="Seu painel de estudos" />
           <section className="mt-6 border-y border-slate-200 py-8 dark:border-slate-700">
             <Lock size={24} className="mb-4 text-slate-500" />
             <h2 className={ui.heading}>Acompanhe sua evolução</h2>

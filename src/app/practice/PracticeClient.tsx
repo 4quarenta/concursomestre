@@ -17,7 +17,7 @@ import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Difficulty } from '../../types';
 import type { UserAnswer } from '../../types';
-import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp, SlidersHorizontal, Minimize2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp, SlidersHorizontal, Minimize2, Printer } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import AdBanner from '../../components/shared/feedback/AdBanner';
@@ -1113,8 +1113,10 @@ const Practice: React.FC<PracticeProps> = ({
   const [viewMode] = useState<'card' | 'list'>('list');
   const [isFocusFullscreen, setIsFocusFullscreen] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const readingScale = 0;
+  const [readingScale, setReadingScale] = useState(0);
   const currentPage = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+  const requestedPageSize = Number.parseInt(searchParams.get('limit') || String(PAGE_SIZE), 10);
+  const pageSize = [10, 20, 50].includes(requestedPageSize) ? requestedPageSize : PAGE_SIZE;
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '' });
   const [lockedFilterModal, setLockedFilterModal] = useState<{
@@ -1208,9 +1210,10 @@ const Practice: React.FC<PracticeProps> = ({
 
   const questionQueryParams = useMemo(() => ({
     ...buildPracticeQuestionQueryParams(filters),
+    limit: pageSize,
     ...(searchParams.get('cursor') ? { cursor: searchParams.get('cursor') as string } : {}),
     ...(scopedQuestionIds.length > 0 ? { questionIds: scopedQuestionIds.join(',') } : {}),
-  }), [filters, scopedQuestionIds, searchParams]);
+  }), [filters, pageSize, scopedQuestionIds, searchParams]);
   const questionQueryKey = useMemo(() => JSON.stringify(questionQueryParams), [questionQueryParams]);
   const questionBootstrapKey = useMemo(
     () => `${currentUser?.id || 'guest'}:${currentUser?.role || 'guest'}:${questionQueryKey}:page-${currentPage}`,
@@ -1314,7 +1317,7 @@ const Practice: React.FC<PracticeProps> = ({
   }, [highlightedQuestionId, resolvedQuestions.length, scopedQuestionIds.length, totalQuestions]);
 
   const paginatedList = resolvedQuestions;
-  const totalPages = Math.max(1, Math.ceil(displayedQuestionTotal / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(displayedQuestionTotal / pageSize));
   const paginationParams = new URLSearchParams(searchParams.toString());
   paginationParams.delete('page');
   const currentCursor = searchParams.get('cursor') || '';
@@ -1387,6 +1390,7 @@ const Practice: React.FC<PracticeProps> = ({
       !currentUser?.id
       && initialQuestionPage
       && initialQuestionPage.questions.length > 0
+      && initialQuestionPage.pageInfo.limit === pageSize
       && !hasHydratedInitialPageRef.current
     ) {
       hasHydratedInitialPageRef.current = true;
@@ -1417,6 +1421,7 @@ const Practice: React.FC<PracticeProps> = ({
     ensureQuestionsLoaded,
     hasActiveFilters,
     initialQuestionPage,
+    pageSize,
     questionBootstrapKey,
     questionQueryParams,
     currentPage,
@@ -1577,16 +1582,19 @@ const Practice: React.FC<PracticeProps> = ({
       setFilters(nextFilters);
       setPendingFilters(nextFilters);
       setFilterTimestamp((timestamp) => timestamp + 1);
-      const nextQueryParams = buildPracticeQuestionQueryParams(nextFilters);
+      const nextQueryParams = { ...buildPracticeQuestionQueryParams(nextFilters), limit: pageSize };
       setSearchParams((current) => {
         current.delete('page');
         current.delete('q');
         Array.from(current.keys()).forEach((key) => {
-          if (key !== 'questionId') current.delete(key);
+          if (key !== 'questionId' && key !== 'limit') current.delete(key);
         });
         Object.entries(nextQueryParams).forEach(([key, value]) => {
           if (Array.isArray(value)) value.forEach((item) => current.append(key, String(item)));
-          else if (value !== undefined && value !== null && value !== '' && value !== false) current.set(key, String(value));
+          else if (value !== undefined && value !== null) {
+            const serializedValue = String(value);
+            if (serializedValue !== '' && serializedValue !== 'false') current.set(key, serializedValue);
+          }
         });
         return current;
       });
@@ -1594,7 +1602,7 @@ const Practice: React.FC<PracticeProps> = ({
         .finally(() => setIsFiltering(false));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 500);
-  }, [ensureQuestionsLoaded, pendingFilters, sanitizeFiltersForCurrentPlan, sanitizeFiltersForFocus, setSearchParams]);
+  }, [ensureQuestionsLoaded, pageSize, pendingFilters, sanitizeFiltersForCurrentPlan, sanitizeFiltersForFocus, setSearchParams]);
 
   const clearFilter = useCallback((key: PracticeFilterKey) => {
     let defaultValue: PracticeFilterValue = isMultiFilterKey(key) ? [] : key === 'keyword' ? '' : 'All';
@@ -2248,8 +2256,66 @@ const Practice: React.FC<PracticeProps> = ({
       )}
 
       {!highlightedQuestionId && (
-        <div className={styles.resultToolbar}>
-          <span className={styles.resultCount}>{displayedQuestionTotal.toLocaleString('pt-BR')} resultados</span>
+        <div className={styles.resultsTools}>
+          <p className={styles.resultCount}>
+            <strong>{displayedQuestionTotal.toLocaleString('pt-BR')}</strong> questões encontradas
+          </p>
+          <div className={styles.resultToolbar} aria-label="Ferramentas da lista de questões">
+            <div className={styles.readingScale} aria-label="Tamanho do texto">
+              <button
+                type="button"
+                onClick={() => setReadingScale((scale) => Math.max(-2, scale - 1))}
+                disabled={readingScale <= -2}
+                aria-label="Diminuir tamanho do texto"
+              >
+                A
+              </button>
+              <span aria-live="polite">{100 + readingScale * 10}%</span>
+              <button
+                type="button"
+                onClick={() => setReadingScale((scale) => Math.min(2, scale + 1))}
+                disabled={readingScale >= 2}
+                aria-label="Aumentar tamanho do texto"
+              >
+                A
+              </button>
+            </div>
+            <button
+              type="button"
+              className={styles.printButton}
+              onClick={() => window.print()}
+              aria-label="Imprimir questões"
+              title="Imprimir questões"
+            >
+              <Printer size={21} aria-hidden="true" />
+            </button>
+            <label className={styles.toolbarSelect}>
+              <span className="sr-only">Ordenar questões</span>
+              <select value="recent" disabled>
+                <option value="recent">Mais recentes</option>
+              </select>
+              <ChevronDown size={15} aria-hidden="true" />
+            </label>
+            <label className={styles.toolbarSelect}>
+              <span className="sr-only">Questões por página</span>
+              <select
+                value={pageSize}
+                onChange={(event) => {
+                  const nextParams = new URLSearchParams(searchParams.toString());
+                  nextParams.set('limit', event.target.value);
+                  nextParams.set('page', '1');
+                  nextParams.delete('cursor');
+                  nextParams.delete('previousCursor');
+                  setSearchParams(nextParams);
+                }}
+              >
+                <option value={10}>10 por página</option>
+                <option value={20}>20 por página</option>
+                <option value={50}>50 por página</option>
+              </select>
+              <ChevronDown size={15} aria-hidden="true" />
+            </label>
+          </div>
         </div>
       )}
 
@@ -2420,7 +2486,7 @@ const Practice: React.FC<PracticeProps> = ({
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className={`${styles.questionList} space-y-4`} data-reading-scale={readingScale}>
             {paginatedList.map((q, i) => (
               <QuestionCard
                 key={`${q.id}-${filterTimestamp}`}
@@ -2479,18 +2545,24 @@ const Practice: React.FC<PracticeProps> = ({
               />
             ))}
             {totalPages > 1 && (
-              <nav aria-label="Paginação das questões" className="flex flex-wrap items-center justify-center gap-1 border-t border-slate-200 pt-4 dark:border-slate-700">
+              <nav aria-label="Paginação das questões" className={styles.pagination}>
                 {currentPage > 1 && (
-                  <a href={pageHref(currentPage - 1, previousCursor, '')} rel="prev" className="inline-flex h-9 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
-                    Anterior
+                  <a href={pageHref(currentPage - 1, previousCursor, '')} rel="prev" aria-label={`Página ${currentPage - 1}`} className={styles.pageNumber}>
+                    {currentPage - 1}
                   </a>
                 )}
-                <a href={pageHref(currentPage, currentCursor, previousCursor)} aria-current="page" className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-indigo-600 bg-indigo-600 px-3 text-sm font-semibold text-white">
-                  {currentPage} / {totalPages}
+                <a href={pageHref(currentPage, currentCursor, previousCursor)} aria-current="page" aria-label={`Página ${currentPage}`} className={`${styles.pageNumber} ${styles.currentPage}`}>
+                  {currentPage}
                 </a>
                 {currentPage < totalPages && nextQuestionCursor && (
-                  <a href={pageHref(currentPage + 1, nextQuestionCursor, currentCursor)} rel="next" className="inline-flex h-9 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200">
-                    Próxima
+                  <a href={pageHref(currentPage + 1, nextQuestionCursor, currentCursor)} rel="next" aria-label={`Página ${currentPage + 1}`} className={styles.pageNumber}>
+                    {currentPage + 1}
+                  </a>
+                )}
+                {currentPage + 1 < totalPages && <span className={styles.pageEllipsis} aria-hidden="true">…</span>}
+                {currentPage < totalPages && nextQuestionCursor && (
+                  <a href={pageHref(currentPage + 1, nextQuestionCursor, currentCursor)} rel="next" aria-label="Avançar para a próxima página" className={styles.pageArrow}>
+                    <ChevronRight size={16} aria-hidden="true" />
                   </a>
                 )}
               </nav>

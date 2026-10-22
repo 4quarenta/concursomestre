@@ -6,6 +6,7 @@ import { ArrowRight, BookOpen, ChevronLeft, ChevronRight, Flame, Timer } from 'l
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
 import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import AdBanner from '@/components/shared/feedback/AdBanner';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { formatStudyDuration } from '@/services/statistics/studyTimeFormatting';
 import type { StudyStreakSnapshot } from '@/services/dashboard/studyStreakService';
 import type { buildAccuracyInsight, buildQuestionTimelineData, calculateLevelProgress, DashboardTimeRange } from '@/services/dashboard/dashboardInsightsService';
@@ -72,10 +73,12 @@ export default function DashboardOverview(props: DashboardOverviewProps) {
     { title: 'Nível atual', value: level.currentLevel, detail: `${level.currentXp.toLocaleString('pt-BR')} XP acumulados` },
   ];
   return <div className={ui.scope}>
-    <header className={styles.header}>
-      <div><h1>Seu painel de estudos</h1><p className={ui.muted}>Olá{props.name ? `, ${props.name}` : ''}. Vamos continuar?</p></div>
-      <Link href="/questoes" className={ui.action}><BookOpen size={18} />Resolver questões</Link>
-    </header>
+    <PlatformPageHeader
+      title="Seu painel de estudos"
+      description={`Olá${props.name ? `, ${props.name}` : ''}. Vamos continuar?`}
+      actions={<Link href="/questoes" className={ui.action}><BookOpen size={18} />Resolver questões</Link>}
+      className="mb-5"
+    />
     <div className={styles.ranges}>
       <div className={styles.segments} role="group" aria-label="Período do desempenho">
         {ranges.map(range => <button key={range.id} type="button" aria-pressed={range.id === props.range} onClick={() => props.onRangeChange(range.id)}>{range.label}</button>)}
