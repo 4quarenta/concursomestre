@@ -765,57 +765,46 @@ function loadStripeCustomerUserSnapshot(PDO $db, string $userId): ?array
  *
  * @since 1.0.0
  */
-function findExistingStripeCustomerForUser($stripe, string $userId, string $email, ?string $storedCustomerId = null): ?string
+function findExistingStripeCustomerForUser($stripe, string $userId, string $email): ?string
 {
     $email = trim($email);
     $candidates = [];
 
-    if ($storedCustomerId) {
-        $candidates[$storedCustomerId] = [
-            'id' => $storedCustomerId,
-            'score' => 25,
-        ];
-    }
-
     if ($email !== '') {
-        try {
-            $customerList = $stripe->customers->all([
-                'email' => $email,
-                'limit' => 100,
-            ]);
+        $customerList = $stripe->customers->all([
+            'email' => $email,
+            'limit' => 100,
+        ]);
 
-            foreach ($customerList->autoPagingIterator() as $customer) {
-                if (!empty($customer->deleted) || empty($customer->id)) {
-                    continue;
-                }
-
-                $candidateId = (string) $customer->id;
-                $metadataUserId = (string) (($customer->metadata->user_id ?? '') ?: '');
-                $score = 0;
-
-                if ($metadataUserId !== '' && $metadataUserId === $userId) {
-                    $score += 100;
-                }
-
-                if (((string) ($customer->email ?? '')) === $email) {
-                    $score += 10;
-                }
-
-                if (!empty($customer->invoice_settings->default_payment_method) || !empty($customer->default_source)) {
-                    $score += 5;
-                }
-
-                if (isset($candidates[$candidateId])) {
-                    $candidates[$candidateId]['score'] = max($candidates[$candidateId]['score'], $score);
-                } else {
-                    $candidates[$candidateId] = [
-                        'id' => $candidateId,
-                        'score' => $score,
-                    ];
-                }
+        foreach ($customerList->autoPagingIterator() as $customer) {
+            if (!empty($customer->deleted) || empty($customer->id)) {
+                continue;
             }
-        } catch (Throwable $e) {
-            error_log('Stripe existing customer lookup warning: ' . $e->getMessage());
+
+            $candidateId = (string) $customer->id;
+            $metadataUserId = (string) (($customer->metadata->user_id ?? '') ?: '');
+            $score = 0;
+
+            if ($metadataUserId !== '' && $metadataUserId === $userId) {
+                $score += 100;
+            }
+
+            if (((string) ($customer->email ?? '')) === $email) {
+                $score += 10;
+            }
+
+            if (!empty($customer->invoice_settings->default_payment_method) || !empty($customer->default_source)) {
+                $score += 5;
+            }
+
+            if (isset($candidates[$candidateId])) {
+                $candidates[$candidateId]['score'] = max($candidates[$candidateId]['score'], $score);
+            } else {
+                $candidates[$candidateId] = [
+                    'id' => $candidateId,
+                    'score' => $score,
+                ];
+            }
         }
     }
 
@@ -1006,8 +995,7 @@ function getStripeCustomerForUser(PDO $db, string $userId): array
             $customerId = findExistingStripeCustomerForUser(
                 $stripe,
                 $userId,
-                (string) ($user['email'] ?? ''),
-                $storedCustomerId ?: $historyCustomerId
+                (string) ($user['email'] ?? '')
             );
 
             if (!empty($customerId)) {
