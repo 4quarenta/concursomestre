@@ -11,11 +11,11 @@
 
 /**
  * Centraliza a largura maxima do conteudo principal compartilhado entre as paginas da plataforma.
- * O limite preserva as margens laterais do padrao visual adotado em Questoes.
+ * O limite corresponde ao max-w-7xl usado na navegacao principal, alinhando paginas e menu.
  *
  * @since 1.0.0
  */
-export const PLATFORM_MAIN_CONTENT_WIDTH_CLASS = 'max-w-[1460px]';
+export const PLATFORM_MAIN_CONTENT_WIDTH_CLASS = 'max-w-7xl';
 
 /**
  * Define o tamanho padrao do titulo principal das paginas internas da plataforma.
