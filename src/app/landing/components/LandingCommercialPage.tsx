@@ -26,14 +26,12 @@ import {
   FileText,
   GraduationCap,
   Landmark,
-  Menu,
   Repeat2,
   Scale,
   ShieldCheck,
   Smartphone,
   Star,
   Target,
-  X,
   Zap,
 } from 'lucide-react';
 import type { Plan, SystemSettings } from '@types';
@@ -50,7 +48,6 @@ import {
   resolvePlanOffer,
 } from '@services/plans';
 import { BILLING_CYCLE_OPTIONS, PLAN_COPY_BY_TIER, type LandingBillingCycle } from '../homepageContent';
-import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
@@ -67,15 +64,6 @@ import {
   PromotionThemeMasthead,
   promotionThemeRootStyle,
 } from '@/components/shared/marketing/PromotionThemeSurface';
-
-const NAV_ITEMS = [
-  { label: 'Recursos', href: '#recursos' },
-  { label: 'Disciplinas', href: '/disciplinas' },
-  { label: 'Bancas', href: '/bancas' },
-  { label: 'Planos', href: '#planos' },
-  { label: 'Depoimentos', href: '#depoimentos' },
-  { label: 'Blog', href: '/blog' },
-];
 
 const HERO_BULLETS = [
   'Estude com foco no que realmente cai',
@@ -248,69 +236,6 @@ const SectionTitle = ({
     {children}
   </h2>
 );
-
-export const Header = ({ themeId = 'default' }: { themeId?: SystemSettings['activeTheme'] }) => {
-  const [isMenuOpen, setIsMenuOpen] = React.useState(false);
-  const isDarkHeader = ['black-friday', 'black-november', 'sao-joao', 'ano-novo', 'consumidor'].includes(themeId);
-
-  return (
-    <header
-      className="cm-theme-header sticky top-0 z-40 border-b backdrop-blur-xl"
-      style={{ backgroundColor: 'var(--cm-theme-header)', borderColor: 'var(--cm-theme-border)' }}
-    >
-      <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-5 sm:px-8">
-        <PublicBrandLink width={205} priority surface={isDarkHeader ? 'dark' : 'light'} />
-
-        <nav className="hidden items-center gap-10 text-sm font-semibold text-[var(--cm-theme-header-ink)] lg:flex" aria-label="Navegação principal">
-          {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} prefetch={false} className="transition-colors hover:text-[var(--cm-theme-accent)]">
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="hidden items-center gap-5 lg:flex">
-          <Link href="/auth?mode=login" prefetch={false} className="text-sm font-bold text-[var(--cm-theme-header-ink)] transition-colors hover:text-[var(--cm-theme-accent)]">
-            Entrar
-          </Link>
-          <Link href="/auth?mode=signup" prefetch={false} className="rounded-xl px-5 py-3 text-sm font-bold shadow-sm transition hover:brightness-95" style={{ backgroundColor: 'var(--cm-theme-accent)', color: 'var(--cm-theme-accent-ink)' }}>
-            Começar grátis
-          </Link>
-        </div>
-
-        <button
-          type="button"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--cm-theme-border)] text-[var(--cm-theme-header-ink)] lg:hidden"
-          onClick={() => setIsMenuOpen((current) => !current)}
-          aria-label={isMenuOpen ? 'Fechar menu' : 'Abrir menu'}
-          aria-expanded={isMenuOpen}
-        >
-          {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
-      </div>
-
-      {isMenuOpen && (
-        <div className="border-t px-5 py-5 shadow-lg lg:hidden" style={{ backgroundColor: 'var(--cm-theme-header)', borderColor: 'var(--cm-theme-border)' }}>
-          <nav className="mx-auto flex max-w-7xl flex-col gap-4 text-sm font-bold text-[var(--cm-theme-header-ink)]" aria-label="Navegação mobile">
-            {NAV_ITEMS.map((item) => (
-              <Link key={item.href} href={item.href} prefetch={false} onClick={() => setIsMenuOpen(false)}>
-                {item.label}
-              </Link>
-            ))}
-            <div className="mt-2 grid grid-cols-2 gap-3">
-              <Link href="/auth?mode=login" prefetch={false} className="rounded-xl border border-slate-200 px-4 py-3 text-center">
-                Entrar
-              </Link>
-              <Link href="/auth?mode=signup" prefetch={false} className="rounded-xl px-4 py-3 text-center" style={{ backgroundColor: 'var(--cm-theme-accent)', color: 'var(--cm-theme-accent-ink)' }}>
-                Começar grátis
-              </Link>
-            </div>
-          </nav>
-        </div>
-      )}
-    </header>
-  );
-};
 
 const MetricCard = ({
   label,
@@ -1018,7 +943,6 @@ const LandingCommercialPage: React.FC<{
       style={{ ...promotionThemeRootStyle(themeId), backgroundColor: 'var(--cm-theme-page)' }}
     >
       <PromotionThemeMasthead themeId={themeId} promotion={effectiveSettings.activePromotion} />
-      <Header themeId={themeId} />
       <main>
       <HeroSection themeId={themeId} />
       <FeaturesSection initialSystemSettings={initialSystemSettings} />

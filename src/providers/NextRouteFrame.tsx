@@ -46,7 +46,6 @@ const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/read',
   '/subscription',
   '/promo',
-  '/blog',
 ];
 
 const isWithoutPlatformShell = (pathname: string) => (
@@ -604,13 +603,13 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   if (pathname === '/') {
     return (
       <>
-        {currentUser ? <GlobalLoader forceVisible /> : <>{framedChildren}</>}
+          {currentUser ? <GlobalLoader forceVisible /> : <Layout includePageExtras={false} fullWidthContent contentContainer="div">{framedChildren}</Layout>}
         {appOverlays}
       </>
     );
   }
 
-  if (pathname.startsWith('/admin') || pathname === '/partner-dashboard' || isWithoutPlatformShell(pathname)) {
+    if (pathname.startsWith('/admin') || pathname === '/partner-dashboard' || isWithoutPlatformShell(pathname)) {
     return (
       <>
         {shelllessPaymentIssueBanner}
@@ -622,7 +621,11 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
 
   return (
     <>
-      <Layout>{framedChildren}</Layout>
+      {pathname.startsWith('/blog') ? (
+        <Layout includePageExtras={false} contentContainer="div">{framedChildren}</Layout>
+      ) : (
+        <Layout>{framedChildren}</Layout>
+      )}
       {appOverlays}
     </>
   );

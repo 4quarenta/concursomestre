@@ -51,6 +51,9 @@ import { isSimulationImmersivePath, SIMULATION_IMMERSIVE_EVENT } from '@services
 
 interface LayoutProps {
   children: React.ReactNode;
+  includePageExtras?: boolean;
+  fullWidthContent?: boolean;
+  contentContainer?: 'main' | 'div';
 }
 
 type SidebarNavItem = {
@@ -233,7 +236,8 @@ const NotificationDropdownPanel: React.FC<NotificationDropdownProps> = ({
   );
 };
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, fullWidthContent = false, contentContainer = 'main' }) => {
+  const ContentContainer = contentContainer;
   const { currentUser: user, refreshUser } = useAuth();
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const notifications = useNotificationsStore((state) => state.notifications);
@@ -1024,7 +1028,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         )}
 
         {/* Main Content Area */}
-        <main className="min-h-0 flex flex-1 flex-col overflow-hidden">
+        <ContentContainer className="min-h-0 flex flex-1 flex-col overflow-hidden">
           {showEmailVerificationBanner && user && (
             <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
               <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto flex w-full flex-col gap-3 text-sm font-semibold md:flex-row md:items-center md:justify-between`}>
@@ -1176,15 +1180,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
           </div>
 
-          <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[124px] sm:p-4 sm:pt-[128px] md:p-6 md:pt-3 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
-            <div className={`${isSimulationFullscreenPage ? 'mx-auto w-full max-w-7xl pb-6' : `${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-12`}`}>
-              {!isSimulationFullscreenPage && <AdBanner type="top" className="mb-8" />}
+          <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : fullWidthContent ? 'p-0 pt-[124px] sm:pt-[128px] md:pt-0' : 'p-3 pt-[124px] sm:p-4 sm:pt-[128px] md:p-6 md:pt-3 lg:p-8'} ${hasMobileTopHeader || fullWidthContent ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
+            <div className={`${isSimulationFullscreenPage ? 'mx-auto w-full max-w-7xl pb-6' : fullWidthContent ? 'w-full' : `${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-12`}`}>
+              {includePageExtras && !isSimulationFullscreenPage && <AdBanner type="top" className="mb-8" />}
               {children}
-              {!isSimulationFullscreenPage && <AdBanner type="bottom" className="mt-8" />}
-              {!isSimulationFullscreenPage && <Footer />}
+              {includePageExtras && !isSimulationFullscreenPage && <AdBanner type="bottom" className="mt-8" />}
+              {includePageExtras && !isSimulationFullscreenPage && <Footer />}
             </div>
           </div>
-        </main>
+        </ContentContainer>
 
         {isMobileMenuOpen && (
           <div

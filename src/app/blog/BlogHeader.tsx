@@ -11,10 +11,7 @@
 
 import Link from 'next/link';
 import { MapPin, Search } from 'lucide-react';
-import BrandLogo from '@/components/shared/layout/BrandLogo';
-import BlogAccountAction from './BlogAccountAction';
 import { fetchBlogCategoriesForServer, fetchBlogTagsForServer } from './blogServerData';
-import { publicRoutes } from '@services/routes/publicRoutes';
 
 export default async function BlogHeader() {
   const [categories, tags] = await Promise.all([
@@ -27,32 +24,9 @@ export default async function BlogHeader() {
     .slice(0, 10);
 
   return (
-    <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4 lg:px-8">
-        <div className="flex min-w-0 items-center gap-4 sm:gap-5">
-          <Link href="/" className="inline-flex min-w-0 items-center transition-opacity hover:opacity-90" aria-label="Ir para a página inicial do ConcursoMestre">
-            <BrandLogo width={180} variant="adaptive" alt="ConcursoMestre" />
-          </Link>
-          <span className="hidden border-l border-slate-200 pl-5 text-sm font-black uppercase tracking-[0.14em] text-slate-500 dark:border-slate-800 dark:text-slate-400 sm:block">
-            Notícias
-          </span>
-        </div>
-        <nav className="flex shrink-0 items-center gap-1 text-sm font-bold sm:gap-2" aria-label="Navegação principal do blog">
-          <Link href={publicRoutes.questions.index()} className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 md:inline-flex">
-            Questões
-          </Link>
-          <Link href={publicRoutes.exams.index()} className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 md:inline-flex">
-            Provas
-          </Link>
-          <Link href="/blog" className="hidden px-3 py-2 text-slate-700 hover:text-indigo-600 dark:text-slate-200 sm:inline-flex">
-            Notícias
-          </Link>
-          <BlogAccountAction />
-        </nav>
-      </div>
-
-      <div className="border-t border-slate-100 dark:border-slate-900">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-3 lg:flex-row lg:items-center lg:px-8">
+    <section aria-label="Navegação do blog" className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+      <div className="border-b border-slate-100 dark:border-slate-900">
+        <div className="mx-auto flex w-full flex-col gap-3 px-5 py-3 md:max-w-7xl md:flex-row md:items-center md:px-0">
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pb-1 lg:pb-0" aria-label="Editorias do blog">
             <Link href="/blog" className="whitespace-nowrap rounded-md bg-slate-950 px-3 py-2 text-xs font-black uppercase text-white dark:bg-white dark:text-slate-950">
               Últimas
@@ -83,7 +57,7 @@ export default async function BlogHeader() {
           </form>
         </div>
         {regionalTags.length > 0 ? (
-          <nav className="mx-auto flex max-w-7xl items-center gap-2 overflow-x-auto border-t border-slate-100 px-5 py-2 text-xs dark:border-slate-900 lg:px-8" aria-label="Notícias por região">
+          <nav className="mx-auto flex w-full items-center gap-2 overflow-x-auto px-5 py-2 text-xs md:max-w-7xl md:px-0" aria-label="Notícias por região">
             <span className="inline-flex shrink-0 items-center gap-1 font-black uppercase text-slate-400"><MapPin size={13} /> Regiões</span>
             {regionalTags.map((tag) => (
               <Link key={tag.id} href={`/blog/tag/${tag.slug}`} className="shrink-0 rounded-md px-2 py-1 font-bold text-slate-600 hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-300 dark:hover:bg-slate-900">
@@ -93,6 +67,6 @@ export default async function BlogHeader() {
           </nav>
         ) : null}
       </div>
-    </header>
+    </section>
   );
 }
