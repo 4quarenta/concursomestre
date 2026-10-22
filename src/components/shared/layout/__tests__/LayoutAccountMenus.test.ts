@@ -18,11 +18,21 @@ describe('platform account menus', () => {
     expect(source).not.toContain('navItems.push({');
   });
 
-  it('puts editorial links and account logout in their respective menus', () => {
-    for (const path of ['/novidades', '/blog', '/materiais', '/bancas']) {
+  it('keeps the account dropdown compact and limited to account actions', () => {
+    expect(source).toContain('min-w-48 rounded-md');
+    expect(source).not.toContain('360px');
+    for (const item of ['Níveis XP', 'Assinatura', 'Histórico de suporte', 'Transações', 'Meus materiais', 'Minhas anotações', 'Privacidade']) {
+      expect(source).not.toContain(`label: '${item}'`);
+    }
+    expect(source).toContain('Meu perfil');
+    expect(source).toContain('Sair da conta');
+  });
+
+  it('uses the correct editorial destinations in the More menu', () => {
+    for (const path of ['/novidades', '/blog', '/disciplinas', '/bancas']) {
       expect(source).toContain(`href: '${path}'`);
     }
-    expect(source).toContain('Sair da conta');
+    expect(source).not.toContain("href: '/materiais'");
     expect(source).toContain("href=\"/support\"");
   });
 });

@@ -70,7 +70,6 @@ type ProfileQuickMenuItem = {
   tab?: ProfileTab;
   href?: string;
   label: string;
-  description: string;
   icon: LucideIcon;
 };
 
@@ -525,70 +524,16 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
       {
         tab: 'personal',
         label: 'Meu perfil',
-        description: 'Foto, dados da conta e cartões salvos.',
         icon: User,
       },
       ...(canOpenAdminPanel ? [{
         href: buildAdminPath('panel', 'dashboard'),
         label: 'Painel Admin',
-        description: 'Administração e ferramentas da plataforma.',
         icon: ShieldAlert,
       }] : []),
-      {
-        href: '/levels',
-        label: 'Níveis XP',
-        description: 'Regras de XP e ranking de estudo.',
-        icon: Crown,
-      },
-      {
-        tab: 'billing',
-        label: 'Assinatura',
-        description: 'Plano ativo, renovação e cobranças.',
-        icon: CreditCard,
-      },
-      {
-        tab: 'support-history',
-        label: 'Histórico de suporte',
-        description: 'Chamados, sugestões e respostas.',
-        icon: MessageSquare,
-      },
-      {
-        tab: 'billing-history',
-        label: 'Transações',
-        description: 'Histórico financeiro e comprovantes.',
-        icon: BarChart3,
-      },
-      {
-        tab: 'materials',
-        label: 'Meus materiais',
-        description: 'Materiais adquiridos e downloads.',
-        icon: Package,
-      },
-      {
-        tab: 'notebook',
-        label: 'Minhas anotações',
-        description: 'Anotações e registros salvos.',
-        icon: StickyNote,
-      },
-      {
-        tab: 'security',
-        label: 'Privacidade',
-        description: 'Segurança, proteção e acesso.',
-        icon: ShieldCheck,
-      },
     ];
-
-    if (referralEnabled) {
-      items.splice(5, 0, {
-        tab: 'referral',
-        label: 'Indique e ganhe',
-        description: 'Convites, benefícios e afiliação.',
-        icon: Gift,
-      });
-    }
-
     return items;
-  }, [canOpenAdminPanel, referralEnabled]);
+  }, [canOpenAdminPanel]);
 
   const getPlanStatusTheme = (tier: number) => {
     switch (tier) {
@@ -668,7 +613,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
         {[
           { label: 'Novidades', href: '/novidades', icon: Rocket },
           { label: 'Blog', href: '/blog', icon: Newspaper },
-          { label: 'Materiais', href: '/materiais', icon: Package },
+          { label: 'Disciplinas', href: '/disciplinas', icon: BookOpen },
           { label: 'Bancas', href: '/bancas', icon: Landmark },
         ].map(({ label, href, icon: Icon }) => (
           <Link
@@ -742,15 +687,7 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
   };
 
   const renderProfileQuickMenu = () => user && isProfileMenuOpen ? (
-    <div className="absolute right-0 top-full z-50 mt-2 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-300/50 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/40">
-      <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-        <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{userFirstName}</p>
-        <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{user.email || 'Conta conectada'}</p>
-        <span className="mt-2 inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200">
-          Nível {userLevel}
-        </span>
-      </div>
-      <div className="max-h-[min(65vh,520px)] overflow-y-auto p-1.5">
+    <div className="absolute right-0 top-full z-50 mt-1 min-w-48 rounded-md border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
         {profileQuickMenuItems.map((item) => {
           const itemPath = item.href || buildProfilePath(item.tab || 'personal');
           const isCurrent = item.href?.startsWith('/admin')
@@ -762,36 +699,28 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
               key={item.href || item.tab || item.label}
               type="button"
               onClick={() => handleProfileQuickMenuNavigate(item)}
-              className={`flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${
+              className={`flex h-9 w-full items-center gap-2 rounded px-2 text-left text-[13px] transition-colors ${
                 isCurrent
                   ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-200'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'
               }`}
             >
-              <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
-                isCurrent ? 'bg-white text-indigo-600 dark:bg-slate-900 dark:text-indigo-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
-              }`}>
-                <item.icon size={16} aria-hidden="true" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">{item.label}</span>
-                <span className="mt-0.5 block text-xs leading-4 text-slate-500 dark:text-slate-400">{item.description}</span>
-              </span>
+              <item.icon size={16} aria-hidden="true" />
+              <span className="min-w-0 truncate">{item.label}</span>
               {item.href?.startsWith('/admin') && adminMenuBadgeCount > 0 ? (
                 <span className="ml-auto rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">{adminMenuBadgeCount > 99 ? '99+' : adminMenuBadgeCount}</span>
               ) : null}
             </button>
           );
         })}
-      </div>
-      <div className="border-t border-slate-100 p-1.5 dark:border-slate-800">
+      <div className="mt-1 border-t border-slate-100 pt-1 dark:border-slate-800">
         <LogoutConfirmButton>
           {({ isLoggingOut, openConfirm }) => (
             <button
               type="button"
               onClick={openConfirm}
               disabled={isLoggingOut}
-              className="flex h-10 w-full items-center gap-2 rounded-md px-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-70 dark:text-slate-300 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+              className="flex h-9 w-full items-center gap-2 rounded px-2 text-[13px] text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-70 dark:text-slate-300 dark:hover:bg-red-900/20 dark:hover:text-red-300"
             >
               <LogOut size={16} aria-hidden="true" />
               {isLoggingOut ? 'Saindo...' : 'Sair da conta'}
