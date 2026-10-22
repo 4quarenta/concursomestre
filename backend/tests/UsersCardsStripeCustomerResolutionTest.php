@@ -36,6 +36,38 @@ stripeCustomerResolutionAssert(
 );
 
 $stripe->customers = new class {
+    public function retrieve(string $customerId, array $params): object
+    {
+        if ($customerId === 'cus_stale') {
+            throw new RuntimeException('No such customer');
+        }
+
+        return (object) ['id' => $customerId, 'deleted' => false];
+    }
+
+    public function all(array $params): object
+    {
+        return new class {
+            public function autoPagingIterator(): array
+            {
+                return [
+                    (object) [
+                        'id' => 'cus_verified',
+                        'email' => 'person@example.com',
+                        'metadata' => (object) ['user_id' => 'user-1'],
+                    ],
+                ];
+            }
+        };
+    }
+};
+
+stripeCustomerResolutionAssert(
+    resolveVerifiedStripeCustomerIdForReadOnly($stripe, 'user-1', 'person@example.com', ['cus_stale']) === 'cus_verified',
+    'A leitura deve ignorar um ID expirado e localizar um customer atual sem criar recursos.'
+);
+
+$stripe->customers = new class {
     public function all(array $params): object
     {
         return new class {

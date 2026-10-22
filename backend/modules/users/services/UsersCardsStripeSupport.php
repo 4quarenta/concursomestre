@@ -129,18 +129,49 @@ function getStripeCustomerIdForUserReadOnly(PDO $db, string $userId): ?string
         return null;
     }
 
-    $customerId = findStripeSubscriptionBackedCustomerId($db, $userId);
-    if ($customerId) {
-        return $customerId;
+    $candidateIds = array_values(array_unique(array_filter([
+        trim((string) ($user['stripe_customer_id'] ?? '')),
+        findStripeSubscriptionBackedCustomerId($db, $userId),
+        findStripeCustomerIdFromLocalProviderHistory($db, $userId),
+    ])));
+
+    try {
+        return resolveVerifiedStripeCustomerIdForReadOnly(
+            getStripeClient(),
+            $userId,
+            (string) ($user['email'] ?? ''),
+            $candidateIds
+        );
+    } catch (Throwable $error) {
+        return $candidateIds[0] ?? null;
+    }
+}
+
+/**
+ * Valida referencias locais com consultas Stripe somente leitura e tenta
+ * localizar um customer existente antes de usar o cache local.
+ *
+ * @since 1.0.0
+ */
+function resolveVerifiedStripeCustomerIdForReadOnly($stripe, string $userId, string $email, array $candidateIds): ?string
+{
+    foreach ($candidateIds as $candidateId) {
+        $candidateId = trim((string) $candidateId);
+        if ($candidateId === '') {
+            continue;
+        }
+
+        try {
+            $customer = $stripe->customers->retrieve($candidateId, []);
+            if ($customer && empty($customer->deleted)) {
+                return $candidateId;
+            }
+        } catch (Throwable $error) {
+            // Historical local references can belong to a removed Stripe customer.
+        }
     }
 
-    $customerId = trim((string) ($user['stripe_customer_id'] ?? ''));
-    if ($customerId !== '') {
-        return $customerId;
-    }
-
-    $customerId = findStripeCustomerIdFromLocalProviderHistory($db, $userId);
-    return $customerId ? (string) $customerId : null;
+    return findExistingStripeCustomerForUser($stripe, $userId, $email);
 }
 
 /**
