@@ -91,12 +91,14 @@ class ExamsService
         $state = strtoupper(trim((string) ($query['state'] ?? '')));
         $state = preg_match('/^[A-Z]{2}$/', $state) === 1 ? $state : '';
         $region = trim((string) ($query['region'] ?? ''));
+        $search = mb_substr(trim((string) ($query['search'] ?? '')), 0, 120, 'UTF-8');
         $stateCodes = $state !== '' ? [$state] : ExamLocationClassifier::stateCodesForRegion($region);
         $result = $this->repository->listPublicDirectory([
             'limit' => $limit,
             'offset' => ($page - 1) * $limit,
             'year' => $year,
             'state_codes' => $stateCodes,
+            'search' => $search,
         ]);
         $rows = is_array($result['rows'] ?? null) ? $result['rows'] : [];
 

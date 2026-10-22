@@ -117,6 +117,7 @@ class ExamsRepository
         $limit = max(1, min(48, (int) ($options['limit'] ?? 12)));
         $offset = max(0, (int) ($options['offset'] ?? 0));
         $year = (int) ($options['year'] ?? 0);
+        $search = trim((string) ($options['search'] ?? ''));
         $stateCodes = array_values(array_unique(array_filter(array_map(
             static fn (mixed $value): string => strtoupper(trim((string) $value)),
             is_array($options['state_codes'] ?? null) ? $options['state_codes'] : []
@@ -131,6 +132,24 @@ class ExamsRepository
         if ($year >= 1900 && $year <= 2200) {
             $where[] = 'p.ano = :directory_year';
             $params[':directory_year'] = $year;
+        }
+        if ($search !== '') {
+            $where[] = "(
+                p.nome LIKE :directory_search_name
+                OR p.slug LIKE :directory_search_slug
+                OR EXISTS (
+                    SELECT 1
+                    FROM prova_filters pf_search
+                    INNER JOIN filters f_search ON f_search.id = pf_search.filter_id
+                    WHERE pf_search.prova_id = p.id
+                      AND (f_search.name LIKE :directory_search_filter OR f_search.acronym LIKE :directory_search_acronym)
+                )
+            )";
+            $searchLike = '%' . $search . '%';
+            $params[':directory_search_name'] = $searchLike;
+            $params[':directory_search_slug'] = $searchLike;
+            $params[':directory_search_filter'] = $searchLike;
+            $params[':directory_search_acronym'] = $searchLike;
         }
         if ($stateCodes !== []) {
             $placeholders = [];

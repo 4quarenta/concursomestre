@@ -4,6 +4,7 @@ export interface ExamDirectoryFilters {
   year: string;
   region: string;
   state: string;
+  search?: string;
   page?: number;
 }
 
@@ -35,11 +36,15 @@ export const paginateExamDirectory = <T,>(items: T[], page: number, pageSize = 1
 export const filterExamDirectory = (
   items: PublicExamDirectoryItem[],
   filters: ExamDirectoryFilters,
-): PublicExamDirectoryItem[] => items.filter((item) => (
-  (!filters.year || String(item.year) === filters.year)
-  && (!filters.region || item.region === filters.region)
-  && (!filters.state || item.stateCode === filters.state)
-));
+): PublicExamDirectoryItem[] => {
+  const search = filters.search?.trim().toLocaleLowerCase('pt-BR') || '';
+  return items.filter((item) => (
+    (!search || [item.title, item.board || '', ...item.organizations].some((value) => value.toLocaleLowerCase('pt-BR').includes(search)))
+    && (!filters.year || String(item.year) === filters.year)
+    && (!filters.region || item.region === filters.region)
+    && (!filters.state || item.stateCode === filters.state)
+  ));
+};
 
 export const groupExamDirectoryByYear = (
   items: PublicExamDirectoryItem[],

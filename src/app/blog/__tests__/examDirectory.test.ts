@@ -41,6 +41,17 @@ describe('blog exam directory', () => {
     expect(filterExamDirectory(items, { year: '2026', region: 'Nordeste', state: '' })).toEqual([]);
   });
 
+  it('filters the public directory by title, board and organization', () => {
+    const searchable = [
+      exam({ id: 1, title: 'Analista Tributário', board: 'FGV', organizations: ['Receita Estadual'] }),
+      exam({ id: 2, title: 'Técnico Administrativo', board: 'Cebraspe', organizations: ['Universidade Federal'] }),
+    ];
+
+    expect(filterExamDirectory(searchable, { year: '', region: '', state: '', search: 'tributário' })).toEqual([searchable[0]]);
+    expect(filterExamDirectory(searchable, { year: '', region: '', state: '', search: 'cebraspe' })).toEqual([searchable[1]]);
+    expect(filterExamDirectory(searchable, { year: '', region: '', state: '', search: 'universidade federal' })).toEqual([searchable[1]]);
+  });
+
   it('groups years in descending order', () => {
     expect(groupExamDirectoryByYear(items).map((group) => group.year)).toEqual([2026, 2025]);
   });

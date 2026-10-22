@@ -37,6 +37,7 @@ export default function BlogExamDirectory({
   const visible = pagination.items;
   const groups = groupExamDirectoryByYear(visible);
   const pageHref = (page: number) => publicRoutes.exams.index({
+      ...(filters.search ? { busca: filters.search } : {}),
       ...(filters.year ? { ano: filters.year } : {}),
       ...(filters.region ? { regiao: filters.region } : {}),
       ...(filters.state ? { estado: filters.state } : {}),
@@ -72,7 +73,11 @@ export default function BlogExamDirectory({
             ))}
           </div>
         ) : (
-          <form action={publicRoutes.exams.index()} method="get" className="mt-6 grid gap-4 border-b border-slate-200 pb-6 sm:grid-cols-3 lg:grid-cols-[1fr_1fr_1fr_auto] dark:border-slate-800">
+          <form action={publicRoutes.exams.index()} method="get" className="mt-6 grid gap-4 border-b border-slate-200 pb-6 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr_auto] dark:border-slate-800">
+            <label className="text-xs font-black uppercase text-slate-500">
+              Buscar provas
+              <input name="busca" defaultValue={filters.search || ''} placeholder="Concurso, cargo, banca ou órgão" className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold normal-case text-slate-800 placeholder:font-normal dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+            </label>
             <label className="text-xs font-black uppercase text-slate-500">
               Ano
               <select name="ano" defaultValue={filters.year} className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white">

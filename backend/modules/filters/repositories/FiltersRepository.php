@@ -303,9 +303,11 @@ class FiltersRepository
         string $letter = ''
     ): array {
         $isSubject = $directoryType === 'subjects';
+        $isTopic = $directoryType === 'topics';
         $isOrganization = $directoryType === 'organizations';
         $taxonomyClause = match ($directoryType) {
             'subjects' => "f.type = 'assunto' AND (f.taxonomy_level = 'materia' OR f.meta_materia = 1)",
+            'topics' => "f.type = 'assunto' AND COALESCE(f.taxonomy_level, '') IN ('topico', 'assunto') AND COALESCE(f.meta_materia, 0) <> 1",
             'organizations' => "f.type = 'orgao' AND COALESCE(f.taxonomy_level, '') NOT IN ('pending', 'internal', 'technical')",
             default => "f.type = 'banca'",
         };
@@ -330,7 +332,7 @@ class FiltersRepository
             AND eligible_q.visibility_status = 'public'
             AND eligible_q.published_sort_at IS NOT NULL
             AND eligible_q.published_sort_at <= NOW()";
-        $examCountSelect = $isSubject
+        $examCountSelect = $isSubject || $isTopic
             ? '0 AS exam_count'
             : 'COALESCE(ec.exam_count, 0) AS exam_count';
 
@@ -360,7 +362,7 @@ class FiltersRepository
                     WHERE eligible_qf.filter_id = f.id
                  )";
         $questionCountsJoin = $isOrganization ? 'LEFT JOIN' : 'INNER JOIN';
-        $examCountsCte = $isSubject ? '' : ", exam_counts AS (
+        $examCountsCte = $isSubject || $isTopic ? '' : ", exam_counts AS (
                 SELECT pf.filter_id, COUNT(DISTINCT p.id) AS exam_count
                 FROM page_filters f
                 INNER JOIN prova_filters pf ON pf.filter_id = f.id
@@ -371,7 +373,7 @@ class FiltersRepository
                     AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())
                 GROUP BY pf.filter_id
              )";
-        $examCountsJoin = $isSubject ? '' : 'LEFT JOIN exam_counts ec ON ec.filter_id = f.id';
+        $examCountsJoin = $isSubject || $isTopic ? '' : 'LEFT JOIN exam_counts ec ON ec.filter_id = f.id';
 
         $query = $this->db->prepare(
             "WITH page_filters AS (

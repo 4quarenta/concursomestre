@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
-import PracticePage from '../practice/PracticePage';
 import { buildPublicPageMetadata } from '../seoMetadata';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import GlobalSearchResults from './GlobalSearchResults';
+import { fetchGlobalSearchResults } from './globalSearchServerData';
 
 type SearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -10,8 +11,8 @@ type SearchPageProps = {
 export const dynamic = 'force-dynamic';
 
 const PATH = publicRoutes.search.index();
-const TITLE = 'Busca de questões de concursos';
-const DESCRIPTION = 'Pesquise questões públicas por palavra-chave e refine os resultados com os filtros de prática do ConcursoMestre.';
+const TITLE = 'Busca global no ConcursoMestre';
+const DESCRIPTION = 'Pesquise questões, provas, notícias, disciplinas, assuntos e outros conteúdos públicos do ConcursoMestre.';
 
 export const metadata: Metadata = buildPublicPageMetadata({
   title: TITLE,
@@ -21,21 +22,9 @@ export const metadata: Metadata = buildPublicPageMetadata({
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const query = Array.isArray(resolvedSearchParams.q) ? resolvedSearchParams.q[0] : resolvedSearchParams.q;
-  const normalizedSearchParams = query && !resolvedSearchParams.keyword
-    ? { ...resolvedSearchParams, keyword: query }
-    : resolvedSearchParams;
+  const rawQuery = resolvedSearchParams.q ?? resolvedSearchParams.keyword ?? resolvedSearchParams.busca;
+  const query = (Array.isArray(rawQuery) ? rawQuery[0] : rawQuery || '').trim().slice(0, 120);
+  const results = await fetchGlobalSearchResults(query);
 
-  return (
-    <PracticePage
-      searchParams={Promise.resolve(normalizedSearchParams)}
-      semanticPage={{
-        path: PATH,
-        title: TITLE,
-        description: DESCRIPTION,
-        eyebrow: 'Busca no banco de questões',
-        breadcrumbLabel: 'Busca',
-      }}
-    />
-  );
+  return <GlobalSearchResults query={query} results={results} />;
 }

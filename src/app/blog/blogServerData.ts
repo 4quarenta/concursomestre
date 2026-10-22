@@ -184,6 +184,7 @@ export const fetchBlogTaxonomyArchiveForServer = cache(async (
 export const fetchPublicExamDirectoryPageForServer = cache(async (params: {
   page?: number;
   limit?: number;
+  search?: string;
   year?: string;
   region?: string;
   state?: string;
@@ -195,6 +196,7 @@ export const fetchPublicExamDirectoryPageForServer = cache(async (params: {
     ...(params.year ? { year: params.year } : {}),
     ...(params.region ? { region: params.region } : {}),
     ...(params.state ? { state: params.state } : {}),
+    ...(params.search ? { search: params.search.slice(0, 120) } : {}),
   });
   return {
     items: Array.isArray(payload?.items) ? payload.items : [],

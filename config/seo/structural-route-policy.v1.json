@@ -14,6 +14,10 @@
       "classification": "search",
       "multiValue": false
     },
+    "search": {
+      "classification": "search",
+      "multiValue": false
+    },
     "status": {
       "classification": "facet",
       "multiValue": false
@@ -360,7 +364,7 @@
       "supportsLanding": true,
       "supportsEditorialPromotion": false,
       "defaultIndexability": "INDEX",
-      "allowedParameters": ["pagina", "ano", "year", "banca", "orgao", "cargo", "regiao", "estado", "utm_*", "gclid", "fbclid"],
+      "allowedParameters": ["pagina", "ano", "year", "banca", "orgao", "cargo", "regiao", "estado", "busca", "search", "utm_*", "gclid", "fbclid"],
       "paginationPolicy": "query_page"
     },
     {

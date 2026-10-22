@@ -6,6 +6,7 @@ import {
 } from '@services/seo/seoEnvelope';
 
 export type PublicTaxonomyDirectoryKind = 'subjects' | 'boards' | 'organizations';
+export type PublicTaxonomySearchKind = PublicTaxonomyDirectoryKind | 'topics';
 
 export type PublicTaxonomyDirectoryItem = SeoEnvelopeCarrier & {
   id: number;
@@ -84,7 +85,7 @@ export const fetchPublicTaxonomyDirectory = async ({
   search,
   letter,
 }: {
-  type: PublicTaxonomyDirectoryKind;
+  type: PublicTaxonomySearchKind;
   page: number;
   search: string;
   letter: string;

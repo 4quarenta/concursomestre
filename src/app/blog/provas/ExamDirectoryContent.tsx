@@ -70,6 +70,7 @@ export default async function ExamDirectoryContent({ searchParams, platformShell
     permanentRedirect(publicRoutes.exams.index(normalizedQuery));
   }
   const filters = {
+    search: firstValue(params.busca).trim().slice(0, 120),
     year: /^\d{4}$/.test(firstValue(params.ano)) ? firstValue(params.ano) : '',
     region: firstValue(params.regiao).slice(0, 40),
     state: /^[A-Z]{2}$/.test(firstValue(params.estado)) ? firstValue(params.estado) : '',
@@ -78,6 +79,7 @@ export default async function ExamDirectoryContent({ searchParams, platformShell
   const directory = await fetchPublicExamDirectoryPageForServer({
     page: filters.page,
     limit: 12,
+    search: filters.search,
     year: filters.year,
     region: filters.region,
     state: filters.state,

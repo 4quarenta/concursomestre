@@ -210,7 +210,7 @@ class FiltersService
         string $search = '',
         string $letter = ''
     ): array {
-        if (!in_array($directoryType, ['subjects', 'boards', 'organizations'], true)) {
+        if (!in_array($directoryType, ['subjects', 'topics', 'boards', 'organizations'], true)) {
             throw new InvalidArgumentException('Tipo de diretorio publico invalido.');
         }
 
@@ -249,7 +249,8 @@ class FiltersService
                 return $this->publicSeoEnvelope->attachOrganization($item);
             }
 
-            $taxonomyPayload = $this->publicSeoEnvelope->attachTaxonomy($item + ['taxonomyLevel' => 'materia']);
+            $taxonomyLevel = $directoryType === 'topics' ? 'topico' : 'materia';
+            $taxonomyPayload = $this->publicSeoEnvelope->attachTaxonomy($item + ['taxonomyLevel' => $taxonomyLevel]);
             unset($taxonomyPayload['taxonomyLevel']);
             return $taxonomyPayload;
         }, $rows);
