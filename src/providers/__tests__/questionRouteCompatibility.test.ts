@@ -29,9 +29,22 @@ describe('question route compatibility', () => {
 
   it('keeps all route-sensitive providers wired to the shared compatibility policy', () => {
     const root = process.cwd();
-    for (const file of ['NextRouteFrame.tsx', 'StudyTrackerProvider.tsx', 'NotificationsProvider.tsx']) {
+    for (const file of ['NextRouteFrame.tsx', 'StudyTrackerProvider.tsx']) {
       const source = fs.readFileSync(path.join(root, 'src', 'providers', file), 'utf8');
       expect(source).toContain('resolveQuestionCollectionRouteCompatibility');
     }
+  });
+
+  it('loads notifications on demand instead of globally polling', () => {
+    const root = process.cwd();
+    const provider = fs.readFileSync(path.join(root, 'src', 'providers', 'NotificationsProvider.tsx'), 'utf8');
+    const layout = fs.readFileSync(path.join(root, 'src', 'components', 'shared', 'layout', 'Layout.tsx'), 'utf8');
+
+    expect(provider).toContain('refreshNotifications');
+    expect(provider).not.toContain('createVisibilityAwarePoller');
+    expect(provider).not.toContain('setInterval(');
+    expect(layout).toContain("href: '/notifications'");
+    expect(layout).toContain('void refreshNotifications(true)');
+    expect(layout).not.toContain('aria-label="Abrir notificações"');
   });
 });

@@ -11,14 +11,13 @@
 
 
 import React, { useState } from 'react';
-import Image from 'next/image';
-import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileQuestion, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, Landmark, Newspaper, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, Sun, Moon, Lock, HelpCircle, Rocket, Crown, FileQuestion, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, Landmark, Newspaper, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import PromoBanner from '../feedback/PromoBanner';
-import { Notification, ErrorReport, SystemSettings } from '@types';
+import { ErrorReport, SystemSettings } from '@types';
 import Footer from './Footer';
 import AdBanner from '../feedback/AdBanner';
 import { useToast } from '@providers/ToastProvider';
@@ -42,9 +41,8 @@ import {
 import type { PlanBenefitKey } from '@types';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
-import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
+import { useNotificationsLoader } from '@providers/NotificationsProvider';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
-import { clientLog } from '@services/monitoring/clientLog';
 import UserAvatar from '../ui/UserAvatar';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import { isSimulationImmersivePath, SIMULATION_IMMERSIVE_EVENT } from '@services/simulations/simulationLayout';
@@ -106,146 +104,16 @@ const clearEmailVerificationDismissals = () => {
   }
 };
 
-type NotificationDropdownProps = {
-  notifications: Notification[];
-  unreadCount: number;
-  onClose: () => void;
-  onNotificationClick: (notification: Notification) => void;
-  onMarkAsRead: (notificationId: string) => void;
-  onMarkAllAsRead: () => void;
-  onOpenAll: () => void;
-};
-
-const formatNotificationDateTime = (timestamp: string | number | Date): string => {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  return date.toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-};
-
-const NotificationDropdownPanel: React.FC<NotificationDropdownProps> = ({
-  notifications,
-  unreadCount,
-  onClose,
-  onNotificationClick,
-  onMarkAsRead,
-  onMarkAllAsRead,
-  onOpenAll,
-}) => {
-  const visibleNotifications = notifications.filter((notification) => !notification.deletedAt);
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'social': return MessageSquare;
-      case 'report': return Shield;
-      case 'marketplace': return ShoppingBag;
-      case 'system':
-      default: return Info;
-    }
-  };
-
-  return (
-    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in">
-      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
-        {unreadCount > 0 ? (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onMarkAllAsRead();
-            }}
-            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
-          >
-            <Check size={10} />
-            Marcar vistas
-          </button>
-        ) : null}
-      </div>
-      <div className="max-h-80 overflow-y-auto no-scrollbar">
-        {visibleNotifications.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
-        ) : (
-          visibleNotifications.slice(0, 5).map((notification) => {
-            const CategoryIcon = getCategoryIcon(notification.category);
-            return (
-              <div
-                key={notification.id}
-                onClick={() => {
-                  if (!notification.link) {
-                    onMarkAsRead(notification.id);
-                  } else {
-                    onNotificationClick(notification);
-                  }
-                }}
-                className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!notification.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}
-              >
-                <div className="flex gap-3">
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${notification.category === 'social' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : notification.category === 'report' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : notification.category === 'marketplace' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
-                    <CategoryIcon size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className={`text-xs font-bold ${notification.type === 'error' ? 'text-red-600 dark:text-red-400' : notification.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{notification.title}</span>
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{formatNotificationDateTime(notification.timestamp)}</span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{notification.message}</p>
-                    {notification.evidenceUrl ? (
-                      <div className="mt-3">
-                        <p className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1"><Info size={10} /> Prova Anexada:</p>
-                        <Image
-                          src={notification.evidenceUrl}
-                          alt="Prova"
-                          width={640}
-                          height={360}
-                          unoptimized
-                          className="rounded-xl border border-slate-200 dark:border-slate-700 max-h-48 w-full object-contain bg-slate-50 dark:bg-slate-800"
-                        />
-                      </div>
-                    ) : null}
-                    {notification.link ? <p className="text-[9px] text-indigo-500 dark:text-indigo-400 font-bold uppercase mt-1 flex items-center gap-1">Ver <ArrowRight size={10} /></p> : null}
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
-        <button
-          onClick={() => {
-            onClose();
-            onOpenAll();
-          }}
-          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
-        >
-          Ver Todas <ArrowRight size={12} />
-        </button>
-      </div>
-    </div>
-  );
-};
-
 const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, fullWidthContent = false, contentContainer = 'main' }) => {
   const ContentContainer = contentContainer;
   const { currentUser: user, refreshUser } = useAuth();
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const notifications = useNotificationsStore((state) => state.notifications);
-  const { markNotificationAsRead, markAllNotificationsAsRead } = useNotificationsActions();
+  const { refreshNotifications } = useNotificationsLoader();
   const reports = useAdminDataStore((state) => state.reports);
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
   const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
@@ -527,6 +395,11 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
         label: 'Meu perfil',
         icon: User,
       },
+      {
+        href: '/notifications',
+        label: 'Notificações',
+        icon: Bell,
+      },
       ...(canOpenAdminPanel ? [{
         href: buildAdminPath('panel', 'dashboard'),
         label: 'Painel Admin',
@@ -641,37 +514,6 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
     </>
   );
 
-  const handleNotificationClick = (n: Notification) => {
-    markNotificationAsRead(n.id);
-    if (n.link) {
-      router.push(n.link);
-      if (n.link.includes('#')) {
-        const id = n.link.split('#')[1];
-        setTimeout(() => {
-          const el = document.getElementById(id);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el.classList.add('ring-4', 'ring-indigo-500/50', 'transition-all');
-            setTimeout(() => el.classList.remove('ring-4', 'ring-indigo-500/50'), 2000);
-          }
-        }, 600);
-      }
-    }
-    setIsNotifOpen(false);
-  };
-
-  const handleNotificationsToggle = () => {
-    setIsNotifOpen((current) => {
-      const next = !current;
-      if (next && unreadCount > 0) {
-        void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined).catch((error) => {
-          clientLog.warn('[notifications] Nao foi possivel marcar notificacoes como vistas ao abrir o box.', error);
-        });
-      }
-      return next;
-    });
-  };
-
   const handleProfileMenuToggle = () => {
     if (!user) {
       window.sessionStorage.setItem('redirectAfterLogin', location.pathname + location.search + location.hash);
@@ -680,6 +522,9 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
     }
 
     setIsProfileMenuOpen((current) => !current);
+    if (!isProfileMenuOpen) {
+      void refreshNotifications(true);
+    }
   };
 
   const handleProfileQuickMenuNavigate = (item: ProfileQuickMenuItem) => {
@@ -731,6 +576,9 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
               <span className="min-w-0 truncate">{item.label}</span>
               {item.href?.startsWith('/admin') && adminMenuBadgeCount > 0 ? (
                 <span className="ml-auto rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">{adminMenuBadgeCount > 99 ? '99+' : adminMenuBadgeCount}</span>
+              ) : null}
+              {item.href === '/notifications' && unreadCount > 0 ? (
+                <span className="ml-auto rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">{unreadCount > 99 ? '99+' : unreadCount}</span>
               ) : null}
             </button>
           );
@@ -831,28 +679,6 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                   <Sun size={20} className="hidden dark:block" />
                 </span>
               </button>
-              {user && (
-                <div className="relative">
-                  <button onClick={handleNotificationsToggle} className="p-1 relative" aria-label="Abrir notificações">
-                    <Bell size={20} className="text-slate-600 dark:text-slate-400" />
-                    {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />}
-                  </button>
-                  {isNotifOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                      <NotificationDropdownPanel
-                        notifications={notifications}
-                        unreadCount={unreadCount}
-                        onClose={() => setIsNotifOpen(false)}
-                        onNotificationClick={handleNotificationClick}
-                        onMarkAsRead={markNotificationAsRead}
-                        onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
-                        onOpenAll={() => router.push('/notifications')}
-                      />
-                    </>
-                  )}
-                </div>
-              )}
               {showHomeVisitorActions ? renderHomeVisitorActions(true) : (
                 <div ref={mobileProfileMenuRef} className="relative">
                   <button
@@ -1099,35 +925,6 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
                 {theme === 'light' ? <Moon size={19} aria-hidden="true" /> : <Sun size={19} aria-hidden="true" />}
               </button>
 
-              {/* Sempre mostrar notificações se o usuário estiver logado, independente da feature flag global, se o usuário pediu para restaurar */}
-              {user && (
-                <div className="relative h-9 w-9 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleNotificationsToggle}
-                    className="relative inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-white hover:text-indigo-600 hover:shadow-sm dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
-                    aria-label="Abrir notificações"
-                    aria-expanded={isNotifOpen}
-                  >
-                    <Bell size={20} className="block shrink-0" aria-hidden="true" />
-                    {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-950" />}
-                  </button>
-                  {isNotifOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                      <NotificationDropdownPanel
-                        notifications={notifications}
-                        unreadCount={unreadCount}
-                        onClose={() => setIsNotifOpen(false)}
-                        onNotificationClick={handleNotificationClick}
-                        onMarkAsRead={markNotificationAsRead}
-                        onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
-                        onOpenAll={() => router.push('/notifications')}
-                      />
-                    </>
-                  )}
-                </div>
-              )}
               {showHomeVisitorActions ? renderHomeVisitorActions() : (
                 <div ref={profileMenuRef} className="relative ml-1 flex items-center gap-[18px]">
                   <button
