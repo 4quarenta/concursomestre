@@ -1361,11 +1361,7 @@ class SubscriptionsService
         ]);
     }
 
-    /**
-     * Atualiza a configuracao de renovacao automatica da assinatura.
-     *
-     * @since 1.0.0
-     */
+    /** Atualiza a renovacao apenas para assinaturas com cobranca. */
     public function updateRenewal(string $userId, array $data): array
     {
         $payload = $this->validator->validateRenewalPayload($data);
@@ -1904,11 +1900,7 @@ class SubscriptionsService
         ];
     }
 
-    /**
-     * Solicita o cancelamento da assinatura do usuario.
-     *
-     * @since 1.0.0
-     */
+    /** Solicita cancelamento pago, preservando concessoes gratuitas. */
     public function cancelSubscription(string $userId, array $data): array
     {
         $payload = $this->validator->validateCancelPayload($data);
