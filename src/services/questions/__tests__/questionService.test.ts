@@ -16,6 +16,7 @@ type MockApiResponse = {
   success?: boolean;
   message?: string;
   error?: string;
+  response?: { data?: { message?: string } };
 } | null | undefined;
 
 const { mockGet, mockPost } = vi.hoisted(() => ({
@@ -48,6 +49,10 @@ vi.mock('@services/api', () => ({
     return response ?? fallback;
   },
   readApiErrorMessage: (response: MockApiResponse, fallback = '') => {
+    if (typeof response?.response?.data?.message === 'string') {
+      return response.response.data.message;
+    }
+
     if (typeof response?.error === 'string') {
       return response.error;
     }
@@ -313,6 +318,61 @@ describe('questionService', () => {
       idempotencyKey: 'answer-retry-q8-0001',
       timeTaken: 7,
       simulationId: null,
+    });
+  });
+
+  it('refreshes the question and retries once when its selected alternative id is stale', async () => {
+    mockPost
+      .mockRejectedValueOnce({
+        response: { data: { message: 'Alternativa selecionada invalida.' } },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          answer: {
+            selectedOptionIndex: 0,
+            correctOptionIndex: 1,
+            isCorrect: false,
+          },
+        },
+      });
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: 42109,
+        content: { statement: 'Questão atualizada' },
+        alternatives: [
+          { id: 'current-alt-a', tempId: 'current-alt-a', label: 'A', order: 1, text: 'Alternativa A' },
+          { id: 'current-alt-b', tempId: 'current-alt-b', label: 'B', order: 2, text: 'Alternativa B' },
+        ],
+      },
+    });
+
+    const result = await questionService.submitUserAnswer({
+      questionId: 42109,
+      selectedOptionIndex: 0,
+      selectedAlternativeId: 'stale-alt-a',
+      idempotencyKey: 'answer-42109-retry-001',
+      timestamp: Date.now(),
+      timeTaken: 12,
+    });
+
+    expect(mockGet).toHaveBeenCalledWith('v2/questions/show.php', {
+      params: { id: '42109' },
+    });
+    expect(mockPost).toHaveBeenCalledTimes(2);
+    expect(mockPost.mock.calls[0][1]).toEqual(expect.objectContaining({
+      selectedAlternativeId: 'stale-alt-a',
+      idempotencyKey: 'answer-42109-retry-001',
+    }));
+    expect(mockPost.mock.calls[1][1]).toEqual(expect.objectContaining({
+      selectedAlternativeId: 'current-alt-a',
+      idempotencyKey: 'answer-42109-retry-001',
+    }));
+    expect(result.answer).toEqual({
+      selectedOptionIndex: 0,
+      correctOptionIndex: 1,
+      isCorrect: false,
     });
   });
 

@@ -1198,23 +1198,51 @@ export const questionService = {
       || (typeof globalThis.crypto?.randomUUID === 'function'
         ? globalThis.crypto.randomUUID()
         : `answer-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`);
-    const response = await apiClient.post<SubmitAnswerApiResponse>(
-      ENDPOINTS.questions.v2Answer,
-      {
-        questionId: answer.questionId,
-        selectedAlternativeId: resolveSelectedAlternativeId(answer),
-        idempotencyKey,
-        timeTaken: answer.timeTaken || 0,
-        simulationId: (() => {
-          const rawSimulationId = answer.simulationId;
-          if (typeof rawSimulationId === 'number') return rawSimulationId;
-          if (typeof rawSimulationId === 'string' && /^\d+$/.test(rawSimulationId.trim())) {
-            return Number(rawSimulationId.trim());
-          }
-          return null;
-        })(),
-      },
-    );
+    const selectedAlternativeId = resolveSelectedAlternativeId(answer);
+    const buildAnswerPayload = (alternativeId: string) => ({
+      questionId: answer.questionId,
+      selectedAlternativeId: alternativeId,
+      idempotencyKey,
+      timeTaken: answer.timeTaken || 0,
+      simulationId: (() => {
+        const rawSimulationId = answer.simulationId;
+        if (typeof rawSimulationId === 'number') return rawSimulationId;
+        if (typeof rawSimulationId === 'string' && /^\d+$/.test(rawSimulationId.trim())) {
+          return Number(rawSimulationId.trim());
+        }
+        return null;
+      })(),
+    });
+    let response: Awaited<ReturnType<typeof apiClient.post<SubmitAnswerApiResponse>>>;
+    try {
+      response = await apiClient.post<SubmitAnswerApiResponse>(
+        ENDPOINTS.questions.v2Answer,
+        buildAnswerPayload(selectedAlternativeId),
+      );
+    } catch (error) {
+      const errorMessage = readApiErrorMessage(error, '').trim().toLocaleLowerCase('pt-BR');
+      if (errorMessage !== 'alternativa selecionada invalida.') {
+        throw error;
+      }
+
+      const latestQuestion = await this.getQuestionById(answer.questionId);
+      const selectedOptionIndex = Number(answer.selectedOptionIndex);
+      const latestAlternative = Number.isInteger(selectedOptionIndex) && selectedOptionIndex >= 0
+        ? latestQuestion.alternatives?.[selectedOptionIndex]
+        : undefined;
+      const latestAlternativeId = readText(
+        latestAlternative?.tempId || latestAlternative?.id || latestAlternative?.label,
+      ).trim();
+
+      if (!latestAlternativeId || latestAlternativeId === selectedAlternativeId) {
+        throw error;
+      }
+
+      response = await apiClient.post<SubmitAnswerApiResponse>(
+        ENDPOINTS.questions.v2Answer,
+        buildAnswerPayload(latestAlternativeId),
+      );
+    }
     const backendErrorMessage = readApiErrorMessage(response, '');
     if (
       typeof backendErrorMessage === 'string'
