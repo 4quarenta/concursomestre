@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, MapPin, MoreHorizontal } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, MapPin, MoreHorizontal, RotateCcw } from 'lucide-react';
 import type { PublicExamDirectoryItem, PublicExamDirectoryPage } from './blogServerData';
 import { examDirectoryFacets, filterExamDirectory, getExamPaginationItems, groupExamDirectoryByYear, paginateExamDirectory, type ExamDirectoryFilters } from './examDirectory';
 import { buildBoardPath } from '@services/seo';
@@ -49,20 +49,22 @@ export default function BlogExamDirectory({
   return (
     <section className={platformShell ? 'py-6' : 'border-y border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-950'}>
       <div className={platformShell ? 'w-full px-3 sm:px-4 md:px-0' : 'mx-auto max-w-7xl px-5 lg:px-8'}>
-        <div className="flex flex-col justify-between gap-4 border-b border-slate-300 pb-5 sm:flex-row sm:items-end dark:border-slate-700">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-600">Banco de provas</p>
-            <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">Provas por ano e localidade</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-              Encontre provas publicadas, questões vinculadas e arquivos oficiais organizados por região e estado.
-            </p>
+        {!platformShell ? (
+          <div className="flex flex-col justify-between gap-4 border-b border-slate-300 pb-5 sm:flex-row sm:items-end dark:border-slate-700">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-indigo-600">Banco de provas</p>
+              <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">Provas por ano e localidade</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                Encontre provas publicadas, questões vinculadas e arquivos oficiais organizados por região e estado.
+              </p>
+            </div>
+            {compact ? (
+              <Link href={publicRoutes.exams.index()} className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline">
+                Ver todas <ArrowRight size={15} />
+              </Link>
+            ) : null}
           </div>
-          {compact ? (
-            <Link href={publicRoutes.exams.index()} className="inline-flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline">
-              Ver todas <ArrowRight size={15} />
-            </Link>
-          ) : null}
-        </div>
+        ) : null}
 
         {compact ? (
           <div className="mt-5 flex flex-wrap gap-2" aria-label="Anos com provas">
@@ -73,35 +75,53 @@ export default function BlogExamDirectory({
             ))}
           </div>
         ) : (
-          <form action={publicRoutes.exams.index()} method="get" className="mt-6 grid gap-4 border-b border-slate-200 pb-6 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr_auto] dark:border-slate-800">
-            <label className="text-xs font-black uppercase text-slate-500">
+          <form action={publicRoutes.exams.index()} method="get" className={platformShell
+            ? 'grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2 sm:p-5 md:grid-cols-3 md:p-6 xl:grid-cols-[minmax(240px,1.3fr)_repeat(3,minmax(130px,1fr))_auto]'
+            : 'mt-6 grid gap-4 border-b border-slate-200 pb-6 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr_auto] dark:border-slate-800'}>
+            <label className={platformShell ? 'text-sm font-semibold text-slate-600 dark:text-slate-300' : 'text-xs font-black uppercase text-slate-500'}>
               Buscar provas
-              <input name="busca" defaultValue={filters.search || ''} placeholder="Concurso, cargo, banca ou órgão" className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold normal-case text-slate-800 placeholder:font-normal dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+              <input name="busca" defaultValue={filters.search || ''} placeholder="Concurso, cargo, banca ou órgão" className={platformShell
+                ? 'mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium normal-case text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500'
+                : 'mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold normal-case text-slate-800 placeholder:font-normal dark:border-slate-700 dark:bg-slate-900 dark:text-white'} />
             </label>
-            <label className="text-xs font-black uppercase text-slate-500">
+            <label className={platformShell ? 'text-sm font-semibold text-slate-600 dark:text-slate-300' : 'text-xs font-black uppercase text-slate-500'}>
               Ano
-              <select name="ano" defaultValue={filters.year} className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+              <select name="ano" defaultValue={filters.year} className={platformShell
+                ? 'mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                : 'mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white'}>
                 <option value="">Todos</option>
                 {facets.years.map((year) => <option key={year} value={year}>{year}</option>)}
               </select>
             </label>
-            <label className="text-xs font-black uppercase text-slate-500">
+            <label className={platformShell ? 'text-sm font-semibold text-slate-600 dark:text-slate-300' : 'text-xs font-black uppercase text-slate-500'}>
               Região
-              <select name="regiao" defaultValue={filters.region} className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+              <select name="regiao" defaultValue={filters.region} className={platformShell
+                ? 'mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                : 'mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white'}>
                 <option value="">Todas</option>
                 {facets.regions.map((region) => <option key={region} value={region}>{region}</option>)}
               </select>
             </label>
-            <label className="text-xs font-black uppercase text-slate-500">
+            <label className={platformShell ? 'text-sm font-semibold text-slate-600 dark:text-slate-300' : 'text-xs font-black uppercase text-slate-500'}>
               Estado
-              <select name="estado" defaultValue={filters.state} className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+              <select name="estado" defaultValue={filters.state} className={platformShell
+                ? 'mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                : 'mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white'}>
                 <option value="">Todos</option>
                 {facets.states.map((state) => <option key={state.code || 'unknown'} value={state.code}>{state.name}</option>)}
               </select>
             </label>
-            <div className="flex items-end gap-2">
-              <button type="submit" className="inline-flex h-11 items-center justify-center rounded-md bg-slate-950 px-5 text-sm font-bold text-white hover:bg-indigo-700 dark:bg-white dark:text-slate-950">Filtrar</button>
-              <Link href={publicRoutes.exams.index()} className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">Limpar</Link>
+            <div className={platformShell ? 'flex items-end gap-2 sm:col-span-2 md:col-span-3 xl:col-span-1' : 'flex items-end gap-2'}>
+              <button type="submit" className={platformShell
+                ? 'inline-flex h-12 flex-1 items-center justify-center rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900'
+                : 'inline-flex h-11 items-center justify-center rounded-md bg-slate-950 px-5 text-sm font-bold text-white hover:bg-indigo-700 dark:bg-white dark:text-slate-950'}>Filtrar</button>
+              {platformShell ? (
+                <Link href={publicRoutes.exams.index()} aria-label="Limpar filtros" title="Limpar filtros" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-400">
+                  <RotateCcw size={18} />
+                </Link>
+              ) : (
+                <Link href={publicRoutes.exams.index()} className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">Limpar</Link>
+              )}
             </div>
           </form>
         )}
