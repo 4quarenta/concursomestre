@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, MapPin, MoreHorizontal, RotateCcw } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, MapPin, MoreHorizontal, RotateCcw, Search } from 'lucide-react';
 import type { PublicExamDirectoryItem, PublicExamDirectoryPage } from './blogServerData';
 import { examDirectoryFacets, filterExamDirectory, getExamPaginationItems, groupExamDirectoryByYear, paginateExamDirectory, type ExamDirectoryFilters } from './examDirectory';
 import { buildBoardPath } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
+import styles from '../practice/PracticeClient.module.css';
 
 interface BlogExamDirectoryProps {
   items: PublicExamDirectoryItem[];
@@ -44,11 +45,13 @@ export default function BlogExamDirectory({
       ...(page > 1 ? { pagina: String(page) } : {}),
   });
 
-  if (items.length === 0) return null;
+  if (items.length === 0 && compact) return null;
 
   return (
-    <section className={platformShell ? 'py-6' : 'border-y border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-950'}>
-      <div className={platformShell ? 'w-full px-3 sm:px-4 md:px-0' : 'mx-auto max-w-7xl px-5 lg:px-8'}>
+    <section className={platformShell
+      ? `${styles.page} -mx-3 w-[calc(100%+1.5rem)] space-y-5 pb-16 sm:mx-0 sm:w-full md:pb-12`
+      : 'border-y border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-950'}>
+      <div className={platformShell ? 'w-full space-y-5' : 'mx-auto max-w-7xl px-5 lg:px-8'}>
         {!platformShell ? (
           <div className="flex flex-col justify-between gap-4 border-b border-slate-300 pb-5 sm:flex-row sm:items-end dark:border-slate-700">
             <div>
@@ -76,47 +79,48 @@ export default function BlogExamDirectory({
           </div>
         ) : (
           <form action={publicRoutes.exams.index()} method="get" className={platformShell
-            ? 'grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2 sm:p-5 md:grid-cols-3 md:p-6 xl:grid-cols-[minmax(240px,1.3fr)_repeat(3,minmax(130px,1fr))_auto]'
+            ? `${styles.filterPanel} ${styles.filterToolbar} border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900`
             : 'mt-6 grid gap-4 border-b border-slate-200 pb-6 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr_auto] dark:border-slate-800'}>
-            <label className={platformShell ? 'text-sm font-semibold text-slate-600 dark:text-slate-300' : 'text-xs font-black uppercase text-slate-500'}>
-              Buscar provas
+            <label className={platformShell ? `${styles.keywordSearch} relative flex flex-col gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300` : 'text-xs font-black uppercase text-slate-500'}>
+              <span>Buscar provas</span>
+              {platformShell ? <Search aria-hidden="true" size={17} className="absolute left-3 top-[31px] text-slate-400 dark:text-slate-500" /> : null}
               <input name="busca" defaultValue={filters.search || ''} placeholder="Concurso, cargo, banca ou órgão" className={platformShell
-                ? 'mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium normal-case text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500'
+                ? 'w-full border border-slate-200 px-10 text-sm font-medium normal-case text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500'
                 : 'mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold normal-case text-slate-800 placeholder:font-normal dark:border-slate-700 dark:bg-slate-900 dark:text-white'} />
             </label>
-            <label className={platformShell ? 'text-sm font-semibold text-slate-600 dark:text-slate-300' : 'text-xs font-black uppercase text-slate-500'}>
+            <label className={platformShell ? `${styles.quickFilter} flex min-w-0 flex-col gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300` : 'text-xs font-black uppercase text-slate-500'}>
               Ano
               <select name="ano" defaultValue={filters.year} className={platformShell
-                ? 'mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                ? 'h-[42px] w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
                 : 'mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white'}>
                 <option value="">Todos</option>
                 {facets.years.map((year) => <option key={year} value={year}>{year}</option>)}
               </select>
             </label>
-            <label className={platformShell ? 'text-sm font-semibold text-slate-600 dark:text-slate-300' : 'text-xs font-black uppercase text-slate-500'}>
+            <label className={platformShell ? `${styles.quickFilter} flex min-w-0 flex-col gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300` : 'text-xs font-black uppercase text-slate-500'}>
               Região
               <select name="regiao" defaultValue={filters.region} className={platformShell
-                ? 'mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                ? 'h-[42px] w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
                 : 'mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white'}>
                 <option value="">Todas</option>
                 {facets.regions.map((region) => <option key={region} value={region}>{region}</option>)}
               </select>
             </label>
-            <label className={platformShell ? 'text-sm font-semibold text-slate-600 dark:text-slate-300' : 'text-xs font-black uppercase text-slate-500'}>
+            <label className={platformShell ? `${styles.quickFilter} flex min-w-0 flex-col gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300` : 'text-xs font-black uppercase text-slate-500'}>
               Estado
               <select name="estado" defaultValue={filters.state} className={platformShell
-                ? 'mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
+                ? 'h-[42px] w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
                 : 'mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-white'}>
                 <option value="">Todos</option>
                 {facets.states.map((state) => <option key={state.code || 'unknown'} value={state.code}>{state.name}</option>)}
               </select>
             </label>
-            <div className={platformShell ? 'flex items-end gap-2 sm:col-span-2 md:col-span-3 xl:col-span-1' : 'flex items-end gap-2'}>
+            <div className={platformShell ? 'grid grid-cols-[minmax(0,1fr)_40px] items-end gap-[7px]' : 'flex items-end gap-2'}>
               <button type="submit" className={platformShell
-                ? 'inline-flex h-12 flex-1 items-center justify-center rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900'
+                ? `${styles.submitFilters} w-full`
                 : 'inline-flex h-11 items-center justify-center rounded-md bg-slate-950 px-5 text-sm font-bold text-white hover:bg-indigo-700 dark:bg-white dark:text-slate-950'}>Filtrar</button>
               {platformShell ? (
-                <Link href={publicRoutes.exams.index()} aria-label="Limpar filtros" title="Limpar filtros" className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-400">
+                <Link href={publicRoutes.exams.index()} aria-label="Limpar filtros" title="Limpar filtros" className={styles.clearFilters}>
                   <RotateCcw size={18} />
                 </Link>
               ) : (
@@ -126,14 +130,22 @@ export default function BlogExamDirectory({
           </form>
         )}
 
+        {platformShell ? (
+          <div className={`${styles.resultToolbar} bg-white dark:bg-slate-900`}>
+            <p className={styles.resultCount}>
+              <strong>{new Intl.NumberFormat('pt-BR').format(pagination.totalItems)}</strong> provas encontradas
+            </p>
+          </div>
+        ) : null}
+
         {groups.length > 0 ? (
-          <div className="mt-7 space-y-8">
+          <div className={platformShell ? 'space-y-6' : 'mt-7 space-y-8'}>
             {groups.map((group) => (
               <div key={group.year || 'unknown'}>
                 <h3 className="mb-3 text-sm font-black uppercase tracking-[0.12em] text-slate-500">{group.year || 'Ano não informado'}</h3>
                 <div className="grid gap-3 lg:grid-cols-2">
                   {group.items.map((exam) => (
-                    <article key={exam.id} className="rounded-md border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
+                    <article key={exam.id} className="rounded-md border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
                           <Link href={publicRoutes.exams.detail(exam.slug)} className="line-clamp-2 text-sm font-black leading-5 text-slate-950 hover:text-indigo-600 dark:text-white">

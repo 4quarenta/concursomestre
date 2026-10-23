@@ -98,7 +98,7 @@ export default async function ExamDirectoryContent({ searchParams, platformShell
       {!platformShell && <BlogHeader />}
       <main>
         {platformShell ? (
-          <div className="w-full px-3 pt-4 sm:px-4 md:px-0">
+          <div data-practice-semantic-header data-semantic-content>
             <PlatformPageHeader
               breadcrumbs={breadcrumbs}
               title="Provas de concursos"
