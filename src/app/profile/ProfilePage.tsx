@@ -716,6 +716,7 @@ const Profile: React.FC = () => {
         ? Boolean(activeSubscription && ['active', 'trialing', 'past_due'].includes(String(activeSubscription.status || '').toLowerCase()))
         : hasActivePlanAccess(currentUser);
     const activeBillingProvider = (activeSubscription?.payment_provider || systemSettings?.paymentProvider || 'stripe') as 'stripe' | 'manual_admin';
+    const isManualSubscriptionGrant = activeBillingProvider === 'manual_admin';
     const isStripeBilling = activeBillingProvider === 'stripe';
     const billingProviderLabel = activeBillingProvider === 'manual_admin' ? 'Concessao manual' : 'Stripe';
     const usesInternalStripeVault = isStripeBilling;
@@ -2504,24 +2505,6 @@ const Profile: React.FC = () => {
     };
 
     const renderBillingTab = () => {
-        if (activeSubscription?.payment_provider === 'manual_admin') {
-            return (
-                <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                        {subscriptionPlanName}{!activeSubscription.current_period_end ? ' vitalício' : ''}
-                    </h2>
-                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                        Acesso gratuito concedido pela administração. Sem cobrança ou renovação automática.
-                    </p>
-                    <dl className="mt-5 grid gap-4 sm:grid-cols-3">
-                        <div><dt className="text-sm text-slate-500">Valor</dt><dd className="mt-1 font-semibold">R$ 0,00</dd></div>
-                        <div><dt className="text-sm text-slate-500">Vigência</dt><dd className="mt-1 font-semibold">{activeSubscription.current_period_end ? formatDateTimeBR(activeSubscription.current_period_end) : 'Sem vencimento'}</dd></div>
-                        <div><dt className="text-sm text-slate-500">Renovação</dt><dd className="mt-1 font-semibold">Não se aplica</dd></div>
-                    </dl>
-                </section>
-            );
-        }
-
         if (billingSubscriptionQuery.isError) {
             return <BillingSubscriptionLoadState status="error" onRetry={() => void refetchBillingSubscription()} />;
         }
@@ -2598,14 +2581,14 @@ const Profile: React.FC = () => {
                                     {subscriptionCycleLabel}
                                 </span>
                             )}
-                            <button
+                            {!isManualSubscriptionGrant && <button
                                 type="button"
                                 onClick={() => router.push('/plans')}
                                 className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full bg-indigo-600 px-3 text-[9px] font-black uppercase tracking-[0.14em] text-white transition-all hover:bg-indigo-700"
                             >
                                 {isElitePlan ? 'Gerenciar plano' : 'Upgrade'}
                                 <ChevronRight size={12} />
-                            </button>
+                            </button>}
                         </div>
                     </div>
                 </div>
@@ -2655,7 +2638,13 @@ const Profile: React.FC = () => {
                         </div>
                     </div>
 
-                    {!showFreeInactiveSubscriptionState && activeSubscription && hasReliableSubscriptionTimeline && (
+                    {isManualSubscriptionGrant && (
+                        <p className="border-t border-slate-100 px-5 py-4 text-sm font-medium text-slate-600 dark:border-slate-800 dark:text-slate-300 md:px-6">
+                            Acesso gratuito concedido pela administração. Sem cobrança ou renovação automática.
+                        </p>
+                    )}
+
+                    {!isManualSubscriptionGrant && !showFreeInactiveSubscriptionState && activeSubscription && hasReliableSubscriptionTimeline && (
                         <div className="border-y border-slate-200 px-3 py-4 dark:border-slate-800 md:px-4">
                             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                                 <div className="space-y-2">
@@ -2692,7 +2681,7 @@ const Profile: React.FC = () => {
                         </div>
                     )}
 
-                    {!showFreeInactiveSubscriptionState && activeSubscription && !hasReliableSubscriptionTimeline && (
+                    {!isManualSubscriptionGrant && !showFreeInactiveSubscriptionState && activeSubscription && !hasReliableSubscriptionTimeline && (
                         <div className="border-t border-slate-100 px-5 py-4 text-sm font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400 md:px-6">
                             A vigência ainda não foi confirmada pelo provedor. Nenhum prazo estimado será exibido até a sincronização terminar.
                         </div>
@@ -2701,7 +2690,7 @@ const Profile: React.FC = () => {
             </section>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
-                <div className="space-y-4 xl:col-span-4">
+                {!isManualSubscriptionGrant && <div className="space-y-4 xl:col-span-4">
                         <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4`}>
                             <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-2.5">
@@ -2811,9 +2800,9 @@ const Profile: React.FC = () => {
                                 )}
                             </div>
                         </div>
-                </div>
+                </div>}
 
-                <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4 xl:col-span-8`}>
+                <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4 ${isManualSubscriptionGrant ? 'xl:col-span-12' : 'xl:col-span-8'}`}>
                     <div className="flex items-start justify-between gap-4">
                         <div className="space-y-2.5">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Pagamento</p>
