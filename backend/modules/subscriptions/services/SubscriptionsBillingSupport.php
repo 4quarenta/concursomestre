@@ -1708,7 +1708,7 @@ function buildCurrentSubscriptionBillingSnapshot(array $subscription): array
     }
     $intervalCount = max(1, (int) ($subscription['interval_count'] ?? 1));
 
-    $planPrice = round(max(0, (float) ($subscription['price'] ?? 0)), 2);
+    $planPrice = $isManualGrant ? 0.0 : round(max(0, (float) ($subscription['price'] ?? 0)), 2);
     $recurringAmount = round(max(0, (float) ($subscription['recurring_amount'] ?? 0)), 2);
     $chargeAmount = $isManualGrant ? 0.0 : ($recurringAmount > 0 ? $recurringAmount : $planPrice);
     $projectedAmount = round(max(0, (float) ($subscription['next_renewal_amount'] ?? 0)), 2);
@@ -1746,7 +1746,7 @@ function buildCurrentSubscriptionBillingSnapshot(array $subscription): array
         'id' => (int) ($subscription['id'] ?? 0),
         'status' => $status,
         'paymentProvider' => $provider,
-        'autoRenew' => $autoRenew,
+        'autoRenew' => !$isManualGrant && $autoRenew,
         'cancelAtPeriodEnd' => $cancelAtPeriodEnd,
         'createdAt' => normalizeCurrentSubscriptionSnapshotDate($subscription['created_at'] ?? null),
         'plan' => [
@@ -1771,7 +1771,7 @@ function buildCurrentSubscriptionBillingSnapshot(array $subscription): array
             'renewalIteration' => max(1, (int) ($subscription['renewal_iteration'] ?? 1)),
             'nextRenewal' => [
                 'amount' => $nextRenewalAmount,
-                'date' => $nextRenewalDate,
+                'date' => $isManualGrant ? null : $nextRenewalDate,
                 'priceSource' => $priceSource,
                 'cycleLabel' => $cycleLabel,
             ],

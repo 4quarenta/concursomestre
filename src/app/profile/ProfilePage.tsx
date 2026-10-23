@@ -2504,6 +2504,24 @@ const Profile: React.FC = () => {
     };
 
     const renderBillingTab = () => {
+        if (activeSubscription?.payment_provider === 'manual_admin') {
+            return (
+                <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                        {subscriptionPlanName}{!activeSubscription.current_period_end ? ' vitalício' : ''}
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                        Acesso gratuito concedido pela administração. Sem cobrança ou renovação automática.
+                    </p>
+                    <dl className="mt-5 grid gap-4 sm:grid-cols-3">
+                        <div><dt className="text-sm text-slate-500">Valor</dt><dd className="mt-1 font-semibold">R$ 0,00</dd></div>
+                        <div><dt className="text-sm text-slate-500">Vigência</dt><dd className="mt-1 font-semibold">{activeSubscription.current_period_end ? formatDateTimeBR(activeSubscription.current_period_end) : 'Sem vencimento'}</dd></div>
+                        <div><dt className="text-sm text-slate-500">Renovação</dt><dd className="mt-1 font-semibold">Não se aplica</dd></div>
+                    </dl>
+                </section>
+            );
+        }
+
         if (billingSubscriptionQuery.isError) {
             return <BillingSubscriptionLoadState status="error" onRetry={() => void refetchBillingSubscription()} />;
         }

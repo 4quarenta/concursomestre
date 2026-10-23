@@ -1378,6 +1378,9 @@ class SubscriptionsService
 
         $paymentProvider = normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe');
         $totalInstallments = max(1, (int) ($subscription['total_installments'] ?? 1));
+        if ($paymentProvider === 'manual_admin') {
+            throw new DomainException('Este acesso e gratuito e nao possui renovacao de cobranca.');
+        }
         $paidInstallments = max(0, (int) ($subscription['paid_installments'] ?? 0));
         $hasRemainingCommitment = hasStripeRemainingCommitmentCycles($totalInstallments, $paidInstallments);
         $cancelAtPeriodEnd = resolveStripeCancelAtPeriodEnd($nextAutoRenew, $totalInstallments, $paidInstallments);
@@ -1923,6 +1926,11 @@ class SubscriptionsService
                 'message' => 'Sua assinatura ja foi cancelada ou esta em processamento.',
                 'refund_processed' => false,
             ];
+        }
+
+        if (normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe') === 'manual_admin') {
+            $this->db->rollBack();
+            throw new DomainException('Este acesso e gratuito e nao possui assinatura paga para cancelar.');
         }
 
         $isRefundWindowOpen = $this->isWithinFirstSubscriptionRefundWindow($subscription);

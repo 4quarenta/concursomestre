@@ -100,6 +100,10 @@ try {
         'interval_count' => 1,
     ]);
     currentSubscriptionSnapshotAssert($manualSnapshot['billing']['chargeAmount'] === 0.0, 'Concessao manual nao pode exibir cobranca do catalogo.');
+    currentSubscriptionSnapshotAssert($manualSnapshot['plan']['price'] === 0.0, 'Plano gratuito nao deve herdar preco comercial no frontend.');
+    currentSubscriptionSnapshotAssert($manualSnapshot['autoRenew'] === false, 'Concessao manual nao renova.');
+    currentSubscriptionSnapshotAssert($manualSnapshot['period']['endAt'] === null, 'Concessao sem vencimento permanece sem data.');
+    currentSubscriptionSnapshotAssert($manualSnapshot['billing']['nextRenewal']['date'] === null, 'Concessao manual nao possui proxima cobranca.');
     currentSubscriptionSnapshotAssert($manualSnapshot['billing']['nextRenewal']['amount'] === 0.0, 'Concessao manual nao pode projetar renovacao paga.');
 
     $route = file_get_contents(__DIR__ . '/../modules/subscriptions/routes.php');
