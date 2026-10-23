@@ -46,6 +46,7 @@ import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 import UserAvatar from '../ui/UserAvatar';
 import { publicRoutes } from '@services/routes/publicRoutes';
 import { isSimulationImmersivePath, SIMULATION_IMMERSIVE_EVENT } from '@services/simulations/simulationLayout';
+import { isModalInteraction } from './profileMenuDismissal';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -225,6 +226,10 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
 
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
+      if (isModalInteraction(event.target)) {
+        return;
+      }
+
       if (!profileMenuRef.current?.contains(target) && !mobileProfileMenuRef.current?.contains(target)) {
         setIsProfileMenuOpen(false);
       }
