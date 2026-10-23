@@ -14,6 +14,8 @@ import PageTransition from '@/components/PageTransition';
 import GlobalLoader from '@/components/GlobalLoader';
 import ModuleAccessFallback from '@/components/shared/feedback/ModuleAccessFallback';
 import GlobalPaymentIssueBanner from '@/components/shared/feedback/GlobalPaymentIssueBanner';
+import NavigationRouteSkeleton from '@/components/shared/feedback/NavigationRouteSkeleton';
+import { resolveNavigationSkeletonVariant } from '@/components/shared/feedback/navigationSkeletonRoute';
 import DebugBanner from '@/components/shared/feedback/debug/DebugBanner';
 import { buildProfilePath } from '../app/profile/profileNavigation';
 import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPageNavigationConfig';
@@ -28,6 +30,7 @@ import { useEffectiveSystemSettings } from './AppConfigProvider';
 import type { PlanBenefitKey } from '@types';
 import { resolveExamPublicRouteCompatibility } from './examRouteCompatibility';
 import { resolveQuestionCollectionRouteCompatibility } from './questionRouteCompatibility';
+import { useNavigationProgressStore } from '@/state/navigation-progress/navigationProgressStore';
 
 const StudyTrackerBridge = dynamic(
   () => import('./StudyTrackerProvider').then((module) => module.StudyTrackerBridge),
@@ -289,6 +292,14 @@ const resolveLegacyHashRoute = (rawHash: string): string | null => {
 export default function NextRouteFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '/';
   const router = useRouter();
+  const navigationPhase = useNavigationProgressStore((state) => state.phase);
+  const navigationTarget = useNavigationProgressStore((state) => state.targetRoute);
+  const navigationTransitionId = useNavigationProgressStore((state) => state.transitionId);
+  const [skeletonTransitionId, setSkeletonTransitionId] = React.useState<number | null>(null);
+  const navigationSkeletonVariant = navigationTarget
+    ? resolveNavigationSkeletonVariant(navigationTarget)
+    : null;
+  const showNavigationSkeleton = skeletonTransitionId === navigationTransitionId;
   const { currentUser, isLoading, logout } = useAuth();
   const { systemSettings } = useEffectiveSystemSettings();
   const hasInMemoryAccessToken = Boolean(getAccessToken());
@@ -338,6 +349,23 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     ? 'Existe uma cobrança pendente. Abra a fatura para concluir o pagamento no ambiente seguro da Stripe.'
     : 'Atualize seu cartão para manter o acesso e as próximas cobranças em dia.');
   const paymentIssueActionLabel = paymentIssue?.actionLabel || 'Cadastrar cartão';
+
+  React.useEffect(() => {
+    const shouldShowSkeleton = Boolean(
+      navigationPhase === 'running'
+      && navigationTarget
+      && navigationTarget !== pathname
+      && navigationSkeletonVariant
+      && !isWithoutPlatformShell(navigationTarget),
+    );
+
+    if (!shouldShowSkeleton) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => setSkeletonTransitionId(navigationTransitionId), 140);
+    return () => window.clearTimeout(timeoutId);
+  }, [navigationPhase, navigationSkeletonVariant, navigationTarget, navigationTransitionId, pathname]);
 
   const handlePaymentIssueAction = React.useCallback(async () => {
     const target = paymentIssueFixPath;
@@ -575,6 +603,10 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
         benefits={upgradeCopy.benefits}
       />
     );
+  }
+
+  if (showNavigationSkeleton && navigationSkeletonVariant) {
+    framedChildren = <NavigationRouteSkeleton variant={navigationSkeletonVariant} />;
   }
 
   if (!pathname.startsWith('/admin') && !pathname.startsWith('/profile')) {
