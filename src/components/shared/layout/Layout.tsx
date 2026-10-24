@@ -11,7 +11,7 @@
 
 
 import React, { useState } from 'react';
-import { LayoutGrid, BookOpen, BookOpenText, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, Sun, Moon, Lock, HelpCircle, Rocket, Crown, FileText, Bookmark, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, Landmark, Newspaper, type LucideIcon } from 'lucide-react';
+import { LayoutGrid, BookOpen, BookOpenText, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, Sun, Moon, Lock, HelpCircle, Rocket, Crown, FileText, Bookmark, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, Landmark, Newspaper, Star, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -514,6 +514,14 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
         >
           <HelpCircle size={16} aria-hidden="true" />
           Suporte e feedback
+        </Link>
+        <Link
+          href={`${buildProfilePath('personal')}?openPlatformRating=1`}
+          onClick={(event) => event.currentTarget.closest('details')?.removeAttribute('open')}
+          className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+        >
+          <Star size={16} aria-hidden="true" />
+          Avaliar plataforma
         </Link>
       </div>
     </>

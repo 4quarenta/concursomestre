@@ -1350,6 +1350,16 @@ const Profile: React.FC = () => {
     }, [prepareTestimonialModal]);
 
     React.useEffect(() => {
+        const query = new URLSearchParams(location.search);
+        if (query.get('openPlatformRating') !== '1') return;
+
+        openTestimonialModal();
+        query.delete('openPlatformRating');
+        const nextSearch = query.toString();
+        router.replace(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}${location.hash}`, { scroll: false });
+    }, [location.hash, location.pathname, location.search, openTestimonialModal, router]);
+
+    React.useEffect(() => {
         if (!showTestimonialModal || !currentUser?.id) {
             return;
         }
@@ -4135,8 +4145,6 @@ const Profile: React.FC = () => {
         ...(annotatedLawsEnabled ? [{ id: 'favorite-laws' as const, label: 'Lei Comentada salva', icon: BookOpen }] : []),
         ...(marketplaceEnabled ? [{ id: 'materials' as const, label: 'Meus Materiais', icon: Package }] : []),
         { id: 'security', label: 'Privacidade e segurança', icon: ShieldCheck },
-        { id: 'evolution', label: 'Minha evolução', icon: TrendingUp },
-        { id: 'testimonial', label: 'Avaliar plataforma', icon: Star, onSelect: openTestimonialModal },
     ];
     const isMoreProfileTabActive = moreProfileTabs.some(({ id }) => activeTab === id);
     return (
@@ -5414,13 +5422,16 @@ const Profile: React.FC = () => {
                   <div className="space-y-6">
                       <header className="border-b border-slate-200 pb-4 dark:border-slate-800">
                           <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Privacidade e segurança</h2>
-                          <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Gerencie sua senha, preferências e dados da conta.</p>
+                          <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Gerencie seus dados, preferências de privacidade e formas de acesso à conta.</p>
                       </header>
                       {/* Alteração de Senha */}
-                      <div className="border-b border-slate-200 bg-white py-5 dark:border-slate-800 dark:bg-slate-900">
-                          <div className="mb-5 flex items-center gap-2">
-                              <Shield size={17} className="text-indigo-600 dark:text-indigo-300" />
-                              <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Senha de acesso</h3>
+                      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                          <div className="mb-5 flex items-center gap-3">
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300"><Shield size={17} /></span>
+                              <div>
+                                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Senha e acesso</h3>
+                                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Atualize sua senha para manter sua conta protegida.</p>
+                              </div>
                           </div>
                           
                           <form 
@@ -5464,13 +5475,16 @@ const Profile: React.FC = () => {
                       </div>
 
                       {/* Preferências de Privacidade */}
-                      <div className="border-y border-slate-200 bg-white py-5 dark:border-slate-800 dark:bg-slate-900">
+                      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-                             <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Preferências de privacidade</h3>
+                             <div className="flex items-center gap-3">
+                                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300"><ShieldCheck size={17} /></span>
+                                 <div><h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Privacidade e preferências</h3><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Escolha como sua atividade e seus dados são usados na plataforma.</p></div>
+                             </div>
                              <button
                                 onClick={handleSavePrivacyPreferences}
                                 disabled={isSavingPrivacyPreferences}
-                                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                              >
                                 {isSavingPrivacyPreferences ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                                 Salvar Tudo
@@ -5483,7 +5497,7 @@ const Profile: React.FC = () => {
                                { id: 'notifications', label: 'Notificações gerais', desc: 'Preferência geral da conta. Não controla mensagens obrigatórias de cobrança, segurança ou suporte.', checked: privacyPreferencesDraft.notifications, icon: Bell },
                                { id: 'shareData', label: 'Compartilhar dados de estudo', desc: 'Usa sua atividade para melhorar recomendações e estatísticas internas.', checked: privacyPreferencesDraft.shareData, icon: Zap }
                             ].map((item, i) => (
-                               <div key={i} className="flex items-center justify-between py-5 group">
+                               <div key={i} className="group flex items-center justify-between gap-4 py-4">
                                   <div className="flex items-start gap-4">
                                      <div className="mt-1 text-slate-400 group-hover:text-indigo-500 transition-colors"><item.icon size={20} /></div>
                                      <div>
@@ -5491,12 +5505,16 @@ const Profile: React.FC = () => {
                                         <span className="text-xs text-slate-500 dark:text-slate-400 block mt-0.5 transition-colors">{item.desc}</span>
                                      </div>
                                   </div>
-                                  <div 
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={item.checked}
+                                    aria-label={item.label}
                                     onClick={() => setPrivacyPreferencesDraft((current) => ({ ...current, [item.id]: !item.checked }))}
-                                    className={`w-11 h-6 rounded-full relative cursor-pointer transition-all duration-300 ${item.checked ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-800'}`}
+                                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 ${item.checked ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                                   >
-                                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${item.checked ? 'right-1' : 'left-1'} shadow-sm`} />
-                                  </div>
+                                     <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-all ${item.checked ? 'right-1' : 'left-1'}`} />
+                                  </button>
                                </div>
                             ))}
                             <MarketingEmailPreferenceControl userId={currentUserKey} />
@@ -5548,7 +5566,7 @@ const Profile: React.FC = () => {
                             Gerenciar preferências de cookies
                          </button>
 
-                         <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/30">
+                         <div className="mt-8 rounded-md border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/30">
                             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                <div>
                                   <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Contas conectadas</h3>
@@ -5686,16 +5704,16 @@ const Profile: React.FC = () => {
                       </div>
 
                       {/* Zona de Perigo */}
-                      <div className="bg-rose-50/50 dark:bg-rose-950/10 p-8 rounded-2xl border border-rose-100 dark:border-rose-900/30 transition-colors">
-                          <h3 className="text-sm font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest mb-2">Excluir Conta</h3>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-4">Esta ação registra uma solicitação real de exclusão, marca sua conta para tratamento interno e desconecta a sessão.</p>
+                      <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-5 transition-colors dark:border-rose-900/40 dark:bg-rose-950/10">
+                          <h3 className="text-sm font-bold text-rose-700 dark:text-rose-400">Excluir conta</h3>
+                          <p className="mb-4 mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">Esta ação registra uma solicitação real de exclusão, marca sua conta para tratamento interno e desconecta a sessão.</p>
                           <div className="space-y-4">
                             <textarea
                               value={accountDeletionReason}
                               onChange={(event) => setAccountDeletionReason(event.target.value)}
                               rows={3}
                               placeholder="Explique rapidamente por que deseja excluir sua conta."
-                              className="w-full rounded-2xl border border-rose-100 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-500/10 dark:border-rose-900/40 dark:bg-slate-900 dark:text-slate-100"
+                              className="w-full rounded-md border border-rose-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-500/10 dark:border-rose-900/40 dark:bg-slate-900 dark:text-slate-100"
                             />
                             {recaptchaEnabled ? (
                               <div className="rounded-2xl border border-rose-100 bg-white px-4 py-4 dark:border-rose-900/40 dark:bg-slate-900">
