@@ -25,6 +25,7 @@ type AddressDraft = {
 
 type BrazilianBillingAddressFieldsProps = {
   initialAddress?: PersonalProfileAddress | null;
+  highlightMissing?: boolean;
 };
 
 const fieldClassName = 'h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100';
@@ -42,7 +43,7 @@ const createAddressDraft = (address?: PersonalProfileAddress | null): AddressDra
 
 const RequiredMark = () => <span className="text-rose-500">*</span>;
 
-export default function BrazilianBillingAddressFields({ initialAddress }: BrazilianBillingAddressFieldsProps) {
+export default function BrazilianBillingAddressFields({ initialAddress, highlightMissing = false }: BrazilianBillingAddressFieldsProps) {
   const [address, setAddress] = React.useState<AddressDraft>(() => createAddressDraft(initialAddress));
   const zipCodeDigits = normalizeBrazilianPostalCode(address.zipCode);
 
@@ -94,6 +95,10 @@ export default function BrazilianBillingAddressFields({ initialAddress }: Brazil
   const updateField = (field: keyof AddressDraft, value: string) => {
     setAddress((current) => ({ ...current, [field]: value }));
   };
+  const requiredFieldClass = (field: keyof AddressDraft) => {
+    const missing = highlightMissing && !address[field].trim() && field !== 'complement';
+    return `${fieldClassName}${missing ? ' border-amber-500 ring-2 ring-amber-400/30 dark:border-amber-400' : ''}`;
+  };
 
   return (
     <div className="space-y-4 pt-2">
@@ -121,7 +126,8 @@ export default function BrazilianBillingAddressFields({ initialAddress }: Brazil
               onChange={(event) => updateField('zipCode', formatBrazilianPostalCode(event.target.value))}
               placeholder="00000-000"
               maxLength={9}
-              className={`${fieldClassName} pr-10`}
+              data-profile-required-missing={highlightMissing && !address.zipCode.trim() ? 'true' : undefined}
+              className={`${requiredFieldClass('zipCode')} pr-10`}
             />
             {postalCodeQuery.isFetching && <Loader2 size={16} className="absolute right-3 top-3.5 animate-spin text-indigo-500" />}
             {postalCodeQuery.isSuccess && <CheckCircle2 size={16} className="absolute right-3 top-3.5 text-emerald-500" />}
@@ -129,11 +135,11 @@ export default function BrazilianBillingAddressFields({ initialAddress }: Brazil
         </div>
         <div className="space-y-1.5 md:col-span-2">
           <label className={labelClassName} htmlFor="personal-street">Logradouro <RequiredMark /></label>
-          <input id="personal-street" name="street" type="text" autoComplete="address-line1" value={address.street} onChange={(event) => updateField('street', event.target.value)} placeholder="Ex.: Avenida Paulista" className={fieldClassName} />
+          <input id="personal-street" name="street" type="text" autoComplete="address-line1" value={address.street} onChange={(event) => updateField('street', event.target.value)} placeholder="Ex.: Avenida Paulista" data-profile-required-missing={highlightMissing && !address.street.trim() ? 'true' : undefined} className={requiredFieldClass('street')} />
         </div>
         <div className="space-y-1.5">
           <label className={labelClassName} htmlFor="personal-number">Número <RequiredMark /></label>
-          <input id="personal-number" name="number" type="text" autoComplete="address-line2" value={address.number} onChange={(event) => updateField('number', event.target.value)} placeholder="123" className={fieldClassName} />
+          <input id="personal-number" name="number" type="text" autoComplete="address-line2" value={address.number} onChange={(event) => updateField('number', event.target.value)} placeholder="123" data-profile-required-missing={highlightMissing && !address.number.trim() ? 'true' : undefined} className={requiredFieldClass('number')} />
         </div>
       </div>
 
@@ -150,7 +156,7 @@ export default function BrazilianBillingAddressFields({ initialAddress }: Brazil
         </div>
         <div className="space-y-1.5">
           <label className={labelClassName} htmlFor="personal-neighborhood">Bairro <RequiredMark /></label>
-          <input id="personal-neighborhood" name="neighborhood" type="text" value={address.neighborhood} onChange={(event) => updateField('neighborhood', event.target.value)} placeholder="Centro" className={fieldClassName} />
+          <input id="personal-neighborhood" name="neighborhood" type="text" value={address.neighborhood} onChange={(event) => updateField('neighborhood', event.target.value)} placeholder="Centro" data-profile-required-missing={highlightMissing && !address.neighborhood.trim() ? 'true' : undefined} className={requiredFieldClass('neighborhood')} />
         </div>
       </div>
 
@@ -162,8 +168,9 @@ export default function BrazilianBillingAddressFields({ initialAddress }: Brazil
             name="state"
             autoComplete="address-level1"
             value={address.state}
+            data-profile-required-missing={highlightMissing && !address.state.trim() ? 'true' : undefined}
             onChange={(event) => setAddress((current) => ({ ...current, state: event.target.value, city: '' }))}
-            className={fieldClassName}
+            className={requiredFieldClass('state')}
           >
             <option value="">Selecione a UF</option>
             {stateOptions.map((state) => <option key={state.id} value={state.code}>{state.code} - {state.name}</option>)}
@@ -172,7 +179,7 @@ export default function BrazilianBillingAddressFields({ initialAddress }: Brazil
         <div className="space-y-1.5 sm:col-span-2">
           <label className={labelClassName} htmlFor="personal-city">Cidade <RequiredMark /></label>
           {citiesQuery.isError ? (
-            <input id="personal-city" name="city" type="text" autoComplete="address-level2" value={address.city} onChange={(event) => updateField('city', event.target.value)} placeholder="Informe a cidade" className={fieldClassName} />
+            <input id="personal-city" name="city" type="text" autoComplete="address-level2" value={address.city} onChange={(event) => updateField('city', event.target.value)} placeholder="Informe a cidade" data-profile-required-missing={highlightMissing && !address.city.trim() ? 'true' : undefined} className={requiredFieldClass('city')} />
           ) : (
             <div className="relative">
               <select
@@ -180,9 +187,10 @@ export default function BrazilianBillingAddressFields({ initialAddress }: Brazil
                 name="city"
                 autoComplete="address-level2"
                 value={address.city}
+                data-profile-required-missing={highlightMissing && !address.city.trim() ? 'true' : undefined}
                 onChange={(event) => updateField('city', event.target.value)}
                 disabled={!address.state || citiesQuery.isFetching}
-                className={`${fieldClassName} disabled:cursor-wait disabled:opacity-60`}
+                className={`${requiredFieldClass('city')} disabled:cursor-wait disabled:opacity-60`}
               >
                 <option value="">{citiesQuery.isFetching ? 'Carregando cidades...' : 'Selecione a cidade'}</option>
                 {address.city && !currentCityIsListed && <option value={address.city}>{address.city}</option>}

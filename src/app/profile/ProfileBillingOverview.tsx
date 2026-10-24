@@ -28,6 +28,8 @@ type Props = {
     canceledButActive: boolean;
     withinRefundWindow: boolean;
     banners?: ReactNode;
+    paymentMethodsContent?: ReactNode;
+    paymentMethodsExpanded?: boolean;
     onChoosePlan: () => void;
     onToggleRenewal: () => void;
     onCancelSubscription: () => void;
@@ -49,7 +51,7 @@ export default function ProfileBillingOverview(props: Props) {
         active, manualGrant, freePlan, planName, planCycle, planPrice, nextChargeDate, nextChargeAmount,
         accessUntil, renewalEnabled, renewalUpdating, subscriptionStatus, cardLabel, cardExpiry,
         cardWarning, cardLoadError, latestPayment, refundPending, canceledButActive,
-        withinRefundWindow, banners, onChoosePlan, onToggleRenewal, onCancelSubscription, onCancelRefund,
+        withinRefundWindow, banners, paymentMethodsContent, paymentMethodsExpanded, onChoosePlan, onToggleRenewal, onCancelSubscription, onCancelRefund,
         onManageCards, onHistory,
     } = props;
     const hasSubscription = active || manualGrant;
@@ -81,8 +83,9 @@ export default function ProfileBillingOverview(props: Props) {
                     </div>
                     <div className="flex flex-col gap-3 border-t border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
                         <div className="flex items-start gap-3"><CreditCard size={20} className="mt-0.5 shrink-0 text-slate-600 dark:text-slate-300" /><div><p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Formas de pagamento</p>{cardLoadError ? <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">{cardLoadError}</p> : cardLabel ? <><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{cardLabel}</p><p className="text-xs text-slate-500 dark:text-slate-400">Expira em {cardExpiry}{cardWarning ? ` · ${cardWarning}` : ''}</p></> : <><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Nenhum cartão salvo</p><p className="text-xs text-slate-500 dark:text-slate-400">Adicione um cartão para facilitar sua futura assinatura.</p></>}</div></div>
-                        <button type="button" onClick={onManageCards} className="min-h-10 rounded-md border border-blue-500 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">{cardLabel ? 'Gerenciar cartões' : 'Adicionar cartão'}</button>
+                        <button type="button" aria-expanded={Boolean(paymentMethodsExpanded)} onClick={onManageCards} className="min-h-10 rounded-md border border-blue-500 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">{paymentMethodsExpanded ? 'Fechar cartões' : cardLabel ? 'Gerenciar cartões' : 'Adicionar cartão'}</button>
                     </div>
+                    {paymentMethodsExpanded && paymentMethodsContent}
                 </section>
             ) : (
                 <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
@@ -92,7 +95,6 @@ export default function ProfileBillingOverview(props: Props) {
                     </div>
                     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
                         <div><p className="text-sm text-slate-500 dark:text-slate-400">Plano atual</p><h2 className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">{planName}</h2><p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{manualGrant ? 'Acesso Elite concedido pela administração, sem cobrança ou renovação.' : <>Plano {planCycle.toLowerCase()} <span className="mx-1">·</span> <strong>{planPrice}</strong>{nextChargeDate && <> <br />Próxima renovação: {nextChargeDate}</>}</>}</p></div>
-                        {!manualGrant && <button type="button" onClick={onManageCards} className="min-h-10 shrink-0 rounded-md border border-blue-500 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">Gerenciar pagamento</button>}
                     </div>
                     {!manualGrant && <>
                         <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center dark:border-slate-800">
@@ -104,8 +106,9 @@ export default function ProfileBillingOverview(props: Props) {
                         <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center dark:border-slate-800">
                             <CreditCard size={20} className="shrink-0 text-slate-700 dark:text-slate-300" />
                             <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Forma de pagamento</p>{cardLoadError ? <p className="text-sm text-amber-700 dark:text-amber-300">{cardLoadError}</p> : cardLabel ? <><p className="text-sm text-slate-700 dark:text-slate-300">{cardLabel}</p><p className="text-xs text-slate-500 dark:text-slate-400">Expira em {cardExpiry}{cardWarning ? ` · ${cardWarning}` : ''}</p></> : <p className="text-sm text-slate-600 dark:text-slate-300">Nenhum cartão salvo</p>}</div>
-                            <button type="button" onClick={onManageCards} className="min-h-10 shrink-0 rounded-md border border-blue-500 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">Gerenciar pagamento</button>
+                            <button type="button" aria-expanded={Boolean(paymentMethodsExpanded)} onClick={onManageCards} className="min-h-10 shrink-0 rounded-md border border-blue-500 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">{paymentMethodsExpanded ? 'Fechar cartões' : 'Gerenciar pagamento'}</button>
                         </div>
+                        {paymentMethodsExpanded && paymentMethodsContent}
                         <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center dark:border-slate-800">
                             <FileText size={20} className="shrink-0 text-slate-700 dark:text-slate-300" /><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Último pagamento</p>{latestPayment ? <p className="text-sm text-slate-700 dark:text-slate-300"><strong>{latestPayment.amount}</strong> <span className={`mx-2 rounded-full px-2 py-1 text-xs font-semibold ${latestPayment.statusClass}`}>{latestPayment.status}</span>{latestPayment.date}</p> : <p className="text-sm text-slate-600 dark:text-slate-300">Nenhum pagamento registrado.</p>}</div><button type="button" onClick={onHistory} className="text-sm font-medium text-blue-700 hover:underline dark:text-blue-300">Ver histórico ›</button>
                         </div>

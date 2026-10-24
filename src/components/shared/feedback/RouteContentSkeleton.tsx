@@ -7,37 +7,37 @@ const pulse = 'animate-pulse motion-reduce:animate-none bg-slate-200/80 dark:bg-
 
 const ProfileSkeleton = () => (
   <div className="mx-auto w-full max-w-7xl space-y-5 px-3 py-4 sm:px-4 md:px-6">
-    <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="space-y-3 rounded-md border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className={`h-16 w-16 rounded-full ${pulse}`} />
+    <header className="space-y-3">
+      <div className={`h-3 w-32 rounded ${pulse}`} />
+      <div className={`h-7 w-40 rounded ${pulse}`} />
+      <div className={`h-4 w-72 max-w-full rounded ${pulse}`} />
+    </header>
+    <nav aria-hidden="true" className="flex gap-2 overflow-hidden border-b border-slate-200 dark:border-slate-800">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className={`h-11 w-28 shrink-0 rounded-t-md ${pulse}`} />
+      ))}
+    </nav>
+    <main className="space-y-5">
+      <section className="flex items-center gap-4 border-b border-slate-200 pb-5 dark:border-slate-800">
+        <div className={`h-16 w-16 shrink-0 rounded-full ${pulse}`} />
+        <div className="space-y-2">
+          <div className={`h-5 w-36 rounded ${pulse}`} />
+          <div className={`h-3 w-48 max-w-full rounded ${pulse}`} />
+          <div className={`h-3 w-24 rounded ${pulse}`} />
+        </div>
+      </section>
+      <section className="space-y-4">
         <div className={`h-5 w-36 rounded ${pulse}`} />
-        <div className={`h-3 w-24 rounded ${pulse}`} />
-        <div className="space-y-2 pt-4">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div key={index} className={`h-10 w-full rounded-md ${pulse}`} />
+        <div className={`h-3 w-64 max-w-full rounded ${pulse}`} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className={`h-14 rounded-md ${pulse}`} />
           ))}
         </div>
-      </aside>
-      <main className="space-y-4">
-        <section className="rounded-md border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <div className={`h-6 w-44 rounded ${pulse}`} />
-          <div className={`mt-3 h-3 w-3/5 rounded ${pulse}`} />
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className={`h-14 rounded-md ${pulse}`} />
-            ))}
-          </div>
-        </section>
-        <section className="rounded-md border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <div className={`h-5 w-40 rounded ${pulse}`} />
-          <div className="mt-5 space-y-3">
-            <div className={`h-12 w-full rounded-md ${pulse}`} />
-            <div className={`h-12 w-full rounded-md ${pulse}`} />
-            <div className={`h-12 w-4/5 rounded-md ${pulse}`} />
-          </div>
-        </section>
-      </main>
-    </div>
+        <div className={`h-20 w-full rounded-md ${pulse}`} />
+        <div className={`h-10 w-36 rounded-md ${pulse}`} />
+      </section>
+    </main>
   </div>
 );
 

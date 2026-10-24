@@ -630,6 +630,8 @@ const Profile: React.FC = () => {
     const pendingProfileTabScrollRef = React.useRef(false);
     const personalDetailsSectionRef = React.useRef<HTMLDivElement>(null);
     const pendingPersonalDetailsScrollRef = React.useRef(false);
+    const [highlightMissingProfileFields, setHighlightMissingProfileFields] = useState(false);
+    const [isBillingCardManagerOpen, setIsBillingCardManagerOpen] = useState(false);
     const googleProfileButtonRef = React.useRef<HTMLDivElement>(null);
     const [hasSyncedBillingSnapshot, setHasSyncedBillingSnapshot] = useState(false);
     const [lawNotes, setLawNotes] = useState<LegalUserNote[]>([]);
@@ -1134,6 +1136,7 @@ const Profile: React.FC = () => {
     }, [activeTab, location.pathname, scrollProfileActiveTabIntoView]);
 
     const scrollToPersonalDetailsForm = React.useCallback(() => {
+        setHighlightMissingProfileFields(true);
         pendingPersonalDetailsScrollRef.current = true;
         changeActiveTab('personal');
 
@@ -1296,10 +1299,20 @@ const Profile: React.FC = () => {
     };
 
     const openSavedCardsManager = () => {
-        changeActiveTab('personal');
+        setIsBillingCardManagerOpen(true);
+        changeActiveTab('billing');
         window.setTimeout(() => {
-            document.getElementById('saved-cards-personal-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.getElementById('billing-payment-methods')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 120);
+    };
+
+    const toggleBillingCardManager = () => {
+        if (activeTab !== 'billing') {
+            openSavedCardsManager();
+            return;
+        }
+
+        setIsBillingCardManagerOpen((isOpen) => !isOpen);
     };
 
     const handleResolveBillingPaymentIssue = async () => {
@@ -2519,7 +2532,105 @@ const Profile: React.FC = () => {
                 .filter((tx) => String(tx.type || '').toLowerCase() === 'plan' && Number(tx.amount || 0) > 0 && ['approved', 'completed'].includes(String(tx.status || '').toLowerCase()))
                 .sort((a, b) => (parseSubscriptionDate(b.createdAt || b.created_at || b.dueDate || null)?.getTime() || 0) - (parseSubscriptionDate(a.createdAt || a.created_at || a.dueDate || null)?.getTime() || 0))[0];
             const latestPaymentStatus = latestPayment ? getTransactionStatusMeta(latestPayment.status) : null;
-            return <ProfileBillingOverview active={hasActiveSubscription} manualGrant={isManualSubscriptionGrant} freePlan={showFreeInactiveSubscriptionState} planName={subscriptionPlanName} planCycle={subscriptionCycleLabel} planPrice={formatTransactionAmount(subscriptionChargeAmount)} nextChargeDate={nextRenewalDate ? formatDateBR(nextRenewalDate) : undefined} nextChargeAmount={formatTransactionAmount(nextRenewalAmount)} accessUntil={subscriptionEndDate ? formatDateBR(subscriptionEndDate) : undefined} renewalEnabled={resolvedAutoRenew} renewalUpdating={isUpdatingRenewal} subscriptionStatus={billingStatusLabel} cardLabel={primarySavedCard ? formatSavedCardLabel(primarySavedCard) : undefined} cardExpiry={primarySavedCard ? `${String(primarySavedCard.exp_month || '').padStart(2, '0')}/${primarySavedCard.exp_year}` : undefined} cardWarning={primarySavedCardExpiryState.isExpired ? 'Expirado' : primarySavedCardExpiryState.isExpiringSoon ? 'Vence em breve' : undefined} cardLoadError={cardsLoadError} latestPayment={latestPayment && latestPaymentStatus ? { amount: formatTransactionAmount(latestPayment.amount || 0), date: formatDateBR(latestPayment.createdAt || latestPayment.created_at || latestPayment.dueDate || null), status: latestPaymentStatus.label, statusClass: latestPaymentStatus.className } : undefined} refundPending={hasPendingRefundRequest} canceledButActive={isCanceledButStillActive} withinRefundWindow={isWithinRefundWindow} banners={<>{activeRetentionOffer && <section className={`${PLATFORM_SURFACE_CARD_CLASS} border-sky-200 p-4 dark:border-sky-900/60`}><h3 className="font-bold">Oferta de retenção</h3><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Reembolso de {formatTransactionAmount(activeRetentionOffer.refundAmount || 0)} · válido até {activeRetentionOffer.expiresAt ? formatDateTimeBR(activeRetentionOffer.expiresAt) : 'data informada no envio'}.</p>{String(activeRetentionOffer.status).toUpperCase() !== 'ACCEPTED_PENDING_BENEFIT' && <div className="mt-3 flex gap-2"><button type="button" disabled={isDecidingRetentionOffer} onClick={() => void handleRetentionDecision('ACCEPT')} className="rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white">Aceitar oferta</button><button type="button" disabled={isDecidingRetentionOffer} onClick={() => void handleRetentionDecision('DECLINE')} className="rounded-md border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-700">Recusar e pedir reembolso</button></div>}</section>}{billingPaymentIssue && <BillingPaymentIssueBanner issue={billingPaymentIssue} onResolve={() => void handleResolveBillingPaymentIssue()} />}</>} onChoosePlan={() => router.push('/plans')} onToggleRenewal={handleRenewalToggle} onCancelSubscription={() => setShowCancelModal(true)} onCancelRefund={handleCancelRefundRequest} onManageCards={openSavedCardsManager} onHistory={() => setActiveTab('billing-history')} />;
+            const paymentMethodsContent = (
+                <div id="billing-payment-methods" className="space-y-4 border-t border-slate-200 px-5 py-4 dark:border-slate-800">
+                    {cardsLoadError && (
+                        <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                            {cardsLoadError}
+                        </div>
+                    )}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Cartões salvos</p>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (isAddingCard) {
+                                    setIsAddingCard(false);
+                                } else {
+                                    setStripeSetupClientSecret(null);
+                                    setIsAddingCard(true);
+                                }
+                            }}
+                            className="min-h-9 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700"
+                        >
+                            {isAddingCard ? 'Cancelar' : 'Adicionar cartão'}
+                        </button>
+                    </div>
+                    {isAddingCard && (isStripeBilling ? (
+                        <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/60">
+                            {!stripeSetupClientSecret ? (
+                                <button type="button" onClick={handlePrepareStripeCard} disabled={isSavingCard} className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-60">
+                                    {isSavingCard ? 'Preparando formulário...' : 'Continuar para adicionar cartão'}
+                                </button>
+                            ) : (
+                                <StripeSetupCardForm publishableKey={stripePublishableKey} clientSecret={stripeSetupClientSecret} billingName={currentUser?.name || ''} billingEmail={currentUser?.email || ''} onSaved={handleStripeCardSaved} />
+                            )}
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSaveCard} className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-900/60">
+                            <input name="cardNumber" type="text" placeholder="Número do cartão" required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900" />
+                            <input name="cardName" type="text" placeholder="Nome no cartão" required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900" />
+                            <input name="expiry" type="text" placeholder="Validade MM/AA" required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900" />
+                            <select name="brand" className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select>
+                            <button type="submit" disabled={isSavingCard} className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-60 sm:col-span-2">{isSavingCard ? 'Salvando...' : 'Salvar cartão'}</button>
+                        </form>
+                    ))}
+                    {isLoadingCards ? (
+                        <div className="h-16 animate-pulse rounded-md bg-slate-100 dark:bg-slate-800" />
+                    ) : userCards.length ? (
+                        <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                            {userCards.map((card) => (
+                                <li key={card.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{formatMaskedCardLabelAscii(card)}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Expira em {String(card.exp_month).padStart(2, '0')}/{card.exp_year}{Number(card.is_default) === 1 ? ' · Padrão' : ''}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {Number(card.is_default) !== 1 && <button type="button" onClick={() => handleSetDefaultCard(String(card.id))} className="text-xs font-semibold text-blue-700 hover:underline dark:text-blue-300">Definir padrão</button>}
+                                        {Number(card.locked_by_recurring) !== 1 && <button type="button" onClick={() => handleRemoveCard(String(card.id))} aria-label="Remover cartão" className="rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 dark:border-rose-900 dark:text-rose-300">Remover</button>}
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum cartão salvo.</p>
+                    )}
+                </div>
+            );
+
+            return (
+                <ProfileBillingOverview
+                    active={hasActiveSubscription}
+                    manualGrant={isManualSubscriptionGrant}
+                    freePlan={showFreeInactiveSubscriptionState}
+                    planName={subscriptionPlanName}
+                    planCycle={subscriptionCycleLabel}
+                    planPrice={formatTransactionAmount(subscriptionChargeAmount)}
+                    nextChargeDate={nextRenewalDate ? formatDateBR(nextRenewalDate) : undefined}
+                    nextChargeAmount={formatTransactionAmount(nextRenewalAmount)}
+                    accessUntil={subscriptionEndDate ? formatDateBR(subscriptionEndDate) : undefined}
+                    renewalEnabled={resolvedAutoRenew}
+                    renewalUpdating={isUpdatingRenewal}
+                    subscriptionStatus={billingStatusLabel}
+                    cardLabel={primarySavedCard ? formatSavedCardLabel(primarySavedCard) : undefined}
+                    cardExpiry={primarySavedCard ? `${String(primarySavedCard.exp_month || '').padStart(2, '0')}/${primarySavedCard.exp_year}` : undefined}
+                    cardWarning={primarySavedCardExpiryState.isExpired ? 'Expirado' : primarySavedCardExpiryState.isExpiringSoon ? 'Vence em breve' : undefined}
+                    cardLoadError={cardsLoadError}
+                    latestPayment={latestPayment && latestPaymentStatus ? { amount: formatTransactionAmount(latestPayment.amount || 0), date: formatDateBR(latestPayment.createdAt || latestPayment.created_at || latestPayment.dueDate || null), status: latestPaymentStatus.label, statusClass: latestPaymentStatus.className } : undefined}
+                    refundPending={hasPendingRefundRequest}
+                    canceledButActive={isCanceledButStillActive}
+                    withinRefundWindow={isWithinRefundWindow}
+                    banners={<>{activeRetentionOffer && <section className={`${PLATFORM_SURFACE_CARD_CLASS} border-sky-200 p-4 dark:border-sky-900/60`}><h3 className="font-bold">Oferta de retenção</h3><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Reembolso de {formatTransactionAmount(activeRetentionOffer.refundAmount || 0)} · válido até {activeRetentionOffer.expiresAt ? formatDateTimeBR(activeRetentionOffer.expiresAt) : 'data informada no envio'}.</p>{String(activeRetentionOffer.status).toUpperCase() !== 'ACCEPTED_PENDING_BENEFIT' && <div className="mt-3 flex gap-2"><button type="button" disabled={isDecidingRetentionOffer} onClick={() => void handleRetentionDecision('ACCEPT')} className="rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white">Aceitar oferta</button><button type="button" disabled={isDecidingRetentionOffer} onClick={() => void handleRetentionDecision('DECLINE')} className="rounded-md border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-700">Recusar e pedir reembolso</button></div>}</section>}{billingPaymentIssue && <BillingPaymentIssueBanner issue={billingPaymentIssue} onResolve={() => void handleResolveBillingPaymentIssue()} />}</>}
+                    paymentMethodsContent={paymentMethodsContent}
+                    paymentMethodsExpanded={isBillingCardManagerOpen}
+                    onChoosePlan={() => router.push('/plans')}
+                    onToggleRenewal={handleRenewalToggle}
+                    onCancelSubscription={() => setShowCancelModal(true)}
+                    onCancelRefund={handleCancelRefundRequest}
+                    onManageCards={toggleBillingCardManager}
+                    onHistory={() => setActiveTab('billing-history')}
+                />
+            );
         }
 
         return (
@@ -4680,7 +4791,7 @@ const Profile: React.FC = () => {
                      >
                          <div className="space-y-1.5 md:col-span-1">
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Nome Completo <span className="text-rose-500">*</span></label>
-                            <input name="name" type="text" defaultValue={personalProfile.displayName} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                            <input name="name" type="text" defaultValue={personalProfile.displayName} data-profile-required-missing={highlightMissingProfileFields && !personalProfile.displayName.trim() ? 'true' : undefined} className={`w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans ${highlightMissingProfileFields && !personalProfile.displayName.trim() ? 'border-amber-500 ring-2 ring-amber-400/30 dark:border-amber-400' : ''}`} />
                         </div>
                          <div className="space-y-1.5 md:col-span-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -4705,7 +4816,7 @@ const Profile: React.FC = () => {
                          <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
                            <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">CPF <span className="text-rose-500">*</span></label>
-                               <input name="cpf" type="text" defaultValue={personalProfile.personal.cpf || ''} placeholder="000.000.000-00" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans" />
+                               <input name="cpf" type="text" defaultValue={personalProfile.personal.cpf || ''} placeholder="000.000.000-00" data-profile-required-missing={highlightMissingProfileFields && !personalProfile.personal.cpf?.trim() ? 'true' : undefined} className={`w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans ${highlightMissingProfileFields && !personalProfile.personal.cpf?.trim() ? 'border-amber-500 ring-2 ring-amber-400/30 dark:border-amber-400' : ''}`} />
                            </div>
                           <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Telefone / WhatsApp <span className="text-rose-500">*</span></label>
@@ -4716,7 +4827,8 @@ const Profile: React.FC = () => {
                                    autoComplete="tel"
                                    defaultValue={personalProfile.personal.phone || ''}
                                    placeholder="(11) 99999-9999"
-                                   className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans"
+                                   data-profile-required-missing={highlightMissingProfileFields && !personalProfile.personal.phone?.trim() ? 'true' : undefined}
+                                   className={`w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans ${highlightMissingProfileFields && !personalProfile.personal.phone?.trim() ? 'border-amber-500 ring-2 ring-amber-400/30 dark:border-amber-400' : ''}`}
                                />
                            </div>
                         </div>
@@ -4737,6 +4849,7 @@ const Profile: React.FC = () => {
                          <BrazilianBillingAddressFields
                             key={personalProfileQuery.dataUpdatedAt || 'personal-address-loading'}
                             initialAddress={personalAddress}
+                            highlightMissing={highlightMissingProfileFields}
                          />
                          </div>
                          <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5 dark:border-slate-800 md:col-span-2">
@@ -4759,7 +4872,7 @@ const Profile: React.FC = () => {
                       </form>
                        )}
                         </section>
-                     <div id="saved-cards-personal-section" className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
+                     {false && <div id="saved-cards-personal-section" className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-800">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div>
                                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Cartões Salvos</h3>
@@ -4966,7 +5079,7 @@ const Profile: React.FC = () => {
                                 </>
                             )}
                         </div>
-                     </div>
+                     </div>}
                   </div>
                )}
 
