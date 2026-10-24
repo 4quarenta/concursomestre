@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowRight, BookOpenCheck, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, Download, ExternalLink, FileText, GraduationCap, MapPin } from 'lucide-react';
 import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import StructuredData from '@/components/seo/StructuredData';
 import BlogConversionCta from '../BlogConversionCta';
 import BlogHeader from '../BlogHeader';
@@ -48,6 +49,7 @@ export default async function PublicExamContent({ params, platformShell = false 
   ].filter((item): item is [string, string] => Boolean(item[1]));
   const canonicalPath = publicRoutes.exams.detail(exam.slug);
   const description = `${exam.title}. Consulte informações públicas, arquivos oficiais e questões vinculadas.`;
+  const pageDescription = 'Consulte os dados do concurso e os arquivos oficiais disponíveis para esta prova.';
   const breadcrumbs = [{ label: 'Início', path: '/' }, { label: 'Provas', path: publicRoutes.exams.index() }, { label: exam.title, path: canonicalPath }];
   const jsonLd = buildStructuredDataGraph([
     buildWebPage({ path: canonicalPath, name: exam.title, description }),
@@ -59,18 +61,29 @@ export default async function PublicExamContent({ params, platformShell = false 
       <StructuredData value={jsonLd} />
       {!platformShell && <BlogHeader />}
       <main>
-        <section className={platformShell ? 'py-4' : 'border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950'}>
-          <div className={platformShell ? 'w-full px-3 sm:px-4 md:px-0' : 'mx-auto max-w-7xl px-5 py-8 lg:px-8'}>
-            <CanonicalBreadcrumbs items={breadcrumbs} />
-            <div className="mt-5 flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.08em]">
+        {platformShell ? (
+          <div data-practice-semantic-header data-semantic-content>
+            <PlatformPageHeader breadcrumbs={breadcrumbs} title={exam.title} description={pageDescription} />
+            <div className="-mt-1 mb-4 flex flex-wrap gap-2 px-3 text-xs font-black uppercase tracking-[0.08em] sm:px-4 md:px-0">
               {exam.year ? <span className="rounded-md bg-indigo-50 px-3 py-2 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-200">{exam.year}</span> : null}
               <span className="rounded-md bg-slate-100 px-3 py-2 text-slate-600 dark:bg-slate-800 dark:text-slate-200">{exam.region} · {exam.stateName}</span>
               {exam.level ? <span className="rounded-md bg-slate-100 px-3 py-2 text-slate-600 dark:bg-slate-800 dark:text-slate-200">{exam.level}</span> : null}
             </div>
-            <h1 className="mt-4 max-w-5xl text-2xl font-black leading-tight text-slate-950 dark:text-white sm:text-3xl">{exam.title}</h1>
-            {exam.officialTitle && exam.officialTitle !== exam.title ? <p className="mt-4 max-w-4xl text-base leading-7 text-slate-600 dark:text-slate-300">{exam.officialTitle}</p> : null}
           </div>
-        </section>
+        ) : (
+          <section className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+            <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8">
+              <CanonicalBreadcrumbs items={breadcrumbs} className="mb-5" />
+              <div className="flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.08em]">
+                {exam.year ? <span className="rounded-md bg-indigo-50 px-3 py-2 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-200">{exam.year}</span> : null}
+                <span className="rounded-md bg-slate-100 px-3 py-2 text-slate-600 dark:bg-slate-800 dark:text-slate-200">{exam.region} · {exam.stateName}</span>
+                {exam.level ? <span className="rounded-md bg-slate-100 px-3 py-2 text-slate-600 dark:bg-slate-800 dark:text-slate-200">{exam.level}</span> : null}
+              </div>
+              <h1 className="mt-4 max-w-5xl text-2xl font-black leading-tight text-slate-950 dark:text-white sm:text-3xl">{exam.title}</h1>
+              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 dark:text-slate-300">{pageDescription}</p>
+            </div>
+          </section>
+        )}
 
         <section className={`mx-auto grid w-full gap-8 px-3 py-8 sm:px-4 md:px-0 lg:grid-cols-[minmax(0,1fr)_340px] ${platformShell ? '' : 'max-w-7xl lg:px-8 lg:py-10'}`}>
           <div className="space-y-8">
