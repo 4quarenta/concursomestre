@@ -5,7 +5,10 @@ import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Pencil, Play, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { plannerService, initialPlan, localDate, type PlanConfig, type PlanSession, type PlanTemplate, type PlannerResponse, type StudyPlan, type Performance } from '@services/study-schedule/plannerService';
+import { filtersService } from '@services/filters';
 import s from './planner.module.css';
+
+type PracticeTaxonomies = Awaited<ReturnType<typeof filtersService.listPracticeTaxonomies>>;
 
 const kindLabels = { study: 'Estudo', questions: 'Questões', review: 'Revisão' };
 const statuses: Record<string, string> = { active: 'Ativo', paused: 'Pausado', completed: 'Concluído', archived: 'Arquivado', draft: 'Rascunho', published: 'Publicado' };
@@ -31,6 +34,10 @@ export default function Planner() {
   const [wizard, setWizard] = useState(false);
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState<PlanConfig>(initialPlan);
+  const [practiceTaxonomies, setPracticeTaxonomies] = useState<PracticeTaxonomies | null>(null);
+  const [taxonomiesLoading, setTaxonomiesLoading] = useState(false);
+  const [taxonomiesLoadAttempted, setTaxonomiesLoadAttempted] = useState(false);
+  const [examDateInput, setExamDateInput] = useState('');
   const [template, setTemplate] = useState<PlanTemplate | null>(null);
   const [templateMode, setTemplateMode] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -59,6 +66,20 @@ export default function Planner() {
     if (currentUser?.id) void load(); else setLoading(false);
     return () => { request.current++; };
   }, [currentUser?.id, load]);
+  useEffect(() => {
+    if (!wizard || step !== 0 || practiceTaxonomies || taxonomiesLoading || taxonomiesLoadAttempted) return;
+    let cancelled = false;
+    setTaxonomiesLoadAttempted(true);
+    setTaxonomiesLoading(true);
+    filtersService.listPracticeTaxonomies().then(result => {
+      if (!cancelled) setPracticeTaxonomies(result);
+    }).catch(e => {
+      if (!cancelled) setError(errText(e));
+    }).finally(() => {
+      if (!cancelled) setTaxonomiesLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [wizard, step, practiceTaxonomies, taxonomiesLoading, taxonomiesLoadAttempted]);
 
   async function mutate(input: Record<string, unknown>, after?: (response: PlannerResponse) => void) {
     if (busy) return;
@@ -68,18 +89,19 @@ export default function Planner() {
     finally { setBusy(false); }
   }
   function begin(model: PlanTemplate | null = null, admin = false, edit = false) {
-    setTemplate(model); setTemplateMode(admin); setEditing(edit); setStep(0); setPreview([]); setError('');
+    setTemplate(model); setTemplateMode(admin); setEditing(edit); setStep(0); setPreview([]); setError(''); setTaxonomiesLoadAttempted(false);
     const next = edit && plan ? structuredClone(plan.config) : model ? structuredClone(model.config) : initialPlan();
     if (model && !admin) {
       next.startDate = localDate();
       if (next.examDate <= next.startDate) { next.examDate = initialPlan().examDate; next.dateConfirmed = false; }
     }
     if (edit) next.startDate = localDate();
-    setConfig(next); setWizard(true);
+    setConfig(next); setExamDateInput(next.dateConfirmed ? next.examDate : ''); setWizard(true);
   }
   function update<K extends keyof PlanConfig>(key: K, value: PlanConfig[K]) { setConfig(c => ({ ...c, [key]: value })); setPreview([]); }
   async function advance() {
-    if (step === 0 && !config.title.trim()) { setError('Informe o concurso e cargo.'); return; }
+    if (step === 0 && (!config.organizationId || !config.positionId)) { setError('Selecione o órgão e o cargo no catálogo.'); return; }
+    if (step === 0 && config.dateConfirmed && (!examDateInput || examDateInput <= config.startDate)) { setError('Informe uma data de prova futura ou selecione “Ainda não definida”.'); return; }
     if (step === 1 && config.subjects.some(x => !x.name.trim() || !x.topics.length || x.questions <= 0 || x.weight <= 0)) { setError('Complete as matérias, assuntos, quantidade e pesos.'); return; }
     setError('');
     if (step === 2) await mutate({ action: 'preview', config }, result => { setPreview(result.sessions || []); setStep(3); });
@@ -95,8 +117,6 @@ export default function Planner() {
   function saveDraft() { try { localStorage.setItem(draftKey, JSON.stringify(config)); setWizard(false); setView('mine'); } catch { setError('Não foi possível salvar o rascunho neste dispositivo.'); } }
 
   const button = (label: string, onClick: () => void, primary = false) => <button type="button" className={primary ? s.primary : s.button} disabled={busy} onClick={onClick}>{label}</button>;
-  const field = (label: string, key: 'title' | 'bank' | 'area' | 'sourceUrl' | 'startDate' | 'examDate', type = 'text') => <label className={s.field}>{label}<input type={type} value={config[key]} onChange={e => update(key, e.target.value)} /></label>;
-
   function sessionActions(activity: PlanSession) {
     if (!plan) return null;
     const payload = { action: 'session', id: plan.id, revision: plan.revision, sessionId: activity.id };
@@ -112,25 +132,77 @@ export default function Planner() {
     </div>;
   }
 
-  const pageTitle = wizard
-    ? templateMode ? 'Modelo da equipe' : editing ? 'Ajustar cronograma' : 'Criar cronograma'
-    : plan ? 'Meu cronograma' : 'Cronogramas';
-  const pageDescription = wizard
-    ? template?.title || 'Organize sua preparação até a prova.'
-    : plan ? plan.title : 'Escolha um modelo ou prepare seu plano de estudos.';
-
-  if (!currentUser) return <div className={s.page}>
-    <PlannerPageHeader title="Cronogramas" description="Entre na sua conta para acessar seus planos de estudo." />
-    <Link href="/login" className={s.primary}>Entrar</Link>
-  </div>;
+  if (!currentUser) return <div className={s.page}><h1>Cronogramas</h1><p>Entre na sua conta para acessar seus planos de estudo.</p><Link href="/login" className={s.primary}>Entrar</Link></div>;
 
   return <div className={s.page} aria-busy={busy || loading}>
-    <PlannerPageHeader title={pageTitle} description={pageDescription} />
+    <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/dashboard' }, { label: 'Cronograma', path: '/cronograma' }]} className="mb-5" />
     {error && <div role="alert" className={s.error}>{error} <button className={s.link} onClick={() => void load(plan?.id, days)}>Tentar novamente</button></div>}
     {loading && <p role="status">Carregando cronogramas...</p>}
     {wizard ? <>
-      <ol className={s.stepper}>{['Concurso', 'Edital e pesos', 'Sua rotina', 'Revisar plano'].map((label, i) => <li key={label} aria-current={step === i ? 'step' : undefined}>{step === i ? <strong>{i + 1}. {label}</strong> : `${i < step ? '✓' : i + 1}. ${label}`}</li>)}</ol>
-      {step === 0 && <><h2>Para qual concurso você vai estudar?</h2><div className={s.fields}>{field('Concurso e cargo', 'title')}{field('Banca', 'bank')}{field('Área', 'area')}{field('Link do edital', 'sourceUrl', 'url')}{field('Início dos estudos', 'startDate', 'date')}{field('Data da prova ou data-alvo', 'examDate', 'date')}</div><label className={s.actions}><input type="checkbox" checked={config.dateConfirmed} onChange={e => update('dateConfirmed', e.target.checked)} /> Data da prova confirmada no edital</label><p>{config.dateConfirmed ? 'Confira a data e o edital antes de continuar.' : 'O plano usará uma data-alvo estimada. Você poderá ajustá-la depois.'}</p></>}
+      <h1>{templateMode ? 'Modelo da equipe' : editing ? 'Ajustar cronograma' : 'Criar cronograma'}</h1>
+      <p>{template ? template.title : 'Organize sua preparação até a prova.'}</p>
+      <ol className={s.stepper}>{['Órgão', 'Edital e pesos', 'Sua rotina', 'Revisar plano'].map((label, i) => <li key={label} aria-current={step === i ? 'step' : undefined}>{step === i ? <strong>{i + 1}. {label}</strong> : `${i < step ? '✓' : i + 1}. ${label}`}</li>)}</ol>
+      {step === 0 && <>
+        <div className={s.setupGrid}><div className={s.setupFields}>
+        <h2>Para qual órgão você vai estudar?</h2>
+        <p>Selecione os dados cadastrados na plataforma. Banca e data da prova não são obrigatórias.</p>
+        <div className={s.fields}>
+          <label className={`${s.field} ${s.wideField}`}>Órgão <span className={s.hint}>Obrigatório · catálogo da plataforma</span>
+            <select value={config.organizationId || ''} disabled={taxonomiesLoading || !practiceTaxonomies} onChange={e => {
+              const selected = practiceTaxonomies?.organizations.find(item => item.id === e.target.value);
+              update('organizationId', selected?.id || '');
+              update('title', [selected?.name, practiceTaxonomies?.roles.find(item => item.id === config.positionId)?.name].filter(Boolean).join(' · '));
+            }}>
+              <option value="">{taxonomiesLoading ? 'Carregando órgãos...' : 'Selecione um órgão'}</option>
+              {(practiceTaxonomies?.organizations || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label className={s.field}>Cargo <span className={s.hint}>Obrigatório · catálogo da plataforma</span>
+            <select value={config.positionId || ''} disabled={taxonomiesLoading || !practiceTaxonomies} onChange={e => {
+              const selected = practiceTaxonomies?.roles.find(item => item.id === e.target.value);
+              update('positionId', selected?.id || '');
+              update('title', [practiceTaxonomies?.organizations.find(item => item.id === config.organizationId)?.name, selected?.name].filter(Boolean).join(' · '));
+            }}>
+              <option value="">{taxonomiesLoading ? 'Carregando cargos...' : 'Selecione um cargo'}</option>
+              {(practiceTaxonomies?.roles || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label className={s.field}>Banca <span className={s.hint}>Opcional</span>
+            <select value={config.boardId || ''} disabled={taxonomiesLoading || !practiceTaxonomies} onChange={e => {
+              const selected = practiceTaxonomies?.agencies.find(item => item.id === e.target.value);
+              update('boardId', selected?.id || ''); update('bank', selected?.name || '');
+            }}>
+              <option value="">Ainda não definida</option>
+              {(practiceTaxonomies?.agencies || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label className={s.field}>Área <span className={s.hint}>Opcional</span>
+            <select value={config.areaId || ''} disabled={taxonomiesLoading || !practiceTaxonomies} onChange={e => {
+              const selected = practiceTaxonomies?.areas.find(item => item.id === e.target.value);
+              update('areaId', selected?.id || ''); update('area', selected?.name || '');
+            }}>
+              <option value="">Selecione uma área (opcional)</option>
+              {(practiceTaxonomies?.areas || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <section className={s.optionalDate} aria-labelledby="exam-date-label">
+          <div className={s.dateHeading}><h3 id="exam-date-label">Data da prova <span>· opcional</span></h3><small>Você poderá informar ou atualizar depois.</small></div>
+          <div className={s.dateChoices}>
+            <button type="button" className={s.choice} aria-pressed={!config.dateConfirmed} onClick={() => { update('dateConfirmed', false); setExamDateInput(''); }}><span className={s.radio} />Ainda não definida</button>
+            <button type="button" className={s.choice} aria-pressed={config.dateConfirmed} onClick={() => update('dateConfirmed', true)}><span className={s.radio} />Já tenho uma data</button>
+          </div>
+          {config.dateConfirmed ? <label className={s.field}>Data prevista<input type="date" value={examDateInput} min={config.startDate} onChange={e => { setExamDateInput(e.target.value); update('examDate', e.target.value); }} /></label>
+            : <p className={s.hint}>Sem data definida, seu plano começa em ciclos revisáveis, sem presumir quando será a prova.</p>}
+        </section>
+        {!taxonomiesLoading && !practiceTaxonomies && <p role="alert">Não foi possível carregar o catálogo. <button type="button" className={s.link} onClick={() => setTaxonomiesLoadAttempted(false)}>Tentar novamente</button></p>}
+        </div><aside className={s.selectionPanel} aria-label="Resumo do seu recorte">
+          <h3>Plano baseado no seu recorte</h3><p>Sem fórmula genérica</p>
+          <dl><div><dt>Órgão</dt><dd>{practiceTaxonomies?.organizations.find(item => item.id === config.organizationId)?.name || 'Selecione acima'}</dd></div><div><dt>Cargo</dt><dd>{practiceTaxonomies?.roles.find(item => item.id === config.positionId)?.name || 'Selecione acima'}</dd></div><div><dt>Banca</dt><dd>{practiceTaxonomies?.agencies.find(item => item.id === config.boardId)?.name || 'A definir'}</dd></div><div><dt>Data</dt><dd>{config.dateConfirmed && examDateInput ? dateLabel(examDateInput) : 'Não definida'}</dd></div></dl>
+          <h4>Como vamos personalizar</h4><p>Cruzaremos provas e questões disponíveis para este órgão e cargo para identificar assuntos recorrentes.</p>
+          <div className={s.selectionNotice}>A cobertura do acervo será apresentada antes da montagem. Se faltarem provas para uma análise confiável, isso ficará claro no próximo passo.</div>
+        </aside></div>
+      </>}
       {step === 1 && <><h2>Confira o que será cobrado</h2>{config.subjects.map((subject, index) => <section className={s.subject} key={subject.id}>
         <div className={s.row}><h3>Matéria {index + 1}</h3><button title="Remover matéria" aria-label="Remover matéria" className={s.icon} disabled={config.subjects.length === 1} onClick={() => update('subjects', config.subjects.filter((_, i) => i !== index))}><Trash2 size={16} /></button></div>
         <div className={s.fields}><label className={s.field}>Matéria<input value={subject.name} onChange={e => update('subjects', config.subjects.map((x, i) => i === index ? { ...x, name: e.target.value } : x))} /></label>
@@ -139,10 +211,10 @@ export default function Planner() {
       </section>)}<button className={s.button} onClick={() => update('subjects', [...config.subjects, { id: crypto.randomUUID(), name: '', topics: [], questions: 10, weight: 1, minimum: 0 }])}><Plus size={16} /> Adicionar matéria</button><div className={s.fields}><label className={s.field}>Desconto por resposta errada (em pontos)<input type="number" min="0" step="0.1" value={config.wrongPenalty} onChange={e => update('wrongPenalty', Number(e.target.value))} /></label><p>Total: {config.subjects.reduce((a, x) => a + x.questions, 0)} questões • {config.subjects.reduce((a, x) => a + x.questions * x.weight, 0)} pontos</p></div></>}
       {step === 2 && <><h2>Quanto tempo cabe na sua semana?</h2><div className={s.weekdays}>{['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((label, index) => <label key={label} className={s.field}>{label} (min)<input type="number" min="0" max="600" step="10" value={config.availability[String(index + 1)]} onChange={e => update('availability', { ...config.availability, [index + 1]: Number(e.target.value) })} /></label>)}</div>
         <div className={s.fields}>{(['sessionMinutes', 'questionGoal', 'reservePercent'] as const).map((key, index) => <label className={s.field} key={key}>{['Duração da sessão (min)', 'Meta de questões por sessão', 'Reserva para imprevistos (%)'][index]}<input type="number" min={key === 'reservePercent' ? 0 : 1} value={config[key]} onChange={e => update(key, Number(e.target.value))} /></label>)}</div><p>{hours(Object.values(config.availability).reduce((a, n) => a + n, 0))} por semana. Pausas de 5 minutos entre sessões.</p></>}
-      {step === 3 && <><h2>Seu plano até {dateLabel(config.examDate)}</h2><div className={s.metrics}><Metric label="Atividades" value={String(preview.length)} /><Metric label="Tempo planejado" value={hours(preview.reduce((a, x) => a + x.minutes, 0))} /><Metric label="Matérias" value={String(config.subjects.length)} /><Metric label="Reserva semanal" value={`${config.reservePercent}%`} /></div><div className={s.notice}>A distribuição considera os pontos da prova e seu histórico recente. Ao ajustar o plano, atividades concluídas e em andamento são preservadas.</div><SessionTable sessions={preview.slice(0, 10)} /><p>Prévia das primeiras {Math.min(10, preview.length)} atividades. Todas serão salvas até a véspera da prova.</p></>}
+      {step === 3 && <><h2>{config.dateConfirmed ? `Seu plano até ${dateLabel(config.examDate)}` : 'Seu primeiro ciclo de estudos'}</h2><div className={s.metrics}><Metric label="Atividades" value={String(preview.length)} /><Metric label="Tempo planejado" value={hours(preview.reduce((a, x) => a + x.minutes, 0))} /><Metric label="Matérias" value={String(config.subjects.length)} /><Metric label="Reserva semanal" value={`${config.reservePercent}%`} /></div><div className={s.notice}>A distribuição considera os pontos da prova e seu histórico recente. Ao ajustar o plano, atividades concluídas e em andamento são preservadas.</div><SessionTable sessions={preview.slice(0, 10)} /><p>Prévia das primeiras {Math.min(10, preview.length)} atividades. {config.dateConfirmed ? 'O ciclo termina na véspera da prova.' : 'Este ciclo poderá ser revisto e ampliado quando houver nova data.'}</p></>}
       <div className={s.toolbar}><button className={s.button} onClick={() => step ? setStep(step - 1) : setWizard(false)}><ArrowLeft size={16} /> Voltar</button><div className={s.actions}>{!templateMode && button('Salvar rascunho neste dispositivo', saveDraft)}{step < 3 ? button('Continuar', () => void advance(), true) : templateMode ? <>{button('Salvar modelo em rascunho', () => void save('draft'))}{button('Publicar modelo', () => void save('published'), true)}</> : button(editing ? 'Salvar ajustes' : 'Gerar meu cronograma', () => void save(), true)}</div></div>
     </> : plan ? <>
-      <div className={`${s.actions} ${s.planActions}`}><button className={s.button} onClick={() => begin(null, false, true)}><Pencil size={15} /> Editar plano</button>{button(plan.status === 'active' ? 'Pausar' : 'Retomar', () => void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: plan.status === 'active' ? 'paused' : 'active' }))}{plan.status !== 'archived' && button('Arquivar', () => { if (window.confirm('Arquivar este cronograma? Seu histórico será preservado.')) void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: 'archived' }); })}</div>
+      <div className={s.row}><div><h1>Meu cronograma</h1><p>{plan.title}</p></div><div className={s.actions}><button className={s.button} onClick={() => begin(null, false, true)}><Pencil size={15} /> Editar plano</button>{button(plan.status === 'active' ? 'Pausar' : 'Retomar', () => void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: plan.status === 'active' ? 'paused' : 'active' }))}{plan.status !== 'archived' && button('Arquivar', () => { if (window.confirm('Arquivar este cronograma? Seu histórico será preservado.')) void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: 'archived' }); })}</div></div>
       <PlanSummary plan={plan} />
       {plan.status !== 'active' && <div className={s.notice}>Plano {statuses[plan.status]?.toLowerCase()}. Retome para iniciar atividades.</div>}
       <div className={s.tabs} role="tablist" aria-label="Visualização do cronograma">{[['today', 'Hoje'], ['week', 'Semana'], ['progress', 'Evolução']].map(([key, label]) => <button role="tab" aria-selected={tab === key} key={key} onClick={() => setTab(key)}>{label}</button>)}</div>
@@ -153,7 +225,7 @@ export default function Planner() {
       </>}
       {reschedule && <div className={s.dialog} role="dialog" aria-modal="true" aria-label="Reagendar atividade"><div className={s.dialogContent}><h2>Reagendar atividade</h2><p>{reschedule.subject} • {reschedule.minutes} min</p><label className={s.field}>Nova data<input autoFocus type="date" min={localDate()} max={shift(plan.config.examDate, -1)} value={targetDate} onChange={e => setTargetDate(e.target.value)} /></label><div className={s.toolbar}>{button('Cancelar', () => setReschedule(null))}{button('Reagendar', () => void mutate({ action: 'session', id: plan.id, revision: plan.revision, sessionId: reschedule.id, operation: 'reschedule', date: targetDate }, () => setReschedule(null)), true)}</div>{error && <p role="alert">{error}</p>}</div></div>}
     </> : <>
-      <div className={s.libraryActions}><button className={s.primary} onClick={() => begin()}><Plus size={16} /> Criar cronograma</button></div>
+      <div className={s.row}><div><h1>Cronogramas</h1><p>Escolha um modelo ou prepare seu plano de estudos.</p></div><button className={s.primary} onClick={() => begin()}><Plus size={16} /> Criar cronograma</button></div>
       <div className={s.tabs} role="tablist" aria-label="Acervo e planos pessoais">{[['library', 'Acervo de modelos'], ['mine', 'Meus cronogramas'], ...(data.canManageTemplates ? [['manage', 'Gerenciar modelos']] : [])].map(([key, label]) => <button role="tab" key={key} aria-selected={view === key} onClick={() => setView(key as typeof view)}>{label}</button>)}</div>
       {view === 'mine' ? <><div className={s.toolbar}>{button('Recuperar rascunho deste dispositivo', () => { try { const raw = localStorage.getItem(draftKey); if (!raw) { setError('Nenhum rascunho encontrado neste dispositivo.'); return; } begin(); setConfig(JSON.parse(raw)); } catch { setError('Rascunho inválido. Crie um novo plano.'); } })}</div>{data.legacy && <div className={s.notice}>Seu cronograma anterior foi preservado. <button className={s.link} onClick={() => { begin(); const old = data.legacy?.form; setConfig(c => ({ ...c, title: String(old?.objective || ''), subjects: Array.isArray(old?.subjects) ? old.subjects.map((x: Record<string, unknown>, i: number) => ({ id: `s${i}`, name: String(x.name || ''), topics: String(x.topics || '').split(/[\n,]/).filter(Boolean), questions: 10, weight: 1, minimum: 0 })) : c.subjects })); }}>Usar matérias do plano anterior</button></div>}<div className={s.grid}>{data.plans?.map(p => <article className={s.card} key={p.id}><CalendarDays size={24} /><h2>{p.title}</h2><span className={s.badge}>{statuses[p.status]}</span><div>{button('Abrir cronograma', () => void load(p.id, days), true)}</div></article>)}</div>{!loading && !data.plans?.length && <div className={s.empty}>Você ainda não criou um cronograma.</div>}</> : <>
         <div className={s.toolbar}><label className={s.field} style={{ flex: 1 }}>Concurso, cargo ou área<input value={query} placeholder="Buscar modelos" onChange={e => setQuery(e.target.value)} /></label>{view === 'manage' && button('Novo modelo', () => begin(null, true), true)}</div>
@@ -162,17 +234,6 @@ export default function Planner() {
       </>}
     </>}
   </div>;
-}
-
-function PlannerPageHeader({ title, description }: { title: string; description: string }) {
-  return <header className={s.pageHeader}>
-    <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/' }, { label: 'Cronograma', path: '/cronograma' }]} />
-    <div className={s.pageHeading}>
-      <p className={s.eyebrow}>Cronograma</p>
-      <h1>{title}</h1>
-      <p className={s.pageDescription}>{description}</p>
-    </div>
-  </header>;
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) { return <div className={s.metric}><small>{label}</small><strong>{value}</strong>{detail && <small>{detail}</small>}</div>; }
@@ -185,7 +246,7 @@ function PlanSummary({ plan }: { plan: StudyPlan }) {
   const covered = new Set(plan.sessions.filter(x => x.status === 'completed').map(x => `${x.subject}|${x.topic}`)).size;
   const projected = new Set(plan.sessions.map(x => `${x.subject}|${x.topic}`)).size;
   const topics = plan.config.subjects.reduce((sum, x) => sum + x.topics.length, 0);
-  return <><div className={s.metrics}><Metric label="Prova / data-alvo" value={dateLabel(plan.config.examDate)} detail={plan.config.dateConfirmed ? 'Data confirmada por você' : 'Data estimada'} /><Metric label="Disponibilidade" value={hours(Object.values(plan.config.availability).reduce((a, x) => a + x, 0))} detail="por semana" /><Metric label="Nesta semana" value={hours(week.reduce((a, x) => a + x.actualMinutes, 0))} detail={`de ${hours(week.reduce((a, x) => a + x.minutes, 0))} planejados`} /><Metric label="Cobertura do edital" value={`${covered} de ${topics} assuntos`} detail="Com atividade concluída" /></div>{projected < topics && <div className={s.notice}>Projeção de cobertura: {projected} de {topics} assuntos até a prova. Ajuste sua rotina ou prioridades para cobrir o restante.</div>}</>;
+  return <><div className={s.metrics}><Metric label="Data da prova" value={plan.config.dateConfirmed ? dateLabel(plan.config.examDate) : 'Não definida'} detail={plan.config.dateConfirmed ? 'Data informada por você' : 'Plano organizado em ciclos'} /><Metric label="Disponibilidade" value={hours(Object.values(plan.config.availability).reduce((a, x) => a + x, 0))} detail="por semana" /><Metric label="Nesta semana" value={hours(week.reduce((a, x) => a + x.actualMinutes, 0))} detail={`de ${hours(week.reduce((a, x) => a + x.minutes, 0))} planejados`} /><Metric label="Cobertura do edital" value={`${covered} de ${topics} assuntos`} detail="Com atividade concluída" /></div>{projected < topics && <div className={s.notice}>Projeção de cobertura: {projected} de {topics} assuntos no ciclo atual. Ajuste sua rotina ou prioridades para cobrir o restante.</div>}</>;
 }
 function Progress({ plan, performance, days, onDays }: { plan: StudyPlan; performance: Performance; days: number; onDays: (days: number) => void }) {
   const since = days ? shift(localDate(), -days) : plan.config.startDate;

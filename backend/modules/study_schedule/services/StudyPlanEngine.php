@@ -16,6 +16,12 @@ final class StudyPlanEngine
     public static function normalize(array $raw): array
     {
         $text = static fn($v) => mb_substr(trim(strip_tags((string) $v)), 0, 200);
+        $taxonomyId = static function ($value): ?string {
+            if ($value === null || $value === '') return null;
+            $value = (string) $value;
+            if (preg_match('/^[1-9][0-9]{0,17}$/', $value) !== 1) throw new InvalidArgumentException('Selecao de taxonomia invalida.');
+            return $value;
+        };
         $title = $text($raw['title'] ?? '');
         if ($title === '') throw new InvalidArgumentException('Informe o concurso e cargo.');
         $subjects = [];
@@ -54,6 +60,10 @@ final class StudyPlanEngine
             throw new InvalidArgumentException('Informe um link valido para o edital.');
         }
         return ['title' => $title, 'bank' => $text($raw['bank'] ?? ''), 'area' => $text($raw['area'] ?? ''),
+            'organizationId' => $taxonomyId($raw['organizationId'] ?? null),
+            'positionId' => $taxonomyId($raw['positionId'] ?? null),
+            'boardId' => $taxonomyId($raw['boardId'] ?? null),
+            'areaId' => $taxonomyId($raw['areaId'] ?? null),
             'sourceUrl' => $source, 'dateConfirmed' => !empty($raw['dateConfirmed']),
             'startDate' => $start->format('Y-m-d'), 'examDate' => $end->format('Y-m-d'),
             'availability' => $availability, 'sessionMinutes' => $session,

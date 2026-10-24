@@ -16,6 +16,9 @@ foreach($sessions as $s) {
     $minutes[$s['subject']]+=$s['minutes']; $ids[]=$s['id'];
 }
 checkPlan(count(array_unique($ids))===count($ids),'Duplicate identifiers');
+ $selected = StudyPlanEngine::normalize($raw + ['organizationId' => '12', 'positionId' => '34', 'boardId' => '56', 'areaId' => '78']);
+checkPlan($selected['organizationId'] === '12' && $selected['positionId'] === '34' && $selected['boardId'] === '56' && $selected['areaId'] === '78', 'Selected taxonomy ids were not preserved');
+try { StudyPlanEngine::normalize($raw + ['organizationId' => '0']); throw new RuntimeException('Invalid taxonomy id accepted'); } catch(InvalidArgumentException) {}
 checkPlan(max($daily)<=102,'Daily availability/reserve exceeded');
 checkPlan($minutes['A']>$minutes['B']*4,'Exam points not prioritized');
 checkPlan(end($sessions)['date']>'2027-03-01','Schedule silently capped at twelve weeks');

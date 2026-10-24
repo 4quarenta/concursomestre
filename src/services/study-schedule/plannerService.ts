@@ -1,6 +1,6 @@
 import { apiClient, assertApiSuccess, readApiData } from '@services/api';
 export type PlanSubject = { id: string; name: string; topics: string[]; questions: number; weight: number; minimum: number };
-export type PlanConfig = { title: string; bank: string; area: string; sourceUrl: string; dateConfirmed: boolean; startDate: string; examDate: string; availability: Record<string, number>; sessionMinutes: number; questionGoal: number; reservePercent: number; wrongPenalty: number; subjects: PlanSubject[] };
+export type PlanConfig = { title: string; bank: string; area: string; organizationId?: string; positionId?: string; boardId?: string; areaId?: string; sourceUrl: string; dateConfirmed: boolean; startDate: string; examDate: string; availability: Record<string, number>; sessionMinutes: number; questionGoal: number; reservePercent: number; wrongPenalty: number; subjects: PlanSubject[] };
 export type PlanSession = { id: string; date: string; subjectId: string; subject: string; topic: string; kind: 'study' | 'questions' | 'review'; minutes: number; questionGoal: number; status: 'planned' | 'started' | 'completed'; actualMinutes: number; startedAt?: string; completedAt?: string };
 export type StudyPlan = { id: string; title: string; status: string; revision: number; created_at: string; config: PlanConfig; sessions: PlanSession[] };
 export type PlanTemplate = { id: string; title: string; status: string; version: number; updated_at: string; config: PlanConfig };
