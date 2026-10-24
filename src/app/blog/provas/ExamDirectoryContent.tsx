@@ -93,7 +93,7 @@ export default async function ExamDirectoryContent({ searchParams, platformShell
   ]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className={platformShell ? 'min-h-screen bg-transparent' : 'min-h-screen bg-slate-50 dark:bg-slate-900'}>
       <StructuredData value={jsonLd} />
       {!platformShell && <BlogHeader />}
       <main>

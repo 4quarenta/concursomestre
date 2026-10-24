@@ -94,12 +94,13 @@ const officialPrograms: Record<string, OfficialExamProgram> = {
 
 export const getOfficialExamProgram = (slug: string): OfficialExamProgram | null => officialPrograms[slug] ?? null;
 
-export function OfficialExamProgramSection({ slug }: { slug: string }) {
+export function OfficialExamProgramSection({ slug, platformShell = false }: { slug: string; platformShell?: boolean }) {
   const program = getOfficialExamProgram(slug);
   if (!program) return null;
+  const cardSurfaceClass = platformShell ? 'dark:bg-slate-900' : 'dark:bg-slate-950';
 
   return (
-    <section className="rounded-md border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-transparent" aria-labelledby="official-program-title">
+    <section className={`rounded-md border border-slate-200 bg-white p-6 dark:border-slate-800 ${cardSurfaceClass}`} aria-labelledby="official-program-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="official-program-title" className="text-xl font-black text-slate-950 dark:text-white">Conteúdo programático</h2>
