@@ -115,9 +115,9 @@ export function OfficialExamProgramSection({ slug }: { slug: string }) {
       <div className="mt-3 divide-y divide-slate-200 dark:divide-slate-800">
         {program.subjects.map((subject) => (
           <details key={subject.name} open={subject.expanded} className="group">
-            <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-3 [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-14 cursor-pointer list-none flex-col items-start justify-center gap-1 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-900 dark:text-slate-100">{subject.name}</span>
-              <span className="flex shrink-0 items-center gap-2 text-right text-xs text-slate-500 dark:text-slate-400">
+              <span className="flex w-full items-center gap-2 text-left text-xs text-slate-500 dark:text-slate-400 sm:w-auto sm:shrink-0 sm:text-right">
                 <span><strong className="text-slate-700 dark:text-slate-200">{subject.questionCount}</strong> questões · {subject.weight}</span>
                 <ChevronDown size={16} className="transition-transform group-open:rotate-180" aria-hidden="true" />
               </span>
