@@ -892,6 +892,7 @@ const Simulation: React.FC = () => {
             onClose={() => setShowAuthModal(false)}
             title={authModalConfig.title}
             description={authModalConfig.description}
+            inlineLogin={!currentUser}
          />
          <UpgradeModal
             isOpen={showUpgradeModal}
@@ -1602,6 +1603,7 @@ const Simulation: React.FC = () => {
             onClose={() => setShowAuthModal(false)}
             title={authModalConfig.title}
             description={authModalConfig.description}
+            inlineLogin={!currentUser}
          />
          <UpgradeModal
             isOpen={showUpgradeModal}
