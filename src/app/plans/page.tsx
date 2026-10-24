@@ -23,6 +23,7 @@ import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { PlanCard } from './components/PlanCard';
 import { useToast } from '@providers/ToastProvider';
 import { ArrowRight, AlertTriangle, BarChart3, BookOpen, CalendarDays, Check, CheckCircle2, Clock3, Info, Star, XCircle } from 'lucide-react';
+import PlatformPageHeader from '@/components/shared/layout/PlatformPageHeader';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 
@@ -287,24 +288,17 @@ const PlansPage: React.FC = () => {
 
     return (
         <div className="relative mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <nav aria-label="Navegação estrutural" className="mb-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                <Link href="/" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Início</Link>
-                <span aria-hidden="true">/</span>
-                <span aria-current="page" className="font-semibold text-slate-800 dark:text-slate-200">Planos</span>
-            </nav>
-
-            <header className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Planos para estudar no seu ritmo</h1>
-                    <p className="mt-1 max-w-2xl text-base text-slate-600 dark:text-slate-400">
-                        Compare os recursos e escolha o apoio que combina com sua preparação.
+            <PlatformPageHeader
+                breadcrumbs={[{ label: 'Início', path: '/' }, { label: 'Planos', path: '/plans' }]}
+                title="Planos para estudar no seu ritmo"
+                description="Compare os recursos e escolha o apoio que combina com sua preparação."
+                action={(
+                    <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <CheckCircle2 size={16} className="shrink-0 text-emerald-500" />
+                        Valores e descontos finais são confirmados no checkout.
                     </p>
-                </div>
-                <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <CheckCircle2 size={16} className="shrink-0 text-emerald-500" />
-                    Valores e descontos finais são confirmados no checkout.
-                </p>
-            </header>
+                )}
+            />
 
             <section aria-label="Período de assinatura" className="mb-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
                 <div>

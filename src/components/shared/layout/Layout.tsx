@@ -11,7 +11,7 @@
 
 
 import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, Sun, Moon, Lock, HelpCircle, Rocket, Crown, FileQuestion, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, Landmark, Newspaper, type LucideIcon } from 'lucide-react';
+import { LayoutGrid, BookOpen, BookOpenText, User, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, Sun, Moon, Lock, HelpCircle, Rocket, Crown, FileText, Bookmark, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, Search, MoreHorizontal, Landmark, Newspaper, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -313,10 +313,10 @@ const Layout: React.FC<LayoutProps> = ({ children, includePageExtras = true, ful
   const adminMenuBadgeCount = adminFeedbackCount + adminOpenReportsCount;
 
   const navItems: SidebarNavItem[] = ([
-    { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', enabled: !!user, benefitKey: 'module.dashboard' },
-    { label: 'Quest\u00F5es', icon: BookOpen, path: publicRoutes.questions.index(), enabled: practiceEnabled, benefitKey: 'module.practice' },
-    { label: 'Provas', icon: FileQuestion, path: publicRoutes.exams.index(), enabled: true },
-    { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled, benefitKey: 'module.lei_comentada' },
+    { label: 'Dashboard', icon: LayoutGrid, path: '/dashboard', enabled: !!user, benefitKey: 'module.dashboard' },
+    { label: 'Quest\u00F5es', icon: BookOpenText, path: publicRoutes.questions.index(), enabled: practiceEnabled, benefitKey: 'module.practice' },
+    { label: 'Provas', icon: FileText, path: publicRoutes.exams.index(), enabled: true },
+    { label: 'Lei comentada', icon: Bookmark, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled, benefitKey: 'module.lei_comentada' },
     { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled, benefitKey: 'module.flashcards' },
     { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled, benefitKey: 'module.simulations' },
     { label: 'Cronograma', icon: CalendarDays, path: '/cronograma', enabled: true, moduleEnabled: studyScheduleEnabled, benefitKey: 'module.schedule' },
