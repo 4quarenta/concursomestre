@@ -2,13 +2,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Pencil, Play, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Info, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { plannerService, initialPlan, localDate, type PlanConfig, type PlanSession, type PlanTemplate, type PlannerResponse, type StudyPlan, type Performance } from '@services/study-schedule/plannerService';
 import { filtersService } from '@services/filters';
 import s from './planner.module.css';
 
 type PracticeTaxonomies = Awaited<ReturnType<typeof filtersService.listPracticeTaxonomies>>;
+type TaxonomyOption = { id: string; name: string };
 
 const kindLabels = { study: 'Estudo', questions: 'Questões', review: 'Revisão' };
 const statuses: Record<string, string> = { active: 'Ativo', paused: 'Pausado', completed: 'Concluído', archived: 'Arquivado', draft: 'Rascunho', published: 'Publicado' };
@@ -37,6 +38,7 @@ export default function Planner() {
   const [practiceTaxonomies, setPracticeTaxonomies] = useState<PracticeTaxonomies | null>(null);
   const [taxonomiesLoading, setTaxonomiesLoading] = useState(false);
   const [taxonomiesLoadAttempted, setTaxonomiesLoadAttempted] = useState(false);
+  const taxonomyRequest = useRef(false);
   const [examDateInput, setExamDateInput] = useState('');
   const [template, setTemplate] = useState<PlanTemplate | null>(null);
   const [templateMode, setTemplateMode] = useState(false);
@@ -67,19 +69,19 @@ export default function Planner() {
     return () => { request.current++; };
   }, [currentUser?.id, load]);
   useEffect(() => {
-    if (!wizard || step !== 0 || practiceTaxonomies || taxonomiesLoading || taxonomiesLoadAttempted) return;
-    let cancelled = false;
+    if (!wizard || step !== 0 || practiceTaxonomies || taxonomyRequest.current || taxonomiesLoadAttempted) return;
+    taxonomyRequest.current = true;
     setTaxonomiesLoadAttempted(true);
     setTaxonomiesLoading(true);
-    filtersService.listPracticeTaxonomies().then(result => {
-      if (!cancelled) setPracticeTaxonomies(result);
+    void filtersService.listPracticeTaxonomies().then(result => {
+      setPracticeTaxonomies(result);
     }).catch(e => {
-      if (!cancelled) setError(errText(e));
+      setError(errText(e));
     }).finally(() => {
-      if (!cancelled) setTaxonomiesLoading(false);
+      taxonomyRequest.current = false;
+      setTaxonomiesLoading(false);
     });
-    return () => { cancelled = true; };
-  }, [wizard, step, practiceTaxonomies, taxonomiesLoading, taxonomiesLoadAttempted]);
+  }, [wizard, step, practiceTaxonomies, taxonomiesLoadAttempted]);
 
   async function mutate(input: Record<string, unknown>, after?: (response: PlannerResponse) => void) {
     if (busy) return;
@@ -139,52 +141,32 @@ export default function Planner() {
     {error && <div role="alert" className={s.error}>{error} <button className={s.link} onClick={() => void load(plan?.id, days)}>Tentar novamente</button></div>}
     {loading && <p role="status">Carregando cronogramas...</p>}
     {wizard ? <>
-      <h1>{templateMode ? 'Modelo da equipe' : editing ? 'Ajustar cronograma' : 'Criar cronograma'}</h1>
-      <p>{template ? template.title : 'Organize sua preparação até a prova.'}</p>
-      <ol className={s.stepper}>{['Órgão', 'Edital e pesos', 'Sua rotina', 'Revisar plano'].map((label, i) => <li key={label} aria-current={step === i ? 'step' : undefined}>{step === i ? <strong>{i + 1}. {label}</strong> : `${i < step ? '✓' : i + 1}. ${label}`}</li>)}</ol>
+      <header className={s.wizardHeading}><div><h1>Novo cronograma</h1><p>{template ? template.title : 'Escolha seu órgão e cargo. A gente transforma isso em um plano de estudo possível de seguir.'}</p></div></header>
+      <ol className={s.stepper} aria-label="Etapas para criar o cronograma">{['Órgão', 'Disponibilidade', 'Ponto de partida', 'Seu plano'].map((label, i) => <li key={label} className={i === step ? s.stepActive : i < step ? s.stepDone : ''} aria-current={step === i ? 'step' : undefined}><span className={s.stepNumber}>{i < step ? <Check size={14} /> : i + 1}</span><span>{label}</span></li>)}</ol>
       {step === 0 && <>
-        <div className={s.setupGrid}><div className={s.setupFields}>
-        <h2>Para qual órgão você vai estudar?</h2>
-        <p>Selecione os dados cadastrados na plataforma. Banca e data da prova não são obrigatórias.</p>
+        <div className={s.setupGrid}><section className={s.formPanel} aria-labelledby="organization-step-title">
+        <h2 className={s.sectionTitle} id="organization-step-title">1. Órgão</h2>
+        <p className={s.sectionCopy}>Selecione o órgão e o cargo do catálogo da plataforma. Você não precisa saber a banca ou a data da prova para começar.</p>
         <div className={s.fields}>
-          <label className={`${s.field} ${s.wideField}`}>Órgão <span className={s.hint}>Obrigatório · catálogo da plataforma</span>
-            <select value={config.organizationId || ''} disabled={taxonomiesLoading || !practiceTaxonomies} onChange={e => {
-              const selected = practiceTaxonomies?.organizations.find(item => item.id === e.target.value);
-              update('organizationId', selected?.id || '');
-              update('title', [selected?.name, practiceTaxonomies?.roles.find(item => item.id === config.positionId)?.name].filter(Boolean).join(' · '));
-            }}>
-              <option value="">{taxonomiesLoading ? 'Carregando órgãos...' : 'Selecione um órgão'}</option>
-              {(practiceTaxonomies?.organizations || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-          <label className={s.field}>Cargo <span className={s.hint}>Obrigatório · catálogo da plataforma</span>
-            <select value={config.positionId || ''} disabled={taxonomiesLoading || !practiceTaxonomies} onChange={e => {
-              const selected = practiceTaxonomies?.roles.find(item => item.id === e.target.value);
-              update('positionId', selected?.id || '');
-              update('title', [practiceTaxonomies?.organizations.find(item => item.id === config.organizationId)?.name, selected?.name].filter(Boolean).join(' · '));
-            }}>
-              <option value="">{taxonomiesLoading ? 'Carregando cargos...' : 'Selecione um cargo'}</option>
-              {(practiceTaxonomies?.roles || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-          <label className={s.field}>Banca <span className={s.hint}>Opcional</span>
-            <select value={config.boardId || ''} disabled={taxonomiesLoading || !practiceTaxonomies} onChange={e => {
-              const selected = practiceTaxonomies?.agencies.find(item => item.id === e.target.value);
-              update('boardId', selected?.id || ''); update('bank', selected?.name || '');
-            }}>
-              <option value="">Ainda não definida</option>
-              {(practiceTaxonomies?.agencies || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-          <label className={s.field}>Área <span className={s.hint}>Opcional</span>
-            <select value={config.areaId || ''} disabled={taxonomiesLoading || !practiceTaxonomies} onChange={e => {
-              const selected = practiceTaxonomies?.areas.find(item => item.id === e.target.value);
-              update('areaId', selected?.id || ''); update('area', selected?.name || '');
-            }}>
-              <option value="">Selecione uma área (opcional)</option>
-              {(practiceTaxonomies?.areas || []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
+          <div className={`${s.field} ${s.wideField}`}><label htmlFor="planner-organization">Órgão <b>*</b></label><TaxonomyPicker id="planner-organization" value={config.organizationId} options={practiceTaxonomies?.organizations || []} loading={taxonomiesLoading} placeholder="Selecione um órgão" searchPlaceholder="Buscar órgão..." onChange={id => {
+            const selected = practiceTaxonomies?.organizations.find(item => item.id === id);
+            update('organizationId', id);
+            update('positionId', '');
+            update('title', selected?.name || '');
+          }} /><span className={s.hint}>Escolha um órgão cadastrado. Digite para localizar no catálogo.</span></div>
+          <div className={s.field}><label htmlFor="planner-role">Cargo <b>*</b></label><TaxonomyPicker id="planner-role" value={config.positionId} options={practiceTaxonomies?.roles || []} loading={taxonomiesLoading} placeholder="Selecione um cargo" searchPlaceholder="Buscar cargo..." onChange={id => {
+            const selected = practiceTaxonomies?.roles.find(item => item.id === id);
+            update('positionId', id);
+            update('title', [practiceTaxonomies?.organizations.find(item => item.id === config.organizationId)?.name, selected?.name].filter(Boolean).join(' · '));
+          }} /><span className={s.hint}>As opções vêm do catálogo da plataforma.</span></div>
+          <div className={s.field}><label htmlFor="planner-area">Área <span className={s.optionalLabel}>· opcional</span></label><TaxonomyPicker id="planner-area" value={config.areaId} options={practiceTaxonomies?.areas || []} loading={taxonomiesLoading} placeholder="Selecione uma área" searchPlaceholder="Buscar área..." onChange={id => {
+            const selected = practiceTaxonomies?.areas.find(item => item.id === id);
+            update('areaId', id); update('area', selected?.name || '');
+          }} /><span className={s.hint}>Refine o recorte quando houver classificação disponível.</span></div>
+          <div className={`${s.field} ${s.wideField}`}><label htmlFor="planner-agency">Banca <span className={s.optionalLabel}>· opcional</span></label><TaxonomyPicker id="planner-agency" value={config.boardId} options={practiceTaxonomies?.agencies || []} loading={taxonomiesLoading} placeholder="Ainda não definida" searchPlaceholder="Buscar banca..." allowEmpty onChange={id => {
+            const selected = practiceTaxonomies?.agencies.find(item => item.id === id);
+            update('boardId', id); update('bank', selected?.name || '');
+          }} /><span className={s.hint}>Se já estiver definida, escolha uma banca do catálogo.</span></div>
         </div>
         <section className={s.optionalDate} aria-labelledby="exam-date-label">
           <div className={s.dateHeading}><h3 id="exam-date-label">Data da prova <span>· opcional</span></h3><small>Você poderá informar ou atualizar depois.</small></div>
@@ -192,15 +174,18 @@ export default function Planner() {
             <button type="button" className={s.choice} aria-pressed={!config.dateConfirmed} onClick={() => { update('dateConfirmed', false); setExamDateInput(''); }}><span className={s.radio} />Ainda não definida</button>
             <button type="button" className={s.choice} aria-pressed={config.dateConfirmed} onClick={() => update('dateConfirmed', true)}><span className={s.radio} />Já tenho uma data</button>
           </div>
-          {config.dateConfirmed ? <label className={s.field}>Data prevista<input type="date" value={examDateInput} min={config.startDate} onChange={e => { setExamDateInput(e.target.value); update('examDate', e.target.value); }} /></label>
-            : <p className={s.hint}>Sem data definida, seu plano começa em ciclos revisáveis, sem presumir quando será a prova.</p>}
+          {config.dateConfirmed ? <div className={s.dateRow}><label className={s.field}>Data prevista<input type="date" value={examDateInput} min={config.startDate} onChange={e => { setExamDateInput(e.target.value); update('examDate', e.target.value); }} /></label><p className={s.hint}>Informe a data prevista. Você pode atualizá-la depois.</p></div>
+            : <p className={s.hint}>Sem data definida, o cronograma será organizado em ciclos revisáveis, sem inventar uma data de prova.</p>}
         </section>
-        {!taxonomiesLoading && !practiceTaxonomies && <p role="alert">Não foi possível carregar o catálogo. <button type="button" className={s.link} onClick={() => setTaxonomiesLoadAttempted(false)}>Tentar novamente</button></p>}
-        </div><aside className={s.selectionPanel} aria-label="Resumo do seu recorte">
-          <h3>Plano baseado no seu recorte</h3><p>Sem fórmula genérica</p>
+        <div className={s.rule}><ShieldCheck size={16} /><span>Sem banca ou data? Tudo bem. O cronograma continua possível e poderá ser ajustado quando o edital sair.</span></div>
+        {!taxonomiesLoading && !practiceTaxonomies && <p role="alert" className={s.catalogError}>Não foi possível carregar o catálogo. <button type="button" className={s.link} onClick={() => setTaxonomiesLoadAttempted(false)}>Tentar novamente</button></p>}
+        <div className={s.wizardActions}><button type="button" className={s.cancelButton} onClick={() => setWizard(false)}>Cancelar</button><button type="button" className={s.primary} disabled={busy || taxonomiesLoading} onClick={() => void advance()}>Continuar <ArrowRight size={15} /></button></div>
+        </section><aside className={s.selectionPanel} aria-label="Como o cronograma será personalizado">
+          <div className={s.selectionHeader}><span className={s.selectionIcon}><CalendarDays size={17} /></span><div><h3>Plano baseado no seu recorte</h3><p>Sem fórmula genérica</p></div></div>
           <dl><div><dt>Órgão</dt><dd>{practiceTaxonomies?.organizations.find(item => item.id === config.organizationId)?.name || 'Selecione acima'}</dd></div><div><dt>Cargo</dt><dd>{practiceTaxonomies?.roles.find(item => item.id === config.positionId)?.name || 'Selecione acima'}</dd></div><div><dt>Banca</dt><dd>{practiceTaxonomies?.agencies.find(item => item.id === config.boardId)?.name || 'A definir'}</dd></div><div><dt>Data</dt><dd>{config.dateConfirmed && examDateInput ? dateLabel(examDateInput) : 'Não definida'}</dd></div></dl>
-          <h4>Como vamos personalizar</h4><p>Cruzaremos provas e questões disponíveis para este órgão e cargo para identificar assuntos recorrentes.</p>
-          <div className={s.selectionNotice}>A cobertura do acervo será apresentada antes da montagem. Se faltarem provas para uma análise confiável, isso ficará claro no próximo passo.</div>
+          <div className={s.selectionAnalysis}><h4>O que acontece com essa escolha</h4><p>Na próxima etapa, cruzamos provas e questões disponíveis para este órgão e cargo. Os assuntos mais recorrentes ajudam a ordenar suas prioridades.</p></div>
+          <div className={s.selectionNotice}><Info size={15} /><span>A recorrência e a cobertura do acervo serão mostradas com transparência. Sem histórico suficiente, isso será indicado antes de montar o plano.</span></div>
+          <p className={s.selectionFooter}>A seleção pode ser atualizada depois; seu cronograma acompanha as mudanças.</p>
         </aside></div>
       </>}
       {step === 1 && <><h2>Confira o que será cobrado</h2>{config.subjects.map((subject, index) => <section className={s.subject} key={subject.id}>
@@ -212,7 +197,7 @@ export default function Planner() {
       {step === 2 && <><h2>Quanto tempo cabe na sua semana?</h2><div className={s.weekdays}>{['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((label, index) => <label key={label} className={s.field}>{label} (min)<input type="number" min="0" max="600" step="10" value={config.availability[String(index + 1)]} onChange={e => update('availability', { ...config.availability, [index + 1]: Number(e.target.value) })} /></label>)}</div>
         <div className={s.fields}>{(['sessionMinutes', 'questionGoal', 'reservePercent'] as const).map((key, index) => <label className={s.field} key={key}>{['Duração da sessão (min)', 'Meta de questões por sessão', 'Reserva para imprevistos (%)'][index]}<input type="number" min={key === 'reservePercent' ? 0 : 1} value={config[key]} onChange={e => update(key, Number(e.target.value))} /></label>)}</div><p>{hours(Object.values(config.availability).reduce((a, n) => a + n, 0))} por semana. Pausas de 5 minutos entre sessões.</p></>}
       {step === 3 && <><h2>{config.dateConfirmed ? `Seu plano até ${dateLabel(config.examDate)}` : 'Seu primeiro ciclo de estudos'}</h2><div className={s.metrics}><Metric label="Atividades" value={String(preview.length)} /><Metric label="Tempo planejado" value={hours(preview.reduce((a, x) => a + x.minutes, 0))} /><Metric label="Matérias" value={String(config.subjects.length)} /><Metric label="Reserva semanal" value={`${config.reservePercent}%`} /></div><div className={s.notice}>A distribuição considera os pontos da prova e seu histórico recente. Ao ajustar o plano, atividades concluídas e em andamento são preservadas.</div><SessionTable sessions={preview.slice(0, 10)} /><p>Prévia das primeiras {Math.min(10, preview.length)} atividades. {config.dateConfirmed ? 'O ciclo termina na véspera da prova.' : 'Este ciclo poderá ser revisto e ampliado quando houver nova data.'}</p></>}
-      <div className={s.toolbar}><button className={s.button} onClick={() => step ? setStep(step - 1) : setWizard(false)}><ArrowLeft size={16} /> Voltar</button><div className={s.actions}>{!templateMode && button('Salvar rascunho neste dispositivo', saveDraft)}{step < 3 ? button('Continuar', () => void advance(), true) : templateMode ? <>{button('Salvar modelo em rascunho', () => void save('draft'))}{button('Publicar modelo', () => void save('published'), true)}</> : button(editing ? 'Salvar ajustes' : 'Gerar meu cronograma', () => void save(), true)}</div></div>
+      {step > 0 && <div className={s.toolbar}><button className={s.button} onClick={() => setStep(step - 1)}><ArrowLeft size={16} /> Voltar</button><div className={s.actions}>{!templateMode && button('Salvar rascunho neste dispositivo', saveDraft)}{step < 3 ? button('Continuar', () => void advance(), true) : templateMode ? <>{button('Salvar modelo em rascunho', () => void save('draft'))}{button('Publicar modelo', () => void save('published'), true)}</> : button(editing ? 'Salvar ajustes' : 'Gerar meu cronograma', () => void save(), true)}</div></div>}
     </> : plan ? <>
       <div className={s.row}><div><h1>Meu cronograma</h1><p>{plan.title}</p></div><div className={s.actions}><button className={s.button} onClick={() => begin(null, false, true)}><Pencil size={15} /> Editar plano</button>{button(plan.status === 'active' ? 'Pausar' : 'Retomar', () => void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: plan.status === 'active' ? 'paused' : 'active' }))}{plan.status !== 'archived' && button('Arquivar', () => { if (window.confirm('Arquivar este cronograma? Seu histórico será preservado.')) void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: 'archived' }); })}</div></div>
       <PlanSummary plan={plan} />
@@ -233,6 +218,71 @@ export default function Planner() {
         <div className={s.grid}>{data.templates?.filter(t => (view === 'manage' || t.status === 'published') && `${t.title} ${t.config.area}`.toLowerCase().includes(query.toLowerCase())).map(t => <article className={s.card} key={t.id}><CalendarDays size={28} color="#2563eb" /><h2>{t.title}</h2><p>{t.config.bank || 'Banca a confirmar'} • {t.config.subjects.length} disciplinas</p><small>Versão {t.version} • {statuses[t.status]}</small><p>{t.config.dateConfirmed ? 'Data de referência no modelo' : 'Pré-edital • data-alvo personalizada'}</p><button className={s.link} onClick={() => setExpanded(expanded === t.id ? null : t.id)}>Ver disciplinas e pesos</button>{expanded === t.id && <><ul>{t.config.subjects.map(x => <li key={x.id}><p>{x.name}: {x.questions} questões × peso {x.weight}</p></li>)}</ul>{t.config.sourceUrl && <a className={s.link} href={t.config.sourceUrl} target="_blank" rel="noopener noreferrer">Consultar edital</a>}</>}<div>{button(view === 'manage' ? 'Editar modelo' : 'Usar este modelo', () => begin(t, view === 'manage'), true)}</div></article>)}</div>
       </>}
     </>}
+  </div>;
+}
+
+function TaxonomyPicker({
+  id,
+  value,
+  options,
+  loading,
+  placeholder,
+  searchPlaceholder,
+  onChange,
+  allowEmpty = false,
+}: {
+  id: string;
+  value: string;
+  options: TaxonomyOption[];
+  loading: boolean;
+  placeholder: string;
+  searchPlaceholder: string;
+  onChange: (value: string) => void;
+  allowEmpty?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const selected = options.find(option => option.id === value);
+  const normalizedQuery = query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const filtered = options.filter(option => option.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(normalizedQuery));
+
+  useEffect(() => {
+    if (!open) return;
+    searchRef.current?.focus();
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
+  function choose(nextValue: string) {
+    onChange(nextValue);
+    setQuery('');
+    setOpen(false);
+  }
+
+  return <div className={s.picker} ref={rootRef}>
+    <button id={id} type="button" role="combobox" aria-expanded={open} aria-controls={`${id}-options`} aria-haspopup="listbox" aria-busy={loading} disabled={loading} className={s.pickerButton} onClick={() => setOpen(current => !current)}>
+      <span>{loading ? 'Carregando opções...' : selected?.name || placeholder}</span><ChevronDown size={15} aria-hidden="true" />
+    </button>
+    {open && <div className={s.pickerPopover}>
+      <div className={s.pickerSearch}><Search size={16} aria-hidden="true" /><input ref={searchRef} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} /></div>
+      <div id={`${id}-options`} className={s.pickerOptions} role="listbox" aria-label={searchPlaceholder}>
+        {allowEmpty && <button type="button" role="option" aria-selected={!value} onClick={() => choose('')}>{placeholder}</button>}
+        {filtered.map(option => <button type="button" role="option" aria-selected={value === option.id} key={option.id} onClick={() => choose(option.id)}>{option.name}</button>)}
+        {!filtered.length && <p className={s.pickerEmpty}>{options.length ? 'Nenhuma opção encontrada.' : 'Nenhuma opção disponível no catálogo.'}</p>}
+      </div>
+    </div>}
   </div>;
 }
 
