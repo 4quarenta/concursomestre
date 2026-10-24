@@ -7,6 +7,7 @@ import StructuredData from '@/components/seo/StructuredData';
 import BlogConversionCta from '../BlogConversionCta';
 import BlogHeader from '../BlogHeader';
 import { fetchPublicExamDetailForServer, type PublicExamFile } from '../blogServerData';
+import { OfficialExamProgramSection } from './officialExamProgram';
 import { buildBreadcrumbList, buildStructuredDataGraph, buildWebPage } from '@services/seo/structuredData';
 import { buildBoardPath } from '@services/seo';
 import { publicRoutes } from '@services/routes/publicRoutes';
@@ -93,6 +94,8 @@ export default async function PublicExamContent({ params, platformShell = false 
                 {dates.map(([label, value]) => <div key={label}><dt className="text-xs font-black uppercase text-slate-400">{label}</dt><dd className="mt-1 font-bold text-slate-800 dark:text-slate-100">{value}</dd></div>)}
               </dl>
             </section>
+
+            <OfficialExamProgramSection slug={exam.slug} />
 
             {(exam.subjects.length || exam.areas.length) ? (
               <section className="rounded-md border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950">
