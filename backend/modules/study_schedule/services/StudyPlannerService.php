@@ -26,7 +26,7 @@ final class StudyPlannerService
     {
         $row = $this->query('SELECT * FROM study_plans WHERE id = ? AND user_id = ?' . ($lock ? ' FOR UPDATE' : ''), [$id, $this->userId])->fetch(PDO::FETCH_ASSOC);
         if (!$row) throw new OutOfBoundsException('Cronograma nao encontrado.');
-        $row['config'] = json_decode($row['config_json'], true, 512, JSON_THROW_ON_ERROR);
+        $row['config'] = StudyPlanEngine::normalize(json_decode($row['config_json'], true, 512, JSON_THROW_ON_ERROR));
         unset($row['config_json'], $row['user_id']);
         $rows = $this->query('SELECT * FROM study_plan_sessions WHERE plan_id = ? ORDER BY scheduled_date, id', [$id])->fetchAll(PDO::FETCH_ASSOC);
         $row['sessions'] = array_map(static function ($s) {
@@ -148,9 +148,13 @@ final class StudyPlannerService
                     $date = StudyPlanEngine::date((string) ($input['date'] ?? ''));
                     $today = new DateTimeImmutable('today', new DateTimeZone('America/Sao_Paulo'));
                     if ($date < $today || $date >= StudyPlanEngine::date($plan['config']['examDate'])) throw new InvalidArgumentException('Escolha uma data entre hoje e a vespera da prova.');
-                    $used = array_sum(array_map(static fn($item) => $item['date'] === $date->format('Y-m-d') && $item['id'] !== $s['id'] ? $item['minutes'] + 5 : 0, $plan['sessions']));
-                    if ($used + $s['minutes'] > $plan['config']['availability'][$date->format('N')]) throw new InvalidArgumentException('Nao ha tempo disponivel nesse dia.');
-                    $this->query('UPDATE study_plan_sessions SET scheduled_date=? WHERE id=?', [$date->format('Y-m-d'), $s['id']]);
+                    $newDate = $date->format('Y-m-d');
+                    $slot = StudyPlanEngine::findSlot($plan['config'], $newDate, (int) $s['minutes'], $plan['sessions'], $s['id']);
+                    if (!$slot) throw new InvalidArgumentException('Nao ha um horario livre suficiente nesse dia.');
+                    $s['date'] = $newDate;
+                    $s['startTime'] = $slot['startTime'];
+                    $s['endTime'] = $slot['endTime'];
+                    $this->query('UPDATE study_plan_sessions SET scheduled_date=?, payload_json=? WHERE id=?', [$newDate, json_encode($s, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $s['id']]);
                 } else throw new InvalidArgumentException('A atividade ja mudou de estado. Atualize o plano.');
             } elseif ($action === 'revise') {
                 $config = StudyPlanEngine::normalize($input['config'] ?? []);
@@ -158,14 +162,12 @@ final class StudyPlannerService
                 $config['startDate'] = max($config['startDate'], $today);
                 if ($config['examDate'] <= $config['startDate']) throw new InvalidArgumentException('A data da prova precisa estar no futuro.');
                 $sessions = StudyPlanEngine::generate($config, $this->performance($config, $plan['created_at']));
-                // Keep completed, running and past pending sessions; avoid overbooking preserved dates.
-                $reserved = [];
-                foreach ($plan['sessions'] as $s) if ($s['status'] !== 'planned' || $s['date'] < $today) $reserved[$s['date']] = ($reserved[$s['date']] ?? 0) + $s['minutes'] + 5;
+                // Keep completed, running and past pending sessions; place new sessions around them.
+                $occupied = array_values(array_filter($plan['sessions'], static fn($s) => $s['status'] !== 'planned' || $s['date'] < $today));
                 $remaining = [];
                 foreach ($sessions as $s) {
-                    $day = StudyPlanEngine::date($s['date'])->format('N');
-                    $cap = (int) floor($config['availability'][$day] * (1 - $config['reservePercent'] / 100));
-                    if (($reserved[$s['date']] ?? 0) + $s['minutes'] <= $cap) { $remaining[] = $s; $reserved[$s['date']] = ($reserved[$s['date']] ?? 0) + $s['minutes'] + 5; }
+                    $slot = StudyPlanEngine::findSlot($config, $s['date'], (int) $s['minutes'], [...$occupied, ...$remaining]);
+                    if ($slot) { $s['startTime'] = $slot['startTime']; $s['endTime'] = $slot['endTime']; $remaining[] = $s; }
                 }
                 $this->query("DELETE FROM study_plan_sessions WHERE plan_id=? AND status='planned' AND scheduled_date>=?", [$plan['id'], $today]);
                 $this->insertSessions($plan['id'], $remaining);

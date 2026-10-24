@@ -28,6 +28,7 @@ try {
     $plan = $result['plan'];
     checkPlan(count($plan['sessions'])>0,'No sessions persisted');
     checkPlan($plan['sessions'][0]['ordinal']===0,'Session order lost');
+    checkPlan(isset($plan['sessions'][0]['startTime'], $plan['sessions'][0]['endTime']),'Session period was not persisted');
     try { $bob->read(['id'=>$plan['id']]); throw new Exception('Cross-user read accepted'); } catch(OutOfBoundsException) {}
     try { (new StudyPlannerService($db,'free',false))->read([]); throw new Exception('Free access accepted'); } catch(DomainException) {}
     try { $alice->write(['action'=>'status','id'=>$plan['id'],'revision'=>0,'status'=>'paused']); throw new Exception('Stale revision accepted'); } catch(UnexpectedValueException) {}
@@ -35,6 +36,10 @@ try {
     $payload=['action'=>'session','id'=>$plan['id'],'revision'=>$plan['revision'],'sessionId'=>$session['id'],'operation'=>'start'];
     $plan=$alice->write($payload)['plan'];
     $other=$alice->write(['action'=>'create','config'=>$config])['plan'];
+    $otherSession=$other['sessions'][0];
+    $other=$alice->write(['action'=>'session','id'=>$other['id'],'revision'=>$other['revision'],'sessionId'=>$otherSession['id'],'operation'=>'reschedule','date'=>$otherSession['date']])['plan'];
+    $otherSession=array_values(array_filter($other['sessions'],fn($item)=>$item['id']===$otherSession['id']))[0];
+    checkPlan(isset($otherSession['startTime'],$otherSession['endTime']),'Rescheduling did not persist the new interval');
     try { $alice->write(['action'=>'session','id'=>$other['id'],'revision'=>$other['revision'],'sessionId'=>$other['sessions'][0]['id'],'operation'=>'start']); throw new Exception('Concurrent plan activity accepted'); } catch(InvalidArgumentException) {}
     try { $alice->write(['action'=>'status','id'=>$plan['id'],'revision'=>$plan['revision'],'status'=>'archived']); throw new Exception('Running activity archived'); } catch(InvalidArgumentException) {}
     $payload['revision']=$plan['revision']; $payload['operation']='complete';

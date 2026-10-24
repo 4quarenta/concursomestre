@@ -4,7 +4,7 @@ import Link from 'next/link';
 import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Info, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import { plannerService, initialPlan, localDate, type PlanConfig, type PlanSession, type PlanTemplate, type PlannerResponse, type StudyPlan, type Performance } from '@services/study-schedule/plannerService';
+import { plannerService, initialPlan, localDate, availabilityMinutes, withAvailabilityDefaults, type PlanConfig, type PlanSession, type PlanTemplate, type PlannerResponse, type StudyPlan, type Performance } from '@services/study-schedule/plannerService';
 import { filtersService } from '@services/filters';
 import s from './planner.module.css';
 
@@ -16,6 +16,10 @@ const statuses: Record<string, string> = { active: 'Ativo', paused: 'Pausado', c
 const sessionLabels = { planned: 'A fazer', started: 'Em andamento', completed: 'Concluída' };
 const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 const hours = (minutes: number) => `${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min`;
+const durationLabel = (minutes: number) => minutes < 60 ? `${minutes} min` : minutes % 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes / 60} h`;
+const clockLabel = (minutes: number) => minutes === 1440 ? '00:00' : `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+const windowForDuration = (minutes: number) => ({ start: '19:00', end: clockLabel(Math.min(1440, 19 * 60 + minutes)) });
+const dayNames = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'];
 const errText = (error: unknown) => {
   const e = error as { response?: { data?: { message?: string } }; message?: string };
   return e?.response?.data?.message || e?.message || 'Não foi possível concluir. Tente novamente.';
@@ -92,7 +96,7 @@ export default function Planner() {
   }
   function begin(model: PlanTemplate | null = null, admin = false, edit = false) {
     setTemplate(model); setTemplateMode(admin); setEditing(edit); setStep(0); setPreview([]); setError(''); setTaxonomiesLoadAttempted(false);
-    const next = edit && plan ? structuredClone(plan.config) : model ? structuredClone(model.config) : initialPlan();
+    const next = withAvailabilityDefaults(edit && plan ? structuredClone(plan.config) : model ? structuredClone(model.config) : initialPlan());
     if (model && !admin) {
       next.startDate = localDate();
       if (next.examDate <= next.startDate) { next.examDate = initialPlan().examDate; next.dateConfirmed = false; }
@@ -101,10 +105,25 @@ export default function Planner() {
     setConfig(next); setExamDateInput(next.dateConfirmed ? next.examDate : ''); setWizard(true);
   }
   function update<K extends keyof PlanConfig>(key: K, value: PlanConfig[K]) { setConfig(c => ({ ...c, [key]: value })); setPreview([]); }
+  function updateWindow(day: number, patch: Partial<PlanConfig['availabilityWindows'][string]>) {
+    const key = String(day);
+    const window = { ...config.availabilityWindows[key], ...patch };
+    const windows = { ...config.availabilityWindows, [key]: window };
+    update('availabilityWindows', windows);
+    update('availability', { ...config.availability, [key]: availabilityMinutes(window) });
+  }
+  function setDayEnabled(day: number, enabled: boolean) {
+    const key = String(day);
+    const current = config.availabilityWindows[key];
+    const window = enabled ? (availabilityMinutes(current) ? current : windowForDuration(120)) : { ...current, end: current.start };
+    updateWindow(day, window);
+  }
   async function advance() {
     if (step === 0 && (!config.organizationId || !config.positionId)) { setError('Selecione o órgão e o cargo no catálogo.'); return; }
     if (step === 0 && config.dateConfirmed && (!examDateInput || examDateInput <= config.startDate)) { setError('Informe uma data de prova futura ou selecione “Ainda não definida”.'); return; }
-    if (step === 1 && config.subjects.some(x => !x.name.trim() || !x.topics.length || x.questions <= 0 || x.weight <= 0)) { setError('Complete as matérias, assuntos, quantidade e pesos.'); return; }
+    if (step === 1 && Object.values(config.availabilityWindows).some(window => window.start !== window.end && (availabilityMinutes(window) < 20 || availabilityMinutes(window) > 600))) { setError('Revise os períodos: cada dia deve ter entre 20 minutos e 10 horas, dentro do mesmo dia.'); return; }
+    if (step === 1 && Object.values(config.availability).every(minutes => minutes < 20)) { setError('Informe ao menos 20 minutos em um dia da semana.'); return; }
+    if (step === 2 && config.subjects.some(x => !x.name.trim() || !x.topics.length || x.questions <= 0 || x.weight <= 0)) { setError('Complete as matérias, assuntos, quantidade e pesos.'); return; }
     setError('');
     if (step === 2) await mutate({ action: 'preview', config }, result => { setPreview(result.sessions || []); setStep(3); });
     else setStep(step + 1);
@@ -188,14 +207,36 @@ export default function Planner() {
           <p className={s.selectionFooter}>A seleção pode ser atualizada depois; seu cronograma acompanha as mudanças.</p>
         </aside></div>
       </>}
-      {step === 1 && <><h2>Confira o que será cobrado</h2>{config.subjects.map((subject, index) => <section className={s.subject} key={subject.id}>
+      {step === 1 && <>
+        <h2>Quanto tempo cabe na sua semana?</h2>
+        <p>Informe em quais horários você consegue estudar. A duração de cada dia é calculada automaticamente, inclusive quando for menor que uma hora.</p>
+        <div className={s.availabilityDays}>
+          {dayNames.map((label, index) => {
+            const day = index + 1;
+            const key = String(day);
+            const window = config.availabilityWindows[key];
+            const minutes = availabilityMinutes(window, config.availability[key]);
+            const enabled = window.start !== window.end;
+            return <div className={s.availabilityDay} key={key}>
+              <label className={s.availabilityName}><input type="checkbox" checked={enabled} onChange={event => setDayEnabled(day, event.target.checked)} /><span>{label}</span><small>{enabled ? `${durationLabel(minutes)} disponíveis` : 'Dia livre'}</small></label>
+              <div className={s.availabilityTimes}>
+                <label>Das<input aria-label={`Início do período de ${label}`} type="time" value={window.start} disabled={!enabled} onChange={event => updateWindow(day, { start: event.target.value })} /></label>
+                <span>até</span>
+                <label>Às<input aria-label={`Fim do período de ${label}`} type="time" value={window.end} disabled={!enabled} onChange={event => updateWindow(day, { end: event.target.value })} /></label>
+              </div>
+            </div>;
+          })}
+        </div>
+        <div className={s.availabilityTotal}><span>Tempo total disponível na semana</span><strong>{durationLabel(Object.values(config.availability).reduce((sum, value) => sum + value, 0))}</strong></div>
+        <p className={s.hint}>Exemplo: segunda-feira, das 19:00 às 00:00, corresponde a 5 horas. O horário final é exclusivo: nenhuma atividade passa da meia-noite. Até 10 horas por dia.</p>
+        <div className={s.fields}>{(['sessionMinutes', 'questionGoal', 'reservePercent'] as const).map((key, index) => <label className={s.field} key={key}>{['Duração da sessão (min)', 'Meta de questões por sessão', 'Reserva para imprevistos (%)'][index]}<input type="number" min={key === 'reservePercent' ? 0 : 1} value={config[key]} onChange={e => update(key, Number(e.target.value))} /></label>)}</div>
+      </>}
+      {step === 2 && <><h2>Confira o que será cobrado</h2>{config.subjects.map((subject, index) => <section className={s.subject} key={subject.id}>
         <div className={s.row}><h3>Matéria {index + 1}</h3><button title="Remover matéria" aria-label="Remover matéria" className={s.icon} disabled={config.subjects.length === 1} onClick={() => update('subjects', config.subjects.filter((_, i) => i !== index))}><Trash2 size={16} /></button></div>
         <div className={s.fields}><label className={s.field}>Matéria<input value={subject.name} onChange={e => update('subjects', config.subjects.map((x, i) => i === index ? { ...x, name: e.target.value } : x))} /></label>
         {(['questions', 'weight', 'minimum'] as const).map((key, k) => <label className={s.field} key={key}>{['Questões na prova', 'Peso por questão', 'Mínimo de acertos (%)'][k]}<input type="number" min={key === 'minimum' ? 0 : 0.1} step={key === 'weight' ? 0.1 : 1} value={subject[key]} onChange={e => update('subjects', config.subjects.map((x, i) => i === index ? { ...x, [key]: Number(e.target.value) } : x))} /></label>)}</div>
         <label className={s.field}>Assuntos do edital (um por linha)<textarea value={subject.topics.join('\n')} onChange={e => update('subjects', config.subjects.map((x, i) => i === index ? { ...x, topics: e.target.value.split('\n') } : x))} /></label>
       </section>)}<button className={s.button} onClick={() => update('subjects', [...config.subjects, { id: crypto.randomUUID(), name: '', topics: [], questions: 10, weight: 1, minimum: 0 }])}><Plus size={16} /> Adicionar matéria</button><div className={s.fields}><label className={s.field}>Desconto por resposta errada (em pontos)<input type="number" min="0" step="0.1" value={config.wrongPenalty} onChange={e => update('wrongPenalty', Number(e.target.value))} /></label><p>Total: {config.subjects.reduce((a, x) => a + x.questions, 0)} questões • {config.subjects.reduce((a, x) => a + x.questions * x.weight, 0)} pontos</p></div></>}
-      {step === 2 && <><h2>Quanto tempo cabe na sua semana?</h2><div className={s.weekdays}>{['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((label, index) => <label key={label} className={s.field}>{label} (min)<input type="number" min="0" max="600" step="10" value={config.availability[String(index + 1)]} onChange={e => update('availability', { ...config.availability, [index + 1]: Number(e.target.value) })} /></label>)}</div>
-        <div className={s.fields}>{(['sessionMinutes', 'questionGoal', 'reservePercent'] as const).map((key, index) => <label className={s.field} key={key}>{['Duração da sessão (min)', 'Meta de questões por sessão', 'Reserva para imprevistos (%)'][index]}<input type="number" min={key === 'reservePercent' ? 0 : 1} value={config[key]} onChange={e => update(key, Number(e.target.value))} /></label>)}</div><p>{hours(Object.values(config.availability).reduce((a, n) => a + n, 0))} por semana. Pausas de 5 minutos entre sessões.</p></>}
       {step === 3 && <><h2>{config.dateConfirmed ? `Seu plano até ${dateLabel(config.examDate)}` : 'Seu primeiro ciclo de estudos'}</h2><div className={s.metrics}><Metric label="Atividades" value={String(preview.length)} /><Metric label="Tempo planejado" value={hours(preview.reduce((a, x) => a + x.minutes, 0))} /><Metric label="Matérias" value={String(config.subjects.length)} /><Metric label="Reserva semanal" value={`${config.reservePercent}%`} /></div><div className={s.notice}>A distribuição considera os pontos da prova e seu histórico recente. Ao ajustar o plano, atividades concluídas e em andamento são preservadas.</div><SessionTable sessions={preview.slice(0, 10)} /><p>Prévia das primeiras {Math.min(10, preview.length)} atividades. {config.dateConfirmed ? 'O ciclo termina na véspera da prova.' : 'Este ciclo poderá ser revisto e ampliado quando houver nova data.'}</p></>}
       {step > 0 && <div className={s.toolbar}><button className={s.button} onClick={() => setStep(step - 1)}><ArrowLeft size={16} /> Voltar</button><div className={s.actions}>{!templateMode && button('Salvar rascunho neste dispositivo', saveDraft)}{step < 3 ? button('Continuar', () => void advance(), true) : templateMode ? <>{button('Salvar modelo em rascunho', () => void save('draft'))}{button('Publicar modelo', () => void save('published'), true)}</> : button(editing ? 'Salvar ajustes' : 'Gerar meu cronograma', () => void save(), true)}</div></div>}
     </> : plan ? <>
@@ -205,14 +246,14 @@ export default function Planner() {
       <div className={s.tabs} role="tablist" aria-label="Visualização do cronograma">{[['today', 'Hoje'], ['week', 'Semana'], ['progress', 'Evolução']].map(([key, label]) => <button role="tab" aria-selected={tab === key} key={key} onClick={() => setTab(key)}>{label}</button>)}</div>
       {tab === 'progress' ? <Progress plan={plan} performance={performance} days={days} onDays={n => { setDays(n); void load(plan.id, n); }} /> : <>
         <div className={s.toolbar}><div className={s.actions}><button className={s.icon} title="Período anterior" onClick={() => setDate(shift(date, tab === 'week' ? -7 : -1))}><ChevronLeft size={18} /></button><button className={s.icon} title="Próximo período" onClick={() => setDate(shift(date, tab === 'week' ? 7 : 1))}><ChevronRight size={18} /></button><strong>{tab === 'week' ? `${dateLabel(date)} a ${dateLabel(shift(date, 6))}` : new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>{button('Hoje', () => setDate(localDate()))}</div><button className={s.button} onClick={() => void load(plan.id, days)}><RefreshCw size={15} /> Atualizar</button></div>
-        {tab === 'today' ? <><h2>Atividades do dia</h2>{plan.sessions.filter(x => x.date === date).length === 0 && <div className={s.empty}>Nenhuma atividade para este dia.</div>}{plan.sessions.filter(x => x.date === date).map(activity => <article className={s.activity} key={activity.id}><div><small>{kindLabels[activity.kind]}</small><h3>{activity.subject}</h3><p>{activity.topic}</p><p><Clock size={14} style={{ display: 'inline' }} /> {activity.minutes} min {activity.questionGoal > 0 && `• ${activity.questionGoal} questões`}</p><small>{sessionLabels[activity.status]}</small></div>{sessionActions(activity)}</article>)}</> : <SessionTable sessions={plan.sessions.filter(x => x.date >= date && x.date <= shift(date, 6))} actions={sessionActions} />}
+        {tab === 'today' ? <><h2>Atividades do dia</h2>{plan.sessions.filter(x => x.date === date).length === 0 && <div className={s.empty}>Nenhuma atividade para este dia.</div>}{plan.sessions.filter(x => x.date === date).map(activity => <article className={s.activity} key={activity.id}><div><small>{kindLabels[activity.kind]}</small><h3>{activity.subject}</h3><p>{activity.topic}</p><p><Clock size={14} style={{ display: 'inline' }} /> {activity.startTime && activity.endTime ? `${activity.startTime}–${activity.endTime} · ` : ''}{activity.minutes} min {activity.questionGoal > 0 && `• ${activity.questionGoal} questões`}</p><small>{sessionLabels[activity.status]}</small></div>{sessionActions(activity)}</article>)}</> : <SessionTable sessions={plan.sessions.filter(x => x.date >= date && x.date <= shift(date, 6))} actions={sessionActions} />}
         {plan.sessions.some(x => x.date < localDate() && x.status !== 'completed') && <><h2>Pendências anteriores</h2><p>Reagende em um dia com tempo disponível.</p><SessionTable sessions={plan.sessions.filter(x => x.date < localDate() && x.status !== 'completed')} actions={sessionActions} /></>}
       </>}
       {reschedule && <div className={s.dialog} role="dialog" aria-modal="true" aria-label="Reagendar atividade"><div className={s.dialogContent}><h2>Reagendar atividade</h2><p>{reschedule.subject} • {reschedule.minutes} min</p><label className={s.field}>Nova data<input autoFocus type="date" min={localDate()} max={shift(plan.config.examDate, -1)} value={targetDate} onChange={e => setTargetDate(e.target.value)} /></label><div className={s.toolbar}>{button('Cancelar', () => setReschedule(null))}{button('Reagendar', () => void mutate({ action: 'session', id: plan.id, revision: plan.revision, sessionId: reschedule.id, operation: 'reschedule', date: targetDate }, () => setReschedule(null)), true)}</div>{error && <p role="alert">{error}</p>}</div></div>}
     </> : <>
       <div className={s.row}><div><h1>Cronogramas</h1><p>Escolha um modelo ou prepare seu plano de estudos.</p></div><button className={s.primary} onClick={() => begin()}><Plus size={16} /> Criar cronograma</button></div>
       <div className={s.tabs} role="tablist" aria-label="Acervo e planos pessoais">{[['library', 'Acervo de modelos'], ['mine', 'Meus cronogramas'], ...(data.canManageTemplates ? [['manage', 'Gerenciar modelos']] : [])].map(([key, label]) => <button role="tab" key={key} aria-selected={view === key} onClick={() => setView(key as typeof view)}>{label}</button>)}</div>
-      {view === 'mine' ? <><div className={s.toolbar}>{button('Recuperar rascunho deste dispositivo', () => { try { const raw = localStorage.getItem(draftKey); if (!raw) { setError('Nenhum rascunho encontrado neste dispositivo.'); return; } begin(); setConfig(JSON.parse(raw)); } catch { setError('Rascunho inválido. Crie um novo plano.'); } })}</div>{data.legacy && <div className={s.notice}>Seu cronograma anterior foi preservado. <button className={s.link} onClick={() => { begin(); const old = data.legacy?.form; setConfig(c => ({ ...c, title: String(old?.objective || ''), subjects: Array.isArray(old?.subjects) ? old.subjects.map((x: Record<string, unknown>, i: number) => ({ id: `s${i}`, name: String(x.name || ''), topics: String(x.topics || '').split(/[\n,]/).filter(Boolean), questions: 10, weight: 1, minimum: 0 })) : c.subjects })); }}>Usar matérias do plano anterior</button></div>}<div className={s.grid}>{data.plans?.map(p => <article className={s.card} key={p.id}><CalendarDays size={24} /><h2>{p.title}</h2><span className={s.badge}>{statuses[p.status]}</span><div>{button('Abrir cronograma', () => void load(p.id, days), true)}</div></article>)}</div>{!loading && !data.plans?.length && <div className={s.empty}>Você ainda não criou um cronograma.</div>}</> : <>
+      {view === 'mine' ? <><div className={s.toolbar}>{button('Recuperar rascunho deste dispositivo', () => { try { const raw = localStorage.getItem(draftKey); if (!raw) { setError('Nenhum rascunho encontrado neste dispositivo.'); return; } begin(); setConfig(withAvailabilityDefaults(JSON.parse(raw))); } catch { setError('Rascunho inválido. Crie um novo plano.'); } })}</div>{data.legacy && <div className={s.notice}>Seu cronograma anterior foi preservado. <button className={s.link} onClick={() => { begin(); const old = data.legacy?.form; setConfig(c => ({ ...c, title: String(old?.objective || ''), subjects: Array.isArray(old?.subjects) ? old.subjects.map((x: Record<string, unknown>, i: number) => ({ id: `s${i}`, name: String(x.name || ''), topics: String(x.topics || '').split(/[\n,]/).filter(Boolean), questions: 10, weight: 1, minimum: 0 })) : c.subjects })); }}>Usar matérias do plano anterior</button></div>}<div className={s.grid}>{data.plans?.map(p => <article className={s.card} key={p.id}><CalendarDays size={24} /><h2>{p.title}</h2><span className={s.badge}>{statuses[p.status]}</span><div>{button('Abrir cronograma', () => void load(p.id, days), true)}</div></article>)}</div>{!loading && !data.plans?.length && <div className={s.empty}>Você ainda não criou um cronograma.</div>}</> : <>
         <div className={s.toolbar}><label className={s.field} style={{ flex: 1 }}>Concurso, cargo ou área<input value={query} placeholder="Buscar modelos" onChange={e => setQuery(e.target.value)} /></label>{view === 'manage' && button('Novo modelo', () => begin(null, true), true)}</div>
         {!loading && !data.templates?.length && <div className={s.empty}><CalendarDays size={30} style={{ margin: '0 auto 12px' }} /><h3>Modelos em preparação</h3><p>Você pode criar seu plano personalizado com os dados do edital.</p>{button('Criar meu cronograma', () => begin(), true)}</div>}
         <div className={s.grid}>{data.templates?.filter(t => (view === 'manage' || t.status === 'published') && `${t.title} ${t.config.area}`.toLowerCase().includes(query.toLowerCase())).map(t => <article className={s.card} key={t.id}><CalendarDays size={28} color="#2563eb" /><h2>{t.title}</h2><p>{t.config.bank || 'Banca a confirmar'} • {t.config.subjects.length} disciplinas</p><small>Versão {t.version} • {statuses[t.status]}</small><p>{t.config.dateConfirmed ? 'Data de referência no modelo' : 'Pré-edital • data-alvo personalizada'}</p><button className={s.link} onClick={() => setExpanded(expanded === t.id ? null : t.id)}>Ver disciplinas e pesos</button>{expanded === t.id && <><ul>{t.config.subjects.map(x => <li key={x.id}><p>{x.name}: {x.questions} questões × peso {x.weight}</p></li>)}</ul>{t.config.sourceUrl && <a className={s.link} href={t.config.sourceUrl} target="_blank" rel="noopener noreferrer">Consultar edital</a>}</>}<div>{button(view === 'manage' ? 'Editar modelo' : 'Usar este modelo', () => begin(t, view === 'manage'), true)}</div></article>)}</div>
@@ -288,7 +329,7 @@ function TaxonomyPicker({
 
 function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) { return <div className={s.metric}><small>{label}</small><strong>{value}</strong>{detail && <small>{detail}</small>}</div>; }
 function SessionTable({ sessions, actions }: { sessions: PlanSession[]; actions?: (session: PlanSession) => React.ReactNode }) {
-  return <div className={s.scroll}><table className={s.table}><thead><tr><th>Dia</th><th>Atividade</th><th>Meta</th><th>Situação</th>{actions && <th>Ação</th>}</tr></thead><tbody>{sessions.map(a => <tr key={a.id}><td>{dateLabel(a.date)}</td><td><strong>{a.subject}</strong><small>{a.topic} • {kindLabels[a.kind]}</small></td><td>{a.minutes} min{a.questionGoal > 0 && <small>{a.questionGoal} questões</small>}</td><td>{sessionLabels[a.status]}</td>{actions && <td>{actions(a)}</td>}</tr>)}{sessions.length === 0 && <tr><td colSpan={actions ? 5 : 4}>Nenhuma atividade neste período.</td></tr>}</tbody></table></div>;
+  return <div className={s.scroll}><table className={s.table}><thead><tr><th>Dia</th><th>Atividade</th><th>Meta</th><th>Situação</th>{actions && <th>Ação</th>}</tr></thead><tbody>{sessions.map(a => <tr key={a.id}><td>{dateLabel(a.date)}</td><td><strong>{a.subject}</strong><small>{a.startTime && a.endTime ? `${a.startTime}–${a.endTime} · ` : ''}{a.topic} • {kindLabels[a.kind]}</small></td><td>{a.minutes} min{a.questionGoal > 0 && <small>{a.questionGoal} questões</small>}</td><td>{sessionLabels[a.status]}</td>{actions && <td>{actions(a)}</td>}</tr>)}{sessions.length === 0 && <tr><td colSpan={actions ? 5 : 4}>Nenhuma atividade neste período.</td></tr>}</tbody></table></div>;
 }
 function PlanSummary({ plan }: { plan: StudyPlan }) {
   const today = localDate(); const monday = new Date(`${today}T12:00:00`); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));

@@ -22,6 +22,34 @@ try { StudyPlanEngine::normalize($raw + ['organizationId' => '0']); throw new Ru
 checkPlan(max($daily)<=102,'Daily availability/reserve exceeded');
 checkPlan($minutes['A']>$minutes['B']*4,'Exam points not prioritized');
 checkPlan(end($sessions)['date']>'2027-03-01','Schedule silently capped at twelve weeks');
+foreach ($sessions as $session) {
+    checkPlan(isset($session['startTime'], $session['endTime']), 'Generated session is missing its time window');
+    checkPlan($session['startTime'] >= $config['availabilityWindows'][date('N', strtotime($session['date']))]['start'], 'Session starts before availability');
+}
+$windowRaw = $raw;
+$windowRaw['startDate'] = '2026-10-26';
+$windowRaw['examDate'] = '2026-11-04';
+$windowRaw['availability'] = array_fill(1, 7, 0);
+$windowRaw['availabilityWindows'] = array_fill(1, 7, ['start' => '19:00', 'end' => '19:00']);
+$windowRaw['availabilityWindows']['1'] = ['start' => '19:00', 'end' => '00:00'];
+$windowRaw['sessionMinutes'] = 60;
+$windowConfig = StudyPlanEngine::normalize($windowRaw);
+checkPlan($windowConfig['availability']['1'] === 300, 'Midnight must count as the end of the same day');
+$windowSessions = StudyPlanEngine::generate($windowConfig);
+checkPlan(count($windowSessions) >= 4, 'Expected several sessions in a five-hour window');
+foreach ($windowSessions as $session) {
+    checkPlan(date('N', strtotime($session['date'])) === '1', 'Study was scheduled outside the selected weekday');
+    checkPlan($session['startTime'] >= '19:00', 'Session begins before the selected period');
+    checkPlan($session['endTime'] === '00:00' || $session['endTime'] <= '23:59', 'Session extends beyond midnight');
+}
+$slot = StudyPlanEngine::findSlot($windowConfig, '2026-10-26', 40, $windowSessions);
+checkPlan($slot === null, 'Rescheduling should fail when no free interval remains');
+$oneSession = [$windowSessions[0]];
+$slot = StudyPlanEngine::findSlot($windowConfig, '2026-10-26', 40, $oneSession);
+checkPlan($slot !== null && $slot['startTime'] >= '19:00', 'A free interval should be found after an occupied session');
+$invalidWindow = $windowRaw;
+$invalidWindow['availabilityWindows']['1'] = ['start' => '19:00', 'end' => '18:59'];
+try { StudyPlanEngine::normalize($invalidWindow); throw new RuntimeException('Invalid time window accepted'); } catch(InvalidArgumentException) {}
 foreach(['2026-02-30','not-date','2026-13-01'] as $date) {
     try { StudyPlanEngine::date($date); throw new RuntimeException('Invalid date accepted'); } catch(InvalidArgumentException) {}
 }

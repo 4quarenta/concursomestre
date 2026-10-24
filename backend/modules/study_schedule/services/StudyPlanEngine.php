@@ -42,12 +42,35 @@ final class StudyPlanEngine
         }
         if (!$subjects) throw new InvalidArgumentException('Adicione ao menos uma materia.');
         if (count(array_unique(array_map(static fn($s) => mb_strtolower($s['name']), $subjects))) !== count($subjects)) throw new InvalidArgumentException('Nao repita a mesma materia.');
-        if (!is_array($raw['availability'] ?? null)) throw new InvalidArgumentException('Informe sua disponibilidade.');
-        $availability = [];
+        if (!is_array($raw['availability'] ?? null) && !is_array($raw['availabilityWindows'] ?? null)) throw new InvalidArgumentException('Informe sua disponibilidade.');
+        $availability = $windows = [];
         for ($day = 1; $day <= 7; $day++) {
-            $minutes = (int) ($raw['availability'][(string) $day] ?? 0);
-            if ($minutes < 0 || $minutes > 600) throw new InvalidArgumentException('Disponibilidade deve ficar entre 0 e 600 minutos por dia.');
-            $availability[(string) $day] = $minutes;
+            $key = (string) $day;
+            if (is_array($raw['availabilityWindows'][$key] ?? null)) {
+                $window = $raw['availabilityWindows'][$key];
+                $startLabel = (string) ($window['start'] ?? '');
+                $endLabel = (string) ($window['end'] ?? '');
+                if ($startLabel === $endLabel) {
+                    $from = self::timeMinutes($startLabel);
+                    $to = $from;
+                } else {
+                    $from = self::timeMinutes($startLabel);
+                    $to = self::timeMinutes($endLabel, true);
+                }
+                if ($from === null || $to === null || ($startLabel !== $endLabel && $to <= $from && !($to === 1440 && $from < 1440))) {
+                    throw new InvalidArgumentException('Informe um período válido para cada dia selecionado.');
+                }
+                $minutes = $to - $from;
+                if ($minutes > 600) throw new InvalidArgumentException('O período de estudo deve ter no máximo 10 horas por dia.');
+                $windows[$key] = ['start' => self::timeLabel($from), 'end' => self::timeLabel($to)];
+            } else {
+                // Existing plans store only daily minutes; keep them editable without data migration.
+                $minutes = (int) ($raw['availability'][$key] ?? 0);
+                if ($minutes < 0 || $minutes > 600) throw new InvalidArgumentException('Disponibilidade deve ficar entre 0 e 600 minutos por dia.');
+                $from = min(19 * 60, 1440 - $minutes);
+                $windows[$key] = ['start' => self::timeLabel($from), 'end' => self::timeLabel($from + $minutes)];
+            }
+            $availability[$key] = $minutes;
         }
         $session = (int) ($raw['sessionMinutes'] ?? 40);
         if ($session < 20 || $session > 90) throw new InvalidArgumentException('Sessao deve durar de 20 a 90 minutos.');
@@ -66,7 +89,7 @@ final class StudyPlanEngine
             'areaId' => $taxonomyId($raw['areaId'] ?? null),
             'sourceUrl' => $source, 'dateConfirmed' => !empty($raw['dateConfirmed']),
             'startDate' => $start->format('Y-m-d'), 'examDate' => $end->format('Y-m-d'),
-            'availability' => $availability, 'sessionMinutes' => $session,
+            'availability' => $availability, 'availabilityWindows' => $windows, 'sessionMinutes' => $session,
             'questionGoal' => max(1, min(100, (int) ($raw['questionGoal'] ?? 20))),
             'reservePercent' => max(0, min(30, (int) ($raw['reservePercent'] ?? 15))),
             'wrongPenalty' => max(0, min(10, (float) ($raw['wrongPenalty'] ?? 0))),
@@ -90,6 +113,7 @@ final class StudyPlanEngine
         $end = self::date($config['examDate']);
         for ($date = $start; $date < $end; $date = $date->modify('+1 day')) {
             $budget = (int) floor($config['availability'][$date->format('N')] * (1 - $config['reservePercent'] / 100));
+            $cursor = self::timeMinutes($config['availabilityWindows'][$date->format('N')]['start']);
             while ($budget >= 20) {
                 $selected = $config['subjects'][0];
                 foreach ($config['subjects'] as $s) {
@@ -101,15 +125,56 @@ final class StudyPlanEngine
                 $kind = ['study', 'questions', 'review'][$position % 3];
                 if ($date->diff($end)->days <= 7 && $kind === 'study') $kind = 'review';
                 $duration = min($config['sessionMinutes'], $budget);
+                if ($cursor + $duration > self::timeMinutes($config['availabilityWindows'][$date->format('N')]['end'], true)) break;
                 $sessions[] = ['id' => bin2hex(random_bytes(12)), 'ordinal' => count($sessions), 'date' => $date->format('Y-m-d'), 'subjectId' => $id,
+                    'startTime' => self::timeLabel($cursor), 'endTime' => self::timeLabel($cursor + $duration),
                     'subject' => $selected['name'], 'topic' => $topic, 'kind' => $kind, 'minutes' => $duration,
                     'questionGoal' => $kind === 'questions' ? max(1, (int) floor($config['questionGoal'] * $duration / $config['sessionMinutes'])) : 0,
                     'status' => 'planned', 'actualMinutes' => 0];
                 $allocated[$id] += $duration;
                 $budget -= $duration + 5;
+                $cursor += $duration + 5;
             }
         }
         if (!$sessions) throw new InvalidArgumentException('Nenhuma sessao cabe antes da prova. Ajuste a disponibilidade ou a data.');
         return $sessions;
+    }
+
+    public static function findSlot(array $config, string $date, int $duration, array $sessions, ?string $excludeId = null): ?array
+    {
+        $weekday = self::date($date)->format('N');
+        $window = $config['availabilityWindows'][$weekday] ?? null;
+        if (!$window) return null;
+        $from = self::timeMinutes($window['start']);
+        $to = self::timeMinutes($window['end'], true);
+        $capacity = (int) floor(($config['availability'][$weekday] ?? 0) * (1 - ($config['reservePercent'] ?? 0) / 100));
+        $items = array_values(array_filter($sessions, static fn($session) => $session['date'] === $date && $session['id'] !== $excludeId));
+        usort($items, static fn($a, $b) => ($a['startTime'] ?? '') <=> ($b['startTime'] ?? ''));
+        $used = 0;
+        foreach ($items as $item) $used += (int) $item['minutes'] + 5;
+        if ($used + $duration > $capacity) return null;
+        $cursor = $from;
+        foreach ($items as $item) {
+            $itemStart = isset($item['startTime']) ? self::timeMinutes($item['startTime']) : $cursor;
+            $itemEnd = isset($item['endTime']) ? self::timeMinutes($item['endTime'], true) : $itemStart + (int) $item['minutes'];
+            if ($cursor + $duration <= $itemStart) break;
+            $cursor = max($cursor, $itemEnd + 5);
+        }
+        if ($cursor + $duration > $to) return null;
+        return ['startTime' => self::timeLabel($cursor), 'endTime' => self::timeLabel($cursor + $duration)];
+    }
+
+    private static function timeMinutes(string $value, bool $endBoundary = false): ?int
+    {
+        if ($value === '00:00') return $endBoundary ? 1440 : 0;
+        if (preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/', $value) !== 1) return null;
+        [$hour, $minute] = array_map('intval', explode(':', $value));
+        return $hour * 60 + $minute;
+    }
+
+    private static function timeLabel(int $minutes): string
+    {
+        if ($minutes === 1440) return '00:00';
+        return sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
     }
 }
