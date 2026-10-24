@@ -1356,8 +1356,8 @@ const Profile: React.FC = () => {
         openTestimonialModal();
         query.delete('openPlatformRating');
         const nextSearch = query.toString();
-        router.replace(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}${location.hash}`, { scroll: false });
-    }, [location.hash, location.pathname, location.search, openTestimonialModal, router]);
+        router.replace(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`, { scroll: false });
+    }, [location.pathname, location.search, openTestimonialModal, router]);
 
     React.useEffect(() => {
         if (!showTestimonialModal || !currentUser?.id) {
