@@ -2513,6 +2513,161 @@ const Profile: React.FC = () => {
             return <BillingSubscriptionLoadState status="loading" />;
         }
 
+        if (!billingSubscriptionQuery.isPending && !billingSubscriptionQuery.isError) {
+            const planLabel = isManualSubscriptionGrant ? 'Elite vitalício' : showFreeInactiveSubscriptionState ? 'Plano Gratuito' : subscriptionPlanName;
+
+            return (
+                <div className="space-y-5">
+                    {activeRetentionOffer && (
+                        <section className={`${PLATFORM_SURFACE_CARD_CLASS} border-sky-200 dark:border-sky-900/60`}>
+                            <div className="space-y-4 p-5 md:p-6">
+                                <div>
+                                    <p className="text-xs font-semibold text-sky-700 dark:text-sky-300">Oferta de retenção</p>
+                                    <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">Continue com sua assinatura ou receba o reembolso</h3>
+                                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">A oferta ainda depende da confirmação do provedor.</p>
+                                </div>
+                                <p className="text-sm text-slate-600 dark:text-slate-300">Reembolso: {formatTransactionAmount(activeRetentionOffer.refundAmount || 0)} · válido até {activeRetentionOffer.expiresAt ? formatDateTimeBR(activeRetentionOffer.expiresAt) : 'data informada no envio'}.</p>
+                                {String(activeRetentionOffer.status).toUpperCase() === 'ACCEPTED_PENDING_BENEFIT' ? (
+                                    <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Aceite recebido. Aguardando confirmação do provedor.</p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                        <button type="button" disabled={isDecidingRetentionOffer} onClick={() => void handleRetentionDecision('ACCEPT')} className="min-h-10 rounded-md bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60">Aceitar oferta</button>
+                                        <button type="button" disabled={isDecidingRetentionOffer} onClick={() => void handleRetentionDecision('DECLINE')} className="min-h-10 rounded-md border border-rose-300 px-4 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-900/20">Recusar e pedir reembolso</button>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                    )}
+                    {billingPaymentIssue && <BillingPaymentIssueBanner issue={billingPaymentIssue} onResolve={() => void handleResolveBillingPaymentIssue()} />}
+
+                    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Plano e pagamentos</p>
+                            <h2 className={PLATFORM_PAGE_TITLE_CLASS}>Minha assinatura</h2>
+                            <p className={`mt-1 ${PLATFORM_PAGE_DESCRIPTION_CLASS}`}>Consulte seu plano, gerencie a renovação e atualize o pagamento.</p>
+                        </div>
+                        {!isManualSubscriptionGrant && (
+                            <button type="button" onClick={() => router.push('/plans')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700">
+                                {hasActiveSubscription ? 'Ver planos' : 'Conhecer planos'}
+                                <ChevronRight size={16} />
+                            </button>
+                        )}
+                    </header>
+
+                    <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
+                        <div className="flex flex-col gap-5 border-b border-slate-200 p-5 dark:border-slate-800 md:flex-row md:items-center md:justify-between md:p-6">
+                            <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Plano atual</span>
+                                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${hasActiveSubscription ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                                        {isManualSubscriptionGrant ? 'Acesso vitalício' : hasActiveSubscription ? 'Ativo' : 'Sem assinatura ativa'}
+                                    </span>
+                                </div>
+                                <h3 className="mt-2 text-2xl font-bold text-slate-950 dark:text-white">{planLabel}</h3>
+                                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                                    {isManualSubscriptionGrant
+                                        ? 'Acesso concedido pela administração, sem cobrança ou renovação.'
+                                        : hasActiveSubscription
+                                            ? subscriptionHeadline
+                                            : 'Você está no plano gratuito. Escolha um plano para liberar recursos premium.'}
+                                </p>
+                            </div>
+                            {hasActiveSubscription && !isManualSubscriptionGrant && (
+                                <div className="min-w-40 border-l-2 border-indigo-500 pl-4">
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">{resolvedAutoRenew ? 'Próxima cobrança' : 'Acesso até'}</p>
+                                    <p className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">{formatDateTimeBR(resolvedAutoRenew ? nextRenewalDate : subscriptionEndDate)}</p>
+                                    {resolvedAutoRenew && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{formatTransactionAmount(nextRenewalAmount)} · {nextRenewalCycleLabel.toLowerCase()}</p>}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="grid divide-y divide-slate-200 dark:divide-slate-800 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                            <div className="p-5 md:px-6">
+                                <p className="text-sm text-slate-500 dark:text-slate-400">Situação</p>
+                                <p className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{hasPendingRefundRequest ? 'Reembolso em análise' : hasBlockingPaymentIssue ? 'Pagamento precisa de atenção' : hasActiveSubscription ? 'Acesso liberado' : 'Plano gratuito'}</p>
+                            </div>
+                            <div className="p-5 md:px-6">
+                                <p className="text-sm text-slate-500 dark:text-slate-400">Vigência</p>
+                                <p className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{isManualSubscriptionGrant ? 'Vitalícia' : hasActiveSubscription && hasReliableSubscriptionTimeline ? `${subscriptionRemainingDays} dias restantes` : hasActiveSubscription ? 'Em sincronização' : 'Sem cobrança ativa'}</p>
+                            </div>
+                            <div className="p-5 md:px-6">
+                                <p className="text-sm text-slate-500 dark:text-slate-400">Valor do plano</p>
+                                <p className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{isManualSubscriptionGrant || showFreeInactiveSubscriptionState ? 'Gratuito' : formatTransactionAmount(subscriptionChargeAmount)}</p>
+                                {hasActiveSubscription && !isManualSubscriptionGrant && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{subscriptionCycleLabel}</p>}
+                            </div>
+                        </div>
+                    </section>
+
+                    <div className="grid gap-5 lg:grid-cols-2">
+                        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 md:p-6`}>
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Controle da assinatura</p>
+                                    <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">Renovação automática</h3>
+                                </div>
+                                {hasActiveSubscription && !isManualSubscriptionGrant && (
+                                    <button type="button" onClick={handleRenewalToggle} disabled={isUpdatingRenewal} role="switch" aria-checked={resolvedAutoRenew} aria-label={resolvedAutoRenew ? 'Desativar renovação automática' : 'Ativar renovação automática'} className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${resolvedAutoRenew ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700'} disabled:cursor-wait disabled:opacity-60`}>
+                                        <span className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white shadow transition-transform ${resolvedAutoRenew ? 'translate-x-6' : 'translate-x-1'}`}>{isUpdatingRenewal ? <Loader2 size={11} className="animate-spin text-slate-500" /> : null}</span>
+                                    </button>
+                                )}
+                            </div>
+                            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                                {isManualSubscriptionGrant
+                                    ? 'Este acesso foi concedido sem cobrança e não possui renovação.'
+                                    : hasActiveSubscription
+                                        ? resolvedAutoRenew
+                                            ? `Sua assinatura renova automaticamente. Próxima cobrança em ${formatDateTimeBR(nextRenewalDate)}.`
+                                            : `A renovação está desativada. Seu acesso permanece até ${formatDateTimeBR(subscriptionEndDate)}.`
+                                        : 'Ao assinar um plano, você poderá escolher e alterar a renovação por aqui.'}
+                            </p>
+                            {hasActiveSubscription && !isManualSubscriptionGrant && (
+                                <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+                                    {hasPendingRefundRequest ? (
+                                        <button type="button" onClick={handleCancelRefundRequest} className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancelar solicitação de reembolso</button>
+                                    ) : isCanceledButStillActive ? (
+                                        <button type="button" onClick={handleRenewalToggle} disabled={isUpdatingRenewal} className="min-h-10 rounded-md border border-emerald-600 px-4 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 dark:text-emerald-300 dark:hover:bg-emerald-500/10">Religar renovação</button>
+                                    ) : (
+                                        <button type="button" onClick={() => setShowCancelModal(true)} className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancelar assinatura</button>
+                                    )}
+                                    {isWithinRefundWindow && <span className="text-xs text-slate-500 dark:text-slate-400">Dentro do prazo de reembolso de 7 dias.</span>}
+                                </div>
+                            )}
+                            {!hasActiveSubscription && !isManualSubscriptionGrant && <button type="button" onClick={() => router.push('/plans')} className="mt-5 min-h-10 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700">Ver opções de assinatura</button>}
+                        </section>
+
+                        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5 md:p-6`}>
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Forma de pagamento</p>
+                                    <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">Cartão salvo</h3>
+                                </div>
+                                <CreditCard size={20} className="text-slate-500 dark:text-slate-400" />
+                            </div>
+                            {cardsLoadError ? (
+                                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">{cardsLoadError}</div>
+                            ) : primarySavedCard ? (
+                                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/50">
+                                    <div>
+                                        <p className="font-semibold text-slate-900 dark:text-slate-100">{formatSavedCardLabel(primarySavedCard)}</p>
+                                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Expira em {String(primarySavedCard.exp_month || '').padStart(2, '0')}/{primarySavedCard.exp_year}{primarySavedCardExpiryState.isExpired ? ' · Expirado' : primarySavedCardExpiryState.isExpiringSoon ? ' · Vence em breve' : ''}</p>
+                                    </div>
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Stripe</span>
+                                </div>
+                            ) : (
+                                <div className="mt-4 rounded-md border border-dashed border-slate-300 p-4 dark:border-slate-700">
+                                    <p className="font-medium text-slate-800 dark:text-slate-200">Nenhum cartão salvo</p>
+                                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Adicione um cartão ao escolher um plano ou gerencie seus cartões salvos.</p>
+                                </div>
+                            )}
+                            <button type="button" onClick={openSavedCardsManager} className="mt-4 min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">{primarySavedCard ? 'Gerenciar cartões' : 'Adicionar cartão'}</button>
+                        </section>
+                    </div>
+
+                    <button type="button" onClick={() => setActiveTab('billing-history')} className="text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400">Ver histórico de pagamentos</button>
+                </div>
+            );
+        }
+
         return (
         <div className="space-y-5">
             {activeRetentionOffer && (
