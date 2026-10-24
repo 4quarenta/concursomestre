@@ -1,9 +1,0 @@
-node_modules
-.expo
-.expo-shared
-dist
-android
-ios
-*.log
-google-services.json
-GoogleService-Info.plist

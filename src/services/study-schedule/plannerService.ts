@@ -1,5 +1,7 @@
 import { apiClient, assertApiSuccess, readApiData } from '@services/api';
-export type PlanSubject = { id: string; name: string; topics: string[]; questions: number; weight: number; minimum: number };
+export type PlanSubject = { id: string; taxonomyId?: string; selectedTaxonomyIds?: string[]; selfAssessment?: 'beginner' | 'studying' | 'reinforce'; evidence?: { examCount: number; questionCount: number; incidence: number | null }; name: string; topics: string[]; questions: number; weight: number; minimum: number };
+export type PlannerDiagnosisItem = { id: string; name: string; level: 'materia' | 'topico' | 'subtopico' | 'assunto'; parentId: string | null; rootId: string | null; path: string; questionCount: number; examCount: number; incidence: number | null; performance: { total: number; correct: number; accuracy: number | null } };
+export type PlannerDiagnosis = { examCount: number; items: PlannerDiagnosisItem[]; selectedPerformance: Record<string, { total: number; correct: number; accuracy: number | null }>; sample: 'adequate' | 'limited' | 'unavailable' };
 export type AvailabilityWindow = { start: string; end: string };
 export type PlanConfig = { title: string; bank: string; area: string; organizationId?: string; positionId?: string; boardId?: string; areaId?: string; sourceUrl: string; dateConfirmed: boolean; startDate: string; examDate: string; availability: Record<string, number>; availabilityWindows: Record<string, AvailabilityWindow>; sessionMinutes: number; questionGoal: number; reservePercent: number; wrongPenalty: number; subjects: PlanSubject[] };
 export type PlanSession = { id: string; date: string; startTime?: string; endTime?: string; subjectId: string; subject: string; topic: string; kind: 'study' | 'questions' | 'review'; minutes: number; questionGoal: number; status: 'planned' | 'started' | 'completed'; actualMinutes: number; startedAt?: string; completedAt?: string };
@@ -18,6 +20,11 @@ export const plannerService = {
     const response: unknown = await apiClient.post(endpoint, input);
     assertApiSuccess(response, 'Não foi possível salvar o cronograma.');
     return readApiData<PlannerResponse>(response, {});
+  },
+  async diagnose(input: { organizationId: string; positionId: string; boardId?: string; areaId?: string; search?: string; level?: string; parentId?: string; selectedIds?: string[] }): Promise<PlannerDiagnosis> {
+    const response: unknown = await apiClient.post(endpoint, { action: 'diagnosis', ...input });
+    assertApiSuccess(response, 'Não foi possível analisar o conteúdo deste recorte.');
+    return readApiData<PlannerDiagnosis>(response, { examCount: 0, items: [], selectedPerformance: {}, sample: 'unavailable' });
   },
 };
 export function localDate(date = new Date()): string {

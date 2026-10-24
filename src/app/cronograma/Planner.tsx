@@ -4,7 +4,7 @@ import Link from 'next/link';
 import CanonicalBreadcrumbs from '@/components/seo/CanonicalBreadcrumbs';
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Info, Pencil, Play, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import { plannerService, initialPlan, localDate, availabilityMinutes, withAvailabilityDefaults, type PlanConfig, type PlanSession, type PlanTemplate, type PlannerResponse, type StudyPlan, type Performance } from '@services/study-schedule/plannerService';
+import { plannerService, initialPlan, localDate, availabilityMinutes, withAvailabilityDefaults, type PlanConfig, type PlanSession, type PlanTemplate, type PlannerResponse, type StudyPlan, type Performance, type PlannerDiagnosis, type PlannerDiagnosisItem } from '@services/study-schedule/plannerService';
 import { filtersService } from '@services/filters';
 import s from './planner.module.css';
 
@@ -44,6 +44,18 @@ export default function Planner() {
   const [practiceTaxonomies, setPracticeTaxonomies] = useState<PracticeTaxonomies | null>(null);
   const [taxonomiesLoading, setTaxonomiesLoading] = useState(false);
   const [taxonomiesLoadAttempted, setTaxonomiesLoadAttempted] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<PlannerDiagnosis | null>(null);
+  const [diagnosisLoading, setDiagnosisLoading] = useState(false);
+  const [diagnosisError, setDiagnosisError] = useState('');
+  const [taxonomyQuery, setTaxonomyQuery] = useState('');
+  const [taxonomyLevel, setTaxonomyLevel] = useState('all');
+  const [taxonomyResults, setTaxonomyResults] = useState<PlannerDiagnosisItem[]>([]);
+  const [selectedCatalogItems, setSelectedCatalogItems] = useState<Record<string, PlannerDiagnosisItem>>({});
+  const [expandedMatter, setExpandedMatter] = useState<string | null>(null);
+  const [taxonomyChildren, setTaxonomyChildren] = useState<Record<string, PlannerDiagnosisItem[]>>({});
+  const [childrenLoading, setChildrenLoading] = useState<string | null>(null);
+  const diagnosisRequest = useRef(0);
+  const searchRequest = useRef(0);
   const taxonomyRequest = useRef(false);
   const [examDateInput, setExamDateInput] = useState('');
   const [template, setTemplate] = useState<PlanTemplate | null>(null);
@@ -88,6 +100,49 @@ export default function Planner() {
       setTaxonomiesLoading(false);
     });
   }, [wizard, step, practiceTaxonomies, taxonomiesLoadAttempted]);
+  useEffect(() => {
+    if (!wizard || step !== 2 || !config.organizationId || !config.positionId) return;
+    let active = true;
+    const ticket = ++diagnosisRequest.current;
+    setDiagnosis(null); setTaxonomyChildren({});
+    setDiagnosisLoading(true); setDiagnosisError(''); setTaxonomyQuery(''); setTaxonomyResults([]); setExpandedMatter(null);
+    void plannerService.diagnose({ organizationId: config.organizationId, positionId: config.positionId, boardId: config.boardId, areaId: config.areaId })
+      .then(result => {
+        if (!active || ticket !== diagnosisRequest.current) return;
+        setDiagnosis(result);
+        setConfig(current => {
+          if (current.subjects.some(subject => subject.name.trim())) {
+            const mattersByName = new Map(result.items.filter(item => item.level === 'materia').map(item => [item.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(), item]));
+            return { ...current, subjects: current.subjects.map(subject => {
+              if (subject.taxonomyId || !subject.name.trim()) return subject;
+              const matter = mattersByName.get(subject.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase());
+              return matter ? { ...subject, taxonomyId: matter.id, selectedTaxonomyIds: [...new Set([...(subject.selectedTaxonomyIds || []), matter.id])], evidence: subject.evidence || { examCount: matter.examCount, questionCount: matter.questionCount, incidence: matter.incidence } } : subject;
+            }) };
+          }
+          const matters = result.items.filter(item => item.level === 'materia').map(item => ({
+            id: `matter-${item.id}`, taxonomyId: item.id, selectedTaxonomyIds: [item.id], name: item.name, topics: [],
+            questions: Math.max(1, Math.min(300, Math.round(item.questionCount / Math.max(1, item.examCount)))),
+            weight: Math.max(0.1, item.incidence ?? 1), minimum: 0, selfAssessment: 'beginner' as const,
+            evidence: { examCount: item.examCount, questionCount: item.questionCount, incidence: item.incidence },
+          }));
+          return matters.length ? { ...current, subjects: matters } : current;
+        });
+      }).catch(error => { if (active && ticket === diagnosisRequest.current) setDiagnosisError(errText(error)); })
+      .finally(() => { if (active && ticket === diagnosisRequest.current) setDiagnosisLoading(false); });
+    return () => { active = false; };
+  }, [wizard, step, config.organizationId, config.positionId, config.boardId, config.areaId]);
+  useEffect(() => {
+    if (!wizard || step !== 2 || taxonomyQuery.trim().length < 2 || !config.organizationId || !config.positionId) { setTaxonomyResults([]); return; }
+    const ticket = ++searchRequest.current;
+    const timer = window.setTimeout(() => {
+      setDiagnosisLoading(true);
+      void plannerService.diagnose({ organizationId: config.organizationId!, positionId: config.positionId!, boardId: config.boardId, areaId: config.areaId, search: taxonomyQuery.trim(), level: taxonomyLevel, selectedIds: config.subjects.flatMap(subject => subject.selectedTaxonomyIds || []) })
+        .then(result => { if (ticket === searchRequest.current) setTaxonomyResults(result.items); })
+        .catch(error => { if (ticket === searchRequest.current) setDiagnosisError(errText(error)); })
+        .finally(() => { if (ticket === searchRequest.current) setDiagnosisLoading(false); });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [wizard, step, taxonomyQuery, taxonomyLevel, config.organizationId, config.positionId, config.boardId, config.areaId, config.subjects]);
 
   async function mutate(input: Record<string, unknown>, after?: (response: PlannerResponse) => void) {
     if (busy) return;
@@ -126,12 +181,58 @@ export default function Planner() {
     update('availabilityWindows', windows);
     update('availability', availability);
   }
+  function addTaxonomyItem(item: PlannerDiagnosisItem) {
+    const rootId = item.level === 'materia' ? item.id : item.rootId;
+    if (!rootId) return;
+    setSelectedCatalogItems(current => ({ ...current, [item.id]: item }));
+    const rootName = item.level === 'materia' ? item.name : item.path.split(' · ')[0];
+    setConfig(current => {
+      const root = current.subjects.find(subject => subject.taxonomyId === rootId)
+        || current.subjects.find(subject => !subject.taxonomyId && subject.name.trim().toLocaleLowerCase() === rootName.trim().toLocaleLowerCase());
+      if (!root) {
+        return { ...current, subjects: [...current.subjects, {
+          id: `matter-${rootId}`, taxonomyId: rootId, selectedTaxonomyIds: item.id === rootId ? [rootId] : [rootId, item.id],
+          name: rootName, topics: item.id === rootId ? [] : [item.name], questions: item.id === rootId ? Math.max(1, Math.min(300, Math.round(item.questionCount / Math.max(1, item.examCount)))) : 1,
+          weight: item.id === rootId ? Math.max(0.1, item.incidence ?? 1) : 1, minimum: 0, selfAssessment: 'beginner',
+          evidence: item.id === rootId ? { examCount: item.examCount, questionCount: item.questionCount, incidence: item.incidence } : { examCount: 0, questionCount: 0, incidence: null },
+        }] };
+      }
+      if ((root.selectedTaxonomyIds || []).includes(item.id)) return current;
+      return { ...current, subjects: current.subjects.map(subject => subject.id !== root.id ? subject : {
+        ...subject, taxonomyId: rootId, selectedTaxonomyIds: [...new Set([...(subject.selectedTaxonomyIds || []), rootId, item.id])],
+        topics: item.id === rootId ? subject.topics : [...new Set([...subject.topics, item.name])],
+      }) };
+    });
+  }
+  function setSelfAssessment(subjectId: string, value: NonNullable<PlanConfig['subjects'][number]['selfAssessment']>) {
+    const minimum = { beginner: 0, studying: 60, reinforce: 75 }[value];
+    update('subjects', config.subjects.map(subject => subject.id === subjectId ? { ...subject, selfAssessment: value, minimum } : subject));
+  }
+  function removeTaxonomyItem(subjectId: string, taxonomyId: string) {
+    setConfig(current => ({ ...current, subjects: current.subjects.flatMap(subject => {
+      if (subject.id !== subjectId) return [subject];
+      if (subject.taxonomyId === taxonomyId) return [];
+      const item = selectedCatalogItems[taxonomyId] || [...(taxonomyChildren[subject.taxonomyId || ''] || []), ...taxonomyResults].find(entry => entry.id === taxonomyId);
+      return [{ ...subject, selectedTaxonomyIds: (subject.selectedTaxonomyIds || []).filter(id => id !== taxonomyId), topics: item ? subject.topics.filter(topic => topic !== item.name) : subject.topics }];
+    }) }));
+  }
+  async function toggleMatter(item: PlannerDiagnosisItem) {
+    if (expandedMatter === item.id) { setExpandedMatter(null); return; }
+    setExpandedMatter(item.id);
+    if (taxonomyChildren[item.id]) return;
+    setChildrenLoading(item.id); setDiagnosisError('');
+    try {
+      const result = await plannerService.diagnose({ organizationId: config.organizationId!, positionId: config.positionId!, boardId: config.boardId, areaId: config.areaId, parentId: item.id });
+      setTaxonomyChildren(current => ({ ...current, [item.id]: result.items }));
+    } catch (error) { setDiagnosisError(errText(error)); }
+    finally { setChildrenLoading(null); }
+  }
   async function advance() {
     if (step === 0 && (!config.organizationId || !config.positionId)) { setError('Selecione o órgão e o cargo no catálogo.'); return; }
     if (step === 0 && config.dateConfirmed && (!examDateInput || examDateInput <= config.startDate)) { setError('Informe uma data de prova futura ou selecione “Ainda não definida”.'); return; }
     if (step === 1 && Object.values(config.availabilityWindows).some(window => window.start !== window.end && (availabilityMinutes(window) < 20 || availabilityMinutes(window) > 600))) { setError('Revise os períodos: cada dia deve ter entre 20 minutos e 10 horas, dentro do mesmo dia.'); return; }
     if (step === 1 && Object.values(config.availability).every(minutes => minutes < 20)) { setError('Informe ao menos 20 minutos em um dia da semana.'); return; }
-    if (step === 2 && config.subjects.some(x => !x.name.trim() || !x.topics.length || x.questions <= 0 || x.weight <= 0)) { setError('Complete as matérias, assuntos, quantidade e pesos.'); return; }
+    if (step === 2 && (!config.subjects.length || config.subjects.some(x => !x.name.trim() || x.questions <= 0 || x.weight <= 0))) { setError('Selecione ao menos uma matéria válida para montar o plano.'); return; }
     setError('');
     if (step === 2) await mutate({ action: 'preview', config }, result => { setPreview(result.sessions || []); setStep(3); });
     else setStep(step + 1);
@@ -146,22 +247,38 @@ export default function Planner() {
   function saveDraft() { try { localStorage.setItem(draftKey, JSON.stringify(config)); setWizard(false); setView('mine'); } catch { setError('Não foi possível salvar o rascunho neste dispositivo.'); } }
 
   const button = (label: string, onClick: () => void, primary = false) => <button type="button" className={primary ? s.primary : s.button} disabled={busy} onClick={onClick}>{label}</button>;
+  const questionPracticeUrl = (activity: PlanSession) => `/questoes?${new URLSearchParams({ subject: activity.subject, topic: activity.topic, excludeAnswered: 'true' })}`;
   function sessionActions(activity: PlanSession) {
     if (!plan) return null;
     const payload = { action: 'session', id: plan.id, revision: plan.revision, sessionId: activity.id };
-    const questionUrl = `/questoes?${new URLSearchParams({ subject: activity.subject, keyword: activity.topic, excludeAnswered: activity.kind === 'questions' ? 'true' : 'false' })}`;
     return <div className={s.actions}>
       {activity.status === 'completed' ? <span className={s.good}><Check size={16} /> Concluída</span> : <>
-        {activity.status === 'planned' ? <button className={s.primary} disabled={busy || plan.status !== 'active'} onClick={() => void mutate({ ...payload, operation: 'start' })}><Play size={15} /> Iniciar</button> : <>
-          <Link className={s.button} href={questionUrl}>Abrir questões <ArrowRight size={15} /></Link>
+        {activity.status === 'planned' ? <>
+          <button className={s.primary} disabled={busy || plan.status !== 'active'} onClick={() => void mutate({ ...payload, operation: 'start' })}><Play size={15} /> Iniciar</button>
+          {activity.kind === 'questions' && <Link className={s.button} href={questionPracticeUrl(activity)}>Praticar questões <ArrowRight size={15} /></Link>}
+          <button className={s.link} disabled={busy || plan.status !== 'active'} onClick={() => { setReschedule(activity); setTargetDate(localDate()); }}>Reagendar</button>
+        </> : <>
+          {activity.kind === 'questions' && <Link className={s.button} href={questionPracticeUrl(activity)}>Praticar questões <ArrowRight size={15} /></Link>}
           {button('Concluir atividade', () => void mutate({ ...payload, operation: 'complete' }, () => void load(plan.id, days)))}
         </>}
-        {activity.status === 'planned' && <button className={s.link} disabled={busy || plan.status !== 'active'} onClick={() => { setReschedule(activity); setTargetDate(localDate()); }}>Reagendar</button>}
       </>}
     </div>;
   }
 
   if (!currentUser) return <div className={s.page}><h1>Cronogramas</h1><p>Entre na sua conta para acessar seus planos de estudo.</p><Link href="/login" className={s.primary}>Entrar</Link></div>;
+
+  const diagnosedMatters = diagnosis?.items.filter(item => item.level === 'materia') || [];
+  const selectedOnlyMatters: PlannerDiagnosisItem[] = config.subjects
+    .filter(subject => subject.taxonomyId && !diagnosedMatters.some(item => item.id === subject.taxonomyId))
+    .map(subject => {
+      const catalogItem = selectedCatalogItems[subject.taxonomyId!];
+      return catalogItem?.level === 'materia' ? catalogItem : {
+        id: subject.taxonomyId!, name: subject.name, level: 'materia' as const, parentId: null, rootId: subject.taxonomyId!,
+        path: subject.name, questionCount: subject.evidence?.questionCount || 0, examCount: subject.evidence?.examCount || 0,
+        incidence: subject.evidence?.incidence ?? null, performance: diagnosis?.selectedPerformance[subject.taxonomyId!] || { total: 0, correct: 0, accuracy: null },
+      };
+    });
+  const displayedMatters = [...diagnosedMatters, ...selectedOnlyMatters];
 
   return <div className={s.page} aria-busy={busy || loading}>
     <CanonicalBreadcrumbs items={[{ label: 'Início', path: '/dashboard' }, { label: 'Cronograma', path: '/cronograma' }]} className="mb-5" />
@@ -266,13 +383,58 @@ export default function Planner() {
           </aside>
         </div>;
       })()}
-      {step === 2 && <><h2>Confira o que será cobrado</h2>{config.subjects.map((subject, index) => <section className={s.subject} key={subject.id}>
-        <div className={s.row}><h3>Matéria {index + 1}</h3><button title="Remover matéria" aria-label="Remover matéria" className={s.icon} disabled={config.subjects.length === 1} onClick={() => update('subjects', config.subjects.filter((_, i) => i !== index))}><Trash2 size={16} /></button></div>
-        <div className={s.fields}><label className={s.field}>Matéria<input value={subject.name} onChange={e => update('subjects', config.subjects.map((x, i) => i === index ? { ...x, name: e.target.value } : x))} /></label>
-        {(['questions', 'weight', 'minimum'] as const).map((key, k) => <label className={s.field} key={key}>{['Questões na prova', 'Peso por questão', 'Mínimo de acertos (%)'][k]}<input type="number" min={key === 'minimum' ? 0 : 0.1} step={key === 'weight' ? 0.1 : 1} value={subject[key]} onChange={e => update('subjects', config.subjects.map((x, i) => i === index ? { ...x, [key]: Number(e.target.value) } : x))} /></label>)}</div>
-        <label className={s.field}>Assuntos do edital (um por linha)<textarea value={subject.topics.join('\n')} onChange={e => update('subjects', config.subjects.map((x, i) => i === index ? { ...x, topics: e.target.value.split('\n') } : x))} /></label>
-      </section>)}<button className={s.button} onClick={() => update('subjects', [...config.subjects, { id: crypto.randomUUID(), name: '', topics: [], questions: 10, weight: 1, minimum: 0 }])}><Plus size={16} /> Adicionar matéria</button><div className={s.fields}><label className={s.field}>Desconto por resposta errada (em pontos)<input type="number" min="0" step="0.1" value={config.wrongPenalty} onChange={e => update('wrongPenalty', Number(e.target.value))} /></label><p>Total: {config.subjects.reduce((a, x) => a + x.questions, 0)} questões • {config.subjects.reduce((a, x) => a + x.questions * x.weight, 0)} pontos</p></div></>}
-      {step === 3 && <><h2>{config.dateConfirmed ? `Seu plano até ${dateLabel(config.examDate)}` : 'Seu primeiro ciclo de estudos'}</h2><div className={s.metrics}><Metric label="Atividades" value={String(preview.length)} /><Metric label="Tempo planejado" value={hours(preview.reduce((a, x) => a + x.minutes, 0))} /><Metric label="Matérias" value={String(config.subjects.length)} /><Metric label="Reserva semanal" value={`${config.reservePercent}%`} /></div><div className={s.notice}>A distribuição considera os pontos da prova e seu histórico recente. Ao ajustar o plano, atividades concluídas e em andamento são preservadas.</div><SessionTable sessions={preview.slice(0, 10)} /><p>Prévia das primeiras {Math.min(10, preview.length)} atividades. {config.dateConfirmed ? 'O ciclo termina na véspera da prova.' : 'Este ciclo poderá ser revisto e ampliado quando houver nova data.'}</p></>}
+      {step === 2 && <div className={s.diagnosisGrid}>
+        <section className={s.formPanel} aria-labelledby="diagnosis-step-title">
+          <h2 className={s.sectionTitle} id="diagnosis-step-title">3. Seu ponto de partida</h2>
+          <p className={s.sectionCopy}>Identificamos matérias e conteúdos ligados às questões de provas deste órgão e cargo. Revise a seleção e inclua tópicos do catálogo, se necessário.</p>
+          {diagnosisLoading && !diagnosis && <p role="status">Analisando provas e questões publicadas…</p>}
+          {diagnosisError && <p role="alert" className={s.catalogError}>{diagnosisError} <button type="button" className={s.link} onClick={() => { setDiagnosis(null); }}>Tentar novamente</button></p>}
+          {!diagnosisLoading && diagnosis && !diagnosis.items.some(item => item.level === 'materia') && <div className={s.empty}>Não encontramos matérias vinculadas a questões publicadas para este recorte. Busque no catálogo para incluir conteúdos disponíveis ou volte e ajuste órgão, cargo ou banca.</div>}
+          {displayedMatters.map(matter => {
+            const subject = config.subjects.find(entry => entry.taxonomyId === matter.id);
+            const performance = diagnosis.selectedPerformance[matter.id] || { total: 0, correct: 0, accuracy: null };
+            const selected = subject?.selectedTaxonomyIds || [];
+            const children = taxonomyChildren[matter.id] || [];
+            return <article className={`${s.diagnosisSubject} ${!subject ? s.diagnosisRemoved : ''}`} key={matter.id}>
+              <div className={s.diagnosisSubjectTop}>
+                <div className={s.diagnosisSubjectName}><div><strong>{matter.name}</strong><small>{matter.questionCount} questões catalogadas</small></div>
+                  {subject && <button type="button" className={s.icon} aria-label={`Remover ${matter.name}`} onClick={() => removeTaxonomyItem(subject.id, matter.id)}><Trash2 size={15} /></button>}
+                  {!subject && <button type="button" className={s.button} onClick={() => addTaxonomyItem(matter)}>Incluir</button>}
+                </div>
+                <div className={s.diagnosisIncidence}><div><span>Incidência nas provas</span><b>{matter.incidence === null ? 'Sem dados' : `${matter.incidence}%`}</b></div><div className={s.diagnosisMeter}><span style={{ width: `${Math.min(100, matter.incidence || 0)}%` }} /></div><small>{matter.examCount} de {diagnosis.examCount} provas com questões vinculadas</small></div>
+                <div className={s.diagnosisAccuracy}><b>{performance.accuracy === null ? (performance.total ? 'Amostra inicial' : 'Sem dados') : `${performance.accuracy}%`}</b><small>{performance.total ? `${performance.total} questões respondidas` : 'Nenhuma resposta registrada'}</small></div>
+              </div>
+              {subject && <>
+                <div className={s.selfAssessment}><span>Como você se avalia?</span>{([['beginner', 'Começando'], ['studying', 'Em estudo'], ['reinforce', 'Preciso reforçar']] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={(subject.selfAssessment || 'beginner') === value} onClick={() => setSelfAssessment(subject.id, value)}>{label}</button>)}</div>
+                <div className={s.selectedTopics}>
+                  {selected.filter(id => id !== matter.id).map(id => {
+                    const entry = selectedCatalogItems[id] || children.find(child => child.id === id);
+                    return <span className={s.selectedTopic} key={id}>{entry?.name || `Item ${id}`}<button type="button" aria-label={`Remover ${entry?.name || 'conteúdo'}`} onClick={() => removeTaxonomyItem(subject.id, id)}>×</button></span>;
+                  })}
+                  <button type="button" className={s.expandTopics} aria-expanded={expandedMatter === matter.id} onClick={() => void toggleMatter(matter)}><ChevronDown size={14} />{expandedMatter === matter.id ? 'Ocultar conteúdos da matéria' : 'Ver tópicos e assuntos'}{childrenLoading === matter.id && ' · Carregando'}</button>
+                </div>
+                {expandedMatter === matter.id && <div className={s.taxonomyChildrenList}>{children.map(child => <div className={s.taxonomyChild} key={child.id}><div><small>{child.level === 'topico' ? 'Tópico' : child.level === 'subtopico' ? 'Subtópico' : 'Assunto'}</small><strong>{child.name}</strong><span>{child.examCount ? `${child.examCount} provas` : 'Sem vínculo em provas'}</span></div><button type="button" aria-pressed={selected.includes(child.id)} onClick={() => selected.includes(child.id) ? removeTaxonomyItem(subject.id, child.id) : addTaxonomyItem(child)}>{selected.includes(child.id) ? 'Remover' : 'Incluir'}</button></div>)}{!children.length && childrenLoading !== matter.id && <p className={s.hint}>Não há tópicos publicados para esta matéria neste recorte.</p>}</div>}
+              </>}
+            </article>;
+          })}
+          <section className={s.taxonomyCatalog} aria-label="Buscar matérias e assuntos no catálogo">
+            <h3>Adicionar do catálogo</h3><p>Busque matérias, tópicos, subtópicos e assuntos relacionados ao recorte selecionado.</p>
+            <div className={s.taxonomySearch}><label className={s.field}>Buscar conteúdo<input type="search" value={taxonomyQuery} onChange={event => setTaxonomyQuery(event.target.value)} placeholder="Digite pelo menos 2 caracteres" /></label><label className={s.field}>Nível<select value={taxonomyLevel} onChange={event => setTaxonomyLevel(event.target.value)}><option value="all">Todos</option><option value="materia">Matéria</option><option value="topico">Tópico</option><option value="subtopico">Subtópico</option><option value="assunto">Assunto</option></select></label></div>
+            {taxonomyQuery.trim().length >= 2 && <div className={s.taxonomyResults} aria-live="polite">{taxonomyResults.map(item => {
+              const isSelected = config.subjects.some(subject => (subject.selectedTaxonomyIds || []).includes(item.id));
+              return <div className={s.taxonomyResult} key={item.id}><div><strong>{item.name}</strong><small>{item.level} · {item.path} · {item.examCount} provas</small></div><button type="button" disabled={isSelected} onClick={() => addTaxonomyItem(item)}>{isSelected ? 'Adicionado' : 'Incluir'}</button></div>;
+            })}{!taxonomyResults.length && <p className={s.hint}>{diagnosisLoading ? 'Buscando no catálogo…' : 'Nenhum conteúdo encontrado para este recorte.'}</p>}</div>}
+          </section>
+          <div className={s.footnote}><Info size={15} /><span>A incidência é a proporção de provas do recorte com questões vinculadas à matéria, não um peso oficial do edital. O desempenho só exibe percentual com pelo menos 20 respostas; amostras menores ficam identificadas como iniciais.</span></div>
+        </section>
+        <aside className={s.diagnosisInsight} aria-label="Resumo do diagnóstico">
+          <div className={s.selectionHeader}><span className={s.selectionIcon}><Search size={17} /></span><div><h3>O que encontramos</h3><p>Órgão, cargo e banca selecionados</p></div></div>
+          <dl><div><dt>Provas publicadas</dt><dd>{diagnosis?.examCount ?? '—'}</dd></div><div><dt>Matérias identificadas</dt><dd>{diagnosis?.items.filter(item => item.level === 'materia').length ?? '—'}</dd></div><div><dt>Matérias no plano</dt><dd>{config.subjects.filter(subject => subject.name.trim()).length}</dd></div></dl>
+          <div className={s.selectionAnalysis}><h4>{diagnosis?.sample === 'adequate' ? 'Recorte com base mais ampla' : diagnosis?.sample === 'limited' ? 'Amostra limitada' : 'Sem provas vinculadas'}</h4><p>{diagnosis?.sample === 'adequate' ? 'Há pelo menos cinco provas publicadas no recorte. A recorrência ajuda a ordenar o estudo, mas não prevê o conteúdo da próxima prova.' : diagnosis?.sample === 'limited' ? 'Poucas provas têm questões vinculadas a este recorte. Use a recorrência com cautela e complemente o conteúdo pelo catálogo.' : 'Não há provas publicadas com questões vinculadas a este recorte. Você ainda pode buscar e incluir conteúdos do catálogo.'}</p></div>
+          <div className={s.selectionNotice}><Info size={15} /><span>Os dados cobrem apenas questões públicas vinculadas ao órgão e cargo. Editais podem ter pesos ou conteúdos não representados no acervo.</span></div>
+        </aside>
+      </div>}
+      {step === 3 && <><h2>{config.dateConfirmed ? `Seu plano até ${dateLabel(config.examDate)}` : 'Seu primeiro ciclo de estudos'}</h2><div className={s.metrics}><Metric label="Atividades" value={String(preview.length)} /><Metric label="Tempo planejado" value={hours(preview.reduce((a, x) => a + x.minutes, 0))} /><Metric label="Matérias" value={String(config.subjects.length)} /><Metric label="Reserva semanal" value={`${config.reservePercent}%`} /></div><div className={s.notice}>A distribuição considera os pontos da prova e seu histórico recente. Ao ajustar o plano, atividades concluídas e em andamento são preservadas.</div><SessionTable sessions={preview.slice(0, 10)} actions={activity => activity.kind === 'questions' ? <Link className={s.button} href={questionPracticeUrl(activity)}>Praticar questões <ArrowRight size={15} /></Link> : null} /><p>Prévia das primeiras {Math.min(10, preview.length)} atividades. {config.dateConfirmed ? 'O ciclo termina na véspera da prova.' : 'Este ciclo poderá ser revisto e ampliado quando houver nova data.'}</p></>}
       {step > 0 && <div className={s.toolbar}><button className={s.button} onClick={() => setStep(step - 1)}><ArrowLeft size={16} /> Voltar</button><div className={s.actions}>{!templateMode && button('Salvar rascunho neste dispositivo', saveDraft)}{step < 3 ? button('Continuar', () => void advance(), true) : templateMode ? <>{button('Salvar modelo em rascunho', () => void save('draft'))}{button('Publicar modelo', () => void save('published'), true)}</> : button(editing ? 'Salvar ajustes' : 'Gerar meu cronograma', () => void save(), true)}</div></div>}
     </> : plan ? <>
       <div className={s.row}><div><h1>Meu cronograma</h1><p>{plan.title}</p></div><div className={s.actions}><button className={s.button} onClick={() => begin(null, false, true)}><Pencil size={15} /> Editar plano</button>{button(plan.status === 'active' ? 'Pausar' : 'Retomar', () => void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: plan.status === 'active' ? 'paused' : 'active' }))}{plan.status !== 'archived' && button('Arquivar', () => { if (window.confirm('Arquivar este cronograma? Seu histórico será preservado.')) void mutate({ action: 'status', id: plan.id, revision: plan.revision, status: 'archived' }); })}</div></div>

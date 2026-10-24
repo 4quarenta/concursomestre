@@ -16,7 +16,7 @@ final class StudyPlanEngine
     public static function normalize(array $raw): array
     {
         $text = static fn($v) => mb_substr(trim(strip_tags((string) $v)), 0, 200);
-        $taxonomyId = static function ($value): ?string {
+        $normalizeTaxonomyId = static function ($value): ?string {
             if ($value === null || $value === '') return null;
             $value = (string) $value;
             if (preg_match('/^[1-9][0-9]{0,17}$/', $value) !== 1) throw new InvalidArgumentException('Selecao de taxonomia invalida.');
@@ -30,13 +30,34 @@ final class StudyPlanEngine
             if (!is_array($subject)) throw new InvalidArgumentException('Materia invalida.');
             $name = $text($subject['name'] ?? '');
             if (!is_array($subject['topics'] ?? null) || count($subject['topics']) > 150) throw new InvalidArgumentException('Informe ate 150 assuntos por materia.');
-            $topics = array_values(array_filter(array_map($text, $subject['topics'])));
+            $topics = array_values(array_unique(array_filter(array_map($text, $subject['topics']))));
+            if (!$topics && $name !== '') $topics = [$name];
             $questions = filter_var($subject['questions'] ?? 0, FILTER_VALIDATE_INT);
             $weight = (float) ($subject['weight'] ?? 0);
             if (!$name || !$topics || $questions < 1 || $questions > 300 || !is_finite($weight) || $weight <= 0 || $weight > 100) {
                 throw new InvalidArgumentException('Cada materia precisa de nome, assuntos, quantidade e peso validos.');
             }
-            $subjects[] = ['id' => 's' . $index, 'name' => $name, 'topics' => array_values(array_unique($topics)),
+            $subjectId = (string) ($subject['id'] ?? ('s' . $index));
+            if (preg_match('/^[A-Za-z0-9_-]{1,80}$/', $subjectId) !== 1) $subjectId = 's' . $index;
+            $subjectTaxonomyId = $normalizeTaxonomyId($subject['taxonomyId'] ?? null);
+            $selectedTaxonomyIds = [];
+            foreach (array_slice(is_array($subject['selectedTaxonomyIds'] ?? null) ? $subject['selectedTaxonomyIds'] : [], 0, 250) as $selectedId) {
+                $validId = $normalizeTaxonomyId($selectedId);
+                if ($validId !== null) $selectedTaxonomyIds[] = $validId;
+            }
+            $selfAssessment = (string) ($subject['selfAssessment'] ?? 'beginner');
+            if (!in_array($selfAssessment, ['beginner', 'studying', 'reinforce'], true)) $selfAssessment = 'beginner';
+            $evidence = null;
+            if (is_array($subject['evidence'] ?? null)) {
+                $incidence = $subject['evidence']['incidence'] ?? null;
+                $evidence = ['examCount' => max(0, min(1000000, (int) ($subject['evidence']['examCount'] ?? 0))),
+                    'questionCount' => max(0, min(1000000, (int) ($subject['evidence']['questionCount'] ?? 0))),
+                    'incidence' => $incidence === null ? null : max(0, min(100, (float) $incidence))];
+            }
+            $subjects[] = ['id' => $subjectId, 'taxonomyId' => $subjectTaxonomyId,
+                'selectedTaxonomyIds' => array_values(array_unique($selectedTaxonomyIds)),
+                'selfAssessment' => $selfAssessment, 'evidence' => $evidence,
+                'name' => $name, 'topics' => $topics,
                 'questions' => $questions, 'weight' => $weight,
                 'minimum' => max(0, min(100, (float) ($subject['minimum'] ?? 0)))];
         }
@@ -83,10 +104,10 @@ final class StudyPlanEngine
             throw new InvalidArgumentException('Informe um link valido para o edital.');
         }
         return ['title' => $title, 'bank' => $text($raw['bank'] ?? ''), 'area' => $text($raw['area'] ?? ''),
-            'organizationId' => $taxonomyId($raw['organizationId'] ?? null),
-            'positionId' => $taxonomyId($raw['positionId'] ?? null),
-            'boardId' => $taxonomyId($raw['boardId'] ?? null),
-            'areaId' => $taxonomyId($raw['areaId'] ?? null),
+            'organizationId' => $normalizeTaxonomyId($raw['organizationId'] ?? null),
+            'positionId' => $normalizeTaxonomyId($raw['positionId'] ?? null),
+            'boardId' => $normalizeTaxonomyId($raw['boardId'] ?? null),
+            'areaId' => $normalizeTaxonomyId($raw['areaId'] ?? null),
             'sourceUrl' => $source, 'dateConfirmed' => !empty($raw['dateConfirmed']),
             'startDate' => $start->format('Y-m-d'), 'examDate' => $end->format('Y-m-d'),
             'availability' => $availability, 'availabilityWindows' => $windows, 'sessionMinutes' => $session,

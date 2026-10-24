@@ -1,3 +1,0 @@
--- Data-only migration. No schema is created and no safe automatic rollback
--- exists because a previous NULL value cannot be distinguished from a manual
--- ownership correction after application.

@@ -61,6 +61,155 @@ final class StudyPlannerService
         return $result;
     }
 
+    private function diagnosis(array $input): array
+    {
+        $organizationId = filter_var($input['organizationId'] ?? null, FILTER_VALIDATE_INT);
+        $positionId = filter_var($input['positionId'] ?? null, FILTER_VALIDATE_INT);
+        $boardId = empty($input['boardId']) ? null : filter_var($input['boardId'], FILTER_VALIDATE_INT);
+        $areaId = empty($input['areaId']) ? null : filter_var($input['areaId'], FILTER_VALIDATE_INT);
+        if (!$organizationId || !$positionId || ($boardId !== null && !$boardId) || ($areaId !== null && !$areaId)) {
+            throw new InvalidArgumentException('Selecione um órgão e um cargo válidos.');
+        }
+
+        $scope = "p.archived_at IS NULL AND p.status_editorial = 'published'
+            AND p.visibility_status = 'public' AND (p.scheduled_at IS NULL OR p.scheduled_at <= NOW())";
+        $examSql = "SELECT COUNT(DISTINCT p.id)
+            FROM provas p
+            INNER JOIN prova_filters pf_org ON pf_org.prova_id = p.id AND pf_org.filter_id = :exam_org
+            INNER JOIN prova_filters pf_role ON pf_role.prova_id = p.id AND pf_role.filter_id = :exam_role
+            " . ($boardId ? "INNER JOIN prova_filters pf_board ON pf_board.prova_id = p.id AND pf_board.filter_id = :exam_board" : '') . "
+            " . ($areaId ? "INNER JOIN prova_filters pf_area ON pf_area.prova_id = p.id AND pf_area.filter_id = :exam_area" : '') . "
+            WHERE {$scope}";
+        $examParams = [':exam_org' => $organizationId, ':exam_role' => $positionId];
+        if ($boardId) $examParams[':exam_board'] = $boardId;
+        if ($areaId) $examParams[':exam_area'] = $areaId;
+        $examCount = (int) $this->query($examSql, $examParams)->fetchColumn();
+
+        $search = mb_substr(trim((string) ($input['search'] ?? '')), 0, 100);
+        $level = (string) ($input['level'] ?? 'all');
+        if (!in_array($level, ['all', 'materia', 'topico', 'subtopico', 'assunto'], true)) $level = 'all';
+        $parentId = empty($input['parentId']) ? null : filter_var($input['parentId'], FILTER_VALIDATE_INT);
+        if ($parentId !== null && !$parentId) throw new InvalidArgumentException('Item pai inválido.');
+        $selectedIds = [];
+        foreach (array_slice(is_array($input['selectedIds'] ?? null) ? $input['selectedIds'] : [], 0, 100) as $selectedId) {
+            if (!is_scalar($selectedId) || filter_var($selectedId, FILTER_VALIDATE_INT) === false) continue;
+            $selectedId = (int) $selectedId;
+            if ($selectedId > 0) $selectedIds[] = $selectedId;
+        }
+        $selectedIds = array_values(array_unique($selectedIds));
+        $limit = max(1, min(60, (int) ($input['limit'] ?? 30)));
+
+        $directQuestionScope = $boardId ? '0 = 1' : '(qf_org.filter_id IS NOT NULL AND qf_role.filter_id IS NOT NULL)';
+        if ($areaId && !$boardId) $directQuestionScope = "({$directQuestionScope} AND qf_area.filter_id IS NOT NULL)";
+        $resolvedLevelSql = "CASE
+            WHEN f.meta_materia = 1 OR f.taxonomy_level = 'materia' THEN 'materia'
+            WHEN f.taxonomy_level IN ('topico','subtopico','assunto') THEN f.taxonomy_level
+            WHEN parent.meta_materia = 1 OR parent.taxonomy_level = 'materia' THEN 'topico'
+            WHEN parent.taxonomy_level = 'topico' THEN 'subtopico'
+            WHEN parent.taxonomy_level = 'subtopico' THEN 'assunto'
+            ELSE 'topico' END";
+        $where = ["f.type = 'assunto'", "(f.taxonomy_level IN ('materia','topico','subtopico','assunto') OR f.meta_materia = 1 OR f.taxonomy_level IS NULL)",
+            "q.publish_status IN ('published','scheduled') AND q.visibility_status = 'public'
+             AND q.published_sort_at IS NOT NULL AND q.published_sort_at <= NOW()",
+            "COALESCE(f.taxonomy_level, '') NOT IN ('pending','internal','technical')",
+            "({$directQuestionScope} OR exam_scope.id IS NOT NULL)"];
+        $params = [':org_question' => $organizationId, ':role_question' => $positionId];
+        if ($parentId) { $where[] = 'f.parent_id = :parent_id'; $params[':parent_id'] = $parentId; }
+        elseif ($search !== '') {
+            $where[] = 'f.name LIKE :search'; $params[':search'] = '%' . $search . '%';
+        }
+        elseif ($search === '') { $where[] = "(f.taxonomy_level = 'materia' OR f.meta_materia = 1)"; }
+        $having = '';
+        if ($search !== '' && $level !== 'all') { $having = ' HAVING resolved_level = :resolved_level'; $params[':resolved_level'] = $level; }
+
+        $sql = "WITH exam_scope AS (
+            SELECT DISTINCT p.id
+              FROM provas p
+              INNER JOIN prova_filters pf_org ON pf_org.prova_id = p.id AND pf_org.filter_id = :scope_org
+              INNER JOIN prova_filters pf_role ON pf_role.prova_id = p.id AND pf_role.filter_id = :scope_role
+              " . ($boardId ? "INNER JOIN prova_filters pf_board ON pf_board.prova_id = p.id AND pf_board.filter_id = :scope_board" : '') . "
+              " . ($areaId ? "INNER JOIN prova_filters pf_area ON pf_area.prova_id = p.id AND pf_area.filter_id = :scope_area" : '') . "
+             WHERE {$scope}
+        )
+        SELECT f.id, f.name, f.taxonomy_level, f.meta_materia, f.parent_id,
+               {$resolvedLevelSql} AS resolved_level,
+               parent.id AS parent_id_value, parent.name AS parent_name, parent.taxonomy_level AS parent_level, parent.meta_materia AS parent_meta_materia,
+               grandparent.id AS grandparent_id, grandparent.name AS grandparent_name, grandparent.taxonomy_level AS grandparent_level,
+               greatgrandparent.id AS greatgrandparent_id, greatgrandparent.name AS greatgrandparent_name,
+               CASE WHEN ({$resolvedLevelSql}) = 'materia' THEN f.id
+                    WHEN ({$resolvedLevelSql}) = 'topico' THEN parent.id
+                    WHEN ({$resolvedLevelSql}) = 'subtopico' THEN grandparent.id
+                    WHEN parent.taxonomy_level = 'subtopico' THEN greatgrandparent.id
+                    ELSE grandparent.id END AS root_id,
+               COUNT(DISTINCT q.id) AS question_count,
+               COUNT(DISTINCT exam_scope.id) AS exam_count
+          FROM filters f
+          INNER JOIN question_filters qf ON qf.filter_id = f.id
+          INNER JOIN questions q ON q.id = qf.question_id
+          LEFT JOIN question_filters qf_org ON qf_org.question_id = q.id AND qf_org.filter_id = :org_question
+          LEFT JOIN question_filters qf_role ON qf_role.question_id = q.id AND qf_role.filter_id = :role_question
+          " . ($areaId ? "LEFT JOIN question_filters qf_area ON qf_area.question_id = q.id AND qf_area.filter_id = :area_question" : '') . "
+          LEFT JOIN question_provas qp ON qp.question_id = q.id
+          LEFT JOIN exam_scope ON exam_scope.id = qp.prova_id
+          LEFT JOIN filters parent ON parent.id = f.parent_id
+          LEFT JOIN filters grandparent ON grandparent.id = parent.parent_id
+          LEFT JOIN filters greatgrandparent ON greatgrandparent.id = grandparent.parent_id
+         WHERE " . implode(' AND ', $where) . "
+         GROUP BY f.id, f.name, f.taxonomy_level, f.meta_materia, f.parent_id, parent.id, parent.name, parent.taxonomy_level, parent.meta_materia,
+                  grandparent.id, grandparent.name, grandparent.taxonomy_level, greatgrandparent.id, greatgrandparent.name
+         {$having}
+         ORDER BY exam_count DESC, question_count DESC, f.name ASC
+         LIMIT {$limit}";
+        $params[':scope_org'] = $organizationId;
+        $params[':scope_role'] = $positionId;
+        if ($boardId) $params[':scope_board'] = $boardId;
+        if ($areaId) {
+            $params[':scope_area'] = $areaId;
+            $params[':area_question'] = $areaId;
+        }
+        $rows = $this->query($sql, $params)->fetchAll(PDO::FETCH_ASSOC);
+
+        $performance = [];
+        $matterIds = [];
+        foreach ($rows as $row) if (($row['resolved_level'] ?? '') === 'materia') $matterIds[] = (int) $row['id'];
+        $wantedIds = array_values(array_unique([...$matterIds, ...$selectedIds]));
+        if ($wantedIds) {
+            $placeholders = implode(',', array_fill(0, count($wantedIds), '?'));
+            $answeredRows = $this->query("SELECT qf.filter_id, COUNT(DISTINCT answers.question_id) AS total,
+                    COUNT(DISTINCT CASE WHEN answers.is_correct = 1 THEN answers.question_id END) AS correct
+                FROM (
+                    SELECT question_id, is_correct, ROW_NUMBER() OVER (PARTITION BY question_id ORDER BY created_at, id) AS rn
+                    FROM (
+                        SELECT id, question_id, is_correct, created_at FROM user_answers WHERE user_id = ?
+                        UNION ALL SELECT id, question_id, is_correct, created_at FROM user_answers_archive WHERE user_id = ?
+                    ) answer_history
+                ) answers
+                INNER JOIN question_filters qf ON qf.question_id = answers.question_id AND qf.filter_id IN ({$placeholders})
+                WHERE answers.rn = 1 GROUP BY qf.filter_id", [$this->userId, $this->userId, ...$wantedIds])->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($answeredRows as $row) {
+                $total = (int) $row['total'];
+                $performance[(string) $row['filter_id']] = ['total' => $total, 'correct' => (int) $row['correct'],
+                    'accuracy' => $total >= 20 ? round(100 * (int) $row['correct'] / $total, 1) : null];
+            }
+        }
+
+        $items = array_map(static function (array $row) use ($examCount, $performance): array {
+            $id = (string) $row['id'];
+            $level = (string) $row['resolved_level'];
+            $path = array_values(array_filter([$row['greatgrandparent_name'], $row['grandparent_name'], $row['parent_name'], $row['name']]));
+            return ['id' => $id, 'name' => (string) $row['name'], 'level' => $level,
+                'parentId' => $row['parent_id'] === null ? null : (string) $row['parent_id'],
+                'rootId' => $row['root_id'] === null ? null : (string) $row['root_id'],
+                'path' => implode(' · ', $path), 'questionCount' => (int) $row['question_count'],
+                'examCount' => (int) $row['exam_count'],
+                'incidence' => $examCount > 0 ? round(100 * (int) $row['exam_count'] / $examCount, 1) : null,
+                'performance' => $performance[$id] ?? ['total' => 0, 'correct' => 0, 'accuracy' => null]];
+        }, $rows);
+
+        return ['examCount' => $examCount, 'items' => $items, 'selectedPerformance' => $performance,
+            'sample' => $examCount >= 5 ? 'adequate' : ($examCount > 0 ? 'limited' : 'unavailable')];
+    }
+
     private function insertSessions(string $planId, array $sessions): void
     {
         foreach ($sessions as $session) $this->query('INSERT INTO study_plan_sessions (id, plan_id, scheduled_date, payload_json) VALUES (?, ?, ?, ?)',
@@ -87,6 +236,7 @@ final class StudyPlannerService
     {
         $this->access();
         $action = (string) ($input['action'] ?? '');
+        if ($action === 'diagnosis') return $this->diagnosis($input);
         if (in_array($action, ['preview', 'create', 'template'], true)) {
             $config = StudyPlanEngine::normalize($input['config'] ?? []);
             if ($action === 'template') {

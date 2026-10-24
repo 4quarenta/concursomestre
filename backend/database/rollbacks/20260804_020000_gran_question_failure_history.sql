@@ -1,2 +1,0 @@
-DROP TABLE IF EXISTS gran_question_publication_failures;
-ALTER TABLE private_ingestion_batches DROP COLUMN failure_history_synced_at;

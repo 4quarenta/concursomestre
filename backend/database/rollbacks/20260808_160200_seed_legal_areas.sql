@@ -1,2 +1,0 @@
--- Data seed migration. Rollback is intentionally manual: areas may already
--- own laws after import and must not be deleted automatically.

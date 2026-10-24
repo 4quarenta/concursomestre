@@ -1,2 +1,0 @@
--- A migration 20260809_010000 é apenas um backfill idempotente de flags.
--- Não há estrutura segura a remover nem conteúdo editorial a reverter.
