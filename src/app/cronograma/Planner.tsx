@@ -39,6 +39,8 @@ export default function Planner() {
   const [wizard, setWizard] = useState(false);
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState<PlanConfig>(initialPlan);
+  const [quickStart, setQuickStart] = useState('19:00');
+  const [quickEnd, setQuickEnd] = useState('20:00');
   const [practiceTaxonomies, setPracticeTaxonomies] = useState<PracticeTaxonomies | null>(null);
   const [taxonomiesLoading, setTaxonomiesLoading] = useState(false);
   const [taxonomiesLoadAttempted, setTaxonomiesLoadAttempted] = useState(false);
@@ -118,6 +120,12 @@ export default function Planner() {
     const window = enabled ? (availabilityMinutes(current) ? current : windowForDuration(120)) : { ...current, end: current.start };
     updateWindow(day, window);
   }
+  function applyAvailabilityToAll() {
+    const windows = Object.fromEntries(dayNames.map((_, index) => [String(index + 1), { start: quickStart, end: quickEnd }]));
+    const availability = Object.fromEntries(Object.entries(windows).map(([day, window]) => [day, availabilityMinutes(window)]));
+    update('availabilityWindows', windows);
+    update('availability', availability);
+  }
   async function advance() {
     if (step === 0 && (!config.organizationId || !config.positionId)) { setError('Selecione o órgão e o cargo no catálogo.'); return; }
     if (step === 0 && config.dateConfirmed && (!examDateInput || examDateInput <= config.startDate)) { setError('Informe uma data de prova futura ou selecione “Ainda não definida”.'); return; }
@@ -160,7 +168,7 @@ export default function Planner() {
     {error && <div role="alert" className={s.error}>{error} <button className={s.link} onClick={() => void load(plan?.id, days)}>Tentar novamente</button></div>}
     {loading && <p role="status">Carregando cronogramas...</p>}
     {wizard ? <>
-      <header className={s.wizardHeading}><div><h1>Novo cronograma</h1><p>{template ? template.title : 'Escolha seu órgão e cargo. A gente transforma isso em um plano de estudo possível de seguir.'}</p></div></header>
+      <header className={s.wizardHeading}><div><h1>Novo cronograma</h1><p>{template ? template.title : step === 1 ? `Órgão: ${practiceTaxonomies?.organizations.find(item => item.id === config.organizationId)?.name || 'não definido'} · Cargo: ${practiceTaxonomies?.roles.find(item => item.id === config.positionId)?.name || 'não definido'}` : 'Escolha seu órgão e cargo. A gente transforma isso em um plano de estudo possível de seguir.'}</p></div></header>
       <ol className={s.stepper} aria-label="Etapas para criar o cronograma">{['Órgão', 'Disponibilidade', 'Ponto de partida', 'Seu plano'].map((label, i) => <li key={label} className={i === step ? s.stepActive : i < step ? s.stepDone : ''} aria-current={step === i ? 'step' : undefined}><span className={s.stepNumber}>{i < step ? <Check size={14} /> : i + 1}</span><span>{label}</span></li>)}</ol>
       {step === 0 && <>
         <div className={s.setupGrid}><section className={s.formPanel} aria-labelledby="organization-step-title">
@@ -207,30 +215,57 @@ export default function Planner() {
           <p className={s.selectionFooter}>A seleção pode ser atualizada depois; seu cronograma acompanha as mudanças.</p>
         </aside></div>
       </>}
-      {step === 1 && <>
-        <h2>Quanto tempo cabe na sua semana?</h2>
-        <p>Informe em quais horários você consegue estudar. A duração de cada dia é calculada automaticamente, inclusive quando for menor que uma hora.</p>
-        <div className={s.availabilityDays}>
-          {dayNames.map((label, index) => {
-            const day = index + 1;
-            const key = String(day);
-            const window = config.availabilityWindows[key];
-            const minutes = availabilityMinutes(window, config.availability[key]);
-            const enabled = window.start !== window.end;
-            return <div className={s.availabilityDay} key={key}>
-              <label className={s.availabilityName}><input type="checkbox" checked={enabled} onChange={event => setDayEnabled(day, event.target.checked)} /><span>{label}</span><small>{enabled ? `${durationLabel(minutes)} disponíveis` : 'Dia livre'}</small></label>
-              <div className={s.availabilityTimes}>
-                <label>Das<input aria-label={`Início do período de ${label}`} type="time" value={window.start} disabled={!enabled} onChange={event => updateWindow(day, { start: event.target.value })} /></label>
+      {step === 1 && (() => {
+        const weeklyMinutes = Object.values(config.availability).reduce((sum, value) => sum + value, 0);
+        const activeDays = Object.values(config.availability).filter(value => value > 0).length;
+        const organization = practiceTaxonomies?.organizations.find(item => item.id === config.organizationId)?.name || 'Selecione na etapa anterior';
+        const role = practiceTaxonomies?.roles.find(item => item.id === config.positionId)?.name || 'Selecione na etapa anterior';
+        return <div className={s.availabilityGrid}>
+          <section className={s.formPanel} aria-labelledby="availability-step-title">
+            <h2 className={s.sectionTitle} id="availability-step-title">2. Disponibilidade</h2>
+            <p className={s.sectionCopy}>Quanto tempo você consegue reservar para estudar em cada dia? Ajuste sua semana para um ritmo que consiga manter.</p>
+            <div className={s.availabilityShortcut}>
+              <div className={s.availabilityShortcutCopy}><strong>Atalho: aplicar o mesmo período</strong><span>Depois, você pode personalizar qualquer dia.</span></div>
+              <div className={s.availabilityQuickControl}>
+                <label>Das<input type="time" value={quickStart} onChange={event => setQuickStart(event.target.value)} /></label>
                 <span>até</span>
-                <label>Às<input aria-label={`Fim do período de ${label}`} type="time" value={window.end} disabled={!enabled} onChange={event => updateWindow(day, { end: event.target.value })} /></label>
+                <label>Às<input type="time" value={quickEnd} onChange={event => setQuickEnd(event.target.value)} /></label>
+                <button type="button" className={s.availabilityApply} onClick={applyAvailabilityToAll}>Aplicar a todos</button>
               </div>
-            </div>;
-          })}
-        </div>
-        <div className={s.availabilityTotal}><span>Tempo total disponível na semana</span><strong>{durationLabel(Object.values(config.availability).reduce((sum, value) => sum + value, 0))}</strong></div>
-        <p className={s.hint}>Exemplo: segunda-feira, das 19:00 às 00:00, corresponde a 5 horas. O horário final é exclusivo: nenhuma atividade passa da meia-noite. Até 10 horas por dia.</p>
-        <div className={s.fields}>{(['sessionMinutes', 'questionGoal', 'reservePercent'] as const).map((key, index) => <label className={s.field} key={key}>{['Duração da sessão (min)', 'Meta de questões por sessão', 'Reserva para imprevistos (%)'][index]}<input type="number" min={key === 'reservePercent' ? 0 : 1} value={config[key]} onChange={e => update(key, Number(e.target.value))} /></label>)}</div>
-      </>}
+            </div>
+            <div className={s.availabilityDays} aria-label="Disponibilidade semanal">
+              {dayNames.map((label, index) => {
+                const day = index + 1;
+                const key = String(day);
+                const window = config.availabilityWindows[key];
+                const minutes = availabilityMinutes(window, config.availability[key]);
+                const enabled = window.start !== window.end;
+                return <div className={s.availabilityDay} key={key}>
+                  <label className={s.availabilityName}><input type="checkbox" checked={enabled} onChange={event => setDayEnabled(day, event.target.checked)} /><span>{label}</span><small>{enabled ? 'Dia de estudo' : 'Dia livre'}</small></label>
+                  <div className={s.availabilityTimes}>
+                    <label>Das<input aria-label={`Início do período de ${label}`} type="time" value={window.start} disabled={!enabled} onChange={event => updateWindow(day, { start: event.target.value })} /></label>
+                    <span>até</span>
+                    <label>Às<input aria-label={`Fim do período de ${label}`} type="time" value={window.end} disabled={!enabled} onChange={event => updateWindow(day, { end: event.target.value })} /></label>
+                    <small>{enabled ? durationLabel(minutes) : 'Livre'}</small>
+                  </div>
+                </div>;
+              })}
+            </div>
+            <div className={s.availabilityTotal}><span>Total semanal disponível</span><strong>{durationLabel(weeklyMinutes)}</strong></div>
+            <p className={s.availabilityHint}>Você pode informar períodos como 19:00–00:00. A duração é calculada em minutos e nenhuma atividade ultrapassa o horário final.</p>
+            <div className={s.availabilityParams}>{(['sessionMinutes', 'questionGoal', 'reservePercent'] as const).map((key, index) => <label className={s.field} key={key}>{['Duração da sessão (min)', 'Meta de questões por sessão', 'Reserva para imprevistos (%)'][index]}<input type="number" min={key === 'reservePercent' ? 0 : 1} value={config[key]} onChange={e => update(key, Number(e.target.value))} /></label>)}</div>
+          </section>
+          <aside className={s.availabilityInsight} aria-label="Resumo da sua disponibilidade">
+            <div className={s.availabilityInsightHeader}><span><Clock size={17} /></span><div><h3>Sua semana de estudos</h3><p>Disponibilidade informada por você</p></div></div>
+            <div className={s.availabilityHours}><strong>{durationLabel(weeklyMinutes)}</strong><span>de estudo por semana</span></div>
+            <div className={s.availabilityMeter} role="img" aria-label={`${Math.min(100, Math.round(weeklyMinutes / 600 * 100))}% da referência semanal`}><span style={{ width: `${Math.min(100, Math.round(weeklyMinutes / 600 * 100))}%` }} /></div>
+            <dl className={s.availabilitySummary}><div><dt>Dias disponíveis</dt><dd>{activeDays} {activeDays === 1 ? 'dia' : 'dias'}</dd></div><div><dt>Órgão</dt><dd>{organization}</dd></div><div><dt>Cargo</dt><dd>{role}</dd></div></dl>
+            <div className={s.availabilityAnalysis}><h4>Um plano que cabe na rotina</h4><p>O cronograma distribuirá matérias e revisões nos horários informados, respeitando os dias que você deixou livres.</p></div>
+            <div className={s.availabilityNotice}><Info size={15} /><span>Você poderá alterar sua disponibilidade depois. O plano será reorganizado sem apagar atividades concluídas.</span></div>
+            <p className={s.availabilityFooter}>Defina um ritmo sustentável. Não é necessário preencher os sete dias.</p>
+          </aside>
+        </div>;
+      })()}
       {step === 2 && <><h2>Confira o que será cobrado</h2>{config.subjects.map((subject, index) => <section className={s.subject} key={subject.id}>
         <div className={s.row}><h3>Matéria {index + 1}</h3><button title="Remover matéria" aria-label="Remover matéria" className={s.icon} disabled={config.subjects.length === 1} onClick={() => update('subjects', config.subjects.filter((_, i) => i !== index))}><Trash2 size={16} /></button></div>
         <div className={s.fields}><label className={s.field}>Matéria<input value={subject.name} onChange={e => update('subjects', config.subjects.map((x, i) => i === index ? { ...x, name: e.target.value } : x))} /></label>
